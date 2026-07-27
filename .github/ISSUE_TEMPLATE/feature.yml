@@ -1,0 +1,49 @@
+name: Feature
+description: Propose a product or engineering capability
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe the user-visible or engineering outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and boundaries
+      description: State what is included and explicitly excluded.
+    validations:
+      required: true
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Development phase
+      options:
+        - P0 - Project foundation
+        - P1 - Upstream baseline
+        - P2 - Product shell
+        - P3 - Platform core
+        - P4 - General worker
+        - P5 - Goose worker
+        - P6 - Team orchestration
+        - P7 - Security and reliability
+        - P8 - Internal beta
+        - Not yet assigned
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Acceptance evidence
+      description: Define observable proof that the outcome is complete.
+    validations:
+      required: true
+  - type: textarea
+    id: risk
+    attributes:
+      label: Security, data, upstream, and licensing impact
+      description: Include permissions, migrations, external runtimes, and imported assets.

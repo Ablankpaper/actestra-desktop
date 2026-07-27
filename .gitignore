@@ -1,0 +1,61 @@
+# Operating systems
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.mobileprovision
+
+# Logs and local state
+*.log
+logs/
+.cache/
+.tmp/
+tmp/
+
+# JavaScript and Electron
+node_modules/
+.pnpm-store/
+.yarn/
+.npm/
+dist/
+build/
+out/
+release/
+coverage/
+.turbo/
+.vite/
+.electron-vite/
+playwright-report/
+test-results/
+
+# Rust
+target/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Local packages and signing output
+*.dmg
+*.pkg
+*.msi
+*.AppImage
+*.deb
+*.rpm
+*.zip
+*.blockmap

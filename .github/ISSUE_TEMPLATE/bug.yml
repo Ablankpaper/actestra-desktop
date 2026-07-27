@@ -1,0 +1,44 @@
+name: Bug
+description: Report reproducible incorrect behavior
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Include the smallest reliable sequence and safe fixture details.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment and exact revision
+      description: Include commit, branch or tag, OS, architecture, and package identity.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Include redacted logs, screenshots, failing checks, or artifact identifiers.
+  - type: textarea
+    id: impact
+    attributes:
+      label: Security and data impact
+      description: State whether files, credentials, permissions, publishing, or migrations are involved.
