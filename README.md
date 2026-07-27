@@ -19,8 +19,11 @@ release infrastructure, or product boundaries with Aera.
 ## Current state
 
 P1 is accepted on `main`. Actestra is now in **P2 — Independent Product
-Shell**, with the implementation locally verified on
-`feat/independent-product-shell` and awaiting pull-request review and CI.
+Shell**. Exact implementation commit
+`1892b48402b1bfa9425a34172ff79259b7190b81` is locally verified and passed its
+first macOS arm64 CI run in
+[draft pull request 2](https://github.com/bignormal/actestra-desktop/pull/2);
+review, final-head CI, and merge remain pending.
 
 - The Electron 37.10.3 and React 19.2.4 shell is original Actestra source; no
   AionUi, AionCore, Goose, Eigent, Aera, or AgentEra application source or asset

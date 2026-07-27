@@ -1,6 +1,6 @@
 # P2 Independent Product Shell
 
-Status: Local implementation and technical exit-gate evidence
+Status: Pushed implementation with local and pull-request CI evidence
 
 Evidence date: 2026-07-28
 
@@ -8,7 +8,15 @@ Branch: `feat/independent-product-shell`
 
 Exact base: `main` at `174ef46ff971a2f67aec16fbfd6dc56fc0910306`
 
-This document records local proof. It does not claim pull-request CI, merge,
+Implementation commit: `1892b48402b1bfa9425a34172ff79259b7190b81`
+
+Review surface:
+[draft pull request 2](https://github.com/bignormal/actestra-desktop/pull/2)
+
+The local gate and
+[macOS arm64 pull-request CI run 30295163884](https://github.com/bignormal/actestra-desktop/actions/runs/30295163884)
+pass on the exact implementation commit. Evidence-only follow-up commits must
+retain a passing PR head check. This document does not claim review, merge,
 candidate, release, deployment, distribution, or user acceptance.
 
 ## Outcome

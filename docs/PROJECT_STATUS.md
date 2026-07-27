@@ -4,21 +4,24 @@ Last updated: 2026-07-28
 
 ## Current phase
 
-### P2 — Independent Actestra Product Shell (local gate passes; review pending)
+### P2 — Independent Actestra Product Shell (implementation gate passes; review pending)
 
 P0 and P1 are accepted on `main`. Pull request 1 merged P1 at
 `174ef46ff971a2f67aec16fbfd6dc56fc0910306`.
 
-P2 is implemented on `feat/independent-product-shell`, based on that exact
-`main` commit. The local technical exit gate passes. The branch must still be
-committed, pushed, reviewed, validated by pull-request CI, and merged before P2
-is accepted on `main`.
+P2 implementation commit
+`1892b48402b1bfa9425a34172ff79259b7190b81` is pushed on
+`feat/independent-product-shell`, based on that exact `main` commit, in
+[draft pull request 2](https://github.com/bignormal/actestra-desktop/pull/2).
+The local technical exit gate and pull-request CI on that exact implementation
+commit pass. Evidence-only follow-up commits must still pass the PR head check.
+Review and merge remain required before P2 is accepted on `main`.
 
 ## Evidence snapshot
 
 | Area | State | Evidence or blocker |
 | --- | --- | --- |
-| Repository | Local P2 branch | `feat/independent-product-shell` from exact `main` commit `174ef46ff971a2f67aec16fbfd6dc56fc0910306` |
+| Repository | Pushed draft PR | `feat/independent-product-shell` from exact `main` commit `174ef46ff971a2f67aec16fbfd6dc56fc0910306`; implementation commit `1892b48402b1bfa9425a34172ff79259b7190b81`; draft PR 2 |
 | Product source | Original Actestra shell | No AionUi, AionCore, Goose, Eigent, Aera, or AgentEra application source or asset imported |
 | Framework pins | Locked | Node.js 24.13.0, Bun 1.3.9, Electron 37.10.3, React and React DOM 19.2.4 |
 | Product identity | Locally verified | `Actestra`, `com.bignormal.actestra`, `Actestra` executable, `actestra:` protocol, original icon |
@@ -29,7 +32,7 @@ is accepted on `main`.
 | Source checks | Local pass | Formatting, zero lint warnings, strict TypeScript, documentation links, and product-boundary scan |
 | Desktop package | Local unsigned artifacts | macOS arm64 `.app`, DMG, and ZIP produced; DMG checksum structure, bundle identity, architecture, ASAR boundary, and packaged Electron notices verified |
 | Fresh-profile launch | Local pass | Application, window, and renderer ready markers plus Actestra layout manifest observed; real UI visually inspected |
-| CI | Pending | Workflow is implemented but has not run on a pushed P2 commit |
+| CI | Pass on implementation commit | [macOS arm64 run 30295163884](https://github.com/bignormal/actestra-desktop/actions/runs/30295163884) passed on `1892b48402b1bfa9425a34172ff79259b7190b81`; the final PR head must also pass after evidence updates |
 | Release | None | No candidate, signed artifact, deployment, or acceptance |
 
 ## Accepted direction
@@ -59,18 +62,18 @@ is accepted on `main`.
 | Packaged identity and notice verification | Pass locally |
 | Fresh-profile application, window, renderer, and data-layout smoke | Pass locally |
 | Visual inspection of the real packaged shell | Pass locally |
-| Pull-request CI and review | Pending |
+| Pull-request CI | Pass on exact implementation commit; final PR head check required |
+| Review and merge | Pending |
 
 Detailed commands, implementation boundaries, screenshot, and non-claims are in
 [P2 Product Shell](product/P2_PRODUCT_SHELL.md).
 
 ## Next gate
 
-1. Commit and push the P2 branch.
-2. Open a draft pull request and require the macOS CI job to pass.
-3. Review the identity, renderer authority, data layout, package notice, and
+1. Require the final draft-PR head to retain a passing macOS CI job.
+2. Review the identity, renderer authority, data layout, package notice, and
    clean-launch evidence.
-4. Merge P2 only after review and CI; then begin P3 models and deterministic fake
+3. Merge P2 only after review and CI; then begin P3 models and deterministic fake
    worker contracts in a dedicated branch.
 
 ## Open decisions
@@ -91,7 +94,7 @@ Detailed commands, implementation boundaries, screenshot, and non-claims are in
   metadata, and cross-platform acceptance remain future gates.
 - Task persistence, workers, tools, approvals, and orchestration are not
   implemented.
-- The P2 branch is not yet pushed or CI-backed.
+- Draft PR 2 remains unreviewed and unmerged.
 - There is no candidate, release, deployment, distribution, or user acceptance.
 
 ## Update policy
