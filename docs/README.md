@@ -22,6 +22,13 @@ planning, and governance documents.
 | [Upstream Versions](governance/UPSTREAM_VERSIONS.md) | Exact upstream revisions and verification evidence |
 | [Release Evidence](governance/RELEASE_EVIDENCE.md) | Required proof from local validation through user acceptance |
 
+## Upstream evaluations
+
+| Document | Purpose |
+| --- | --- |
+| [AionUi v2.1.41 Baseline](upstream/AIONUI_V2.1.41_BASELINE.md) | Exact pins, commands, validation, inventory, package evidence, and blockers |
+| [AionUi Module Map](upstream/AIONUI_MODULE_MAP.md) | Keep, wrap, replace, remove, and defer decisions for the evaluated foundation |
+
 ## Repository-level documents
 
 | Document | Purpose |
