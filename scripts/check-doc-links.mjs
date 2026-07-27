@@ -60,9 +60,7 @@ for (const markdownFile of markdownFiles) {
 
     const resolved = path.resolve(path.dirname(markdownFile), target);
     if (!fs.existsSync(resolved)) {
-      failures.push(
-        `${path.relative(root, markdownFile)} -> ${rawTarget}`,
-      );
+      failures.push(`${path.relative(root, markdownFile)} -> ${rawTarget}`);
     }
   }
 }
@@ -75,6 +73,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(
-  `Checked ${markdownFiles.length} Markdown files; all relative links resolve.`,
-);
+console.log(`Checked ${markdownFiles.length} Markdown files; all relative links resolve.`);

@@ -7,7 +7,8 @@ coding tasks, and coordinated multi-agent execution.
 
 The product direction is intentionally modular:
 
-- AionUi is the initial desktop product foundation.
+- AionUi is an evaluated desktop and general-work reference; useful modules may
+  enter later as selective, attributed ports.
 - Goose is integrated later as a specialized coding and terminal worker.
 - Eigent informs the multi-agent orchestration experience; its repository is not
   merged wholesale into Actestra.
@@ -17,22 +18,29 @@ release infrastructure, or product boundaries with Aera.
 
 ## Current state
 
-Actestra is in **P1 — Reproducible Upstream Baseline**, with the technical
-evidence ready for review on `upstream/aionui-v2-1-41`.
+P1 is accepted on `main`. Actestra is now in **P2 — Independent Product
+Shell**, with the implementation locally verified on
+`feat/independent-product-shell` and awaiting pull-request review and CI.
 
-- AionUi `v2.1.41` and AionCore `v0.1.52` are pinned to exact commits.
-- Two independent clean checkouts repeated frozen installation, development
-  launch, upstream Vitest, compilation, and full macOS DMG/ZIP generation.
-- License, asset, runtime, telemetry, update, storage, entitlement, and module
-  disposition inventories are recorded.
-- No upstream product source code has been imported.
-- The local unsigned AionUi packages are evaluation evidence only: their
-  signatures are invalid and Gatekeeper rejects them.
-- No Actestra application package, CI validation, candidate, release,
-  deployment, or user acceptance exists.
-- P2 may begin only after the P1 evidence branch is reviewed and merged.
+- The Electron 37.10.3 and React 19.2.4 shell is original Actestra source; no
+  AionUi, AionCore, Goose, Eigent, Aera, or AgentEra application source or asset
+  has been copied.
+- Product name, bundle identifier, executable, icon, deep-link scheme, and
+  versioned data layout are Actestra-owned.
+- The renderer is sandboxed and receives only two typed, non-privileged bridge
+  operations. External HTTP, HTTPS, WebSocket, permissions, navigation, new
+  windows, telemetry, updates, and accounts are inactive.
+- Five test files with 21 tests, formatting, lint, strict types, product-boundary
+  checks, renderer build, unsigned arm64 app/DMG/ZIP packaging, packaged
+  identity checks, and a fresh-profile three-stage startup smoke pass locally.
+- The shell has no task persistence, worker runtime, tool execution, or
+  orchestration yet; those begin behind P3 contracts.
+- There is no CI-backed candidate, signed release, deployment, distribution, or
+  user acceptance.
 
 See [Project Status](docs/PROJECT_STATUS.md) for the evidence-backed state.
+The local P2 proof is recorded in
+[P2 Product Shell](docs/product/P2_PRODUCT_SHELL.md).
 
 ## Start here
 

@@ -16,6 +16,7 @@ components or phases.
 | --- | --- | --- |
 | [0001](0001-capability-fusion.md) | Accepted | Fuse capabilities, not repositories |
 | [0002](0002-single-source-of-truth.md) | Accepted | Actestra owns product state behind adapter and event boundaries |
+| [0003](0003-clean-shell-selective-ports.md) | Accepted | Build an Actestra-owned shell and port upstream modules selectively |
 
 ## Creating an ADR
 
