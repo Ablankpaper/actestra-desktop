@@ -11,3 +11,6 @@ releases begin.
 
 - Initial repository and documentation baseline.
 - Product scope, development sequence, architecture boundaries, and governance.
+- Exact AionUi `v2.1.41` and AionCore `v0.1.52` evaluation pins.
+- Reproducible macOS baseline evidence, dependency and license inventory,
+  package checksums, known blockers, and the AionUi module disposition map.
