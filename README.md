@@ -30,10 +30,12 @@ Actestra is in **P3 — Platform Core and Contracts** on
 P3.2 version 1 event contract are implemented at
 `31dd6e4178eb7641b45be0ee2bccb862a96dac99` and pass
 [PR CI run 30331681309](https://github.com/bignormal/actestra-desktop/actions/runs/30331681309).
-P3.3 now has a locally validated storage-neutral persistence port, accepted
-SQLite/migration decision, forward-only schema registry, and main-owned adapter;
-its exact pushed-commit and CI evidence are not yet recorded. Worker,
-privileged-service, and renderer integration work has not started.
+P3.3 adds a storage-neutral persistence port, accepted SQLite/migration
+decision, forward-only schema registry, and main-owned adapter at
+`4de756984269624a02fbfdf77e558c958a03c2e0`; exact-head
+[PR CI run 30335076556](https://github.com/bignormal/actestra-desktop/actions/runs/30335076556)
+passes. Worker, privileged-service, and renderer integration work has not
+started.
 
 - The Electron 37.10.3 and React 19.2.4 shell is original Actestra source; no
   AionUi, AionCore, Goose, Eigent, Aera, or AgentEra application source or asset

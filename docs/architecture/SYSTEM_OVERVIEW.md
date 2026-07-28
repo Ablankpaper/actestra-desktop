@@ -1,6 +1,6 @@
 # System Overview
 
-Status: P2 shell implemented; P3.1-P3.3 contracts and persistence locally implemented
+Status: P2 shell implemented; P3.1-P3.3 contracts and persistence CI-backed
 
 ## Context
 

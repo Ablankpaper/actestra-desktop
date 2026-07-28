@@ -1,6 +1,6 @@
 # P3 Platform Core and Contracts
 
-Status: P3.1/P3.2 pushed and CI-backed; P3.3 locally validated; P3 remains open
+Status: P3.1-P3.3 pushed and CI-backed; P3.4 next; P3 remains open
 
 Evidence date: 2026-07-28
 
@@ -12,7 +12,10 @@ Kickoff commit: `30d05747cbaedf0c4901fd47de253e7009fe6643`
 
 Evidence commit: `4afa5531804cfce214cf6c0d204ae21820df3502`
 
-Implementation commit: `31dd6e4178eb7641b45be0ee2bccb862a96dac99`
+P3.1/P3.2 implementation commit:
+`31dd6e4178eb7641b45be0ee2bccb862a96dac99`
+
+P3.3 implementation commit: `4de756984269624a02fbfdf77e558c958a03c2e0`
 
 Review surface:
 [draft pull request 3](https://github.com/bignormal/actestra-desktop/pull/3)
@@ -25,6 +28,9 @@ P3 kickoff proof:
 
 P3.1/P3.2 implementation proof:
 [pull-request CI run 30331681309](https://github.com/bignormal/actestra-desktop/actions/runs/30331681309)
+
+P3.3 implementation proof:
+[pull-request CI run 30335076556](https://github.com/bignormal/actestra-desktop/actions/runs/30335076556)
 
 ## Purpose
 
@@ -92,15 +98,15 @@ to preload or renderer.
 
 ### P3.3 — Persistence and migrations
 
-- Implemented locally: storage-neutral persistence ports.
+- Implemented and CI-backed: storage-neutral persistence ports.
 - Accepted: embedded `node:sqlite` and forward-only migration policy in
   ADR-0005, with no added database dependency.
-- Verified locally: fresh creation, reopen, real `1 -> 2` forward migration,
+- Verified locally and in exact-head CI: fresh creation, reopen, real `1 -> 2`
+  forward migration,
   incompatible-future and foreign-state rejection, migration-history tampering,
   transactional rollback, invalid database rejection, domain restoration,
   ordered event replay, exact-id idempotency, and corrupt event projection
   rejection.
-- Pending: exact pushed commit and pull-request CI evidence.
 
 ### P3.4 — Worker adapter and deterministic fake
 
