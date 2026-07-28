@@ -41,7 +41,7 @@ function focusMainWindow(): void {
 
 async function createMainWindow(): Promise<BrowserWindow> {
   const preloadPath = path.join(__dirname, "../preload/index.cjs");
-  const window = new BrowserWindow(createWindowOptions(preloadPath));
+  const window = new BrowserWindow(createWindowOptions(preloadPath, app.isPackaged));
   mainWindow = window;
 
   installWindowSecurity(window);
@@ -126,7 +126,10 @@ if (!hasSingleInstanceLock) {
 
       app.on("activate", () => {
         if (BrowserWindow.getAllWindows().length === 0) {
-          void createMainWindow();
+          void createMainWindow().catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : "unknown activation error";
+            console.error(`ACTESTRA_ACTIVATE_FAILED ${message}`);
+          });
         } else {
           focusMainWindow();
         }

@@ -3,6 +3,7 @@ import path from "node:path";
 import process from "node:process";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { extractFile } from "@electron/asar";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const appBundle = path.resolve(
@@ -85,6 +86,35 @@ for (const forbiddenValue of forbiddenArchivePatterns) {
   if (forbiddenValue.pattern.test(archiveStrings)) {
     fail(`forbidden identity or endpoint appears in app.asar: ${forbiddenValue.label}`);
   }
+}
+
+const packagedRendererHtml = extractFile(archivePath, "out/renderer/index.html").toString("utf8");
+const contentSecurityPolicyMeta = packagedRendererHtml.match(
+  /<meta\b[^>]*\bhttp-equiv\s*=\s*["']Content-Security-Policy["'][^>]*>/i,
+)?.[0];
+if (!contentSecurityPolicyMeta) {
+  fail("packaged renderer is missing its Content-Security-Policy meta element");
+}
+const packagedContentSecurityPolicy = contentSecurityPolicyMeta.match(
+  /\bcontent\s*=\s*(["'])(.*?)\1/i,
+)?.[2];
+if (!packagedContentSecurityPolicy) {
+  fail("packaged renderer Content-Security-Policy meta element has no content");
+}
+
+const forbiddenPackagedPolicyFragments = [
+  "ws://localhost",
+  "ws://127.0.0.1",
+  "'unsafe-inline'",
+  "__ACTESTRA_CONTENT_SECURITY_POLICY__",
+];
+for (const fragment of forbiddenPackagedPolicyFragments) {
+  if (packagedContentSecurityPolicy.includes(fragment)) {
+    fail(`forbidden packaged renderer policy fragment appears in app.asar: ${fragment}`);
+  }
+}
+if (!packagedContentSecurityPolicy.includes("connect-src 'none'")) {
+  fail("packaged renderer CSP does not deny all connect sources");
 }
 
 console.info(

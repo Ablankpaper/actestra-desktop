@@ -13,6 +13,8 @@ const executable = path.join(appBundle, "Contents", "MacOS", "Actestra");
 const profileDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-smoke-"));
 const timeoutMilliseconds = 20_000;
 let output = "";
+let childOutcome = null;
+let resolveChildOutcome;
 
 if (!fs.existsSync(executable)) {
   console.error(`Packaged smoke failed: executable is missing at ${executable}`);
@@ -27,6 +29,24 @@ const child = spawn(executable, [], {
   stdio: ["ignore", "pipe", "pipe"],
 });
 
+const childOutcomePromise = new Promise((resolve) => {
+  resolveChildOutcome = resolve;
+});
+
+function recordChildOutcome(outcome) {
+  if (childOutcome === null) {
+    childOutcome = outcome;
+    resolveChildOutcome(outcome);
+  }
+}
+
+child.once("error", (error) => {
+  recordChildOutcome({ kind: "spawn-error", error });
+});
+child.once("exit", (code, signal) => {
+  recordChildOutcome({ kind: "exit", code, signal });
+});
+
 child.stdout.on("data", (chunk) => {
   output += chunk.toString();
 });
@@ -34,20 +54,39 @@ child.stderr.on("data", (chunk) => {
   output += chunk.toString();
 });
 
-function waitForExit() {
+function delay(milliseconds) {
   return new Promise((resolve) => {
-    child.once("exit", resolve);
+    setTimeout(resolve, milliseconds);
   });
 }
 
-async function finishWithFailure(message) {
+function describeChildOutcome(outcome) {
+  if (outcome.kind === "spawn-error") {
+    return `spawn error: ${outcome.error.message}`;
+  }
+  if (outcome.signal) {
+    return `signal ${outcome.signal}`;
+  }
+  return `exit code ${outcome.code}`;
+}
+
+async function terminateChild() {
+  if (childOutcome !== null) {
+    return childOutcome;
+  }
+
   child.kill("SIGTERM");
-  await Promise.race([
-    waitForExit(),
-    new Promise((resolve) => {
-      setTimeout(resolve, 2_000);
-    }),
-  ]);
+  const gracefulOutcome = await Promise.race([childOutcomePromise, delay(2_000)]);
+  if (gracefulOutcome) {
+    return gracefulOutcome;
+  }
+
+  child.kill("SIGKILL");
+  return childOutcomePromise;
+}
+
+async function finishWithFailure(message) {
+  await terminateChild();
   console.error(`Packaged smoke failed: ${message}`);
   console.error(output.trim());
   console.error(`Isolated profile retained for inspection: ${profileDirectory}`);
@@ -61,12 +100,12 @@ while (
     !output.includes("ACTESTRA_WINDOW_READY") ||
     !output.includes("ACTESTRA_RENDERER_READY"))
 ) {
-  if (child.exitCode !== null) {
-    await finishWithFailure(`Actestra exited early with code ${child.exitCode}`);
+  if (childOutcome !== null) {
+    await finishWithFailure(
+      `Actestra stopped before readiness: ${describeChildOutcome(childOutcome)}`,
+    );
   }
-  await new Promise((resolve) => {
-    setTimeout(resolve, 100);
-  });
+  await delay(100);
 }
 
 if (
@@ -75,6 +114,12 @@ if (
   !output.includes("ACTESTRA_RENDERER_READY")
 ) {
   await finishWithFailure("ready markers were not observed before timeout");
+}
+
+if (childOutcome !== null) {
+  await finishWithFailure(
+    `Actestra stopped before profile validation: ${describeChildOutcome(childOutcome)}`,
+  );
 }
 
 const profileEntries = fs.readdirSync(profileDirectory);
@@ -94,13 +139,13 @@ if (dataLayoutManifest.product !== "Actestra" || dataLayoutManifest.layoutVersio
   await finishWithFailure("Actestra data layout manifest is missing or invalid");
 }
 
-child.kill("SIGTERM");
-await Promise.race([
-  waitForExit(),
-  new Promise((resolve) => {
-    setTimeout(resolve, 2_000);
-  }),
-]);
+if (childOutcome !== null) {
+  await finishWithFailure(
+    `Actestra stopped before manifest validation completed: ${describeChildOutcome(childOutcome)}`,
+  );
+}
+
+await terminateChild();
 
 console.info(
   "Packaged smoke passed: Actestra reached application, window, and renderer ready markers.",

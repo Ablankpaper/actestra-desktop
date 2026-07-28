@@ -19,6 +19,14 @@ const forbiddenProductPatterns = [
 const rendererPrivilegePatterns = [
   { label: "Electron import", pattern: /from\s+['"]electron['"]/ },
   { label: "Node import", pattern: /from\s+['"]node:/ },
+  {
+    label: "Electron dynamic import",
+    pattern: /\bimport\s*\(\s*['"]electron(?:\/[^'"]+)?['"]\s*\)/,
+  },
+  {
+    label: "Node dynamic import",
+    pattern: /\bimport\s*\(\s*['"]node:[^'"]+['"]\s*\)/,
+  },
   { label: "CommonJS require", pattern: /\brequire\s*\(/ },
   { label: "Node process global", pattern: /\bprocess\./ },
 ];

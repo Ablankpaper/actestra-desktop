@@ -27,7 +27,7 @@ repository. They are not represented as Actestra-authored code.
 | `@testing-library/jest-dom`, `@testing-library/react` | `6.9.1`, `16.3.2` | MIT |
 | `@types/node`, `@types/react`, `@types/react-dom` | `24.12.0`, `19.2.14`, `19.2.3` | MIT |
 | `@vitest/coverage-v8`, `vitest`, `jsdom` | `4.1.0`, `4.1.0`, `28.1.0` | MIT |
-| `electron-builder`, `electron-vite`, `vite` | `26.15.2`, `5.0.0`, `6.4.1` | MIT |
+| `@electron/asar`, `electron-builder`, `electron-vite`, `vite` | `3.4.1`, `26.15.2`, `5.0.0`, `6.4.1` | MIT |
 | `oxfmt`, `oxlint` | `0.41.0`, `1.56.0` | MIT |
 | TypeScript | `5.9.3` | Apache-2.0 |
 

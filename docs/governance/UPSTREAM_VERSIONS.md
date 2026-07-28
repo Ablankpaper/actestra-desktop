@@ -14,6 +14,18 @@ following evaluation pins on 2026-07-27.
 | Goose | `aaif-goose/goose` | Not selected | Not selected | Worker adapter | Pending P5 |
 | Eigent | `eigent-ai/eigent` | Not selected | Not selected | Reference-first | Pending P6 |
 
+## CI action pins
+
+The following actions are executed by CI and are not imported into or
+distributed with the Actestra application. The immutable commits were resolved
+from the corresponding official GitHub tags on 2026-07-28.
+
+| Action | Version | Exact commit | Use |
+| --- | --- | --- | --- |
+| `actions/checkout` | `v4.4.0` | `11d5960a326750d5838078e36cf38b85af677262` | Repository checkout |
+| `actions/setup-node` | `v4.4.0` | `49933ea5288caeca8642d1e84afbd3f7d6820020` | Node.js 24.13.0 setup |
+| `oven-sh/setup-bun` | `v2.2.0` | `0c5077e51419868618aeaa5fe8019c62421857d6` | Bun 1.3.9 setup |
+
 ## AionUi v2.1.41 evidence
 
 - Selection date: 2026-07-27.

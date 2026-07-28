@@ -4,10 +4,10 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_BUNDLE="$ROOT_DIR/release/mac-arm64/Actestra.app"
-RUN_ROOT="${TMPDIR:-/tmp}/actestra-codex-run"
-STAGED_APP_BUNDLE="$RUN_ROOT/Actestra.app"
-STAGED_APP_EXECUTABLE="$STAGED_APP_BUNDLE/Contents/MacOS/Actestra"
-RUN_PROFILE="$RUN_ROOT/profile"
+RUN_ROOT=""
+STAGED_APP_BUNDLE=""
+STAGED_APP_EXECUTABLE=""
+RUN_PROFILE=""
 MODE="${1:---run}"
 
 build_app() {
@@ -17,22 +17,31 @@ build_app() {
   bun run verify:package
 }
 
-stop_existing() {
-  pkill -x Actestra 2>/dev/null || true
-}
+prepare_run_root() {
+  local requested_root="${TMPDIR:-/tmp}"
+  local temporary_root
+  if ! temporary_root="$(cd -- "$requested_root" && pwd -P)"; then
+    echo "Refusing to stage from an invalid temporary directory: $requested_root" >&2
+    exit 1
+  fi
 
-stage_app() {
-  case "$RUN_ROOT" in
-    /tmp/* | /var/folders/*)
+  case "$temporary_root" in
+    /tmp | /tmp/* | /private/tmp | /private/tmp/* | /var/folders/* | /private/var/folders/*)
       ;;
     *)
-      echo "Refusing to stage outside a temporary directory: $RUN_ROOT" >&2
+      echo "Refusing to stage outside a temporary directory: $temporary_root" >&2
       exit 1
       ;;
   esac
 
-  mkdir -p "$RUN_ROOT"
-  /bin/rm -rf -- "$STAGED_APP_BUNDLE"
+  RUN_ROOT="$(mktemp -d "${temporary_root%/}/actestra-codex-run.XXXXXX")"
+  STAGED_APP_BUNDLE="$RUN_ROOT/Actestra.app"
+  STAGED_APP_EXECUTABLE="$STAGED_APP_BUNDLE/Contents/MacOS/Actestra"
+  RUN_PROFILE="$RUN_ROOT/profile"
+}
+
+stage_app() {
+  prepare_run_root
   /usr/bin/ditto "$APP_BUNDLE" "$STAGED_APP_BUNDLE"
 }
 
@@ -47,13 +56,11 @@ launch_bundle() {
 case "$MODE" in
   --run)
     build_app
-    stop_existing
     stage_app
     launch_bundle
     ;;
   --debug)
     build_app
-    stop_existing
     stage_app
     mkdir -p "$RUN_PROFILE"
     (
