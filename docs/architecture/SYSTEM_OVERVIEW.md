@@ -1,6 +1,6 @@
 # System Overview
 
-Status: P2 shell implemented; P3.1-P3.6 are CI-backed; P3 remains open for final review
+Status: P2 accepted; P3.1-P3.6 and review remediation are CI-backed; Draft owner decision pending
 
 ## Context
 

@@ -1,6 +1,6 @@
 # P3 Platform Core and Contracts
 
-Status: P3.1-P3.6 pushed and CI-backed; full review pending; P3 remains open
+Status: P3.1-P3.6 and review remediation CI-backed; Draft owner decision pending
 
 Evidence date: 2026-07-28
 
@@ -10,7 +10,7 @@ Exact base: `main` at `76d6a58b20c3e010ee759358f2c86be80bc6a6c1`
 
 Kickoff commit: `30d05747cbaedf0c4901fd47de253e7009fe6643`
 
-Evidence commit: `4afa5531804cfce214cf6c0d204ae21820df3502`
+Kickoff PR evidence commit: `4afa5531804cfce214cf6c0d204ae21820df3502`
 
 P3.1/P3.2 implementation commit:
 `31dd6e4178eb7641b45be0ee2bccb862a96dac99`
@@ -22,6 +22,8 @@ P3.4 implementation commit: `2b1ad9200ff44f2b6be219a8a4b58b0083ebd45b`
 P3.5 implementation commit: `cec0cdc554656c021cdff7f2341ddd3f9b5d83dd`
 
 P3.6 implementation commit: `950fe0efa2fdc5adc69d013acc9f417d201cb28e`
+
+Review-remediation commit: `4fa0fb120a6ceb2c71effd2a552e8d9bbf05d151`
 
 Review surface:
 [draft pull request 3](https://github.com/bignormal/actestra-desktop/pull/3)
@@ -47,6 +49,9 @@ P3.5 implementation proof:
 
 P3.6 implementation proof:
 [pull-request CI run 30350732223](https://github.com/bignormal/actestra-desktop/actions/runs/30350732223)
+
+Review-remediation proof:
+[pull-request CI run 30374144474](https://github.com/bignormal/actestra-desktop/actions/runs/30374144474)
 
 ## Purpose
 
@@ -260,6 +265,38 @@ credential authority to preload or renderer.
 Answers that constrain multiple components must be recorded as ADRs rather than
 silently embedded in implementation code.
 
+## Independent review closure
+
+The complete committed review covered all 67 files in `main...HEAD` at
+`164be7da1b73ffeb8da813e33268ccaf4a77b7ad`. It raised 10 issues: 4 major and
+6 minor. Nine were verified and fixed in
+`4fa0fb120a6ceb2c71effd2a552e8d9bbf05d151`:
+
+- immediate incremental event redelivery is idempotent and conflicting
+  identifier reuse fails closed;
+- structural equality has a bounded recursive depth;
+- the one-shot full-stream append helper and incremental state path have
+  explicit performance roles;
+- successful domain-graph replacement invalidates stream-state caches;
+- partial attempt-release retries rely on documented event and evidence
+  idempotency keys;
+- P2 review evidence, P3 kickoff CI, and P3.6 startup registration wording are
+  evidence-accurate.
+
+The remaining minor request contradicted another issue in the same review by
+asking for the earlier kickoff run. GitHub verification showed that
+30329899300 passed on `4afa5531804cfce214cf6c0d204ae21820df3502` and the
+later canonical 30329964305 passed on
+`b9c1119479c805c02452e4054a3d904649a3ca03`, so the later run remains.
+
+The first nine-file remediation review raised one minor request to pair the CI
+link with its immutable head; that wording was fixed. The next remediation
+review completed with 0 issues. A redundant final all-file confirmation attempt
+was rate-limited during setup with a 43-minute wait and is not zero-issue
+evidence. Exact remediation CI run 30374144474 passes 24 files with 130 tests,
+the runtime and failure probes, boundaries, documentation, build, unsigned
+package identity, and clean-profile startup.
+
 ## Exit evidence
 
 P3 is not complete until tests prove:
@@ -272,14 +309,15 @@ P3 is not complete until tests prove:
 - audit records for protected decisions without credential leakage;
 - renderer inability to bypass the main-process boundary.
 
-The exact implementation commit and CI run exercise every exit item. P3 is not
-accepted because the full 67-file independent review was rate-limited before it
-started; the Draft still requires final review and an owner decision.
+The exact implementation and remediation commits and their CI runs exercise
+every exit item. The full independent review and remediation review are
+complete. P3 remains open only because the Draft still requires the final owner
+decision.
 
 ## Non-claims
 
-- P3.1 through P3.6 are CI-backed. P3 remains open pending the full independent
-  review and final Draft owner decision.
+- P3.1 through P3.6 and review remediation are CI-backed. P3 remains open
+  pending the final Draft owner decision.
 - No credential backend, production policy snapshot, input-reference store, or
   MCP/native transport is selected.
 - The deterministic fake is protocol test infrastructure, not a real worker.

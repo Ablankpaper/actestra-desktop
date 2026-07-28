@@ -49,8 +49,12 @@ projection governed by
 [ADR-0008](docs/architecture/decisions/0008-main-owned-projection-and-ipc.md).
 It is implemented at `950fe0efa2fdc5adc69d013acc9f417d201cb28e`; exact
 [PR CI run 30350732223](https://github.com/bignormal/actestra-desktop/actions/runs/30350732223)
-passes. P3 remains open pending full independent review and the final Draft
-owner decision.
+passes. Review remediation is implemented at
+`4fa0fb120a6ceb2c71effd2a552e8d9bbf05d151`; exact
+[PR CI run 30374144474](https://github.com/bignormal/actestra-desktop/actions/runs/30374144474)
+passes. The full 67-file independent review and zero-issue review of all
+remediation files are complete. P3 remains open only for the final Draft owner
+decision.
 
 - The Electron 37.10.3 and React 19.2.4 shell is original Actestra source; no
   AionUi, AionCore, Goose, Eigent, Aera, or AgentEra application source or asset
@@ -60,11 +64,12 @@ owner decision.
 - The renderer is sandboxed and receives only three fixed, non-privileged
   metadata intents. External HTTP, HTTPS, WebSocket, permissions, navigation,
   new windows, telemetry, updates, and accounts are inactive.
-- Twenty-four test files with 129 tests, an exact Electron-runtime SQLite probe, a
+- Twenty-four test files with 130 tests, an exact Electron-runtime SQLite probe, a
   three-scenario process-failure harness, formatting, lint, strict types,
   product-boundary checks, renderer build, packaged identity/CSP checks, and a
-  fresh-profile three-stage startup smoke pass locally. P3.1-P3.6 also have
-  exact implementation CI. Unsigned arm64 app/DMG/ZIP packaging passes locally.
+  fresh-profile three-stage startup smoke pass locally. P3.1-P3.6 and review
+  remediation also have exact implementation CI. Unsigned arm64 app/DMG/ZIP
+  packaging passes locally.
 - The pure TypeScript core contract has no Electron, filesystem, shell, network,
   credential, or renderer authority. SQLite, worker supervision, policy,
   approval, opaque credential leases, the metadata-only audit trail, and the
