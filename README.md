@@ -38,10 +38,12 @@ passes. P3.4 adds the protocol-versioned worker boundary, main-owned lifecycle
 supervisor, and deterministic fake at
 `2b1ad9200ff44f2b6be219a8a4b58b0083ebd45b`; exact implementation
 [PR CI run 30339662937](https://github.com/bignormal/actestra-desktop/actions/runs/30339662937)
-passes. P3.5 now implements the locally validated privileged-service contracts
-and deterministic main-owned services governed by
-[ADR-0007](docs/architecture/decisions/0007-privileged-service-authorization.md).
-Its exact commit and CI evidence are not recorded yet, and P3 remains open.
+passes. P3.5 adds privileged-service contracts and deterministic main-owned
+services governed by
+[ADR-0007](docs/architecture/decisions/0007-privileged-service-authorization.md)
+at `cec0cdc554656c021cdff7f2341ddd3f9b5d83dd`; exact implementation
+[PR CI run 30345370507](https://github.com/bignormal/actestra-desktop/actions/runs/30345370507)
+passes. P3.6 main/renderer boundary proof is next, and P3 remains open.
 
 - The Electron 37.10.3 and React 19.2.4 shell is original Actestra source; no
   AionUi, AionCore, Goose, Eigent, Aera, or AgentEra application source or asset
@@ -52,10 +54,10 @@ Its exact commit and CI evidence are not recorded yet, and P3 remains open.
   operations. External HTTP, HTTPS, WebSocket, permissions, navigation, new
   windows, telemetry, updates, and accounts are inactive.
 - Fourteen test files with 103 tests, an exact Electron-runtime SQLite probe, a
-  three-scenario process-failure harness,
-  formatting, lint, strict types, product-boundary checks, renderer build,
-  unsigned arm64 app/DMG/ZIP packaging, packaged identity/CSP checks, and a
-  fresh-profile three-stage startup smoke pass locally.
+  three-scenario process-failure harness, formatting, lint, strict types,
+  product-boundary checks, renderer build, packaged identity/CSP checks, and a
+  fresh-profile three-stage startup smoke pass locally and in exact
+  implementation CI. Unsigned arm64 app/DMG/ZIP packaging also passes locally.
 - The pure TypeScript core contract has no Electron, filesystem, shell, network,
   credential, or renderer authority. SQLite, worker supervision, policy,
   approval, opaque credential leases, the metadata-only audit trail, and the

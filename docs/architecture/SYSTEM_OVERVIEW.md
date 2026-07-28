@@ -1,6 +1,6 @@
 # System Overview
 
-Status: P2 shell implemented; P3.1-P3.4 are CI-backed; P3.5 is locally implemented
+Status: P2 shell implemented; P3.1-P3.5 are CI-backed; P3.6 is next; P3 is open
 
 ## Context
 

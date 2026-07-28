@@ -1,6 +1,6 @@
 # P3 Platform Core and Contracts
 
-Status: P3.1-P3.4 pushed and CI-backed; P3.5 locally implemented; P3.6 next; P3 remains open
+Status: P3.1-P3.5 pushed and CI-backed; P3.6 next; P3 remains open
 
 Evidence date: 2026-07-28
 
@@ -19,6 +19,8 @@ P3.3 implementation commit: `4de756984269624a02fbfdf77e558c958a03c2e0`
 
 P3.4 implementation commit: `2b1ad9200ff44f2b6be219a8a4b58b0083ebd45b`
 
+P3.5 implementation commit: `cec0cdc554656c021cdff7f2341ddd3f9b5d83dd`
+
 Review surface:
 [draft pull request 3](https://github.com/bignormal/actestra-desktop/pull/3)
 
@@ -36,6 +38,9 @@ P3.3 implementation proof:
 
 P3.4 implementation proof:
 [pull-request CI run 30339662937](https://github.com/bignormal/actestra-desktop/actions/runs/30339662937)
+
+P3.5 implementation proof:
+[pull-request CI run 30345370507](https://github.com/bignormal/actestra-desktop/actions/runs/30345370507)
 
 ## Purpose
 
@@ -160,24 +165,28 @@ renderer.
 
 ### P3.5 — Privileged services
 
-- Accepted locally: ADR-0007 fixes the version-1 protected-operation and tool
-  capability-manifest boundary, conservative policy rule lattice, exact
+- Accepted and CI-backed: ADR-0007 fixes the version-1 protected-operation and
+  tool-capability-manifest boundary, conservative policy rule lattice, exact
   approval evidence, opaque credential leases, metadata-only audit vocabulary,
   and fixed gateway order.
-- Implemented locally: credential broker, policy engine, approval service,
+- Implemented and CI-backed: credential broker, policy engine, approval service,
   MCP/native-tool-neutral executor and gateway, and audit trail interfaces with
   runtime-closed shapes.
-- Implemented locally: immutable asynchronous snapshots, no-match denial,
+- Implemented and CI-backed: immutable asynchronous snapshots, no-match denial,
   deny precedence, normalized instant ordering, finite approval expiry, exact
   operation and policy binding, concurrent creation reservation, one-shot
   consumption claims with audit rollback, manifest drift rejection, credential
   lease mutation serialization, bounded history, rollback/release/expiry
   cleanup, pre-execution audit failure closure, sanitized executor failures, and
   explicit post-call uncertainty.
-- Verified locally: two focused files pass 27 tests, and the complete gate
-  passes 14 test files with 103 tests. Coverage passes at 84.00% statements,
-  76.75% branches, and 95.18% functions overall; `core/privilegedServices.ts`
-  has 93.96% statement coverage and `main/privileged` has 84.04%.
+- Verified locally and in exact implementation CI at
+  `cec0cdc554656c021cdff7f2341ddd3f9b5d83dd`: two focused files pass 27 tests,
+  and the complete gate passes 14 test files with 103 tests, exact-runtime,
+  process-failure, documentation, boundary, unsigned bundle, packaged identity,
+  and clean-profile smoke checks. Local coverage passes at 84.00% statements,
+  76.75% branches, and 95.18% functions overall;
+  `core/privilegedServices.ts` has 93.96% statement coverage and
+  `main/privileged` has 84.04%.
 - Kept absent: secret values, a keychain backend, production policy snapshot,
   raw tool arguments, input-reference storage, a real executor or transport,
   startup registration, preload IPC, renderer operations, and upstream source.
@@ -237,8 +246,7 @@ The exact source commit and CI run must be recorded in
 
 ## Non-claims
 
-- P3.1 through the locally validated P3.5 slice do not complete the P3 exit
-  gate.
+- P3.1 through the CI-backed P3.5 slice do not complete the P3 exit gate.
 - No credential backend, production policy snapshot, input-reference store, or
   MCP/native transport is selected.
 - The deterministic fake is protocol test infrastructure, not a real worker.

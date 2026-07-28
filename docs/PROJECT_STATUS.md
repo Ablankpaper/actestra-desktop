@@ -6,7 +6,7 @@ Last updated: 2026-07-28
 
 ### P3 — Platform Core and Contracts
 
-P3.1-P3.4 are pushed and CI-backed. P3.5 is next; P3 remains open.
+P3.1-P3.5 are pushed and CI-backed. P3.6 is next; P3 remains open.
 
 P0, P1, and P2 are accepted on `main`.
 [Pull request 2](https://github.com/bignormal/actestra-desktop/pull/2) merged
@@ -45,10 +45,21 @@ stepped deterministic fake adapter.
 [macOS arm64 CI run 30339662937](https://github.com/bignormal/actestra-desktop/actions/runs/30339662937)
 passes on that exact implementation commit.
 
-The SQLite adapter, P3.4 supervisor, and fake adapter are not registered at
-application startup and expose no preload or renderer operation. The fake
-performs no filesystem, network, process, shell, model, credential, or tool
-operation. No real worker, worker transport, or privileged service exists.
+P3.5 implementation commit
+`cec0cdc554656c021cdff7f2341ddd3f9b5d83dd` accepts
+[ADR-0007](architecture/decisions/0007-privileged-service-authorization.md)
+and adds closed protected-operation and tool-manifest contracts, conservative
+policy evaluation, exact one-shot approval evidence, opaque credential leases,
+a metadata-only audit trail, and a fixed-order main-owned gateway.
+[macOS arm64 CI run 30345370507](https://github.com/bignormal/actestra-desktop/actions/runs/30345370507)
+passes on that exact implementation commit.
+
+The SQLite adapter, P3.4 worker components, and P3.5 deterministic privileged
+services are not registered at application startup and expose no preload or
+renderer operation. The fake worker performs no filesystem, network, process,
+shell, model, credential, or tool operation. P3.5 contains no secret backend,
+real executor, input-reference store, production policy snapshot, or
+MCP/native transport.
 
 Local validation of P3.3 at
 `4de756984269624a02fbfdf77e558c958a03c2e0` on
@@ -101,26 +112,58 @@ Local validation of P3.4 at
   boundary, documentation, unsigned bundle, packaged identity, and clean-profile
   smoke steps.
 
+Local validation of P3.5 at
+`cec0cdc554656c021cdff7f2341ddd3f9b5d83dd` on
+`feat/platform-core-contracts`:
+
+- `bun install --frozen-lockfile` — pass with 443 installs and no lockfile
+  change;
+- two focused P3.5 contract files — pass with 27 tests covering validation,
+  policy, approval, audit, credential-lease, gateway, cleanup, concurrency, and
+  post-call uncertainty rules;
+- `bun run check` — pass, including format, lint with 0 warnings, strict types,
+  all 14 Vitest files with 103 tests, the exact Electron `37.10.3` / Node.js
+  `22.21.1` / SQLite `3.50.4` probe, the 3-scenario process-failure harness, the
+  27-source product-boundary check, and desktop build;
+- `bun run test:coverage` — pass with 84.00% statement, 76.75% branch, and
+  95.18% function coverage overall; `core/privilegedServices.ts` has 93.96%
+  statement coverage and `main/privileged` has 84.04%;
+- `bun run docs:check` — pass for all 28 Markdown files;
+- `bunx markdownlint-cli2 'docs/**/*.md' 'README.md' 'AGENTS.md'` — pass across
+  24 matched files with 0 issues;
+- `bun run dist:dir && bun run verify:package && bun run smoke:package` — pass
+  for the unsigned arm64 app and isolated shell profile; this is regression
+  evidence only because P3.5 is not wired into startup;
+- `git diff --cached --check` — pass before the implementation commit;
+- three completed CodeRabbit CLI reviews raised 14 issues: 1 critical,
+  10 major, and 3 minor. All were verified and remediated. A fourth final CLI
+  retry was rate-limited before review and therefore is not zero-issue evidence;
+  the remote CodeRabbit status is `SUCCESS` on the pushed implementation head;
+- exact implementation CI run 30345370507 — pass, including source/test/
+  boundary, documentation, unsigned bundle, packaged identity, and clean-profile
+  smoke steps.
+
 ## Evidence snapshot
 
 | Area | State | Evidence or blocker |
 | --- | --- | --- |
-| Repository | Pushed P3.1-P3.4 draft PR | `feat/platform-core-contracts` begins at `76d6a58b20c3e010ee759358f2c86be80bc6a6c1`; P3.4 implementation commit `2b1ad9200ff44f2b6be219a8a4b58b0083ebd45b`; draft PR 3 |
+| Repository | Pushed P3.1-P3.5 draft PR | `feat/platform-core-contracts` begins at `76d6a58b20c3e010ee759358f2c86be80bc6a6c1`; P3.5 implementation commit `cec0cdc554656c021cdff7f2341ddd3f9b5d83dd`; draft PR 3 |
 | P2 merge | Accepted on `main` | PR 2 final head `f972bb6c33c925f3e333a6ee87d20e5bbb72cece`; squash merge `76d6a58b20c3e010ee759358f2c86be80bc6a6c1` |
 | P2 main CI | Pass | Main push run 30329620829 passed on the exact squash merge |
 | P3 kickoff CI | Pass | Pull-request run 30329964305 passed on exact pushed head `b9c1119479c805c02452e4054a3d904649a3ca03` |
 | P3.1/P3.2 CI | Pass | Pull-request run 30331681309 passed on exact implementation commit `31dd6e4178eb7641b45be0ee2bccb862a96dac99` |
 | P3.3 CI | Pass | Pull-request run 30335076556 passed on exact implementation commit `4de756984269624a02fbfdf77e558c958a03c2e0` |
 | P3.4 CI | Pass | Pull-request run 30339662937 passed on exact implementation commit `2b1ad9200ff44f2b6be219a8a4b58b0083ebd45b` |
+| P3.5 CI | Pass | Pull-request run 30345370507 passed on exact implementation commit `cec0cdc554656c021cdff7f2341ddd3f9b5d83dd` |
 | Product shell | Implemented | Original Actestra Electron/React shell; no upstream or Aera application source or asset imported |
 | Renderer boundary | Verified | Context isolation, sandbox, Node and packaged DevTools disabled, production CSP denies connections, narrow typed bridge |
-| Automated tests | Exact P3.4 implementation CI pass | Twelve Vitest files with 76 tests, exact Electron SQLite probe, process-failure harness, boundary and documentation checks, build, package identity, and clean-profile smoke passed in run 30339662937 |
+| Automated tests | Exact P3.5 implementation CI pass | Fourteen Vitest files with 103 tests, exact Electron SQLite probe, process-failure harness, boundary and documentation checks, build, package identity, and clean-profile smoke passed in run 30345370507 |
 | Desktop package | Local unsigned evidence | macOS arm64 app, DMG, and ZIP verified; not a candidate |
 | P3 domain contracts | Implemented and CI-backed | Typed IDs and timestamps; workspace, task, session, worker, approval, and artifact records; transition and graph invariants; exact commit and run above |
 | P3 event contract | Implemented and CI-backed | Schema version 1; per-attempt gapless order, exact-id idempotency, verified replay cursors, terminal enforcement, and diagnostic redaction; exact commit and run above |
 | P3 persistence and migrations | Implemented and CI-backed | ADR-0005, storage-neutral port, owned SQLite schema versions 1 and 2, immutable checksummed history, rollback/future/corruption rejection, private file modes, domain round-trip, and ordered event replay; exact commit and run above |
 | P3 worker lifecycle | Implemented and CI-backed | ADR-0006, protocol version 1, runtime validation, supervisor, observed-time health, cancellation, crash, bounded fresh-attempt restart, deterministic fake, and 22 focused tests; exact commit and run above |
-| P3 privileged services | Not implemented | Credential, policy, approval, MCP/tool, and audit services remain absent |
+| P3 privileged services | Implemented and CI-backed | ADR-0007; protected-operation and manifest contracts; policy, approval, opaque lease, metadata-only audit, and deterministic gateway services; exact commit and run above |
 | Release | None | No candidate, signed artifact, deployment, distribution, or user acceptance |
 
 ## Accepted direction
@@ -172,19 +215,19 @@ The ordered implementation index and P3 non-claims are in
 
 ## Next gate
 
-1. Accept the P3.5 credential, policy, approval, MCP/tool gateway, and audit
-   service boundaries before implementation.
-2. Implement P3.5 with credential-free fixtures and fail-closed policy and
-   approval tests.
-3. Keep real AionUi, Goose, Eigent, or other workers out until the whole P3 exit
+1. Implement P3.6 registration so privileged services remain main-owned.
+2. Expose only narrow typed intents, then prove preload and renderer code cannot
+   directly reach filesystem, shell, credentials, workers, or tools.
+3. Re-run the complete local and exact-head CI gate before considering P3
+   complete or changing draft status.
+4. Keep real AionUi, Goose, Eigent, or other workers out until the whole P3 exit
    gate passes.
 
 ## Open decisions
 
 - License for original Actestra source.
 - Credential storage mechanism and platform-keychain boundary.
-- Policy and approval rule representation.
-- MCP/tool gateway transport and capability manifest shape.
+- Main-owned input-reference storage and MCP/native-tool transport.
 - Worker sandbox implementation per operating system.
 - Long-term dependency upgrade policy.
 - Code-signing, notarization, update, and distribution accounts.
@@ -193,12 +236,16 @@ The ordered implementation index and P3 non-claims are in
 
 ## Known blockers and non-claims
 
-- P3.1 through P3.4 are CI-backed, but they do not complete the P3 exit gate.
-- P3.5 and P3.6 remain unimplemented.
-- The P3.3 persistence adapter and P3.4 worker components are not registered
-  with application startup and are not renderer-visible features.
+- P3.1 through P3.5 are CI-backed, but they do not complete the P3 exit gate.
+- P3.6 main/renderer integration and bypass proof remain unimplemented.
+- The P3.3 persistence adapter, P3.4 worker components, and P3.5 privileged
+  services are not registered with application startup and are not
+  renderer-visible features.
 - The P3.4 deterministic fake is test infrastructure, not a worker process or
   evidence of packaged crash recovery.
+- P3.5 approval, audit, credential-lease, and policy state is in memory and is
+  not durability or restart evidence. It contains no secret value or real tool
+  execution.
 - No real worker may be integrated until the P3 contracts and fake-worker gate
   pass.
 - The local P2 package remains deliberately unsigned and is not a candidate.
