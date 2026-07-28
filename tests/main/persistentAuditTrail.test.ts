@@ -11,9 +11,9 @@ import {
   policyRevision,
   type PrivilegedClock,
 } from "../../apps/desktop/src/core";
-import { openSqliteCorePersistence } from "../../apps/desktop/src/main/persistence/sqliteCorePersistence";
 import { PersistentAuditTrail } from "../../apps/desktop/src/main/privileged/persistentAuditTrail";
 import { createProtectedOperation } from "../fixtures/privilegedServices";
+import { openTestPersistenceUtility } from "../fixtures/persistenceUtility";
 
 const testDirectories: string[] = [];
 
@@ -50,7 +50,7 @@ describe("persistent privileged audit trail", () => {
       reasonCode: "no-matching-rule",
       matchedRuleIds: [],
     } as const;
-    const firstPersistence = openSqliteCorePersistence(userDataPath);
+    const firstPersistence = (await openTestPersistenceUtility(userDataPath)).client;
     const first = new PersistentAuditTrail({
       clock,
       persistence: firstPersistence,
@@ -62,7 +62,7 @@ describe("persistent privileged audit trail", () => {
     });
     await firstPersistence.close();
 
-    const secondPersistence = openSqliteCorePersistence(userDataPath);
+    const secondPersistence = (await openTestPersistenceUtility(userDataPath)).client;
     const second = new PersistentAuditTrail({
       clock,
       persistence: secondPersistence,

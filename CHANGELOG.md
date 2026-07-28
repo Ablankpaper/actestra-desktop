@@ -31,6 +31,11 @@ releases begin.
   idempotent append, replay cursors, terminal enforcement, and diagnostic
   redaction.
 - ADR-0004 for authoritative domain lifecycles and per-attempt event streams.
+- ADR-0009 for the first real-process general-work, persistence, content,
+  scoped-tool, and recovery boundaries.
+- A versioned persistence utility protocol, Electron utility-process launcher,
+  schema 4 workspace grants, and bounded UTF-8 content references with exact
+  ownership, expiry, consumption, and digest validation.
 
 ### Changed
 
@@ -38,3 +43,5 @@ releases begin.
   development staging, deterministic packaged-process cleanup, dynamic-import
   boundary checks, packaged DevTools denial, and environment-specific renderer
   CSP verification.
+- Moved synchronous SQLite ownership out of Electron main and added packaged
+  entry-graph isolation plus schema 4 fresh-profile smoke verification.

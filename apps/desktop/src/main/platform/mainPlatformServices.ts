@@ -9,6 +9,7 @@ import {
   policyDecisionId,
   policyRevision,
   type ApprovalService,
+  type ActestraPersistencePort,
   type AuditRecordId,
   type AuditTrail,
   type CredentialBroker,
@@ -23,10 +24,6 @@ import {
   type PlatformAttemptProjection,
   type PlatformSnapshot,
 } from "../../shared/contracts";
-import {
-  openSqliteCorePersistence,
-  type ActestraPersistencePort,
-} from "../persistence/sqliteCorePersistence";
 import { DeterministicPolicyEngine } from "../privileged/deterministicPolicyEngine";
 import { DisabledProtectedToolExecutor } from "../privileged/disabledProtectedToolExecutor";
 import { InMemoryApprovalService } from "../privileged/inMemoryApprovalService";
@@ -161,8 +158,9 @@ export class MainPlatformServices {
   }
 }
 
-export function createMainPlatformServices(userDataPath: string): MainPlatformServices {
-  const persistence = openSqliteCorePersistence(userDataPath);
+export function createMainPlatformServices(
+  persistence: ActestraPersistencePort,
+): MainPlatformServices {
   try {
     return new MainPlatformServices(persistence);
   } catch (error) {

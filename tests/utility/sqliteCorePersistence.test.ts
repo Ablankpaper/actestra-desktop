@@ -19,7 +19,7 @@ import {
   CORE_DATABASE_FILENAME,
   openSqliteCorePersistence,
   resolveCoreDatabasePath,
-} from "../../apps/desktop/src/main/persistence/sqliteCorePersistence";
+} from "../../apps/desktop/src/utility/persistence/sqliteCorePersistence";
 import {
   createDomainGraph,
   createEvent,

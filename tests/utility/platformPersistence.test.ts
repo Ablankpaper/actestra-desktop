@@ -23,7 +23,7 @@ import {
 import {
   openSqliteCorePersistence,
   resolveCoreDatabasePath,
-} from "../../apps/desktop/src/main/persistence/sqliteCorePersistence";
+} from "../../apps/desktop/src/utility/persistence/sqliteCorePersistence";
 import { createProtectedOperation } from "../fixtures/privilegedServices";
 
 const testDirectories: string[] = [];

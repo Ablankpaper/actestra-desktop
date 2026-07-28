@@ -66,13 +66,14 @@ merged the acceptance record as
 [main CI run 30379251723](https://github.com/bignormal/actestra-desktop/actions/runs/30379251723)
 passes on that exact P4 entry baseline.
 
-P4 kickoff planning is open on `feat/general-work-vertical-slice`. It proposes
-the first real-process general-work fixture, adapter tool-result path, scoped
-content references, native read/create tools, and persistence utility boundary
-in [ADR-0009](docs/architecture/decisions/0009-p4-general-work-process-and-content-boundaries.md)
-and [P4 General Work](docs/product/P4_GENERAL_WORK.md). The ADR remains Proposed:
-no P4 runtime code, upstream source, credential, network model, MCP transport,
-or renderer authority has been added.
+P4 is open on the Draft branch `feat/general-work-vertical-slice`.
+[ADR-0009](docs/architecture/decisions/0009-p4-general-work-process-and-content-boundaries.md)
+is accepted, and its P4.2 persistence/content subset is implemented and locally
+validated. Electron main now uses an asynchronous versioned client while a real
+Electron utility process exclusively owns SQLite schema 4, workspace grants,
+and bounded UTF-8 content references. P4.3's reference worker, adapter version
+2, native tools, production policy, upstream runtime, credentials, network
+model, MCP transport, and broader renderer authority have not been added.
 
 - The Electron 37.10.3 and React 19.2.4 shell is original Actestra source; no
   AionUi, AionCore, Goose, Eigent, Aera, or AgentEra application source or asset
@@ -82,20 +83,23 @@ or renderer authority has been added.
 - The renderer is sandboxed and receives only three fixed, non-privileged
   metadata intents. External HTTP, HTTPS, WebSocket, permissions, navigation,
   new windows, telemetry, updates, and accounts are inactive.
-- Twenty-four test files with 130 tests, an exact Electron-runtime SQLite probe, a
-  three-scenario process-failure harness, formatting, lint, strict types,
-  product-boundary checks, renderer build, packaged identity/CSP checks, and a
-  fresh-profile three-stage startup smoke pass locally. P3.1-P3.6 and review
-  remediation also have exact implementation CI. Unsigned arm64 app/DMG/ZIP
-  packaging passes locally.
+- Twenty-eight test files with 144 tests, an exact Electron-runtime SQLite
+  probe, a three-scenario process-failure harness, formatting, lint, strict
+  types, a 41-source boundary check, renderer build, packaged identity/CSP and
+  recursive main-entry checks, and a fresh-profile four-stage startup smoke
+  pass locally. P3.1-P3.6 and review remediation have exact implementation CI;
+  P4.2's exact pushed commit and CI are still pending. The current unsigned
+  arm64 `.app` is package evidence, not a candidate.
 - The pure TypeScript core contract has no Electron, filesystem, shell, network,
   credential, or renderer authority. SQLite, worker supervision, policy,
   approval, opaque credential leases, the metadata-only audit trail, and the
   deterministic tool gateway remain behind main-owned ports. P3.6 registers the
-  inert privileged composition and SQLite evidence only in main; preload exposes
-  three fixed metadata intents and no generic IPC or protected operation. The
-  shell still has no real worker process, credential backend, tool execution,
-  input-reference store, transport, or orchestration.
+  inert privileged composition in main; preload exposes three fixed metadata
+  intents and no generic IPC or protected operation. P4.2 moves all synchronous
+  SQLite work to the persistence utility and adds a durable content-reference
+  store that no worker or tool uses yet. The shell still has no real worker
+  process, credential backend, tool execution, native worker transport, or
+  orchestration.
 - There is no CI-backed candidate, signed release, deployment, distribution, or
   user acceptance.
 

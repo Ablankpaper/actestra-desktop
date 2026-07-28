@@ -1,6 +1,6 @@
 # P4 General-Work Vertical Slice
 
-Status: Kickoff plan under review; no P4 runtime implementation
+Status: P4.1 accepted; P4.2 implemented and locally validated on the Draft branch
 
 Date: 2026-07-29
 
@@ -20,9 +20,69 @@ P3's implementation merge remains
 passing on that exact commit.
 
 The process, adapter, content-reference, tool, scope, and persistence choices
-for this phase are proposed in
+for this phase are accepted in
 [ADR-0009](../architecture/decisions/0009-p4-general-work-process-and-content-boundaries.md).
-That ADR is not authoritative until accepted.
+The owner accepted that decision on 2026-07-29 and authorized P4.2. This does
+not accept the P4.2 implementation, merge the branch, or authorize P4.3.
+
+## P4.2 implementation evidence
+
+The current branch implements the persistence/content subset without enabling
+a worker or tool:
+
+- Electron main launches an Actestra persistence utility with a minimal
+  environment and talks to it through a closed version 1 structured-clone
+  protocol;
+- the utility exclusively owns the synchronous `node:sqlite` adapter and
+  forward migration registry; source and recursively reachable packaged-module
+  checks reject SQLite in the main entry graph;
+- schema version 4 adds one-active-per-workspace grant records and immutable,
+  1 MiB-bounded UTF-8 input/output content references with SHA-256 metadata;
+- exact owner, kind, grant, expiry, consumption-time, idempotency, conflict,
+  UTF-8, byte-length, and digest checks fail closed;
+- malformed, oversized, uncorrelated, timed-out, or post-exit utility messages
+  fail the client, and main has no synchronous fallback; and
+- a fresh client or application restart reopens the same owned database.
+  Transparent hot restart or retry of an exited utility is not implemented.
+
+The intended red command first failed only at the three absent P4.2 boundaries:
+
+```text
+bunx vitest run tests/core/workloadContent.test.ts \
+  tests/main/persistenceUtilityClient.test.ts \
+  tests/utility/workloadPersistence.test.ts
+```
+
+After implementation and remediation:
+
+- the focused contract/client/migration/workload group passes 5 files with 21
+  tests;
+- `bun run check` passes formatting, zero-warning lint, strict types, the exact
+  Electron SQLite probe, 28 Vitest files with 144 tests, the three-scenario
+  smoke harness, the 41-source product-boundary check, and the desktop build;
+- `bun run test:coverage` passes without threshold changes at 82.68% statements,
+  75.79% branches, 91.22% functions, and 82.67% lines overall; and
+- a rebuilt unsigned macOS arm64 `.app` passes packaged identity/CSP checks,
+  recursively proves SQLite is absent from the main entry graph and present in
+  the utility entry, and reaches utility, application, window, and renderer
+  ready markers on an isolated Profile with SQLite schema 4; and
+- all 31 relative Markdown links resolve, Markdown lint reports 0 issues, and
+  the working diff has no whitespace errors.
+
+The complete 40-file CodeRabbit CLI review raised 10 findings. Three were valid
+and fixed: the P3/P4 evidence-row attribution, loopback SQLite shutdown on
+simulated exit, and negative foreign `application_id` classification. Seven
+were rejected after verification because they used the wrong current date or
+conflicted with the accepted utility authority, retention, whole-graph
+replacement, stable-error, and fail-closed client boundaries. A second complete
+review raised one valid protocol-exhaustiveness issue, which was fixed with
+operation-map-derived typing and `never` guards. The third complete 40-file
+review finished with 0 findings.
+
+This is local implementation, automated review, and package evidence. The exact
+pushed commit, pull-request CI, merge, slice acceptance, candidate, release,
+deployment, distribution, and user acceptance remain separate gates. No
+submitted GitHub review or human approval is claimed.
 
 ## Purpose
 
@@ -96,6 +156,9 @@ task-output area.
 Exit: the Draft PR has an owner-reviewed design and no unresolved
 cross-component choice is hidden in implementation.
 
+State: achieved. ADR-0009 and the fixture/exit matrix were accepted on
+2026-07-29.
+
 ### P4.2 — Persistence utility and content references
 
 - Define the versioned utility protocol and strict runtime validators.
@@ -107,6 +170,9 @@ cross-component choice is hidden in implementation.
 
 Exit: existing P3 persistence tests pass through the utility boundary and
 reference tests fail closed for wrong ownership or corrupt content.
+
+State: achieved locally with completed automated full-diff review. Exact
+pushed-head CI, merge, and owner acceptance remain open.
 
 ### P4.3 — Reference worker transport and adapter version 2
 
@@ -193,11 +259,19 @@ P4 can be accepted only when:
 
 ## Blockers and non-claims
 
-- ADR-0009 is Proposed and P4 implementation has not started.
-- `AgentAdapter` version 1 has no tool-result path; version 2 is only a proposal.
-- SQLite still runs synchronously in Electron main on the current branch base.
-- There is no content-reference store, real executor, production policy,
-  utility transport, or worker process in the accepted implementation.
+- ADR-0009 is Accepted, and P4.2 is locally implemented and automatically
+  reviewed. Its exact pushed commit, CI, merge, and owner acceptance are still
+  open.
+- `AgentAdapter` version 1 still has no tool-result path; version 2 and the
+  reference worker remain P4.3 work.
+- SQLite now runs only in the persistence utility. An exited utility makes the
+  current client unavailable with no in-main fallback; transparent hot recovery
+  is deferred to the P4.5 coordination/recovery slice.
+- Schema 4 stores content references and grants, but no worker or real tool uses
+  them yet. Retention-point cleanup is deferred until terminal coordination is
+  connected in P4.5.
+- There is no real executor, production policy, worker process, native tool,
+  model, or broader renderer journey in P4.2.
 - The reference worker will be deterministic and offline; it is not a
   model-quality claim.
 - Utility-process separation is not operating-system sandbox evidence.

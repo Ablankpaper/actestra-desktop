@@ -9,7 +9,7 @@ import {
   CURRENT_CORE_SCHEMA_VERSION,
   migrateSqliteDatabase,
   type SqliteMigration,
-} from "../../apps/desktop/src/main/persistence/sqliteMigrations";
+} from "../../apps/desktop/src/utility/persistence/sqliteMigrations";
 
 const databases: DatabaseSync[] = [];
 const APPLIED_AT = "2026-07-28T08:00:00.000Z";
@@ -60,7 +60,7 @@ describe("Actestra SQLite migrations", () => {
     expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
       fromVersion: 0,
       toVersion: CURRENT_CORE_SCHEMA_VERSION,
-      appliedVersions: [1, 2, 3],
+      appliedVersions: [1, 2, 3, 4],
     });
     expect(pragmaNumber(database, "application_id")).toBe(ACTESTRA_SQLITE_APPLICATION_ID);
     expect(pragmaNumber(database, "user_version")).toBe(CURRENT_CORE_SCHEMA_VERSION);
@@ -80,6 +80,10 @@ describe("Actestra SQLite migrations", () => {
       {
         version: 3,
         name: "platform-evidence",
+      },
+      {
+        version: 4,
+        name: "workload-content-and-grants",
       },
     ]);
   });
@@ -120,11 +124,13 @@ describe("Actestra SQLite migrations", () => {
     const database = createDatabase();
     migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 2), APPLIED_AT);
 
-    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
-      fromVersion: 2,
-      toVersion: 3,
-      appliedVersions: [3],
-    });
+    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 3), APPLIED_AT)).toEqual(
+      {
+        fromVersion: 2,
+        toVersion: 3,
+        appliedVersions: [3],
+      },
+    );
     expect(
       database
         .prepare(
@@ -143,6 +149,53 @@ describe("Actestra SQLite migrations", () => {
       { name: "core_events" },
       { name: "privileged_audit_records" },
     ]);
+  });
+
+  it("performs a real 3 -> 4 migration without replacing platform evidence", () => {
+    const database = createDatabase();
+    migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 3), APPLIED_AT);
+    database
+      .prepare(
+        `INSERT INTO agent_attempt_evidence (
+           session_id, workspace_id, task_id, worker_id, stream_id, state,
+           last_core_event_sequence, incident_code, redaction, evidence_json
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        "session-preserved",
+        "workspace-preserved",
+        "task-preserved",
+        "worker-preserved",
+        "stream-preserved",
+        "failed",
+        0,
+        null,
+        "metadata",
+        "{}",
+      );
+
+    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
+      fromVersion: 3,
+      toVersion: 4,
+      appliedVersions: [4],
+    });
+    expect(
+      database
+        .prepare(
+          `SELECT name
+           FROM sqlite_schema
+           WHERE type = 'table' AND name IN ('workspace_grants', 'content_references')
+           ORDER BY name`,
+        )
+        .all(),
+    ).toEqual([{ name: "content_references" }, { name: "workspace_grants" }]);
+    expect(
+      database
+        .prepare("SELECT session_id FROM agent_attempt_evidence WHERE session_id = ?")
+        .get("session-preserved"),
+    ).toEqual({
+      session_id: "session-preserved",
+    });
   });
 
   it("rejects a future schema without changing its version", () => {
@@ -165,6 +218,14 @@ describe("Actestra SQLite migrations", () => {
       "foreign-database",
     );
     expect(pragmaNumber(foreign, "application_id")).toBe(42);
+
+    const negativeForeign = createDatabase();
+    negativeForeign.exec("PRAGMA application_id = -42");
+    expectPersistenceError(
+      () => migrateSqliteDatabase(negativeForeign, CORE_SQLITE_MIGRATIONS, APPLIED_AT),
+      "foreign-database",
+    );
+    expect(pragmaNumber(negativeForeign, "application_id")).toBe(-42);
 
     const populated = createDatabase();
     populated.exec("CREATE TABLE unrelated (id INTEGER PRIMARY KEY) STRICT");

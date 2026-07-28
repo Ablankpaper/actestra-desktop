@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -5,15 +6,20 @@ import { DatabaseSync } from "node:sqlite";
 import {
   CoreContractError,
   PersistenceError,
+  WorkloadContentError,
   advanceCoreEventStreamState,
   approvalId,
   artifactId,
   assertAgentAttemptEvidence,
   assertAppendPrivilegedAuditInput,
   assertAuditRecord,
+  assertContentReferenceMetadata,
   assertCoreEvent,
   assertDomainGraph,
   assertIdempotentCoreEventDelivery,
+  assertResolveContentReferenceInput,
+  assertStoreContentReferenceInput,
+  assertWorkspaceGrant,
   auditRecordId,
   compareInstants,
   createCoreEventStreamState,
@@ -22,27 +28,40 @@ import {
   replayCoreEvents,
   sessionId,
   taskId,
+  toolInputReference,
+  toolOutputReference,
+  toolRequestId,
   workerId,
+  workloadContentByteLength,
+  workspaceGrantId,
   workspaceId,
+  type ActestraPersistencePort,
   type ApprovalState,
   type AgentAttemptEvidence,
   type AppendPrivilegedAuditInput,
   type AuditRecord,
   type ArtifactKind,
   type ArtifactState,
+  type ContentReferenceKind,
+  type ContentReferenceMetadata,
+  type ContentReferenceOwner,
   type CoreEvent,
   type CoreEventCursor,
   type CoreEventStreamState,
-  type CorePersistencePort,
   type DomainGraph,
   type EventStreamId,
+  type PersistContentReferenceResult,
   type PersistEvidenceResult,
   type PersistEventResult,
-  type PlatformEvidencePersistencePort,
+  type PersistWorkspaceGrantResult,
   type PrivilegedAuditSummary,
+  type ResolveContentReferenceInput,
+  type ResolvedContentReference,
   type SessionState,
+  type StoreContentReferenceInput,
   type TaskState,
   type WorkerState,
+  type WorkspaceGrant,
   type WorkspaceState,
 } from "../../core";
 import { migrateSqliteDatabase } from "./sqliteMigrations";
@@ -62,6 +81,15 @@ const PRIVILEGED_AUDIT_COLUMNS = `
 const AGENT_ATTEMPT_EVIDENCE_COLUMNS = `
   sequence, session_id, workspace_id, task_id, worker_id, stream_id, state,
   last_core_event_sequence, incident_code, redaction, evidence_json
+`;
+const WORKSPACE_GRANT_COLUMNS = `
+  grant_id, contract_version, workspace_id, root_path, display_name, state,
+  created_at, updated_at, grant_json
+`;
+const CONTENT_REFERENCE_COLUMNS = `
+  reference, contract_version, kind, workspace_id, task_id, session_id,
+  worker_id, request_id, grant_id, classification, media_type, byte_length,
+  sha256, created_at, expires_at, consumed_at, metadata_json, content_blob
 `;
 
 type SqliteRow = Record<string, unknown>;
@@ -99,6 +127,17 @@ function requiredNumber(row: SqliteRow, field: string): number {
     );
   }
 
+  return value;
+}
+
+function requiredBlob(row: SqliteRow, field: string): Uint8Array {
+  const value = row[field];
+  if (!(value instanceof Uint8Array)) {
+    throw new PersistenceError(
+      "corrupt-database",
+      `Actestra database field ${field} must be a byte array`,
+    );
+  }
   return value;
 }
 
@@ -300,6 +339,187 @@ function parseStoredAgentAttemptEvidence(row: SqliteRow): AgentAttemptEvidence {
   return deepFreeze(value);
 }
 
+function parseStoredWorkspaceGrant(row: SqliteRow): WorkspaceGrant {
+  const encoded = requiredString(row, "grant_json");
+  let value: unknown;
+  try {
+    value = JSON.parse(encoded);
+    assertWorkspaceGrant(value);
+  } catch (error) {
+    throw new PersistenceError("corrupt-database", "Persisted workspace grant is invalid", {
+      cause: error,
+    });
+  }
+
+  if (
+    requiredString(row, "grant_id") !== value.grantId ||
+    requiredNumber(row, "contract_version") !== value.contractVersion ||
+    requiredString(row, "workspace_id") !== value.workspaceId ||
+    requiredString(row, "root_path") !== value.rootPath ||
+    requiredString(row, "display_name") !== value.displayName ||
+    requiredString(row, "state") !== value.state ||
+    requiredString(row, "created_at") !== value.createdAt ||
+    requiredString(row, "updated_at") !== value.updatedAt
+  ) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted workspace grant projection does not match its canonical record",
+    );
+  }
+
+  return deepFreeze(value);
+}
+
+function contentReferenceForKind(value: string, kind: ContentReferenceKind) {
+  return kind === "tool-input" ? toolInputReference(value) : toolOutputReference(value);
+}
+
+function ownerFromContentRow(row: SqliteRow): ContentReferenceOwner {
+  const requestIdValue = optionalString(row, "request_id");
+  const grantIdValue = optionalString(row, "grant_id");
+  return {
+    workspaceId: workspaceId(requiredString(row, "workspace_id")),
+    taskId: taskId(requiredString(row, "task_id")),
+    sessionId: sessionId(requiredString(row, "session_id")),
+    workerId: workerId(requiredString(row, "worker_id")),
+    ...(requestIdValue === undefined ? {} : { requestId: toolRequestId(requestIdValue) }),
+    ...(grantIdValue === undefined ? {} : { grantId: workspaceGrantId(grantIdValue) }),
+  };
+}
+
+function parseStoredContentMetadata(row: SqliteRow): ContentReferenceMetadata {
+  const encoded = requiredString(row, "metadata_json");
+  let value: unknown;
+  try {
+    value = JSON.parse(encoded);
+    assertContentReferenceMetadata(value);
+  } catch (error) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted content reference metadata is invalid",
+      {
+        cause: error,
+      },
+    );
+  }
+
+  const kind = requiredString(row, "kind") as ContentReferenceKind;
+  const owner = ownerFromContentRow(row);
+  const expiresAt = optionalString(row, "expires_at");
+  const consumedAt = optionalString(row, "consumed_at");
+  if (
+    requiredString(row, "reference") !== value.reference ||
+    requiredNumber(row, "contract_version") !== value.contractVersion ||
+    kind !== value.kind ||
+    !isDeepStrictEqual(owner, value.owner) ||
+    requiredString(row, "classification") !== value.classification ||
+    requiredString(row, "media_type") !== value.mediaType ||
+    requiredNumber(row, "byte_length") !== value.byteLength ||
+    requiredString(row, "sha256") !== value.sha256 ||
+    requiredString(row, "created_at") !== value.createdAt ||
+    expiresAt !== value.expiresAt ||
+    consumedAt !== value.consumedAt
+  ) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted content reference projection does not match its canonical metadata",
+    );
+  }
+
+  contentReferenceForKind(value.reference, kind);
+  return deepFreeze(value);
+}
+
+function decodeStoredContent(row: SqliteRow, metadata: ContentReferenceMetadata): string {
+  const bytes = requiredBlob(row, "content_blob");
+  let content: string;
+  try {
+    content = new TextDecoder("utf-8", {
+      fatal: true,
+    }).decode(bytes);
+  } catch (error) {
+    throw new PersistenceError("content-integrity", "Stored content is not valid UTF-8", {
+      cause: error,
+    });
+  }
+
+  const digest = createHash("sha256").update(bytes).digest("hex");
+  if (
+    bytes.byteLength !== metadata.byteLength ||
+    workloadContentByteLength(content) !== metadata.byteLength ||
+    digest !== metadata.sha256
+  ) {
+    throw new PersistenceError(
+      "content-integrity",
+      "Stored content does not match its immutable metadata",
+    );
+  }
+  return content;
+}
+
+function assertCanonicalWorkspaceRoot(rootPath: string): void {
+  if (!path.isAbsolute(rootPath) || path.normalize(rootPath) !== rootPath) {
+    throw new PersistenceError(
+      "invalid-record",
+      "Workspace grant root must be an absolute normalized path",
+    );
+  }
+
+  try {
+    const state = fs.lstatSync(rootPath);
+    if (!state.isDirectory() || state.isSymbolicLink() || fs.realpathSync(rootPath) !== rootPath) {
+      throw new PersistenceError(
+        "invalid-record",
+        "Workspace grant root must be a canonical real directory",
+      );
+    }
+  } catch (error) {
+    if (error instanceof PersistenceError) {
+      throw error;
+    }
+    throw new PersistenceError(
+      "invalid-record",
+      "Workspace grant root must be an accessible canonical directory",
+      {
+        cause: error,
+      },
+    );
+  }
+}
+
+function normalizeWorkloadContractError(error: unknown, label: string): PersistenceError {
+  if (error instanceof WorkloadContentError) {
+    return new PersistenceError(
+      error.code === "content-too-large" ? "content-too-large" : "invalid-record",
+      `${label} is invalid`,
+      {
+        cause: error,
+      },
+    );
+  }
+  if (error instanceof PersistenceError) {
+    return error;
+  }
+  return new PersistenceError("invalid-record", `${label} is invalid`, {
+    cause: error,
+  });
+}
+
+function immutableContentMetadata(metadata: ContentReferenceMetadata): object {
+  return {
+    contractVersion: metadata.contractVersion,
+    reference: metadata.reference,
+    kind: metadata.kind,
+    owner: metadata.owner,
+    classification: metadata.classification,
+    mediaType: metadata.mediaType,
+    byteLength: metadata.byteLength,
+    sha256: metadata.sha256,
+    createdAt: metadata.createdAt,
+    ...(metadata.expiresAt === undefined ? {} : { expiresAt: metadata.expiresAt }),
+  };
+}
+
 function verifyNoForeignKeyViolations(database: DatabaseSync): void {
   const violations = database.prepare("PRAGMA foreign_key_check").all();
 
@@ -314,9 +534,6 @@ function verifyNoForeignKeyViolations(database: DatabaseSync): void {
 export function resolveCoreDatabasePath(userDataPath: string): string {
   return path.join(userDataPath, STATE_DIRECTORY, CORE_DATABASE_FILENAME);
 }
-
-export interface ActestraPersistencePort
-  extends CorePersistencePort, PlatformEvidencePersistencePort {}
 
 class SqliteCorePersistence implements ActestraPersistencePort {
   private database: DatabaseSync | null;
@@ -978,6 +1195,404 @@ class SqliteCorePersistence implements ActestraPersistencePort {
         .all(limit),
     );
     return Object.freeze(rows.map(parseStoredAgentAttemptEvidence));
+  }
+
+  async persistWorkspaceGrant(grant: WorkspaceGrant): Promise<PersistWorkspaceGrantResult> {
+    const database = this.requireDatabase();
+    let stableGrant: WorkspaceGrant;
+    try {
+      assertWorkspaceGrant(grant);
+      const normalized: unknown = JSON.parse(JSON.stringify(grant));
+      assertWorkspaceGrant(normalized);
+      stableGrant = deepFreeze(normalized);
+    } catch (error) {
+      throw normalizeWorkloadContractError(error, "Workspace grant");
+    }
+
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const existingRow = database
+        .prepare(`SELECT ${WORKSPACE_GRANT_COLUMNS} FROM workspace_grants WHERE grant_id = ?`)
+        .get(stableGrant.grantId) as SqliteRow | undefined;
+      if (existingRow !== undefined) {
+        const existing = parseStoredWorkspaceGrant(existingRow);
+        if (isDeepStrictEqual(existing, stableGrant)) {
+          database.exec("COMMIT");
+          return {
+            status: "duplicate",
+            grant: existing,
+          };
+        }
+
+        const validRevocation =
+          existing.workspaceId === stableGrant.workspaceId &&
+          existing.rootPath === stableGrant.rootPath &&
+          existing.displayName === stableGrant.displayName &&
+          existing.createdAt === stableGrant.createdAt &&
+          existing.state === "active" &&
+          stableGrant.state === "revoked" &&
+          compareInstants(stableGrant.updatedAt, existing.updatedAt) >= 0;
+        if (!validRevocation) {
+          throw new PersistenceError(
+            "workspace-grant-conflict",
+            "Workspace grant identifier conflicts with immutable grant evidence",
+          );
+        }
+
+        database
+          .prepare(
+            `UPDATE workspace_grants
+             SET state = ?, updated_at = ?, grant_json = ?
+             WHERE grant_id = ?`,
+          )
+          .run(
+            stableGrant.state,
+            stableGrant.updatedAt,
+            JSON.stringify(stableGrant),
+            stableGrant.grantId,
+          );
+        database.exec("COMMIT");
+        return {
+          status: "updated",
+          grant: stableGrant,
+        };
+      }
+
+      const workspace = database
+        .prepare("SELECT id FROM workspaces WHERE id = ?")
+        .get(stableGrant.workspaceId);
+      if (workspace === undefined) {
+        throw new PersistenceError(
+          "domain-reference",
+          "Workspace grant does not reference a persisted workspace",
+        );
+      }
+      assertCanonicalWorkspaceRoot(stableGrant.rootPath);
+
+      if (stableGrant.state === "active") {
+        const active = database
+          .prepare(
+            "SELECT grant_id FROM workspace_grants WHERE workspace_id = ? AND state = 'active'",
+          )
+          .get(stableGrant.workspaceId);
+        if (active !== undefined) {
+          throw new PersistenceError(
+            "workspace-grant-conflict",
+            "Workspace already has an active grant",
+          );
+        }
+      }
+
+      database
+        .prepare(
+          `INSERT INTO workspace_grants (
+             grant_id, contract_version, workspace_id, root_path, display_name,
+             state, created_at, updated_at, grant_json
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          stableGrant.grantId,
+          stableGrant.contractVersion,
+          stableGrant.workspaceId,
+          stableGrant.rootPath,
+          stableGrant.displayName,
+          stableGrant.state,
+          stableGrant.createdAt,
+          stableGrant.updatedAt,
+          JSON.stringify(stableGrant),
+        );
+      database.exec("COMMIT");
+      return {
+        status: "stored",
+        grant: stableGrant,
+      };
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) {
+        throw error;
+      }
+      throw new PersistenceError(
+        "corrupt-database",
+        "Actestra could not persist the workspace grant",
+        {
+          cause: error,
+        },
+      );
+    }
+  }
+
+  async getActiveWorkspaceGrant(workspaceIdValue: ReturnType<typeof workspaceId>) {
+    const database = this.requireDatabase();
+    try {
+      workspaceId(workspaceIdValue);
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Workspace grant lookup is invalid", {
+        cause: error,
+      });
+    }
+
+    const row = database
+      .prepare(
+        `SELECT ${WORKSPACE_GRANT_COLUMNS}
+         FROM workspace_grants
+         WHERE workspace_id = ? AND state = 'active'
+           AND EXISTS (
+             SELECT 1 FROM workspaces WHERE workspaces.id = workspace_grants.workspace_id
+           )`,
+      )
+      .get(workspaceIdValue) as SqliteRow | undefined;
+    return row === undefined ? null : parseStoredWorkspaceGrant(row);
+  }
+
+  async storeContentReference(
+    input: StoreContentReferenceInput,
+  ): Promise<PersistContentReferenceResult> {
+    const database = this.requireDatabase();
+    let stableInput: StoreContentReferenceInput;
+    try {
+      assertStoreContentReferenceInput(input);
+      const normalized: unknown = JSON.parse(JSON.stringify(input));
+      assertStoreContentReferenceInput(normalized);
+      stableInput = deepFreeze(normalized);
+    } catch (error) {
+      throw normalizeWorkloadContractError(error, "Content reference input");
+    }
+
+    const bytes = Buffer.from(stableInput.content, "utf8");
+    const metadata = deepFreeze({
+      contractVersion: stableInput.contractVersion,
+      reference: stableInput.reference,
+      kind: stableInput.kind,
+      owner: structuredClone(stableInput.owner),
+      classification: stableInput.classification,
+      mediaType: stableInput.mediaType,
+      byteLength: bytes.byteLength,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+      createdAt: stableInput.createdAt,
+      ...(stableInput.expiresAt === undefined ? {} : { expiresAt: stableInput.expiresAt }),
+    } satisfies ContentReferenceMetadata);
+    assertContentReferenceMetadata(metadata);
+
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const existingRow = database
+        .prepare(
+          `SELECT ${CONTENT_REFERENCE_COLUMNS}
+           FROM content_references
+           WHERE reference = ?`,
+        )
+        .get(stableInput.reference) as SqliteRow | undefined;
+      if (existingRow !== undefined) {
+        const existingMetadata = parseStoredContentMetadata(existingRow);
+        const existingContent = decodeStoredContent(existingRow, existingMetadata);
+        if (
+          isDeepStrictEqual(
+            immutableContentMetadata(existingMetadata),
+            immutableContentMetadata(metadata),
+          ) &&
+          existingContent === stableInput.content
+        ) {
+          database.exec("COMMIT");
+          return {
+            status: "duplicate",
+            metadata: existingMetadata,
+          };
+        }
+        throw new PersistenceError(
+          "content-conflict",
+          "Content reference identifier conflicts with immutable content",
+        );
+      }
+
+      const identity = database
+        .prepare(
+          `SELECT
+             sessions.workspace_id,
+             sessions.task_id,
+             sessions.worker_id,
+             tasks.workspace_id AS task_workspace_id,
+             workers.workspace_id AS worker_workspace_id
+           FROM sessions
+           JOIN tasks ON tasks.id = sessions.task_id
+           JOIN workers ON workers.id = sessions.worker_id
+           JOIN workspaces ON workspaces.id = sessions.workspace_id
+           WHERE sessions.id = ?`,
+        )
+        .get(stableInput.owner.sessionId) as SqliteRow | undefined;
+      if (
+        identity === undefined ||
+        requiredString(identity, "workspace_id") !== stableInput.owner.workspaceId ||
+        requiredString(identity, "task_id") !== stableInput.owner.taskId ||
+        requiredString(identity, "worker_id") !== stableInput.owner.workerId ||
+        requiredString(identity, "task_workspace_id") !== stableInput.owner.workspaceId ||
+        requiredString(identity, "worker_workspace_id") !== stableInput.owner.workspaceId
+      ) {
+        throw new PersistenceError(
+          "domain-reference",
+          "Content reference owner does not match the persisted domain graph",
+        );
+      }
+
+      if (stableInput.owner.grantId !== undefined) {
+        const grantRow = database
+          .prepare(`SELECT ${WORKSPACE_GRANT_COLUMNS} FROM workspace_grants WHERE grant_id = ?`)
+          .get(stableInput.owner.grantId) as SqliteRow | undefined;
+        if (grantRow === undefined) {
+          throw new PersistenceError(
+            "domain-reference",
+            "Content reference does not match a workspace grant",
+          );
+        }
+        const grant = parseStoredWorkspaceGrant(grantRow);
+        if (grant.workspaceId !== stableInput.owner.workspaceId || grant.state !== "active") {
+          throw new PersistenceError(
+            "domain-reference",
+            "Content reference workspace grant is not active for its owner",
+          );
+        }
+      }
+
+      database
+        .prepare(
+          `INSERT INTO content_references (
+             reference, contract_version, kind, workspace_id, task_id, session_id,
+             worker_id, request_id, grant_id, classification, media_type,
+             byte_length, sha256, created_at, expires_at, consumed_at,
+             metadata_json, content_blob
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
+        )
+        .run(
+          metadata.reference,
+          metadata.contractVersion,
+          metadata.kind,
+          metadata.owner.workspaceId,
+          metadata.owner.taskId,
+          metadata.owner.sessionId,
+          metadata.owner.workerId,
+          metadata.owner.requestId ?? null,
+          metadata.owner.grantId ?? null,
+          metadata.classification,
+          metadata.mediaType,
+          metadata.byteLength,
+          metadata.sha256,
+          metadata.createdAt,
+          metadata.expiresAt ?? null,
+          JSON.stringify(metadata),
+          bytes,
+        );
+      database.exec("COMMIT");
+      return {
+        status: "stored",
+        metadata,
+      };
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) {
+        throw error;
+      }
+      throw new PersistenceError(
+        "corrupt-database",
+        "Actestra could not store the content reference",
+        {
+          cause: error,
+        },
+      );
+    }
+  }
+
+  async resolveContentReference(
+    input: ResolveContentReferenceInput,
+  ): Promise<ResolvedContentReference> {
+    const database = this.requireDatabase();
+    let stableInput: ResolveContentReferenceInput;
+    try {
+      assertResolveContentReferenceInput(input);
+      const normalized: unknown = JSON.parse(JSON.stringify(input));
+      assertResolveContentReferenceInput(normalized);
+      stableInput = deepFreeze(normalized);
+    } catch (error) {
+      throw normalizeWorkloadContractError(error, "Content reference resolution");
+    }
+
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const row = database
+        .prepare(
+          `SELECT ${CONTENT_REFERENCE_COLUMNS}
+           FROM content_references
+           WHERE reference = ?`,
+        )
+        .get(stableInput.reference) as SqliteRow | undefined;
+      if (row === undefined) {
+        throw new PersistenceError("content-not-found", "Content reference does not exist");
+      }
+
+      let metadata = parseStoredContentMetadata(row);
+      const content = decodeStoredContent(row, metadata);
+      if (
+        metadata.kind !== stableInput.kind ||
+        !isDeepStrictEqual(metadata.owner, stableInput.owner)
+      ) {
+        throw new PersistenceError(
+          "content-ownership",
+          "Content reference does not belong to the requested owner",
+        );
+      }
+      if (compareInstants(stableInput.resolvedAt, metadata.createdAt) < 0) {
+        throw new PersistenceError(
+          "invalid-record",
+          "Content reference cannot be resolved before creation",
+        );
+      }
+      if (
+        metadata.consumedAt !== undefined &&
+        compareInstants(stableInput.resolvedAt, metadata.consumedAt) < 0
+      ) {
+        throw new PersistenceError(
+          "invalid-record",
+          "Content reference resolution time cannot move backwards",
+        );
+      }
+      if (
+        metadata.expiresAt !== undefined &&
+        compareInstants(stableInput.resolvedAt, metadata.expiresAt) >= 0
+      ) {
+        throw new PersistenceError("content-expired", "Content reference has expired");
+      }
+
+      if (stableInput.consume && metadata.consumedAt === undefined) {
+        metadata = deepFreeze({
+          ...metadata,
+          consumedAt: stableInput.resolvedAt,
+        });
+        assertContentReferenceMetadata(metadata);
+        database
+          .prepare(
+            `UPDATE content_references
+             SET consumed_at = ?, metadata_json = ?
+             WHERE reference = ?`,
+          )
+          .run(stableInput.resolvedAt, JSON.stringify(metadata), stableInput.reference);
+      }
+
+      database.exec("COMMIT");
+      return deepFreeze({
+        metadata,
+        content,
+      });
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) {
+        throw error;
+      }
+      throw new PersistenceError(
+        "corrupt-database",
+        "Actestra could not resolve the content reference",
+        {
+          cause: error,
+        },
+      );
+    }
   }
 
   async close(): Promise<void> {

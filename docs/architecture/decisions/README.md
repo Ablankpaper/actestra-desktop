@@ -22,7 +22,7 @@ components or phases.
 | [0006](0006-agent-adapter-lifecycle-and-supervision.md) | Accepted | Version and supervise immutable agent attempts |
 | [0007](0007-privileged-service-authorization.md) | Accepted | Gate privileged tools with policy, approval, credential, and audit evidence |
 | [0008](0008-main-owned-projection-and-ipc.md) | Accepted | Keep platform evidence and closed renderer intents main-owned |
-| [0009](0009-p4-general-work-process-and-content-boundaries.md) | Proposed | Define the first real worker, content, tool, and persistence process boundaries |
+| [0009](0009-p4-general-work-process-and-content-boundaries.md) | Accepted | Define the first real worker, content, tool, and persistence process boundaries |
 
 ## Creating an ADR
 

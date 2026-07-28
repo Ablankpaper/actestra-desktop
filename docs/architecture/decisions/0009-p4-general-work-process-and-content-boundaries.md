@@ -1,7 +1,9 @@
 # ADR-0009: Define P4 General-Work Process and Content Boundaries
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-07-29
+
+Owner gate: accepted on 2026-07-29 to begin P4.2.
 
 ## Context
 
@@ -31,9 +33,10 @@ license and minimum integration surface are resolved.
 
 ## Decision
 
-This decision is a proposal. Until it is accepted, `AgentAdapter` version 1,
-the synchronous main-owned SQLite adapter, the disabled executor, and the
-three-operation preload allowlist remain the implemented architecture.
+This decision is accepted. Its P4.2 persistence and content subset may now be
+implemented. Until each later slice is implemented and evidenced,
+`AgentAdapter` version 1, the disabled executor, and the three-operation preload
+allowlist remain the current runtime architecture.
 
 ### First execution worker
 
