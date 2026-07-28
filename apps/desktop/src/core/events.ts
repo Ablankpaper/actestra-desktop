@@ -2,6 +2,7 @@ import {
   approvalId,
   artifactId,
   assertTaskTransition,
+  compareInstants,
   CoreContractError,
   correlationId,
   instant,
@@ -677,7 +678,7 @@ function validateNextCoreEvent(
     );
   }
 
-  if (event.occurredAt < previous.occurredAt) {
+  if (compareInstants(event.occurredAt, previous.occurredAt) < 0) {
     throw new CoreContractError(
       "event-time-regression",
       `Core event ${event.eventId} occurs before sequence ${previous.sequence}`,

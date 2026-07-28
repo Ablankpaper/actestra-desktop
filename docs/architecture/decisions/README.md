@@ -20,6 +20,7 @@ components or phases.
 | [0004](0004-core-domain-event-stream.md) | Accepted | Own the core domain and order events per worker attempt |
 | [0005](0005-sqlite-persistence-and-migrations.md) | Accepted | Use embedded SQLite behind ports with forward-only migrations |
 | [0006](0006-agent-adapter-lifecycle-and-supervision.md) | Accepted | Version and supervise immutable agent attempts |
+| [0007](0007-privileged-service-authorization.md) | Accepted | Gate privileged tools with policy, approval, credential, and audit evidence |
 
 ## Creating an ADR
 

@@ -115,6 +115,14 @@ export function instant(value: string): Instant {
   return value as Instant;
 }
 
+export function compareInstants(left: Instant, right: Instant): -1 | 0 | 1 {
+  instant(left);
+  instant(right);
+  const leftMilliseconds = Date.parse(left);
+  const rightMilliseconds = Date.parse(right);
+  return leftMilliseconds === rightMilliseconds ? 0 : leftMilliseconds < rightMilliseconds ? -1 : 1;
+}
+
 export type WorkspaceState = "active" | "archived";
 export type TaskState =
   | "draft"
@@ -332,7 +340,7 @@ function assertChronology(createdAt: Instant, updatedAt: Instant, kind: string):
   instant(createdAt);
   instant(updatedAt);
 
-  if (updatedAt < createdAt) {
+  if (compareInstants(updatedAt, createdAt) < 0) {
     throw new CoreContractError("invalid-record", `${kind} updatedAt cannot precede createdAt`);
   }
 }
@@ -504,7 +512,7 @@ export function assertDomainGraph(graph: DomainGraph): void {
     if (approval.expiresAt !== undefined) {
       instant(approval.expiresAt);
 
-      if (approval.expiresAt < approval.requestedAt) {
+      if (compareInstants(approval.expiresAt, approval.requestedAt) < 0) {
         throw new CoreContractError(
           "invalid-record",
           `Approval ${approval.id} expires before it was requested`,
@@ -515,7 +523,7 @@ export function assertDomainGraph(graph: DomainGraph): void {
     if (approval.resolvedAt !== undefined) {
       instant(approval.resolvedAt);
 
-      if (approval.resolvedAt < approval.requestedAt) {
+      if (compareInstants(approval.resolvedAt, approval.requestedAt) < 0) {
         throw new CoreContractError(
           "invalid-record",
           `Approval ${approval.id} resolves before it was requested`,

@@ -34,8 +34,14 @@ P3.3 adds a storage-neutral persistence port, accepted SQLite/migration
 decision, forward-only schema registry, and main-owned adapter at
 `4de756984269624a02fbfdf77e558c958a03c2e0`; exact-head
 [PR CI run 30335076556](https://github.com/bignormal/actestra-desktop/actions/runs/30335076556)
-passes. Worker, privileged-service, and renderer integration work has not
-started.
+passes. P3.4 adds the protocol-versioned worker boundary, main-owned lifecycle
+supervisor, and deterministic fake at
+`2b1ad9200ff44f2b6be219a8a4b58b0083ebd45b`; exact implementation
+[PR CI run 30339662937](https://github.com/bignormal/actestra-desktop/actions/runs/30339662937)
+passes. P3.5 now implements the locally validated privileged-service contracts
+and deterministic main-owned services governed by
+[ADR-0007](docs/architecture/decisions/0007-privileged-service-authorization.md).
+Its exact commit and CI evidence are not recorded yet, and P3 remains open.
 
 - The Electron 37.10.3 and React 19.2.4 shell is original Actestra source; no
   AionUi, AionCore, Goose, Eigent, Aera, or AgentEra application source or asset
@@ -45,17 +51,18 @@ started.
 - The renderer is sandboxed and receives only two typed, non-privileged bridge
   operations. External HTTP, HTTPS, WebSocket, permissions, navigation, new
   windows, telemetry, updates, and accounts are inactive.
-- Nine test files with 54 tests, an exact Electron-runtime SQLite probe, a
+- Fourteen test files with 103 tests, an exact Electron-runtime SQLite probe, a
   three-scenario process-failure harness,
   formatting, lint, strict types, product-boundary checks, renderer build,
   unsigned arm64 app/DMG/ZIP packaging, packaged identity/CSP checks, and a
   fresh-profile three-stage startup smoke pass locally.
 - The pure TypeScript core contract has no Electron, filesystem, shell, network,
-  credential, or renderer authority. SQLite remains behind that port and is not
+  credential, or renderer authority. SQLite, worker supervision, policy,
+  approval, opaque credential leases, the metadata-only audit trail, and the
+  deterministic tool gateway remain behind main-owned ports and are not
   registered with app startup, preload, or renderer. The shell still has no
-  active task persistence, worker runtime, tool execution, or orchestration;
-  later P3 slices prove those boundaries with a deterministic fake before any
-  real worker is integrated.
+  active task persistence, worker process, credential backend, real tool
+  execution, or orchestration.
 - There is no CI-backed candidate, signed release, deployment, distribution, or
   user acceptance.
 

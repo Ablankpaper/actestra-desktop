@@ -1,6 +1,6 @@
 # P3 Platform Core and Contracts
 
-Status: P3.1-P3.4 pushed and CI-backed; P3.5 next; P3 remains open
+Status: P3.1-P3.4 pushed and CI-backed; P3.5 locally implemented; P3.6 next; P3 remains open
 
 Evidence date: 2026-07-28
 
@@ -53,10 +53,12 @@ The persistence slice is governed by
 [ADR-0005](../architecture/decisions/0005-sqlite-persistence-and-migrations.md).
 The worker lifecycle slice is governed by
 [ADR-0006](../architecture/decisions/0006-agent-adapter-lifecycle-and-supervision.md).
+The privileged-service slice is governed by
+[ADR-0007](../architecture/decisions/0007-privileged-service-authorization.md).
 
 ## Implemented slice
 
-P3.1 through P3.4 now provide:
+P3.1 through P3.5 now provide:
 
 - branded opaque identifiers and canonical UTC timestamps;
 - workspace, task, session, worker, approval, and artifact records;
@@ -83,13 +85,27 @@ P3.1 through P3.4 now provide:
   terminal reconciliation, crash, timeout, and bounded fresh-attempt restart;
 - a deterministic, explicitly stepped fake adapter with an injected clock and
   no filesystem, network, process, shell, model, credential, or tool authority.
+- closed version-1 protected-operation, policy, tool-manifest, approval,
+  authorization, credential-lease, audit, executor, and gateway contracts;
+- an immutable policy evaluator with no-match denial and conservative
+  deny-over-approval-over-allow precedence;
+- exact, expiring, one-shot approval evidence bound to the full operation and
+  policy revision;
+- a reference-only credential broker that emits short-lived opaque leases and
+  contains no secret backend;
+- a gapless, immutable, metadata-only in-memory audit trail;
+- a deterministic main-owned gateway that snapshots asynchronous inputs,
+  verifies a tool capability manifest, requires pre-execution audit evidence,
+  sanitizes executor failures, releases leases, and marks post-call uncertainty.
 
 The domain, event, port, and adapter contracts are pure TypeScript under
 `apps/desktop/src/core`. The SQLite implementation is main-owned under
 `apps/desktop/src/main/persistence`; the supervisor and fake adapter are
-main-owned under `apps/desktop/src/main/workers`. None are registered with
-application startup, and none grant database, path, SQL, filesystem, process,
-shell, tool, or credential authority to preload or renderer.
+main-owned under `apps/desktop/src/main/workers`; the deterministic P3.5
+services are main-owned under `apps/desktop/src/main/privileged`. None are
+registered with application startup, and none grant database, path, SQL,
+filesystem, process, shell, tool, or credential authority to preload or
+renderer.
 
 ## Execution order
 
@@ -144,10 +160,27 @@ shell, tool, or credential authority to preload or renderer.
 
 ### P3.5 — Privileged services
 
-- Establish credential broker, policy engine, approval service, MCP/tool
-  gateway, and audit trail interfaces.
-- Keep secrets out of renderer state, events, logs, fixtures, and snapshots.
-- Require policy and approval evidence before any protected operation can run.
+- Accepted locally: ADR-0007 fixes the version-1 protected-operation and tool
+  capability-manifest boundary, conservative policy rule lattice, exact
+  approval evidence, opaque credential leases, metadata-only audit vocabulary,
+  and fixed gateway order.
+- Implemented locally: credential broker, policy engine, approval service,
+  MCP/native-tool-neutral executor and gateway, and audit trail interfaces with
+  runtime-closed shapes.
+- Implemented locally: immutable asynchronous snapshots, no-match denial,
+  deny precedence, normalized instant ordering, finite approval expiry, exact
+  operation and policy binding, concurrent creation reservation, one-shot
+  consumption claims with audit rollback, manifest drift rejection, credential
+  lease mutation serialization, bounded history, rollback/release/expiry
+  cleanup, pre-execution audit failure closure, sanitized executor failures, and
+  explicit post-call uncertainty.
+- Verified locally: two focused files pass 27 tests, and the complete gate
+  passes 14 test files with 103 tests. Coverage passes at 84.00% statements,
+  76.75% branches, and 95.18% functions overall; `core/privilegedServices.ts`
+  has 93.96% statement coverage and `main/privileged` has 84.04%.
+- Kept absent: secret values, a keychain backend, production policy snapshot,
+  raw tool arguments, input-reference storage, a real executor or transport,
+  startup registration, preload IPC, renderer operations, and upstream source.
 
 ### P3.6 — Main/renderer proof
 
@@ -170,12 +203,19 @@ shell, tool, or credential authority to preload or renderer.
   ordering, observed-time supervision, cancellation, crash, and bounded
   fresh-attempt restart are accepted in
   [ADR-0006](../architecture/decisions/0006-agent-adapter-lifecycle-and-supervision.md).
+- Protected-operation version 1, capability-manifest validation, conservative
+  policy evaluation, exact one-shot approval evidence, opaque credential
+  leases, metadata-only audit, and fixed gateway order are accepted in
+  [ADR-0007](../architecture/decisions/0007-privileged-service-authorization.md).
 
 ## Questions that still require explicit decisions
 
-- Which data is audit evidence, and which data must be redacted or never stored?
-- How are platform keychains represented behind a testable credential port?
-- Which supervisor incidents must become durable audit evidence in P3.6?
+- Which operating-system secure-storage implementation backs opaque credential
+  references on each supported platform?
+- How does main-owned input-reference storage connect a real transport without
+  admitting raw arguments into audit or renderer state?
+- Which supervisor incidents and P3.5 records become durable audit evidence in
+  P3.6?
 
 Answers that constrain multiple components must be recorded as ADRs rather than
 silently embedded in implementation code.
@@ -197,12 +237,16 @@ The exact source commit and CI run must be recorded in
 
 ## Non-claims
 
-- P3.1 through the CI-backed P3.4 slice do not complete the P3 exit gate.
-- No credential backend, policy language, or MCP transport is selected.
+- P3.1 through the locally validated P3.5 slice do not complete the P3 exit
+  gate.
+- No credential backend, production policy snapshot, input-reference store, or
+  MCP/native transport is selected.
 - The deterministic fake is protocol test infrastructure, not a real worker.
   No real worker, process transport, persistence-service process, IPC route, or
   renderer worker feature is implemented.
 - The SQLite adapter is not part of application startup and is not evidence of
   restart recovery through the packaged UI.
+- The P3.5 executor is a deterministic test double. Its in-memory approval,
+  audit, and lease state is not persistence or restart evidence.
 - No real worker or external upstream source is imported.
 - No candidate, release, deployment, distribution, or acceptance claim is made.

@@ -1,6 +1,6 @@
 # System Overview
 
-Status: P2 shell implemented; P3.1-P3.4 contracts are CI-backed
+Status: P2 shell implemented; P3.1-P3.4 are CI-backed; P3.5 is locally implemented
 
 ## Context
 
@@ -57,11 +57,14 @@ P3.1 and P3.2 add a runtime-neutral core domain, lifecycle validation, and
 version 1 event stream contract. P3.3 adds a storage-neutral port plus a
 main-owned SQLite adapter with schema versions 1 and 2. P3.4 adds the
 version 1 `AgentAdapter` contract, a main-owned lifecycle supervisor, and a
-deterministic in-memory fake adapter. None are registered with application
-startup or exposed to the renderer yet. Policy and approval services, tool
-gateway, process transports, real worker adapters, and workers shown below
-remain P3 or later components. They are architectural boundaries, not hidden
-implementations in the package.
+deterministic in-memory fake adapter. P3.5 adds versioned privileged-operation
+and tool-manifest contracts plus main-owned deterministic policy, approval,
+opaque credential-lease, metadata-audit, and tool-gateway services. None are
+registered with application startup or exposed to the renderer yet. There is no
+production policy snapshot, credential backend, input-reference store, real
+tool executor, MCP transport, process transport, or real worker adapter behind
+any component shown above. Those remain P3.6 or later integration work rather
+than hidden package behavior.
 
 The SQLite adapter owns `state/actestra.sqlite3` beneath Actestra user data,
 uses one DELETE/FULL connection, and rejects foreign ownership, future schemas,
@@ -109,6 +112,22 @@ opaque worker session as the only record of task progress or user consent.
 MCP servers and native tools are reached through a gateway that applies
 workspace scope, credential brokering, policy, approval, logging, timeout, and
 redaction.
+
+The P3.5 language-level boundary is accepted in
+[ADR-0007](decisions/0007-privileged-service-authorization.md). The gateway
+validates a frozen protected-operation snapshot against an Actestra-owned tool
+capability manifest, evaluates an immutable policy snapshot, appends
+metadata-only policy evidence, obtains direct or one-shot approval evidence,
+issues opaque credential-lease references, appends tool-start evidence, and
+only then calls an injected executor. An operation with no matching rule is
+denied, and conflicting rules resolve in `deny`, then `require-approval`, then
+`allow` precedence.
+
+The current executor is test-only and receives an opaque input reference rather
+than raw arguments. The current credential broker has no secret store. Approval
+permits one attempt but does not prove execution or success. Failure after an
+executor call is reported as possibly executed and must not be retried
+automatically.
 
 ## Adapter lifecycle
 
