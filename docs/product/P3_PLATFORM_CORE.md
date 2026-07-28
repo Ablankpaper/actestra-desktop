@@ -1,6 +1,6 @@
 # P3 Platform Core and Contracts
 
-Status: Pushed entry planning; no P3 implementation
+Status: Pushed entry planning with CI evidence; no P3 implementation
 
 Evidence date: 2026-07-28
 
@@ -10,11 +10,16 @@ Exact base: `main` at `76d6a58b20c3e010ee759358f2c86be80bc6a6c1`
 
 Kickoff commit: `30d05747cbaedf0c4901fd47de253e7009fe6643`
 
+Evidence commit: `4afa5531804cfce214cf6c0d204ae21820df3502`
+
 Review surface:
 [draft pull request 3](https://github.com/bignormal/actestra-desktop/pull/3)
 
 P2 entry proof:
 [main CI run 30329620829](https://github.com/bignormal/actestra-desktop/actions/runs/30329620829)
+
+P3 kickoff proof:
+[pull-request CI run 30329899300](https://github.com/bignormal/actestra-desktop/actions/runs/30329899300)
 
 ## Purpose
 

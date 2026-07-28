@@ -17,17 +17,20 @@ passes on the exact squash commit.
 `feat/platform-core-contracts` begins from that verified `main` commit. Kickoff
 commit `30d05747cbaedf0c4901fd47de253e7009fe6643` is pushed in
 [draft pull request 3](https://github.com/bignormal/actestra-desktop/pull/3).
-It contains status and execution-index work only. No P3 domain model, database,
-migration, worker, approval, policy, credential, tool, or audit implementation
-exists yet.
+Evidence commit `4afa5531804cfce214cf6c0d204ae21820df3502` passed
+[macOS arm64 CI run 30329899300](https://github.com/bignormal/actestra-desktop/actions/runs/30329899300).
+The draft contains status and execution-index work only. No P3 domain model,
+database, migration, worker, approval, policy, credential, tool, or audit
+implementation exists yet.
 
 ## Evidence snapshot
 
 | Area | State | Evidence or blocker |
 | --- | --- | --- |
-| Repository | Pushed P3 draft PR | `feat/platform-core-contracts` begins at `76d6a58b20c3e010ee759358f2c86be80bc6a6c1`; kickoff commit `30d05747cbaedf0c4901fd47de253e7009fe6643`; draft PR 3 |
+| Repository | Pushed P3 draft PR | `feat/platform-core-contracts` begins at `76d6a58b20c3e010ee759358f2c86be80bc6a6c1`; kickoff `30d05747cbaedf0c4901fd47de253e7009fe6643`; evidence `4afa5531804cfce214cf6c0d204ae21820df3502`; draft PR 3 |
 | P2 merge | Accepted on `main` | PR 2 final head `f972bb6c33c925f3e333a6ee87d20e5bbb72cece`; squash merge `76d6a58b20c3e010ee759358f2c86be80bc6a6c1` |
 | P2 main CI | Pass | Main push run 30329620829 passed on the exact squash merge |
+| P3 kickoff CI | Pass | Pull-request run 30329899300 passed on exact evidence commit `4afa5531804cfce214cf6c0d204ae21820df3502` |
 | Product shell | Implemented | Original Actestra Electron/React shell; no upstream or Aera application source or asset imported |
 | Renderer boundary | Verified | Context isolation, sandbox, Node and packaged DevTools disabled, production CSP denies connections, narrow typed bridge |
 | Automated tests | Main-backed pass | Five Vitest files with 22 tests plus a three-scenario process-failure smoke harness |
@@ -87,14 +90,13 @@ The ordered implementation index and P3 non-claims are in
 
 ## Next gate
 
-1. Require the final P3 kickoff evidence head to pass pull-request CI.
-2. Define the minimum domain vocabulary and event-ordering invariants with tests
+1. Define the minimum domain vocabulary and event-ordering invariants with tests
    before choosing a concrete database.
-3. Record the persistence and migration choice in a new ADR before adding the
+2. Record the persistence and migration choice in a new ADR before adding the
    backend dependency.
-4. Implement the `AgentAdapter` contract and deterministic fake worker behind
+3. Implement the `AgentAdapter` contract and deterministic fake worker behind
    the main-process boundary.
-5. Require lifecycle, approval, cancellation, crash-recovery, migration, and
+4. Require lifecycle, approval, cancellation, crash-recovery, migration, and
    renderer-bypass tests before P3 can be accepted.
 
 ## Open decisions
