@@ -14,16 +14,18 @@ the P2 independent product shell with squash commit
 [Main CI run 30329620829](https://github.com/bignormal/actestra-desktop/actions/runs/30329620829)
 passes on the exact squash commit.
 
-`feat/platform-core-contracts` begins from that verified `main` commit. This
-kickoff contains status and execution-index work only. No P3 domain model,
-database, migration, worker, approval, policy, credential, tool, or audit
-implementation exists yet.
+`feat/platform-core-contracts` begins from that verified `main` commit. Kickoff
+commit `30d05747cbaedf0c4901fd47de253e7009fe6643` is pushed in
+[draft pull request 3](https://github.com/bignormal/actestra-desktop/pull/3).
+It contains status and execution-index work only. No P3 domain model, database,
+migration, worker, approval, policy, credential, tool, or audit implementation
+exists yet.
 
 ## Evidence snapshot
 
 | Area | State | Evidence or blocker |
 | --- | --- | --- |
-| Repository | P3 branch from accepted `main` | `feat/platform-core-contracts` begins at `76d6a58b20c3e010ee759358f2c86be80bc6a6c1` |
+| Repository | Pushed P3 draft PR | `feat/platform-core-contracts` begins at `76d6a58b20c3e010ee759358f2c86be80bc6a6c1`; kickoff commit `30d05747cbaedf0c4901fd47de253e7009fe6643`; draft PR 3 |
 | P2 merge | Accepted on `main` | PR 2 final head `f972bb6c33c925f3e333a6ee87d20e5bbb72cece`; squash merge `76d6a58b20c3e010ee759358f2c86be80bc6a6c1` |
 | P2 main CI | Pass | Main push run 30329620829 passed on the exact squash merge |
 | Product shell | Implemented | Original Actestra Electron/React shell; no upstream or Aera application source or asset imported |
@@ -85,8 +87,7 @@ The ordered implementation index and P3 non-claims are in
 
 ## Next gate
 
-1. Commit and push the P3 kickoff from exact accepted `main`, then open a draft
-   pull request.
+1. Require the final P3 kickoff evidence head to pass pull-request CI.
 2. Define the minimum domain vocabulary and event-ordering invariants with tests
    before choosing a concrete database.
 3. Record the persistence and migration choice in a new ADR before adding the
