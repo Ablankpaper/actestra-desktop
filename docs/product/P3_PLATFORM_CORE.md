@@ -27,6 +27,8 @@ Review-remediation commit: `4fa0fb120a6ceb2c71effd2a552e8d9bbf05d151`
 
 Review-closure evidence head: `2fe179a63ac7e8a4d23373fe87dda7b062c314fc`
 
+Ready-state evidence commit: `755416c7b9bbb09172559460bc1a122eea2f7c8f`
+
 Review surface:
 [pull request 3](https://github.com/bignormal/actestra-desktop/pull/3)
 
@@ -57,6 +59,9 @@ Review-remediation proof:
 
 Review-closure evidence proof:
 [pull-request CI run 30374447377](https://github.com/bignormal/actestra-desktop/actions/runs/30374447377)
+
+Ready-state evidence proof:
+[pull-request CI run 30376456379](https://github.com/bignormal/actestra-desktop/actions/runs/30376456379)
 
 ## Purpose
 
@@ -309,6 +314,12 @@ all 67 PR files and completed successfully with no review submission or review
 thread. Because the repository uses CodeRabbit's Free plan, this remote result
 is summary/walkthrough evidence, not an independent approval or a replacement
 for the completed CLI review chain above.
+
+The four-document Ready-state commit
+`755416c7b9bbb09172559460bc1a122eea2f7c8f` passes exact CI run 30376456379.
+Its incremental CodeRabbit run `5d4c70ac-5432-4ea0-af1e-2bf51db50362` was
+rate-limited before review with a 55-minute wait. The successful GitHub status
+records limit handling only; it is not a completed review or zero-issue result.
 
 ## Exit evidence
 

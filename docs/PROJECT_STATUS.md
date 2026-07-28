@@ -85,6 +85,16 @@ PR files and completed with a successful status, no review submission, and no
 review thread. This Free-plan summary/walkthrough is not represented as an
 independent approval.
 
+Ready-state evidence commit
+`755416c7b9bbb09172559460bc1a122eea2f7c8f` records the completed owner and
+Ready gates.
+[macOS arm64 CI run 30376456379](https://github.com/bignormal/actestra-desktop/actions/runs/30376456379)
+passes on that exact commit. Its incremental CodeRabbit run
+`5d4c70ac-5432-4ea0-af1e-2bf51db50362` selected only the four changed status
+documents but was rate-limited before review with a 55-minute wait. The
+resulting successful status is command-handling evidence, not a completed
+review or a zero-issue result.
+
 Application startup now opens the owned SQLite store and registers the
 deny-by-default reference services only in main. The fake worker still performs
 no filesystem, network, process, shell, model, credential, or tool operation.
@@ -242,7 +252,7 @@ Review closure validation at
 
 | Area | State | Evidence or blocker |
 | --- | --- | --- |
-| Repository | P3 branch Ready | `feat/platform-core-contracts` is pushed through review-closure evidence head `2fe179a63ac7e8a4d23373fe87dda7b062c314fc`; PR 3 is open and Ready |
+| Repository | P3 branch Ready | Implementation, review closure, and the Ready state are evidenced through exact Ready-state commit `755416c7b9bbb09172559460bc1a122eea2f7c8f`; PR 3 is open and Ready |
 | P2 merge | Accepted on `main` | PR 2 final head `f972bb6c33c925f3e333a6ee87d20e5bbb72cece`; squash merge `76d6a58b20c3e010ee759358f2c86be80bc6a6c1` |
 | P2 main CI | Pass | Main push run 30329620829 passed on the exact squash merge |
 | P3 kickoff CI | Pass | Pull-request run 30329964305 passed on exact pushed head `b9c1119479c805c02452e4054a3d904649a3ca03` |
@@ -252,7 +262,7 @@ Review closure validation at
 | P3.5 CI | Pass | Pull-request run 30345370507 passed on exact implementation commit `cec0cdc554656c021cdff7f2341ddd3f9b5d83dd` |
 | P3.6 CI | Pass | Pull-request run 30350732223 passed on exact implementation commit `950fe0efa2fdc5adc69d013acc9f417d201cb28e` |
 | P3 review closure | Pass with one documented invalid issue | Full 67-file review completed with 10 issues; 9 valid issues fixed; all 9 remediation files then completed a zero-issue review; exact remediation CI run 30374144474 passed |
-| P3 Ready gate | Pass; merge pending | Owner authorized the Ready transition; exact head run 30374447377 passed; Ready-triggered CodeRabbit selected 67 files and completed successfully with 0 review submissions and 0 threads |
+| P3 Ready gate | Pass; merge pending | Owner authorized the Ready transition; run 30374447377 passed on the transition head, and run 30376456379 passed on the exact Ready-state evidence commit; the first Ready-triggered CodeRabbit selected 67 files and completed successfully with 0 review submissions and 0 threads |
 | Product shell | Implemented | Original Actestra Electron/React shell; no upstream or Aera application source or asset imported |
 | Renderer boundary | CI-backed through P3.6 | Context isolation, sandbox, Node and packaged DevTools disabled, production CSP denies connections, exact frozen preload allowlist, trusted-frame zero-argument IPC, and direct-client source checks |
 | Automated tests | Exact review-remediation CI pass | Twenty-four Vitest files with 130 tests, exact Electron SQLite probe, process-failure harness, 34-source boundary check, build, package identity, and clean-profile smoke pass |
@@ -341,6 +351,10 @@ The ordered implementation index and P3 non-claims are in
 - The final redundant full-diff confirmation was rate-limited before review and
   is not zero-issue evidence. The completed 67-file review plus the completed
   zero-issue nine-file remediation review are the review-closure evidence.
+- Incremental CodeRabbit run `5d4c70ac-5432-4ea0-af1e-2bf51db50362` was
+  rate-limited before reviewing the four Ready-state documents. Its successful
+  GitHub status is not review evidence; local documentation checks and exact
+  CI run 30376456379 passed for those files.
 - Main startup registers SQLite v3 and inert P3.5 reference services, but no
   protected operation, tool transport, credential value, or worker control is
   renderer-visible.
