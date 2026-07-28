@@ -1,6 +1,6 @@
 # System Overview
 
-Status: Initial architecture boundary
+Status: P2 shell implemented; P3 platform core planned
 
 ## Context
 
@@ -45,6 +45,18 @@ flowchart TD
     ARTIFACTS --> STORE
     POLICY --> STORE
 ```
+
+## Current implementation boundary
+
+P2 implements the renderer, a minimal context-isolated preload bridge, and the
+Electron main process. The renderer can request application metadata and report
+that it rendered; neither operation grants filesystem, shell, process,
+credential, installation, or publishing authority.
+
+The app core, persistence beyond the versioned data-layout manifest, policy and
+approval service, tool gateway, worker adapters, and workers shown below are P3
+or later components. They are architectural boundaries, not hidden
+implementations in the P2 package.
 
 ## Authority boundaries
 
@@ -185,7 +197,11 @@ or silent retry.
 
 ## Deferred choices
 
-P1 and P3 will decide concrete framework versions, storage technology, process
-transport, schema tooling, sandbox mechanisms, and packaging integration. This
-document fixes authority and lifecycle boundaries, not premature
-implementation details.
+P2 pins Node.js 24.13.0, Bun 1.3.9, Electron 37.10.3, React 19.2.4, and data
+layout version 1 for the current shell. P3 will decide durable storage
+technology, process transport, schema tooling, worker sandbox mechanisms, and
+the concrete migration registry. Signing, notarization, update delivery, and
+cross-platform candidate packaging remain P8 work.
+
+This document fixes authority and lifecycle boundaries; a pinned shell
+dependency does not pre-decide worker or persistence architecture.

@@ -1,0 +1,106 @@
+import fs from "node:fs";
+import path from "node:path";
+import process from "node:process";
+import { fileURLToPath } from "node:url";
+
+const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const productSourceRoot = path.join(repositoryRoot, "apps", "desktop", "src");
+const rendererRoot = path.join(productSourceRoot, "renderer");
+
+const forbiddenProductPatterns = [
+  { label: "AionUi product identity", pattern: /\baionui\b/i },
+  { label: "Aera product identity", pattern: /\baera\b/i },
+  { label: "upstream application data directory", pattern: /\.aionui/i },
+  { label: "upstream service hostname", pattern: /static\.aionui\.com/i },
+  { label: "upstream organization identity", pattern: /iofficeai/i },
+  { label: "unapproved telemetry client", pattern: /\bsentry\b/i },
+];
+
+const rendererPrivilegePatterns = [
+  { label: "Electron import", pattern: /from\s+['"]electron['"]/ },
+  { label: "Node import", pattern: /from\s+['"]node:/ },
+  {
+    label: "Electron dynamic import",
+    pattern: /\bimport\s*\(\s*['"]electron(?:\/[^'"]+)?['"]\s*\)/,
+  },
+  {
+    label: "Node dynamic import",
+    pattern: /\bimport\s*\(\s*['"]node:[^'"]+['"]\s*\)/,
+  },
+  { label: "CommonJS require", pattern: /\brequire\s*\(/ },
+  { label: "Node process global", pattern: /\bprocess\./ },
+];
+
+function listFiles(directory) {
+  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const resolvedPath = path.join(directory, entry.name);
+    return entry.isDirectory() ? listFiles(resolvedPath) : [resolvedPath];
+  });
+}
+
+function relativePath(filePath) {
+  return path.relative(repositoryRoot, filePath);
+}
+
+function reportPatternMatches(files, rules) {
+  const findings = [];
+
+  for (const filePath of files) {
+    const content = fs.readFileSync(filePath, "utf8");
+    for (const rule of rules) {
+      if (rule.pattern.test(content)) {
+        findings.push(`${relativePath(filePath)}: ${rule.label}`);
+      }
+    }
+  }
+
+  return findings;
+}
+
+const sourceFiles = listFiles(productSourceRoot);
+const identityFindings = reportPatternMatches(sourceFiles, forbiddenProductPatterns);
+const rendererFindings = reportPatternMatches(listFiles(rendererRoot), rendererPrivilegePatterns);
+
+const packageJson = JSON.parse(fs.readFileSync(path.join(repositoryRoot, "package.json"), "utf8"));
+const builderConfiguration = fs.readFileSync(
+  path.join(repositoryRoot, "apps", "desktop", "electron-builder.yml"),
+  "utf8",
+);
+const entitlements = fs.readFileSync(
+  path.join(repositoryRoot, "apps", "desktop", "entitlements.mac.plist"),
+  "utf8",
+);
+
+const metadataFindings = [];
+if (packageJson.name !== "actestra-desktop") {
+  metadataFindings.push("package.json: package name must be actestra-desktop");
+}
+if (!builderConfiguration.includes("appId: com.bignormal.actestra")) {
+  metadataFindings.push("electron-builder.yml: missing Actestra bundle identifier");
+}
+if (!builderConfiguration.includes("productName: Actestra")) {
+  metadataFindings.push("electron-builder.yml: missing Actestra product name");
+}
+if (!builderConfiguration.includes("- actestra")) {
+  metadataFindings.push("electron-builder.yml: missing Actestra protocol scheme");
+}
+
+const entitlementKeys = [...entitlements.matchAll(/<key>([^<]+)<\/key>/g)].map((match) => match[1]);
+const allowedEntitlements = new Set(["com.apple.security.cs.allow-jit"]);
+const unexpectedEntitlements = entitlementKeys.filter((key) => !allowedEntitlements.has(key));
+if (unexpectedEntitlements.length > 0) {
+  metadataFindings.push(
+    `entitlements.mac.plist: unexpected keys ${unexpectedEntitlements.join(", ")}`,
+  );
+}
+
+const findings = [...identityFindings, ...rendererFindings, ...metadataFindings];
+if (findings.length > 0) {
+  console.error("Actestra product-boundary check failed:");
+  findings.forEach((finding) => console.error(`- ${finding}`));
+  process.exitCode = 1;
+} else {
+  console.info(
+    `Actestra product-boundary check passed (${sourceFiles.length} source files; renderer remains unprivileged).`,
+  );
+}

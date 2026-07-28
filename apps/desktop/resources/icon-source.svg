@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="background" x1="112" y1="96" x2="912" y2="928" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#111a36"/>
+      <stop offset="1" stop-color="#080b18"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="284" y1="724" x2="754" y2="284" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4ee1c1"/>
+      <stop offset="0.55" stop-color="#79a8ff"/>
+      <stop offset="1" stop-color="#b890ff"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="28"/>
+      <feOffset dy="22"/>
+      <feColorMatrix values="0 0 0 0 0.02 0 0 0 0 0.04 0 0 0 0 0.10 0 0 0 0.55 0"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect x="48" y="48" width="928" height="928" rx="232" fill="url(#background)"/>
+  <path
+    d="M246 724 438 298c15-34 42-52 76-52 35 0 62 18 78 52l187 426h-110l-44-108H397l-43 108H246Zm191-209h148l-73-184-75 184Z"
+    fill="url(#mark)"
+    filter="url(#shadow)"
+  />
+  <path d="M353 778h322" stroke="#d8e8ff" stroke-width="34" stroke-linecap="round" opacity=".82"/>
+</svg>

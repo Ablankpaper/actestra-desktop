@@ -9,6 +9,7 @@ planning, and governance documents.
 | --- | --- |
 | [Project Status](PROJECT_STATUS.md) | Verified state, evidence, blockers, and next gate |
 | [MVP Definition](product/MVP.md) | Target users, journeys, scope, and success criteria |
+| [P2 Product Shell](product/P2_PRODUCT_SHELL.md) | Implementation, review remediation, boundary, package, launch, and non-claim evidence |
 | [Development Sequence](roadmap/DEVELOPMENT_SEQUENCE.md) | Ordered phases, dependencies, and exit gates |
 | [System Overview](architecture/SYSTEM_OVERVIEW.md) | Product boundaries, components, data ownership, and isolation |
 | [Architecture Decisions](architecture/decisions/README.md) | Accepted and proposed architectural decisions |
@@ -28,6 +29,7 @@ planning, and governance documents.
 | --- | --- |
 | [AionUi v2.1.41 Baseline](upstream/AIONUI_V2.1.41_BASELINE.md) | Exact pins, commands, validation, inventory, package evidence, and blockers |
 | [AionUi Module Map](upstream/AIONUI_MODULE_MAP.md) | Keep, wrap, replace, remove, and defer decisions for the evaluated foundation |
+| [Upstream Import Log](upstream/IMPORT_LOG.md) | Per-module provenance, license, modification, and validation record |
 
 ## Repository-level documents
 

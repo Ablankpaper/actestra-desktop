@@ -4,32 +4,51 @@ Last updated: 2026-07-28
 
 ## Current phase
 
-### P1 — Reproducible Upstream Baseline (evidence ready for review)
+### P2 — Independent Actestra Product Shell (review remediation CI passes; merge pending)
 
-P0 is complete. P1 technical evidence has been reproduced locally on
-`upstream/aionui-v2-1-41` from Actestra base commit
-`2a0cfedfb9bab1c0f0410ea5e016b42054b38468`. The evidence branch must be
-reviewed and merged before P1 is treated as accepted on `main`. P2 has not
-started.
+P0 and P1 are accepted on `main`. Pull request 1 merged P1 at
+`174ef46ff971a2f67aec16fbfd6dc56fc0910306`.
+
+P2 implementation commit
+`1892b48402b1bfa9425a34172ff79259b7190b81` is pushed on
+`feat/independent-product-shell`, based on that exact `main` commit, in
+[draft pull request 2](https://github.com/bignormal/actestra-desktop/pull/2).
+Review-remediation commit
+`892a44240405c1d2d4720d4ff7e09a6a19bbe4e9` is also pushed in that PR.
+The local technical exit gate and
+[macOS arm64 CI run 30329203456](https://github.com/bignormal/actestra-desktop/actions/runs/30329203456)
+pass on that exact remediation commit.
+
+Three completed CodeRabbit CLI review passes raised 14 issues: 13 valid issues
+were fixed and one minor Promise-rejection suggestion was rejected because the
+typed preload operation intentionally returns `void`. A fourth confirmation
+review was rate-limited rather than completed. The final evidence-only PR head
+must retain green CI and receive the GitHub review before merge.
 
 ## Evidence snapshot
 
 | Area | State | Evidence or blocker |
 | --- | --- | --- |
-| Repository | P1 evidence branch | `upstream/aionui-v2-1-41` from `2a0cfedfb9bab1c0f0410ea5e016b42054b38468`; no application source imported |
-| Product source | Not imported | Upstream checkouts and generated packages remain outside Actestra |
-| Upstream revisions | Pinned | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; AionCore `v0.1.52` at `76f5554286ba0b6d33fb74d5c2bb2b3b0b83100d` |
-| Development environment | Locally verified | macOS 26.5.2 arm64, Xcode 26.6, Node 24.13.0, Bun 1.3.9, Rust/Cargo 1.95.0 |
-| Application launch | Locally reproduced | Two clean AionUi checkouts reached window, renderer, WebSocket, AionCore 0.1.52 health, and graceful shutdown |
-| Automated tests | Locally reproduced | Each checkout: 321 Vitest files passed, 1 skipped; 2,576 tests passed, 5 skipped |
-| Desktop package | Local unsigned evidence | Both checkouts produced arm64 DMG/ZIP; signatures invalid and Gatekeeper rejected them |
-| Upstream inventory | Recorded | Licenses, assets, bundled runtimes, endpoints, data paths, entitlements, and module dispositions documented |
+| Repository | Pushed draft PR | `feat/independent-product-shell` from exact `main` commit `174ef46ff971a2f67aec16fbfd6dc56fc0910306`; implementation `1892b48402b1bfa9425a34172ff79259b7190b81`; review remediation `892a44240405c1d2d4720d4ff7e09a6a19bbe4e9`; draft PR 2 |
+| Product source | Original Actestra shell | No AionUi, AionCore, Goose, Eigent, Aera, or AgentEra application source or asset imported |
+| Framework pins | Locked | Node.js 24.13.0, Bun 1.3.9, Electron 37.10.3, React and React DOM 19.2.4 |
+| Product identity | Locally verified | `Actestra`, `com.bignormal.actestra`, `Actestra` executable, `actestra:` protocol, original icon |
+| Data ownership | Locally verified | Actestra user-data root and fail-closed `data-layout.json` at layout version 1 |
+| Renderer boundary | Locally verified | Context isolation, sandbox, Node disabled, web security enabled, packaged DevTools disabled, production CSP denies all connections, two-operation typed bridge |
+| External access | Locally verified | Permission requests, new windows, cross-navigation, HTTP, HTTPS, WS, and WSS fail closed; only loopback development requests are allowed |
+| Automated tests | Local pass | Five Vitest files with 22 tests plus a three-scenario process-failure smoke harness |
+| Source checks | Local pass | Formatting, zero lint warnings, strict TypeScript, documentation links, dynamic-import product-boundary scan, and immutable CI action pins |
+| Desktop package | Local unsigned artifacts | macOS arm64 `.app`, DMG, and ZIP produced; DMG checksum structure, bundle identity, architecture, ASAR boundary, and packaged Electron notices verified |
+| Fresh-profile launch | Local pass | Application, window, and renderer ready markers plus Actestra layout manifest observed; real UI visually inspected |
+| Independent review | Remediated locally | 13 valid CodeRabbit issues fixed; one `void` contract false positive documented; final GitHub review pending |
+| CI | Pass on review remediation | [macOS arm64 run 30329203456](https://github.com/bignormal/actestra-desktop/actions/runs/30329203456) passed on `892a44240405c1d2d4720d4ff7e09a6a19bbe4e9`; the final evidence head must also pass |
 | Release | None | No candidate, signed artifact, deployment, or acceptance |
 
 ## Accepted direction
 
 - Actestra is independent from Aera.
-- AionUi is evaluated as the initial desktop product foundation.
+- AionUi is an evaluated desktop and general-work reference; any reuse enters as
+  a selective, attributed port behind an Actestra boundary.
 - Goose is integrated through a specialized worker adapter.
 - Eigent is initially a product and orchestration reference, not a wholesale
   runtime import.
@@ -37,39 +56,43 @@ started.
   and audit history.
 - External workers run behind stable adapter, event, and policy boundaries.
 
-## P1 gate assessment
+## P2 local gate assessment
 
 | Requirement | Result |
 | --- | --- |
-| Exact AionUi pin | Pass |
-| Clean unmodified checkout | Pass in two independent clones |
-| Documented macOS dependency installation | Pass |
-| Reproducible development launch | Pass in both clones |
-| Upstream test result | Primary Vitest suite passes in both clones; provider-dependent Playwright E2E not run |
-| Unsigned local desktop package | DMG and ZIP produced in both clones |
-| License, NOTICE, asset, and dependency inventory | Pass for the evaluated root and bundled runtime; complete dependency SBOM remains a release requirement |
-| Keep, wrap, replace, remove, and defer map | Pass |
-| Second clean-checkout repetition | Pass |
+| Independent identity and icon | Pass locally |
+| Actestra-owned data path and layout version | Pass locally |
+| No upstream or Aera application source, brand, account, endpoint, data path, telemetry, or updater | Pass locally |
+| Sandboxed renderer and narrow preload bridge | Pass locally |
+| Deny-by-default permission, window, navigation, and external-network policy | Pass locally |
+| No automatic approval or privileged worker surface | Pass by absence; those services do not exist in P2 |
+| Account-free first launch | Pass locally |
+| Unsigned macOS arm64 app, DMG, and ZIP packaging | Pass locally |
+| Packaged identity and notice verification | Pass locally |
+| Fresh-profile application, window, renderer, and data-layout smoke | Pass locally |
+| Visual inspection of the real packaged shell | Pass locally |
+| Pull-request CI | Pass on exact review-remediation commit; final evidence head check required |
+| Independent review remediation | 13 valid issues fixed; one invalid `void` rejection suggestion documented |
+| Review and merge | Pending |
 
-Detailed commands, checksums, warnings, and blockers are in
-[AionUi v2.1.41 Baseline](upstream/AIONUI_V2.1.41_BASELINE.md). Planned module
-handling is in [AionUi Module Map](upstream/AIONUI_MODULE_MAP.md).
+Detailed commands, implementation boundaries, screenshot, and non-claims are in
+[P2 Product Shell](product/P2_PRODUCT_SHELL.md).
 
 ## Next gate
 
-1. Review and merge the P1 evidence without importing upstream source.
-2. Open a dedicated P2 change for the independent Actestra product shell.
-3. Decide the maintained-fork or selective-import mechanism before source
-   enters this repository.
-4. In P2, replace upstream identity, data paths, update and telemetry services,
-   and unsafe packaging defaults before sharing any build.
+1. Commit and push the review evidence, then require that exact PR head to pass
+   macOS CI.
+2. Mark PR 2 ready and require its GitHub review to finish without unresolved
+   blocking comments.
+3. Merge P2 only after review and CI; then begin P3 models and deterministic fake
+   worker contracts in a dedicated branch.
 
 ## Open decisions
 
 - License for original Actestra source.
-- AionUi import strategy; the baseline revision is now selected.
-- Actestra-owned Node.js, Bun, Electron, Rust, and Python version policy.
-- Local database and migration ownership.
+- Long-term dependency upgrade policy beyond the P2 Node.js, Bun, Electron, and
+  React pins.
+- P3 local database technology and migration registry beyond layout version 1.
 - Worker sandbox implementation per operating system.
 - Code-signing, notarization, update, and distribution accounts.
 - Cloud identity or sync scope, which is outside the initial MVP unless promoted
@@ -77,19 +100,15 @@ handling is in [AionUi Module Map](upstream/AIONUI_MODULE_MAP.md).
 
 ## Known blockers and non-claims
 
-- The evaluated unsigned packages are not Actestra packages or candidates.
-- Upstream Hub input `dist-latest` is moving and its downloader tolerated
-  partial results.
-- The upstream ad-hoc signing fallback failed; `codesign` and Gatekeeper checks
-  failed.
-- AionCore's root Apache-2.0 license conflicts with MIT workspace metadata.
-- Dependency and asset license inventory, SBOM, provenance, signing,
-  notarization, clean-machine installation, and Playwright acceptance remain
-  incomplete.
-- The upstream update feed, Sentry behavior, release-named data symlinks, and
-  privileged macOS entitlements cannot ship unchanged.
-- There is no pushed application code, CI-backed candidate, release,
-  deployment, or user acceptance.
+- The local P2 `.app` is deliberately unsigned and is not a candidate.
+- Signing, notarization, SBOM, provenance, clean-machine installation, update
+  metadata, and cross-platform acceptance remain future gates.
+- Task persistence, workers, tools, approvals, and orchestration are not
+  implemented.
+- Draft PR 2 remains unmerged; its final GitHub review is pending.
+- The fourth local CodeRabbit confirmation attempt was rate-limited and did not
+  produce a result.
+- There is no candidate, release, deployment, distribution, or user acceptance.
 
 ## Update policy
 
