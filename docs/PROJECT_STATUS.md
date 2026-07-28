@@ -6,8 +6,7 @@ Last updated: 2026-07-28
 
 ### P3 — Platform Core and Contracts
 
-P3.1-P3.3 are CI-backed. P3.4 local validation passed; commit, push, and CI
-remain pending.
+P3.1-P3.4 are pushed and CI-backed. P3.5 is next; P3 remains open.
 
 P0, P1, and P2 are accepted on `main`.
 [Pull request 2](https://github.com/bignormal/actestra-desktop/pull/2) merged
@@ -36,14 +35,15 @@ and an exact Electron-runtime compatibility probe.
 [macOS arm64 CI run 30335076556](https://github.com/bignormal/actestra-desktop/actions/runs/30335076556)
 passes on that exact implementation commit.
 
-The local P3.4 working tree above current commit
-`6817a384be66d9ffaed990c8777edc2e76eec1a8` accepts
+P3.4 implementation commit
+`2b1ad9200ff44f2b6be219a8a4b58b0083ebd45b` accepts
 [ADR-0006](architecture/decisions/0006-agent-adapter-lifecycle-and-supervision.md)
 and adds protocol version 1, exact capability negotiation, an `AgentAdapter`
 contract, observed-time lifecycle supervision, immutable attempts, terminal
 reconciliation, cancellation, crash, bounded restart, and an explicitly
-stepped deterministic fake adapter. This work is not yet committed, pushed, or
-CI-backed.
+stepped deterministic fake adapter.
+[macOS arm64 CI run 30339662937](https://github.com/bignormal/actestra-desktop/actions/runs/30339662937)
+passes on that exact implementation commit.
 
 The SQLite adapter, P3.4 supervisor, and fake adapter are not registered at
 application startup and expose no preload or renderer operation. The fake
@@ -73,7 +73,8 @@ Local validation of P3.3 at
   weakening event invariants; the 17-file post-remediation review completed
   with 0 issues.
 
-Local validation of the current uncommitted P3.4 working tree on
+Local validation of P3.4 at
+`2b1ad9200ff44f2b6be219a8a4b58b0083ebd45b` on
 `feat/platform-core-contracts`:
 
 - three focused contract files — pass with 22 tests covering version and
@@ -96,26 +97,29 @@ Local validation of the current uncommitted P3.4 working tree on
   tracked-file review raised 1 minor status-wording issue; the complete 13-file
   review raised 4 major lifecycle/validation issues; all were verified and
   remediated, and the final 13-file review completed with 0 issues;
-- commit, push, and exact-head CI remain pending.
+- exact implementation CI run 30339662937 — pass, including source/test/
+  boundary, documentation, unsigned bundle, packaged identity, and clean-profile
+  smoke steps.
 
 ## Evidence snapshot
 
 | Area | State | Evidence or blocker |
 | --- | --- | --- |
-| Repository | Pushed P3.1-P3.3 draft plus local P3.4 worktree | `feat/platform-core-contracts` begins at `76d6a58b20c3e010ee759358f2c86be80bc6a6c1`; current pushed head `6817a384be66d9ffaed990c8777edc2e76eec1a8`; uncommitted P3.4 changes; draft PR 3 |
+| Repository | Pushed P3.1-P3.4 draft PR | `feat/platform-core-contracts` begins at `76d6a58b20c3e010ee759358f2c86be80bc6a6c1`; P3.4 implementation commit `2b1ad9200ff44f2b6be219a8a4b58b0083ebd45b`; draft PR 3 |
 | P2 merge | Accepted on `main` | PR 2 final head `f972bb6c33c925f3e333a6ee87d20e5bbb72cece`; squash merge `76d6a58b20c3e010ee759358f2c86be80bc6a6c1` |
 | P2 main CI | Pass | Main push run 30329620829 passed on the exact squash merge |
 | P3 kickoff CI | Pass | Pull-request run 30329964305 passed on exact pushed head `b9c1119479c805c02452e4054a3d904649a3ca03` |
 | P3.1/P3.2 CI | Pass | Pull-request run 30331681309 passed on exact implementation commit `31dd6e4178eb7641b45be0ee2bccb862a96dac99` |
 | P3.3 CI | Pass | Pull-request run 30335076556 passed on exact implementation commit `4de756984269624a02fbfdf77e558c958a03c2e0` |
+| P3.4 CI | Pass | Pull-request run 30339662937 passed on exact implementation commit `2b1ad9200ff44f2b6be219a8a4b58b0083ebd45b` |
 | Product shell | Implemented | Original Actestra Electron/React shell; no upstream or Aera application source or asset imported |
 | Renderer boundary | Verified | Context isolation, sandbox, Node and packaged DevTools disabled, production CSP denies connections, narrow typed bridge |
-| Automated tests | Local P3.4 pass; exact CI remains P3.3 | Locally, 12 Vitest files with 76 tests plus exact Electron SQLite probe, process-failure harness, boundary check, and build pass; run 30335076556 remains the latest exact implementation CI evidence |
+| Automated tests | Exact P3.4 implementation CI pass | Twelve Vitest files with 76 tests, exact Electron SQLite probe, process-failure harness, boundary and documentation checks, build, package identity, and clean-profile smoke passed in run 30339662937 |
 | Desktop package | Local unsigned evidence | macOS arm64 app, DMG, and ZIP verified; not a candidate |
 | P3 domain contracts | Implemented and CI-backed | Typed IDs and timestamps; workspace, task, session, worker, approval, and artifact records; transition and graph invariants; exact commit and run above |
 | P3 event contract | Implemented and CI-backed | Schema version 1; per-attempt gapless order, exact-id idempotency, verified replay cursors, terminal enforcement, and diagnostic redaction; exact commit and run above |
 | P3 persistence and migrations | Implemented and CI-backed | ADR-0005, storage-neutral port, owned SQLite schema versions 1 and 2, immutable checksummed history, rollback/future/corruption rejection, private file modes, domain round-trip, and ordered event replay; exact commit and run above |
-| P3 worker lifecycle | Locally implemented; not committed or CI-backed | ADR-0006, protocol version 1, runtime validation, supervisor, observed-time health, cancellation, crash, bounded fresh-attempt restart, deterministic fake, and 22 focused tests |
+| P3 worker lifecycle | Implemented and CI-backed | ADR-0006, protocol version 1, runtime validation, supervisor, observed-time health, cancellation, crash, bounded fresh-attempt restart, deterministic fake, and 22 focused tests; exact commit and run above |
 | P3 privileged services | Not implemented | Credential, policy, approval, MCP/tool, and audit services remain absent |
 | Release | None | No candidate, signed artifact, deployment, distribution, or user acceptance |
 
@@ -168,11 +172,11 @@ The ordered implementation index and P3 non-claims are in
 
 ## Next gate
 
-1. Complete independent review and final local verification of the P3.4
-   contract, supervisor, and deterministic fake.
-2. Commit and push P3.4, then require exact-head pull-request CI evidence.
-3. Begin P3.5 privileged service contracts only after P3.4 evidence is recorded.
-4. Keep real AionUi, Goose, Eigent, or other workers out until the whole P3 exit
+1. Accept the P3.5 credential, policy, approval, MCP/tool gateway, and audit
+   service boundaries before implementation.
+2. Implement P3.5 with credential-free fixtures and fail-closed policy and
+   approval tests.
+3. Keep real AionUi, Goose, Eigent, or other workers out until the whole P3 exit
    gate passes.
 
 ## Open decisions
@@ -189,10 +193,8 @@ The ordered implementation index and P3 non-claims are in
 
 ## Known blockers and non-claims
 
-- P3.1 through P3.3 are CI-backed, and P3.4 is locally implemented, but they do
-  not complete the P3 exit gate.
-- P3.4 has no commit, push, or CI evidence yet. P3.5 and P3.6 remain
-  unimplemented.
+- P3.1 through P3.4 are CI-backed, but they do not complete the P3 exit gate.
+- P3.5 and P3.6 remain unimplemented.
 - The P3.3 persistence adapter and P3.4 worker components are not registered
   with application startup and are not renderer-visible features.
 - The P3.4 deterministic fake is test infrastructure, not a worker process or
@@ -200,9 +202,9 @@ The ordered implementation index and P3 non-claims are in
 - No real worker may be integrated until the P3 contracts and fake-worker gate
   pass.
 - The local P2 package remains deliberately unsigned and is not a candidate.
-- CI run 30335076556 passed, but GitHub annotated the pinned checkout and
+- CI run 30339662937 passed, but GitHub annotated the pinned checkout and
   setup-node actions as Node 20-targeting actions forced onto Node 24; this is a
-  dependency-maintenance item, not failed P3.3 evidence.
+  dependency-maintenance item, not failed P3.4 evidence.
 - Signing, notarization, SBOM, provenance, clean-machine installation, update
   metadata, and cross-platform acceptance remain future gates.
 - There is no release, deployment, distribution, or user acceptance.

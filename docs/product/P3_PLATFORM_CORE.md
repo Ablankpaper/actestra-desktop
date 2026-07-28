@@ -1,7 +1,6 @@
 # P3 Platform Core and Contracts
 
-Status: P3.1-P3.3 pushed and CI-backed; P3.4 locally validated with commit,
-push, and CI pending; P3 remains open
+Status: P3.1-P3.4 pushed and CI-backed; P3.5 next; P3 remains open
 
 Evidence date: 2026-07-28
 
@@ -18,6 +17,8 @@ P3.1/P3.2 implementation commit:
 
 P3.3 implementation commit: `4de756984269624a02fbfdf77e558c958a03c2e0`
 
+P3.4 implementation commit: `2b1ad9200ff44f2b6be219a8a4b58b0083ebd45b`
+
 Review surface:
 [draft pull request 3](https://github.com/bignormal/actestra-desktop/pull/3)
 
@@ -32,6 +33,9 @@ P3.1/P3.2 implementation proof:
 
 P3.3 implementation proof:
 [pull-request CI run 30335076556](https://github.com/bignormal/actestra-desktop/actions/runs/30335076556)
+
+P3.4 implementation proof:
+[pull-request CI run 30339662937](https://github.com/bignormal/actestra-desktop/actions/runs/30339662937)
 
 ## Purpose
 
@@ -52,7 +56,7 @@ The worker lifecycle slice is governed by
 
 ## Implemented slice
 
-P3.1 through the local P3.4 working tree now provide:
+P3.1 through P3.4 now provide:
 
 - branded opaque identifiers and canonical UTC timestamps;
 - workspace, task, session, worker, approval, and artifact records;
@@ -121,22 +125,22 @@ shell, tool, or credential authority to preload or renderer.
 
 ### P3.4 — Worker adapter and deterministic fake
 
-- Accepted locally: ADR-0006 fixes protocol compatibility, immutable attempt
+- Accepted and CI-backed: ADR-0006 fixes protocol compatibility, immutable attempt
   identity, control/core-event sequencing, supervision, cancellation, crash,
   and bounded restart semantics.
-- Implemented locally: capabilities, start, send, approve, cancel, subscribe,
+- Implemented and CI-backed: capabilities, start, send, approve, cancel, subscribe,
   and dispose with exact runtime validation.
-- Implemented locally: explicit startup, heartbeat, and cancellation
+- Implemented and CI-backed: explicit startup, heartbeat, and cancellation
   acknowledgement bounds; fail-closed protocol and identity drift; terminal
   reconciliation; crash; and fresh-identity restart.
-- Implemented locally: only a deterministic fake adapter with a controllable
+- Implemented and CI-backed: only a deterministic fake adapter with a controllable
   clock and explicit plans. It performs no real worker or privileged operation.
-- Verified locally on the uncommitted P3.4 working tree above
-  `6817a384be66d9ffaed990c8777edc2e76eec1a8`: the three new test files pass 22
-  protocol and lifecycle tests, and `bun run check` passes all 12 test files
-  with 76 tests, exact-runtime, process-failure, boundary, and build checks.
-- Not yet committed, pushed, or CI-backed. Real worker adapters remain later
-  phase work.
+- Verified locally and in exact implementation CI at
+  `2b1ad9200ff44f2b6be219a8a4b58b0083ebd45b`: the three new test files pass 22
+  protocol and lifecycle tests, and the complete gate passes all 12 test files
+  with 76 tests, exact-runtime, process-failure, documentation, boundary,
+  unsigned bundle, packaged identity, and clean-profile smoke checks.
+- Real worker adapters remain later phase work.
 
 ### P3.5 — Privileged services
 
@@ -193,8 +197,7 @@ The exact source commit and CI run must be recorded in
 
 ## Non-claims
 
-- P3.1 through the locally implemented P3.4 slice do not complete the P3 exit
-  gate.
+- P3.1 through the CI-backed P3.4 slice do not complete the P3 exit gate.
 - No credential backend, policy language, or MCP transport is selected.
 - The deterministic fake is protocol test infrastructure, not a real worker.
   No real worker, process transport, persistence-service process, IPC route, or

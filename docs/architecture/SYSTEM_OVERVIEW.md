@@ -1,7 +1,6 @@
 # System Overview
 
-Status: P2 shell implemented; P3.1-P3.3 CI-backed; P3.4 locally validated;
-commit, push, and CI remain pending
+Status: P2 shell implemented; P3.1-P3.4 contracts are CI-backed
 
 ## Context
 
@@ -56,7 +55,7 @@ credential, installation, or publishing authority.
 
 P3.1 and P3.2 add a runtime-neutral core domain, lifecycle validation, and
 version 1 event stream contract. P3.3 adds a storage-neutral port plus a
-main-owned SQLite adapter with schema versions 1 and 2. P3.4 locally adds the
+main-owned SQLite adapter with schema versions 1 and 2. P3.4 adds the
 version 1 `AgentAdapter` contract, a main-owned lifecycle supervisor, and a
 deterministic in-memory fake adapter. None are registered with application
 startup or exposed to the renderer yet. Policy and approval services, tool
@@ -229,7 +228,7 @@ The core must distinguish:
 - policy rejection.
 
 These states must not be collapsed into a generic success, generic chat message,
-or silent retry. P3.4 locally implements startup and heartbeat timeout,
+or silent retry. P3.4 implements startup and heartbeat timeout,
 idempotent cancellation, cancellation acknowledgement timeout, protocol
 failure, crash, terminal reconciliation, and bounded fresh-attempt restart
 semantics. Durable incident storage and renderer projection remain P3.6 work.
