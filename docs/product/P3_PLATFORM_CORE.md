@@ -1,10 +1,10 @@
 # P3 Platform Core and Contracts
 
-Status: Reviewed and Ready; merge and exact main CI pending
+Status: Accepted on `main`; P4 not started
 
-Evidence date: 2026-07-28
+Evidence date: 2026-07-29
 
-Branch: `feat/platform-core-contracts`
+Implementation branch: `feat/platform-core-contracts`
 
 Exact base: `main` at `76d6a58b20c3e010ee759358f2c86be80bc6a6c1`
 
@@ -28,6 +28,10 @@ Review-remediation commit: `4fa0fb120a6ceb2c71effd2a552e8d9bbf05d151`
 Review-closure evidence head: `2fe179a63ac7e8a4d23373fe87dda7b062c314fc`
 
 Ready-state evidence commit: `755416c7b9bbb09172559460bc1a122eea2f7c8f`
+
+Final pull-request head: `71bf3e3fb1d7661fee053ee811279d44f1fdf45f`
+
+Squash merge commit: `f6833c50eaf5a426948bac7999f93a08b19a425e`
 
 Review surface:
 [pull request 3](https://github.com/bignormal/actestra-desktop/pull/3)
@@ -62,6 +66,13 @@ Review-closure evidence proof:
 
 Ready-state evidence proof:
 [pull-request CI run 30376456379](https://github.com/bignormal/actestra-desktop/actions/runs/30376456379)
+
+Final pull-request proof:
+[pull-request CI run 30376696055](https://github.com/bignormal/actestra-desktop/actions/runs/30376696055)
+
+P3 acceptance proof:
+[main CI run 30378191752](https://github.com/bignormal/actestra-desktop/actions/runs/30378191752)
+passed on exact squash commit `f6833c50eaf5a426948bac7999f93a08b19a425e`.
 
 ## Purpose
 
@@ -321,6 +332,13 @@ Its incremental CodeRabbit run `5d4c70ac-5432-4ea0-af1e-2bf51db50362` was
 rate-limited before review with a 55-minute wait. The successful GitHub status
 records limit handling only; it is not a completed review or zero-issue result.
 
+The final pull-request head
+`71bf3e3fb1d7661fee053ee811279d44f1fdf45f` passes exact CI run 30376696055.
+Incremental CodeRabbit run `226b4810-7e15-495f-a3f9-50cf0536fb8c` selected the
+final four-document status range but was rate-limited before review with a
+52-minute wait. Its successful status records limit handling only, not a
+completed review or zero-issue result.
+
 ## Exit evidence
 
 P3 is not complete until tests prove:
@@ -335,13 +353,16 @@ P3 is not complete until tests prove:
 
 The exact implementation and remediation commits and their CI runs exercise
 every exit item. The full independent review and remediation review are
-complete, and the owner authorized the Ready transition. P3 remains open until
-the branch merges and exact `main` CI passes.
+complete. Pull request 3 final head
+`71bf3e3fb1d7661fee053ee811279d44f1fdf45f` passed exact PR CI, squash merged
+as `f6833c50eaf5a426948bac7999f93a08b19a425e`, and exact main CI run
+30378191752 passed. P3 is therefore accepted on `main`; P4 has not started.
 
 ## Non-claims
 
-- P3.1 through P3.6 and review remediation are CI-backed. PR 3 is Ready, while
-  P3 remains open pending merge and exact `main` CI.
+- P3.1 through P3.6, review remediation, the final PR head, squash merge, and
+  exact merged-main CI are evidenced. This is phase acceptance, not a release
+  or user-acceptance claim.
 - No credential backend, production policy snapshot, input-reference store, or
   MCP/native transport is selected.
 - The deterministic fake is protocol test infrastructure, not a real worker.
@@ -353,4 +374,5 @@ the branch merges and exact `main` CI passes.
   state remains in memory; only metadata audit and terminal attempt evidence is
   durable.
 - No real worker or external upstream source is imported.
-- No candidate, release, deployment, distribution, or acceptance claim is made.
+- No candidate, release, deployment, distribution, or user-acceptance claim is
+  made.

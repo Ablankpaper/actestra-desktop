@@ -1,17 +1,21 @@
 # Project Status
 
-Last updated: 2026-07-28
+Last updated: 2026-07-29
 
 ## Current phase
 
-### P3 — Platform Core and Contracts
+### P3 accepted; P4 not started
 
 P3.1-P3.6 and review remediation are pushed and CI-backed. The full independent
-review and remediation review are complete. On 2026-07-28 the owner authorized
-the next gate and pull request 3 became Ready. P3 remains open until merge and
-exact `main` CI.
+review and remediation review are complete.
+[Pull request 3](https://github.com/bignormal/actestra-desktop/pull/3) reached
+final head `71bf3e3fb1d7661fee053ee811279d44f1fdf45f`, squash merged as
+`f6833c50eaf5a426948bac7999f93a08b19a425e`, and exact
+[main CI run 30378191752](https://github.com/bignormal/actestra-desktop/actions/runs/30378191752)
+passes. These facts close the P3 exit gate. P4 is the next ordered phase and
+has not started.
 
-P0, P1, and P2 are accepted on `main`.
+P0 through P3 are accepted on `main`.
 [Pull request 2](https://github.com/bignormal/actestra-desktop/pull/2) merged
 the P2 independent product shell with squash commit
 `76d6a58b20c3e010ee759358f2c86be80bc6a6c1`. Its exact final PR head was
@@ -19,9 +23,8 @@ the P2 independent product shell with squash commit
 [Main CI run 30329620829](https://github.com/bignormal/actestra-desktop/actions/runs/30329620829)
 passes on the exact squash commit.
 
-`feat/platform-core-contracts` begins from that verified `main` commit and is
-open in
-[pull request 3](https://github.com/bignormal/actestra-desktop/pull/3).
+`feat/platform-core-contracts` began from that verified `main` commit and
+merged through pull request 3.
 P3.1/P3.2 implementation commit
 `31dd6e4178eb7641b45be0ee2bccb862a96dac99` adds the P3.1 domain records,
 state transitions, and ownership invariants plus the P3.2 version 1 event
@@ -94,6 +97,22 @@ passes on that exact commit. Its incremental CodeRabbit run
 documents but was rate-limited before review with a 55-minute wait. The
 resulting successful status is command-handling evidence, not a completed
 review or a zero-issue result.
+
+Final PR-head evidence commit
+`71bf3e3fb1d7661fee053ee811279d44f1fdf45f` records the Ready-state CI
+evidence.
+[macOS arm64 CI run 30376696055](https://github.com/bignormal/actestra-desktop/actions/runs/30376696055)
+passes on that exact final head. Incremental CodeRabbit run
+`226b4810-7e15-495f-a3f9-50cf0536fb8c` selected the final four-document status
+range but was rate-limited before review with a 52-minute wait. Its successful
+status records limit handling only; it is not a completed review or zero-issue
+result.
+
+Pull request 3 squash merged that exact final head as
+`f6833c50eaf5a426948bac7999f93a08b19a425e`.
+[macOS arm64 main CI run 30378191752](https://github.com/bignormal/actestra-desktop/actions/runs/30378191752)
+passes on the exact squash commit, including source, tests, boundaries,
+documentation, unsigned bundle, packaged identity, and clean-profile smoke.
 
 Application startup now opens the owned SQLite store and registers the
 deny-by-default reference services only in main. The fake worker still performs
@@ -252,7 +271,7 @@ Review closure validation at
 
 | Area | State | Evidence or blocker |
 | --- | --- | --- |
-| Repository | P3 branch Ready | Implementation, review closure, and the Ready state are evidenced through exact Ready-state commit `755416c7b9bbb09172559460bc1a122eea2f7c8f`; PR 3 is open and Ready |
+| Repository | P3 accepted on `main` | PR 3 final head `71bf3e3fb1d7661fee053ee811279d44f1fdf45f`; squash merge `f6833c50eaf5a426948bac7999f93a08b19a425e` |
 | P2 merge | Accepted on `main` | PR 2 final head `f972bb6c33c925f3e333a6ee87d20e5bbb72cece`; squash merge `76d6a58b20c3e010ee759358f2c86be80bc6a6c1` |
 | P2 main CI | Pass | Main push run 30329620829 passed on the exact squash merge |
 | P3 kickoff CI | Pass | Pull-request run 30329964305 passed on exact pushed head `b9c1119479c805c02452e4054a3d904649a3ca03` |
@@ -262,10 +281,12 @@ Review closure validation at
 | P3.5 CI | Pass | Pull-request run 30345370507 passed on exact implementation commit `cec0cdc554656c021cdff7f2341ddd3f9b5d83dd` |
 | P3.6 CI | Pass | Pull-request run 30350732223 passed on exact implementation commit `950fe0efa2fdc5adc69d013acc9f417d201cb28e` |
 | P3 review closure | Pass with one documented invalid issue | Full 67-file review completed with 10 issues; 9 valid issues fixed; all 9 remediation files then completed a zero-issue review; exact remediation CI run 30374144474 passed |
-| P3 Ready gate | Pass; merge pending | Owner authorized the Ready transition; run 30374447377 passed on the transition head, and run 30376456379 passed on the exact Ready-state evidence commit; the first Ready-triggered CodeRabbit selected 67 files and completed successfully with 0 review submissions and 0 threads |
+| P3 Ready gate | Pass | Owner authorized the Ready transition; runs 30374447377 and 30376456379 passed on their exact heads; final PR-head run 30376696055 passed; the first Ready-triggered CodeRabbit selected 67 files and completed successfully with 0 review submissions and 0 threads |
+| P3 merge | Accepted on `main` | PR 3 squash merged exact final head `71bf3e3fb1d7661fee053ee811279d44f1fdf45f` as `f6833c50eaf5a426948bac7999f93a08b19a425e` |
+| P3 main CI | Pass | Main push run 30378191752 passed on exact squash commit `f6833c50eaf5a426948bac7999f93a08b19a425e` |
 | Product shell | Implemented | Original Actestra Electron/React shell; no upstream or Aera application source or asset imported |
 | Renderer boundary | CI-backed through P3.6 | Context isolation, sandbox, Node and packaged DevTools disabled, production CSP denies connections, exact frozen preload allowlist, trusted-frame zero-argument IPC, and direct-client source checks |
-| Automated tests | Exact review-remediation CI pass | Twenty-four Vitest files with 130 tests, exact Electron SQLite probe, process-failure harness, 34-source boundary check, build, package identity, and clean-profile smoke pass |
+| Automated tests | Exact merged-main CI pass | Main run 30378191752 passes 24 Vitest files with 130 tests, the exact Electron SQLite probe, process-failure harness, 34-source boundary check, build, package identity, and clean-profile smoke |
 | Desktop package | Local and CI unsigned evidence | macOS arm64 app bundle, packaged identity, and clean-profile smoke verified; not a candidate |
 | P3 domain contracts | Implemented and CI-backed | Typed IDs and timestamps; workspace, task, session, worker, approval, and artifact records; transition and graph invariants; exact commit and run above |
 | P3 event contract | Implemented and CI-backed | Schema version 1; per-attempt gapless order, exact-id idempotency, verified replay cursors, terminal enforcement, and diagnostic redaction; exact commit and run above |
@@ -324,13 +345,17 @@ The ordered implementation index and P3 non-claims are in
 
 ## Next gate
 
-1. Keep pull request 3 Ready but unmerged until the owner explicitly authorizes
-   the merge step.
-2. Before merging, re-check the exact PR head, current-head CI, mergeability,
-   review submissions, review threads, and release non-claims.
-3. After merge, wait for exact `main` CI before recording P3 as accepted.
-4. Do not begin P4 or integrate a real AionUi, Goose, Eigent, or other worker
-   until P3 is accepted.
+1. Use exact accepted `main` commit
+   `f6833c50eaf5a426948bac7999f93a08b19a425e` and main CI run 30378191752 as
+   the P4 entry baseline.
+2. Before P4 implementation, define the first general-work vertical slice,
+   representative fixtures, adapter/transport boundary, scoped input-reference
+   storage, and the persistence-utility transition required for real workload
+   writes.
+3. Record any cross-component choice as an ADR and open P4 on a dedicated
+   feature branch and pull request.
+4. Do not treat P3 phase acceptance as a candidate, release, deployment,
+   distribution, or user acceptance.
 
 ## Open decisions
 
@@ -345,9 +370,9 @@ The ordered implementation index and P3 non-claims are in
 
 ## Known blockers and non-claims
 
-- P3.1 through P3.6 and review remediation are CI-backed. The technical review
-  and Ready gates are closed, but P3 is not accepted because merge and exact
-  `main` CI are still pending.
+- P3.1 through P3.6, review remediation, the final PR head, squash merge, and
+  exact merged-main CI are evidenced. P3 phase acceptance is not a release or
+  user-acceptance claim.
 - The final redundant full-diff confirmation was rate-limited before review and
   is not zero-issue evidence. The completed 67-file review plus the completed
   zero-issue nine-file remediation review are the review-closure evidence.
@@ -355,6 +380,10 @@ The ordered implementation index and P3 non-claims are in
   rate-limited before reviewing the four Ready-state documents. Its successful
   GitHub status is not review evidence; local documentation checks and exact
   CI run 30376456379 passed for those files.
+- Incremental CodeRabbit run `226b4810-7e15-495f-a3f9-50cf0536fb8c` was also
+  rate-limited before reviewing the final four-document status range. Its
+  successful status is limit-handling evidence; exact final-head CI run
+  30376696055 passed.
 - Main startup registers SQLite v3 and inert P3.5 reference services, but no
   protected operation, tool transport, credential value, or worker control is
   renderer-visible.
@@ -365,14 +394,16 @@ The ordered implementation index and P3 non-claims are in
   secret value or real tool execution.
 - SQLite still runs synchronously in main; it must move behind a supervised
   persistence utility before real user-workload writes are enabled.
-- No real worker may be integrated until the P3 contracts and fake-worker gate
-  pass.
+- The P3 contracts and fake-worker gate have passed. Real-worker integration is
+  P4 work and still requires the dedicated scope, decisions, branch, and tests
+  described above.
 - The local P2 package remains deliberately unsigned and is not a candidate.
 - The `main` branch currently has no GitHub branch-protection rule; explicit
   owner-gated PR discipline remains required.
-- CI runs 30339662937 and 30350732223 passed, but GitHub annotated the pinned
-  checkout and setup-node actions as Node 20-targeting actions forced onto Node
-  24; this is a dependency-maintenance item, not failed P3 evidence.
+- CI runs 30339662937, 30350732223, and 30378191752 passed, but GitHub
+  annotated the pinned checkout and setup-node actions as Node 20-targeting
+  actions forced onto Node 24; this is a dependency-maintenance item, not
+  failed P3 evidence.
 - Signing, notarization, SBOM, provenance, clean-machine installation, update
   metadata, and cross-platform acceptance remain future gates.
 - There is no release, deployment, distribution, or user acceptance.

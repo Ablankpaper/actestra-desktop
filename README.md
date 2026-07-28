@@ -25,9 +25,9 @@ merged the independent product shell at
 [main CI](https://github.com/bignormal/actestra-desktop/actions/runs/30329620829)
 passes on that exact commit.
 
-Actestra is in **P3 — Platform Core and Contracts** on
-`feat/platform-core-contracts`. P3.1 domain records and lifecycle rules plus the
-P3.2 version 1 event contract are implemented at
+Actestra has accepted **P3 — Platform Core and Contracts** on `main`. P3.1
+domain records and lifecycle rules plus the P3.2 version 1 event contract are
+implemented at
 `31dd6e4178eb7641b45be0ee2bccb862a96dac99` and pass
 [PR CI run 30331681309](https://github.com/bignormal/actestra-desktop/actions/runs/30331681309).
 P3.3 adds a storage-neutral persistence port, accepted SQLite/migration
@@ -53,11 +53,14 @@ passes. Review remediation is implemented at
 `4fa0fb120a6ceb2c71effd2a552e8d9bbf05d151`; exact
 [PR CI run 30374144474](https://github.com/bignormal/actestra-desktop/actions/runs/30374144474)
 passes. The full 67-file independent review and zero-issue review of all
-remediation files are complete. On 2026-07-28 the owner authorized the next
-gate, and [pull request 3](https://github.com/bignormal/actestra-desktop/pull/3)
-is open and Ready. Its Ready-triggered CodeRabbit run selected all 67 files,
-completed successfully, and created no review submission or review thread. P3
-remains open until merge and exact `main` CI.
+remediation files are complete.
+[Pull request 3](https://github.com/bignormal/actestra-desktop/pull/3) reached
+final head `71bf3e3fb1d7661fee053ee811279d44f1fdf45f`, passed
+[PR CI run 30376696055](https://github.com/bignormal/actestra-desktop/actions/runs/30376696055),
+and squash merged as `f6833c50eaf5a426948bac7999f93a08b19a425e`.
+[Main CI run 30378191752](https://github.com/bignormal/actestra-desktop/actions/runs/30378191752)
+passes on that exact squash commit, closing the P3 exit gate. P4 is next and
+has not started.
 
 - The Electron 37.10.3 and React 19.2.4 shell is original Actestra source; no
   AionUi, AionCore, Goose, Eigent, Aera, or AgentEra application source or asset
