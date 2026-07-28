@@ -1,6 +1,6 @@
 # System Overview
 
-Status: P2 shell implemented; P3.1-P3.5 are CI-backed; P3.6 is locally validated; P3 is open
+Status: P2 shell implemented; P3.1-P3.6 are CI-backed; P3 remains open for final review
 
 ## Context
 
@@ -61,7 +61,7 @@ in-memory fake adapter. P3.5 adds versioned privileged-operation and
 tool-manifest contracts plus main-owned deterministic policy, approval, opaque
 credential-lease, metadata-audit, and tool-gateway services.
 
-P3.6 locally adds SQLite schema version 3 for durable metadata-only privileged
+P3.6 adds SQLite schema version 3 for durable metadata-only privileged
 audit and immutable terminal-attempt evidence. Electron main now registers an
 inert deny-by-default composition root, a disabled executor, trusted-main-frame
 IPC, and a bounded renderer projection. Preload exposes only application
@@ -263,7 +263,7 @@ These states must not be collapsed into a generic success, generic chat message,
 or silent retry. P3.4 implements startup and heartbeat timeout,
 idempotent cancellation, cancellation acknowledgement timeout, protocol
 failure, crash, terminal reconciliation, and bounded fresh-attempt restart
-semantics. P3.6 locally persists terminal incident codes and projects bounded,
+semantics. P3.6 persists terminal incident codes and projects bounded,
 metadata-only attempt state through trusted main-frame IPC.
 
 ## Deferred choices

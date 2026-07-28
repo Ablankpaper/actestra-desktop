@@ -1,6 +1,6 @@
 # P3 Platform Core and Contracts
 
-Status: P3.1-P3.5 pushed and CI-backed; P3.6 locally validated; exact CI pending; P3 remains open
+Status: P3.1-P3.6 pushed and CI-backed; full review pending; P3 remains open
 
 Evidence date: 2026-07-28
 
@@ -20,6 +20,8 @@ P3.3 implementation commit: `4de756984269624a02fbfdf77e558c958a03c2e0`
 P3.4 implementation commit: `2b1ad9200ff44f2b6be219a8a4b58b0083ebd45b`
 
 P3.5 implementation commit: `cec0cdc554656c021cdff7f2341ddd3f9b5d83dd`
+
+P3.6 implementation commit: `950fe0efa2fdc5adc69d013acc9f417d201cb28e`
 
 Review surface:
 [draft pull request 3](https://github.com/bignormal/actestra-desktop/pull/3)
@@ -41,6 +43,9 @@ P3.4 implementation proof:
 
 P3.5 implementation proof:
 [pull-request CI run 30345370507](https://github.com/bignormal/actestra-desktop/actions/runs/30345370507)
+
+P3.6 implementation proof:
+[pull-request CI run 30350732223](https://github.com/bignormal/actestra-desktop/actions/runs/30350732223)
 
 ## Purpose
 
@@ -195,24 +200,25 @@ renderer.
 
 ### P3.6 — Main/renderer proof
 
-- Accepted locally: ADR-0008 fixes main-owned startup composition, SQLite
+- Accepted and CI-backed: ADR-0008 fixes main-owned startup composition, SQLite
   version 3 platform evidence, terminal-attempt release order, trusted-frame
   IPC, and bounded metadata-only renderer projection.
-- Implemented locally: application startup opens the owned SQLite store and
+- Implemented and CI-backed: application startup opens the owned SQLite store and
   registers durable audit, no-rule policy, approval, reference-only credential,
   disabled-executor, and gateway services only in main.
-- Implemented locally: preload exposes exactly three frozen operations on fixed
+- Implemented and CI-backed: preload exposes exactly three frozen operations on fixed
   channels. Main accepts zero-argument calls only from the current main frame;
   runtime validators reject extra response fields and unsupported values.
-- Implemented locally: privileged audit allocates gapless sequence in the write
+- Implemented and CI-backed: privileged audit allocates gapless sequence in the write
   transaction and resumes after restart. Terminal attempt projection persists
   core events, then immutable metadata evidence, then crosses the supervisor
   release barrier; partial writes remain retryable.
-- Verified locally: 24 test files pass 129 tests; the boundary scanner checks 34
-  source files and rejects renderer Node, Electron, CommonJS, process, and
-  direct network clients plus privileged preload primitives. The unsigned
-  packaged app reaches application, window, and renderer-ready markers from an
-  isolated profile with SQLite v3 active.
+- Verified locally and in exact implementation CI at
+  `950fe0efa2fdc5adc69d013acc9f417d201cb28e`: 24 test files pass 129 tests;
+  the boundary scanner checks 34 source files and rejects renderer Node,
+  Electron, CommonJS, process, and direct network clients plus privileged
+  preload primitives. The unsigned packaged app reaches application, window,
+  and renderer-ready markers from an isolated profile with SQLite v3 active.
 - Kept absent: generic IPC, protected-operation payloads from renderer, raw
   audit or event content in renderer, real policy, secret storage, input
   references, worker process, tool manifest, executor, or transport.
@@ -264,19 +270,19 @@ P3 is not complete until tests prove:
 - audit records for protected decisions without credential leakage;
 - renderer inability to bypass the main-process boundary.
 
-The local implementation exercises every exit item, but P3 is not accepted
-until the exact source commit and CI run are recorded in
-[Project Status](../PROJECT_STATUS.md) and the Draft receives final review.
+The exact implementation commit and CI run exercise every exit item. P3 is not
+accepted because the full 67-file independent review was rate-limited before it
+started; the Draft still requires final review and an owner decision.
 
 ## Non-claims
 
-- P3.1 through P3.5 are CI-backed; P3.6 is local-only until its exact commit and
-  CI run are recorded.
+- P3.1 through P3.6 are CI-backed. P3 remains open pending the full independent
+  review and final Draft owner decision.
 - No credential backend, production policy snapshot, input-reference store, or
   MCP/native transport is selected.
 - The deterministic fake is protocol test infrastructure, not a real worker.
-  No real worker, process transport, persistence-service process, IPC route, or
-  renderer worker feature is implemented.
+  No real worker, process transport, persistence-service process, privileged or
+  worker-control IPC route, or renderer worker feature is implemented.
 - SQLite v3 and the inert platform composition now start in main, but
   synchronous user-workload persistence still requires a supervised utility.
 - The registered executor is deliberately disabled. Approval, lease, and policy

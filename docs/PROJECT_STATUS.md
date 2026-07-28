@@ -6,8 +6,8 @@ Last updated: 2026-07-28
 
 ### P3 — Platform Core and Contracts
 
-P3.1-P3.5 are pushed and CI-backed. P3.6 is locally validated; its exact
-commit and CI are pending, and P3 remains open.
+P3.1-P3.6 are pushed and CI-backed. The full independent P3 review and final
+Draft owner decision are pending, so P3 remains open.
 
 P0, P1, and P2 are accepted on `main`.
 [Pull request 2](https://github.com/bignormal/actestra-desktop/pull/2) merged
@@ -55,12 +55,15 @@ a metadata-only audit trail, and a fixed-order main-owned gateway.
 [macOS arm64 CI run 30345370507](https://github.com/bignormal/actestra-desktop/actions/runs/30345370507)
 passes on that exact implementation commit.
 
-P3.6 locally accepts
+P3.6 implementation commit
+`950fe0efa2fdc5adc69d013acc9f417d201cb28e` accepts
 [ADR-0008](architecture/decisions/0008-main-owned-projection-and-ipc.md)
 and adds SQLite schema version 3, durable metadata-only privileged audit,
 immutable terminal-attempt evidence, persist-before-release coordination,
 main-owned inert service registration, trusted-frame IPC, a three-operation
 preload allowlist, and bounded renderer projection.
+[macOS arm64 CI run 30350732223](https://github.com/bignormal/actestra-desktop/actions/runs/30350732223)
+passes on that exact implementation commit.
 
 Application startup now opens the owned SQLite store and registers the
 deny-by-default reference services only in main. The fake worker still performs
@@ -150,8 +153,8 @@ Local validation of P3.5 at
   boundary, documentation, unsigned bundle, packaged identity, and clean-profile
   smoke steps.
 
-Local validation of the uncommitted P3.6 working tree based on
-`9882f3de634dacaed5c16ce02005d360d4a61221`:
+Validation of P3.6 implementation commit
+`950fe0efa2fdc5adc69d013acc9f417d201cb28e`:
 
 - the first contract, preload, and IPC group passed 4 focused files with 9
   tests after the intended red phase;
@@ -175,14 +178,20 @@ Local validation of the uncommitted P3.6 working tree based on
   valid issues (1 critical, 2 major, and 3 minor), all remediated; a third
   tracked-file pass returned zero issues. A full staged-diff retry was
   rate-limited before review and is not zero-issue evidence. A manual full-diff
-  audit found and remediated two additional defensive gaps; remote full-commit
-  review remains pending.
+  audit found and remediated two additional defensive gaps;
+- exact implementation CI run 30350732223 — pass, including source/test/
+  boundary, documentation, unsigned bundle, packaged identity, and clean-profile
+  smoke steps;
+- the explicit remote 67-file CodeRabbit review request was also rate-limited
+  before review. Its `SUCCESS` status represents command handling, not completed
+  review; GitHub has no review submission or review thread on the implementation
+  head.
 
 ## Evidence snapshot
 
 | Area | State | Evidence or blocker |
 | --- | --- | --- |
-| Repository | Pushed P3.1-P3.5 plus local P3.6 working tree | `feat/platform-core-contracts` is pushed through `9882f3de634dacaed5c16ce02005d360d4a61221`; P3.6 is not committed or pushed yet; draft PR 3 |
+| Repository | P3.1-P3.6 implementation pushed | `feat/platform-core-contracts` is pushed through `950fe0efa2fdc5adc69d013acc9f417d201cb28e`; draft PR 3 remains open and Draft |
 | P2 merge | Accepted on `main` | PR 2 final head `f972bb6c33c925f3e333a6ee87d20e5bbb72cece`; squash merge `76d6a58b20c3e010ee759358f2c86be80bc6a6c1` |
 | P2 main CI | Pass | Main push run 30329620829 passed on the exact squash merge |
 | P3 kickoff CI | Pass | Pull-request run 30329964305 passed on exact pushed head `b9c1119479c805c02452e4054a3d904649a3ca03` |
@@ -190,17 +199,17 @@ Local validation of the uncommitted P3.6 working tree based on
 | P3.3 CI | Pass | Pull-request run 30335076556 passed on exact implementation commit `4de756984269624a02fbfdf77e558c958a03c2e0` |
 | P3.4 CI | Pass | Pull-request run 30339662937 passed on exact implementation commit `2b1ad9200ff44f2b6be219a8a4b58b0083ebd45b` |
 | P3.5 CI | Pass | Pull-request run 30345370507 passed on exact implementation commit `cec0cdc554656c021cdff7f2341ddd3f9b5d83dd` |
-| P3.6 CI | Pending | Local implementation has no exact commit or remote CI yet |
+| P3.6 CI | Pass | Pull-request run 30350732223 passed on exact implementation commit `950fe0efa2fdc5adc69d013acc9f417d201cb28e` |
 | Product shell | Implemented | Original Actestra Electron/React shell; no upstream or Aera application source or asset imported |
-| Renderer boundary | Locally verified through P3.6 | Context isolation, sandbox, Node and packaged DevTools disabled, production CSP denies connections, exact frozen preload allowlist, trusted-frame zero-argument IPC, and direct-client source checks |
-| Automated tests | Local P3.6 pass; exact CI pending | Twenty-four Vitest files with 129 tests, exact Electron SQLite probe, process-failure harness, 34-source boundary check, build, package identity, and clean-profile smoke pass locally |
-| Desktop package | Local unsigned evidence | macOS arm64 app, DMG, and ZIP verified; not a candidate |
+| Renderer boundary | CI-backed through P3.6 | Context isolation, sandbox, Node and packaged DevTools disabled, production CSP denies connections, exact frozen preload allowlist, trusted-frame zero-argument IPC, and direct-client source checks |
+| Automated tests | Exact P3.6 CI pass | Twenty-four Vitest files with 129 tests, exact Electron SQLite probe, process-failure harness, 34-source boundary check, build, package identity, and clean-profile smoke pass |
+| Desktop package | Local and CI unsigned evidence | macOS arm64 app bundle, packaged identity, and clean-profile smoke verified; not a candidate |
 | P3 domain contracts | Implemented and CI-backed | Typed IDs and timestamps; workspace, task, session, worker, approval, and artifact records; transition and graph invariants; exact commit and run above |
 | P3 event contract | Implemented and CI-backed | Schema version 1; per-attempt gapless order, exact-id idempotency, verified replay cursors, terminal enforcement, and diagnostic redaction; exact commit and run above |
-| P3 persistence and migrations | P3.3 CI-backed; P3.6 extension local | ADR-0005 schemas 1 and 2 plus ADR-0008 schema 3 for privileged audit and terminal-attempt evidence; exact P3.6 CI pending |
+| P3 persistence and migrations | Implemented and CI-backed | ADR-0005 schemas 1 and 2 plus ADR-0008 schema 3 for privileged audit and terminal-attempt evidence; exact runs above |
 | P3 worker lifecycle | Implemented and CI-backed | ADR-0006, protocol version 1, runtime validation, supervisor, observed-time health, cancellation, crash, bounded fresh-attempt restart, deterministic fake, and 22 focused tests; exact commit and run above |
 | P3 privileged services | Implemented and CI-backed | ADR-0007; protected-operation and manifest contracts; policy, approval, opaque lease, metadata-only audit, and deterministic gateway services; exact commit and run above |
-| P3 main integration | Locally implemented | ADR-0008; main-only inert composition, durable audit, persist-before-release barrier, fixed IPC allowlist, bounded renderer projection, and packaged startup smoke; exact commit and CI pending |
+| P3 main integration | Implemented and CI-backed | ADR-0008; main-only inert composition, durable audit, persist-before-release barrier, fixed IPC allowlist, bounded renderer projection, and packaged startup smoke; exact commit and run above |
 | Release | None | No candidate, signed artifact, deployment, distribution, or user acceptance |
 
 ## Accepted direction
@@ -252,13 +261,12 @@ The ordered implementation index and P3 non-claims are in
 
 ## Next gate
 
-1. Create and push the exact P3.6 implementation commit.
-2. Wait for exact implementation CI and remote CodeRabbit review on the full
-   commit; remediate any verified issue without widening renderer authority.
-3. Record the implementation SHA and run, re-run the current PR-head gate, and
-   keep the PR Draft until final owner review.
-4. Keep real AionUi, Goose, Eigent, or other workers out until the whole P3 exit
-   gate passes.
+1. Push this evidence update and wait for exact current-head CI.
+2. When review quota is available, trigger the full 67-file independent review
+   and remediate any verified issue without widening renderer authority.
+3. Keep the PR Draft until final owner review decides whether it may become
+   ready or merge.
+4. Keep real AionUi, Goose, Eigent, or other workers out until P3 is accepted.
 
 ## Open decisions
 
@@ -273,8 +281,9 @@ The ordered implementation index and P3 non-claims are in
 
 ## Known blockers and non-claims
 
-- P3.1 through P3.5 are CI-backed. P3.6 is local-only and does not complete the
-  remote P3 exit gate until its exact implementation and PR-head CI pass.
+- P3.1 through P3.6 are CI-backed. P3 is not accepted because both full-diff
+  CodeRabbit attempts were rate-limited before review and the final Draft owner
+  decision is still pending.
 - Main startup registers SQLite v3 and inert P3.5 reference services, but no
   protected operation, tool transport, credential value, or worker control is
   renderer-visible.
@@ -288,9 +297,9 @@ The ordered implementation index and P3 non-claims are in
 - No real worker may be integrated until the P3 contracts and fake-worker gate
   pass.
 - The local P2 package remains deliberately unsigned and is not a candidate.
-- CI run 30339662937 passed, but GitHub annotated the pinned checkout and
-  setup-node actions as Node 20-targeting actions forced onto Node 24; this is a
-  dependency-maintenance item, not failed P3.4 evidence.
+- CI runs 30339662937 and 30350732223 passed, but GitHub annotated the pinned
+  checkout and setup-node actions as Node 20-targeting actions forced onto Node
+  24; this is a dependency-maintenance item, not failed P3 evidence.
 - Signing, notarization, SBOM, provenance, clean-machine installation, update
   metadata, and cross-platform acceptance remain future gates.
 - There is no release, deployment, distribution, or user acceptance.
