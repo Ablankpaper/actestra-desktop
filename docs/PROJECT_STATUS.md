@@ -4,7 +4,7 @@ Last updated: 2026-07-28
 
 ## Current phase
 
-### P3 — Platform Core and Contracts (P3.1 and P3.2 implemented locally)
+### P3 — Platform Core and Contracts (P3.1 and P3.2 CI-backed; P3.3 next)
 
 P0, P1, and P2 are accepted on `main`.
 [Pull request 2](https://github.com/bignormal/actestra-desktop/pull/2) merged
@@ -17,19 +17,18 @@ passes on the exact squash commit.
 `feat/platform-core-contracts` begins from that verified `main` commit and is
 open in
 [draft pull request 3](https://github.com/bignormal/actestra-desktop/pull/3).
-Its current pushed head is
-`b9c1119479c805c02452e4054a3d904649a3ca03`, which passed
-[macOS arm64 CI run 30329964305](https://github.com/bignormal/actestra-desktop/actions/runs/30329964305).
-
-The local working tree based on that head now implements P3.1 domain records,
+Implementation commit
+`31dd6e4178eb7641b45be0ee2bccb862a96dac99` adds the P3.1 domain records,
 state transitions, and ownership invariants plus the P3.2 version 1 event
-envelope, ordering, idempotency, replay, terminal, and redaction rules. Seven
-Vitest files with 39 tests pass locally. This implementation has not yet been
-committed, pushed, or CI-verified; no database, migration backend, worker,
-privileged service, or renderer integration exists.
+envelope, ordering, idempotency, replay, terminal, and redaction rules.
+[macOS arm64 CI run 30331681309](https://github.com/bignormal/actestra-desktop/actions/runs/30331681309)
+passes on that exact commit.
 
-Local validation on `feat/platform-core-contracts`, based on exact pushed commit
-`b9c1119479c805c02452e4054a3d904649a3ca03`:
+No database, migration backend, worker, privileged service, or renderer
+integration exists.
+
+Local validation on `feat/platform-core-contracts`, committed exactly as
+`31dd6e4178eb7641b45be0ee2bccb862a96dac99`:
 
 - `bun install --frozen-lockfile` — pass with no lockfile change;
 - `bun run check` — pass, including format, lint, strict types, 7 Vitest files
@@ -46,16 +45,17 @@ Local validation on `feat/platform-core-contracts`, based on exact pushed commit
 
 | Area | State | Evidence or blocker |
 | --- | --- | --- |
-| Repository | Pushed P3 draft PR plus local changes | `feat/platform-core-contracts` begins at `76d6a58b20c3e010ee759358f2c86be80bc6a6c1`; pushed head `b9c1119479c805c02452e4054a3d904649a3ca03`; draft PR 3 |
+| Repository | Pushed P3 draft PR | `feat/platform-core-contracts` begins at `76d6a58b20c3e010ee759358f2c86be80bc6a6c1`; implementation commit `31dd6e4178eb7641b45be0ee2bccb862a96dac99`; draft PR 3 |
 | P2 merge | Accepted on `main` | PR 2 final head `f972bb6c33c925f3e333a6ee87d20e5bbb72cece`; squash merge `76d6a58b20c3e010ee759358f2c86be80bc6a6c1` |
 | P2 main CI | Pass | Main push run 30329620829 passed on the exact squash merge |
 | P3 kickoff CI | Pass | Pull-request run 30329964305 passed on exact pushed head `b9c1119479c805c02452e4054a3d904649a3ca03` |
+| P3.1/P3.2 CI | Pass | Pull-request run 30331681309 passed on exact implementation commit `31dd6e4178eb7641b45be0ee2bccb862a96dac99` |
 | Product shell | Implemented | Original Actestra Electron/React shell; no upstream or Aera application source or asset imported |
 | Renderer boundary | Verified | Context isolation, sandbox, Node and packaged DevTools disabled, production CSP denies connections, narrow typed bridge |
-| Automated tests | Local P3 pass; prior head CI pass | Seven Vitest files with 39 tests plus a three-scenario process-failure smoke harness; new 17 contract tests are not yet pushed |
+| Automated tests | Exact implementation CI pass | Seven Vitest files with 39 tests plus a three-scenario process-failure smoke harness passed in run 30331681309 |
 | Desktop package | Local unsigned evidence | macOS arm64 app, DMG, and ZIP verified; not a candidate |
-| P3 domain contracts | Implemented and locally validated | Typed IDs and timestamps; workspace, task, session, worker, approval, and artifact records; transition and graph invariants; `bun run check` passes on the working tree based on `b9c1119479c805c02452e4054a3d904649a3ca03` |
-| P3 event contract | Implemented and locally validated | Schema version 1; per-attempt gapless order, exact-id idempotency, verified replay cursors, terminal enforcement, and diagnostic redaction; included in the same 39-test local pass |
+| P3 domain contracts | Implemented and CI-backed | Typed IDs and timestamps; workspace, task, session, worker, approval, and artifact records; transition and graph invariants; exact commit and run above |
+| P3 event contract | Implemented and CI-backed | Schema version 1; per-attempt gapless order, exact-id idempotency, verified replay cursors, terminal enforcement, and diagnostic redaction; exact commit and run above |
 | P3 persistence and migrations | Not implemented | Storage technology and migration registry require an accepted decision |
 | P3 worker lifecycle | Not implemented | `AgentAdapter` and deterministic fake worker remain to be built |
 | P3 privileged services | Not implemented | Credential, policy, approval, MCP/tool, and audit services remain absent |
@@ -110,10 +110,9 @@ The ordered implementation index and P3 non-claims are in
 
 ## Next gate
 
-1. Commit, review, push, and obtain exact-head CI evidence for the P3.1 and P3.2
-   contract slice.
-2. Record the persistence and migration choice in a new ADR before adding the
+1. Record the persistence and migration choice in a new ADR before adding the
    backend dependency.
+2. Implement storage-neutral persistence ports and migration contract tests.
 3. Implement the `AgentAdapter` contract and deterministic fake worker behind
    the main-process boundary.
 4. Require lifecycle, approval, cancellation, crash-recovery, migration, and
@@ -134,7 +133,7 @@ The ordered implementation index and P3 non-claims are in
 
 ## Known blockers and non-claims
 
-- P3.1 and P3.2 pass locally but are not yet committed, pushed, or CI-backed.
+- P3.1 and P3.2 are CI-backed, but they do not complete the P3 exit gate.
 - P3.3 through P3.6 remain unimplemented.
 - No real worker may be integrated until the P3 contracts and fake-worker gate
   pass.

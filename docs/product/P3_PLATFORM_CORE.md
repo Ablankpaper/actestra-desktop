@@ -1,6 +1,6 @@
 # P3 Platform Core and Contracts
 
-Status: P3.1 domain and P3.2 event contracts implemented locally; P3 remains open
+Status: P3.1 domain and P3.2 event contracts pushed and CI-backed; P3 remains open
 
 Evidence date: 2026-07-28
 
@@ -12,6 +12,8 @@ Kickoff commit: `30d05747cbaedf0c4901fd47de253e7009fe6643`
 
 Evidence commit: `4afa5531804cfce214cf6c0d204ae21820df3502`
 
+Implementation commit: `31dd6e4178eb7641b45be0ee2bccb862a96dac99`
+
 Review surface:
 [draft pull request 3](https://github.com/bignormal/actestra-desktop/pull/3)
 
@@ -20,6 +22,9 @@ P2 entry proof:
 
 P3 kickoff proof:
 [pull-request CI run 30329899300](https://github.com/bignormal/actestra-desktop/actions/runs/30329899300)
+
+P3.1/P3.2 implementation proof:
+[pull-request CI run 30331681309](https://github.com/bignormal/actestra-desktop/actions/runs/30331681309)
 
 ## Purpose
 
@@ -59,15 +64,15 @@ or credential authority.
   concepts.
 - Implemented: explicit identifiers, timestamps, state transitions, and
   ownership.
-- Verified locally: invalid transitions and cross-workspace references fail in
-  unit tests.
+- Verified locally and in CI: invalid transitions and cross-workspace references
+  fail in unit tests.
 
 ### P3.2 — Unified event envelope
 
 - Implemented: versioned discriminated event envelope.
 - Implemented: ordering, replay, idempotency, terminal-state, and redaction
   rules.
-- Verified locally: deterministic sequences fail closed on gaps, conflicts,
+- Verified locally and in CI: deterministic sequences fail closed on gaps, conflicts,
   identity drift, timestamp regression, state mismatch, invalid cursors, and
   writes after a terminal event.
 

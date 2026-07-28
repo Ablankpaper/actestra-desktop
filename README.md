@@ -27,9 +27,11 @@ passes on that exact commit.
 
 Actestra is in **P3 — Platform Core and Contracts** on
 `feat/platform-core-contracts`. P3.1 domain records and lifecycle rules plus the
-P3.2 version 1 event contract are implemented locally; push and exact-head CI
-evidence are still pending. Database, worker, privileged-service, and renderer
-integration work has not started.
+P3.2 version 1 event contract are implemented at
+`31dd6e4178eb7641b45be0ee2bccb862a96dac99` and pass
+[PR CI run 30331681309](https://github.com/bignormal/actestra-desktop/actions/runs/30331681309).
+Database, worker, privileged-service, and renderer integration work has not
+started.
 
 - The Electron 37.10.3 and React 19.2.4 shell is original Actestra source; no
   AionUi, AionCore, Goose, Eigent, Aera, or AgentEra application source or asset
