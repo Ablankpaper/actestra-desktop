@@ -12,7 +12,16 @@ product direction in ADR-0010: the real AionUi application, original functional
 UI, and original functions are the product baseline; the accepted Actestra P3
 core will be fused beneath compatible bridge domains.
 
-Current local F0 evidence:
+Implementation commit
+`13270ca0abd7353710541afca9ddf46c47670be3` is pushed to
+[draft pull request 6](https://github.com/bignormal/actestra-desktop/pull/6).
+Exact-head
+[CI run 30392140461](https://github.com/bignormal/actestra-desktop/actions/runs/30392140461)
+passes the macOS arm64 foundation job, including source, tests, boundaries,
+documentation, unsigned legacy-harness package, packaged identity, and
+clean-profile smoke.
+
+Current F0 evidence:
 
 - exact AionUi `v2.1.41` commit
   `2d8925fc67a97a20996fadcd2a0862b778b572ba` imported as an unmodified
@@ -32,8 +41,12 @@ Current local F0 evidence:
   archive selection, the complete native rerun passes 321 files with 1 skipped
   and 2,576 tests with 5 skipped; there are 0 failures.
 
-This is local foundation evidence, not commit, push, CI, merge, candidate,
-release, distribution, or acceptance evidence.
+Native AionUi full tests, build, and visual launch remain local evidence. The
+foundation manifest and compatibility checks are CI-backed on the exact
+implementation commit. PR 6 remains Draft and is not merge, candidate, release,
+distribution, or acceptance evidence. CodeRabbit returned a successful status
+but explicitly skipped review because the PR is Draft; it is not review
+evidence.
 
 P3.1-P3.6 and review remediation are pushed and CI-backed. The full independent
 review and remediation review are complete.
@@ -312,7 +325,7 @@ Review closure validation at
 | P3 Ready gate | Pass | Owner authorized the Ready transition; runs 30374447377 and 30376456379 passed on their exact heads; final PR-head run 30376696055 passed; the first Ready-triggered CodeRabbit selected 67 files and completed successfully with 0 review submissions and 0 threads |
 | P3 merge | Accepted on `main` | PR 3 squash merged exact final head `71bf3e3fb1d7661fee053ee811279d44f1fdf45f` as `f6833c50eaf5a426948bac7999f93a08b19a425e` |
 | P3 main CI | Pass | Main push run 30378191752 passed on exact squash commit `f6833c50eaf5a426948bac7999f93a08b19a425e` |
-| P4.0 branch | Active; local only | `feat/aionui-first-foundation` from `a32b7cb4516f5592e8e1fe6f1f5afad7c50de991`; no pushed or CI evidence yet |
+| P4.0 branch | Pushed; draft PR | Implementation `13270ca0abd7353710541afca9ddf46c47670be3`; draft PR 6; exact-head CI run 30392140461 passes |
 | Native AionUi source | Exact local desktop snapshot | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot |
 | Native preservation contract | Local pass | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified |
 | Native AionUi build and launch | Local pass | Frozen install, production build, isolated native Electron launch, and actual Guide screenshot pass |
@@ -386,8 +399,9 @@ The ordered implementation index and P3 non-claims are in
 1. Complete root repository checks, documentation checks, and source/visual
    evidence on
    `feat/aionui-first-foundation`.
-2. Commit and push the F0 exact foundation, ADR-0010, retention matrix, fusion
-   topology, and preservation checker; obtain exact-head CI before merge.
+2. Review draft PR 6, keep the displaced custom-shell PR 5 out of the product
+   foundation, and obtain exact-head CI after any evidence or review
+   remediation commit.
 3. Begin F1 as a documented downstream patch: Actestra name, icon, bundle ID,
    protocol, versioned profiles, and guest/local-first startup while preserving
    the screenshot-confirmed AionUi layout and all function entries.
@@ -450,6 +464,9 @@ The ordered implementation index and P3 non-claims are in
 - Draft pull request 5 follows the displaced custom-shell general-work route.
   Preserve it for compatible P3-core mining, but do not merge it as the product
   UI foundation.
+- PR 6 CodeRabbit run `4c42ce22-31b1-4554-a6fc-d2639f45dbda`
+  returned a successful status but explicitly skipped review because the PR is
+  Draft. It provides no line-by-line review or zero-issue evidence.
 - The local P2 package remains deliberately unsigned and is not a candidate.
 - The `main` branch currently has no GitHub branch-protection rule; explicit
   owner-gated PR discipline remains required.

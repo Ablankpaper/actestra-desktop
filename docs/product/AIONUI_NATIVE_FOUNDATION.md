@@ -8,6 +8,10 @@ Branch: `feat/aionui-first-foundation`
 
 Base: `a32b7cb4516f5592e8e1fe6f1f5afad7c50de991`
 
+Implementation: `13270ca0abd7353710541afca9ddf46c47670be3`
+
+Draft PR: [6](https://github.com/bignormal/actestra-desktop/pull/6)
+
 ## Result
 
 The product direction now starts from the real AionUi application rather than
@@ -66,7 +70,12 @@ corresponding AionUi error, diagnostics, and configuration experience.
 
 ## Non-claims
 
-This F0 evidence is local and uncommitted at the time of recording. It is not
-CI, merge, candidate, signed package, release, distribution, or user-acceptance
-evidence. Root repository checks, patch review, push, and exact-head CI remain
-required.
+The F0 implementation commit is pushed, and exact-head CI run
+[30392140461](https://github.com/bignormal/actestra-desktop/actions/runs/30392140461)
+passes the root source/test/boundary/documentation/package/smoke workflow. The
+full native AionUi tests, native build, and visual launch in this document are
+local evidence and are not represented as CI.
+
+PR 6 remains Draft. CodeRabbit explicitly skipped review because of that Draft
+state, so its successful status is not review evidence. This is not merge,
+candidate, signed package, release, distribution, or user-acceptance evidence.
