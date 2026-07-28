@@ -25,6 +25,12 @@ releases begin.
   macOS CI workflow.
 - ADR-0003 and the upstream import log for clean-shell and selective-port
   governance.
+- Actestra-owned P3.1 domain records, lifecycle transition validation, and
+  cross-workspace graph invariants.
+- Version 1 per-attempt core event envelopes with deterministic ordering,
+  idempotent append, replay cursors, terminal enforcement, and diagnostic
+  redaction.
+- ADR-0004 for authoritative domain lifecycles and per-attempt event streams.
 
 ### Changed
 

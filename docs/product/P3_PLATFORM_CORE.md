@@ -1,6 +1,6 @@
 # P3 Platform Core and Contracts
 
-Status: Pushed entry planning with CI evidence; no P3 implementation
+Status: P3.1 domain and P3.2 event contracts implemented locally; P3 remains open
 
 Evidence date: 2026-07-28
 
@@ -31,20 +31,45 @@ The phase succeeds only when a deterministic fake worker proves the contracts,
 event ordering, approvals, cancellation, crash recovery, and migrations without
 giving the renderer privileged authority.
 
+The first implementation slice is governed by
+[ADR-0004](../architecture/decisions/0004-core-domain-event-stream.md).
+
+## Implemented slice
+
+P3.1 and P3.2 now provide:
+
+- branded opaque identifiers and canonical UTC timestamps;
+- workspace, task, session, worker, approval, and artifact records;
+- authoritative lifecycle transition checks and terminal-state helpers;
+- aggregate validation for ownership, references, chronology, and approval
+  resolution;
+- a runtime-validated event schema version 1 with typed payloads;
+- per-attempt, gapless event ordering, exact-id idempotency, replay cursors, task
+  state coherence, terminal enforcement, and diagnostic redaction.
+
+The implementation is pure TypeScript under `apps/desktop/src/core`. It does not
+have Electron, database, renderer, preload, worker, filesystem, shell, network,
+or credential authority.
+
 ## Execution order
 
 ### P3.1 — Domain vocabulary
 
-- Define task, session, workspace, worker, approval, event, and artifact
+- Implemented: task, session, workspace, worker, approval, event, and artifact
   concepts.
-- Keep identifiers, timestamps, state transitions, and ownership explicit.
-- Reject invalid transitions and cross-workspace references in unit tests.
+- Implemented: explicit identifiers, timestamps, state transitions, and
+  ownership.
+- Verified locally: invalid transitions and cross-workspace references fail in
+  unit tests.
 
 ### P3.2 — Unified event envelope
 
-- Define a versioned discriminated event envelope.
-- Specify ordering, replay, idempotency, terminal-state, and redaction rules.
-- Prove deterministic event sequences before adding a persistent transport.
+- Implemented: versioned discriminated event envelope.
+- Implemented: ordering, replay, idempotency, terminal-state, and redaction
+  rules.
+- Verified locally: deterministic sequences fail closed on gaps, conflicts,
+  identity drift, timestamp regression, state mismatch, invalid cursors, and
+  writes after a terminal event.
 
 ### P3.3 — Persistence and migrations
 
@@ -74,13 +99,17 @@ giving the renderer privileged authority.
 - Test that direct filesystem, shell, credential, worker, and tool access cannot
   bypass the boundary.
 
-## Questions that require explicit decisions
+## Accepted decisions
+
+- Domain ownership, authoritative lifecycle transitions, per-attempt event
+  ordering, replay cursors, idempotency, terminal behavior, and redaction are
+  accepted in
+  [ADR-0004](../architecture/decisions/0004-core-domain-event-stream.md).
+
+## Questions that still require explicit decisions
 
 - Which embedded database and migration mechanism meet rollback and packaging
   needs?
-- What ordering scope and replay cursor does the event envelope guarantee?
-- Which state transitions are authoritative for tasks, sessions, workers, and
-  approvals?
 - How are capability manifests versioned and rejected when incompatible?
 - Which data is audit evidence, and which data must be redacted or never stored?
 - How are platform keychains represented behind a testable credential port?
@@ -105,8 +134,10 @@ The exact source commit and CI run must be recorded in
 
 ## Non-claims
 
-- No domain contract or event schema is implemented by this document.
+- P3.1 and P3.2 do not complete the P3 exit gate.
 - No database, migration library, credential backend, policy language, or MCP
   transport is selected.
+- No fake or real worker, process transport, persistence adapter, IPC route, or
+  renderer feature is implemented.
 - No real worker or external upstream source is imported.
 - No candidate, release, deployment, distribution, or acceptance claim is made.

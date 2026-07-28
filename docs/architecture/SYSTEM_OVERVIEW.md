@@ -1,6 +1,6 @@
 # System Overview
 
-Status: P2 shell implemented; P3 platform core planned
+Status: P2 shell implemented; P3.1 domain and P3.2 event contracts implemented
 
 ## Context
 
@@ -53,10 +53,12 @@ Electron main process. The renderer can request application metadata and report
 that it rendered; neither operation grants filesystem, shell, process,
 credential, installation, or publishing authority.
 
-The app core, persistence beyond the versioned data-layout manifest, policy and
-approval service, tool gateway, worker adapters, and workers shown below are P3
-or later components. They are architectural boundaries, not hidden
-implementations in the P2 package.
+P3.1 and P3.2 add a runtime-neutral core domain, lifecycle validation, and
+version 1 event stream contract. They are not registered with the main process
+or exposed to the renderer yet. Persistence beyond the versioned data-layout
+manifest, policy and approval services, tool gateway, worker adapters, and
+workers shown below remain P3 or later components. They are architectural
+boundaries, not hidden implementations in the package.
 
 ## Authority boundaries
 
@@ -120,7 +122,8 @@ Goose-specific or future-worker-specific event format.
 
 ## Event contract
 
-Every event uses a versioned envelope with at least:
+Every event uses the version 1 envelope accepted in
+[ADR-0004](decisions/0004-core-domain-event-stream.md), with:
 
 - event identifier;
 - schema version;
@@ -131,6 +134,12 @@ Every event uses a versioned envelope with at least:
 - payload;
 - causation and correlation identifiers;
 - redaction classification.
+
+Ordering is scoped to one immutable worker execution attempt. Sequence numbers
+start at one and are gapless; timestamps cannot move backwards but do not
+determine order. Exact duplicate event identifiers are idempotent, conflicting
+reuse fails closed, verified cursors support replay, and no event can follow a
+terminal task event.
 
 Initial event types:
 
@@ -193,7 +202,8 @@ The core must distinguish:
 - policy rejection.
 
 These states must not be collapsed into a generic success, generic chat message,
-or silent retry.
+or silent retry. The implemented P3.1 state machines currently establish the
+vocabulary; heartbeat, restart, and reconciliation behavior remains P3.4 work.
 
 ## Deferred choices
 

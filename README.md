@@ -25,10 +25,11 @@ merged the independent product shell at
 [main CI](https://github.com/bignormal/actestra-desktop/actions/runs/30329620829)
 passes on that exact commit.
 
-Actestra is now entering **P3 — Platform Core and Contracts** on
-`feat/platform-core-contracts`. The branch currently establishes only the P3
-execution index; no P3 model, database, worker, approval, policy, credential,
-tool, or audit implementation exists yet.
+Actestra is in **P3 — Platform Core and Contracts** on
+`feat/platform-core-contracts`. P3.1 domain records and lifecycle rules plus the
+P3.2 version 1 event contract are implemented locally; push and exact-head CI
+evidence are still pending. Database, worker, privileged-service, and renderer
+integration work has not started.
 
 - The Electron 37.10.3 and React 19.2.4 shell is original Actestra source; no
   AionUi, AionCore, Goose, Eigent, Aera, or AgentEra application source or asset
@@ -38,13 +39,14 @@ tool, or audit implementation exists yet.
 - The renderer is sandboxed and receives only two typed, non-privileged bridge
   operations. External HTTP, HTTPS, WebSocket, permissions, navigation, new
   windows, telemetry, updates, and accounts are inactive.
-- Five test files with 22 tests, a three-scenario process-failure harness,
+- Seven test files with 39 tests, a three-scenario process-failure harness,
   formatting, lint, strict types, product-boundary checks, renderer build,
   unsigned arm64 app/DMG/ZIP packaging, packaged identity/CSP checks, and a
   fresh-profile three-stage startup smoke pass locally.
-- The shell has no task persistence, worker runtime, tool execution, or
-  orchestration yet; P3 defines and proves those boundaries with a deterministic
-  fake before any real worker is integrated.
+- The pure TypeScript core contract has no Electron, filesystem, shell, network,
+  credential, or renderer authority. The shell still has no task persistence,
+  worker runtime, tool execution, or orchestration; later P3 slices prove those
+  boundaries with a deterministic fake before any real worker is integrated.
 - There is no CI-backed candidate, signed release, deployment, distribution, or
   user acceptance.
 
