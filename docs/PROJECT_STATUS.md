@@ -4,7 +4,7 @@ Last updated: 2026-07-29
 
 ## Current phase
 
-### P4 — General-Work Vertical Slice (P4.2 local implementation)
+### P4 — General-Work Vertical Slice (P4.2 exact implementation CI)
 
 `feat/general-work-vertical-slice` starts from the exact accepted `main`
 baseline `a32b7cb4516f5592e8e1fe6f1f5afad7c50de991`.
@@ -22,9 +22,12 @@ Electron main uses a versioned asynchronous client with no synchronous
 fallback. Schema 4 adds durable workspace grants and immutable, exact-owner,
 1 MiB-bounded UTF-8 content references with expiry, consumption, and SHA-256
 checks. Three complete 40-file CodeRabbit CLI passes ended with a zero-finding
-confirmation after four valid issues were fixed. The exact implementation
-commit, pushed PR CI, merge, and slice acceptance remain pending at this
-documentation checkpoint.
+confirmation after four valid issues were fixed. Implementation commit
+`6847b2d90dc1720562eea02f962795ff31cc200a` is pushed, and exact
+[PR CI run 30385916758](https://github.com/bignormal/actestra-desktop/actions/runs/30385916758)
+passes source, test, boundary, documentation, unsigned-package, packaged
+verification, and clean-Profile smoke steps. Merge and slice acceptance remain
+open.
 
 P3.1-P3.6 and review remediation are pushed and CI-backed. The full independent
 review and remediation review are complete.
@@ -34,7 +37,7 @@ final head `71bf3e3fb1d7661fee053ee811279d44f1fdf45f`, squash merged as
 [main CI run 30378191752](https://github.com/bignormal/actestra-desktop/actions/runs/30378191752)
 passes. These facts close the P3 exit gate. Pull request 4 then recorded that
 acceptance and merged as the P4 branch base above. P4.1 is accepted and P4.2
-has reached local implementation evidence; P4.3 has not started.
+has reached exact pushed implementation CI; P4.3 has not started.
 
 P0 through P3 are accepted on `main`.
 [Pull request 2](https://github.com/bignormal/actestra-desktop/pull/2) merged
@@ -320,7 +323,12 @@ Local validation of the P4.2 implementation on
   rejected after verification because they used the wrong current date or
   contradicted accepted path-authority, retention, graph-replacement,
   stable-error, or fail-closed client semantics. This is automated review
-  evidence, not a submitted GitHub review or human approval.
+  evidence, not a submitted GitHub review or human approval; and
+- implementation commit `6847b2d90dc1720562eea02f962795ff31cc200a`
+  passes exact PR CI run 30385916758. Draft PR 5 is open with clean merge state,
+  0 submitted reviews, and 0 review threads. Its CodeRabbit status is
+  `SUCCESS`, but the only remote comment says the review was skipped because
+  the PR is Draft; that status is not review approval.
 
 ## Evidence snapshot
 
@@ -329,8 +337,9 @@ Local validation of the P4.2 implementation on
 | Repository | P4.2 implementation branch | `feat/general-work-vertical-slice` starts from accepted `main` at `a32b7cb4516f5592e8e1fe6f1f5afad7c50de991`; Draft PR 5 remains open |
 | P3 acceptance record | Accepted on `main` | PR 3 final head `71bf3e3fb1d7661fee053ee811279d44f1fdf45f`; squash merge `f6833c50eaf5a426948bac7999f93a08b19a425e`; main run 30378191752 passed |
 | P4 entry baseline | Accepted on `main` | PR 4 final head `e38d4508e0f1ba6420870446d01fdd5083251d89`; squash merge `a32b7cb4516f5592e8e1fe6f1f5afad7c50de991`; main run 30379251723 passed |
-| P4.2 local implementation | Pass; push evidence pending | 28 files / 144 tests, coverage thresholds, exact Electron SQLite probe, 41-source boundary, build, and focused failure matrix pass |
+| P4.2 local implementation | Pass on exact pushed commit | `6847b2d90dc1720562eea02f962795ff31cc200a`; 28 files / 144 tests, coverage thresholds, exact Electron SQLite probe, 41-source boundary, build, and focused failure matrix pass |
 | P4.2 packaged utility | Local pass; deliberately non-candidate | Rebuilt unsigned arm64 app proves utility/main entry separation and reaches four ready markers with schema 4 on an isolated Profile |
+| P4.2 implementation CI | Pass | Pull-request run 30385916758 passes on exact implementation commit `6847b2d90dc1720562eea02f962795ff31cc200a`, including unsigned package and clean-Profile smoke |
 | P2 merge | Accepted on `main` | PR 2 final head `f972bb6c33c925f3e333a6ee87d20e5bbb72cece`; squash merge `76d6a58b20c3e010ee759358f2c86be80bc6a6c1` |
 | P2 main CI | Pass | Main push run 30329620829 passed on the exact squash merge |
 | P3 kickoff CI | Pass | Pull-request run 30329964305 passed on exact pushed head `b9c1119479c805c02452e4054a3d904649a3ca03` |
@@ -354,7 +363,7 @@ Local validation of the P4.2 implementation on
 | P3 privileged services | Implemented and CI-backed | ADR-0007; protected-operation and manifest contracts; policy, approval, opaque lease, metadata-only audit, and deterministic gateway services; exact commit and run above |
 | P3 main integration | Implemented and CI-backed | ADR-0008; main-only inert composition, durable audit, persist-before-release barrier, fixed IPC allowlist, bounded renderer projection, and packaged startup smoke; exact commit and run above |
 | P4.1 | Accepted | ADR-0009 and the fixture/exit matrix were owner-accepted on 2026-07-29 |
-| P4.2 | Implemented, locally validated, and automatically reviewed | Third complete 40-file CLI review returned 0 findings; exact pushed commit, PR CI, merge, and slice acceptance remain open |
+| P4.2 | Implemented, locally validated, automatically reviewed, and exact-CI-backed | Third complete 40-file CLI review returned 0 findings; exact implementation CI passes; merge and slice acceptance remain open |
 | Release | None | No candidate, signed artifact, deployment, distribution, or user acceptance |
 
 ## Accepted direction
@@ -406,18 +415,16 @@ The ordered implementation index and P3 non-claims are in
 
 ## Next gate
 
-1. Commit and push the reviewed P4.2 implementation, then obtain exact-head PR
-   CI without moving Draft PR 5 to Ready.
-2. Inspect the exact-head GitHub checks, review submissions, and review threads
-   separately; a successful status alone is not review approval.
-3. Require an explicit P4.2 acceptance gate before P4.3 starts.
-4. P4.3 then begins with red tests for the reference-worker protocol, exact
+1. Keep pull request 5 Draft while the owner reviews the P4.2 implementation,
+   automated review evidence, exact CI, and remaining non-claims.
+2. Require an explicit P4.2 acceptance gate before P4.3 starts.
+3. P4.3 then begins with red tests for the reference-worker protocol, exact
    adapter version 2 capability negotiation, utility crash, cancellation, and
    wrong-attempt or malformed messages.
-5. Do not import or distribute AionCore, add a network model or credential,
+4. Do not import or distribute AionCore, add a network model or credential,
    enable MCP/shell/workspace mutation, or widen renderer authority without its
    own exact gate.
-6. Keep local validation, pushed CI, merge, P4 phase acceptance, package,
+5. Keep local validation, pushed CI, merge, P4 phase acceptance, package,
    release, deployment, distribution, and user acceptance separate.
 
 ## Open decisions
@@ -441,9 +448,8 @@ The ordered implementation index and P3 non-claims are in
   exact merged-main CI are evidenced. P3 phase acceptance is not a release or
   user-acceptance claim.
 - P4.1 is accepted. P4.2 is locally implemented and has a completed automated
-  full-diff review, but it is not yet pushed, CI-backed, merged, or
-  owner-accepted at this checkpoint. No submitted GitHub review or human
-  approval is claimed.
+  full-diff review plus exact implementation CI, but it is not merged or
+  owner-accepted. No submitted GitHub review or human approval is claimed.
 - The future reference worker is deterministic and offline. Even after it is
   implemented, it will prove process and authority paths rather than model
   reasoning or production sandboxing.

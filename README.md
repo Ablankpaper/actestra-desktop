@@ -74,6 +74,10 @@ Electron utility process exclusively owns SQLite schema 4, workspace grants,
 and bounded UTF-8 content references. P4.3's reference worker, adapter version
 2, native tools, production policy, upstream runtime, credentials, network
 model, MCP transport, and broader renderer authority have not been added.
+P4.2 implementation commit
+`6847b2d90dc1720562eea02f962795ff31cc200a` passes exact
+[PR CI run 30385916758](https://github.com/bignormal/actestra-desktop/actions/runs/30385916758).
+The PR remains Draft; the slice is not merged or owner-accepted.
 
 - The Electron 37.10.3 and React 19.2.4 shell is original Actestra source; no
   AionUi, AionCore, Goose, Eigent, Aera, or AgentEra application source or asset
@@ -88,8 +92,8 @@ model, MCP transport, and broader renderer authority have not been added.
   types, a 41-source boundary check, renderer build, packaged identity/CSP and
   recursive main-entry checks, and a fresh-profile four-stage startup smoke
   pass locally. P3.1-P3.6 and review remediation have exact implementation CI;
-  P4.2's exact pushed commit and CI are still pending. The current unsigned
-  arm64 `.app` is package evidence, not a candidate.
+  P4.2 now has the exact implementation commit and PR CI above. The current
+  unsigned arm64 `.app` is package evidence, not a candidate.
 - The pure TypeScript core contract has no Electron, filesystem, shell, network,
   credential, or renderer authority. SQLite, worker supervision, policy,
   approval, opaque credential leases, the metadata-only audit trail, and the

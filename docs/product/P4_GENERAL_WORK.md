@@ -1,6 +1,6 @@
 # P4 General-Work Vertical Slice
 
-Status: P4.1 accepted; P4.2 implemented and locally validated on the Draft branch
+Status: P4.1 accepted; P4.2 implemented and exact-CI-backed on the Draft branch
 
 Date: 2026-07-29
 
@@ -24,6 +24,10 @@ for this phase are accepted in
 [ADR-0009](../architecture/decisions/0009-p4-general-work-process-and-content-boundaries.md).
 The owner accepted that decision on 2026-07-29 and authorized P4.2. This does
 not accept the P4.2 implementation, merge the branch, or authorize P4.3.
+
+P4.2 implementation commit
+`6847b2d90dc1720562eea02f962795ff31cc200a` passes exact
+[PR CI run 30385916758](https://github.com/bignormal/actestra-desktop/actions/runs/30385916758).
 
 ## P4.2 implementation evidence
 
@@ -61,7 +65,7 @@ After implementation and remediation:
   Electron SQLite probe, 28 Vitest files with 144 tests, the three-scenario
   smoke harness, the 41-source product-boundary check, and the desktop build;
 - `bun run test:coverage` passes without threshold changes at 82.68% statements,
-  75.79% branches, 91.22% functions, and 82.67% lines overall; and
+  75.79% branches, 91.22% functions, and 82.67% lines overall;
 - a rebuilt unsigned macOS arm64 `.app` passes packaged identity/CSP checks,
   recursively proves SQLite is absent from the main entry graph and present in
   the utility entry, and reaches utility, application, window, and renderer
@@ -79,10 +83,10 @@ review raised one valid protocol-exhaustiveness issue, which was fixed with
 operation-map-derived typing and `never` guards. The third complete 40-file
 review finished with 0 findings.
 
-This is local implementation, automated review, and package evidence. The exact
-pushed commit, pull-request CI, merge, slice acceptance, candidate, release,
-deployment, distribution, and user acceptance remain separate gates. No
-submitted GitHub review or human approval is claimed.
+This is local implementation, exact pushed CI, automated review, and package
+evidence. Merge, slice acceptance, candidate, release, deployment,
+distribution, and user acceptance remain separate gates. No submitted GitHub
+review or human approval is claimed.
 
 ## Purpose
 
@@ -171,8 +175,9 @@ State: achieved. ADR-0009 and the fixture/exit matrix were accepted on
 Exit: existing P3 persistence tests pass through the utility boundary and
 reference tests fail closed for wrong ownership or corrupt content.
 
-State: achieved locally with completed automated full-diff review. Exact
-pushed-head CI, merge, and owner acceptance remain open.
+State: achieved on the exact pushed implementation commit with completed
+automated full-diff review and passing PR CI. Merge and owner acceptance remain
+open.
 
 ### P4.3 — Reference worker transport and adapter version 2
 
@@ -260,8 +265,8 @@ P4 can be accepted only when:
 ## Blockers and non-claims
 
 - ADR-0009 is Accepted, and P4.2 is locally implemented and automatically
-  reviewed. Its exact pushed commit, CI, merge, and owner acceptance are still
-  open.
+  reviewed. Its exact implementation CI passes; merge and owner acceptance are
+  still open.
 - `AgentAdapter` version 1 still has no tool-result path; version 2 and the
   reference worker remain P4.3 work.
 - SQLite now runs only in the persistence utility. An exited utility makes the
