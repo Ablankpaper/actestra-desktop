@@ -1,6 +1,6 @@
 # System Overview
 
-Status: P2 accepted; P3 is reviewed and Ready; merge and exact main CI pending
+Status: P3 accepted on `main`; P4 not started
 
 ## Context
 
@@ -271,10 +271,10 @@ metadata-only attempt state through trusted main-frame IPC.
 P2 pins Node.js 24.13.0, Bun 1.3.9, Electron 37.10.3, React 19.2.4, and data
 layout version 1 for the current shell. ADR-0005 selects Electron's embedded
 `node:sqlite` and an Actestra-owned forward migration registry for durable
-storage. P3 still must decide process transport, worker sandbox mechanisms,
-real credential storage, input-reference storage, production policy, and
-utility-process hosting. Signing, notarization, update delivery, and
-cross-platform candidate packaging remain P8 work.
+storage. P4 and later work still must decide process transport, worker sandbox
+mechanisms, real credential storage, input-reference storage, production
+policy, and utility-process hosting. Signing, notarization, update delivery,
+and cross-platform candidate packaging remain P8 work.
 
 This document fixes authority and lifecycle boundaries; a pinned shell
 dependency does not pre-decide worker or persistence architecture.
