@@ -81,6 +81,10 @@ export interface PrivilegedAuditSummary {
 
 export interface PlatformEvidencePersistencePort {
   appendPrivilegedAudit(input: AppendPrivilegedAuditInput): Promise<AuditRecord>;
+  /**
+   * Treats sessionId as an immutable idempotency key. An identical retry must
+   * return duplicate, while conflicting terminal evidence must fail closed.
+   */
   appendAgentAttemptEvidence(evidence: AgentAttemptEvidence): Promise<PersistEvidenceResult>;
   summarizePrivilegedAudit(): Promise<PrivilegedAuditSummary>;
   listRecentAgentAttemptEvidence(limit: number): Promise<readonly AgentAttemptEvidence[]>;

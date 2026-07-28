@@ -71,6 +71,9 @@ export class AgentAttemptEvidenceCoordinator {
     this.assertEventProjection(snapshot, events);
     const evidence = this.createEvidence(snapshot);
     const eventResults: PersistEventResult[] = [];
+    // A failure after any append leaves the terminal attempt available for
+    // retry. The two persistence ports therefore must honor their documented
+    // eventId and sessionId idempotency contracts.
     for (const event of events) {
       eventResults.push(await this.config.corePersistence.appendEvent(event));
     }

@@ -236,7 +236,7 @@ Validation of P3.6 implementation commit
 | Unsigned macOS arm64 app, DMG, and ZIP packaging | Pass locally; deliberately non-candidate |
 | Packaged identity, notices, CSP, and architecture verification | Pass locally and in CI |
 | Independent review remediation | 13 valid CodeRabbit CLI issues fixed; one invalid `void` Promise suggestion documented |
-| Final GitHub review | Pass; no review submission, inline thread, or unresolved actionable comment |
+| Final GitHub review | No submitted review; CodeRabbit summary/status succeeded on the exact final head with 0 review threads, then the owner merged after CLI remediation and CI |
 | Final PR-head CI | Pass on `f972bb6c33c925f3e333a6ee87d20e5bbb72cece` |
 | Main CI | Pass on squash commit `76d6a58b20c3e010ee759358f2c86be80bc6a6c1` |
 

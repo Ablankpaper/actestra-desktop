@@ -627,6 +627,7 @@ class SqliteCorePersistence implements ActestraPersistencePort {
 
       verifyNoForeignKeyViolations(database);
       database.exec("COMMIT");
+      this.streamStates.clear();
     } catch (error) {
       rollback(database);
 

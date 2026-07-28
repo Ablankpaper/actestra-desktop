@@ -220,6 +220,7 @@ const ARTIFACT_KINDS: readonly ArtifactKind[] = [
 const ARTIFACT_STATES: readonly ArtifactState[] = ["available", "superseded"];
 const BLOCK_REASONS = ["approval", "tool", "dependency", "other"] as const;
 const EVENT_TYPES = Object.keys(REQUIRED_REDACTION_BY_EVENT_TYPE) as CoreEventType[];
+const MAX_STRUCTURAL_EQUALITY_DEPTH = 32;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -513,9 +514,13 @@ export function assertCoreEvent(value: unknown): asserts value is CoreEvent {
   assertPayload(eventType, value.payload);
 }
 
-function structurallyEqual(left: unknown, right: unknown): boolean {
+function structurallyEqual(left: unknown, right: unknown, depth = 0): boolean {
   if (Object.is(left, right)) {
     return true;
+  }
+
+  if (depth >= MAX_STRUCTURAL_EQUALITY_DEPTH) {
+    return false;
   }
 
   if (Array.isArray(left) || Array.isArray(right)) {
@@ -523,7 +528,7 @@ function structurallyEqual(left: unknown, right: unknown): boolean {
       return false;
     }
 
-    return left.every((value, index) => structurallyEqual(value, right[index]));
+    return left.every((value, index) => structurallyEqual(value, right[index], depth + 1));
   }
 
   if (!isRecord(left) || !isRecord(right)) {
@@ -540,7 +545,8 @@ function structurallyEqual(left: unknown, right: unknown): boolean {
   return (
     leftKeys.length === rightKeys.length &&
     leftKeys.every(
-      (key, index) => key === rightKeys[index] && structurallyEqual(left[key], right[key]),
+      (key, index) =>
+        key === rightKeys[index] && structurallyEqual(left[key], right[key], depth + 1),
     )
   );
 }
@@ -760,6 +766,11 @@ export function advanceCoreEventStreamState(
   }
 
   assertCoreEvent(value);
+  if (state.previous !== undefined && state.previous.eventId === value.eventId) {
+    assertIdempotentCoreEventDelivery(state.previous, value);
+    return state;
+  }
+
   const taskState = validateNextCoreEvent(state.first, state.previous, state.taskState, value);
   const immutableValue = immutableCoreEvent(value);
 
@@ -785,6 +796,12 @@ export function assertIdempotentCoreEventDelivery(existing: CoreEvent, value: un
   }
 }
 
+/**
+ * Revalidates the complete canonical stream before one append. Use this helper
+ * for one-shot or recovery work; repeated long-running appends must keep a
+ * state created by createCoreEventStreamState and advance it with
+ * advanceCoreEventStreamState.
+ */
 export function appendCoreEvent(
   events: readonly CoreEvent[],
   value: unknown,

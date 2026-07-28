@@ -31,6 +31,10 @@ export interface PersistEventResult {
 export interface CorePersistencePort {
   loadDomainGraph(): Promise<DomainGraph>;
   replaceDomainGraph(graph: DomainGraph): Promise<void>;
+  /**
+   * Treats eventId as an idempotency key. A structurally identical retry must
+   * return duplicate, while conflicting identifier reuse must fail closed.
+   */
   appendEvent(event: CoreEvent): Promise<PersistEventResult>;
   replayEvents(streamId: EventStreamId, after?: CoreEventCursor): Promise<readonly CoreEvent[]>;
   close(): Promise<void>;

@@ -21,8 +21,10 @@ Review surface:
 
 The local gate and
 [macOS arm64 pull-request CI run 30329423918](https://github.com/bignormal/actestra-desktop/actions/runs/30329423918)
-pass on the exact final PR head. GitHub review completed without an inline
-thread, requested change, or unresolved actionable comment. The squash merge's
+pass on the exact final PR head. GitHub records a successful CodeRabbit status
+and full-diff summary on that head, but no submitted pull-request review or
+inline review thread; acceptance came from the owner merge after CLI
+remediation and exact-head CI, not an independent GitHub approval. The squash merge's
 [main CI run 30329620829](https://github.com/bignormal/actestra-desktop/actions/runs/30329620829)
 also passes. This document does not claim candidate, release, deployment,
 distribution, or user acceptance.
@@ -59,8 +61,9 @@ The remaining minor suggestion expected `notifyRendererReady()` to return a
 Promise. Its typed contract and `ipcRenderer.send` implementation both
 intentionally return `void`, so no rejection exists to catch. A fourth CLI
 confirmation attempt returned a rate-limit error and is not represented as a
-zero-issue review. The later GitHub review completed successfully with no inline
-thread or requested change.
+zero-issue review. The later GitHub integration processed the final head and
+produced its summary/status with no inline thread, but the submitted-reviews
+list remained empty; it is not represented as independent approval.
 
 ## Product identity
 

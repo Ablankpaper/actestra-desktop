@@ -127,6 +127,28 @@ describe("Actestra unified core events", () => {
     expect(advanced.taskState).toBe("running");
   });
 
+  it("idempotently accepts immediate incremental redelivery and rejects conflicts", () => {
+    const started = startedEvent();
+    const state = createCoreEventStreamState([started]);
+    const duplicate = advanceCoreEventStreamState(state, {
+      ...started,
+      payload: {
+        from: "ready",
+        to: "running",
+      },
+    });
+
+    expect(duplicate).toBe(state);
+    expectContractError(
+      () =>
+        advanceCoreEventStreamState(state, {
+          ...started,
+          occurredAt: instant("2026-07-28T06:00:02.000Z"),
+        }),
+      "event-id-conflict",
+    );
+  });
+
   it("fails closed on unknown schema versions and malformed event payloads", () => {
     expectContractError(
       () =>

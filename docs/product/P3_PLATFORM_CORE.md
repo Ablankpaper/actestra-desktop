@@ -30,7 +30,8 @@ P2 entry proof:
 [main CI run 30329620829](https://github.com/bignormal/actestra-desktop/actions/runs/30329620829)
 
 P3 kickoff proof:
-[pull-request CI run 30329899300](https://github.com/bignormal/actestra-desktop/actions/runs/30329899300)
+[pull-request CI run 30329964305](https://github.com/bignormal/actestra-desktop/actions/runs/30329964305)
+passed on exact head `b9c1119479c805c02452e4054a3d904649a3ca03`.
 
 P3.1/P3.2 implementation proof:
 [pull-request CI run 30331681309](https://github.com/bignormal/actestra-desktop/actions/runs/30331681309)
@@ -70,7 +71,7 @@ The main integration and projection slice is governed by
 
 ## Implemented slice
 
-P3.1 through P3.5 now provide:
+P3.1 through P3.6 now provide:
 
 - branded opaque identifiers and canonical UTC timestamps;
 - workspace, task, session, worker, approval, and artifact records;
@@ -114,10 +115,11 @@ The domain, event, port, and adapter contracts are pure TypeScript under
 `apps/desktop/src/core`. The SQLite implementation is main-owned under
 `apps/desktop/src/main/persistence`; the supervisor and fake adapter are
 main-owned under `apps/desktop/src/main/workers`; the deterministic P3.5
-services are main-owned under `apps/desktop/src/main/privileged`. None are
-registered with application startup, and none grant database, path, SQL,
-filesystem, process, shell, tool, or credential authority to preload or
-renderer.
+services are main-owned under `apps/desktop/src/main/privileged`. P3.6 now opens
+SQLite v3 and registers the inert main-owned platform services at application
+startup, while preload exposes only the fixed three-operation metadata bridge.
+No contract grants database, path, SQL, filesystem, process, shell, tool, or
+credential authority to preload or renderer.
 
 ## Execution order
 
