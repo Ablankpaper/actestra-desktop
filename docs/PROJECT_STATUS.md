@@ -4,7 +4,36 @@ Last updated: 2026-07-29
 
 ## Current phase
 
-### P3 accepted; P4 not started
+### P3 accepted; P4.0 native AionUi preservation active
+
+Branch `feat/aionui-first-foundation` starts from `origin/main` commit
+`a32b7cb4516f5592e8e1fe6f1f5afad7c50de991` and implements the corrected
+product direction in ADR-0010: the real AionUi application, original functional
+UI, and original functions are the product baseline; the accepted Actestra P3
+core will be fused beneath compatible bridge domains.
+
+Current local F0 evidence:
+
+- exact AionUi `v2.1.41` commit
+  `2d8925fc67a97a20996fadcd2a0862b778b572ba` imported as an unmodified
+  1,766-file runnable desktop source snapshot;
+- source manifest SHA-256
+  `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`;
+- direct comparison to a clean exact-commit checkout passes all 1,766 selected
+  file hashes and confirms complete `packages`, `public`, `patches`, `tests`,
+  and `examples` subtrees;
+- machine preservation check passes every file hash, all 27 native routes, and
+  all 41 functional bridge domains;
+- frozen dependency install and native production build pass;
+- native Electron launch passes in an isolated profile and displays the
+  original Guide, navigation, agent/model selector, assistants, schedules,
+  Team, Settings, composer, workspace, and suggestion experience;
+- after restoring one exact upstream workflow fixture omitted by the initial
+  archive selection, the complete native rerun passes 321 files with 1 skipped
+  and 2,576 tests with 5 skipped; there are 0 failures.
+
+This is local foundation evidence, not commit, push, CI, merge, candidate,
+release, distribution, or acceptance evidence.
 
 P3.1-P3.6 and review remediation are pushed and CI-backed. The full independent
 review and remediation review are complete.
@@ -12,8 +41,7 @@ review and remediation review are complete.
 final head `71bf3e3fb1d7661fee053ee811279d44f1fdf45f`, squash merged as
 `f6833c50eaf5a426948bac7999f93a08b19a425e`, and exact
 [main CI run 30378191752](https://github.com/bignormal/actestra-desktop/actions/runs/30378191752)
-passes. These facts close the P3 exit gate. P4 is the next ordered phase and
-has not started.
+passes. These facts close the P3 exit gate.
 
 P0 through P3 are accepted on `main`.
 [Pull request 2](https://github.com/bignormal/actestra-desktop/pull/2) merged
@@ -284,7 +312,12 @@ Review closure validation at
 | P3 Ready gate | Pass | Owner authorized the Ready transition; runs 30374447377 and 30376456379 passed on their exact heads; final PR-head run 30376696055 passed; the first Ready-triggered CodeRabbit selected 67 files and completed successfully with 0 review submissions and 0 threads |
 | P3 merge | Accepted on `main` | PR 3 squash merged exact final head `71bf3e3fb1d7661fee053ee811279d44f1fdf45f` as `f6833c50eaf5a426948bac7999f93a08b19a425e` |
 | P3 main CI | Pass | Main push run 30378191752 passed on exact squash commit `f6833c50eaf5a426948bac7999f93a08b19a425e` |
-| Product shell | Implemented | Original Actestra Electron/React shell; no upstream or Aera application source or asset imported |
+| P4.0 branch | Active; local only | `feat/aionui-first-foundation` from `a32b7cb4516f5592e8e1fe6f1f5afad7c50de991`; no pushed or CI evidence yet |
+| Native AionUi source | Exact local desktop snapshot | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot |
+| Native preservation contract | Local pass | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified |
+| Native AionUi build and launch | Local pass | Frozen install, production build, isolated native Electron launch, and actual Guide screenshot pass |
+| Native AionUi tests | Local pass | 321 files passed, 1 skipped; 2,576 tests passed, 5 skipped; 0 failures |
+| Legacy product shell | P3 harness only | Original Actestra Electron/React shell remains for platform-contract and packaging regression; it is not the target product UI |
 | Renderer boundary | CI-backed through P3.6 | Context isolation, sandbox, Node and packaged DevTools disabled, production CSP denies connections, exact frozen preload allowlist, trusted-frame zero-argument IPC, and direct-client source checks |
 | Automated tests | Exact merged-main CI pass | Main run 30378191752 passes 24 Vitest files with 130 tests, the exact Electron SQLite probe, process-failure harness, 34-source boundary check, build, package identity, and clean-profile smoke |
 | Desktop package | Local and CI unsigned evidence | macOS arm64 app bundle, packaged identity, and clean-profile smoke verified; not a candidate |
@@ -299,11 +332,16 @@ Review closure validation at
 ## Accepted direction
 
 - Actestra is independent from Aera.
-- AionUi is an evaluated desktop and general-work reference; any reuse enters as
-  a selective, attributed port behind an Actestra boundary.
-- Goose is integrated through a specialized worker adapter.
-- Eigent is initially a product and orchestration reference, not a wholesale
-  runtime import.
+- AionUi `v2.1.41` is the preserved product application, functional UI, and
+  general-work foundation. The default is to retain original functions and
+  workflows, not selectively redraw them.
+- Actestra authority is introduced below stable AionUi bridge shapes one domain
+  at a time; unready effects keep their UI and receive an explicit isolated
+  state.
+- Goose is integrated through a specialized worker adapter exposed by the
+  preserved AionUi agent/ACP experience.
+- Eigent-style orchestration is mapped into the preserved AionUi Team
+  experience; its repository and separate UI are not imported wholesale.
 - Actestra owns workspaces, tasks, permissions, credentials, events, artifacts,
   and audit history.
 - External workers run behind stable adapter, event, and policy boundaries.
@@ -345,17 +383,18 @@ The ordered implementation index and P3 non-claims are in
 
 ## Next gate
 
-1. Use exact accepted `main` commit
-   `f6833c50eaf5a426948bac7999f93a08b19a425e` and main CI run 30378191752 as
-   the P4 entry baseline.
-2. Before P4 implementation, define the first general-work vertical slice,
-   representative fixtures, adapter/transport boundary, scoped input-reference
-   storage, and the persistence-utility transition required for real workload
-   writes.
-3. Record any cross-component choice as an ADR and open P4 on a dedicated
-   feature branch and pull request.
-4. Do not treat P3 phase acceptance as a candidate, release, deployment,
-   distribution, or user acceptance.
+1. Complete root repository checks, documentation checks, and source/visual
+   evidence on
+   `feat/aionui-first-foundation`.
+2. Commit and push the F0 exact foundation, ADR-0010, retention matrix, fusion
+   topology, and preservation checker; obtain exact-head CI before merge.
+3. Begin F1 as a documented downstream patch: Actestra name, icon, bundle ID,
+   protocol, versioned profiles, and guest/local-first startup while preserving
+   the screenshot-confirmed AionUi layout and all function entries.
+4. Isolate upstream telemetry, update, feedback, official-service, and public
+   listener effects without removing their UI or error states.
+5. Do not describe F0/F1 as Actestra-authoritative general work, Goose/Eigent
+   integration, candidate, release, distribution, or user acceptance.
 
 ## Open decisions
 
@@ -365,6 +404,9 @@ The ordered implementation index and P3 non-claims are in
 - Worker sandbox implementation per operating system.
 - Long-term dependency upgrade policy.
 - Code-signing, notarization, update, and distribution accounts.
+- AionCore license clarification and accepted binary provenance before
+  distribution.
+- Exact downstream patch-series mechanism for F1 and later AionUi updates.
 - Cloud identity or sync scope, which remains outside the initial MVP unless
   promoted by a new product decision.
 
@@ -397,6 +439,17 @@ The ordered implementation index and P3 non-claims are in
 - The P3 contracts and fake-worker gate have passed. Real-worker integration is
   P4 work and still requires the dedicated scope, decisions, branch, and tests
   described above.
+- F0 proves the original AionUi application can be preserved and run. It does
+  not yet prove Actestra identity, profile migration, authoritative P3 writes,
+  permission-complete native operations, Goose, or Eigent-style integration.
+- The local AionCore `v0.1.52` bundle is ignored and used only for native launch
+  proof. It is not committed, packaged, or approved for distribution.
+- The upstream managed-Node path can download a runtime on first launch, and
+  the Sentry startup path reports a missing-DSN error. F1 must isolate or
+  replace these effects while keeping their functional UI and recovery states.
+- Draft pull request 5 follows the displaced custom-shell general-work route.
+  Preserve it for compatible P3-core mining, but do not merge it as the product
+  UI foundation.
 - The local P2 package remains deliberately unsigned and is not a candidate.
 - The `main` branch currently has no GitHub branch-protection rule; explicit
   owner-gated PR discipline remains required.

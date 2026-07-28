@@ -9,12 +9,13 @@ security model, update path, and license trail.
 
 | Upstream | Intended role | Initial integration posture |
 | --- | --- | --- |
-| [AionUi](https://github.com/iOfficeAI/AionUi) | Desktop product foundation and general-work baseline | Evaluate and pin in P1 |
+| [AionUi](https://github.com/iOfficeAI/AionUi) | Complete functional UI and general-work product foundation | Exact frozen downstream source foundation plus reviewed patches under ADR-0010 |
 | [Goose](https://github.com/aaif-goose/goose) | Coding and terminal worker | External worker adapter in P5 |
 | [Eigent](https://github.com/eigent-ai/eigent) | Multi-agent product and orchestration reference | Reference-first; selective reuse only after P6 analysis |
 
 These roles are governed by
-[ADR-0001](../architecture/decisions/0001-capability-fusion.md).
+[ADR-0001](../architecture/decisions/0001-capability-fusion.md) and
+[ADR-0010](../architecture/decisions/0010-aionui-first-product-foundation.md).
 
 ## Import requirements
 
@@ -34,7 +35,7 @@ Before importing source, assets, packages, binaries, prompts, skills, or models:
 
 ## Integration mechanisms
 
-Choose the narrowest maintainable mechanism:
+For a new upstream, choose the narrowest maintainable mechanism:
 
 1. Published protocol or API.
 2. Versioned child process or CLI adapter.
@@ -42,7 +43,27 @@ Choose the narrowest maintainable mechanism:
 4. Small attributed source import.
 5. Maintained fork or vendor subtree.
 
-A broad source merge is a last resort and requires a new accepted ADR.
+A broad source foundation is a last resort and requires a new accepted ADR.
+ADR-0010 is that accepted exception for the exact AionUi `v2.1.41` snapshot;
+it does not authorize complete imports from Goose, Eigent, or another project.
+
+## AionUi preservation rule
+
+AionUi user functions and their functional UI use a preserve-by-default
+contract:
+
+- R0 retains native UI and behavior;
+- R1 retains UI and semantics while swapping the provider;
+- R2 retains the source, entry, and workflow while isolating unsafe external
+  effects.
+
+The frozen native snapshot is not edited in place. Downstream patches must cite
+the retention level, affected routes and bridge domains, Actestra authority
+owner, migration and rollback behavior, and native-plus-compatibility evidence.
+An unavailable provider is not a reason to delete its UI.
+
+See the
+[AionUi Retention Matrix](../upstream/AIONUI_RETENTION_MATRIX.md).
 
 ## Data and authority
 

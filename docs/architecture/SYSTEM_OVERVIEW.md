@@ -1,6 +1,7 @@
 # System Overview
 
-Status: P3 accepted on `main`; P4 not started
+Status: P3 accepted on `main`; P4.0 native AionUi preservation active on
+`feat/aionui-first-foundation`
 
 ## Context
 
@@ -12,7 +13,8 @@ maintaining one coherent task, permission, data, and audit model across them.
 
 ```mermaid
 flowchart TD
-    RENDERER["Desktop Renderer\nUI only"]
+    RENDERER["Preserved AionUi Renderer\nfunctional UI only"]
+    COMPAT["AionUi Compatibility Layer\nbridge shapes and availability"]
     MAIN["Desktop Main Process\nwindow and process lifecycle"]
     CORE["Actestra App Core"]
     ROUTER["Task Router and Team Orchestrator"]
@@ -27,7 +29,8 @@ flowchart TD
     FUTURE["Future Worker Process"]
     STORE["Actestra-owned Local Store"]
 
-    RENDERER --> MAIN
+    RENDERER --> COMPAT
+    COMPAT --> MAIN
     MAIN --> CORE
     CORE --> ROUTER
     CORE --> POLICY
@@ -48,10 +51,15 @@ flowchart TD
 
 ## Current implementation boundary
 
-P2 implements the renderer, a minimal context-isolated preload bridge, and the
-Electron main process. The renderer can request application metadata and report
-that it rendered; neither operation grants filesystem, shell, process,
-credential, installation, or publishing authority.
+The accepted P2 renderer, minimal context-isolated preload bridge, and Electron
+main process remain on `main` as a P3 platform-contract and package-regression
+harness. That shell is not the target product UI.
+
+P4.0 adds a separate exact, frozen AionUi `v2.1.41` native source foundation.
+It preserves 1,766 runnable desktop files, 27 routes, 41 bridge domains, and
+the complete native functional UI. It installs, builds, and launches locally in an isolated
+profile. At F0 it is not yet fused to the P3 services, does not carry Actestra
+identity, and is not a candidate.
 
 P3.1 and P3.2 add a runtime-neutral core domain, lifecycle validation, and
 version 1 event stream contract. P3.3 adds a storage-neutral port plus a
@@ -76,6 +84,27 @@ inconsistent migration history, invalid domain graphs, and corrupt event
 projections. Its asynchronous port prevents storage technology from entering
 core consumers, but its current synchronous implementation must move to a
 supervised persistence utility before user-workload writes are activated.
+
+## Foundation integration boundary
+
+ADR-0010 and the
+[fusion architecture](AIONUI_ACTESTRA_FUSION.md) invert the earlier shell
+migration:
+
+- AionUi routes, components, interaction design, and functional entries remain
+  the user-facing application;
+- its 41 bridge domains form the renderer compatibility contract;
+- Actestra adapters replace provider and authority behavior beneath that
+  contract;
+- domains transition from isolated native baseline, through shadow projection,
+  to one declared Actestra system of record;
+- unready external effects are isolated with visible reasons instead of having
+  their UI deleted;
+- Goose enters through the preserved agent/ACP experience;
+- Eigent-style orchestration enters through the preserved Team experience.
+
+The detailed non-regression scope is the
+[AionUi Retention Matrix](../upstream/AIONUI_RETENTION_MATRIX.md).
 
 ## Authority boundaries
 
@@ -269,12 +298,14 @@ metadata-only attempt state through trusted main-frame IPC.
 ## Deferred choices
 
 P2 pins Node.js 24.13.0, Bun 1.3.9, Electron 37.10.3, React 19.2.4, and data
-layout version 1 for the current shell. ADR-0005 selects Electron's embedded
-`node:sqlite` and an Actestra-owned forward migration registry for durable
-storage. P4 and later work still must decide process transport, worker sandbox
-mechanisms, real credential storage, input-reference storage, production
-policy, and utility-process hosting. Signing, notarization, update delivery,
-and cross-platform candidate packaging remain P8 work.
+layout version 1 for the legacy harness. The native AionUi foundation retains
+its exact locked dependency graph until a reviewed downstream update.
+ADR-0005 selects Electron's embedded `node:sqlite` and an Actestra-owned
+forward migration registry for durable storage. P4 and later work still must
+decide the compatibility transport, authoritative domain migration order,
+worker sandbox mechanisms, real credential storage, input-reference storage,
+production policy, and utility-process hosting. Signing, notarization, update
+delivery, and cross-platform candidate packaging remain P8 work.
 
 This document fixes authority and lifecycle boundaries; a pinned shell
 dependency does not pre-decide worker or persistence architecture.

@@ -14,3 +14,6 @@
 *.zip binary
 *.dmg binary
 *.exe binary
+
+# Preserve the exact upstream bytes protected by the AionUi source manifest.
+/foundation/aionui-v2.1.41/** -text -eol

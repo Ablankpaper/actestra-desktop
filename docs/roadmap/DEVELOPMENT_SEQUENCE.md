@@ -6,6 +6,8 @@ features are implemented.
 ## Principles
 
 - Prove the unmodified foundation before refactoring it.
+- Preserve AionUi functions and functional UI by default; swap providers behind
+  compatibility seams instead of redrawing or deleting workflows.
 - Establish one product source of truth before adding external workers.
 - Integrate one vertical slice at a time.
 - Add orchestration only after individual workers have stable lifecycle and
@@ -21,7 +23,7 @@ features are implemented.
 | P1 | Reproducible AionUi baseline | P0 |
 | P2 | Independent Actestra product shell | P1 |
 | P3 | Actestra platform core and contracts | P2 |
-| P4 | General-work vertical slice | P3 |
+| P4 | Native AionUi preservation and Actestra authority fusion | P3 |
 | P5 | Goose coding-worker vertical slice | P3, P4 event path |
 | P6 | Multi-agent team orchestration | P4, P5 |
 | P7 | Security and reliability hardening | P4-P6 |
@@ -98,19 +100,36 @@ features are implemented.
 - Renderer tests prove privileged operations cannot bypass the main-process
   boundary.
 
-## P4 — General-Work Vertical Slice
+## P4 — Native AionUi Preservation and Actestra Fusion
 
 ### Deliverables
 
-- Adapt the initial general worker to the Actestra contracts.
-- Support scoped workspace reads and task-output writes.
-- Surface messages, tools, approvals, progress, artifacts, completion, failure,
-  and cancellation through the unified event path.
-- Add representative file, research, writing, and artifact fixtures.
+- **P4.0 — native baseline:** freeze the exact AionUi source, preserve all
+  routes and bridge domains, run the native test/build/launch path, record
+  golden screenshots, and establish the R0/R1/R2 retention matrix.
+- **P4.1 — identity and isolation:** apply Actestra identity and versioned
+  profiles without changing the AionUi layout or removing feature entries;
+  isolate upstream account, telemetry, update, feedback, catalog, and other
+  unowned external effects while retaining their UI states.
+- **P4.2 — compatibility projection:** map native conversation, task, provider,
+  workspace, approval, artifact, and runtime shapes to read-only or
+  metadata-only P3 shadow projections.
+- **P4.3 — authoritative general work:** move one functional domain at a time to
+  Actestra persistence, policy, approval, audit, artifact, and worker authority
+  while keeping AionUi bridge and UI semantics.
+- Support scoped workspace reads and task-output writes through the preserved
+  file, workspace, conversation, preview, and artifact surfaces.
+- Add representative file, research, writing, office-document, schedule,
+  denial, cancellation, crash, and conflict fixtures.
 
 ### Exit gate
 
-- The general-work core journey completes end to end after restart.
+- The native AionUi retention contract passes with no unexplained missing route,
+  bridge domain, functional entry, or user-visible behavior.
+- A clean profile launches with Actestra identity and no unapproved upstream
+  account, endpoint, telemetry, updater, or public listener effect.
+- The general-work core journey completes end to end after restart with
+  Actestra declared as the system of record for every fused domain.
 - Permission denial, cancellation, tool failure, and artifact conflict paths are
   covered.
 
@@ -120,6 +139,9 @@ features are implemented.
 
 - Pin an exact Goose revision or compatible published interface.
 - Launch Goose outside the renderer through a dedicated adapter.
+- Register Goose through the preserved AionUi agent settings, selector, repair,
+  ACP conversation, permission, terminal, diff, and test experience; do not add
+  a separate Goose application UI.
 - Create an isolated Git worktree per coding task.
 - Translate Goose messages, tool requests, commands, diffs, tests, and approvals
   into Actestra events.
@@ -137,6 +159,9 @@ features are implemented.
 ### Deliverables
 
 - Leader planning with bounded task decomposition.
+- Map orchestration into the preserved AionUi Team creation, navigation, chat,
+  task/slot, worker-status, messaging, pause, cancel, rename, pin, and recovery
+  experience; do not add a separate Eigent application UI.
 - Dependency graph and ready/running/blocked/completed/failed/cancelled states.
 - Parallel general and coding workers.
 - Shared artifact references without shared uncontrolled working directories.

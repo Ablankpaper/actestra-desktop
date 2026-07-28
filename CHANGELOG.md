@@ -31,6 +31,13 @@ releases begin.
   idempotent append, replay cursors, terminal enforcement, and diagnostic
   redaction.
 - ADR-0004 for authoritative domain lifecycles and per-attempt event streams.
+- Exact, unmodified 1,766-file AionUi `v2.1.41` desktop source foundation,
+  Apache-2.0 license, immutable provenance, and per-file SHA-256 manifest.
+- A machine preservation check for every frozen source file, all 27 native
+  routes, and all 41 functional bridge domains.
+- Native AionUi install, test, build, launch, and visual-evidence entrypoints.
+- Full AionUi functional-UI retention matrix, preserve-first fusion topology,
+  downstream patch rules, and F0-F7 migration phases.
 
 ### Changed
 
@@ -38,3 +45,8 @@ releases begin.
   development staging, deterministic packaged-process cleanup, dynamic-import
   boundary checks, packaged DevTools denial, and environment-specific renderer
   CSP verification.
+- Superseded the selective-port shell direction with ADR-0010: AionUi is now the
+  retained product application, the P2 shell is a legacy platform harness, and
+  Actestra authority is fused behind compatible providers.
+- Assigned Goose to the preserved AionUi agent/ACP experience and Eigent-style
+  orchestration to the preserved AionUi Team experience.

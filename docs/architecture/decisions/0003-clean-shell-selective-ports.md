@@ -1,6 +1,6 @@
 # ADR-0003: Build an Actestra-Owned Shell and Port Upstream Modules Selectively
 
-- Status: Accepted
+- Status: Superseded by [ADR-0010](0010-aionui-first-product-foundation.md)
 - Date: 2026-07-28
 
 ## Context

@@ -7,11 +7,13 @@ coding tasks, and coordinated multi-agent execution.
 
 The product direction is intentionally modular:
 
-- AionUi is an evaluated desktop and general-work reference; useful modules may
-  enter later as selective, attributed ports.
-- Goose is integrated later as a specialized coding and terminal worker.
-- Eigent informs the multi-agent orchestration experience; its repository is not
-  merged wholesale into Actestra.
+- AionUi `v2.1.41` is the preserved functional UI and general-work product
+  foundation. Actestra replaces providers and authority beneath compatible
+  boundaries instead of redrawing or removing its workflows.
+- Goose is integrated later as a specialized coding and terminal worker through
+  AionUi's existing agent/ACP and conversation experience.
+- Eigent-style orchestration is mapped into AionUi's existing Team experience;
+  the Eigent repository is not merged wholesale into Actestra.
 
 Actestra is a new product. It does not share code, identity, data, configuration,
 release infrastructure, or product boundaries with Aera.
@@ -60,11 +62,18 @@ final head `71bf3e3fb1d7661fee053ee811279d44f1fdf45f`, passed
 and squash merged as `f6833c50eaf5a426948bac7999f93a08b19a425e`.
 [Main CI run 30378191752](https://github.com/bignormal/actestra-desktop/actions/runs/30378191752)
 passes on that exact squash commit, closing the P3 exit gate. P4 is next and
-has not started.
+its F0 native-preservation slice is active on
+`feat/aionui-first-foundation`.
 
-- The Electron 37.10.3 and React 19.2.4 shell is original Actestra source; no
-  AionUi, AionCore, Goose, Eigent, Aera, or AgentEra application source or asset
-  has been copied.
+- The repository now contains the exact, unmodified 1,766-file AionUi
+  `v2.1.41` runnable desktop source foundation at commit
+  `2d8925fc67a97a20996fadcd2a0862b778b572ba`. A SHA-256 manifest plus a
+  machine check protect every file, all 27 routes, and all 41 bridge domains.
+- Frozen install, native production build, and isolated native Electron launch
+  pass locally. The actual AionUi Guide UI is recorded in
+  [native foundation evidence](docs/product/AIONUI_NATIVE_FOUNDATION.md).
+- The original P2 Electron 37.10.3 and React 19.2.4 shell remains a P3
+  contract/package regression harness. It is not the target product interface.
 - Product name, bundle identifier, executable, icon, deep-link scheme, and
   versioned data layout are Actestra-owned.
 - The renderer is sandboxed and receives only three fixed, non-privileged
@@ -86,12 +95,18 @@ has not started.
   input-reference store, transport, or orchestration.
 - There is no CI-backed candidate, signed release, deployment, distribution, or
   user acceptance.
+- The native AionUi foundation is not yet fused to Actestra identity or P3
+  authoritative data. Goose and Eigent-style integration have not started.
 
 See [Project Status](docs/PROJECT_STATUS.md) for the evidence-backed state.
 The local P2 proof is recorded in
 [P2 Product Shell](docs/product/P2_PRODUCT_SHELL.md).
 The current execution order is recorded in
 [P3 Platform Core](docs/product/P3_PLATFORM_CORE.md).
+The preserve-first product contract is recorded in the
+[AionUi Retention Matrix](docs/upstream/AIONUI_RETENTION_MATRIX.md), and the
+ordered fusion is in
+[AionUi–Actestra Fusion](docs/architecture/AIONUI_ACTESTRA_FUSION.md).
 
 ## Start here
 
@@ -102,6 +117,8 @@ The current execution order is recorded in
 5. [Git Workflow](docs/governance/GIT_WORKFLOW.md)
 6. [Upstream Policy](docs/governance/UPSTREAM_POLICY.md)
 7. [AionUi Baseline Evidence](docs/upstream/AIONUI_V2.1.41_BASELINE.md)
+8. [AionUi Retention Matrix](docs/upstream/AIONUI_RETENTION_MATRIX.md)
+9. [AionUi–Actestra Fusion](docs/architecture/AIONUI_ACTESTRA_FUSION.md)
 
 Repository-wide instructions are in [AGENTS.md](AGENTS.md). Contribution rules
 are in [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -115,7 +132,8 @@ sources of truth.
 
 ```mermaid
 flowchart LR
-    UI["Actestra Desktop"] --> CORE["Actestra App Core"]
+    UI["Preserved AionUi Desktop"] --> COMPAT["AionUi Compatibility Layer"]
+    COMPAT --> CORE["Actestra App Core"]
     CORE --> GENERAL["General Worker"]
     CORE --> GOOSE["Goose Worker"]
     CORE --> TEAM["Team Orchestrator"]
@@ -127,6 +145,16 @@ flowchart LR
 
 The accepted decisions are recorded in
 [Architecture Decisions](docs/architecture/decisions/README.md).
+
+## Native foundation commands
+
+```sh
+bun run foundation:aionui:check
+bun run foundation:aionui:install
+bun run foundation:aionui:test
+bun run foundation:aionui:package
+bun run foundation:aionui:dev
+```
 
 ## Licensing
 

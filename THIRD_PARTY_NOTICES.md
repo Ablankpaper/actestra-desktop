@@ -1,8 +1,9 @@
 # Third-Party Notices
 
-The P2 shell uses third-party runtime and development packages from the locked
-Bun dependency graph. It does not contain application source or assets copied
-from AionUi, AionCore, Goose, Eigent, Aera, or AgentEra.
+Actestra uses third-party runtime and development packages from locked Bun
+dependency graphs. The AionUi-first foundation contains the exact AionUi source
+snapshot recorded below. It contains no committed AionCore binary, Goose,
+Eigent, Aera, or AgentEra source or asset.
 
 ## Distributed runtime components
 
@@ -16,6 +17,19 @@ from AionUi, AionCore, Goose, Eigent, Aera, or AgentEra.
 The package verifier fails if the Electron and Chromium notices are absent.
 The React packages are also bundled into renderer output, while their package
 directories and license texts are retained in ASAR by the current packager.
+
+## Imported application source
+
+| Component | Revision | License | Imported material | Notice location |
+| --- | --- | --- | --- | --- |
+| AionUi | `v2.1.41` (`2d8925fc67a97a20996fadcd2a0862b778b572ba`) | Apache-2.0; no root `NOTICE` | Exact 1,766-file runnable desktop source, build, test, example, patch, and functional-resource snapshot | Repository: `foundation/aionui-v2.1.41/LICENSE`; native Actestra package notice location must be verified before a candidate |
+
+The exact source and destination paths, hashes, copyright statements, and
+modification records are in the
+[Upstream Import Log](docs/upstream/IMPORT_LOG.md). The SHA-256 source manifest
+and provenance record are under `foundation/`. Original Actestra code remains
+unlicensed pending the owner's license decision; Apache-2.0 applies to the
+AionUi material identified there.
 
 ## Direct development and test dependencies
 
@@ -37,13 +51,12 @@ not a release-grade transitive license report.
 
 ## Evaluated references
 
-The following projects are architectural or evaluation references only. Exact
-evaluation pins do not change their non-imported status.
+The following projects remain architectural or evaluation references only.
+Exact evaluation pins do not change their non-imported status.
 
 | Project | Evaluated revision | Observed root license | Role | Source |
 | --- | --- | --- | --- | --- |
-| AionUi | `v2.1.41` (`2d8925fc67a97a20996fadcd2a0862b778b572ba`) | Apache-2.0; no root `NOTICE` | Initial desktop product foundation | <https://github.com/iOfficeAI/AionUi> |
-| AionCore | `v0.1.52` (`76f5554286ba0b6d33fb74d5c2bb2b3b0b83100d`) | Root Apache-2.0; Cargo metadata says MIT; no root `NOTICE` | Backend bundled by the evaluated AionUi package | <https://github.com/iOfficeAI/AionCore> |
+| AionCore | `v0.1.52` (`76f5554286ba0b6d33fb74d5c2bb2b3b0b83100d`) | Root Apache-2.0; Cargo metadata says MIT; no root `NOTICE` | Ignored local F0 launch runtime and proposed initial general-worker compatibility runtime; not committed or approved for distribution | <https://github.com/iOfficeAI/AionCore> |
 | Goose | Not selected | Not yet inspected | Specialized coding and terminal worker | <https://github.com/aaif-goose/goose> |
 | Eigent | Not selected | Not yet inspected | Multi-agent orchestration reference | <https://github.com/eigent-ai/eigent> |
 
@@ -51,8 +64,12 @@ This file must be updated in the same change that imports, vendors, bundles,
 upgrades, or distributes third-party code or assets. A reference link alone
 does not satisfy license or notice obligations.
 
-The local P1 evaluation packages and their dependencies are not committed or
-published. Before any AionUi or AionCore adoption, Actestra must inventory the
-selected module dependencies and assets, preserve required notices, resolve
-the AionCore license inconsistency, and update the import log. See the
-[baseline report](docs/upstream/AIONUI_V2.1.41_BASELINE.md).
+The exact AionUi runnable desktop source selection is committed as the accepted
+product foundation; its installed dependencies and generated packages are
+ignored. Before a native Actestra candidate, the full transitive runtime
+inventory, packaged Apache-2.0 license, third-party asset notices, SBOM, and
+provenance must be verified.
+AionCore distribution remains blocked until its license inconsistency and
+binary provenance are resolved. See the
+[baseline report](docs/upstream/AIONUI_V2.1.41_BASELINE.md) and
+[native foundation evidence](docs/product/AIONUI_NATIVE_FOUNDATION.md).

@@ -4,13 +4,14 @@ This file records immutable upstream revisions and verification evidence.
 
 ## Current pins
 
-No upstream source has been imported into Actestra. P1 selected and verified the
-following evaluation pins on 2026-07-27.
+P1 selected and verified the following pins on 2026-07-27. The complete
+runnable AionUi desktop source foundation was imported on 2026-07-29 under
+ADR-0010.
 
 | Upstream | Repository | Version or tag | Exact commit | Integration | Status |
 | --- | --- | --- | --- | --- | --- |
-| AionUi | `iOfficeAI/AionUi` | `v2.1.41` | `2d8925fc67a97a20996fadcd2a0862b778b572ba` | Foundation evaluation | P1 locally reproduced; not imported |
-| AionCore | `iOfficeAI/AionCore` | `v0.1.52` | `76f5554286ba0b6d33fb74d5c2bb2b3b0b83100d` | AionUi backend dependency | P1 locally built and packaged; not imported |
+| AionUi | `iOfficeAI/AionUi` | `v2.1.41` | `2d8925fc67a97a20996fadcd2a0862b778b572ba` | Product UI and general-work foundation | P1 reproduced; exact 1,766-file runnable desktop snapshot imported and manifest-verified |
+| AionCore | `iOfficeAI/AionCore` | `v0.1.52` | `76f5554286ba0b6d33fb74d5c2bb2b3b0b83100d` | Initial native compatibility runtime/general worker | P1 locally built; ignored local bundle used for F0 launch; not committed or approved for distribution |
 | Goose | `aaif-goose/goose` | Not selected | Not selected | Worker adapter | Pending P5 |
 | Eigent | `eigent-ai/eigent` | Not selected | Not selected | Reference-first | Pending P6 |
 
@@ -36,14 +37,27 @@ from the corresponding official GitHub tags on 2026-07-28.
   `76f5554286ba0b6d33fb74d5c2bb2b3b0b83100d`.
 - AionCore binary SHA-256:
   `29dea30561b1457ac784c5fa48a58a63c6580b0e8cee8d7471ed079e0e50908c`.
-- Imported paths or packages: none.
-- Local patches: none.
+- Imported path: complete runnable desktop source selection under
+  `foundation/aionui-v2.1.41`, including source, build configuration, lockfile,
+  patches, functional resources, examples, tests, and Apache-2.0 license.
+- Provenance: 1,766 source-snapshot files; manifest SHA-256
+  `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`;
+  all files, 27 routes, and 41 bridge domains verified by
+  `bun run foundation:aionui:check`.
+- Local modifications inside the snapshot: none. Later Actestra work uses a
+  recorded patch series or overlay.
+- Local reproduction: frozen install and native production build pass; native
+  Electron launch passes in an isolated profile with update effects disabled.
+  After restoring one exact upstream workflow fixture omitted from the first
+  archive selection, the complete native rerun passes 321 files with 1 skipped
+  and 2,576 tests with 5 skipped.
 - Previous or rollback revision: none; this is the first selected pin.
 - Toolchain, commands, tests, package checksums, incompatibilities, and
   reproduction proof:
   [AionUi v2.1.41 Baseline](../upstream/AIONUI_V2.1.41_BASELINE.md).
-- Planned disposition:
-  [AionUi Module Map](../upstream/AIONUI_MODULE_MAP.md).
+- Current and planned disposition:
+  [AionUi Module Map](../upstream/AIONUI_MODULE_MAP.md) and
+  [Retention Matrix](../upstream/AIONUI_RETENTION_MATRIX.md).
 
 ## AionCore license note
 
