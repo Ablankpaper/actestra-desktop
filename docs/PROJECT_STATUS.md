@@ -4,45 +4,37 @@ Last updated: 2026-07-28
 
 ## Current phase
 
-### P2 — Independent Actestra Product Shell (review remediation CI passes; merge pending)
+### P3 — Platform Core and Contracts (entry gate open; implementation not started)
 
-P0 and P1 are accepted on `main`. Pull request 1 merged P1 at
-`174ef46ff971a2f67aec16fbfd6dc56fc0910306`.
+P0, P1, and P2 are accepted on `main`.
+[Pull request 2](https://github.com/bignormal/actestra-desktop/pull/2) merged
+the P2 independent product shell with squash commit
+`76d6a58b20c3e010ee759358f2c86be80bc6a6c1`. Its exact final PR head was
+`f972bb6c33c925f3e333a6ee87d20e5bbb72cece`.
+[Main CI run 30329620829](https://github.com/bignormal/actestra-desktop/actions/runs/30329620829)
+passes on the exact squash commit.
 
-P2 implementation commit
-`1892b48402b1bfa9425a34172ff79259b7190b81` is pushed on
-`feat/independent-product-shell`, based on that exact `main` commit, in
-[draft pull request 2](https://github.com/bignormal/actestra-desktop/pull/2).
-Review-remediation commit
-`892a44240405c1d2d4720d4ff7e09a6a19bbe4e9` is also pushed in that PR.
-The local technical exit gate and
-[macOS arm64 CI run 30329203456](https://github.com/bignormal/actestra-desktop/actions/runs/30329203456)
-pass on that exact remediation commit.
-
-Three completed CodeRabbit CLI review passes raised 14 issues: 13 valid issues
-were fixed and one minor Promise-rejection suggestion was rejected because the
-typed preload operation intentionally returns `void`. A fourth confirmation
-review was rate-limited rather than completed. The final evidence-only PR head
-must retain green CI and receive the GitHub review before merge.
+`feat/platform-core-contracts` begins from that verified `main` commit. This
+kickoff contains status and execution-index work only. No P3 domain model,
+database, migration, worker, approval, policy, credential, tool, or audit
+implementation exists yet.
 
 ## Evidence snapshot
 
 | Area | State | Evidence or blocker |
 | --- | --- | --- |
-| Repository | Pushed draft PR | `feat/independent-product-shell` from exact `main` commit `174ef46ff971a2f67aec16fbfd6dc56fc0910306`; implementation `1892b48402b1bfa9425a34172ff79259b7190b81`; review remediation `892a44240405c1d2d4720d4ff7e09a6a19bbe4e9`; draft PR 2 |
-| Product source | Original Actestra shell | No AionUi, AionCore, Goose, Eigent, Aera, or AgentEra application source or asset imported |
-| Framework pins | Locked | Node.js 24.13.0, Bun 1.3.9, Electron 37.10.3, React and React DOM 19.2.4 |
-| Product identity | Locally verified | `Actestra`, `com.bignormal.actestra`, `Actestra` executable, `actestra:` protocol, original icon |
-| Data ownership | Locally verified | Actestra user-data root and fail-closed `data-layout.json` at layout version 1 |
-| Renderer boundary | Locally verified | Context isolation, sandbox, Node disabled, web security enabled, packaged DevTools disabled, production CSP denies all connections, two-operation typed bridge |
-| External access | Locally verified | Permission requests, new windows, cross-navigation, HTTP, HTTPS, WS, and WSS fail closed; only loopback development requests are allowed |
-| Automated tests | Local pass | Five Vitest files with 22 tests plus a three-scenario process-failure smoke harness |
-| Source checks | Local pass | Formatting, zero lint warnings, strict TypeScript, documentation links, dynamic-import product-boundary scan, and immutable CI action pins |
-| Desktop package | Local unsigned artifacts | macOS arm64 `.app`, DMG, and ZIP produced; DMG checksum structure, bundle identity, architecture, ASAR boundary, and packaged Electron notices verified |
-| Fresh-profile launch | Local pass | Application, window, and renderer ready markers plus Actestra layout manifest observed; real UI visually inspected |
-| Independent review | Remediated locally | 13 valid CodeRabbit issues fixed; one `void` contract false positive documented; final GitHub review pending |
-| CI | Pass on review remediation | [macOS arm64 run 30329203456](https://github.com/bignormal/actestra-desktop/actions/runs/30329203456) passed on `892a44240405c1d2d4720d4ff7e09a6a19bbe4e9`; the final evidence head must also pass |
-| Release | None | No candidate, signed artifact, deployment, or acceptance |
+| Repository | P3 branch from accepted `main` | `feat/platform-core-contracts` begins at `76d6a58b20c3e010ee759358f2c86be80bc6a6c1` |
+| P2 merge | Accepted on `main` | PR 2 final head `f972bb6c33c925f3e333a6ee87d20e5bbb72cece`; squash merge `76d6a58b20c3e010ee759358f2c86be80bc6a6c1` |
+| P2 main CI | Pass | Main push run 30329620829 passed on the exact squash merge |
+| Product shell | Implemented | Original Actestra Electron/React shell; no upstream or Aera application source or asset imported |
+| Renderer boundary | Verified | Context isolation, sandbox, Node and packaged DevTools disabled, production CSP denies connections, narrow typed bridge |
+| Automated tests | Main-backed pass | Five Vitest files with 22 tests plus a three-scenario process-failure smoke harness |
+| Desktop package | Local unsigned evidence | macOS arm64 app, DMG, and ZIP verified; not a candidate |
+| P3 models and contracts | Not implemented | Task, session, workspace, worker, approval, event, and artifact types remain to be defined |
+| P3 persistence and migrations | Not implemented | Storage technology and migration registry require an accepted decision |
+| P3 worker lifecycle | Not implemented | `AgentAdapter` and deterministic fake worker remain to be built |
+| P3 privileged services | Not implemented | Credential, policy, approval, MCP/tool, and audit services remain absent |
+| Release | None | No candidate, signed artifact, deployment, distribution, or user acceptance |
 
 ## Accepted direction
 
@@ -56,59 +48,77 @@ must retain green CI and receive the GitHub review before merge.
   and audit history.
 - External workers run behind stable adapter, event, and policy boundaries.
 
-## P2 local gate assessment
+## P2 acceptance evidence
 
 | Requirement | Result |
 | --- | --- |
-| Independent identity and icon | Pass locally |
-| Actestra-owned data path and layout version | Pass locally |
-| No upstream or Aera application source, brand, account, endpoint, data path, telemetry, or updater | Pass locally |
-| Sandboxed renderer and narrow preload bridge | Pass locally |
-| Deny-by-default permission, window, navigation, and external-network policy | Pass locally |
-| No automatic approval or privileged worker surface | Pass by absence; those services do not exist in P2 |
-| Account-free first launch | Pass locally |
-| Unsigned macOS arm64 app, DMG, and ZIP packaging | Pass locally |
-| Packaged identity and notice verification | Pass locally |
-| Fresh-profile application, window, renderer, and data-layout smoke | Pass locally |
-| Visual inspection of the real packaged shell | Pass locally |
-| Pull-request CI | Pass on exact review-remediation commit; final evidence head check required |
-| Independent review remediation | 13 valid issues fixed; one invalid `void` rejection suggestion documented |
-| Review and merge | Pending |
+| Independent identity, icon, protocol, and data path | Pass on merged `main` |
+| No upstream or Aera brand, account, endpoint, updater, telemetry, or application source | Pass on merged `main` |
+| Sandboxed renderer and narrow preload bridge | Pass on merged `main` |
+| Deny-by-default permissions, navigation, windows, and external network | Pass on merged `main` |
+| Account-free clean-profile launch | Pass locally and in CI smoke |
+| Unsigned macOS arm64 app, DMG, and ZIP packaging | Pass locally; deliberately non-candidate |
+| Packaged identity, notices, CSP, and architecture verification | Pass locally and in CI |
+| Independent review remediation | 13 valid CodeRabbit CLI issues fixed; one invalid `void` Promise suggestion documented |
+| Final GitHub review | Pass; no review submission, inline thread, or unresolved actionable comment |
+| Final PR-head CI | Pass on `f972bb6c33c925f3e333a6ee87d20e5bbb72cece` |
+| Main CI | Pass on squash commit `76d6a58b20c3e010ee759358f2c86be80bc6a6c1` |
 
-Detailed commands, implementation boundaries, screenshot, and non-claims are in
-[P2 Product Shell](product/P2_PRODUCT_SHELL.md).
+Detailed commands, review history, package hashes, screenshot, and non-claims are
+in [P2 Product Shell](product/P2_PRODUCT_SHELL.md).
+
+## P3 entry scope
+
+P3 must establish Actestra-owned contracts before any real external worker is
+adapted:
+
+1. task, session, workspace, worker, approval, event, and artifact models;
+2. a versioned unified event envelope and ordering rules;
+3. the `AgentAdapter` lifecycle and deterministic fake worker;
+4. persistence ports, an accepted storage decision, and forward migrations;
+5. credential, policy, approval, MCP/tool, and audit service boundaries;
+6. heartbeat, timeout, crash, restart, and cancellation semantics;
+7. tests proving the renderer cannot bypass main-process authority.
+
+The ordered implementation index and P3 non-claims are in
+[P3 Platform Core](product/P3_PLATFORM_CORE.md).
 
 ## Next gate
 
-1. Commit and push the review evidence, then require that exact PR head to pass
-   macOS CI.
-2. Mark PR 2 ready and require its GitHub review to finish without unresolved
-   blocking comments.
-3. Merge P2 only after review and CI; then begin P3 models and deterministic fake
-   worker contracts in a dedicated branch.
+1. Commit and push the P3 kickoff from exact accepted `main`, then open a draft
+   pull request.
+2. Define the minimum domain vocabulary and event-ordering invariants with tests
+   before choosing a concrete database.
+3. Record the persistence and migration choice in a new ADR before adding the
+   backend dependency.
+4. Implement the `AgentAdapter` contract and deterministic fake worker behind
+   the main-process boundary.
+5. Require lifecycle, approval, cancellation, crash-recovery, migration, and
+   renderer-bypass tests before P3 can be accepted.
 
 ## Open decisions
 
 - License for original Actestra source.
-- Long-term dependency upgrade policy beyond the P2 Node.js, Bun, Electron, and
-  React pins.
 - P3 local database technology and migration registry beyond layout version 1.
+- Credential storage mechanism and platform-keychain boundary.
+- Policy and approval rule representation.
+- MCP/tool gateway transport and capability manifest shape.
 - Worker sandbox implementation per operating system.
+- Long-term dependency upgrade policy.
 - Code-signing, notarization, update, and distribution accounts.
-- Cloud identity or sync scope, which is outside the initial MVP unless promoted
-  by a new product decision.
+- Cloud identity or sync scope, which remains outside the initial MVP unless
+  promoted by a new product decision.
 
 ## Known blockers and non-claims
 
-- The local P2 `.app` is deliberately unsigned and is not a candidate.
+- P3 implementation has not started; this branch is only the verified entry
+  point and execution index.
+- No real worker may be integrated until the P3 contracts and fake-worker gate
+  pass.
+- The local P2 package remains deliberately unsigned and is not a candidate.
 - Signing, notarization, SBOM, provenance, clean-machine installation, update
   metadata, and cross-platform acceptance remain future gates.
-- Task persistence, workers, tools, approvals, and orchestration are not
-  implemented.
-- Draft PR 2 remains unmerged; its final GitHub review is pending.
-- The fourth local CodeRabbit confirmation attempt was rate-limited and did not
-  produce a result.
-- There is no candidate, release, deployment, distribution, or user acceptance.
+- There is no release, deployment, distribution, or user acceptance.
 
 ## Update policy
 

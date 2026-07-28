@@ -18,14 +18,17 @@ release infrastructure, or product boundaries with Aera.
 
 ## Current state
 
-P1 is accepted on `main`. Actestra is now in **P2 — Independent Product
-Shell**. Exact implementation commit
-`1892b48402b1bfa9425a34172ff79259b7190b81` is locally verified and passed its
-first macOS arm64 CI run. Review-remediation commit
-`892a44240405c1d2d4720d4ff7e09a6a19bbe4e9` also passes local validation and CI
-in
-[draft pull request 2](https://github.com/bignormal/actestra-desktop/pull/2);
-final-head CI, GitHub review, and merge remain pending.
+P2 is accepted on `main`.
+[Pull request 2](https://github.com/bignormal/actestra-desktop/pull/2) squash
+merged the independent product shell at
+`76d6a58b20c3e010ee759358f2c86be80bc6a6c1`, and
+[main CI](https://github.com/bignormal/actestra-desktop/actions/runs/30329620829)
+passes on that exact commit.
+
+Actestra is now entering **P3 — Platform Core and Contracts** on
+`feat/platform-core-contracts`. The branch currently establishes only the P3
+execution index; no P3 model, database, worker, approval, policy, credential,
+tool, or audit implementation exists yet.
 
 - The Electron 37.10.3 and React 19.2.4 shell is original Actestra source; no
   AionUi, AionCore, Goose, Eigent, Aera, or AgentEra application source or asset
@@ -40,13 +43,16 @@ final-head CI, GitHub review, and merge remain pending.
   unsigned arm64 app/DMG/ZIP packaging, packaged identity/CSP checks, and a
   fresh-profile three-stage startup smoke pass locally.
 - The shell has no task persistence, worker runtime, tool execution, or
-  orchestration yet; those begin behind P3 contracts.
+  orchestration yet; P3 defines and proves those boundaries with a deterministic
+  fake before any real worker is integrated.
 - There is no CI-backed candidate, signed release, deployment, distribution, or
   user acceptance.
 
 See [Project Status](docs/PROJECT_STATUS.md) for the evidence-backed state.
 The local P2 proof is recorded in
 [P2 Product Shell](docs/product/P2_PRODUCT_SHELL.md).
+The current execution order is recorded in
+[P3 Platform Core](docs/product/P3_PLATFORM_CORE.md).
 
 ## Start here
 
