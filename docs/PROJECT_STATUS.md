@@ -4,7 +4,10 @@ Last updated: 2026-07-28
 
 ## Current phase
 
-### P3 — Platform Core and Contracts (P3.1-P3.3 CI-backed; P3.4 next)
+### P3 — Platform Core and Contracts
+
+P3.1-P3.3 are CI-backed. P3.4 local validation passed; commit, push, and CI
+remain pending.
 
 P0, P1, and P2 are accepted on `main`.
 [Pull request 2](https://github.com/bignormal/actestra-desktop/pull/2) merged
@@ -33,8 +36,19 @@ and an exact Electron-runtime compatibility probe.
 [macOS arm64 CI run 30335076556](https://github.com/bignormal/actestra-desktop/actions/runs/30335076556)
 passes on that exact implementation commit.
 
-The adapter is not registered at application startup and exposes no preload or
-renderer operation. No worker or privileged service exists.
+The local P3.4 working tree above current commit
+`6817a384be66d9ffaed990c8777edc2e76eec1a8` accepts
+[ADR-0006](architecture/decisions/0006-agent-adapter-lifecycle-and-supervision.md)
+and adds protocol version 1, exact capability negotiation, an `AgentAdapter`
+contract, observed-time lifecycle supervision, immutable attempts, terminal
+reconciliation, cancellation, crash, bounded restart, and an explicitly
+stepped deterministic fake adapter. This work is not yet committed, pushed, or
+CI-backed.
+
+The SQLite adapter, P3.4 supervisor, and fake adapter are not registered at
+application startup and expose no preload or renderer operation. The fake
+performs no filesystem, network, process, shell, model, credential, or tool
+operation. No real worker, worker transport, or privileged service exists.
 
 Local validation of P3.3 at
 `4de756984269624a02fbfdf77e558c958a03c2e0` on
@@ -59,11 +73,36 @@ Local validation of P3.3 at
   weakening event invariants; the 17-file post-remediation review completed
   with 0 issues.
 
+Local validation of the current uncommitted P3.4 working tree on
+`feat/platform-core-contracts`:
+
+- three focused contract files — pass with 22 tests covering version and
+  capability rejection, lifecycle order, messages, approval grant/denial/
+  expiry/cancellation, normal and forced cancellation, startup and heartbeat
+  timeout, crash, fresh-attempt restart, restart bounds, identity and sequence
+  drift, approval-reference drift, and terminal reconciliation;
+- `bun run check` — pass, including format, lint, strict types, all 12 Vitest
+  files with 76 tests, the exact Electron `37.10.3` / Node.js `22.21.1` /
+  SQLite `3.50.4` probe, the 3-scenario process-failure harness, the 21-source
+  product-boundary check, and desktop build;
+- `bun run test:coverage` — pass after remediation with 81.88% statement,
+  75.28% branch, and 93.75% function coverage overall; `core/agentAdapter.ts`
+  has 89.71% statement coverage and `main/workers` has 75.86%;
+- `bun run docs:check` — pass for all 27 Markdown files;
+- `bunx markdownlint-cli2 'docs/**/*.md' 'README.md' 'AGENTS.md'` — pass with
+  0 issues;
+- `git diff --cached --check` — pass;
+- `coderabbit review --agent -t uncommitted -c AGENTS.md` — the first
+  tracked-file review raised 1 minor status-wording issue; the complete 13-file
+  review raised 4 major lifecycle/validation issues; all were verified and
+  remediated, and the final 13-file review completed with 0 issues;
+- commit, push, and exact-head CI remain pending.
+
 ## Evidence snapshot
 
 | Area | State | Evidence or blocker |
 | --- | --- | --- |
-| Repository | Pushed P3 draft PR | `feat/platform-core-contracts` begins at `76d6a58b20c3e010ee759358f2c86be80bc6a6c1`; P3.1/P3.2 commit `31dd6e4178eb7641b45be0ee2bccb862a96dac99`; P3.3 commit `4de756984269624a02fbfdf77e558c958a03c2e0`; draft PR 3 |
+| Repository | Pushed P3.1-P3.3 draft plus local P3.4 worktree | `feat/platform-core-contracts` begins at `76d6a58b20c3e010ee759358f2c86be80bc6a6c1`; current pushed head `6817a384be66d9ffaed990c8777edc2e76eec1a8`; uncommitted P3.4 changes; draft PR 3 |
 | P2 merge | Accepted on `main` | PR 2 final head `f972bb6c33c925f3e333a6ee87d20e5bbb72cece`; squash merge `76d6a58b20c3e010ee759358f2c86be80bc6a6c1` |
 | P2 main CI | Pass | Main push run 30329620829 passed on the exact squash merge |
 | P3 kickoff CI | Pass | Pull-request run 30329964305 passed on exact pushed head `b9c1119479c805c02452e4054a3d904649a3ca03` |
@@ -71,12 +110,12 @@ Local validation of P3.3 at
 | P3.3 CI | Pass | Pull-request run 30335076556 passed on exact implementation commit `4de756984269624a02fbfdf77e558c958a03c2e0` |
 | Product shell | Implemented | Original Actestra Electron/React shell; no upstream or Aera application source or asset imported |
 | Renderer boundary | Verified | Context isolation, sandbox, Node and packaged DevTools disabled, production CSP denies connections, narrow typed bridge |
-| Automated tests | Exact P3.3 implementation CI pass | Nine Vitest files with 54 tests, exact Electron SQLite probe, and three-scenario process-failure harness passed in run 30335076556 |
+| Automated tests | Local P3.4 pass; exact CI remains P3.3 | Locally, 12 Vitest files with 76 tests plus exact Electron SQLite probe, process-failure harness, boundary check, and build pass; run 30335076556 remains the latest exact implementation CI evidence |
 | Desktop package | Local unsigned evidence | macOS arm64 app, DMG, and ZIP verified; not a candidate |
 | P3 domain contracts | Implemented and CI-backed | Typed IDs and timestamps; workspace, task, session, worker, approval, and artifact records; transition and graph invariants; exact commit and run above |
 | P3 event contract | Implemented and CI-backed | Schema version 1; per-attempt gapless order, exact-id idempotency, verified replay cursors, terminal enforcement, and diagnostic redaction; exact commit and run above |
 | P3 persistence and migrations | Implemented and CI-backed | ADR-0005, storage-neutral port, owned SQLite schema versions 1 and 2, immutable checksummed history, rollback/future/corruption rejection, private file modes, domain round-trip, and ordered event replay; exact commit and run above |
-| P3 worker lifecycle | Not implemented | `AgentAdapter` and deterministic fake worker remain to be built |
+| P3 worker lifecycle | Locally implemented; not committed or CI-backed | ADR-0006, protocol version 1, runtime validation, supervisor, observed-time health, cancellation, crash, bounded fresh-attempt restart, deterministic fake, and 22 focused tests |
 | P3 privileged services | Not implemented | Credential, policy, approval, MCP/tool, and audit services remain absent |
 | Release | None | No candidate, signed artifact, deployment, distribution, or user acceptance |
 
@@ -129,14 +168,12 @@ The ordered implementation index and P3 non-claims are in
 
 ## Next gate
 
-1. Implement the `AgentAdapter` contract and deterministic fake worker behind
-   the main-process boundary.
-2. Add heartbeat, timeout, cancellation, crash, restart, and terminal
-   reconciliation contract tests.
-3. Keep real AionUi, Goose, Eigent, or other workers out until the fake-worker
+1. Complete independent review and final local verification of the P3.4
+   contract, supervisor, and deterministic fake.
+2. Commit and push P3.4, then require exact-head pull-request CI evidence.
+3. Begin P3.5 privileged service contracts only after P3.4 evidence is recorded.
+4. Keep real AionUi, Goose, Eigent, or other workers out until the whole P3 exit
    gate passes.
-4. Require lifecycle, approval, cancellation, crash-recovery, migration, and
-   renderer-bypass tests before P3 can be accepted.
 
 ## Open decisions
 
@@ -152,10 +189,14 @@ The ordered implementation index and P3 non-claims are in
 
 ## Known blockers and non-claims
 
-- P3.1 through P3.3 are CI-backed, but they do not complete the P3 exit gate.
-- P3.4 through P3.6 remain unimplemented.
-- The P3.3 adapter is not registered with application startup and is not a
-  renderer-visible feature.
+- P3.1 through P3.3 are CI-backed, and P3.4 is locally implemented, but they do
+  not complete the P3 exit gate.
+- P3.4 has no commit, push, or CI evidence yet. P3.5 and P3.6 remain
+  unimplemented.
+- The P3.3 persistence adapter and P3.4 worker components are not registered
+  with application startup and are not renderer-visible features.
+- The P3.4 deterministic fake is test infrastructure, not a worker process or
+  evidence of packaged crash recovery.
 - No real worker may be integrated until the P3 contracts and fake-worker gate
   pass.
 - The local P2 package remains deliberately unsigned and is not a candidate.

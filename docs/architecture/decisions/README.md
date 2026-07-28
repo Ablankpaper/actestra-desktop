@@ -19,6 +19,7 @@ components or phases.
 | [0003](0003-clean-shell-selective-ports.md) | Accepted | Build an Actestra-owned shell and port upstream modules selectively |
 | [0004](0004-core-domain-event-stream.md) | Accepted | Own the core domain and order events per worker attempt |
 | [0005](0005-sqlite-persistence-and-migrations.md) | Accepted | Use embedded SQLite behind ports with forward-only migrations |
+| [0006](0006-agent-adapter-lifecycle-and-supervision.md) | Accepted | Version and supervise immutable agent attempts |
 
 ## Creating an ADR
 

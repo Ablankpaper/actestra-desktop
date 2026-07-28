@@ -1,6 +1,7 @@
 # System Overview
 
-Status: P2 shell implemented; P3.1-P3.3 contracts and persistence CI-backed
+Status: P2 shell implemented; P3.1-P3.3 CI-backed; P3.4 locally validated;
+commit, push, and CI remain pending
 
 ## Context
 
@@ -55,10 +56,12 @@ credential, installation, or publishing authority.
 
 P3.1 and P3.2 add a runtime-neutral core domain, lifecycle validation, and
 version 1 event stream contract. P3.3 adds a storage-neutral port plus a
-main-owned SQLite adapter with schema versions 1 and 2. None are registered with
-application startup or exposed to the renderer yet. Policy and approval
-services, tool gateway, worker adapters, and workers shown below remain P3 or
-later components. They are architectural boundaries, not hidden
+main-owned SQLite adapter with schema versions 1 and 2. P3.4 locally adds the
+version 1 `AgentAdapter` contract, a main-owned lifecycle supervisor, and a
+deterministic in-memory fake adapter. None are registered with application
+startup or exposed to the renderer yet. Policy and approval services, tool
+gateway, process transports, real worker adapters, and workers shown below
+remain P3 or later components. They are architectural boundaries, not hidden
 implementations in the package.
 
 The SQLite adapter owns `state/actestra.sqlite3` beneath Actestra user data,
@@ -110,23 +113,39 @@ redaction.
 
 ## Adapter lifecycle
 
-The language-level interface may change during P3, but it must preserve these
-capabilities:
+Protocol version 1 is accepted in
+[ADR-0006](decisions/0006-agent-adapter-lifecycle-and-supervision.md) and owns
+this language-level boundary:
 
 ```ts
 interface AgentAdapter {
   capabilities(): Promise<AgentCapabilities>
-  start(task: AgentTask): Promise<AgentSession>
-  send(sessionId: string, message: AgentInput): Promise<void>
-  approve(requestId: string, decision: ApprovalDecision): Promise<void>
-  cancel(sessionId: string, reason?: string): Promise<void>
-  subscribe(sessionId: string, handler: AgentEventHandler): Unsubscribe
-  dispose(sessionId: string): Promise<void>
+  start(request: AgentStartRequest): Promise<void>
+  send(sessionId: SessionId, input: AgentInput): Promise<void>
+  approve(
+    requestId: ToolRequestId,
+    decision: AgentApprovalDecision,
+  ): Promise<void>
+  cancel(sessionId: SessionId, reason?: string): Promise<void>
+  subscribe(sessionId: SessionId, handler: AgentSignalHandler): Unsubscribe
+  dispose(sessionId: SessionId): Promise<void>
 }
 ```
 
+Capabilities and the protocol version are checked exactly before start.
+Control signals and nested core events have independent gapless sequences.
+Session, worker, and event-stream identity is immutable for one attempt; crash
+or timeout recovery starts a bounded replacement with fresh attempt identities.
+The supervisor uses observed local time for startup, heartbeat, and cancellation
+acknowledgement bounds instead of trusting worker timestamps.
+Terminal attempts remain readable after adapter cleanup until the caller
+explicitly disposes the supervisor record; that release clears its in-memory
+events. P3.6 must persist required outcome and incident evidence first.
+
 Adapters translate external formats. The UI and app core must not branch on a
-Goose-specific or future-worker-specific event format.
+Goose-specific or future-worker-specific event format. The deterministic fake
+performs no filesystem, network, process, shell, model, credential, or tool
+operation.
 
 ## Event contract
 
@@ -210,8 +229,10 @@ The core must distinguish:
 - policy rejection.
 
 These states must not be collapsed into a generic success, generic chat message,
-or silent retry. The implemented P3.1 state machines currently establish the
-vocabulary; heartbeat, restart, and reconciliation behavior remains P3.4 work.
+or silent retry. P3.4 locally implements startup and heartbeat timeout,
+idempotent cancellation, cancellation acknowledgement timeout, protocol
+failure, crash, terminal reconciliation, and bounded fresh-attempt restart
+semantics. Durable incident storage and renderer projection remain P3.6 work.
 
 ## Deferred choices
 

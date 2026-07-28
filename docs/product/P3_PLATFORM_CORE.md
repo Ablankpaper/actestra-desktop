@@ -1,6 +1,7 @@
 # P3 Platform Core and Contracts
 
-Status: P3.1-P3.3 pushed and CI-backed; P3.4 next; P3 remains open
+Status: P3.1-P3.3 pushed and CI-backed; P3.4 locally validated with commit,
+push, and CI pending; P3 remains open
 
 Evidence date: 2026-07-28
 
@@ -46,10 +47,12 @@ The first implementation slice is governed by
 [ADR-0004](../architecture/decisions/0004-core-domain-event-stream.md).
 The persistence slice is governed by
 [ADR-0005](../architecture/decisions/0005-sqlite-persistence-and-migrations.md).
+The worker lifecycle slice is governed by
+[ADR-0006](../architecture/decisions/0006-agent-adapter-lifecycle-and-supervision.md).
 
 ## Implemented slice
 
-P3.1 through P3.3 now provide:
+P3.1 through the local P3.4 working tree now provide:
 
 - branded opaque identifiers and canonical UTC timestamps;
 - workspace, task, session, worker, approval, and artifact records;
@@ -69,12 +72,20 @@ P3.1 through P3.3 now provide:
   without weakening sequence, identity, lifecycle, or terminal checks;
 - an exact Electron embedded-runtime probe for SQLite options, constraints,
   strict types, and rollback.
+- a protocol-versioned `AgentAdapter` with a closed capability vocabulary and
+  runtime validation for starts, messages, approvals, and control signals;
+- main-owned supervision for readiness, heartbeat, cancellation
+  acknowledgement, control/core-event ordering, immutable attempt identity,
+  terminal reconciliation, crash, timeout, and bounded fresh-attempt restart;
+- a deterministic, explicitly stepped fake adapter with an injected clock and
+  no filesystem, network, process, shell, model, credential, or tool authority.
 
-The domain, event, and port contracts are pure TypeScript under
+The domain, event, port, and adapter contracts are pure TypeScript under
 `apps/desktop/src/core`. The SQLite implementation is main-owned under
-`apps/desktop/src/main/persistence`; it is not registered with application
-startup and grants no database, path, SQL, filesystem, or credential authority
-to preload or renderer.
+`apps/desktop/src/main/persistence`; the supervisor and fake adapter are
+main-owned under `apps/desktop/src/main/workers`. None are registered with
+application startup, and none grant database, path, SQL, filesystem, process,
+shell, tool, or credential authority to preload or renderer.
 
 ## Execution order
 
@@ -110,10 +121,22 @@ to preload or renderer.
 
 ### P3.4 — Worker adapter and deterministic fake
 
-- Define capabilities, start, send, approve, cancel, subscribe, and dispose.
-- Add heartbeat, timeout, crash, restart, and cancellation semantics.
-- Implement only a deterministic fake worker in P3; real worker adapters start
-  in later phases.
+- Accepted locally: ADR-0006 fixes protocol compatibility, immutable attempt
+  identity, control/core-event sequencing, supervision, cancellation, crash,
+  and bounded restart semantics.
+- Implemented locally: capabilities, start, send, approve, cancel, subscribe,
+  and dispose with exact runtime validation.
+- Implemented locally: explicit startup, heartbeat, and cancellation
+  acknowledgement bounds; fail-closed protocol and identity drift; terminal
+  reconciliation; crash; and fresh-identity restart.
+- Implemented locally: only a deterministic fake adapter with a controllable
+  clock and explicit plans. It performs no real worker or privileged operation.
+- Verified locally on the uncommitted P3.4 working tree above
+  `6817a384be66d9ffaed990c8777edc2e76eec1a8`: the three new test files pass 22
+  protocol and lifecycle tests, and `bun run check` passes all 12 test files
+  with 76 tests, exact-runtime, process-failure, boundary, and build checks.
+- Not yet committed, pushed, or CI-backed. Real worker adapters remain later
+  phase work.
 
 ### P3.5 — Privileged services
 
@@ -139,12 +162,16 @@ to preload or renderer.
   immutable forward migrations, and fail-closed database adoption are accepted
   in
   [ADR-0005](../architecture/decisions/0005-sqlite-persistence-and-migrations.md).
+- Agent protocol version 1, immutable attempt identity, independent signal/event
+  ordering, observed-time supervision, cancellation, crash, and bounded
+  fresh-attempt restart are accepted in
+  [ADR-0006](../architecture/decisions/0006-agent-adapter-lifecycle-and-supervision.md).
 
 ## Questions that still require explicit decisions
 
-- How are capability manifests versioned and rejected when incompatible?
 - Which data is audit evidence, and which data must be redacted or never stored?
 - How are platform keychains represented behind a testable credential port?
+- Which supervisor incidents must become durable audit evidence in P3.6?
 
 Answers that constrain multiple components must be recorded as ADRs rather than
 silently embedded in implementation code.
@@ -166,10 +193,12 @@ The exact source commit and CI run must be recorded in
 
 ## Non-claims
 
-- P3.1 through P3.3 do not complete the P3 exit gate.
+- P3.1 through the locally implemented P3.4 slice do not complete the P3 exit
+  gate.
 - No credential backend, policy language, or MCP transport is selected.
-- No fake or real worker, process transport, persistence-service process, IPC
-  route, or renderer feature is implemented.
+- The deterministic fake is protocol test infrastructure, not a real worker.
+  No real worker, process transport, persistence-service process, IPC route, or
+  renderer worker feature is implemented.
 - The SQLite adapter is not part of application startup and is not evidence of
   restart recovery through the packaged UI.
 - No real worker or external upstream source is imported.
