@@ -1,6 +1,10 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AppInfo } from "../../apps/desktop/src/shared/contracts";
+import {
+  PLATFORM_SNAPSHOT_CONTRACT_VERSION,
+  type AppInfo,
+  type PlatformSnapshot,
+} from "../../apps/desktop/src/shared/contracts";
 import { App } from "../../apps/desktop/src/renderer/App";
 
 const APP_INFO: AppInfo = {
@@ -13,12 +17,28 @@ const APP_INFO: AppInfo = {
   networkPolicy: "offline-shell",
 };
 
+const PLATFORM_SNAPSHOT: PlatformSnapshot = {
+  contractVersion: PLATFORM_SNAPSHOT_CONTRACT_VERSION,
+  authority: "main-only",
+  privilegedServices: "registered-inert",
+  policy: "deny-by-default",
+  credentials: "opaque-references-only",
+  tools: "disabled",
+  audit: {
+    durability: "sqlite-metadata-only",
+    recordCount: 0,
+    lastSequence: 0,
+  },
+  attempts: [],
+};
+
 describe("Actestra product shell", () => {
   beforeEach(() => {
     Object.defineProperty(window, "actestra", {
       configurable: true,
       value: {
         getAppInfo: vi.fn().mockResolvedValue(APP_INFO),
+        getPlatformSnapshot: vi.fn().mockResolvedValue(PLATFORM_SNAPSHOT),
         notifyRendererReady: vi.fn(),
       },
     });
@@ -36,6 +56,8 @@ describe("Actestra product shell", () => {
     expect(await screen.findByText("0.1.0-alpha.0")).toBeInTheDocument();
     expect(screen.getByText("darwin · arm64")).toBeInTheDocument();
     expect(screen.getByText("External blocked")).toBeInTheDocument();
+    expect(await screen.findByText("Main-only")).toBeInTheDocument();
+    expect(screen.getByText("0 terminal attempts")).toBeInTheDocument();
     expect(window.actestra.notifyRendererReady).toHaveBeenCalled();
   });
 
@@ -57,5 +79,16 @@ describe("Actestra product shell", () => {
 
     expect(await screen.findByText("Unavailable")).toBeInTheDocument();
     expect(screen.getByText("No workers running")).toBeInTheDocument();
+  });
+
+  it("reports platform evidence failure instead of leaving a loading claim", async () => {
+    vi.mocked(window.actestra.getPlatformSnapshot).mockRejectedValueOnce(
+      new Error("platform evidence unavailable"),
+    );
+
+    render(<App />);
+
+    expect(await screen.findByText("Evidence unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("Evidence loading")).not.toBeInTheDocument();
   });
 });

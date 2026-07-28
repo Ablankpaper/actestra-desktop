@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { DatabaseSync } from "node:sqlite";
 import {
   CoreContractError,
@@ -7,9 +8,14 @@ import {
   advanceCoreEventStreamState,
   approvalId,
   artifactId,
+  assertAgentAttemptEvidence,
+  assertAppendPrivilegedAuditInput,
+  assertAuditRecord,
   assertCoreEvent,
   assertDomainGraph,
   assertIdempotentCoreEventDelivery,
+  auditRecordId,
+  compareInstants,
   createCoreEventStreamState,
   eventStreamId,
   instant,
@@ -19,6 +25,9 @@ import {
   workerId,
   workspaceId,
   type ApprovalState,
+  type AgentAttemptEvidence,
+  type AppendPrivilegedAuditInput,
+  type AuditRecord,
   type ArtifactKind,
   type ArtifactState,
   type CoreEvent,
@@ -27,7 +36,10 @@ import {
   type CorePersistencePort,
   type DomainGraph,
   type EventStreamId,
+  type PersistEvidenceResult,
   type PersistEventResult,
+  type PlatformEvidencePersistencePort,
+  type PrivilegedAuditSummary,
   type SessionState,
   type TaskState,
   type WorkerState,
@@ -41,6 +53,15 @@ const SQLITE_BUSY_TIMEOUT_MS = 5_000;
 const CORE_EVENT_COLUMNS = `
   event_id, stream_id, sequence, occurred_at, workspace_id, task_id,
   session_id, worker_id, type, redaction, envelope_json
+`;
+const PRIVILEGED_AUDIT_COLUMNS = `
+  sequence, record_id, occurred_at, request_id, workspace_id, task_id,
+  session_id, worker_id, tool_id, action, resource_kind, event_type,
+  redaction, record_json
+`;
+const AGENT_ATTEMPT_EVIDENCE_COLUMNS = `
+  sequence, session_id, workspace_id, task_id, worker_id, stream_id, state,
+  last_core_event_sequence, incident_code, redaction, evidence_json
 `;
 
 type SqliteRow = Record<string, unknown>;
@@ -89,6 +110,17 @@ function asRows(rows: readonly unknown[]): readonly SqliteRow[] {
 
     return row as SqliteRow;
   });
+}
+
+function deepFreeze<Value>(value: Value): Value {
+  if (typeof value !== "object" || value === null || Object.isFrozen(value)) {
+    return value;
+  }
+
+  for (const child of Object.values(value)) {
+    deepFreeze(child);
+  }
+  return Object.freeze(value);
 }
 
 function assertPrivateDirectory(directoryPath: string): void {
@@ -189,6 +221,85 @@ function parseStoredEvent(row: SqliteRow): CoreEvent {
   return value;
 }
 
+function parseStoredAuditRecord(row: SqliteRow): AuditRecord {
+  const encoded = requiredString(row, "record_json");
+  let value: unknown;
+
+  try {
+    value = JSON.parse(encoded);
+    assertAuditRecord(value);
+  } catch (error) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "A persisted privileged audit record violates its contract",
+      {
+        cause: error,
+      },
+    );
+  }
+
+  if (
+    requiredNumber(row, "sequence") !== value.sequence ||
+    requiredString(row, "record_id") !== value.recordId ||
+    requiredString(row, "occurred_at") !== value.occurredAt ||
+    requiredString(row, "request_id") !== value.event.context.requestId ||
+    requiredString(row, "workspace_id") !== value.event.context.workspaceId ||
+    requiredString(row, "task_id") !== value.event.context.taskId ||
+    requiredString(row, "session_id") !== value.event.context.sessionId ||
+    requiredString(row, "worker_id") !== value.event.context.workerId ||
+    requiredString(row, "tool_id") !== value.event.context.toolId ||
+    requiredString(row, "action") !== value.event.context.action ||
+    requiredString(row, "resource_kind") !== value.event.context.resourceKind ||
+    requiredString(row, "event_type") !== value.event.type ||
+    requiredString(row, "redaction") !== value.redaction
+  ) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "A persisted privileged audit projection does not match its canonical record",
+    );
+  }
+
+  return deepFreeze(value);
+}
+
+function parseStoredAgentAttemptEvidence(row: SqliteRow): AgentAttemptEvidence {
+  const encoded = requiredString(row, "evidence_json");
+  let value: unknown;
+
+  try {
+    value = JSON.parse(encoded);
+    assertAgentAttemptEvidence(value);
+  } catch (error) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted agent attempt evidence violates its contract",
+      {
+        cause: error,
+      },
+    );
+  }
+
+  const incidentCode = optionalString(row, "incident_code");
+  if (
+    requiredString(row, "session_id") !== value.sessionId ||
+    requiredString(row, "workspace_id") !== value.workspaceId ||
+    requiredString(row, "task_id") !== value.taskId ||
+    requiredString(row, "worker_id") !== value.workerId ||
+    requiredString(row, "stream_id") !== value.streamId ||
+    requiredString(row, "state") !== value.state ||
+    requiredNumber(row, "last_core_event_sequence") !== value.lastCoreEventSequence ||
+    incidentCode !== value.incident?.code ||
+    requiredString(row, "redaction") !== value.redaction
+  ) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted agent attempt projection does not match its canonical evidence",
+    );
+  }
+
+  return deepFreeze(value);
+}
+
 function verifyNoForeignKeyViolations(database: DatabaseSync): void {
   const violations = database.prepare("PRAGMA foreign_key_check").all();
 
@@ -204,7 +315,10 @@ export function resolveCoreDatabasePath(userDataPath: string): string {
   return path.join(userDataPath, STATE_DIRECTORY, CORE_DATABASE_FILENAME);
 }
 
-class SqliteCorePersistence implements CorePersistencePort {
+export interface ActestraPersistencePort
+  extends CorePersistencePort, PlatformEvidencePersistencePort {}
+
+class SqliteCorePersistence implements ActestraPersistencePort {
   private database: DatabaseSync | null;
   private readonly streamStates = new Map<EventStreamId, CoreEventStreamState>();
 
@@ -637,6 +751,234 @@ class SqliteCorePersistence implements CorePersistencePort {
     return replay;
   }
 
+  async appendPrivilegedAudit(input: AppendPrivilegedAuditInput): Promise<AuditRecord> {
+    const database = this.requireDatabase();
+    try {
+      assertAppendPrivilegedAuditInput(input);
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Privileged audit append is invalid", {
+        cause: error,
+      });
+    }
+
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const existingRow = database
+        .prepare(
+          `SELECT ${PRIVILEGED_AUDIT_COLUMNS}
+           FROM privileged_audit_records
+           WHERE record_id = ?`,
+        )
+        .get(input.recordId) as SqliteRow | undefined;
+      if (existingRow !== undefined) {
+        const existing = parseStoredAuditRecord(existingRow);
+        if (
+          existing.occurredAt === input.occurredAt &&
+          isDeepStrictEqual(existing.event, input.event)
+        ) {
+          database.exec("COMMIT");
+          return existing;
+        }
+        throw new PersistenceError(
+          "evidence-conflict",
+          "Privileged audit record identifier conflicts with durable evidence",
+        );
+      }
+
+      const summary = database
+        .prepare(
+          `SELECT COUNT(*) AS record_count, COALESCE(MAX(sequence), 0) AS last_sequence
+           FROM privileged_audit_records`,
+        )
+        .get() as SqliteRow;
+      const recordCount = requiredNumber(summary, "record_count");
+      const lastSequence = requiredNumber(summary, "last_sequence");
+      if (recordCount !== lastSequence || lastSequence >= Number.MAX_SAFE_INTEGER) {
+        throw new PersistenceError("corrupt-database", "Privileged audit sequence is not gapless");
+      }
+
+      const previous = database
+        .prepare(
+          `SELECT ${PRIVILEGED_AUDIT_COLUMNS}
+           FROM privileged_audit_records
+           ORDER BY sequence DESC
+           LIMIT 1`,
+        )
+        .get() as SqliteRow | undefined;
+      if (
+        previous !== undefined &&
+        compareInstants(input.occurredAt, instant(requiredString(previous, "occurred_at"))) < 0
+      ) {
+        throw new PersistenceError("invalid-record", "Privileged audit time cannot move backwards");
+      }
+
+      const record = deepFreeze({
+        contractVersion: 1,
+        recordId: auditRecordId(input.recordId),
+        sequence: lastSequence + 1,
+        occurredAt: instant(input.occurredAt),
+        redaction: "metadata",
+        event: structuredClone(input.event),
+      } satisfies AuditRecord);
+      assertAuditRecord(record);
+      database
+        .prepare(
+          `INSERT INTO privileged_audit_records (
+             sequence, record_id, occurred_at, request_id, workspace_id, task_id,
+             session_id, worker_id, tool_id, action, resource_kind, event_type,
+             redaction, record_json
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          record.sequence,
+          record.recordId,
+          record.occurredAt,
+          record.event.context.requestId,
+          record.event.context.workspaceId,
+          record.event.context.taskId,
+          record.event.context.sessionId,
+          record.event.context.workerId,
+          record.event.context.toolId,
+          record.event.context.action,
+          record.event.context.resourceKind,
+          record.event.type,
+          record.redaction,
+          JSON.stringify(record),
+        );
+      database.exec("COMMIT");
+      return record;
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) {
+        throw error;
+      }
+      throw new PersistenceError(
+        "corrupt-database",
+        "Actestra could not append privileged audit evidence",
+        {
+          cause: error,
+        },
+      );
+    }
+  }
+
+  async appendAgentAttemptEvidence(evidence: AgentAttemptEvidence): Promise<PersistEvidenceResult> {
+    const database = this.requireDatabase();
+    let encodedEvidence: string;
+    let stableEvidence: AgentAttemptEvidence;
+    try {
+      assertAgentAttemptEvidence(evidence);
+      encodedEvidence = JSON.stringify(evidence);
+      const normalizedEvidence: unknown = JSON.parse(encodedEvidence);
+      assertAgentAttemptEvidence(normalizedEvidence);
+      stableEvidence = deepFreeze(normalizedEvidence);
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Agent attempt evidence is invalid", {
+        cause: error,
+      });
+    }
+
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const existingRow = database
+        .prepare(
+          `SELECT ${AGENT_ATTEMPT_EVIDENCE_COLUMNS}
+           FROM agent_attempt_evidence
+           WHERE session_id = ?`,
+        )
+        .get(stableEvidence.sessionId) as SqliteRow | undefined;
+      if (existingRow !== undefined) {
+        const existing = parseStoredAgentAttemptEvidence(existingRow);
+        if (isDeepStrictEqual(existing, stableEvidence)) {
+          database.exec("COMMIT");
+          return {
+            status: "duplicate",
+          };
+        }
+        throw new PersistenceError(
+          "evidence-conflict",
+          "Agent attempt session conflicts with immutable durable evidence",
+        );
+      }
+
+      database
+        .prepare(
+          `INSERT INTO agent_attempt_evidence (
+             session_id, workspace_id, task_id, worker_id, stream_id, state,
+             last_core_event_sequence, incident_code, redaction, evidence_json
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          stableEvidence.sessionId,
+          stableEvidence.workspaceId,
+          stableEvidence.taskId,
+          stableEvidence.workerId,
+          stableEvidence.streamId,
+          stableEvidence.state,
+          stableEvidence.lastCoreEventSequence,
+          stableEvidence.incident?.code ?? null,
+          stableEvidence.redaction,
+          encodedEvidence,
+        );
+      database.exec("COMMIT");
+      return {
+        status: "appended",
+      };
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) {
+        throw error;
+      }
+      throw new PersistenceError(
+        "corrupt-database",
+        "Actestra could not append agent attempt evidence",
+        {
+          cause: error,
+        },
+      );
+    }
+  }
+
+  async summarizePrivilegedAudit(): Promise<PrivilegedAuditSummary> {
+    const database = this.requireDatabase();
+    const row = database
+      .prepare(
+        `SELECT COUNT(*) AS record_count, COALESCE(MAX(sequence), 0) AS last_sequence
+         FROM privileged_audit_records`,
+      )
+      .get() as SqliteRow;
+    const summary = Object.freeze({
+      recordCount: requiredNumber(row, "record_count"),
+      lastSequence: requiredNumber(row, "last_sequence"),
+    });
+    if (summary.recordCount !== summary.lastSequence) {
+      throw new PersistenceError("corrupt-database", "Privileged audit sequence is not gapless");
+    }
+    return summary;
+  }
+
+  async listRecentAgentAttemptEvidence(limit: number): Promise<readonly AgentAttemptEvidence[]> {
+    const database = this.requireDatabase();
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 50) {
+      throw new PersistenceError(
+        "invalid-record",
+        "Agent attempt evidence limit must be between 1 and 50",
+      );
+    }
+
+    const rows = asRows(
+      database
+        .prepare(
+          `SELECT ${AGENT_ATTEMPT_EVIDENCE_COLUMNS}
+           FROM agent_attempt_evidence
+           ORDER BY sequence DESC
+           LIMIT ?`,
+        )
+        .all(limit),
+    );
+    return Object.freeze(rows.map(parseStoredAgentAttemptEvidence));
+  }
+
   async close(): Promise<void> {
     const database = this.database;
     if (database === null) {
@@ -649,7 +991,7 @@ class SqliteCorePersistence implements CorePersistencePort {
   }
 }
 
-export function openSqliteCorePersistence(userDataPath: string): CorePersistencePort {
+export function openSqliteCorePersistence(userDataPath: string): ActestraPersistencePort {
   const databasePath = resolveCoreDatabasePath(userDataPath);
   assertPrivateDirectory(path.dirname(databasePath));
 

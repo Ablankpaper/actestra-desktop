@@ -1,13 +1,22 @@
 import path from "node:path";
 import { app, BrowserWindow, ipcMain, session } from "electron";
-import { APP_INFO_CHANNEL, RENDERER_READY_CHANNEL, type AppInfo } from "../shared/contracts";
+import type { AppInfo } from "../shared/contracts";
 import { CURRENT_DATA_LAYOUT_VERSION, ensureDataLayout } from "./dataLayout";
+import { registerDesktopIpc } from "./ipc/desktopIpc";
+import {
+  createMainPlatformServices,
+  type MainPlatformServices,
+} from "./platform/mainPlatformServices";
 import { isActestraDeepLink, PRODUCT_NAME, resolveUserDataPath } from "./productIdentity";
 import { installSessionSecurity, installWindowSecurity } from "./security";
 import { createWindowOptions } from "./windowOptions";
 
 let mainWindow: BrowserWindow | null = null;
+let platformServices: MainPlatformServices | null = null;
+let disposeDesktopIpc: (() => void) | null = null;
 let hasReportedRendererReady = false;
+let platformShutdown: Promise<void> | null = null;
+let platformShutdownComplete = false;
 
 app.setName(PRODUCT_NAME);
 app.setPath(
@@ -108,12 +117,19 @@ if (!hasSingleInstanceLock) {
       );
 
       installSessionSecurity(session.defaultSession, app.isPackaged);
-      ipcMain.handle(APP_INFO_CHANNEL, getAppInfo);
-      ipcMain.on(RENDERER_READY_CHANNEL, () => {
-        if (!hasReportedRendererReady) {
-          hasReportedRendererReady = true;
-          console.info("ACTESTRA_RENDERER_READY");
-        }
+      const services = createMainPlatformServices(app.getPath("userData"));
+      platformServices = services;
+      disposeDesktopIpc = registerDesktopIpc({
+        ipcMain,
+        trustedWebContents: () => mainWindow?.webContents ?? null,
+        getAppInfo,
+        getPlatformSnapshot: () => services.snapshot(),
+        onRendererReady: () => {
+          if (!hasReportedRendererReady) {
+            hasReportedRendererReady = true;
+            console.info("ACTESTRA_RENDERER_READY");
+          }
+        },
       });
 
       await createMainWindow();
@@ -135,7 +151,11 @@ if (!hasSingleInstanceLock) {
         }
       });
     })
-    .catch((error: unknown) => {
+    .catch(async (error: unknown) => {
+      disposeDesktopIpc?.();
+      disposeDesktopIpc = null;
+      await platformServices?.close().catch(() => undefined);
+      platformServices = null;
       const message = error instanceof Error ? error.message : "unknown startup error";
       console.error(`ACTESTRA_STARTUP_FAILED ${message}`);
       app.exit(1);
@@ -148,7 +168,29 @@ app.on("window-all-closed", () => {
   }
 });
 
-app.on("will-quit", () => {
-  ipcMain.removeHandler(APP_INFO_CHANNEL);
-  ipcMain.removeAllListeners(RENDERER_READY_CHANNEL);
+app.on("will-quit", (event) => {
+  if (platformShutdownComplete) {
+    return;
+  }
+
+  event.preventDefault();
+  if (platformShutdown !== null) {
+    return;
+  }
+
+  disposeDesktopIpc?.();
+  disposeDesktopIpc = null;
+  const services = platformServices;
+  platformServices = null;
+  platformShutdown = (async () => {
+    try {
+      await services?.close();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown persistence close error";
+      console.error(`ACTESTRA_PLATFORM_CLOSE_FAILED ${message}`);
+    } finally {
+      platformShutdownComplete = true;
+      app.quit();
+    }
+  })();
 });

@@ -1,5 +1,5 @@
 import { useEffect, useState, type JSX } from "react";
-import type { AppInfo } from "../shared/contracts";
+import type { AppInfo, PlatformSnapshot } from "../shared/contracts";
 
 const NAVIGATION = [
   { label: "Home", glyph: "⌂", active: true },
@@ -61,6 +61,8 @@ function StatusDot(): JSX.Element {
 export function App(): JSX.Element {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [infoError, setInfoError] = useState(false);
+  const [platformSnapshot, setPlatformSnapshot] = useState<PlatformSnapshot | null>(null);
+  const [platformError, setPlatformError] = useState(false);
   const [draftVisible, setDraftVisible] = useState(false);
 
   useEffect(() => {
@@ -77,6 +79,18 @@ export function App(): JSX.Element {
       .catch(() => {
         if (!cancelled) {
           setInfoError(true);
+        }
+      });
+    window.actestra
+      .getPlatformSnapshot()
+      .then((snapshot) => {
+        if (!cancelled) {
+          setPlatformSnapshot(snapshot);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPlatformError(true);
         }
       });
 
@@ -140,7 +154,7 @@ export function App(): JSX.Element {
           </div>
           <div className="shell-pill">
             <StatusDot />
-            P2 shell
+            P3 boundary
           </div>
         </header>
 
@@ -256,6 +270,16 @@ export function App(): JSX.Element {
             <dt>Network policy</dt>
             <dd>{appInfo?.networkPolicy === "offline-shell" ? "External blocked" : "Loading"}</dd>
           </div>
+          <div>
+            <dt>Platform authority</dt>
+            <dd>
+              {platformError
+                ? "Unavailable"
+                : platformSnapshot?.authority === "main-only"
+                  ? "Main-only"
+                  : "Loading"}
+            </dd>
+          </div>
         </dl>
 
         <div className="rail-divider" />
@@ -274,11 +298,17 @@ export function App(): JSX.Element {
 
         <div className="proof-card">
           <span className="proof-card__label">Current proof</span>
-          <strong>Product shell</strong>
+          <strong>Main-owned boundary</strong>
           <ul>
-            <li>Actestra identity</li>
-            <li>Sandboxed renderer</li>
-            <li>Offline network policy</li>
+            <li>Typed renderer intents</li>
+            <li>Metadata-only audit</li>
+            <li>
+              {platformError
+                ? "Evidence unavailable"
+                : platformSnapshot === null
+                  ? "Evidence loading"
+                  : `${String(platformSnapshot.attempts.length)} terminal attempts`}
+            </li>
           </ul>
         </div>
       </aside>

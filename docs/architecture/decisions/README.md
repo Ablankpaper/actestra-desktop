@@ -21,6 +21,7 @@ components or phases.
 | [0005](0005-sqlite-persistence-and-migrations.md) | Accepted | Use embedded SQLite behind ports with forward-only migrations |
 | [0006](0006-agent-adapter-lifecycle-and-supervision.md) | Accepted | Version and supervise immutable agent attempts |
 | [0007](0007-privileged-service-authorization.md) | Accepted | Gate privileged tools with policy, approval, credential, and audit evidence |
+| [0008](0008-main-owned-projection-and-ipc.md) | Accepted | Keep platform evidence and closed renderer intents main-owned |
 
 ## Creating an ADR
 

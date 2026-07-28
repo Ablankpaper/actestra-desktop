@@ -2,10 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { preloadPrivilegePatterns, rendererPrivilegePatterns } from "./product-boundary-rules.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const productSourceRoot = path.join(repositoryRoot, "apps", "desktop", "src");
 const rendererRoot = path.join(productSourceRoot, "renderer");
+const preloadRoot = path.join(productSourceRoot, "preload");
 
 const forbiddenProductPatterns = [
   { label: "AionUi product identity", pattern: /\baionui\b/i },
@@ -14,21 +16,6 @@ const forbiddenProductPatterns = [
   { label: "upstream service hostname", pattern: /static\.aionui\.com/i },
   { label: "upstream organization identity", pattern: /iofficeai/i },
   { label: "unapproved telemetry client", pattern: /\bsentry\b/i },
-];
-
-const rendererPrivilegePatterns = [
-  { label: "Electron import", pattern: /from\s+['"]electron['"]/ },
-  { label: "Node import", pattern: /from\s+['"]node:/ },
-  {
-    label: "Electron dynamic import",
-    pattern: /\bimport\s*\(\s*['"]electron(?:\/[^'"]+)?['"]\s*\)/,
-  },
-  {
-    label: "Node dynamic import",
-    pattern: /\bimport\s*\(\s*['"]node:[^'"]+['"]\s*\)/,
-  },
-  { label: "CommonJS require", pattern: /\brequire\s*\(/ },
-  { label: "Node process global", pattern: /\bprocess\./ },
 ];
 
 function listFiles(directory) {
@@ -60,6 +47,7 @@ function reportPatternMatches(files, rules) {
 const sourceFiles = listFiles(productSourceRoot);
 const identityFindings = reportPatternMatches(sourceFiles, forbiddenProductPatterns);
 const rendererFindings = reportPatternMatches(listFiles(rendererRoot), rendererPrivilegePatterns);
+const preloadFindings = reportPatternMatches(listFiles(preloadRoot), preloadPrivilegePatterns);
 
 const packageJson = JSON.parse(fs.readFileSync(path.join(repositoryRoot, "package.json"), "utf8"));
 const builderConfiguration = fs.readFileSync(
@@ -94,7 +82,12 @@ if (unexpectedEntitlements.length > 0) {
   );
 }
 
-const findings = [...identityFindings, ...rendererFindings, ...metadataFindings];
+const findings = [
+  ...identityFindings,
+  ...rendererFindings,
+  ...preloadFindings,
+  ...metadataFindings,
+];
 if (findings.length > 0) {
   console.error("Actestra product-boundary check failed:");
   findings.forEach((finding) => console.error(`- ${finding}`));

@@ -9,7 +9,9 @@ export type PersistenceErrorCode =
   | "migration-registry"
   | "migration-history"
   | "corrupt-database"
-  | "domain-reference";
+  | "domain-reference"
+  | "invalid-record"
+  | "evidence-conflict";
 
 export class PersistenceError extends Error {
   constructor(

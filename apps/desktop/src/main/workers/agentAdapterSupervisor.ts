@@ -20,15 +20,18 @@ import {
   type AgentSignal,
   type AgentStartRequest,
   type ApprovalId,
+  type CorrelationId,
   type CoreEvent,
   type CoreEventStreamState,
   type EventStreamId,
   type Instant,
   type SessionId,
   type TaskState,
+  type TaskId,
   type ToolRequestId,
   type UnsubscribeAgentSignals,
   type WorkerId,
+  type WorkspaceId,
 } from "../../core";
 
 export interface AgentAdapterSupervisorConfig {
@@ -66,6 +69,9 @@ export interface AgentSupervisorIncident {
 }
 
 export interface AgentAttemptSnapshot {
+  readonly workspaceId: WorkspaceId;
+  readonly taskId: TaskId;
+  readonly correlationId: CorrelationId;
   readonly sessionId: SessionId;
   readonly workerId: WorkerId;
   readonly streamId: EventStreamId;
@@ -407,6 +413,9 @@ export class AgentAdapterSupervisor {
   snapshot(session: SessionId): AgentAttemptSnapshot {
     const attempt = this.requireAttempt(session);
     return Object.freeze({
+      workspaceId: attempt.request.workspaceId,
+      taskId: attempt.request.taskId,
+      correlationId: attempt.request.correlationId,
       sessionId: attempt.request.sessionId,
       workerId: attempt.request.workerId,
       streamId: attempt.request.streamId,

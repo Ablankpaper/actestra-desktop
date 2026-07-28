@@ -1,6 +1,6 @@
 # System Overview
 
-Status: P2 shell implemented; P3.1-P3.5 are CI-backed; P3.6 is next; P3 is open
+Status: P2 shell implemented; P3.1-P3.5 are CI-backed; P3.6 is locally validated; P3 is open
 
 ## Context
 
@@ -55,16 +55,20 @@ credential, installation, or publishing authority.
 
 P3.1 and P3.2 add a runtime-neutral core domain, lifecycle validation, and
 version 1 event stream contract. P3.3 adds a storage-neutral port plus a
-main-owned SQLite adapter with schema versions 1 and 2. P3.4 adds the
-version 1 `AgentAdapter` contract, a main-owned lifecycle supervisor, and a
-deterministic in-memory fake adapter. P3.5 adds versioned privileged-operation
-and tool-manifest contracts plus main-owned deterministic policy, approval,
-opaque credential-lease, metadata-audit, and tool-gateway services. None are
-registered with application startup or exposed to the renderer yet. There is no
-production policy snapshot, credential backend, input-reference store, real
-tool executor, MCP transport, process transport, or real worker adapter behind
-any component shown above. Those remain P3.6 or later integration work rather
-than hidden package behavior.
+main-owned SQLite adapter with schema versions 1 and 2. P3.4 adds the version 1
+`AgentAdapter` contract, a main-owned lifecycle supervisor, and a deterministic
+in-memory fake adapter. P3.5 adds versioned privileged-operation and
+tool-manifest contracts plus main-owned deterministic policy, approval, opaque
+credential-lease, metadata-audit, and tool-gateway services.
+
+P3.6 locally adds SQLite schema version 3 for durable metadata-only privileged
+audit and immutable terminal-attempt evidence. Electron main now registers an
+inert deny-by-default composition root, a disabled executor, trusted-main-frame
+IPC, and a bounded renderer projection. Preload exposes only application
+metadata, platform snapshot, and renderer-ready intents. There is no production
+policy snapshot, credential backend, input-reference store, real tool executor,
+MCP transport, process transport, or real worker adapter behind any component
+shown above.
 
 The SQLite adapter owns `state/actestra.sqlite3` beneath Actestra user data,
 uses one DELETE/FULL connection, and rejects foreign ownership, future schemas,
@@ -129,6 +133,14 @@ permits one attempt but does not prove execution or success. Failure after an
 executor call is reported as possibly executed and must not be retried
 automatically.
 
+The P3.6 startup, durable evidence, supervisor release, IPC, and projection
+boundary is accepted in
+[ADR-0008](decisions/0008-main-owned-projection-and-ipc.md). Durable audit
+continues its gapless sequence across restart. Terminal worker events and
+metadata-only incident codes must persist before supervisor memory is released.
+Renderer projection excludes event content, incident messages, input
+references, credential references, paths, and raw persistence access.
+
 ## Adapter lifecycle
 
 Protocol version 1 is accepted in
@@ -156,9 +168,10 @@ Session, worker, and event-stream identity is immutable for one attempt; crash
 or timeout recovery starts a bounded replacement with fresh attempt identities.
 The supervisor uses observed local time for startup, heartbeat, and cancellation
 acknowledgement bounds instead of trusting worker timestamps.
-Terminal attempts remain readable after adapter cleanup until the caller
-explicitly disposes the supervisor record; that release clears its in-memory
-events. P3.6 must persist required outcome and incident evidence first.
+Terminal attempts remain readable after adapter cleanup until the main-owned
+evidence coordinator persists their core events and metadata-only terminal
+record. Only then does it cross the supervisor release barrier and clear
+in-memory events. Failed writes retain the snapshot for an idempotent retry.
 
 Adapters translate external formats. The UI and app core must not branch on a
 Goose-specific or future-worker-specific event format. The deterministic fake
@@ -250,7 +263,8 @@ These states must not be collapsed into a generic success, generic chat message,
 or silent retry. P3.4 implements startup and heartbeat timeout,
 idempotent cancellation, cancellation acknowledgement timeout, protocol
 failure, crash, terminal reconciliation, and bounded fresh-attempt restart
-semantics. Durable incident storage and renderer projection remain P3.6 work.
+semantics. P3.6 locally persists terminal incident codes and projects bounded,
+metadata-only attempt state through trusted main-frame IPC.
 
 ## Deferred choices
 
@@ -258,8 +272,9 @@ P2 pins Node.js 24.13.0, Bun 1.3.9, Electron 37.10.3, React 19.2.4, and data
 layout version 1 for the current shell. ADR-0005 selects Electron's embedded
 `node:sqlite` and an Actestra-owned forward migration registry for durable
 storage. P3 still must decide process transport, worker sandbox mechanisms,
-credential/policy services, and utility-process hosting. Signing, notarization,
-update delivery, and cross-platform candidate packaging remain P8 work.
+real credential storage, input-reference storage, production policy, and
+utility-process hosting. Signing, notarization, update delivery, and
+cross-platform candidate packaging remain P8 work.
 
 This document fixes authority and lifecycle boundaries; a pinned shell
 dependency does not pre-decide worker or persistence architecture.

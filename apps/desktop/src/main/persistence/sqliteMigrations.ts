@@ -3,7 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { PersistenceError } from "../../core";
 
 export const ACTESTRA_SQLITE_APPLICATION_ID = 1_095_980_114;
-export const CURRENT_CORE_SCHEMA_VERSION = 2;
+export const CURRENT_CORE_SCHEMA_VERSION = 3;
 
 export interface SqliteMigration {
   readonly version: number;
@@ -122,6 +122,54 @@ export const CORE_SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
         ),
         envelope_json TEXT NOT NULL,
         UNIQUE (stream_id, sequence)
+      ) STRICT;
+    `,
+  },
+  {
+    version: 3,
+    name: "platform-evidence",
+    sql: `
+      CREATE TABLE privileged_audit_records (
+        sequence INTEGER PRIMARY KEY CHECK (sequence > 0),
+        record_id TEXT NOT NULL UNIQUE,
+        occurred_at TEXT NOT NULL,
+        request_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        task_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        worker_id TEXT NOT NULL,
+        tool_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        resource_kind TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        redaction TEXT NOT NULL CHECK (redaction = 'metadata'),
+        record_json TEXT NOT NULL
+      ) STRICT;
+
+      CREATE INDEX privileged_audit_request_idx
+        ON privileged_audit_records(request_id, sequence);
+
+      CREATE TABLE agent_attempt_evidence (
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL UNIQUE,
+        workspace_id TEXT NOT NULL,
+        task_id TEXT NOT NULL,
+        worker_id TEXT NOT NULL,
+        stream_id TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (
+          state IN (
+            'completed',
+            'failed',
+            'cancelled',
+            'crashed',
+            'timed-out',
+            'protocol-failed'
+          )
+        ),
+        last_core_event_sequence INTEGER NOT NULL CHECK (last_core_event_sequence >= 0),
+        incident_code TEXT,
+        redaction TEXT NOT NULL CHECK (redaction = 'metadata'),
+        evidence_json TEXT NOT NULL
       ) STRICT;
     `,
   },

@@ -60,7 +60,7 @@ describe("Actestra SQLite migrations", () => {
     expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
       fromVersion: 0,
       toVersion: CURRENT_CORE_SCHEMA_VERSION,
-      appliedVersions: [1, 2],
+      appliedVersions: [1, 2, 3],
     });
     expect(pragmaNumber(database, "application_id")).toBe(ACTESTRA_SQLITE_APPLICATION_ID);
     expect(pragmaNumber(database, "user_version")).toBe(CURRENT_CORE_SCHEMA_VERSION);
@@ -77,6 +77,10 @@ describe("Actestra SQLite migrations", () => {
         version: 2,
         name: "ordered-core-events",
       },
+      {
+        version: 3,
+        name: "platform-evidence",
+      },
     ]);
   });
 
@@ -91,11 +95,13 @@ describe("Actestra SQLite migrations", () => {
       )
       .run("workspace-preserved", "Preserved workspace", "active", APPLIED_AT, APPLIED_AT);
 
-    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
-      fromVersion: 1,
-      toVersion: 2,
-      appliedVersions: [2],
-    });
+    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 2), APPLIED_AT)).toEqual(
+      {
+        fromVersion: 1,
+        toVersion: 2,
+        appliedVersions: [2],
+      },
+    );
     expect(
       database.prepare("SELECT name FROM workspaces WHERE id = ?").get("workspace-preserved"),
     ).toEqual({
@@ -108,6 +114,35 @@ describe("Actestra SQLite migrations", () => {
     ).toEqual({
       name: "core_events",
     });
+  });
+
+  it("performs a real 2 -> 3 migration without replacing earlier tables", () => {
+    const database = createDatabase();
+    migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 2), APPLIED_AT);
+
+    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
+      fromVersion: 2,
+      toVersion: 3,
+      appliedVersions: [3],
+    });
+    expect(
+      database
+        .prepare(
+          `SELECT name
+           FROM sqlite_schema
+           WHERE type = 'table' AND name IN (
+             'core_events',
+             'privileged_audit_records',
+             'agent_attempt_evidence'
+           )
+           ORDER BY name`,
+        )
+        .all(),
+    ).toEqual([
+      { name: "agent_attempt_evidence" },
+      { name: "core_events" },
+      { name: "privileged_audit_records" },
+    ]);
   });
 
   it("rejects a future schema without changing its version", () => {

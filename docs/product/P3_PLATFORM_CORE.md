@@ -1,6 +1,6 @@
 # P3 Platform Core and Contracts
 
-Status: P3.1-P3.5 pushed and CI-backed; P3.6 next; P3 remains open
+Status: P3.1-P3.5 pushed and CI-backed; P3.6 locally validated; exact CI pending; P3 remains open
 
 Evidence date: 2026-07-28
 
@@ -60,6 +60,8 @@ The worker lifecycle slice is governed by
 [ADR-0006](../architecture/decisions/0006-agent-adapter-lifecycle-and-supervision.md).
 The privileged-service slice is governed by
 [ADR-0007](../architecture/decisions/0007-privileged-service-authorization.md).
+The main integration and projection slice is governed by
+[ADR-0008](../architecture/decisions/0008-main-owned-projection-and-ipc.md).
 
 ## Implemented slice
 
@@ -193,10 +195,27 @@ renderer.
 
 ### P3.6 — Main/renderer proof
 
-- Register privileged services only in the main-process boundary.
-- Expose narrow, typed, intent-level renderer operations.
-- Test that direct filesystem, shell, credential, worker, and tool access cannot
-  bypass the boundary.
+- Accepted locally: ADR-0008 fixes main-owned startup composition, SQLite
+  version 3 platform evidence, terminal-attempt release order, trusted-frame
+  IPC, and bounded metadata-only renderer projection.
+- Implemented locally: application startup opens the owned SQLite store and
+  registers durable audit, no-rule policy, approval, reference-only credential,
+  disabled-executor, and gateway services only in main.
+- Implemented locally: preload exposes exactly three frozen operations on fixed
+  channels. Main accepts zero-argument calls only from the current main frame;
+  runtime validators reject extra response fields and unsupported values.
+- Implemented locally: privileged audit allocates gapless sequence in the write
+  transaction and resumes after restart. Terminal attempt projection persists
+  core events, then immutable metadata evidence, then crosses the supervisor
+  release barrier; partial writes remain retryable.
+- Verified locally: 24 test files pass 129 tests; the boundary scanner checks 34
+  source files and rejects renderer Node, Electron, CommonJS, process, and
+  direct network clients plus privileged preload primitives. The unsigned
+  packaged app reaches application, window, and renderer-ready markers from an
+  isolated profile with SQLite v3 active.
+- Kept absent: generic IPC, protected-operation payloads from renderer, raw
+  audit or event content in renderer, real policy, secret storage, input
+  references, worker process, tool manifest, executor, or transport.
 
 ## Accepted decisions
 
@@ -216,6 +235,10 @@ renderer.
   policy evaluation, exact one-shot approval evidence, opaque credential
   leases, metadata-only audit, and fixed gateway order are accepted in
   [ADR-0007](../architecture/decisions/0007-privileged-service-authorization.md).
+- Main-owned composition, durable metadata-only platform evidence,
+  persist-before-release ordering, trusted-frame zero-argument IPC, and bounded
+  renderer projection are accepted in
+  [ADR-0008](../architecture/decisions/0008-main-owned-projection-and-ipc.md).
 
 ## Questions that still require explicit decisions
 
@@ -223,8 +246,8 @@ renderer.
   references on each supported platform?
 - How does main-owned input-reference storage connect a real transport without
   admitting raw arguments into audit or renderer state?
-- Which supervisor incidents and P3.5 records become durable audit evidence in
-  P3.6?
+- When does synchronous SQLite move from main to a supervised persistence
+  utility before user-workload writes are enabled?
 
 Answers that constrain multiple components must be recorded as ADRs rather than
 silently embedded in implementation code.
@@ -241,20 +264,23 @@ P3 is not complete until tests prove:
 - audit records for protected decisions without credential leakage;
 - renderer inability to bypass the main-process boundary.
 
-The exact source commit and CI run must be recorded in
-[Project Status](../PROJECT_STATUS.md) before merge.
+The local implementation exercises every exit item, but P3 is not accepted
+until the exact source commit and CI run are recorded in
+[Project Status](../PROJECT_STATUS.md) and the Draft receives final review.
 
 ## Non-claims
 
-- P3.1 through the CI-backed P3.5 slice do not complete the P3 exit gate.
+- P3.1 through P3.5 are CI-backed; P3.6 is local-only until its exact commit and
+  CI run are recorded.
 - No credential backend, production policy snapshot, input-reference store, or
   MCP/native transport is selected.
 - The deterministic fake is protocol test infrastructure, not a real worker.
   No real worker, process transport, persistence-service process, IPC route, or
   renderer worker feature is implemented.
-- The SQLite adapter is not part of application startup and is not evidence of
-  restart recovery through the packaged UI.
-- The P3.5 executor is a deterministic test double. Its in-memory approval,
-  audit, and lease state is not persistence or restart evidence.
+- SQLite v3 and the inert platform composition now start in main, but
+  synchronous user-workload persistence still requires a supervised utility.
+- The registered executor is deliberately disabled. Approval, lease, and policy
+  state remains in memory; only metadata audit and terminal attempt evidence is
+  durable.
 - No real worker or external upstream source is imported.
 - No candidate, release, deployment, distribution, or acceptance claim is made.
