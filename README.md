@@ -18,35 +18,77 @@ release infrastructure, or product boundaries with Aera.
 
 ## Current state
 
-P1 is accepted on `main`. Actestra is now in **P2 — Independent Product
-Shell**. Exact implementation commit
-`1892b48402b1bfa9425a34172ff79259b7190b81` is locally verified and passed its
-first macOS arm64 CI run. Review-remediation commit
-`892a44240405c1d2d4720d4ff7e09a6a19bbe4e9` also passes local validation and CI
-in
-[draft pull request 2](https://github.com/bignormal/actestra-desktop/pull/2);
-final-head CI, GitHub review, and merge remain pending.
+P2 is accepted on `main`.
+[Pull request 2](https://github.com/bignormal/actestra-desktop/pull/2) squash
+merged the independent product shell at
+`76d6a58b20c3e010ee759358f2c86be80bc6a6c1`, and
+[main CI](https://github.com/bignormal/actestra-desktop/actions/runs/30329620829)
+passes on that exact commit.
+
+Actestra is in **P3 — Platform Core and Contracts** on
+`feat/platform-core-contracts`. P3.1 domain records and lifecycle rules plus the
+P3.2 version 1 event contract are implemented at
+`31dd6e4178eb7641b45be0ee2bccb862a96dac99` and pass
+[PR CI run 30331681309](https://github.com/bignormal/actestra-desktop/actions/runs/30331681309).
+P3.3 adds a storage-neutral persistence port, accepted SQLite/migration
+decision, forward-only schema registry, and main-owned adapter at
+`4de756984269624a02fbfdf77e558c958a03c2e0`; exact-head
+[PR CI run 30335076556](https://github.com/bignormal/actestra-desktop/actions/runs/30335076556)
+passes. P3.4 adds the protocol-versioned worker boundary, main-owned lifecycle
+supervisor, and deterministic fake at
+`2b1ad9200ff44f2b6be219a8a4b58b0083ebd45b`; exact implementation
+[PR CI run 30339662937](https://github.com/bignormal/actestra-desktop/actions/runs/30339662937)
+passes. P3.5 adds privileged-service contracts and deterministic main-owned
+services governed by
+[ADR-0007](docs/architecture/decisions/0007-privileged-service-authorization.md)
+at `cec0cdc554656c021cdff7f2341ddd3f9b5d83dd`; exact implementation
+[PR CI run 30345370507](https://github.com/bignormal/actestra-desktop/actions/runs/30345370507)
+passes. P3.6 adds the main-only composition root, SQLite schema version 3
+evidence, terminal-attempt release barrier, closed IPC, and bounded renderer
+projection governed by
+[ADR-0008](docs/architecture/decisions/0008-main-owned-projection-and-ipc.md).
+It is implemented at `950fe0efa2fdc5adc69d013acc9f417d201cb28e`; exact
+[PR CI run 30350732223](https://github.com/bignormal/actestra-desktop/actions/runs/30350732223)
+passes. Review remediation is implemented at
+`4fa0fb120a6ceb2c71effd2a552e8d9bbf05d151`; exact
+[PR CI run 30374144474](https://github.com/bignormal/actestra-desktop/actions/runs/30374144474)
+passes. The full 67-file independent review and zero-issue review of all
+remediation files are complete. On 2026-07-28 the owner authorized the next
+gate, and [pull request 3](https://github.com/bignormal/actestra-desktop/pull/3)
+is open and Ready. Its Ready-triggered CodeRabbit run selected all 67 files,
+completed successfully, and created no review submission or review thread. P3
+remains open until merge and exact `main` CI.
 
 - The Electron 37.10.3 and React 19.2.4 shell is original Actestra source; no
   AionUi, AionCore, Goose, Eigent, Aera, or AgentEra application source or asset
   has been copied.
 - Product name, bundle identifier, executable, icon, deep-link scheme, and
   versioned data layout are Actestra-owned.
-- The renderer is sandboxed and receives only two typed, non-privileged bridge
-  operations. External HTTP, HTTPS, WebSocket, permissions, navigation, new
-  windows, telemetry, updates, and accounts are inactive.
-- Five test files with 22 tests, a three-scenario process-failure harness,
-  formatting, lint, strict types, product-boundary checks, renderer build,
-  unsigned arm64 app/DMG/ZIP packaging, packaged identity/CSP checks, and a
-  fresh-profile three-stage startup smoke pass locally.
-- The shell has no task persistence, worker runtime, tool execution, or
-  orchestration yet; those begin behind P3 contracts.
+- The renderer is sandboxed and receives only three fixed, non-privileged
+  metadata intents. External HTTP, HTTPS, WebSocket, permissions, navigation,
+  new windows, telemetry, updates, and accounts are inactive.
+- Twenty-four test files with 130 tests, an exact Electron-runtime SQLite probe, a
+  three-scenario process-failure harness, formatting, lint, strict types,
+  product-boundary checks, renderer build, packaged identity/CSP checks, and a
+  fresh-profile three-stage startup smoke pass locally. P3.1-P3.6 and review
+  remediation also have exact implementation CI. Unsigned arm64 app/DMG/ZIP
+  packaging passes locally.
+- The pure TypeScript core contract has no Electron, filesystem, shell, network,
+  credential, or renderer authority. SQLite, worker supervision, policy,
+  approval, opaque credential leases, the metadata-only audit trail, and the
+  deterministic tool gateway remain behind main-owned ports. P3.6 registers the
+  inert privileged composition and SQLite evidence only in main; preload exposes
+  three fixed metadata intents and no generic IPC or protected operation. The
+  shell still has no real worker process, credential backend, tool execution,
+  input-reference store, transport, or orchestration.
 - There is no CI-backed candidate, signed release, deployment, distribution, or
   user acceptance.
 
 See [Project Status](docs/PROJECT_STATUS.md) for the evidence-backed state.
 The local P2 proof is recorded in
 [P2 Product Shell](docs/product/P2_PRODUCT_SHELL.md).
+The current execution order is recorded in
+[P3 Platform Core](docs/product/P3_PLATFORM_CORE.md).
 
 ## Start here
 

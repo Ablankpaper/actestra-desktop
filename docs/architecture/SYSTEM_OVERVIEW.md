@@ -1,6 +1,6 @@
 # System Overview
 
-Status: P2 shell implemented; P3 platform core planned
+Status: P2 accepted; P3 is reviewed and Ready; merge and exact main CI pending
 
 ## Context
 
@@ -53,10 +53,29 @@ Electron main process. The renderer can request application metadata and report
 that it rendered; neither operation grants filesystem, shell, process,
 credential, installation, or publishing authority.
 
-The app core, persistence beyond the versioned data-layout manifest, policy and
-approval service, tool gateway, worker adapters, and workers shown below are P3
-or later components. They are architectural boundaries, not hidden
-implementations in the P2 package.
+P3.1 and P3.2 add a runtime-neutral core domain, lifecycle validation, and
+version 1 event stream contract. P3.3 adds a storage-neutral port plus a
+main-owned SQLite adapter with schema versions 1 and 2. P3.4 adds the version 1
+`AgentAdapter` contract, a main-owned lifecycle supervisor, and a deterministic
+in-memory fake adapter. P3.5 adds versioned privileged-operation and
+tool-manifest contracts plus main-owned deterministic policy, approval, opaque
+credential-lease, metadata-audit, and tool-gateway services.
+
+P3.6 adds SQLite schema version 3 for durable metadata-only privileged
+audit and immutable terminal-attempt evidence. Electron main now registers an
+inert deny-by-default composition root, a disabled executor, trusted-main-frame
+IPC, and a bounded renderer projection. Preload exposes only application
+metadata, platform snapshot, and renderer-ready intents. There is no production
+policy snapshot, credential backend, input-reference store, real tool executor,
+MCP transport, process transport, or real worker adapter behind any component
+shown above.
+
+The SQLite adapter owns `state/actestra.sqlite3` beneath Actestra user data,
+uses one DELETE/FULL connection, and rejects foreign ownership, future schemas,
+inconsistent migration history, invalid domain graphs, and corrupt event
+projections. Its asynchronous port prevents storage technology from entering
+core consumers, but its current synchronous implementation must move to a
+supervised persistence utility before user-workload writes are activated.
 
 ## Authority boundaries
 
@@ -98,29 +117,71 @@ MCP servers and native tools are reached through a gateway that applies
 workspace scope, credential brokering, policy, approval, logging, timeout, and
 redaction.
 
+The P3.5 language-level boundary is accepted in
+[ADR-0007](decisions/0007-privileged-service-authorization.md). The gateway
+validates a frozen protected-operation snapshot against an Actestra-owned tool
+capability manifest, evaluates an immutable policy snapshot, appends
+metadata-only policy evidence, obtains direct or one-shot approval evidence,
+issues opaque credential-lease references, appends tool-start evidence, and
+only then calls an injected executor. An operation with no matching rule is
+denied, and conflicting rules resolve in `deny`, then `require-approval`, then
+`allow` precedence.
+
+The current executor is test-only and receives an opaque input reference rather
+than raw arguments. The current credential broker has no secret store. Approval
+permits one attempt but does not prove execution or success. Failure after an
+executor call is reported as possibly executed and must not be retried
+automatically.
+
+The P3.6 startup, durable evidence, supervisor release, IPC, and projection
+boundary is accepted in
+[ADR-0008](decisions/0008-main-owned-projection-and-ipc.md). Durable audit
+continues its gapless sequence across restart. Terminal worker events and
+metadata-only incident codes must persist before supervisor memory is released.
+Renderer projection excludes event content, incident messages, input
+references, credential references, paths, and raw persistence access.
+
 ## Adapter lifecycle
 
-The language-level interface may change during P3, but it must preserve these
-capabilities:
+Protocol version 1 is accepted in
+[ADR-0006](decisions/0006-agent-adapter-lifecycle-and-supervision.md) and owns
+this language-level boundary:
 
 ```ts
 interface AgentAdapter {
   capabilities(): Promise<AgentCapabilities>
-  start(task: AgentTask): Promise<AgentSession>
-  send(sessionId: string, message: AgentInput): Promise<void>
-  approve(requestId: string, decision: ApprovalDecision): Promise<void>
-  cancel(sessionId: string, reason?: string): Promise<void>
-  subscribe(sessionId: string, handler: AgentEventHandler): Unsubscribe
-  dispose(sessionId: string): Promise<void>
+  start(request: AgentStartRequest): Promise<void>
+  send(sessionId: SessionId, input: AgentInput): Promise<void>
+  approve(
+    requestId: ToolRequestId,
+    decision: AgentApprovalDecision,
+  ): Promise<void>
+  cancel(sessionId: SessionId, reason?: string): Promise<void>
+  subscribe(sessionId: SessionId, handler: AgentSignalHandler): Unsubscribe
+  dispose(sessionId: SessionId): Promise<void>
 }
 ```
 
+Capabilities and the protocol version are checked exactly before start.
+Control signals and nested core events have independent gapless sequences.
+Session, worker, and event-stream identity is immutable for one attempt; crash
+or timeout recovery starts a bounded replacement with fresh attempt identities.
+The supervisor uses observed local time for startup, heartbeat, and cancellation
+acknowledgement bounds instead of trusting worker timestamps.
+Terminal attempts remain readable after adapter cleanup until the main-owned
+evidence coordinator persists their core events and metadata-only terminal
+record. Only then does it cross the supervisor release barrier and clear
+in-memory events. Failed writes retain the snapshot for an idempotent retry.
+
 Adapters translate external formats. The UI and app core must not branch on a
-Goose-specific or future-worker-specific event format.
+Goose-specific or future-worker-specific event format. The deterministic fake
+performs no filesystem, network, process, shell, model, credential, or tool
+operation.
 
 ## Event contract
 
-Every event uses a versioned envelope with at least:
+Every event uses the version 1 envelope accepted in
+[ADR-0004](decisions/0004-core-domain-event-stream.md), with:
 
 - event identifier;
 - schema version;
@@ -131,6 +192,12 @@ Every event uses a versioned envelope with at least:
 - payload;
 - causation and correlation identifiers;
 - redaction classification.
+
+Ordering is scoped to one immutable worker execution attempt. Sequence numbers
+start at one and are gapless; timestamps cannot move backwards but do not
+determine order. Exact duplicate event identifiers are idempotent, conflicting
+reuse fails closed, verified cursors support replay, and no event can follow a
+terminal task event.
 
 Initial event types:
 
@@ -193,14 +260,20 @@ The core must distinguish:
 - policy rejection.
 
 These states must not be collapsed into a generic success, generic chat message,
-or silent retry.
+or silent retry. P3.4 implements startup and heartbeat timeout,
+idempotent cancellation, cancellation acknowledgement timeout, protocol
+failure, crash, terminal reconciliation, and bounded fresh-attempt restart
+semantics. P3.6 persists terminal incident codes and projects bounded,
+metadata-only attempt state through trusted main-frame IPC.
 
 ## Deferred choices
 
 P2 pins Node.js 24.13.0, Bun 1.3.9, Electron 37.10.3, React 19.2.4, and data
-layout version 1 for the current shell. P3 will decide durable storage
-technology, process transport, schema tooling, worker sandbox mechanisms, and
-the concrete migration registry. Signing, notarization, update delivery, and
+layout version 1 for the current shell. ADR-0005 selects Electron's embedded
+`node:sqlite` and an Actestra-owned forward migration registry for durable
+storage. P3 still must decide process transport, worker sandbox mechanisms,
+real credential storage, input-reference storage, production policy, and
+utility-process hosting. Signing, notarization, update delivery, and
 cross-platform candidate packaging remain P8 work.
 
 This document fixes authority and lifecycle boundaries; a pinned shell

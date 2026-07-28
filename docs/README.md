@@ -10,6 +10,7 @@ planning, and governance documents.
 | [Project Status](PROJECT_STATUS.md) | Verified state, evidence, blockers, and next gate |
 | [MVP Definition](product/MVP.md) | Target users, journeys, scope, and success criteria |
 | [P2 Product Shell](product/P2_PRODUCT_SHELL.md) | Implementation, review remediation, boundary, package, launch, and non-claim evidence |
+| [P3 Platform Core](product/P3_PLATFORM_CORE.md) | Current phase order, decisions, exit evidence, and non-claims |
 | [Development Sequence](roadmap/DEVELOPMENT_SEQUENCE.md) | Ordered phases, dependencies, and exit gates |
 | [System Overview](architecture/SYSTEM_OVERVIEW.md) | Product boundaries, components, data ownership, and isolation |
 | [Architecture Decisions](architecture/decisions/README.md) | Accepted and proposed architectural decisions |

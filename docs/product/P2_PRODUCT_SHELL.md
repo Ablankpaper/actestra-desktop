@@ -1,6 +1,6 @@
 # P2 Independent Product Shell
 
-Status: Pushed review remediation with local and pull-request CI evidence
+Status: Accepted on `main`
 
 Evidence date: 2026-07-28
 
@@ -12,15 +12,22 @@ Implementation commit: `1892b48402b1bfa9425a34172ff79259b7190b81`
 
 Review-remediation commit: `892a44240405c1d2d4720d4ff7e09a6a19bbe4e9`
 
+Final PR head: `f972bb6c33c925f3e333a6ee87d20e5bbb72cece`
+
+Squash merge: `76d6a58b20c3e010ee759358f2c86be80bc6a6c1`
+
 Review surface:
-[draft pull request 2](https://github.com/bignormal/actestra-desktop/pull/2)
+[merged pull request 2](https://github.com/bignormal/actestra-desktop/pull/2)
 
 The local gate and
-[macOS arm64 pull-request CI run 30329203456](https://github.com/bignormal/actestra-desktop/actions/runs/30329203456)
-pass on the exact review-remediation commit. The final evidence-only follow-up
-must retain a passing PR head check and complete GitHub review. This document
-does not claim merge, candidate, release, deployment, distribution, or user
-acceptance.
+[macOS arm64 pull-request CI run 30329423918](https://github.com/bignormal/actestra-desktop/actions/runs/30329423918)
+pass on the exact final PR head. GitHub records a successful CodeRabbit status
+and full-diff summary on that head, but no submitted pull-request review or
+inline review thread; acceptance came from the owner merge after CLI
+remediation and exact-head CI, not an independent GitHub approval. The squash merge's
+[main CI run 30329620829](https://github.com/bignormal/actestra-desktop/actions/runs/30329620829)
+also passes. This document does not claim candidate, release, deployment,
+distribution, or user acceptance.
 
 ## Outcome
 
@@ -54,7 +61,9 @@ The remaining minor suggestion expected `notifyRendererReady()` to return a
 Promise. Its typed contract and `ipcRenderer.send` implementation both
 intentionally return `void`, so no rejection exists to catch. A fourth CLI
 confirmation attempt returned a rate-limit error and is not represented as a
-zero-issue review; final GitHub review remains a merge gate.
+zero-issue review. The later GitHub integration processed the final head and
+produced its summary/status with no inline thread, but the submitted-reviews
+list remained empty; it is not represented as independent approval.
 
 ## Product identity
 
@@ -178,8 +187,10 @@ The P2 technical exit gate passes locally:
   notices, and offline policy are verified;
 - packaging and the strengthened smoke test pass.
 
-P2 remains unaccepted until the final evidence head passes CI, the GitHub review
-has no unresolved blocker, and the change is merged to `main`.
+P2 is accepted on `main` at squash commit
+`76d6a58b20c3e010ee759358f2c86be80bc6a6c1`. That acceptance covers the source,
+review, and CI gate only; it does not turn the unsigned local package into a
+candidate or release.
 
 ## Non-claims and remaining gates
 
