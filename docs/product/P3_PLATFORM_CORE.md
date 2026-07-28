@@ -1,6 +1,6 @@
 # P3 Platform Core and Contracts
 
-Status: Accepted on `main`; P4 not started
+Status: Accepted on `main`; P4 kickoff planning opened, implementation not started
 
 Evidence date: 2026-07-29
 
@@ -356,7 +356,9 @@ every exit item. The full independent review and remediation review are
 complete. Pull request 3 final head
 `71bf3e3fb1d7661fee053ee811279d44f1fdf45f` passed exact PR CI, squash merged
 as `f6833c50eaf5a426948bac7999f93a08b19a425e`, and exact main CI run
-30378191752 passed. P3 is therefore accepted on `main`; P4 has not started.
+30378191752 passed. P3 is therefore accepted on `main`. P4 kickoff planning is
+tracked in [P4 General Work](P4_GENERAL_WORK.md); no P4 runtime implementation
+has started.
 
 ## Non-claims
 

@@ -4,7 +4,16 @@ Last updated: 2026-07-29
 
 ## Current phase
 
-### P3 accepted; P4 not started
+### P4 — General-Work Vertical Slice (kickoff planning)
+
+`feat/general-work-vertical-slice` starts from the exact accepted `main`
+baseline `a32b7cb4516f5592e8e1fe6f1f5afad7c50de991`.
+[Main CI run 30379251723](https://github.com/bignormal/actestra-desktop/actions/runs/30379251723)
+passes on that exact commit. The branch currently adds only the proposed
+[ADR-0009](architecture/decisions/0009-p4-general-work-process-and-content-boundaries.md)
+and the [P4 execution plan](product/P4_GENERAL_WORK.md). It does not implement
+a worker process, content store, real tool, persistence utility, policy,
+renderer intent, upstream import, credential, or network model.
 
 P3.1-P3.6 and review remediation are pushed and CI-backed. The full independent
 review and remediation review are complete.
@@ -12,8 +21,9 @@ review and remediation review are complete.
 final head `71bf3e3fb1d7661fee053ee811279d44f1fdf45f`, squash merged as
 `f6833c50eaf5a426948bac7999f93a08b19a425e`, and exact
 [main CI run 30378191752](https://github.com/bignormal/actestra-desktop/actions/runs/30378191752)
-passes. These facts close the P3 exit gate. P4 is the next ordered phase and
-has not started.
+passes. These facts close the P3 exit gate. Pull request 4 then recorded that
+acceptance and merged as the P4 branch base above. P4 implementation has not
+started; its cross-component design is under review.
 
 P0 through P3 are accepted on `main`.
 [Pull request 2](https://github.com/bignormal/actestra-desktop/pull/2) merged
@@ -271,7 +281,9 @@ Review closure validation at
 
 | Area | State | Evidence or blocker |
 | --- | --- | --- |
-| Repository | P3 accepted on `main` | PR 3 final head `71bf3e3fb1d7661fee053ee811279d44f1fdf45f`; squash merge `f6833c50eaf5a426948bac7999f93a08b19a425e` |
+| Repository | P4 kickoff branch | `feat/general-work-vertical-slice` starts from accepted `main` at `a32b7cb4516f5592e8e1fe6f1f5afad7c50de991`; proposal only |
+| P3 acceptance record | Accepted on `main` | PR 4 final head `e38d4508e0f1ba6420870446d01fdd5083251d89`; squash merge `a32b7cb4516f5592e8e1fe6f1f5afad7c50de991`; main run 30379251723 passed |
+| P4 kickoff local validation | Pass on staged documentation diff | Links pass for 31 Markdown files; Markdown lint has 0 issues; `bun run check` passes 24 test files with 130 tests, runtime probe, boundary check, and build; cached diff check passes |
 | P2 merge | Accepted on `main` | PR 2 final head `f972bb6c33c925f3e333a6ee87d20e5bbb72cece`; squash merge `76d6a58b20c3e010ee759358f2c86be80bc6a6c1` |
 | P2 main CI | Pass | Main push run 30329620829 passed on the exact squash merge |
 | P3 kickoff CI | Pass | Pull-request run 30329964305 passed on exact pushed head `b9c1119479c805c02452e4054a3d904649a3ca03` |
@@ -294,6 +306,7 @@ Review closure validation at
 | P3 worker lifecycle | Implemented and CI-backed | ADR-0006, protocol version 1, runtime validation, supervisor, observed-time health, cancellation, crash, bounded fresh-attempt restart, deterministic fake, and 22 focused tests; exact commit and run above |
 | P3 privileged services | Implemented and CI-backed | ADR-0007; protected-operation and manifest contracts; policy, approval, opaque lease, metadata-only audit, and deterministic gateway services; exact commit and run above |
 | P3 main integration | Implemented and CI-backed | ADR-0008; main-only inert composition, durable audit, persist-before-release barrier, fixed IPC allowlist, bounded renderer projection, and packaged startup smoke; exact commit and run above |
+| P4 kickoff | Planning; no implementation | ADR-0009 is Proposed; the fixture matrix, ordered slices, gates, blockers, and non-claims are documented in `P4_GENERAL_WORK.md` |
 | Release | None | No candidate, signed artifact, deployment, distribution, or user acceptance |
 
 ## Accepted direction
@@ -345,23 +358,24 @@ The ordered implementation index and P3 non-claims are in
 
 ## Next gate
 
-1. Use exact accepted `main` commit
-   `f6833c50eaf5a426948bac7999f93a08b19a425e` and main CI run 30378191752 as
-   the P4 entry baseline.
-2. Before P4 implementation, define the first general-work vertical slice,
-   representative fixtures, adapter/transport boundary, scoped input-reference
-   storage, and the persistence-utility transition required for real workload
-   writes.
-3. Record any cross-component choice as an ADR and open P4 on a dedicated
-   feature branch and pull request.
-4. Do not treat P3 phase acceptance as a candidate, release, deployment,
-   distribution, or user acceptance.
+1. Review and either accept or revise ADR-0009 and the P4 fixture/exit matrix on
+   the dedicated Draft pull request.
+2. After explicit acceptance, begin P4.2 with red tests for the persistence
+   utility, content references, workspace grants, crash behavior, and absence
+   of an in-process fallback.
+3. Do not import or distribute AionCore, add a network model or credential,
+   enable MCP/shell/workspace mutation, or widen renderer authority without its
+   own exact gate.
+4. Keep local validation, pushed CI, merge, P4 phase acceptance, package,
+   release, deployment, distribution, and user acceptance separate.
 
 ## Open decisions
 
 - License for original Actestra source.
 - Credential storage mechanism and platform-keychain boundary.
-- Main-owned input-reference storage and MCP/native-tool transport.
+- ADR-0009's process transport, adapter version 2, content-reference storage,
+  scoped native-tool surface, and persistence utility are Proposed, not
+  accepted.
 - Worker sandbox implementation per operating system.
 - Long-term dependency upgrade policy.
 - Code-signing, notarization, update, and distribution accounts.
@@ -373,6 +387,14 @@ The ordered implementation index and P3 non-claims are in
 - P3.1 through P3.6, review remediation, the final PR head, squash merge, and
   exact merged-main CI are evidenced. P3 phase acceptance is not a release or
   user-acceptance claim.
+- P4 currently consists only of a proposed ADR and execution plan. No P4
+  runtime contract or implementation is accepted, merged, or CI-backed.
+- The proposed reference worker is deterministic and offline. Even after it is
+  implemented, it will prove process and authority paths rather than model
+  reasoning or production sandboxing.
+- AionCore remains an evaluated exact pin with inconsistent root/workspace
+  license metadata. No AionUi or AionCore source, binary, asset, or
+  configuration is imported by the P4 kickoff.
 - The final redundant full-diff confirmation was rate-limited before review and
   is not zero-issue evidence. The completed 67-file review plus the completed
   zero-issue nine-file remediation review are the review-closure evidence.

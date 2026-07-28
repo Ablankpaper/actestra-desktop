@@ -59,8 +59,20 @@ final head `71bf3e3fb1d7661fee053ee811279d44f1fdf45f`, passed
 [PR CI run 30376696055](https://github.com/bignormal/actestra-desktop/actions/runs/30376696055),
 and squash merged as `f6833c50eaf5a426948bac7999f93a08b19a425e`.
 [Main CI run 30378191752](https://github.com/bignormal/actestra-desktop/actions/runs/30378191752)
-passes on that exact squash commit, closing the P3 exit gate. P4 is next and
-has not started.
+passes on that exact squash commit, closing the P3 exit gate.
+[Pull request 4](https://github.com/bignormal/actestra-desktop/pull/4) then
+merged the acceptance record as
+`a32b7cb4516f5592e8e1fe6f1f5afad7c50de991`, and
+[main CI run 30379251723](https://github.com/bignormal/actestra-desktop/actions/runs/30379251723)
+passes on that exact P4 entry baseline.
+
+P4 kickoff planning is open on `feat/general-work-vertical-slice`. It proposes
+the first real-process general-work fixture, adapter tool-result path, scoped
+content references, native read/create tools, and persistence utility boundary
+in [ADR-0009](docs/architecture/decisions/0009-p4-general-work-process-and-content-boundaries.md)
+and [P4 General Work](docs/product/P4_GENERAL_WORK.md). The ADR remains Proposed:
+no P4 runtime code, upstream source, credential, network model, MCP transport,
+or renderer authority has been added.
 
 - The Electron 37.10.3 and React 19.2.4 shell is original Actestra source; no
   AionUi, AionCore, Goose, Eigent, Aera, or AgentEra application source or asset
@@ -90,8 +102,9 @@ has not started.
 See [Project Status](docs/PROJECT_STATUS.md) for the evidence-backed state.
 The local P2 proof is recorded in
 [P2 Product Shell](docs/product/P2_PRODUCT_SHELL.md).
-The current execution order is recorded in
-[P3 Platform Core](docs/product/P3_PLATFORM_CORE.md).
+P3 exit evidence is recorded in
+[P3 Platform Core](docs/product/P3_PLATFORM_CORE.md), and the current execution
+proposal is in [P4 General Work](docs/product/P4_GENERAL_WORK.md).
 
 ## Start here
 

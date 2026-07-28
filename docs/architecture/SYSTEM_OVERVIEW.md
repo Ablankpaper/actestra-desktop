@@ -1,6 +1,6 @@
 # System Overview
 
-Status: P3 accepted on `main`; P4 not started
+Status: P3 accepted on `main`; P4 kickoff proposal under review
 
 ## Context
 
@@ -76,6 +76,11 @@ inconsistent migration history, invalid domain graphs, and corrupt event
 projections. Its asynchronous port prevents storage technology from entering
 core consumers, but its current synchronous implementation must move to a
 supervised persistence utility before user-workload writes are activated.
+
+[ADR-0009](decisions/0009-p4-general-work-process-and-content-boundaries.md)
+proposes the first P4 process, adapter-version, content-reference, scoped-tool,
+policy, and persistence-utility choices. It is not accepted or implemented.
+The runtime boundary in the preceding paragraphs remains the current truth.
 
 ## Authority boundaries
 
@@ -273,8 +278,10 @@ layout version 1 for the current shell. ADR-0005 selects Electron's embedded
 `node:sqlite` and an Actestra-owned forward migration registry for durable
 storage. P4 and later work still must decide process transport, worker sandbox
 mechanisms, real credential storage, input-reference storage, production
-policy, and utility-process hosting. Signing, notarization, update delivery,
-and cross-platform candidate packaging remain P8 work.
+policy, and utility-process hosting. ADR-0009 contains a reviewable proposal
+for the P4 subset of those choices; worker sandboxing and real credential
+storage remain unresolved. Signing, notarization, update delivery, and
+cross-platform candidate packaging remain P8 work.
 
 This document fixes authority and lifecycle boundaries; a pinned shell
 dependency does not pre-decide worker or persistence architecture.
