@@ -26,6 +26,7 @@ import {
 } from "./domain";
 
 declare const eventValueBrand: unique symbol;
+const coreEventStreamStateBrand = Symbol("ActestraCoreEventStreamState");
 
 type BrandedEventString<Brand extends string> = string & {
   readonly [eventValueBrand]: Brand;
@@ -175,6 +176,13 @@ export interface CoreEventCursor {
 export interface AppendCoreEventResult {
   readonly status: "appended" | "duplicate";
   readonly events: readonly CoreEvent[];
+}
+
+export interface CoreEventStreamState {
+  readonly first?: CoreEvent;
+  readonly previous?: CoreEvent;
+  readonly taskState?: TaskState;
+  readonly [coreEventStreamStateBrand]: true;
 }
 
 export interface RedactedDiagnosticPayload {
@@ -618,6 +626,15 @@ interface ValidatedCoreEventStream {
   readonly eventsById: ReadonlyMap<EventId, CoreEvent>;
 }
 
+function immutableCoreEvent(event: CoreEvent): CoreEvent {
+  return Object.freeze({
+    ...event,
+    payload: Object.freeze({
+      ...event.payload,
+    }),
+  }) as CoreEvent;
+}
+
 function validateNextCoreEvent(
   first: CoreEvent | undefined,
   previous: CoreEvent | undefined,
@@ -705,8 +722,66 @@ function validateCoreEventStream(events: readonly CoreEvent[]): ValidatedCoreEve
   };
 }
 
+function streamState(validated: ValidatedCoreEventStream): CoreEventStreamState {
+  const first = validated.first === undefined ? undefined : immutableCoreEvent(validated.first);
+  const previous =
+    validated.previous === undefined
+      ? undefined
+      : validated.previous === validated.first
+        ? first
+        : immutableCoreEvent(validated.previous);
+
+  return Object.freeze({
+    first,
+    previous,
+    taskState: validated.taskState,
+    [coreEventStreamStateBrand]: true as const,
+  });
+}
+
 export function assertCoreEventStream(events: readonly CoreEvent[]): void {
   validateCoreEventStream(events);
+}
+
+export function createCoreEventStreamState(events: readonly CoreEvent[]): CoreEventStreamState {
+  return streamState(validateCoreEventStream(events));
+}
+
+export function advanceCoreEventStreamState(
+  state: CoreEventStreamState,
+  value: unknown,
+): CoreEventStreamState {
+  if (typeof state !== "object" || state === null || state[coreEventStreamStateBrand] !== true) {
+    throw new CoreContractError(
+      "invalid-event",
+      "Core event stream state must be created by createCoreEventStreamState",
+    );
+  }
+
+  assertCoreEvent(value);
+  const taskState = validateNextCoreEvent(state.first, state.previous, state.taskState, value);
+  const immutableValue = immutableCoreEvent(value);
+
+  return Object.freeze({
+    first: state.first ?? immutableValue,
+    previous: immutableValue,
+    taskState,
+    [coreEventStreamStateBrand]: true as const,
+  });
+}
+
+export function assertIdempotentCoreEventDelivery(existing: CoreEvent, value: unknown): void {
+  assertCoreEvent(existing);
+  assertRecord(value, "Core event");
+  assertString(value.eventId, "Core event.eventId");
+  eventId(value.eventId);
+
+  if (existing.eventId !== value.eventId || !structurallyEqual(existing, value)) {
+    throw new CoreContractError(
+      "event-id-conflict",
+      `Core event id ${value.eventId} was reused with different content`,
+    );
+  }
 }
 
 export function appendCoreEvent(
@@ -720,12 +795,7 @@ export function appendCoreEvent(
 
   const existing = validated.eventsById.get(value.eventId as EventId);
   if (existing !== undefined) {
-    if (!structurallyEqual(existing, value)) {
-      throw new CoreContractError(
-        "event-id-conflict",
-        `Core event id ${value.eventId} was reused with different content`,
-      );
-    }
+    assertIdempotentCoreEventDelivery(existing, value);
 
     return {
       status: "duplicate",

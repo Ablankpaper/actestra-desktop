@@ -30,8 +30,10 @@ Actestra is in **P3 — Platform Core and Contracts** on
 P3.2 version 1 event contract are implemented at
 `31dd6e4178eb7641b45be0ee2bccb862a96dac99` and pass
 [PR CI run 30331681309](https://github.com/bignormal/actestra-desktop/actions/runs/30331681309).
-Database, worker, privileged-service, and renderer integration work has not
-started.
+P3.3 now has a locally validated storage-neutral persistence port, accepted
+SQLite/migration decision, forward-only schema registry, and main-owned adapter;
+its exact pushed-commit and CI evidence are not yet recorded. Worker,
+privileged-service, and renderer integration work has not started.
 
 - The Electron 37.10.3 and React 19.2.4 shell is original Actestra source; no
   AionUi, AionCore, Goose, Eigent, Aera, or AgentEra application source or asset
@@ -41,14 +43,17 @@ started.
 - The renderer is sandboxed and receives only two typed, non-privileged bridge
   operations. External HTTP, HTTPS, WebSocket, permissions, navigation, new
   windows, telemetry, updates, and accounts are inactive.
-- Seven test files with 39 tests, a three-scenario process-failure harness,
+- Nine test files with 54 tests, an exact Electron-runtime SQLite probe, a
+  three-scenario process-failure harness,
   formatting, lint, strict types, product-boundary checks, renderer build,
   unsigned arm64 app/DMG/ZIP packaging, packaged identity/CSP checks, and a
   fresh-profile three-stage startup smoke pass locally.
 - The pure TypeScript core contract has no Electron, filesystem, shell, network,
-  credential, or renderer authority. The shell still has no task persistence,
-  worker runtime, tool execution, or orchestration; later P3 slices prove those
-  boundaries with a deterministic fake before any real worker is integrated.
+  credential, or renderer authority. SQLite remains behind that port and is not
+  registered with app startup, preload, or renderer. The shell still has no
+  active task persistence, worker runtime, tool execution, or orchestration;
+  later P3 slices prove those boundaries with a deterministic fake before any
+  real worker is integrated.
 - There is no CI-backed candidate, signed release, deployment, distribution, or
   user acceptance.
 

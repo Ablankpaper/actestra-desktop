@@ -1,6 +1,6 @@
 # System Overview
 
-Status: P2 shell implemented; P3.1 domain and P3.2 event contracts implemented
+Status: P2 shell implemented; P3.1-P3.3 contracts and persistence locally implemented
 
 ## Context
 
@@ -54,11 +54,19 @@ that it rendered; neither operation grants filesystem, shell, process,
 credential, installation, or publishing authority.
 
 P3.1 and P3.2 add a runtime-neutral core domain, lifecycle validation, and
-version 1 event stream contract. They are not registered with the main process
-or exposed to the renderer yet. Persistence beyond the versioned data-layout
-manifest, policy and approval services, tool gateway, worker adapters, and
-workers shown below remain P3 or later components. They are architectural
-boundaries, not hidden implementations in the package.
+version 1 event stream contract. P3.3 adds a storage-neutral port plus a
+main-owned SQLite adapter with schema versions 1 and 2. None are registered with
+application startup or exposed to the renderer yet. Policy and approval
+services, tool gateway, worker adapters, and workers shown below remain P3 or
+later components. They are architectural boundaries, not hidden
+implementations in the package.
+
+The SQLite adapter owns `state/actestra.sqlite3` beneath Actestra user data,
+uses one DELETE/FULL connection, and rejects foreign ownership, future schemas,
+inconsistent migration history, invalid domain graphs, and corrupt event
+projections. Its asynchronous port prevents storage technology from entering
+core consumers, but its current synchronous implementation must move to a
+supervised persistence utility before user-workload writes are activated.
 
 ## Authority boundaries
 
@@ -208,10 +216,11 @@ vocabulary; heartbeat, restart, and reconciliation behavior remains P3.4 work.
 ## Deferred choices
 
 P2 pins Node.js 24.13.0, Bun 1.3.9, Electron 37.10.3, React 19.2.4, and data
-layout version 1 for the current shell. P3 will decide durable storage
-technology, process transport, schema tooling, worker sandbox mechanisms, and
-the concrete migration registry. Signing, notarization, update delivery, and
-cross-platform candidate packaging remain P8 work.
+layout version 1 for the current shell. ADR-0005 selects Electron's embedded
+`node:sqlite` and an Actestra-owned forward migration registry for durable
+storage. P3 still must decide process transport, worker sandbox mechanisms,
+credential/policy services, and utility-process hosting. Signing, notarization,
+update delivery, and cross-platform candidate packaging remain P8 work.
 
 This document fixes authority and lifecycle boundaries; a pinned shell
 dependency does not pre-decide worker or persistence architecture.

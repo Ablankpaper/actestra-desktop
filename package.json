@@ -23,12 +23,13 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:electron-sqlite": "node scripts/test-electron-sqlite.mjs",
     "test:smoke-harness": "node scripts/test-smoke-harness.mjs",
     "boundary:check": "node scripts/check-product-boundary.mjs",
     "docs:check": "node scripts/check-doc-links.mjs",
     "verify:package": "node scripts/verify-packaged-app.mjs",
     "smoke:package": "node scripts/smoke-packaged-app.mjs",
-    "check": "bun run format:check && bun run lint && bun run typecheck && bun run test && bun run test:smoke-harness && bun run boundary:check && bun run package"
+    "check": "bun run format:check && bun run lint && bun run typecheck && bun run test:electron-sqlite && bun run test && bun run test:smoke-harness && bun run boundary:check && bun run package"
   },
   "dependencies": {
     "react": "19.2.4",

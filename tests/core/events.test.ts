@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  advanceCoreEventStreamState,
   appendCoreEvent,
   assertCoreEvent,
   coreEventCursor,
+  createCoreEventStreamState,
   eventId,
   eventStreamId,
   replayCoreEvents,
@@ -97,6 +99,32 @@ describe("Actestra unified core events", () => {
       [3, "artifact.created"],
     ]);
     expect(replayCoreEvents(third.events, coreEventCursor(message))).toEqual([artifact]);
+  });
+
+  it("advances a prevalidated stream state without revalidating its full history", () => {
+    const started = startedEvent();
+    const message = event(2, "agent.message", {
+      role: "assistant",
+      content: "The validated stream state is reusable.",
+    });
+    const initial = createCoreEventStreamState([started, message]);
+    const artifact = event(3, "artifact.created", {
+      artifactId: artifactId("artifact-state-cache"),
+      kind: "file",
+      label: "State cache report",
+    });
+
+    const advanced = advanceCoreEventStreamState(initial, artifact);
+    (message as { payload: { content: string } }).payload.content = "Mutated by caller";
+    (artifact as { sequence: number }).sequence = 99;
+
+    expect(initial.previous?.payload).toEqual({
+      role: "assistant",
+      content: "The validated stream state is reusable.",
+    });
+    expect(advanced.first).toEqual(started);
+    expect(advanced.previous?.sequence).toBe(3);
+    expect(advanced.taskState).toBe("running");
   });
 
   it("fails closed on unknown schema versions and malformed event payloads", () => {

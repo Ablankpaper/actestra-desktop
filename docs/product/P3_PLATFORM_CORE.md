@@ -1,6 +1,6 @@
 # P3 Platform Core and Contracts
 
-Status: P3.1 domain and P3.2 event contracts pushed and CI-backed; P3 remains open
+Status: P3.1/P3.2 pushed and CI-backed; P3.3 locally validated; P3 remains open
 
 Evidence date: 2026-07-28
 
@@ -38,10 +38,12 @@ giving the renderer privileged authority.
 
 The first implementation slice is governed by
 [ADR-0004](../architecture/decisions/0004-core-domain-event-stream.md).
+The persistence slice is governed by
+[ADR-0005](../architecture/decisions/0005-sqlite-persistence-and-migrations.md).
 
 ## Implemented slice
 
-P3.1 and P3.2 now provide:
+P3.1 through P3.3 now provide:
 
 - branded opaque identifiers and canonical UTC timestamps;
 - workspace, task, session, worker, approval, and artifact records;
@@ -50,11 +52,23 @@ P3.1 and P3.2 now provide:
   resolution;
 - a runtime-validated event schema version 1 with typed payloads;
 - per-attempt, gapless event ordering, exact-id idempotency, replay cursors, task
-  state coherence, terminal enforcement, and diagnostic redaction.
+  state coherence, terminal enforcement, and diagnostic redaction;
+- a storage-neutral asynchronous persistence port;
+- Actestra-owned SQLite domain and event schemas with immutable checksummed
+  forward migrations;
+- private database placement, fail-closed ownership/version/history checks,
+  transactional rollback, domain round-trip, event idempotency/replay, and
+  corrupt-projection rejection;
+- a validated stream-state cache that keeps repeated appends constant-time
+  without weakening sequence, identity, lifecycle, or terminal checks;
+- an exact Electron embedded-runtime probe for SQLite options, constraints,
+  strict types, and rollback.
 
-The implementation is pure TypeScript under `apps/desktop/src/core`. It does not
-have Electron, database, renderer, preload, worker, filesystem, shell, network,
-or credential authority.
+The domain, event, and port contracts are pure TypeScript under
+`apps/desktop/src/core`. The SQLite implementation is main-owned under
+`apps/desktop/src/main/persistence`; it is not registered with application
+startup and grants no database, path, SQL, filesystem, or credential authority
+to preload or renderer.
 
 ## Execution order
 
@@ -78,10 +92,15 @@ or credential authority.
 
 ### P3.3 — Persistence and migrations
 
-- Define persistence ports independently of the storage technology.
-- Accept a database and migration ADR before adding its dependency.
-- Support fresh creation, forward migration, incompatible-future rejection, and
-  transactional recovery tests.
+- Implemented locally: storage-neutral persistence ports.
+- Accepted: embedded `node:sqlite` and forward-only migration policy in
+  ADR-0005, with no added database dependency.
+- Verified locally: fresh creation, reopen, real `1 -> 2` forward migration,
+  incompatible-future and foreign-state rejection, migration-history tampering,
+  transactional rollback, invalid database rejection, domain restoration,
+  ordered event replay, exact-id idempotency, and corrupt event projection
+  rejection.
+- Pending: exact pushed commit and pull-request CI evidence.
 
 ### P3.4 — Worker adapter and deterministic fake
 
@@ -110,11 +129,13 @@ or credential authority.
   ordering, replay cursors, idempotency, terminal behavior, and redaction are
   accepted in
   [ADR-0004](../architecture/decisions/0004-core-domain-event-stream.md).
+- Embedded SQLite ownership, conservative DELETE/FULL connection policy,
+  immutable forward migrations, and fail-closed database adoption are accepted
+  in
+  [ADR-0005](../architecture/decisions/0005-sqlite-persistence-and-migrations.md).
 
 ## Questions that still require explicit decisions
 
-- Which embedded database and migration mechanism meet rollback and packaging
-  needs?
 - How are capability manifests versioned and rejected when incompatible?
 - Which data is audit evidence, and which data must be redacted or never stored?
 - How are platform keychains represented behind a testable credential port?
@@ -139,10 +160,11 @@ The exact source commit and CI run must be recorded in
 
 ## Non-claims
 
-- P3.1 and P3.2 do not complete the P3 exit gate.
-- No database, migration library, credential backend, policy language, or MCP
-  transport is selected.
-- No fake or real worker, process transport, persistence adapter, IPC route, or
-  renderer feature is implemented.
+- P3.1 through P3.3 do not complete the P3 exit gate.
+- No credential backend, policy language, or MCP transport is selected.
+- No fake or real worker, process transport, persistence-service process, IPC
+  route, or renderer feature is implemented.
+- The SQLite adapter is not part of application startup and is not evidence of
+  restart recovery through the packaged UI.
 - No real worker or external upstream source is imported.
 - No candidate, release, deployment, distribution, or acceptance claim is made.
