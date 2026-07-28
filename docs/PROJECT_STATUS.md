@@ -4,7 +4,30 @@ Last updated: 2026-07-29
 
 ## Current phase
 
-### P3 accepted; P4 not started
+### P4 — General-Work Vertical Slice (P4.2 exact implementation CI)
+
+`feat/general-work-vertical-slice` starts from the exact accepted `main`
+baseline `a32b7cb4516f5592e8e1fe6f1f5afad7c50de991`.
+[Main CI run 30379251723](https://github.com/bignormal/actestra-desktop/actions/runs/30379251723)
+passes on that exact commit.
+[Draft pull request 5](https://github.com/bignormal/actestra-desktop/pull/5)
+contains the accepted
+[ADR-0009](architecture/decisions/0009-p4-general-work-process-and-content-boundaries.md)
+and the [P4 execution plan](product/P4_GENERAL_WORK.md). The owner accepted the
+decision and authorized P4.2 on 2026-07-29.
+
+P4.2 is now implemented and locally validated on the branch. A real Electron
+utility process exclusively owns the SQLite connection and schema 4;
+Electron main uses a versioned asynchronous client with no synchronous
+fallback. Schema 4 adds durable workspace grants and immutable, exact-owner,
+1 MiB-bounded UTF-8 content references with expiry, consumption, and SHA-256
+checks. Three complete 40-file CodeRabbit CLI passes ended with a zero-finding
+confirmation after four valid issues were fixed. Implementation commit
+`6847b2d90dc1720562eea02f962795ff31cc200a` is pushed, and exact
+[PR CI run 30385916758](https://github.com/bignormal/actestra-desktop/actions/runs/30385916758)
+passes source, test, boundary, documentation, unsigned-package, packaged
+verification, and clean-Profile smoke steps. Merge and slice acceptance remain
+open.
 
 P3.1-P3.6 and review remediation are pushed and CI-backed. The full independent
 review and remediation review are complete.
@@ -12,8 +35,9 @@ review and remediation review are complete.
 final head `71bf3e3fb1d7661fee053ee811279d44f1fdf45f`, squash merged as
 `f6833c50eaf5a426948bac7999f93a08b19a425e`, and exact
 [main CI run 30378191752](https://github.com/bignormal/actestra-desktop/actions/runs/30378191752)
-passes. These facts close the P3 exit gate. P4 is the next ordered phase and
-has not started.
+passes. These facts close the P3 exit gate. Pull request 4 then recorded that
+acceptance and merged as the P4 branch base above. P4.1 is accepted and P4.2
+has reached exact pushed implementation CI; P4.3 has not started.
 
 P0 through P3 are accepted on `main`.
 [Pull request 2](https://github.com/bignormal/actestra-desktop/pull/2) merged
@@ -114,11 +138,12 @@ Pull request 3 squash merged that exact final head as
 passes on the exact squash commit, including source, tests, boundaries,
 documentation, unsigned bundle, packaged identity, and clean-profile smoke.
 
-Application startup now opens the owned SQLite store and registers the
-deny-by-default reference services only in main. The fake worker still performs
-no filesystem, network, process, shell, model, credential, or tool operation.
-There is no secret backend, real executor, input-reference store, production
-policy snapshot, worker process, or MCP/native transport.
+Application startup now launches the owned persistence utility, waits for its
+versioned open response, and injects the asynchronous port into the
+deny-by-default reference services in main. The fake worker still performs no
+filesystem, network, process, shell, model, credential, or tool operation.
+There is no secret backend, real executor, production policy snapshot, worker
+process, adapter version 2, native tool, or MCP/native worker transport.
 
 Local validation of P3.3 at
 `4de756984269624a02fbfdf77e558c958a03c2e0` on
@@ -267,11 +292,54 @@ Review closure validation at
   documentation, unsigned bundle, package identity, and clean-profile smoke
   steps.
 
+Local validation of the P4.2 implementation on
+`feat/general-work-vertical-slice`:
+
+- the intended red command failed only because `workspaceGrantId`, the
+  persistence utility client, and the utility-owned SQLite module did not yet
+  exist;
+- the focused core/protocol/client/migration/workload group passes 5 files with
+  21 tests, including wrong ownership, expiry, conflict, digest corruption,
+  stale grant, utility exit, malformed response, request timeout, and no
+  fallback paths;
+- a same-length response-content tampering test exposed and then verified the
+  repair of a pending-request cleanup defect; both current and future calls now
+  fail explicitly;
+- `bun run check` passes format, zero-warning lint, strict types, the exact
+  Electron `37.10.3` / Node.js `22.21.1` / SQLite `3.50.4` probe, all 28 Vitest
+  files with 144 tests, the three-scenario smoke harness, the 41-source
+  boundary check, and the desktop build;
+- `bun run test:coverage` passes without threshold changes at 82.68%
+  statements, 75.79% branches, 91.22% functions, and 82.67% lines overall;
+- `bun run dist:dir`, `bun run verify:package`, and `bun run smoke:package`
+  pass for a rebuilt unsigned macOS arm64 `.app`; the package recursively keeps
+  synchronous SQLite out of the main entry graph, includes it in the
+  persistence utility, and reaches utility/application/window/renderer ready
+  markers on an isolated Profile with schema 4; and
+- `bun run docs:check` resolves all 31 relative Markdown files, Markdown lint
+  reports 0 issues, and `git diff --check` passes; and
+- three complete 40-file CodeRabbit CLI reviews raised 10, then 1, then 0
+  findings. Four valid issues were fixed. Seven first-pass findings were
+  rejected after verification because they used the wrong current date or
+  contradicted accepted path-authority, retention, graph-replacement,
+  stable-error, or fail-closed client semantics. This is automated review
+  evidence, not a submitted GitHub review or human approval; and
+- implementation commit `6847b2d90dc1720562eea02f962795ff31cc200a`
+  passes exact PR CI run 30385916758. Draft PR 5 is open with clean merge state,
+  0 submitted reviews, and 0 review threads. Its CodeRabbit status is
+  `SUCCESS`, but the only remote comment says the review was skipped because
+  the PR is Draft; that status is not review approval.
+
 ## Evidence snapshot
 
 | Area | State | Evidence or blocker |
 | --- | --- | --- |
-| Repository | P3 accepted on `main` | PR 3 final head `71bf3e3fb1d7661fee053ee811279d44f1fdf45f`; squash merge `f6833c50eaf5a426948bac7999f93a08b19a425e` |
+| Repository | P4.2 implementation branch | `feat/general-work-vertical-slice` starts from accepted `main` at `a32b7cb4516f5592e8e1fe6f1f5afad7c50de991`; Draft PR 5 remains open |
+| P3 acceptance record | Accepted on `main` | PR 3 final head `71bf3e3fb1d7661fee053ee811279d44f1fdf45f`; squash merge `f6833c50eaf5a426948bac7999f93a08b19a425e`; main run 30378191752 passed |
+| P4 entry baseline | Accepted on `main` | PR 4 final head `e38d4508e0f1ba6420870446d01fdd5083251d89`; squash merge `a32b7cb4516f5592e8e1fe6f1f5afad7c50de991`; main run 30379251723 passed |
+| P4.2 local implementation | Pass on exact pushed commit | `6847b2d90dc1720562eea02f962795ff31cc200a`; 28 files / 144 tests, coverage thresholds, exact Electron SQLite probe, 41-source boundary, build, and focused failure matrix pass |
+| P4.2 packaged utility | Local pass; deliberately non-candidate | Rebuilt unsigned arm64 app proves utility/main entry separation and reaches four ready markers with schema 4 on an isolated Profile |
+| P4.2 implementation CI | Pass | Pull-request run 30385916758 passes on exact implementation commit `6847b2d90dc1720562eea02f962795ff31cc200a`, including unsigned package and clean-Profile smoke |
 | P2 merge | Accepted on `main` | PR 2 final head `f972bb6c33c925f3e333a6ee87d20e5bbb72cece`; squash merge `76d6a58b20c3e010ee759358f2c86be80bc6a6c1` |
 | P2 main CI | Pass | Main push run 30329620829 passed on the exact squash merge |
 | P3 kickoff CI | Pass | Pull-request run 30329964305 passed on exact pushed head `b9c1119479c805c02452e4054a3d904649a3ca03` |
@@ -294,6 +362,8 @@ Review closure validation at
 | P3 worker lifecycle | Implemented and CI-backed | ADR-0006, protocol version 1, runtime validation, supervisor, observed-time health, cancellation, crash, bounded fresh-attempt restart, deterministic fake, and 22 focused tests; exact commit and run above |
 | P3 privileged services | Implemented and CI-backed | ADR-0007; protected-operation and manifest contracts; policy, approval, opaque lease, metadata-only audit, and deterministic gateway services; exact commit and run above |
 | P3 main integration | Implemented and CI-backed | ADR-0008; main-only inert composition, durable audit, persist-before-release barrier, fixed IPC allowlist, bounded renderer projection, and packaged startup smoke; exact commit and run above |
+| P4.1 | Accepted | ADR-0009 and the fixture/exit matrix were owner-accepted on 2026-07-29 |
+| P4.2 | Implemented, locally validated, automatically reviewed, and exact-CI-backed | Third complete 40-file CLI review returned 0 findings; exact implementation CI passes; merge and slice acceptance remain open |
 | Release | None | No candidate, signed artifact, deployment, distribution, or user acceptance |
 
 ## Accepted direction
@@ -345,23 +415,27 @@ The ordered implementation index and P3 non-claims are in
 
 ## Next gate
 
-1. Use exact accepted `main` commit
-   `f6833c50eaf5a426948bac7999f93a08b19a425e` and main CI run 30378191752 as
-   the P4 entry baseline.
-2. Before P4 implementation, define the first general-work vertical slice,
-   representative fixtures, adapter/transport boundary, scoped input-reference
-   storage, and the persistence-utility transition required for real workload
-   writes.
-3. Record any cross-component choice as an ADR and open P4 on a dedicated
-   feature branch and pull request.
-4. Do not treat P3 phase acceptance as a candidate, release, deployment,
-   distribution, or user acceptance.
+1. Keep pull request 5 Draft while the owner reviews the P4.2 implementation,
+   automated review evidence, exact CI, and remaining non-claims.
+2. Require an explicit P4.2 acceptance gate before P4.3 starts.
+3. P4.3 then begins with red tests for the reference-worker protocol, exact
+   adapter version 2 capability negotiation, utility crash, cancellation, and
+   wrong-attempt or malformed messages.
+4. Do not import or distribute AionCore, add a network model or credential,
+   enable MCP/shell/workspace mutation, or widen renderer authority without its
+   own exact gate.
+5. Keep local validation, pushed CI, merge, P4 phase acceptance, package,
+   release, deployment, distribution, and user acceptance separate.
 
 ## Open decisions
 
 - License for original Actestra source.
 - Credential storage mechanism and platform-keychain boundary.
-- Main-owned input-reference storage and MCP/native-tool transport.
+- Exact automatic persistence-utility recovery policy and retry orchestration
+  for the P4.5 coordination slice. P4.2 deliberately fails the current client
+  closed and supports recovery through a fresh client/application restart.
+- Content-reference retention duration and cleanup trigger when terminal
+  coordination is connected in P4.5.
 - Worker sandbox implementation per operating system.
 - Long-term dependency upgrade policy.
 - Code-signing, notarization, update, and distribution accounts.
@@ -373,6 +447,15 @@ The ordered implementation index and P3 non-claims are in
 - P3.1 through P3.6, review remediation, the final PR head, squash merge, and
   exact merged-main CI are evidenced. P3 phase acceptance is not a release or
   user-acceptance claim.
+- P4.1 is accepted. P4.2 is locally implemented and has a completed automated
+  full-diff review plus exact implementation CI, but it is not merged or
+  owner-accepted. No submitted GitHub review or human approval is claimed.
+- The future reference worker is deterministic and offline. Even after it is
+  implemented, it will prove process and authority paths rather than model
+  reasoning or production sandboxing.
+- AionCore remains an evaluated exact pin with inconsistent root/workspace
+  license metadata. No AionUi or AionCore source, binary, asset, or
+  configuration is imported by P4.2.
 - The final redundant full-diff confirmation was rate-limited before review and
   is not zero-issue evidence. The completed 67-file review plus the completed
   zero-issue nine-file remediation review are the review-closure evidence.
@@ -384,16 +467,19 @@ The ordered implementation index and P3 non-claims are in
   rate-limited before reviewing the final four-document status range. Its
   successful status is limit-handling evidence; exact final-head CI run
   30376696055 passed.
-- Main startup registers SQLite v3 and inert P3.5 reference services, but no
-  protected operation, tool transport, credential value, or worker control is
-  renderer-visible.
+- Main startup launches the schema 4 persistence utility and registers inert
+  P3.5 reference services, but no protected operation, content reference, raw
+  path, tool transport, credential value, or worker control is renderer-visible.
 - The P3.4 deterministic fake is test infrastructure, not a worker process or
   evidence of packaged crash recovery.
 - P3.6 makes metadata-only audit and terminal-attempt evidence durable.
   Approval, credential-lease, and policy state remains in memory and contains no
   secret value or real tool execution.
-- SQLite still runs synchronously in main; it must move behind a supervised
-  persistence utility before real user-workload writes are enabled.
+- SQLite no longer runs synchronously in main. A utility crash makes the
+  current client unavailable, and P4.2 does not silently fall back or
+  transparently retry; hot recovery remains P4.5 work.
+- Workspace grants and content references are durable but inert. No real worker
+  or tool consumes them, and retention-point cleanup is not implemented yet.
 - The P3 contracts and fake-worker gate have passed. Real-worker integration is
   P4 work and still requires the dedicated scope, decisions, branch, and tests
   described above.

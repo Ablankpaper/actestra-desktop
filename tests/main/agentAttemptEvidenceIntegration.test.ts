@@ -6,7 +6,6 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { instant, type DomainGraph } from "../../apps/desktop/src/core";
 import { createMainPlatformServices } from "../../apps/desktop/src/main/platform/mainPlatformServices";
-import { openSqliteCorePersistence } from "../../apps/desktop/src/main/persistence/sqliteCorePersistence";
 import { AgentAdapterSupervisor } from "../../apps/desktop/src/main/workers/agentAdapterSupervisor";
 import {
   DeterministicAgentClock,
@@ -21,6 +20,7 @@ import {
   FIXTURE_AGENT_WORKER_ID,
   FIXTURE_AGENT_WORKSPACE_ID,
 } from "../fixtures/agentAdapter";
+import { openTestPersistenceUtility } from "../fixtures/persistenceUtility";
 
 const testDirectories: string[] = [];
 const STARTED_AT = instant("2026-07-28T08:00:00.000Z");
@@ -94,7 +94,7 @@ afterEach(() => {
 describe("main terminal-attempt persistence integration", () => {
   it("survives restart only after the coordinator crosses the release barrier", async () => {
     const userDataPath = createTestDirectory();
-    const seed = openSqliteCorePersistence(userDataPath);
+    const seed = (await openTestPersistenceUtility(userDataPath)).client;
     await seed.replaceDomainGraph(createAgentDomainGraph());
     await seed.close();
 
@@ -114,13 +114,14 @@ describe("main terminal-attempt persistence integration", () => {
     await supervisor.start(createAgentStartRequest());
     await adapter.advance(FIXTURE_AGENT_SESSION_ID);
 
-    const services = createMainPlatformServices(userDataPath);
+    const servicesPersistence = await openTestPersistenceUtility(userDataPath);
+    const services = createMainPlatformServices(servicesPersistence.client);
     const coordinator = services.createAttemptEvidenceCoordinator(supervisor);
     await coordinator.persistAndRelease(FIXTURE_AGENT_SESSION_ID);
     expect(supervisor.listAttempts()).toEqual([]);
     await services.close();
 
-    const reopened = openSqliteCorePersistence(userDataPath);
+    const reopened = (await openTestPersistenceUtility(userDataPath)).client;
     await expect(reopened.replayEvents(FIXTURE_AGENT_STREAM_ID)).resolves.toHaveLength(2);
     await expect(reopened.listRecentAgentAttemptEvidence(50)).resolves.toMatchObject([
       {

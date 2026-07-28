@@ -71,6 +71,82 @@ if (!fs.existsSync(archivePath)) {
   fail("app.asar is missing");
 }
 
+function extractArchiveText(archiveRelativePath) {
+  try {
+    return extractFile(archivePath, archiveRelativePath).toString("utf8");
+  } catch {
+    fail(`packaged module is missing: ${archiveRelativePath}`);
+  }
+}
+
+function localModuleSpecifiers(source) {
+  const specifiers = new Set();
+  const patterns = [
+    /\bfrom\s+["'](\.[^"']+)["']/g,
+    /\bimport\s*(?:\(\s*)?["'](\.[^"']+)["']/g,
+    /\brequire\s*\(\s*["'](\.[^"']+)["']/g,
+  ];
+  for (const pattern of patterns) {
+    for (const match of source.matchAll(pattern)) {
+      specifiers.add(match[1]);
+    }
+  }
+  return specifiers;
+}
+
+function resolvePackagedModule(importer, specifier) {
+  const cleanSpecifier = specifier.split(/[?#]/u, 1)[0];
+  const resolved = path.posix.normalize(
+    path.posix.join(path.posix.dirname(importer), cleanSpecifier),
+  );
+  if (!resolved.startsWith("out/main/")) {
+    fail(`main module import escapes its packaged root: ${importer} -> ${specifier}`);
+  }
+
+  const candidates = path.posix.extname(resolved)
+    ? [resolved]
+    : [`${resolved}.js`, path.posix.join(resolved, "index.js")];
+  for (const candidate of candidates) {
+    try {
+      extractFile(archivePath, candidate);
+      return candidate;
+    } catch {
+      // Continue to the next supported ESM resolution candidate.
+    }
+  }
+  fail(`main module import is missing: ${importer} -> ${specifier}`);
+}
+
+const forbiddenMainPersistencePattern = /node:sqlite|DatabaseSync|openSqliteCorePersistence/;
+const reachableMainModules = new Set();
+const pendingMainModules = ["out/main/index.js"];
+while (pendingMainModules.length > 0) {
+  const modulePath = pendingMainModules.pop();
+  if (reachableMainModules.has(modulePath)) {
+    continue;
+  }
+  reachableMainModules.add(modulePath);
+  const source = extractArchiveText(modulePath);
+  if (forbiddenMainPersistencePattern.test(source)) {
+    fail(`Electron main entry graph contains synchronous SQLite: ${modulePath}`);
+  }
+  for (const specifier of localModuleSpecifiers(source)) {
+    pendingMainModules.push(resolvePackagedModule(modulePath, specifier));
+  }
+}
+
+let packagedPersistenceUtility;
+try {
+  packagedPersistenceUtility = extractFile(archivePath, "out/main/persistence-utility.js").toString(
+    "utf8",
+  );
+} catch {
+  fail("packaged persistence utility entry is missing");
+}
+if (!/node:sqlite/.test(packagedPersistenceUtility)) {
+  fail("packaged persistence utility does not own the SQLite implementation");
+}
+
 const archiveStrings = execFileSync("/usr/bin/strings", [archivePath], {
   encoding: "utf8",
   maxBuffer: 16 * 1024 * 1024,

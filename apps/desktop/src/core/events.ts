@@ -838,6 +838,29 @@ export function coreEventCursor(event: CoreEvent): CoreEventCursor {
   };
 }
 
+export function assertCoreEventCursor(value: unknown): asserts value is CoreEventCursor {
+  if (
+    !isRecord(value) ||
+    Object.keys(value).some((key) => !["streamId", "sequence", "eventId"].includes(key)) ||
+    typeof value.streamId !== "string" ||
+    typeof value.eventId !== "string" ||
+    !Number.isSafeInteger(value.sequence) ||
+    (value.sequence as number) < 1
+  ) {
+    throw new CoreContractError(
+      "invalid-event-cursor",
+      "Core event cursor must contain an exact stream id, positive sequence, and event id",
+    );
+  }
+
+  try {
+    eventStreamId(value.streamId);
+    eventId(value.eventId);
+  } catch {
+    throw new CoreContractError("invalid-event-cursor", "Core event cursor identity is invalid");
+  }
+}
+
 export function replayCoreEvents(
   events: readonly CoreEvent[],
   after?: CoreEventCursor,
@@ -848,17 +871,7 @@ export function replayCoreEvents(
     return [...events];
   }
 
-  if (
-    !isRecord(after) ||
-    typeof after.streamId !== "string" ||
-    typeof after.eventId !== "string" ||
-    typeof after.sequence !== "number"
-  ) {
-    throw new CoreContractError(
-      "invalid-event-cursor",
-      "Core event cursor must contain a stream id, sequence, and event id",
-    );
-  }
+  assertCoreEventCursor(after);
 
   eventStreamId(after.streamId);
   eventId(after.eventId);

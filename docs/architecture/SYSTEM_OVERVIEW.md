@@ -1,6 +1,6 @@
 # System Overview
 
-Status: P3 accepted on `main`; P4 not started
+Status: P3 accepted on `main`; P4.2 locally implemented on the Draft branch
 
 ## Context
 
@@ -25,6 +25,7 @@ flowchart TD
     GENERAL["General Worker Process"]
     GOOSE["Goose Worker Process"]
     FUTURE["Future Worker Process"]
+    PERSIST["Persistence Utility Process"]
     STORE["Actestra-owned Local Store"]
 
     RENDERER --> MAIN
@@ -41,9 +42,11 @@ flowchart TD
     ADAPTERS --> FUTURE
     POLICY --> TOOLS
     CREDS --> TOOLS
-    EVENTS --> STORE
-    ARTIFACTS --> STORE
-    POLICY --> STORE
+    EVENTS --> PERSIST
+    ARTIFACTS --> PERSIST
+    POLICY --> PERSIST
+    MAIN --> PERSIST
+    PERSIST --> STORE
 ```
 
 ## Current implementation boundary
@@ -64,18 +67,32 @@ credential-lease, metadata-audit, and tool-gateway services.
 P3.6 adds SQLite schema version 3 for durable metadata-only privileged
 audit and immutable terminal-attempt evidence. Electron main now registers an
 inert deny-by-default composition root, a disabled executor, trusted-main-frame
-IPC, and a bounded renderer projection. Preload exposes only application
-metadata, platform snapshot, and renderer-ready intents. There is no production
-policy snapshot, credential backend, input-reference store, real tool executor,
-MCP transport, process transport, or real worker adapter behind any component
-shown above.
+IPC, and a bounded renderer projection.
 
-The SQLite adapter owns `state/actestra.sqlite3` beneath Actestra user data,
-uses one DELETE/FULL connection, and rejects foreign ownership, future schemas,
-inconsistent migration history, invalid domain graphs, and corrupt event
-projections. Its asynchronous port prevents storage technology from entering
-core consumers, but its current synchronous implementation must move to a
-supervised persistence utility before user-workload writes are activated.
+P4.2 moves that SQLite implementation out of Electron main. Main now launches
+one Actestra persistence utility, waits for its version 1 ready/open exchange,
+and injects only an asynchronous composite persistence port into the existing
+platform services. The utility exclusively owns `state/actestra.sqlite3`, its
+DELETE/FULL connection, and the forward migration registry. A utility exit,
+message violation, or timeout makes the current client unavailable; main has no
+synchronous persistence fallback.
+
+Schema version 4 adds durable workspace grants and immutable UTF-8 content
+references. Each reference is bounded to 1 MiB and carries exact attempt
+ownership, reference kind, classification, media type, byte length, SHA-256,
+creation/expiry time, and optional consumption evidence. Storage verifies the
+current domain/grant identity on insert, exact ownership and time on retrieval,
+and content integrity in both utility and main client. Reopening through a fresh
+client or application restart preserves records; transparent hot restart of an
+exited utility is not implemented.
+
+[ADR-0009](decisions/0009-p4-general-work-process-and-content-boundaries.md)
+accepts the first P4 process, adapter-version, content-reference, scoped-tool,
+policy, and persistence choices. Only its P4.2 persistence/content subset is
+implemented. Preload still exposes only application metadata, platform
+snapshot, and renderer-ready intents. There is no production policy snapshot,
+credential backend, real tool executor, MCP/native tool transport, reference
+worker process, adapter version 2, or broader renderer authority.
 
 ## Authority boundaries
 
@@ -87,9 +104,9 @@ installation authority.
 
 ### Desktop main process
 
-The main process owns windows, IPC validation, privileged service lifecycle, and
-worker process supervision. It does not embed an agent runtime in renderer
-memory.
+The main process owns windows, IPC validation, privileged service lifecycle,
+utility launch/observation, and worker process supervision. It does not embed
+an agent runtime or synchronous workload database in renderer or main memory.
 
 ### Actestra app core
 
@@ -264,17 +281,22 @@ or silent retry. P3.4 implements startup and heartbeat timeout,
 idempotent cancellation, cancellation acknowledgement timeout, protocol
 failure, crash, terminal reconciliation, and bounded fresh-attempt restart
 semantics. P3.6 persists terminal incident codes and projects bounded,
-metadata-only attempt state through trusted main-frame IPC.
+metadata-only attempt state through trusted main-frame IPC. P4.2 additionally
+turns persistence startup timeout, request timeout, malformed response, content
+digest drift, and utility exit into explicit fail-closed unavailability.
 
 ## Deferred choices
 
 P2 pins Node.js 24.13.0, Bun 1.3.9, Electron 37.10.3, React 19.2.4, and data
 layout version 1 for the current shell. ADR-0005 selects Electron's embedded
 `node:sqlite` and an Actestra-owned forward migration registry for durable
-storage. P4 and later work still must decide process transport, worker sandbox
-mechanisms, real credential storage, input-reference storage, production
-policy, and utility-process hosting. Signing, notarization, update delivery,
-and cross-platform candidate packaging remain P8 work.
+storage. ADR-0009 selects Electron utility-process messaging for owned P4
+roles, schema 4 content-reference storage, and persistence utility hosting.
+P4.3 and later still must implement and evidence worker transport, adapter
+version 2, scoped tools, production policy, coordination, retention cleanup,
+and supervised recovery. Worker sandbox mechanisms and real credential storage
+remain unresolved. Signing, notarization, update delivery, and cross-platform
+candidate packaging remain P8 work.
 
 This document fixes authority and lifecycle boundaries; a pinned shell
 dependency does not pre-decide worker or persistence architecture.

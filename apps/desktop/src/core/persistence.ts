@@ -1,17 +1,27 @@
 import type { DomainGraph } from "./domain";
 import type { CoreEvent, CoreEventCursor, EventStreamId } from "./events";
 
-export type PersistenceErrorCode =
-  | "closed"
-  | "foreign-database"
-  | "unowned-database"
-  | "future-schema"
-  | "migration-registry"
-  | "migration-history"
-  | "corrupt-database"
-  | "domain-reference"
-  | "invalid-record"
-  | "evidence-conflict";
+export const PERSISTENCE_ERROR_CODES = [
+  "closed",
+  "foreign-database",
+  "unowned-database",
+  "future-schema",
+  "migration-registry",
+  "migration-history",
+  "corrupt-database",
+  "domain-reference",
+  "invalid-record",
+  "evidence-conflict",
+  "workspace-grant-conflict",
+  "content-conflict",
+  "content-not-found",
+  "content-ownership",
+  "content-expired",
+  "content-integrity",
+  "content-too-large",
+] as const;
+
+export type PersistenceErrorCode = (typeof PERSISTENCE_ERROR_CODES)[number];
 
 export class PersistenceError extends Error {
   constructor(
