@@ -1,6 +1,6 @@
 # P3 Platform Core and Contracts
 
-Status: P3.1-P3.6 and review remediation CI-backed; Draft owner decision pending
+Status: Reviewed and Ready; merge and exact main CI pending
 
 Evidence date: 2026-07-28
 
@@ -25,8 +25,10 @@ P3.6 implementation commit: `950fe0efa2fdc5adc69d013acc9f417d201cb28e`
 
 Review-remediation commit: `4fa0fb120a6ceb2c71effd2a552e8d9bbf05d151`
 
+Review-closure evidence head: `2fe179a63ac7e8a4d23373fe87dda7b062c314fc`
+
 Review surface:
-[draft pull request 3](https://github.com/bignormal/actestra-desktop/pull/3)
+[pull request 3](https://github.com/bignormal/actestra-desktop/pull/3)
 
 P2 entry proof:
 [main CI run 30329620829](https://github.com/bignormal/actestra-desktop/actions/runs/30329620829)
@@ -52,6 +54,9 @@ P3.6 implementation proof:
 
 Review-remediation proof:
 [pull-request CI run 30374144474](https://github.com/bignormal/actestra-desktop/actions/runs/30374144474)
+
+Review-closure evidence proof:
+[pull-request CI run 30374447377](https://github.com/bignormal/actestra-desktop/actions/runs/30374447377)
 
 ## Purpose
 
@@ -297,6 +302,14 @@ evidence. Exact remediation CI run 30374144474 passes 24 files with 130 tests,
 the runtime and failure probes, boundaries, documentation, build, unsigned
 package identity, and clean-profile startup.
 
+On 2026-07-28 the owner authorized the next gate and PR 3 became Ready at exact
+head `2fe179a63ac7e8a4d23373fe87dda7b062c314fc`. The Ready transition
+triggered CodeRabbit run `c55e04d9-8360-4570-a06c-2dec6b5d19e6`, which selected
+all 67 PR files and completed successfully with no review submission or review
+thread. Because the repository uses CodeRabbit's Free plan, this remote result
+is summary/walkthrough evidence, not an independent approval or a replacement
+for the completed CLI review chain above.
+
 ## Exit evidence
 
 P3 is not complete until tests prove:
@@ -311,13 +324,13 @@ P3 is not complete until tests prove:
 
 The exact implementation and remediation commits and their CI runs exercise
 every exit item. The full independent review and remediation review are
-complete. P3 remains open only because the Draft still requires the final owner
-decision.
+complete, and the owner authorized the Ready transition. P3 remains open until
+the branch merges and exact `main` CI passes.
 
 ## Non-claims
 
-- P3.1 through P3.6 and review remediation are CI-backed. P3 remains open
-  pending the final Draft owner decision.
+- P3.1 through P3.6 and review remediation are CI-backed. PR 3 is Ready, while
+  P3 remains open pending merge and exact `main` CI.
 - No credential backend, production policy snapshot, input-reference store, or
   MCP/native transport is selected.
 - The deterministic fake is protocol test infrastructure, not a real worker.

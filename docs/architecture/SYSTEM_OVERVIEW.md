@@ -1,6 +1,6 @@
 # System Overview
 
-Status: P2 accepted; P3.1-P3.6 and review remediation are CI-backed; Draft owner decision pending
+Status: P2 accepted; P3 is reviewed and Ready; merge and exact main CI pending
 
 ## Context
 

@@ -7,8 +7,9 @@ Last updated: 2026-07-28
 ### P3 — Platform Core and Contracts
 
 P3.1-P3.6 and review remediation are pushed and CI-backed. The full independent
-review and remediation review are complete. The final Draft owner decision is
-pending, so P3 remains open.
+review and remediation review are complete. On 2026-07-28 the owner authorized
+the next gate and pull request 3 became Ready. P3 remains open until merge and
+exact `main` CI.
 
 P0, P1, and P2 are accepted on `main`.
 [Pull request 2](https://github.com/bignormal/actestra-desktop/pull/2) merged
@@ -20,7 +21,7 @@ passes on the exact squash commit.
 
 `feat/platform-core-contracts` begins from that verified `main` commit and is
 open in
-[draft pull request 3](https://github.com/bignormal/actestra-desktop/pull/3).
+[pull request 3](https://github.com/bignormal/actestra-desktop/pull/3).
 P3.1/P3.2 implementation commit
 `31dd6e4178eb7641b45be0ee2bccb862a96dac99` adds the P3.1 domain records,
 state transitions, and ownership invariants plus the P3.2 version 1 event
@@ -73,6 +74,16 @@ idempotency contracts, post-replacement stream-cache invalidation, and
 evidence-document corrections.
 [macOS arm64 CI run 30374144474](https://github.com/bignormal/actestra-desktop/actions/runs/30374144474)
 passes on that exact remediation commit.
+
+Review-closure evidence commit
+`2fe179a63ac7e8a4d23373fe87dda7b062c314fc` records the complete review,
+remediation, validation, and remaining owner gate.
+[macOS arm64 CI run 30374447377](https://github.com/bignormal/actestra-desktop/actions/runs/30374447377)
+passes on that exact evidence head. The subsequent Ready transition triggered
+CodeRabbit run `c55e04d9-8360-4570-a06c-2dec6b5d19e6`, which selected all 67
+PR files and completed with a successful status, no review submission, and no
+review thread. This Free-plan summary/walkthrough is not represented as an
+independent approval.
 
 Application startup now opens the owned SQLite store and registers the
 deny-by-default reference services only in main. The fake worker still performs
@@ -231,7 +242,7 @@ Review closure validation at
 
 | Area | State | Evidence or blocker |
 | --- | --- | --- |
-| Repository | P3.1-P3.6 plus remediation pushed | `feat/platform-core-contracts` is pushed through review-remediation commit `4fa0fb120a6ceb2c71effd2a552e8d9bbf05d151`; draft PR 3 remains open and Draft |
+| Repository | P3 branch Ready | `feat/platform-core-contracts` is pushed through review-closure evidence head `2fe179a63ac7e8a4d23373fe87dda7b062c314fc`; PR 3 is open and Ready |
 | P2 merge | Accepted on `main` | PR 2 final head `f972bb6c33c925f3e333a6ee87d20e5bbb72cece`; squash merge `76d6a58b20c3e010ee759358f2c86be80bc6a6c1` |
 | P2 main CI | Pass | Main push run 30329620829 passed on the exact squash merge |
 | P3 kickoff CI | Pass | Pull-request run 30329964305 passed on exact pushed head `b9c1119479c805c02452e4054a3d904649a3ca03` |
@@ -241,6 +252,7 @@ Review closure validation at
 | P3.5 CI | Pass | Pull-request run 30345370507 passed on exact implementation commit `cec0cdc554656c021cdff7f2341ddd3f9b5d83dd` |
 | P3.6 CI | Pass | Pull-request run 30350732223 passed on exact implementation commit `950fe0efa2fdc5adc69d013acc9f417d201cb28e` |
 | P3 review closure | Pass with one documented invalid issue | Full 67-file review completed with 10 issues; 9 valid issues fixed; all 9 remediation files then completed a zero-issue review; exact remediation CI run 30374144474 passed |
+| P3 Ready gate | Pass; merge pending | Owner authorized the Ready transition; exact head run 30374447377 passed; Ready-triggered CodeRabbit selected 67 files and completed successfully with 0 review submissions and 0 threads |
 | Product shell | Implemented | Original Actestra Electron/React shell; no upstream or Aera application source or asset imported |
 | Renderer boundary | CI-backed through P3.6 | Context isolation, sandbox, Node and packaged DevTools disabled, production CSP denies connections, exact frozen preload allowlist, trusted-frame zero-argument IPC, and direct-client source checks |
 | Automated tests | Exact review-remediation CI pass | Twenty-four Vitest files with 130 tests, exact Electron SQLite probe, process-failure harness, 34-source boundary check, build, package identity, and clean-profile smoke pass |
@@ -302,12 +314,13 @@ The ordered implementation index and P3 non-claims are in
 
 ## Next gate
 
-1. Keep pull request 3 Draft until the owner explicitly decides whether the
-   reviewed, CI-backed P3 branch may become ready or merge.
-2. Do not begin P4 or integrate a real AionUi, Goose, Eigent, or other worker
+1. Keep pull request 3 Ready but unmerged until the owner explicitly authorizes
+   the merge step.
+2. Before merging, re-check the exact PR head, current-head CI, mergeability,
+   review submissions, review threads, and release non-claims.
+3. After merge, wait for exact `main` CI before recording P3 as accepted.
+4. Do not begin P4 or integrate a real AionUi, Goose, Eigent, or other worker
    until P3 is accepted.
-3. If the owner requests merge, re-check the exact PR head, current-head CI,
-   mergeability, review threads, and release non-claims before acting.
 
 ## Open decisions
 
@@ -323,8 +336,8 @@ The ordered implementation index and P3 non-claims are in
 ## Known blockers and non-claims
 
 - P3.1 through P3.6 and review remediation are CI-backed. The technical review
-  gate is closed, but P3 is not accepted because the final Draft owner decision
-  is still pending.
+  and Ready gates are closed, but P3 is not accepted because merge and exact
+  `main` CI are still pending.
 - The final redundant full-diff confirmation was rate-limited before review and
   is not zero-issue evidence. The completed 67-file review plus the completed
   zero-issue nine-file remediation review are the review-closure evidence.
@@ -341,6 +354,8 @@ The ordered implementation index and P3 non-claims are in
 - No real worker may be integrated until the P3 contracts and fake-worker gate
   pass.
 - The local P2 package remains deliberately unsigned and is not a candidate.
+- The `main` branch currently has no GitHub branch-protection rule; explicit
+  owner-gated PR discipline remains required.
 - CI runs 30339662937 and 30350732223 passed, but GitHub annotated the pinned
   checkout and setup-node actions as Node 20-targeting actions forced onto Node
   24; this is a dependency-maintenance item, not failed P3 evidence.
