@@ -21,9 +21,11 @@ release infrastructure, or product boundaries with Aera.
 P1 is accepted on `main`. Actestra is now in **P2 — Independent Product
 Shell**. Exact implementation commit
 `1892b48402b1bfa9425a34172ff79259b7190b81` is locally verified and passed its
-first macOS arm64 CI run in
+first macOS arm64 CI run. Review-remediation commit
+`892a44240405c1d2d4720d4ff7e09a6a19bbe4e9` also passes local validation and CI
+in
 [draft pull request 2](https://github.com/bignormal/actestra-desktop/pull/2);
-review, final-head CI, and merge remain pending.
+final-head CI, GitHub review, and merge remain pending.
 
 - The Electron 37.10.3 and React 19.2.4 shell is original Actestra source; no
   AionUi, AionCore, Goose, Eigent, Aera, or AgentEra application source or asset
@@ -33,9 +35,10 @@ review, final-head CI, and merge remain pending.
 - The renderer is sandboxed and receives only two typed, non-privileged bridge
   operations. External HTTP, HTTPS, WebSocket, permissions, navigation, new
   windows, telemetry, updates, and accounts are inactive.
-- Five test files with 21 tests, formatting, lint, strict types, product-boundary
-  checks, renderer build, unsigned arm64 app/DMG/ZIP packaging, packaged
-  identity checks, and a fresh-profile three-stage startup smoke pass locally.
+- Five test files with 22 tests, a three-scenario process-failure harness,
+  formatting, lint, strict types, product-boundary checks, renderer build,
+  unsigned arm64 app/DMG/ZIP packaging, packaged identity/CSP checks, and a
+  fresh-profile three-stage startup smoke pass locally.
 - The shell has no task persistence, worker runtime, tool execution, or
   orchestration yet; those begin behind P3 contracts.
 - There is no CI-backed candidate, signed release, deployment, distribution, or

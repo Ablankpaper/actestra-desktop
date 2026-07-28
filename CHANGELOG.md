@@ -25,3 +25,10 @@ releases begin.
   macOS CI workflow.
 - ADR-0003 and the upstream import log for clean-shell and selective-port
   governance.
+
+### Changed
+
+- Hardened the P2 merge gate with immutable CI action pins, canonical unique
+  development staging, deterministic packaged-process cleanup, dynamic-import
+  boundary checks, packaged DevTools denial, and environment-specific renderer
+  CSP verification.

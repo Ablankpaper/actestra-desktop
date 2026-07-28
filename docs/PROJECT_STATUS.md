@@ -4,7 +4,7 @@ Last updated: 2026-07-28
 
 ## Current phase
 
-### P2 — Independent Actestra Product Shell (implementation gate passes; review pending)
+### P2 — Independent Actestra Product Shell (review remediation CI passes; merge pending)
 
 P0 and P1 are accepted on `main`. Pull request 1 merged P1 at
 `174ef46ff971a2f67aec16fbfd6dc56fc0910306`.
@@ -13,26 +13,35 @@ P2 implementation commit
 `1892b48402b1bfa9425a34172ff79259b7190b81` is pushed on
 `feat/independent-product-shell`, based on that exact `main` commit, in
 [draft pull request 2](https://github.com/bignormal/actestra-desktop/pull/2).
-The local technical exit gate and pull-request CI on that exact implementation
-commit pass. Evidence-only follow-up commits must still pass the PR head check.
-Review and merge remain required before P2 is accepted on `main`.
+Review-remediation commit
+`892a44240405c1d2d4720d4ff7e09a6a19bbe4e9` is also pushed in that PR.
+The local technical exit gate and
+[macOS arm64 CI run 30329203456](https://github.com/bignormal/actestra-desktop/actions/runs/30329203456)
+pass on that exact remediation commit.
+
+Three completed CodeRabbit CLI review passes raised 14 issues: 13 valid issues
+were fixed and one minor Promise-rejection suggestion was rejected because the
+typed preload operation intentionally returns `void`. A fourth confirmation
+review was rate-limited rather than completed. The final evidence-only PR head
+must retain green CI and receive the GitHub review before merge.
 
 ## Evidence snapshot
 
 | Area | State | Evidence or blocker |
 | --- | --- | --- |
-| Repository | Pushed draft PR | `feat/independent-product-shell` from exact `main` commit `174ef46ff971a2f67aec16fbfd6dc56fc0910306`; implementation commit `1892b48402b1bfa9425a34172ff79259b7190b81`; draft PR 2 |
+| Repository | Pushed draft PR | `feat/independent-product-shell` from exact `main` commit `174ef46ff971a2f67aec16fbfd6dc56fc0910306`; implementation `1892b48402b1bfa9425a34172ff79259b7190b81`; review remediation `892a44240405c1d2d4720d4ff7e09a6a19bbe4e9`; draft PR 2 |
 | Product source | Original Actestra shell | No AionUi, AionCore, Goose, Eigent, Aera, or AgentEra application source or asset imported |
 | Framework pins | Locked | Node.js 24.13.0, Bun 1.3.9, Electron 37.10.3, React and React DOM 19.2.4 |
 | Product identity | Locally verified | `Actestra`, `com.bignormal.actestra`, `Actestra` executable, `actestra:` protocol, original icon |
 | Data ownership | Locally verified | Actestra user-data root and fail-closed `data-layout.json` at layout version 1 |
-| Renderer boundary | Locally verified | Context isolation, sandbox, Node disabled, web security enabled, two-operation typed bridge |
+| Renderer boundary | Locally verified | Context isolation, sandbox, Node disabled, web security enabled, packaged DevTools disabled, production CSP denies all connections, two-operation typed bridge |
 | External access | Locally verified | Permission requests, new windows, cross-navigation, HTTP, HTTPS, WS, and WSS fail closed; only loopback development requests are allowed |
-| Automated tests | Local pass | Five Vitest files; 21 tests passed |
-| Source checks | Local pass | Formatting, zero lint warnings, strict TypeScript, documentation links, and product-boundary scan |
+| Automated tests | Local pass | Five Vitest files with 22 tests plus a three-scenario process-failure smoke harness |
+| Source checks | Local pass | Formatting, zero lint warnings, strict TypeScript, documentation links, dynamic-import product-boundary scan, and immutable CI action pins |
 | Desktop package | Local unsigned artifacts | macOS arm64 `.app`, DMG, and ZIP produced; DMG checksum structure, bundle identity, architecture, ASAR boundary, and packaged Electron notices verified |
 | Fresh-profile launch | Local pass | Application, window, and renderer ready markers plus Actestra layout manifest observed; real UI visually inspected |
-| CI | Pass on implementation commit | [macOS arm64 run 30295163884](https://github.com/bignormal/actestra-desktop/actions/runs/30295163884) passed on `1892b48402b1bfa9425a34172ff79259b7190b81`; the final PR head must also pass after evidence updates |
+| Independent review | Remediated locally | 13 valid CodeRabbit issues fixed; one `void` contract false positive documented; final GitHub review pending |
+| CI | Pass on review remediation | [macOS arm64 run 30329203456](https://github.com/bignormal/actestra-desktop/actions/runs/30329203456) passed on `892a44240405c1d2d4720d4ff7e09a6a19bbe4e9`; the final evidence head must also pass |
 | Release | None | No candidate, signed artifact, deployment, or acceptance |
 
 ## Accepted direction
@@ -62,7 +71,8 @@ Review and merge remain required before P2 is accepted on `main`.
 | Packaged identity and notice verification | Pass locally |
 | Fresh-profile application, window, renderer, and data-layout smoke | Pass locally |
 | Visual inspection of the real packaged shell | Pass locally |
-| Pull-request CI | Pass on exact implementation commit; final PR head check required |
+| Pull-request CI | Pass on exact review-remediation commit; final evidence head check required |
+| Independent review remediation | 13 valid issues fixed; one invalid `void` rejection suggestion documented |
 | Review and merge | Pending |
 
 Detailed commands, implementation boundaries, screenshot, and non-claims are in
@@ -70,9 +80,10 @@ Detailed commands, implementation boundaries, screenshot, and non-claims are in
 
 ## Next gate
 
-1. Require the final draft-PR head to retain a passing macOS CI job.
-2. Review the identity, renderer authority, data layout, package notice, and
-   clean-launch evidence.
+1. Commit and push the review evidence, then require that exact PR head to pass
+   macOS CI.
+2. Mark PR 2 ready and require its GitHub review to finish without unresolved
+   blocking comments.
 3. Merge P2 only after review and CI; then begin P3 models and deterministic fake
    worker contracts in a dedicated branch.
 
@@ -94,7 +105,9 @@ Detailed commands, implementation boundaries, screenshot, and non-claims are in
   metadata, and cross-platform acceptance remain future gates.
 - Task persistence, workers, tools, approvals, and orchestration are not
   implemented.
-- Draft PR 2 remains unreviewed and unmerged.
+- Draft PR 2 remains unmerged; its final GitHub review is pending.
+- The fourth local CodeRabbit confirmation attempt was rate-limited and did not
+  produce a result.
 - There is no candidate, release, deployment, distribution, or user acceptance.
 
 ## Update policy
