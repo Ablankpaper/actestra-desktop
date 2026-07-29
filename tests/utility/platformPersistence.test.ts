@@ -23,7 +23,7 @@ import {
 import {
   openSqliteCorePersistence,
   resolveCoreDatabasePath,
-} from "../../apps/desktop/src/main/persistence/sqliteCorePersistence";
+} from "../../apps/desktop/src/utility/persistence/sqliteCorePersistence";
 import { createProtectedOperation } from "../fixtures/privilegedServices";
 
 const testDirectories: string[] = [];
@@ -141,6 +141,17 @@ describe("SQLite platform evidence", () => {
     } as unknown as AgentAttemptEvidence;
     const persistence = openSqliteCorePersistence(userDataPath);
 
+    await expect(
+      persistence.appendAgentAttemptEvidence({
+        ...evidence,
+        incident: {
+          ...evidence.incident,
+          message: "operator visible detail",
+        },
+      } as unknown as AgentAttemptEvidence),
+    ).rejects.toMatchObject({
+      code: "invalid-record",
+    });
     await expect(
       persistence.appendAgentAttemptEvidence(evidenceWithExplicitUndefined),
     ).resolves.toEqual({

@@ -9,7 +9,7 @@ import { normalizeAionUiApprovalDecisionRequest } from "../../apps/desktop/src/c
 import {
   openSqliteCorePersistence,
   resolveCoreDatabasePath,
-} from "../../apps/desktop/src/main/persistence/sqliteCorePersistence";
+} from "../../apps/desktop/src/utility/persistence/sqliteCorePersistence";
 
 const testDirectories: string[] = [];
 const CREATED_AT = "2026-07-29T05:00:00.000Z";
@@ -65,11 +65,21 @@ describe("AionUi F3 SQLite approval authority", () => {
       },
     });
     await expect(
+      first.beginAionUiApprovalDelivery(normalized.decisionId, "2026-07-29T04:59:59.000Z"),
+    ).rejects.toMatchObject({
+      code: "invalid-record",
+    });
+    await expect(
       first.beginAionUiApprovalDelivery(normalized.decisionId, ATTEMPTED_AT),
     ).resolves.toMatchObject({
       deliveryState: "pending-delivery",
       attemptCount: 1,
       lastAttemptAt: ATTEMPTED_AT,
+    });
+    await expect(
+      first.markAionUiApprovalDeliveryFailed(normalized.decisionId, "native-http-503", CREATED_AT),
+    ).rejects.toMatchObject({
+      code: "invalid-record",
     });
     await expect(
       first.markAionUiApprovalDeliveryFailed(
@@ -81,6 +91,11 @@ describe("AionUi F3 SQLite approval authority", () => {
       deliveryState: "pending-delivery",
       attemptCount: 1,
       lastErrorCode: "native-http-503",
+    });
+    await expect(
+      first.markAionUiApprovalDelivered(normalized.decisionId, ATTEMPTED_AT),
+    ).rejects.toMatchObject({
+      code: "invalid-record",
     });
     await first.close();
 

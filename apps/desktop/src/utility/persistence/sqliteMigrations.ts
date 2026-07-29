@@ -3,7 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { PersistenceError } from "../../core";
 
 export const ACTESTRA_SQLITE_APPLICATION_ID = 1_095_980_114;
-export const CURRENT_CORE_SCHEMA_VERSION = 5;
+export const CURRENT_CORE_SCHEMA_VERSION = 6;
 
 export interface SqliteMigration {
   readonly version: number;
@@ -235,6 +235,70 @@ export const CORE_SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
 
       CREATE INDEX aionui_approval_delivery_state_idx
         ON aionui_approval_decisions(delivery_state, created_at);
+    `,
+  },
+  {
+    version: 6,
+    name: "workload-content-and-grants",
+    sql: `
+      CREATE TABLE workspace_grants (
+        grant_id TEXT PRIMARY KEY,
+        contract_version INTEGER NOT NULL CHECK (contract_version = 1),
+        workspace_id TEXT NOT NULL,
+        root_path TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('active', 'revoked')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL CHECK (updated_at >= created_at),
+        grant_json TEXT NOT NULL
+      ) STRICT;
+
+      CREATE UNIQUE INDEX workspace_grants_active_workspace_idx
+        ON workspace_grants(workspace_id)
+        WHERE state = 'active';
+
+      CREATE TABLE content_references (
+        reference TEXT PRIMARY KEY,
+        contract_version INTEGER NOT NULL CHECK (contract_version = 1),
+        kind TEXT NOT NULL CHECK (kind IN ('tool-input', 'tool-output')),
+        workspace_id TEXT NOT NULL,
+        task_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        worker_id TEXT NOT NULL,
+        request_id TEXT,
+        grant_id TEXT,
+        classification TEXT NOT NULL CHECK (
+          classification IN ('workspace-content', 'task-content')
+        ),
+        media_type TEXT NOT NULL CHECK (
+          media_type IN (
+            'text/plain; charset=utf-8',
+            'text/markdown; charset=utf-8'
+          )
+        ),
+        byte_length INTEGER NOT NULL CHECK (
+          byte_length >= 0 AND byte_length <= 1048576
+        ),
+        sha256 TEXT NOT NULL CHECK (
+          length(sha256) = 64 AND sha256 NOT GLOB '*[^0-9a-f]*'
+        ),
+        created_at TEXT NOT NULL,
+        expires_at TEXT CHECK (expires_at IS NULL OR expires_at > created_at),
+        consumed_at TEXT CHECK (
+          consumed_at IS NULL OR (
+            consumed_at >= created_at AND
+            (expires_at IS NULL OR consumed_at < expires_at)
+          )
+        ),
+        metadata_json TEXT NOT NULL,
+        content_blob BLOB NOT NULL CHECK (length(content_blob) = byte_length)
+      ) STRICT;
+
+      CREATE INDEX content_references_owner_idx
+        ON content_references(workspace_id, task_id, session_id, worker_id);
+      CREATE INDEX content_references_request_idx
+        ON content_references(request_id)
+        WHERE request_id IS NOT NULL;
     `,
   },
 ] as const;

@@ -23,7 +23,7 @@ import { createPolicyGatedAionUiApprovalNativeTransport } from "../../apps/deskt
 import {
   CORE_DATABASE_FILENAME,
   openSqliteCorePersistence,
-} from "../../apps/desktop/src/main/persistence/sqliteCorePersistence";
+} from "../../apps/desktop/src/utility/persistence/sqliteCorePersistence";
 
 const testDirectories: string[] = [];
 

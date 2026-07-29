@@ -53,11 +53,22 @@ try {
   const ignoresSigtermSource = `#!/usr/bin/env node
 const fs = require("node:fs");
 const path = require("node:path");
+const { DatabaseSync } = require("node:sqlite");
 fs.mkdirSync(process.env.ACTESTRA_USER_DATA_DIR, { recursive: true });
 fs.writeFileSync(
   path.join(process.env.ACTESTRA_USER_DATA_DIR, "data-layout.json"),
   JSON.stringify({ product: "Actestra", layoutVersion: 1 }),
 );
+const stateDirectory = path.join(process.env.ACTESTRA_USER_DATA_DIR, "state");
+fs.mkdirSync(stateDirectory, { recursive: true });
+const database = new DatabaseSync(path.join(stateDirectory, "actestra.sqlite3"));
+database.exec(\`
+  CREATE TABLE workspace_grants (id TEXT PRIMARY KEY) STRICT;
+  CREATE TABLE content_references (id TEXT PRIMARY KEY) STRICT;
+  PRAGMA user_version = 6;
+\`);
+database.close();
+console.log("ACTESTRA_PERSISTENCE_UTILITY_READY");
 console.log("ACTESTRA_READY");
 console.log("ACTESTRA_WINDOW_READY");
 console.log("ACTESTRA_RENDERER_READY");

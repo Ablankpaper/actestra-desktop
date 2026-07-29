@@ -1,7 +1,8 @@
 # System Overview
 
-Status: P3 and P4.0/F0 through P4.3/F3.3 accepted on `main`; CrewAI is accepted
-as the first P6 planner-sidecar candidate but is not implemented or packaged
+Status: P3 and F0 through F3.3 accepted on `main`; GW-P4.2 workload persistence
+implemented and locally validated but not yet pushed or merged; CrewAI accepted
+as the first P6 planner-sidecar candidate but not implemented or packaged
 
 ## Context
 
@@ -24,6 +25,7 @@ flowchart TD
     ARTIFACTS["Workspace and Artifact Service"]
     CREDS["Credential Broker"]
     TOOLS["MCP and Tool Gateway"]
+    PERSIST["Persistence Utility\nschema 6 and content references"]
     ADAPTERS["Agent Adapter Boundary"]
     GENERAL["General Worker Process"]
     GOOSE["Goose Worker Process"]
@@ -46,9 +48,10 @@ flowchart TD
     ADAPTERS --> FUTURE
     POLICY --> TOOLS
     CREDS --> TOOLS
-    EVENTS --> STORE
-    ARTIFACTS --> STORE
-    POLICY --> STORE
+    EVENTS --> PERSIST
+    ARTIFACTS --> PERSIST
+    POLICY --> PERSIST
+    PERSIST --> STORE
 ```
 
 ## Current implementation boundary
@@ -65,8 +68,8 @@ downstream overlay. It does not edit the frozen source or remove original
 functional entries.
 
 P3.1 and P3.2 add a runtime-neutral core domain, lifecycle validation, and
-version 1 event stream contract. P3.3 adds a storage-neutral port plus a
-main-owned SQLite adapter with schema versions 1 and 2. P3.4 adds the version 1
+version 1 event stream contract. P3.3 adds a storage-neutral port plus a SQLite
+adapter with schema versions 1 and 2. P3.4 adds the version 1
 `AgentAdapter` contract, a main-owned lifecycle supervisor, and a deterministic
 in-memory fake adapter. P3.5 adds versioned privileged-operation and
 tool-manifest contracts plus main-owned deterministic policy, approval, opaque
@@ -79,9 +82,10 @@ and a bounded renderer projection. Preload exposes only application metadata,
 platform snapshot, and renderer-ready intents. F3.2 adds one separate, exact
 loopback response-delivery manifest, policy rule, in-memory bounded input
 reference, and executor beneath the existing F3.1 service. F3.3 separately
-gates the bounded boolean reconciliation read. There is no credential backend,
-general input-reference store, general MCP or native-tool transport, process
-transport, or real worker adapter.
+gates the bounded boolean reconciliation read. At that merged baseline there
+is no credential backend, general content-reference store, general MCP or
+native-tool transport, process transport, or real worker adapter. GW-P4.2 below
+adds the content-reference store and persistence process only.
 
 P4.2 adds the separate compatibility boundary accepted in
 [ADR-0011](decisions/0011-aionui-shadow-projection.md). Successful native HTTP
@@ -109,12 +113,23 @@ before the result is final. Compatibility-scoped hashes correlate the audit
 without storing native identifiers or creating authoritative P3 domain rows.
 This slice does not infer, approve, or execute the underlying native tool.
 
-The SQLite adapter owns `state/actestra.sqlite3` beneath Actestra user data,
-uses one DELETE/FULL connection, and rejects foreign ownership, future schemas,
-inconsistent migration history, invalid domain graphs, and corrupt event
-projections. Its asynchronous port prevents storage technology from entering
-core consumers, but its current synchronous implementation must move to a
-supervised persistence utility before user-workload writes are activated.
+GW-P4.2 general work, governed by
+[ADR-0016](decisions/0016-p4-general-work-process-and-content-boundaries.md),
+moves schemas 1 through 5 and every P3/F2/F3 persistence operation together
+behind a dedicated utility process. Schema version 6 adds durable workspace
+grants and immutable, 1 MiB-bounded UTF-8 content references with exact owner,
+kind, lifecycle, length, and SHA-256 validation. This is implemented and
+locally validated on `feat/aionui-p4-persistence-utility`, but is not yet
+pushed or merged. No real General Worker or filesystem tool is activated.
+
+The persistence utility exclusively owns `state/actestra.sqlite3` beneath
+Actestra user data, uses one DELETE/FULL connection, and rejects foreign
+ownership, future schemas, inconsistent migration history, invalid domain
+graphs, corrupt event projections, and corrupt content. Electron main and the
+AionUi compatibility bridge use one asynchronous, versioned port with no
+synchronous fallback. Source and packaged-graph checks reject `node:sqlite`
+and `DatabaseSync` from the main entry and require them in the utility entry.
+This process separation is not an operating-system sandbox.
 
 ## Foundation integration boundary
 
@@ -331,7 +346,8 @@ Initial event types:
 | F2 compatibility shadow evidence | Actestra SQLite, inert and non-authoritative |
 | F3.1 desktop confirmation response and delivery state | Actestra SQLite schema 5 |
 | F3.2 response-delivery policy and audit evidence | Actestra fixed policy plus SQLite schema 3 audit |
-| Workspace grants | Actestra |
+| Workspace grants | Actestra persistence utility, schema 6 |
+| Bounded content references | Actestra persistence utility, schema 6 |
 | Tasks and dependency graph | Actestra |
 | P3 protected-operation approval evidence for the underlying native tool | Actestra target contract; not activated by F3.2 |
 | Event and audit history | Actestra |
@@ -384,10 +400,11 @@ forward migration registry for durable storage. ADR-0011 selects the bounded
 F2 observation transport and inert shadow storage. ADR-0012 selects the first
 F3 authority slice and persist-before-deliver reconciliation. ADR-0015 fixes
 the authority and process boundary for the first P6 orchestration candidate,
-but does not select a production CrewAI dependency. Later P4 work still must
-order the remaining domain migrations and decide worker sandbox mechanisms,
-real credential storage, input-reference storage, production policy, and
-utility-process hosting. Signing, notarization, update delivery, and
+but does not select a production CrewAI dependency. ADR-0016 selects the
+general-work persistence utility, schema 6 grants, and bounded content
+references. Later P4 work still must implement the real worker protocol,
+native tools, production policy, recovery coordination, credential storage,
+and OS sandbox mechanisms. Signing, notarization, update delivery, and
 cross-platform candidate packaging remain P8 work.
 
 This document fixes authority and lifecycle boundaries; a pinned shell
