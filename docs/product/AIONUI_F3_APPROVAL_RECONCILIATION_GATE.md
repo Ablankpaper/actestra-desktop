@@ -6,6 +6,8 @@ Branch: `feat/aionui-f3-reconciliation-audit`
 
 Base: `ce19dbe072328e16dcdaf116b8199d5502cb44c6`
 
+Implementation: `c2fa4bbc4989b9a41bf6a283b5f0eb1f2f523acb`
+
 ## Outcome
 
 F3.3 preserves the original AionUi confirmation UI and closes the remaining
@@ -39,7 +41,7 @@ Only step 3 enters the new F3.3 gate.
 | Action | `network.request` |
 | Resource | `external-service` |
 | Credentials | Forbidden |
-| Input | Main-generated in-memory reference |
+| Input | Main-generated stable reference derived from private identity hashes |
 | Output | In-memory boolean only |
 | Manifest timeout | 12 seconds |
 | Policy | One exact allow rule |
@@ -121,8 +123,14 @@ Existing decision and audit rows remain immutable after rollback.
 - unsigned legacy-harness bundle, packaged identity/product boundary, and
   clean-profile application/window/renderer smoke pass as regression evidence.
 
-These are local working-tree results. They are not yet commit, push, CI,
+These results are verified on implementation commit
+`c2fa4bbc4989b9a41bf6a283b5f0eb1f2f523acb`. They are not yet push, PR, CI,
 candidate, release, distribution, or user-acceptance evidence.
+
+Three completed local CodeRabbit reviews raised seven valid issues and one
+invalid provenance request. All valid issues were fixed. The final redundant
+re-review after concurrent-read coalescing was rate-limited before review with
+a 31-minute wait, so it is not represented as zero-issue evidence.
 
 ## Non-claims
 
