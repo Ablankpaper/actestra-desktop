@@ -1,9 +1,9 @@
 # System Overview
 
-Status: P3, F0 through F3.3, and GW-P4.2 accepted on `main`; GW-P4.3 General
-Worker and Adapter v2 implemented and locally validated but not yet pushed or
-merged; CrewAI accepted as the first P6 planner-sidecar candidate but not
-implemented or packaged
+Status: P3, F0 through F3.3, and GW-P4.3 accepted on `main`; GW-P4.4 scoped
+native tools implemented with complete local validation on
+`feat/aionui-p4-scoped-native-tools`; CrewAI accepted as the first P6
+planner-sidecar candidate but not implemented or packaged
 
 ## Context
 
@@ -89,7 +89,9 @@ gates the bounded boolean reconciliation read. At that merged baseline there
 is no credential backend, general content-reference store, general MCP or
 native-tool transport, process transport, or real worker adapter. GW-P4.2 adds
 the content-reference store and persistence process; GW-P4.3 adds the first
-real deterministic worker process but no native tool.
+real deterministic worker process; the current GW-P4.4 branch admits exactly
+two main-owned native text capabilities without granting filesystem authority
+to that process.
 
 P4.2 adds the separate compatibility boundary accepted in
 [ADR-0011](decisions/0011-aionui-shadow-projection.md). Successful native HTTP
@@ -149,10 +151,34 @@ The root harness and preserved AionUI downstream both build a distinct General
 Worker entry. A real packaged-harness smoke and a real materialized-AionUI
 launch complete a three-event no-tool process probe. The latter also starts
 the exact local AionCore 0.1.52 and reaches renderer-ready with no
-installation-incomplete fault injection. This is local branch evidence only:
-the probe is not yet wired to a user-submitted task, and no filesystem, shell,
-network, credential, MCP, persistence, policy, or approval authority is
-granted to the worker.
+installation-incomplete fault injection. Pull request 11 merged the exact
+GW-P4.3 head `b3a3bc7e27d7dab44dadeff6dcedc92cec1b3ee5` as
+`671587813bea18411b6cdc2ee388d94cd18d6c50`; pull-request CI run 30481670123
+and exact merged-main CI run 30481890911 pass. The probe is not yet wired to a
+user-submitted task, and no filesystem, shell, network, credential, MCP,
+persistence, policy, or approval authority is granted to the worker itself.
+
+GW-P4.4, governed by
+[ADR-0018](decisions/0018-scoped-native-text-tools-and-policy.md), registers
+only `actestra.workspace.read-text` and
+`actestra.task-output.write-text`. A main-owned coordinator accepts only the
+current pending request of a still-blocked supervised attempt, derives
+identity from the attempt and normalized event, and derives action, resource
+kind, credential prohibition, and timeout from a closed registry. It then
+uses the existing deny-by-default gateway and durable audit path.
+
+The production executor reloads the exact active workspace grant and content
+owner. Reads require a portable normalized relative path, canonical
+containment, no symbolic-link component, a regular file, valid UTF-8, and at
+most 1 MiB. Writes are limited to a validated task-owned
+`.actestra/task-output/<task-id>` subtree and publish create-only through an
+exclusive same-filesystem operation. Content returns only as an exact-owner
+opaque reference. Stable cancellation, timeout, scope, validation, conflict,
+and post-effect failure evidence reaches the gateway without exposing raw
+content or paths to the worker or renderer. Root and native regression, build,
+unsigned harness package, and isolated native desktop smoke pass locally.
+The complete 30-file full-diff review is remediated; remote gates remain
+pending.
 
 ## Foundation integration boundary
 
@@ -269,11 +295,13 @@ only then calls an injected executor. An operation with no matching rule is
 denied, and conflicting rules resolve in `deny`, then `require-approval`, then
 `allow` precedence.
 
-The current executor is test-only and receives an opaque input reference rather
-than raw arguments. The current credential broker has no secret store. Approval
-permits one attempt but does not prove execution or success. Failure after an
-executor call is reported as possibly executed and must not be retried
-automatically.
+The accepted P3 baseline executor is test-only. The GW-P4.4 branch adds a
+production executor only for the two exact ADR-0018 capabilities and still
+receives an opaque input reference rather than raw arguments. The current
+credential broker has no secret store. Approval permits one attempt but does
+not prove execution or success. Executor failures carry stable codes and
+explicit `mayHaveExecuted` evidence; an ambiguous post-effect failure must not
+be retried automatically.
 
 The P3.6 startup, durable evidence, supervisor release, IPC, and projection
 boundary is accepted in
@@ -292,20 +320,14 @@ supersedes its version-1 interface with exact Adapter version 2:
 
 ```ts
 interface AgentAdapter {
-  capabilities(): Promise<AgentCapabilities>
-  start(request: AgentStartRequest): Promise<void>
-  send(sessionId: SessionId, input: AgentInput): Promise<void>
-  approve(
-    requestId: ToolRequestId,
-    decision: AgentApprovalDecision,
-  ): Promise<void>
-  resolveTool(
-    requestId: ToolRequestId,
-    result: AgentToolResult,
-  ): Promise<void>
-  cancel(sessionId: SessionId, reason?: string): Promise<void>
-  subscribe(sessionId: SessionId, handler: AgentSignalHandler): Unsubscribe
-  dispose(sessionId: SessionId): Promise<void>
+  capabilities(): Promise<AgentCapabilities>;
+  start(request: AgentStartRequest): Promise<void>;
+  send(sessionId: SessionId, input: AgentInput): Promise<void>;
+  approve(requestId: ToolRequestId, decision: AgentApprovalDecision): Promise<void>;
+  resolveTool(requestId: ToolRequestId, result: AgentToolResult): Promise<void>;
+  cancel(sessionId: SessionId, reason?: string): Promise<void>;
+  subscribe(sessionId: SessionId, handler: AgentSignalHandler): Unsubscribe;
+  dispose(sessionId: SessionId): Promise<void>;
 }
 ```
 
@@ -368,23 +390,23 @@ Initial event types:
 
 ## Data ownership
 
-| Data | System of record |
-| --- | --- |
-| Product settings and migrations | Actestra |
-| Native conversation, task, provider, workspace, artifact, runtime, and pending-confirmation state through F3.2 | Native AionUi |
-| F2 compatibility shadow evidence | Actestra SQLite, inert and non-authoritative |
-| F3.1 desktop confirmation response and delivery state | Actestra SQLite schema 5 |
-| F3.2 response-delivery policy and audit evidence | Actestra fixed policy plus SQLite schema 3 audit |
-| Workspace grants | Actestra persistence utility, schema 6 |
-| Bounded content references | Actestra persistence utility, schema 6 |
-| Tasks and dependency graph | Actestra |
-| P3 protected-operation approval evidence for the underlying native tool | Actestra target contract; not activated by F3.2 |
-| Event and audit history | Actestra |
-| Artifact metadata | Actestra |
-| Secret values | Operating-system secure storage via Actestra broker |
-| Worker transient state | Worker, treated as recoverable or disposable |
-| Git task changes | Isolated task worktree |
-| Upstream runtime configuration | Adapter-managed and versioned |
+| Data                                                                                                           | System of record                                    |
+| -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| Product settings and migrations                                                                                | Actestra                                            |
+| Native conversation, task, provider, workspace, artifact, runtime, and pending-confirmation state through F3.2 | Native AionUi                                       |
+| F2 compatibility shadow evidence                                                                               | Actestra SQLite, inert and non-authoritative        |
+| F3.1 desktop confirmation response and delivery state                                                          | Actestra SQLite schema 5                            |
+| F3.2 response-delivery policy and audit evidence                                                               | Actestra fixed policy plus SQLite schema 3 audit    |
+| Workspace grants                                                                                               | Actestra persistence utility, schema 6              |
+| Bounded content references                                                                                     | Actestra persistence utility, schema 6              |
+| Tasks and dependency graph                                                                                     | Actestra                                            |
+| P3 protected-operation approval evidence for the underlying native tool                                        | Actestra target contract; not activated by F3.2     |
+| Event and audit history                                                                                        | Actestra                                            |
+| Artifact metadata                                                                                              | Actestra                                            |
+| Secret values                                                                                                  | Operating-system secure storage via Actestra broker |
+| Worker transient state                                                                                         | Worker, treated as recoverable or disposable        |
+| Git task changes                                                                                               | Isolated task worktree                              |
+| Upstream runtime configuration                                                                                 | Adapter-managed and versioned                       |
 
 ## Isolation model
 
@@ -431,10 +453,12 @@ F3 authority slice and persist-before-deliver reconciliation. ADR-0015 fixes
 the authority and process boundary for the first P6 orchestration candidate,
 but does not select a production CrewAI dependency. ADR-0016 selects the
 general-work persistence utility, schema 6 grants, and bounded content
-references. Later P4 work still must implement the real worker protocol,
-native tools, production policy, recovery coordination, credential storage,
-and OS sandbox mechanisms. Signing, notarization, update delivery, and
-cross-platform candidate packaging remain P8 work.
+references. ADR-0017 selects Adapter v2 and the real General Worker protocol.
+ADR-0018 selects the two scoped native text tools and their production policy.
+Later P4 work still must implement end-to-end coordination, recovery, and the
+preserved-AionUi journey. Credential storage and OS sandbox mechanisms remain
+later security work. Signing, notarization, update delivery, and cross-platform
+candidate packaging remain P8 work.
 
 This document fixes authority and lifecycle boundaries; a pinned shell
 dependency does not pre-decide worker or persistence architecture.

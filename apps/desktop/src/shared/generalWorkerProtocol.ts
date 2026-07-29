@@ -10,7 +10,13 @@ export const GENERAL_WORKER_CAPABILITIES = [
   "heartbeats",
   "tool-results",
 ] as const;
-export const GENERAL_WORKER_EXECUTION_MODES = ["no-tool-complete", "hold", "tool-fixture"] as const;
+export const GENERAL_WORKER_EXECUTION_MODES = [
+  "no-tool-complete",
+  "hold",
+  "tool-fixture",
+  "workspace-read-text-fixture",
+  "task-output-write-text-fixture",
+] as const;
 export const MAX_GENERAL_WORKER_MESSAGE_BYTES = 256 * 1024;
 export const MAX_GENERAL_WORKER_PROMPT_BYTES = 64 * 1024;
 

@@ -110,6 +110,28 @@ export class PrivilegedServiceError extends Error {
   }
 }
 
+export class ProtectedToolExecutionError extends Error {
+  readonly mayHaveExecuted: boolean;
+
+  constructor(
+    readonly errorCode: string,
+    message: string,
+    options?: ErrorOptions & {
+      readonly mayHaveExecuted?: boolean;
+    },
+  ) {
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(errorCode) || errorCode.length > 128) {
+      throw new PrivilegedServiceError(
+        "invalid-contract",
+        "Protected tool execution errorCode must be a stable lowercase code",
+      );
+    }
+    super(message, options);
+    this.name = "ProtectedToolExecutionError";
+    this.mayHaveExecuted = options?.mayHaveExecuted ?? false;
+  }
+}
+
 function privilegedIdentifier<Identifier extends string>(
   value: unknown,
   label: string,
@@ -359,6 +381,7 @@ export interface ToolExecutionRequest {
   readonly authorization: AuthorizationGrant;
   readonly credentialLeases: readonly CredentialLease[];
   readonly timeoutMs: number;
+  readonly signal?: AbortSignal;
 }
 
 export interface ToolExecutionResult {
@@ -405,6 +428,10 @@ export interface ProtectedToolExecutor {
   execute(request: ToolExecutionRequest): Promise<ToolExecutionResult>;
 }
 
+export interface ToolInvocationControl {
+  readonly signal?: AbortSignal;
+}
+
 export type ToolGatewayResult =
   | {
       readonly status: "approval-required";
@@ -419,7 +446,11 @@ export type ToolGatewayResult =
     };
 
 export interface ToolGateway {
-  invoke(operation: ProtectedOperation, approval?: ApprovalId): Promise<ToolGatewayResult>;
+  invoke(
+    operation: ProtectedOperation,
+    approval?: ApprovalId,
+    control?: ToolInvocationControl,
+  ): Promise<ToolGatewayResult>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -17,32 +17,31 @@ features are implemented.
 
 ## Phase summary
 
-| Phase | Outcome | Entry dependency |
-| --- | --- | --- |
-| P0 | Project foundation | New repository |
-| P1 | Reproducible AionUi baseline | P0 |
-| P2 | Independent Actestra product shell | P1 |
-| P3 | Actestra platform core and contracts | P2 |
-| P4 | Native AionUi preservation and Actestra authority fusion | P3 |
-| P5 | Goose coding-worker vertical slice | P3, P4 event path |
-| P6 | Multi-agent team orchestration | P4, P5 |
-| P7 | Security and reliability hardening | P4-P6 |
-| P8 | Cross-platform internal beta | P7 |
+| Phase | Outcome                                                  | Entry dependency  |
+| ----- | -------------------------------------------------------- | ----------------- |
+| P0    | Project foundation                                       | New repository    |
+| P1    | Reproducible AionUi baseline                             | P0                |
+| P2    | Independent Actestra product shell                       | P1                |
+| P3    | Actestra platform core and contracts                     | P2                |
+| P4    | Native AionUi preservation and Actestra authority fusion | P3                |
+| P5    | Goose coding-worker vertical slice                       | P3, P4 event path |
+| P6    | Multi-agent team orchestration                           | P4, P5            |
+| P7    | Security and reliability hardening                       | P4-P6             |
+| P8    | Cross-platform internal beta                             | P7                |
 
 Current execution state on 2026-07-30: native-fusion slices F0 through F3.3
-are merged on `main`. Pull request 8 reached exact final head
-`3f85e13072f5fb13fb43c9dae94f992bb0b7fb9c` and squash merged as
-`c841ed9cb6a54bcb2e4078ca2be941adce0ac4ad`; exact main CI run 30449520722
-passes. Pull request 9 then recorded the P6 sidecar direction and squash
-merged as `327d5ca5abf3a0090bc2b3d3193e2935bbd47f38`; exact main CI run
-30470505690 passes. General-work GW-P4.2 reached pull request 10, passed
-exact-head CI run 30475836615, and squash merged as
-`8e32882108b10272c1489c1a46a77cede1cc4fb7`; exact main CI run
-30476091907 passes. GW-P4.3 is implemented and locally validated on
-`feat/aionui-p4-general-worker`: Adapter v2 and one deterministic real General
-Worker process pass root, native, build, package-graph, smoke, and isolated
-AionUi launch validation. Push, PR CI, merge, candidate, and release remain
-separate.
+and general-work through GW-P4.3 are accepted on `main`. Pull request 11
+reached exact head `b3a3bc7e27d7dab44dadeff6dcedc92cec1b3ee5`, passed
+pull-request CI run 30481670123, and squash merged as
+`671587813bea18411b6cdc2ee388d94cd18d6c50`; exact main CI run 30481890911
+passes. GW-P4.4 is implemented with complete local validation on
+`feat/aionui-p4-scoped-native-tools`: exactly two scoped native text tools now
+pass through active-attempt derivation, workspace grants, closed manifests,
+deny-by-default policy, durable audit, create-only output, and opaque content
+references. Root/native regression, build, unsigned harness package, and
+isolated native desktop smoke pass locally, and the complete 30-file full-diff
+review is remediated. Push, PR CI, merge, candidate, and release remain
+separate. P5 Goose and P6 CrewAI/Team work have not started.
 
 ## P0 — Project Foundation
 

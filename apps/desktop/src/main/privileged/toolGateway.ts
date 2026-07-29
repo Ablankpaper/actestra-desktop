@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import {
+  ProtectedToolExecutionError,
   PrivilegedServiceError,
   approvalId,
   assertAuditRecord,
@@ -29,6 +30,7 @@ import {
   type ToolExecutionResult,
   type ToolGateway,
   type ToolGatewayResult,
+  type ToolInvocationControl,
 } from "../../core";
 
 export interface PrivilegedToolGatewayConfig {
@@ -100,12 +102,17 @@ function immutableAuthorization(authorization: AuthorizationGrant): Authorizatio
 export class PrivilegedToolGateway implements ToolGateway {
   constructor(private readonly config: PrivilegedToolGatewayConfig) {}
 
-  async invoke(operation: ProtectedOperation, approval?: ApprovalId): Promise<ToolGatewayResult> {
+  async invoke(
+    operation: ProtectedOperation,
+    approval?: ApprovalId,
+    control?: ToolInvocationControl,
+  ): Promise<ToolGatewayResult> {
     assertProtectedOperation(operation);
     const stableOperation = immutableOperation(operation);
     if (approval !== undefined) {
       approvalId(approval);
     }
+    this.assertControl(control);
     const manifest = await this.loadManifest(stableOperation);
     const decision = await this.evaluatePolicy(stableOperation);
     await this.appendAudit(
@@ -182,7 +189,14 @@ export class PrivilegedToolGateway implements ToolGateway {
       throw error;
     }
 
-    return this.execute(stableOperation, manifest, decision, authorization, leases);
+    return this.execute(
+      stableOperation,
+      manifest,
+      decision,
+      authorization,
+      leases,
+      control?.signal,
+    );
   }
 
   private async loadManifest(operation: ProtectedOperation): Promise<ToolCapabilityManifest> {
@@ -274,6 +288,7 @@ export class PrivilegedToolGateway implements ToolGateway {
     decision: PolicyDecision,
     authorization: Parameters<CredentialBroker["lease"]>[1],
     leases: readonly CredentialLease[],
+    signal?: AbortSignal,
   ): Promise<ToolGatewayResult> {
     let result: ToolExecutionResult;
     try {
@@ -282,25 +297,34 @@ export class PrivilegedToolGateway implements ToolGateway {
         authorization,
         credentialLeases: leases,
         timeoutMs: manifest.timeoutMs,
+        ...(signal === undefined ? {} : { signal }),
       });
       assertToolExecutionResult(result);
-    } catch {
+    } catch (error) {
+      const executionError =
+        error instanceof ProtectedToolExecutionError
+          ? error
+          : new ProtectedToolExecutionError("executor-failed", "Protected tool executor failed", {
+              cause: error,
+              mayHaveExecuted: true,
+            });
       try {
         await this.appendAudit(
           {
             type: "tool.failed",
             context: auditContextFor(operation),
-            errorCode: "executor-failed",
+            errorCode: executionError.errorCode,
           },
-          true,
+          executionError.mayHaveExecuted,
         );
-      } catch (error) {
+      } catch (auditError) {
         await this.releaseAfterExecution(operation, leases);
-        throw error;
+        throw auditError;
       }
       await this.releaseAfterExecution(operation, leases);
       throw new PrivilegedServiceError("tool-execution-failed", "Protected tool execution failed", {
-        mayHaveExecuted: true,
+        cause: executionError,
+        mayHaveExecuted: executionError.mayHaveExecuted,
       });
     }
 
@@ -345,6 +369,37 @@ export class PrivilegedToolGateway implements ToolGateway {
         {
           mayHaveExecuted,
         },
+      );
+    }
+  }
+
+  private assertControl(control: ToolInvocationControl | undefined): void {
+    if (control === undefined) {
+      return;
+    }
+    if (
+      typeof control !== "object" ||
+      control === null ||
+      Array.isArray(control) ||
+      Object.keys(control).some((key) => key !== "signal")
+    ) {
+      throw new PrivilegedServiceError(
+        "invalid-contract",
+        "Tool invocation control must contain only an optional abort signal",
+      );
+    }
+    const signal = control.signal;
+    if (
+      signal !== undefined &&
+      (typeof signal !== "object" ||
+        signal === null ||
+        typeof signal.aborted !== "boolean" ||
+        typeof signal.addEventListener !== "function" ||
+        typeof signal.removeEventListener !== "function")
+    ) {
+      throw new PrivilegedServiceError(
+        "invalid-contract",
+        "Tool invocation control.signal must be an AbortSignal",
       );
     }
   }

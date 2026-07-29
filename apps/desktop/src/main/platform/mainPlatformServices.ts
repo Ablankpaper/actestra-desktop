@@ -1,21 +1,9 @@
-import { randomUUID } from "node:crypto";
 import {
-  PRIVILEGED_CONTRACT_VERSION,
-  approvalId,
-  auditRecordId,
-  authorizationGrantId,
-  credentialLeaseId,
-  instant,
-  policyDecisionId,
-  policyRevision,
   type ActestraPersistencePort,
   type ApprovalService,
-  type AuditRecordId,
   type AuditTrail,
   type CredentialBroker,
   type PolicyEngine,
-  type PolicySnapshot,
-  type PrivilegedClock,
   type ToolGateway,
 } from "../../core";
 import {
@@ -24,29 +12,15 @@ import {
   type PlatformAttemptProjection,
   type PlatformSnapshot,
 } from "../../shared/contracts";
-import { DeterministicPolicyEngine } from "../privileged/deterministicPolicyEngine";
-import { DisabledProtectedToolExecutor } from "../privileged/disabledProtectedToolExecutor";
-import { InMemoryApprovalService } from "../privileged/inMemoryApprovalService";
-import { PersistentAuditTrail } from "../privileged/persistentAuditTrail";
-import { ReferenceCredentialBroker } from "../privileged/referenceCredentialBroker";
-import { PrivilegedToolGateway } from "../privileged/toolGateway";
+import {
+  ScopedNativeToolPlatform,
+  createScopedNativeToolPlatform,
+} from "../privileged/scopedNativeToolPlatform";
 import { AgentAdapterSupervisor } from "../workers/agentAdapterSupervisor";
 import { AgentAttemptEvidenceCoordinator } from "../workers/agentAttemptEvidenceCoordinator";
+import { ScopedNativeToolCoordinator } from "../workers/scopedNativeToolCoordinator";
 
-const APPROVAL_TTL_MS = 5 * 60 * 1_000;
-const CREDENTIAL_LEASE_TTL_MS = 30 * 1_000;
-const CREDENTIAL_HISTORY_RETENTION_MS = 5 * 60 * 1_000;
 const PLATFORM_ATTEMPT_LIMIT = 50;
-
-class SystemPrivilegedClock implements PrivilegedClock {
-  now() {
-    return instant(new Date().toISOString());
-  }
-}
-
-function identifier(prefix: string): string {
-  return `${prefix}-${randomUUID()}`;
-}
 
 function projectionForAttempt(
   evidence: Awaited<ReturnType<ActestraPersistencePort["listRecentAgentAttemptEvidence"]>>[number],
@@ -68,44 +42,16 @@ export class MainPlatformServices {
   readonly approvalService: ApprovalService;
   readonly credentialBroker: CredentialBroker;
   readonly toolGateway: ToolGateway;
+  readonly nativeTools: ScopedNativeToolPlatform;
   private closed = false;
 
   constructor(private readonly persistence: ActestraPersistencePort) {
-    const clock = new SystemPrivilegedClock();
-    this.auditTrail = new PersistentAuditTrail({
-      clock,
-      persistence,
-      newRecordId: (): AuditRecordId => auditRecordId(identifier("audit-record")),
-    });
-    const denyByDefaultPolicy = Object.freeze({
-      contractVersion: PRIVILEGED_CONTRACT_VERSION,
-      revision: policyRevision("policy-main-deny-by-default-v1"),
-      rules: Object.freeze([]),
-    }) satisfies PolicySnapshot;
-    this.policyEngine = new DeterministicPolicyEngine(denyByDefaultPolicy, clock, () =>
-      policyDecisionId(identifier("policy-decision")),
-    );
-    this.approvalService = new InMemoryApprovalService({
-      clock,
-      auditTrail: this.auditTrail,
-      ttlMs: APPROVAL_TTL_MS,
-      newApprovalId: () => approvalId(identifier("approval")),
-      newGrantId: () => authorizationGrantId(identifier("authorization-grant")),
-    });
-    this.credentialBroker = new ReferenceCredentialBroker({
-      clock,
-      auditTrail: this.auditTrail,
-      leaseTtlMs: CREDENTIAL_LEASE_TTL_MS,
-      historyRetentionMs: CREDENTIAL_HISTORY_RETENTION_MS,
-      newLeaseId: () => credentialLeaseId(identifier("credential-lease")),
-    });
-    this.toolGateway = new PrivilegedToolGateway({
-      policyEngine: this.policyEngine,
-      approvalService: this.approvalService,
-      credentialBroker: this.credentialBroker,
-      auditTrail: this.auditTrail,
-      executor: new DisabledProtectedToolExecutor(),
-    });
+    this.nativeTools = createScopedNativeToolPlatform({ persistence });
+    this.auditTrail = this.nativeTools.auditTrail;
+    this.policyEngine = this.nativeTools.policyEngine;
+    this.approvalService = this.nativeTools.approvalService;
+    this.credentialBroker = this.nativeTools.credentialBroker;
+    this.toolGateway = this.nativeTools.toolGateway;
   }
 
   async snapshot(): Promise<PlatformSnapshot> {
@@ -117,10 +63,10 @@ export class MainPlatformServices {
     const snapshot = Object.freeze({
       contractVersion: PLATFORM_SNAPSHOT_CONTRACT_VERSION,
       authority: "main-only",
-      privilegedServices: "registered-inert",
+      privilegedServices: "scoped-native-active",
       policy: "deny-by-default",
       credentials: "opaque-references-only",
-      tools: "disabled",
+      tools: "workspace-read-task-output-create",
       audit: Object.freeze({
         durability: "sqlite-metadata-only",
         recordCount: audit.recordCount,
@@ -141,6 +87,13 @@ export class MainPlatformServices {
       corePersistence: this.persistence,
       evidencePersistence: this.persistence,
     });
+  }
+
+  createScopedNativeToolCoordinator(
+    supervisor: AgentAdapterSupervisor,
+  ): ScopedNativeToolCoordinator {
+    this.assertOpen();
+    return this.nativeTools.createCoordinator(supervisor);
   }
 
   async close(): Promise<void> {

@@ -1,24 +1,27 @@
 # P4 General-Work Vertical Slice
 
-Status: GW-P4.2 accepted on `main`; GW-P4.3 implemented and locally validated
-on `feat/aionui-p4-general-worker`; push, pull-request CI, merge, and
-merged-main CI for GW-P4.3 are pending
+Status: GW-P4.3 accepted on `main`; GW-P4.4 complete local validation and
+full-diff review pass on `feat/aionui-p4-scoped-native-tools`; push,
+pull-request CI, merge, and merged-main CI for GW-P4.4 are pending
 
 Date: 2026-07-30
 
 Exact base:
-`8e32882108b10272c1489c1a46a77cede1cc4fb7`
+`671587813bea18411b6cdc2ee388d94cd18d6c50`
 
 ## Entry evidence
 
 The branch starts from the exact `main` squash merge for
-[pull request 10](https://github.com/bignormal/actestra-desktop/pull/10).
-[Main CI run 30476091907](https://github.com/bignormal/actestra-desktop/actions/runs/30476091907)
+[pull request 11](https://github.com/bignormal/actestra-desktop/pull/11).
+[Main CI run 30481890911](https://github.com/bignormal/actestra-desktop/actions/runs/30481890911)
 passes on that commit.
 
-[ADR-0016](../architecture/decisions/0016-p4-general-work-process-and-content-boundaries.md)
-accepts the P4 process, persistence, grant, and content boundaries while
-retaining AionUi as the product UI and Actestra Core as the sole authority.
+[ADR-0016](../architecture/decisions/0016-p4-general-work-process-and-content-boundaries.md),
+[ADR-0017](../architecture/decisions/0017-general-worker-process-and-agent-adapter-v2.md),
+and
+[ADR-0018](../architecture/decisions/0018-scoped-native-text-tools-and-policy.md)
+retain AionUi as the product UI, Actestra Core as the sole authority, and the
+General Worker as an unprivileged supervised process.
 
 ## Product journey
 
@@ -106,7 +109,7 @@ harness; target AionUi packaging remains a separate GW-P4.6 gate.
 
 ### GW-P4.3 — General Worker and Adapter v2
 
-Implemented and locally validated on the current branch:
+Accepted on `main` through pull request 11:
 
 - [ADR-0017](../architecture/decisions/0017-general-worker-process-and-agent-adapter-v2.md)
   advances AgentAdapter to exact version 2, adds the closed `tool-results`
@@ -126,7 +129,7 @@ Implemented and locally validated on the current branch:
   cancellation, crash, timeout, malformed messages, stale identity, sequence
   gaps, duplicate attempts, and cleanup are covered.
 
-Current local evidence:
+Validation completed before pull request 11 merged:
 
 - focused Adapter v2 and worker validation: 8 files and 47 tests passed;
 - complete root `bun run check`: formatting, zero-warning lint, strict types,
@@ -155,15 +158,77 @@ Current local evidence:
 Exit: a no-tool fixture completes through a real worker process and every
 invalid or terminal path fails deterministically.
 
+The exact GW-P4.3 head
+`b3a3bc7e27d7dab44dadeff6dcedc92cec1b3ee5` passed
+[pull-request CI run 30481670123](https://github.com/bignormal/actestra-desktop/actions/runs/30481670123).
+It squash merged as `671587813bea18411b6cdc2ee388d94cd18d6c50`;
+exact
+[merged-main CI run 30481890911](https://github.com/bignormal/actestra-desktop/actions/runs/30481890911)
+passes.
+
 ### GW-P4.4 — Scoped native tools and policy
 
-- register only `actestra.workspace.read-text` and
-  `actestra.task-output.write-text`;
-- derive protected operations from trusted manifests and active attempts;
-- enforce canonical grant containment, traversal and symlink rejection,
-  UTF-8/size bounds, create-only output, and explicit conflicts; and
-- keep shell, network, credentials, MCP, publishing, Git, and arbitrary
-  workspace mutation denied.
+Implemented on the current branch:
+
+- [ADR-0018](../architecture/decisions/0018-scoped-native-text-tools-and-policy.md)
+  registers only `actestra.workspace.read-text` and
+  `actestra.task-output.write-text` with exact Actestra-owned manifests,
+  five-second bounds, no credential lease, and one exact allow rule each;
+- a main-owned coordinator proves the still-active blocked attempt and its
+  exact current request, derives identity and timestamps from the supervisor
+  and normalized event, and derives action and resource kind from the closed
+  registry;
+- the production executor reloads the exact active workspace grant and content
+  owner, rejects lexical or canonical escape, symbolic links, invalid portable
+  paths, invalid UTF-8, non-regular files, and content above 1 MiB;
+- output writes are restricted to the task-owned
+  `.actestra/task-output/<task-id>` subtree and use mode-0600 temporary files
+  plus exclusive same-filesystem publication, so an existing path is an
+  explicit conflict and is never overwritten;
+- successful content crosses the boundary only as a new exact-owner opaque
+  `tool-output` reference; stable failure codes and `mayHaveExecuted` evidence
+  enter metadata-only durable audit; and
+- the preserved AionUi downstream registers the main-process provider after
+  persistence readiness without adding a renderer route, bridge operation, UI,
+  alternate state machine, or second product shell.
+
+Current local evidence:
+
+- root strict types and zero-warning lint pass;
+- the two scoped-native root suites pass 15 tests covering both success paths,
+  create-only conflict, traversal, symlink escape, invalid UTF-8, oversized
+  input, wrong owner, malicious task identity, cancellation, unsupported tool,
+  timeout ceilings, cleanup failure, coordinator unlock, and the denied
+  action/resource surface;
+- the downstream overlay contract passes with 125 declared files, 4 frozen R0
+  invariants, and 40 reviewed Actestra source copies; and
+- three materialized native files pass 4 focused tests for provider
+  registration, the General Worker, and persistence utility;
+- complete root `bun run check` passes formatting, zero-warning lint, strict
+  types, the Electron SQLite probe, 42 files and 232 tests, process smoke,
+  59-source authority boundary, frozen foundation, downstream contract, and
+  the three-entry production build;
+- root coverage passes at 80.80% statements, 73.59% branches, 86.88%
+  functions, and 81.01% lines without threshold changes;
+- the first materialized native strict-TypeScript gate exposed three callback
+  annotations accepted by the root config but rejected by the retained AionUi
+  config; adding the explicit return types made the same minimal gate pass;
+- complete native regression passes 335 files and 2,612 tests, with 1 file and
+  5 tests skipped by the retained upstream configuration;
+- the native production build transforms 588 main modules and emits separate
+  `index.js`, `actestra-persistence-utility.js`, and
+  `actestra-general-worker.js` entries without changing the renderer;
+- the unsigned arm64 legacy-harness directory bundle passes identity and
+  recursive worker-graph verification, then reaches persistence, General
+  Worker, application, window, and renderer readiness from a clean profile;
+  and
+- a real isolated-profile native launch logs both registered native tool IDs,
+  schema 6 persistence, Adapter v2/Worker v1 completion, exact local
+  `aioncore 0.1.52` health, window creation, and renderer load. Graceful exit
+  leaves no Actestra, worker, persistence, or AionCore process; and
+- full staged-diff review covered all 30 implementation files, remediated seven
+  valid path, timeout, persistence-error, cleanup, lock-release, and harness
+  findings, and rejected two invalid date/redundant-check findings.
 
 Exit: success, denial, failure, cancellation, and output-conflict tests prove
 no scope or policy bypass.
@@ -209,12 +274,17 @@ P4 is complete only after:
 
 ## Current non-claims
 
-- GW-P4.3 is locally implemented but is not yet pushed, CI-backed, merged, or
-  accepted on `main`.
 - The General Worker is a real deterministic process used by the isolated
   probe; it is not yet connected to a user-submitted AionUI task.
-- No native filesystem tool, content-consuming task, credential backend,
-  model, Goose adapter, CrewAI sidecar, or Team orchestration is active.
+- GW-P4.4 has complete local implementation and validation evidence.
+  Full-diff review and remediation are complete; push, exact-head CI, merge,
+  and merged-main CI are pending.
+- The two native tools are main-process capabilities for the deterministic
+  attempt fixture. They are not yet a complete authoritative task/artifact
+  journey or a renderer-selected generic filesystem API.
+- No shell, network, credential, MCP, publish, Git, arbitrary workspace
+  mutation, model, Goose adapter, CrewAI sidecar, or Team orchestration is
+  active.
 - Utility-process separation is not OS sandbox evidence.
 - Schema 6 is forward-only; development rollback uses a fresh profile rather
   than deleting or downgrading user state.

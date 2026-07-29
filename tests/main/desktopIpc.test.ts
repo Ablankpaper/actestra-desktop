@@ -69,10 +69,10 @@ const APP_INFO: AppInfo = {
 const PLATFORM_SNAPSHOT: PlatformSnapshot = {
   contractVersion: PLATFORM_SNAPSHOT_CONTRACT_VERSION,
   authority: "main-only",
-  privilegedServices: "registered-inert",
+  privilegedServices: "scoped-native-active",
   policy: "deny-by-default",
   credentials: "opaque-references-only",
-  tools: "disabled",
+  tools: "workspace-read-task-output-create",
   audit: {
     durability: "sqlite-metadata-only",
     recordCount: 0,
