@@ -4,7 +4,7 @@ Last updated: 2026-07-29
 
 ## Current phase
 
-### P3 accepted; F0/F1 CI-backed; F2 locally validated; PR remains Draft
+### P3 accepted; F0/F1/F2 CI-backed; PR remains Draft
 
 Branch `feat/aionui-first-foundation` starts from `origin/main` commit
 `a32b7cb4516f5592e8e1fe6f1f5afad7c50de991` and implements the corrected
@@ -75,7 +75,7 @@ Detailed implementation and non-claim evidence is recorded in
 F1 implementation is CI-backed but remains on a Draft pull request. Merge,
 candidate, release, distribution, and acceptance remain separate gates.
 
-Current F2 implementation and local evidence:
+Current F2 implementation and evidence:
 
 - native conversation, task, provider, workspace, approval, artifact, and
   runtime shapes are collected through strict contract version 1;
@@ -110,17 +110,30 @@ Current F2 implementation and local evidence:
 Detailed implementation, authority, rollback, automated, and live evidence is
 recorded in
 [AionUi F2 Shadow Projection](product/AIONUI_F2_SHADOW_PROJECTION.md) and
-[ADR-0011](architecture/decisions/0011-aionui-shadow-projection.md). F2 is
-currently local working-tree evidence. Commit, push, and exact-head CI remain
-pending.
+[ADR-0011](architecture/decisions/0011-aionui-shadow-projection.md).
+Implementation commit
+`632573fa03c34fdb789c85d8efc1ce1e0f8e8177` and packaged-boundary
+remediation `1478726d62302fa885525024eb4839af5e98b4dd` are pushed.
+[Exact-head CI run 30421351204](https://github.com/bignormal/actestra-desktop/actions/runs/30421351204)
+passes root checks, documentation, downstream materialization and install,
+strict types, 14 focused tests, native production build, unsigned bundle,
+packaged identity and product boundary, and clean-profile smoke.
+
+The implementation run
+[30421071039](https://github.com/bignormal/actestra-desktop/actions/runs/30421071039)
+passed through unsigned bundle creation but failed the legacy packaged-boundary
+check because declared F2 compatibility text in main matched its former global
+AionUi prohibition. It did not run clean-profile smoke and is not pass
+evidence. The remediation retains a per-ASAR-file deny boundary and is verified
+by the succeeding exact-head run.
 
 The full native suite, F2 live projection, and visual/runtime socket inspection
-remain local evidence. F0/F1 foundation, downstream overlay, focused contracts,
-native production build, unsigned package boundary, and clean-profile smoke
-are CI-backed on their recorded exact commits. PR 6 remains Draft and is not
-merge, candidate, release, distribution, or acceptance evidence. CodeRabbit
-returned a successful status but explicitly skipped review because the PR is
-Draft; it is not review evidence.
+remain local evidence. F0-F2 foundation, downstream overlay, focused contracts,
+native production build, unsigned package boundary, and clean-profile smoke are
+CI-backed on their recorded exact commits. PR 6 remains Draft and is not merge,
+candidate, release, distribution, or acceptance evidence. CodeRabbit returned
+a successful status but explicitly skipped review because the PR is Draft; it
+is not review evidence.
 
 P3.1-P3.6 and review remediation are pushed and CI-backed. The full independent
 review and remediation review are complete.
@@ -401,7 +414,7 @@ Review closure validation at
 | P3 main CI | Pass | Main push run 30378191752 passed on exact squash commit `f6833c50eaf5a426948bac7999f93a08b19a425e` |
 | P4.0 branch | Pushed; draft PR | Implementation `13270ca0abd7353710541afca9ddf46c47670be3`; draft PR 6; exact-head CI run 30392140461 passes |
 | P4.1 identity and isolation | Implemented, pushed, CI-backed; draft PR | Implementation `836a9f1f81687f091e1c5b92ce30bff167e9da4f`; resource-only CI remediation `462a1b0d920279d42f124fdd28673d77dc55b765`; run 30417692550 passes |
-| P4.2 compatibility shadow | Implemented and locally validated; commit, push, and CI pending | Seven strict domains; SQLite schema 4 inert evidence; root 141 tests; downstream 14 focused tests; native 2,590 tests; real native Guide read |
+| P4.2 compatibility shadow | Implemented, pushed, and CI-backed; draft PR | Implementation `632573fa03c34fdb789c85d8efc1ce1e0f8e8177`; packaged-boundary remediation `1478726d62302fa885525024eb4839af5e98b4dd`; run 30421351204 passes |
 | Native AionUi source | Exact local desktop snapshot | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot |
 | Native preservation contract | Local pass | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified |
 | Native AionUi build and launch | Local pass | Frozen install, production build, isolated native Electron launch, and actual Guide screenshot pass |
@@ -416,7 +429,7 @@ Review closure validation at
 | P3 worker lifecycle | Implemented and CI-backed | ADR-0006, protocol version 1, runtime validation, supervisor, observed-time health, cancellation, crash, bounded fresh-attempt restart, deterministic fake, and 22 focused tests; exact commit and run above |
 | P3 privileged services | Implemented and CI-backed | ADR-0007; protected-operation and manifest contracts; policy, approval, opaque lease, metadata-only audit, and deterministic gateway services; exact commit and run above |
 | P3 main integration | Implemented and CI-backed | ADR-0008; main-only inert composition, durable audit, persist-before-release barrier, fixed IPC allowlist, bounded renderer projection, and packaged startup smoke; exact commit and run above |
-| F2 shadow persistence | Local pass; remote evidence pending | ADR-0011; schema version 4; gapless and idempotent metadata-only evidence; no authoritative domain or event writes |
+| F2 shadow persistence | Local and CI-backed contract evidence | ADR-0011; schema version 4; gapless and idempotent metadata-only evidence; no authoritative domain or event writes; real Guide read remains local proof |
 | Release | None | No candidate, signed artifact, deployment, distribution, or user acceptance |
 
 ## Accepted direction
@@ -473,15 +486,14 @@ The ordered implementation index and P3 non-claims are in
 
 ## Next gate
 
-1. Commit and push the reviewed F2 implementation without editing the frozen
-   AionUi source.
-2. Require exact-head CI to repeat root boundaries, downstream
-   materialization, focused tests, native production build, unsigned package,
-   packaged identity, and clean-profile smoke.
-3. Review Draft PR 6 while retaining all routes, feature entries, native
+1. Review Draft PR 6 while retaining all routes, feature entries, native
    response behavior, and the inert shadow-authority boundary.
-4. For P4.3/F3, choose one functional domain and define its write authority,
+2. For P4.3/F3, choose one functional domain and define its write authority,
    forward migration, rollback, restart, error mapping, and UI-parity gate.
+3. Add representative native and compatibility fixtures before activating
+   Actestra-authoritative writes for that domain.
+4. Keep all other domains native-authoritative or isolated; do not create a
+   second implicit system of record.
 5. Do not describe F2 as Actestra-authoritative general work, merge, candidate,
    release, distribution, or user acceptance.
 

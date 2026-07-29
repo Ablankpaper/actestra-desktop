@@ -1,7 +1,7 @@
 # System Overview
 
-Status: P3 accepted on `main`; P4.0/F0 and P4.1/F1 CI-backed, with P4.2/F2
-locally validated on `feat/aionui-first-foundation`
+Status: P3 accepted on `main`; P4.0/F0, P4.1/F1, and P4.2/F2 CI-backed on
+`feat/aionui-first-foundation`
 
 ## Context
 

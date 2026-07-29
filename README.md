@@ -63,8 +63,11 @@ and squash merged as `f6833c50eaf5a426948bac7999f93a08b19a425e`.
 [Main CI run 30378191752](https://github.com/bignormal/actestra-desktop/actions/runs/30378191752)
 passes on that exact squash commit, closing the P3 exit gate. P4.0/F0 and the
 P4.1/F1 identity-and-isolation implementation are CI-backed on
-`feat/aionui-first-foundation`. P4.2/F2 shadow projection is locally validated
-and pending commit, push, and exact-head CI; pull request 6 remains Draft.
+`feat/aionui-first-foundation`. P4.2/F2 shadow projection implementation
+`632573fa03c34fdb789c85d8efc1ce1e0f8e8177` plus packaged-boundary
+remediation `1478726d62302fa885525024eb4839af5e98b4dd` pass
+[macOS arm64 CI run 30421351204](https://github.com/bignormal/actestra-desktop/actions/runs/30421351204);
+pull request 6 remains Draft.
 
 - The repository now contains the exact, unmodified 1,766-file AionUi
   `v2.1.41` runnable desktop source foundation at commit
@@ -114,6 +117,9 @@ and pending commit, push, and exact-head CI; pull request 6 remains Draft.
   passing native tests, native production build, restart and duplicate proof,
   rejection containment, and one real native conversation read pass locally.
   The preserved Guide and its original functional entries remain visible.
+- Exact-head CI repeats root boundaries, downstream materialization, strict
+  types, 14 focused tests, native production build, unsigned bundle, packaged
+  identity and product boundary, and clean-profile smoke.
 - The native AionUi foundation is not yet fused to P3 authoritative data; F2 is
   compatibility evidence only. Goose and Eigent-style integration have not
   started.

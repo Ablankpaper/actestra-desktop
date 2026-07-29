@@ -9,10 +9,11 @@ Pull request:
 
 ## Result
 
-P4.2/F2 is implemented and locally validated. The preserved AionUi
-`v2.1.41` HTTP and WebSocket paths can emit seven strict metadata observation
-shapes into a main-owned P3 shadow projection. SQLite schema version 4 stores
-that evidence separately from authoritative P3 state.
+P4.2/F2 is implemented, pushed, and exact-head CI-backed. The preserved
+AionUi `v2.1.41` HTTP and WebSocket paths can emit seven strict metadata
+observation shapes into a main-owned P3 shadow projection. SQLite schema
+version 4 stores that evidence separately from authoritative P3 state. The
+complete native suite and real desktop projection remain local evidence.
 
 Native AionUi remains authoritative. The observer is fire-and-forget, has no
 renderer read path, and cannot change a response, event payload, route,
@@ -174,9 +175,30 @@ inert because no native or Actestra-authoritative read path consumes them.
 
 ## Remote evidence
 
-Remote exact-head CI is pending until this F2 implementation and its local
-evidence are committed and pushed. Draft PR status, merge, candidate, release,
-distribution, and user acceptance remain separate states.
+F2 implementation commit
+`632573fa03c34fdb789c85d8efc1ce1e0f8e8177` is pushed to Draft PR 6.
+[CI run 30421071039](https://github.com/bignormal/actestra-desktop/actions/runs/30421071039)
+passed source, documentation, dependency install, strict types, 14 focused
+tests, native production build, and unsigned bundle creation, then failed the
+legacy harness packaged-boundary check. The old check treated declared F2
+compatibility text in main as user-facing AionUi identity, so clean-profile
+smoke did not run. That failed run is diagnostic evidence, not a pass.
+
+Remediation commit
+`1478726d62302fa885525024eb4839af5e98b4dd` keeps Aera, upstream endpoints,
+Sentry, and undeclared AionUi text forbidden throughout the package. It permits
+AionUi text only in `out/main/index.js` when the fixed F2 compatibility markers
+are also present; renderer, preload, metadata, and every other textual ASAR
+file remain forbidden.
+
+[Exact-head CI run 30421351204](https://github.com/bignormal/actestra-desktop/actions/runs/30421351204)
+passes the complete macOS arm64 job: root checks and boundaries, documentation,
+downstream materialization and install, strict types, all 14 focused tests,
+native production build, unsigned app bundle, packaged identity and product
+boundary, and clean-profile smoke.
+
+Draft PR status, merge, candidate, release, distribution, and user acceptance
+remain separate states.
 
 ## Non-claims and next gate
 

@@ -142,8 +142,8 @@ domain is falsely described as Actestra-authoritative.
 
 Current implementation: the seven-domain contract, fixed observation bridge,
 main-owned projection, SQLite schema version 4 evidence, restart behavior,
-redaction, failure isolation, and real native conversation read are locally
-validated. See
+redaction, and failure isolation are exact-head CI-backed. Full native
+regression and the real native conversation read are locally validated. See
 [AionUi F2 Shadow Projection](../product/AIONUI_F2_SHADOW_PROJECTION.md) and
 [ADR-0011](decisions/0011-aionui-shadow-projection.md). F2 does not write
 authoritative P3 domain or event tables.

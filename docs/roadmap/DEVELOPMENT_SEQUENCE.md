@@ -30,12 +30,12 @@ features are implemented.
 | P8 | Cross-platform internal beta | P7 |
 
 Current execution state on 2026-07-29: P4.0/F0 and P4.1/F1 are pushed and
-exact-implementation CI-backed on Draft pull request 6. P4.2/F2 is implemented
-and locally validated: seven bounded native metadata domains project into
+exact-implementation CI-backed on Draft pull request 6. P4.2/F2 is also pushed
+and exact-head CI-backed: seven bounded native metadata domains project into
 separate SQLite schema version 4 shadow evidence without changing native UI or
-authoritative P3 tables. Its commit, push, and exact-head CI remain pending.
-P4.3/F3 domain authority is the next product slice only after F2 evidence is
-recorded; merge and release states remain separate.
+authoritative P3 tables. Full native regression and real desktop projection
+remain local evidence. P4.3/F3 domain authority is the next product slice;
+merge and release states remain separate.
 
 ## P0 — Project Foundation
 
