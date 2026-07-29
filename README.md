@@ -61,9 +61,9 @@ final head `71bf3e3fb1d7661fee053ee811279d44f1fdf45f`, passed
 [PR CI run 30376696055](https://github.com/bignormal/actestra-desktop/actions/runs/30376696055),
 and squash merged as `f6833c50eaf5a426948bac7999f93a08b19a425e`.
 [Main CI run 30378191752](https://github.com/bignormal/actestra-desktop/actions/runs/30378191752)
-passes on that exact squash commit, closing the P3 exit gate. P4.0/F0 is
-CI-backed and P4.1/F1 identity and isolation is locally complete on
-`feat/aionui-first-foundation`.
+passes on that exact squash commit, closing the P3 exit gate. P4.0/F0 and the
+P4.1/F1 identity-and-isolation implementation are CI-backed on
+`feat/aionui-first-foundation`; pull request 6 remains Draft.
 
 - The repository now contains the exact, unmodified 1,766-file AionUi
   `v2.1.41` runnable desktop source foundation at commit
@@ -98,6 +98,12 @@ CI-backed and P4.1/F1 identity and isolation is locally complete on
 - A reviewable downstream overlay now applies Actestra identity, icons,
   versioned private profiles, and a fail-closed external-effect policy without
   editing the frozen AionUi source or removing its routes and feature entries.
+- F1 implementation commit
+  `836a9f1f81687f091e1c5b92ce30bff167e9da4f` plus resource-only CI
+  remediation `462a1b0d920279d42f124fdd28673d77dc55b765` pass
+  [macOS arm64 CI run 30417692550](https://github.com/bignormal/actestra-desktop/actions/runs/30417692550),
+  including the materialized native build, unsigned bundle, packaged identity,
+  and clean-profile smoke.
 - The native AionUi foundation is not yet fused to P3 authoritative data.
   Goose and Eigent-style integration have not started.
 

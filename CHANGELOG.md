@@ -46,9 +46,9 @@ releases begin.
 - Fail-closed isolation for telemetry, updates, feedback upload, upstream
   official services, and public listeners while retaining the corresponding
   AionUi implementation and functional UI entries.
-- Native F1 policy tests, full native regression execution, production build,
-  real Electron launch, runtime-boundary evidence, and an Actestra visual
-  preservation screenshot.
+- Native F1 policy tests, CI-backed production and packaged smoke coverage,
+  full local native regression execution, real Electron launch,
+  runtime-boundary evidence, and an Actestra visual preservation screenshot.
 
 ### Changed
 

@@ -29,10 +29,11 @@ features are implemented.
 | P7 | Security and reliability hardening | P4-P6 |
 | P8 | Cross-platform internal beta | P7 |
 
-Current execution state on 2026-07-29: P4.0/F0 is pushed and CI-backed.
-P4.1/F1 has complete local identity, profile, effect-isolation, test, build,
-launch, visual, and runtime-boundary evidence. Exact-head CI is the remaining
-F1 delivery gate before compatibility projection begins.
+Current execution state on 2026-07-29: P4.0/F0 and the P4.1/F1 identity and
+isolation implementation are pushed and exact-implementation CI-backed on
+Draft pull request 6. Full native regression, launch, visual, and runtime
+socket evidence also pass locally. P4.2/F2 compatibility projection is the
+next development slice; merge and release states remain separate.
 
 ## P0 — Project Foundation
 

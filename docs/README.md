@@ -12,7 +12,7 @@ planning, and governance documents.
 | [P2 Product Shell](product/P2_PRODUCT_SHELL.md) | Implementation, review remediation, boundary, package, launch, and non-claim evidence |
 | [P3 Platform Core](product/P3_PLATFORM_CORE.md) | Current phase order, decisions, exit evidence, and non-claims |
 | [AionUi Native Foundation](product/AIONUI_NATIVE_FOUNDATION.md) | Exact native source, install, test, build, launch, visual evidence, and non-claims |
-| [AionUi F1 Identity and Isolation](product/AIONUI_F1_IDENTITY_ISOLATION.md) | Downstream overlay, identity, private profile, effect policy, visual parity, and local evidence |
+| [AionUi F1 Identity and Isolation](product/AIONUI_F1_IDENTITY_ISOLATION.md) | Downstream overlay, identity, private profile, effect policy, visual parity, and local plus CI evidence |
 | [Development Sequence](roadmap/DEVELOPMENT_SEQUENCE.md) | Ordered phases, dependencies, and exit gates |
 | [System Overview](architecture/SYSTEM_OVERVIEW.md) | Product boundaries, components, data ownership, and isolation |
 | [AionUi–Actestra Fusion](architecture/AIONUI_ACTESTRA_FUSION.md) | Preserve-first topology, authority transition, phases, and patch rules |

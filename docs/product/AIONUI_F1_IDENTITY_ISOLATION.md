@@ -105,6 +105,26 @@ dynamic-import timeout. That file then passed 14/14 in isolation, and the clean
 full rerun produced the complete passing result above. Vitest also emits the
 existing non-failing process-listener warning near suite completion.
 
+## Remote CI evidence
+
+F1 product implementation commit
+`836a9f1f81687f091e1c5b92ce30bff167e9da4f` and resource-only CI
+remediation commit `462a1b0d920279d42f124fdd28673d77dc55b765` pass
+[macOS arm64 run 30417692550](https://github.com/bignormal/actestra-desktop/actions/runs/30417692550).
+That run verifies the root repository and documentation, materializes and
+installs the downstream application, passes strict TypeScript and all 120
+focused retained-provider and isolation tests, builds the 10,160-module native
+renderer, creates an unsigned app bundle, checks packaged identity and product
+boundaries, and launches the packaged shell from a clean profile.
+
+The first run on the product implementation,
+[run 30417468041](https://github.com/bignormal/actestra-desktop/actions/runs/30417468041),
+passed the checks through the focused native tests but exhausted the runner's
+approximately 2 GB default Node.js heap during the native renderer build. The
+remediation raises only that build step to a 4 GB heap; the same command passes
+locally and in the succeeding CI run. This was CI resource remediation, not a
+change to product behavior.
+
 ## Visual preservation evidence
 
 ![Actestra with the preserved AionUi desktop interface](../evidence/actestra-f1-aionui-parity-macos-arm64.png)
@@ -143,5 +163,6 @@ bun run downstream:aionui:materialize
   evidence still requires clean-machine and platform network verification.
 - The downstream application is unsigned development software. This is not a
   merged candidate, signed package, release, distribution, or user acceptance.
+  Passing implementation CI does not change those states.
 - P3 has not yet become authoritative behind the preserved native bridge.
   Compatibility projection is the next development slice.

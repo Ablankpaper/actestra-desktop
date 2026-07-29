@@ -4,7 +4,7 @@ Last updated: 2026-07-29
 
 ## Current phase
 
-### P3 accepted; P4.0 CI-backed; P4.1 identity and isolation locally complete
+### P3 accepted; P4.0 and P4.1 implementations CI-backed; PR remains Draft
 
 Branch `feat/aionui-first-foundation` starts from `origin/main` commit
 `a32b7cb4516f5592e8e1fe6f1f5afad7c50de991` and implements the corrected
@@ -12,10 +12,10 @@ product direction in ADR-0010: the real AionUi application, original functional
 UI, and original functions are the product baseline; the accepted Actestra P3
 core will be fused beneath compatible bridge domains.
 
-Implementation commit
+F0 implementation commit
 `13270ca0abd7353710541afca9ddf46c47670be3` is pushed to
 [draft pull request 6](https://github.com/bignormal/actestra-desktop/pull/6).
-Exact-head
+Its exact-head
 [CI run 30392140461](https://github.com/bignormal/actestra-desktop/actions/runs/30392140461)
 passes the macOS arm64 foundation job, including source, tests, boundaries,
 documentation, unsigned legacy-harness package, packaged identity, and
@@ -41,7 +41,7 @@ Current F0 evidence:
   archive selection, the complete native rerun passes 321 files with 1 skipped
   and 2,576 tests with 5 skipped; there are 0 failures.
 
-Current F1 implementation and local evidence:
+Current F1 implementation and evidence:
 
 - a reviewable downstream overlay materializes Actestra from the exact frozen
   AionUi source without editing the 1,766-file foundation;
@@ -61,18 +61,27 @@ Current F1 implementation and local evidence:
   structure with the Actestra title and wordmark;
 - the runtime listener snapshot is loopback-only and the settled process tree
   has no non-loopback established socket or official-service log match.
+- implementation commit
+  `836a9f1f81687f091e1c5b92ce30bff167e9da4f` and resource-only CI
+  remediation `462a1b0d920279d42f124fdd28673d77dc55b765` are pushed;
+- exact implementation
+  [CI run 30417692550](https://github.com/bignormal/actestra-desktop/actions/runs/30417692550)
+  passes root checks, documentation links, materialization and install,
+  TypeScript, 120 focused tests, native production build, unsigned bundle,
+  packaged identity boundary, and clean-profile smoke.
 
 Detailed implementation and non-claim evidence is recorded in
 [AionUi F1 Identity and Isolation](product/AIONUI_F1_IDENTITY_ISOLATION.md).
-F1 is local validation at this point in the document: exact-head CI, merge,
+F1 implementation is CI-backed but remains on a Draft pull request. Merge,
 candidate, release, distribution, and acceptance remain separate gates.
 
-Native AionUi full tests, build, and visual launch remain local evidence. The
-foundation manifest and compatibility checks are CI-backed on the exact
-implementation commit. PR 6 remains Draft and is not merge, candidate, release,
-distribution, or acceptance evidence. CodeRabbit returned a successful status
-but explicitly skipped review because the PR is Draft; it is not review
-evidence.
+The complete native suite and visual/runtime socket inspection remain local
+evidence. The foundation manifest, downstream overlay, focused contracts,
+native production build, unsigned package boundary, and clean-profile smoke
+are CI-backed on the exact implementation plus resource-only remediation.
+PR 6 remains Draft and is not merge, candidate, release, distribution, or
+acceptance evidence. CodeRabbit returned a successful status but explicitly
+skipped review because the PR is Draft; it is not review evidence.
 
 P3.1-P3.6 and review remediation are pushed and CI-backed. The full independent
 review and remediation review are complete.
@@ -352,6 +361,7 @@ Review closure validation at
 | P3 merge | Accepted on `main` | PR 3 squash merged exact final head `71bf3e3fb1d7661fee053ee811279d44f1fdf45f` as `f6833c50eaf5a426948bac7999f93a08b19a425e` |
 | P3 main CI | Pass | Main push run 30378191752 passed on exact squash commit `f6833c50eaf5a426948bac7999f93a08b19a425e` |
 | P4.0 branch | Pushed; draft PR | Implementation `13270ca0abd7353710541afca9ddf46c47670be3`; draft PR 6; exact-head CI run 30392140461 passes |
+| P4.1 identity and isolation | Implemented, pushed, CI-backed; draft PR | Implementation `836a9f1f81687f091e1c5b92ce30bff167e9da4f`; resource-only CI remediation `462a1b0d920279d42f124fdd28673d77dc55b765`; run 30417692550 passes |
 | Native AionUi source | Exact local desktop snapshot | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot |
 | Native preservation contract | Local pass | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified |
 | Native AionUi build and launch | Local pass | Frozen install, production build, isolated native Electron launch, and actual Guide screenshot pass |
@@ -422,19 +432,17 @@ The ordered implementation index and P3 non-claims are in
 
 ## Next gate
 
-1. Complete root repository checks, documentation checks, and source/visual
-   evidence on
-   `feat/aionui-first-foundation`.
-2. Review draft PR 6, keep the displaced custom-shell PR 5 out of the product
-   foundation, and obtain exact-head CI after any evidence or review
-   remediation commit.
-3. Begin F1 as a documented downstream patch: Actestra name, icon, bundle ID,
-   protocol, versioned profiles, and guest/local-first startup while preserving
-   the screenshot-confirmed AionUi layout and all function entries.
-4. Isolate upstream telemetry, update, feedback, official-service, and public
-   listener effects without removing their UI or error states.
-5. Do not describe F0/F1 as Actestra-authoritative general work, Goose/Eigent
-   integration, candidate, release, distribution, or user acceptance.
+1. Review draft PR 6 and retain the exact frozen source plus downstream-overlay
+   boundary during any remediation.
+2. Begin P4.2/F2 with a compatibility inventory for native conversation, task,
+   provider, workspace, approval, artifact, and runtime shapes.
+3. Add read-only or metadata-only P3 shadow projections before moving any
+   native AionUi domain to Actestra authority.
+4. Keep every retained AionUi route and functional UI entry stable while the
+   compatibility projection is introduced and regression-tested.
+5. Do not describe F0/F1 as merged, Actestra-authoritative general work,
+   Goose/Eigent integration, candidate, release, distribution, or user
+   acceptance.
 
 ## Open decisions
 
