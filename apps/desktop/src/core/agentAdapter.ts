@@ -111,6 +111,7 @@ export type AgentToolResult =
       readonly status: "failed";
       readonly errorCode: string;
       readonly message: string;
+      readonly mayHaveExecuted: boolean;
     })
   | (AgentToolResultBase & {
       readonly status: "cancelled";
@@ -182,6 +183,10 @@ export type UnsubscribeAgentSignals = () => void;
 export interface AgentAdapter {
   capabilities(): Promise<AgentCapabilities>;
   start(request: AgentStartRequest): Promise<void>;
+  appendAuthoritativeArtifactEvent(
+    sessionId: SessionId,
+    event: CoreEvent<"artifact.created" | "artifact.updated">,
+  ): Promise<void>;
   send(sessionId: SessionId, input: AgentInput): Promise<void>;
   approve(requestId: ToolRequestId, decision: AgentApprovalDecision): Promise<void>;
   resolveTool(requestId: ToolRequestId, result: AgentToolResult): Promise<void>;
@@ -512,12 +517,26 @@ export function assertAgentToolResult(value: unknown): asserts value is AgentToo
     case "failed":
       assertExactKeys(
         value,
-        ["requestId", "status", "startedAt", "completedAt", "errorCode", "message"],
+        [
+          "requestId",
+          "status",
+          "startedAt",
+          "completedAt",
+          "errorCode",
+          "message",
+          "mayHaveExecuted",
+        ],
         "invalid-request",
         "Agent failed tool result",
       );
       assertString(value.errorCode, "invalid-request", "Agent tool result.errorCode");
       assertString(value.message, "invalid-request", "Agent tool result.message", true);
+      if (typeof value.mayHaveExecuted !== "boolean") {
+        throw new AgentAdapterError(
+          "invalid-request",
+          "Agent failed tool result.mayHaveExecuted must be boolean",
+        );
+      }
       return;
     case "cancelled":
       assertExactKeys(

@@ -1,8 +1,8 @@
 # System Overview
 
-Status: P3, F0 through F3.3, and GW-P4.3 accepted on `main`; GW-P4.4 scoped
-native tools implemented with complete local validation on
-`feat/aionui-p4-scoped-native-tools`; CrewAI accepted as the first P6
+Status: P3, F0 through F3.3, and GW-P4.4 accepted on `main`; GW-P4.5 durable
+coordination and recovery implemented on
+`feat/aionui-p4-coordination-recovery`; CrewAI accepted as the first P6
 planner-sidecar candidate but not implemented or packaged
 
 ## Context
@@ -19,6 +19,7 @@ flowchart TD
     COMPAT["AionUi Compatibility Layer\nbridge shapes and availability"]
     MAIN["Desktop Main Process\nwindow and process lifecycle"]
     CORE["Actestra App Core"]
+    RECOVERY["General Work Coordinator\nschema 7 recovery journal"]
     ROUTER["Task Router and Team Orchestrator"]
     PLANNER["CrewAI Planner Sidecar\nP6 candidate, non-authoritative"]
     POLICY["Policy and Approval Service"]
@@ -26,7 +27,7 @@ flowchart TD
     ARTIFACTS["Workspace and Artifact Service"]
     CREDS["Credential Broker"]
     TOOLS["MCP and Tool Gateway"]
-    PERSIST["Persistence Utility\nschema 6 and content references"]
+    PERSIST["Persistence Utility\nschema 7 checkpoints and content references"]
     ADAPTERS["Agent Adapter Boundary"]
     GENERAL["General Worker Process"]
     GOOSE["Goose Worker Process"]
@@ -36,12 +37,18 @@ flowchart TD
     RENDERER --> COMPAT
     COMPAT --> MAIN
     MAIN --> CORE
+    CORE --> RECOVERY
     CORE --> ROUTER
     CORE --> POLICY
     CORE --> EVENTS
     CORE --> ARTIFACTS
     CORE --> CREDS
     CORE --> TOOLS
+    RECOVERY --> EVENTS
+    RECOVERY --> ARTIFACTS
+    RECOVERY --> TOOLS
+    RECOVERY --> ADAPTERS
+    RECOVERY --> PERSIST
     ROUTER --> ADAPTERS
     ROUTER --> PLANNER
     ADAPTERS --> GENERAL
@@ -89,9 +96,10 @@ gates the bounded boolean reconciliation read. At that merged baseline there
 is no credential backend, general content-reference store, general MCP or
 native-tool transport, process transport, or real worker adapter. GW-P4.2 adds
 the content-reference store and persistence process; GW-P4.3 adds the first
-real deterministic worker process; the current GW-P4.4 branch admits exactly
-two main-owned native text capabilities without granting filesystem authority
-to that process.
+real deterministic worker process; accepted GW-P4.4 admits exactly two
+main-owned native text capabilities without granting filesystem authority to
+that process. The current GW-P4.5 branch adds the durable coordination and
+restart-recovery sequence around those capabilities.
 
 P4.2 adds the separate compatibility boundary accepted in
 [ADR-0011](decisions/0011-aionui-shadow-projection.md). Successful native HTTP
@@ -177,8 +185,32 @@ opaque reference. Stable cancellation, timeout, scope, validation, conflict,
 and post-effect failure evidence reaches the gateway without exposing raw
 content or paths to the worker or renderer. Root and native regression, build,
 unsigned harness package, and isolated native desktop smoke pass locally.
-The complete 30-file full-diff review is remediated; remote gates remain
-pending.
+The complete 30-file full-diff review was remediated. Pull request 12 merged
+the exact head `34f2d2201581c19b3dc67c5a7936f8a411bff9e1` as
+`7ec009c6384a93c17f24e4276469e98cb5f2b71d`; pull-request CI run
+30486392525 and exact merged-main CI run 30486544268 pass.
+
+GW-P4.5, governed by
+[ADR-0019](decisions/0019-general-work-durable-coordination-and-recovery.md),
+adds a revisioned schema version 7 journal for immutable attempt identity,
+append-only Core events, a verified bounded-event resume baseline, explicit
+tool execution ambiguity, a pre-execution workspace-grant identity, file
+artifact intent, exact-owner output binding, terminal cleanup, and
+finalization. Before that event window advances, its evicted prefix is
+committed idempotently to the normalized event store. The main-owned
+coordinator persists an in-flight tool before execution and its terminal
+result before Adapter acknowledgement. A failed barrier retains the exact
+terminal result and cannot execute the create-only tool again.
+
+After Adapter cleanup, terminal-pending state precedes authoritative-history
+and resume-baseline verification, artifact verification, serialized
+Task/Session/Worker/Artifact reconciliation, idempotent event append, terminal
+evidence, finalized state, and Supervisor release. Admission and startup
+recovery cap non-finalized checkpoints at 100. Startup recovers them before
+the preserved AionUI window opens. Active attempts become explicit restart
+failure or cancellation evidence and require fresh worker identity. No
+renderer or route changes, and no Goose, CrewAI, or Eigent runtime enters this
+slice.
 
 ## Foundation integration boundary
 
@@ -295,7 +327,7 @@ only then calls an injected executor. An operation with no matching rule is
 denied, and conflicting rules resolve in `deny`, then `require-approval`, then
 `allow` precedence.
 
-The accepted P3 baseline executor is test-only. The GW-P4.4 branch adds a
+The accepted P3 baseline executor is test-only. Accepted GW-P4.4 adds a
 production executor only for the two exact ADR-0018 capabilities and still
 receives an opaque input reference rather than raw arguments. The current
 credential broker has no secret store. Approval permits one attempt but does
@@ -322,6 +354,10 @@ supersedes its version-1 interface with exact Adapter version 2:
 interface AgentAdapter {
   capabilities(): Promise<AgentCapabilities>;
   start(request: AgentStartRequest): Promise<void>;
+  appendAuthoritativeArtifactEvent(
+    sessionId: SessionId,
+    event: CoreEvent<"artifact.created" | "artifact.updated">,
+  ): Promise<void>;
   send(sessionId: SessionId, input: AgentInput): Promise<void>;
   approve(requestId: ToolRequestId, decision: AgentApprovalDecision): Promise<void>;
   resolveTool(requestId: ToolRequestId, result: AgentToolResult): Promise<void>;
@@ -399,6 +435,7 @@ Initial event types:
 | F3.2 response-delivery policy and audit evidence                                                               | Actestra fixed policy plus SQLite schema 3 audit    |
 | Workspace grants                                                                                               | Actestra persistence utility, schema 6              |
 | Bounded content references                                                                                     | Actestra persistence utility, schema 6              |
+| General Work attempt, tool, artifact-binding, and recovery checkpoints                                         | Actestra persistence utility, schema 7              |
 | Tasks and dependency graph                                                                                     | Actestra                                            |
 | P3 protected-operation approval evidence for the underlying native tool                                        | Actestra target contract; not activated by F3.2     |
 | Event and audit history                                                                                        | Actestra                                            |
@@ -439,7 +476,10 @@ or silent retry. P3.4 implements startup and heartbeat timeout,
 idempotent cancellation, cancellation acknowledgement timeout, protocol
 failure, crash, terminal reconciliation, and bounded fresh-attempt restart
 semantics. P3.6 persists terminal incident codes and projects bounded,
-metadata-only attempt state through trusted main-frame IPC.
+metadata-only attempt state through trusted main-frame IPC. GW-P4.5 persists
+the pre-execution, pre-acknowledgement, terminal-pending, and finalized
+barriers, retains ambiguous effects, and deterministically converts
+application-interrupted attempts into recoverable terminal evidence.
 
 ## Deferred choices
 
@@ -455,8 +495,10 @@ but does not select a production CrewAI dependency. ADR-0016 selects the
 general-work persistence utility, schema 6 grants, and bounded content
 references. ADR-0017 selects Adapter v2 and the real General Worker protocol.
 ADR-0018 selects the two scoped native text tools and their production policy.
-Later P4 work still must implement end-to-end coordination, recovery, and the
-preserved-AionUi journey. Credential storage and OS sandbox mechanisms remain
+ADR-0019 selects the durable general-work coordination, tool-result retention,
+artifact binding, and startup-recovery sequence. Later P4 work still must map
+that completed non-UI path into the preserved-AionUi journey. Credential
+storage and OS sandbox mechanisms remain
 later security work. Signing, notarization, update delivery, and cross-platform
 candidate packaging remain P8 work.
 

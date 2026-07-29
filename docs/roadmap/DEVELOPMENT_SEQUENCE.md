@@ -30,18 +30,22 @@ features are implemented.
 | P8    | Cross-platform internal beta                             | P7                |
 
 Current execution state on 2026-07-30: native-fusion slices F0 through F3.3
-and general-work through GW-P4.3 are accepted on `main`. Pull request 11
-reached exact head `b3a3bc7e27d7dab44dadeff6dcedc92cec1b3ee5`, passed
-pull-request CI run 30481670123, and squash merged as
-`671587813bea18411b6cdc2ee388d94cd18d6c50`; exact main CI run 30481890911
-passes. GW-P4.4 is implemented with complete local validation on
-`feat/aionui-p4-scoped-native-tools`: exactly two scoped native text tools now
-pass through active-attempt derivation, workspace grants, closed manifests,
-deny-by-default policy, durable audit, create-only output, and opaque content
-references. Root/native regression, build, unsigned harness package, and
-isolated native desktop smoke pass locally, and the complete 30-file full-diff
-review is remediated. Push, PR CI, merge, candidate, and release remain
-separate. P5 Goose and P6 CrewAI/Team work have not started.
+and general-work through GW-P4.4 are accepted on `main`. Pull request 12
+reached exact head `34f2d2201581c19b3dc67c5a7936f8a411bff9e1`, passed
+pull-request CI run 30486392525, and squash merged as
+`7ec009c6384a93c17f24e4276469e98cb5f2b71d`; exact main CI run 30486544268
+passes. GW-P4.5 is implemented on
+`feat/aionui-p4-coordination-recovery`: schema version 7 checkpoints now
+coordinate tool ambiguity, exact-owner artifacts, normalized events, terminal
+evidence, cleanup, bounded/serialized recovery, and deterministic
+application-restart recovery before the preserved AionUI window opens.
+Directed and complete root/native checks, both production builds, the unsigned
+compatibility package, and real AionUI desktop smoke pass locally. The complete
+manual/static review covers the initial 43-file change plus the two
+smoke-contract files added by gate remediation; the CodeRabbit follow-up is
+incomplete, not a zero-finding result. Push, PR CI, merge, merged-main CI,
+candidate, and release remain separate. P5 Goose and P6 CrewAI/Team work have
+not started.
 
 ## P0 — Project Foundation
 

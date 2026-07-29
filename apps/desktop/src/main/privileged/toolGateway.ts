@@ -314,6 +314,7 @@ export class PrivilegedToolGateway implements ToolGateway {
             type: "tool.failed",
             context: auditContextFor(operation),
             errorCode: executionError.errorCode,
+            mayHaveExecuted: executionError.mayHaveExecuted,
           },
           executionError.mayHaveExecuted,
         );

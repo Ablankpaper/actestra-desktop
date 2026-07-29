@@ -65,7 +65,7 @@ const database = new DatabaseSync(path.join(stateDirectory, "actestra.sqlite3"))
 database.exec(\`
   CREATE TABLE workspace_grants (id TEXT PRIMARY KEY) STRICT;
   CREATE TABLE content_references (id TEXT PRIMARY KEY) STRICT;
-  PRAGMA user_version = 6;
+  PRAGMA user_version = 7;
 \`);
 database.close();
 console.log("ACTESTRA_PERSISTENCE_UTILITY_READY");

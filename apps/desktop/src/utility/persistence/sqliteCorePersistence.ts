@@ -18,6 +18,7 @@ import {
 } from "../../compatibility/aionui";
 import {
   CoreContractError,
+  MAX_RECOVERABLE_GENERAL_WORK_CHECKPOINTS,
   PersistenceError,
   WorkloadContentError,
   advanceCoreEventStreamState,
@@ -29,6 +30,8 @@ import {
   assertContentReferenceMetadata,
   assertCoreEvent,
   assertDomainGraph,
+  assertGeneralWorkCheckpoint,
+  assertGeneralWorkCheckpointTransition,
   assertIdempotentCoreEventDelivery,
   assertResolveContentReferenceInput,
   assertStoreContentReferenceInput,
@@ -63,6 +66,8 @@ import {
   type CoreEventStreamState,
   type DomainGraph,
   type EventStreamId,
+  type GeneralWorkCheckpoint,
+  type PersistGeneralWorkCheckpointResult,
   type PersistContentReferenceResult,
   type PersistEvidenceResult,
   type PersistEventResult,
@@ -113,6 +118,10 @@ const CONTENT_REFERENCE_COLUMNS = `
   reference, contract_version, kind, workspace_id, task_id, session_id,
   worker_id, request_id, grant_id, classification, media_type, byte_length,
   sha256, created_at, expires_at, consumed_at, metadata_json, content_blob
+`;
+const GENERAL_WORK_CHECKPOINT_COLUMNS = `
+  session_id, contract_version, phase, revision, workspace_id, task_id,
+  worker_id, stream_id, created_at, updated_at, checkpoint_json
 `;
 
 type SqliteRow = Record<string, unknown>;
@@ -356,6 +365,42 @@ function parseStoredAgentAttemptEvidence(row: SqliteRow): AgentAttemptEvidence {
     throw new PersistenceError(
       "corrupt-database",
       "Persisted agent attempt projection does not match its canonical evidence",
+    );
+  }
+
+  return deepFreeze(value);
+}
+
+function parseStoredGeneralWorkCheckpoint(row: SqliteRow): GeneralWorkCheckpoint {
+  const encoded = requiredString(row, "checkpoint_json");
+  let value: unknown;
+
+  try {
+    value = JSON.parse(encoded);
+    assertGeneralWorkCheckpoint(value);
+  } catch (error) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted general-work checkpoint violates its contract",
+      { cause: error },
+    );
+  }
+
+  if (
+    requiredString(row, "session_id") !== value.attempt.sessionId ||
+    requiredNumber(row, "contract_version") !== value.contractVersion ||
+    requiredString(row, "phase") !== value.phase ||
+    requiredNumber(row, "revision") !== value.revision ||
+    requiredString(row, "workspace_id") !== value.attempt.workspaceId ||
+    requiredString(row, "task_id") !== value.attempt.taskId ||
+    requiredString(row, "worker_id") !== value.attempt.workerId ||
+    requiredString(row, "stream_id") !== value.attempt.streamId ||
+    requiredString(row, "created_at") !== value.createdAt ||
+    requiredString(row, "updated_at") !== value.updatedAt
+  ) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted general-work checkpoint projection does not match its canonical record",
     );
   }
 
@@ -1437,6 +1482,182 @@ class SqliteCorePersistence implements ActestraPersistencePort {
         .all(limit),
     );
     return Object.freeze(rows.map(parseStoredAgentAttemptEvidence));
+  }
+
+  async persistGeneralWorkCheckpoint(
+    checkpoint: GeneralWorkCheckpoint,
+  ): Promise<PersistGeneralWorkCheckpointResult> {
+    const database = this.requireDatabase();
+    let stableCheckpoint: GeneralWorkCheckpoint;
+    try {
+      assertGeneralWorkCheckpoint(checkpoint);
+      const normalized: unknown = JSON.parse(JSON.stringify(checkpoint));
+      assertGeneralWorkCheckpoint(normalized);
+      stableCheckpoint = deepFreeze(normalized);
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "General-work checkpoint is invalid", {
+        cause: error,
+      });
+    }
+
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const existingRow = database
+        .prepare(
+          `SELECT ${GENERAL_WORK_CHECKPOINT_COLUMNS}
+           FROM general_work_checkpoints
+           WHERE session_id = ?`,
+        )
+        .get(stableCheckpoint.attempt.sessionId) as SqliteRow | undefined;
+      if (existingRow === undefined) {
+        if (stableCheckpoint.revision !== 1 || stableCheckpoint.phase !== "active") {
+          throw new PersistenceError(
+            "general-work-conflict",
+            "A new general-work checkpoint must begin at active revision 1",
+          );
+        }
+        const recoverableSummary = database
+          .prepare(
+            `SELECT COUNT(*) AS record_count
+             FROM general_work_checkpoints
+             WHERE phase != 'finalized'`,
+          )
+          .get() as SqliteRow;
+        if (
+          requiredNumber(recoverableSummary, "record_count") >=
+          MAX_RECOVERABLE_GENERAL_WORK_CHECKPOINTS
+        ) {
+          throw new PersistenceError(
+            "general-work-conflict",
+            `Actestra permits at most ${MAX_RECOVERABLE_GENERAL_WORK_CHECKPOINTS} recoverable general-work checkpoints`,
+          );
+        }
+        database
+          .prepare(
+            `INSERT INTO general_work_checkpoints (
+               session_id, contract_version, phase, revision, workspace_id,
+               task_id, worker_id, stream_id, created_at, updated_at,
+               checkpoint_json
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            stableCheckpoint.attempt.sessionId,
+            stableCheckpoint.contractVersion,
+            stableCheckpoint.phase,
+            stableCheckpoint.revision,
+            stableCheckpoint.attempt.workspaceId,
+            stableCheckpoint.attempt.taskId,
+            stableCheckpoint.attempt.workerId,
+            stableCheckpoint.attempt.streamId,
+            stableCheckpoint.createdAt,
+            stableCheckpoint.updatedAt,
+            JSON.stringify(stableCheckpoint),
+          );
+        database.exec("COMMIT");
+        return deepFreeze({
+          status: "stored",
+          checkpoint: stableCheckpoint,
+        });
+      }
+
+      const existing = parseStoredGeneralWorkCheckpoint(existingRow);
+      if (isDeepStrictEqual(existing, stableCheckpoint)) {
+        database.exec("COMMIT");
+        return deepFreeze({
+          status: "duplicate",
+          checkpoint: existing,
+        });
+      }
+      try {
+        assertGeneralWorkCheckpointTransition(existing, stableCheckpoint);
+      } catch (error) {
+        throw new PersistenceError(
+          "general-work-conflict",
+          "General-work checkpoint update conflicts with durable state",
+          { cause: error },
+        );
+      }
+      const update = database
+        .prepare(
+          `UPDATE general_work_checkpoints
+           SET phase = ?, revision = ?, updated_at = ?, checkpoint_json = ?
+           WHERE session_id = ? AND revision = ?`,
+        )
+        .run(
+          stableCheckpoint.phase,
+          stableCheckpoint.revision,
+          stableCheckpoint.updatedAt,
+          JSON.stringify(stableCheckpoint),
+          stableCheckpoint.attempt.sessionId,
+          existing.revision,
+        );
+      if (update.changes !== 1) {
+        throw new PersistenceError(
+          "general-work-conflict",
+          "General-work checkpoint revision changed concurrently",
+        );
+      }
+      database.exec("COMMIT");
+      return deepFreeze({
+        status: "updated",
+        checkpoint: stableCheckpoint,
+      });
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) {
+        throw error;
+      }
+      throw new PersistenceError(
+        "corrupt-database",
+        "Actestra could not persist the general-work checkpoint",
+        { cause: error },
+      );
+    }
+  }
+
+  async getGeneralWorkCheckpoint(
+    session: ReturnType<typeof sessionId>,
+  ): Promise<GeneralWorkCheckpoint | null> {
+    const database = this.requireDatabase();
+    try {
+      sessionId(session);
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "General-work checkpoint lookup is invalid", {
+        cause: error,
+      });
+    }
+    const row = database
+      .prepare(
+        `SELECT ${GENERAL_WORK_CHECKPOINT_COLUMNS}
+         FROM general_work_checkpoints
+         WHERE session_id = ?`,
+      )
+      .get(session) as SqliteRow | undefined;
+    return row === undefined ? null : parseStoredGeneralWorkCheckpoint(row);
+  }
+
+  async listRecoverableGeneralWorkCheckpoints(
+    limit: number,
+  ): Promise<readonly GeneralWorkCheckpoint[]> {
+    const database = this.requireDatabase();
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+      throw new PersistenceError(
+        "invalid-record",
+        "Recoverable general-work checkpoint limit must be between 1 and 100",
+      );
+    }
+    const rows = asRows(
+      database
+        .prepare(
+          `SELECT ${GENERAL_WORK_CHECKPOINT_COLUMNS}
+           FROM general_work_checkpoints
+           WHERE phase != 'finalized'
+           ORDER BY updated_at, session_id
+           LIMIT ?`,
+        )
+        .all(limit),
+    );
+    return Object.freeze(rows.map(parseStoredGeneralWorkCheckpoint));
   }
 
   async appendAionUiShadowEvidence(

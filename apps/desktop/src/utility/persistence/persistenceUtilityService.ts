@@ -173,6 +173,12 @@ export class PersistenceUtilityService {
         return persistence.storeContentReference(request.payload.input);
       case "resolve-content-reference":
         return persistence.resolveContentReference(request.payload.input);
+      case "persist-general-work-checkpoint":
+        return persistence.persistGeneralWorkCheckpoint(request.payload.checkpoint);
+      case "get-general-work-checkpoint":
+        return persistence.getGeneralWorkCheckpoint(request.payload.sessionId);
+      case "list-recoverable-general-work-checkpoints":
+        return persistence.listRecoverableGeneralWorkCheckpoints(request.payload.limit);
       case "close":
         await this.shutdown();
         return null;

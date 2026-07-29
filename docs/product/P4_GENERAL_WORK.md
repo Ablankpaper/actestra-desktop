@@ -1,25 +1,25 @@
 # P4 General-Work Vertical Slice
 
-Status: GW-P4.3 accepted on `main`; GW-P4.4 complete local validation and
-full-diff review pass on `feat/aionui-p4-scoped-native-tools`; push,
-pull-request CI, merge, and merged-main CI for GW-P4.4 are pending
+Status: GW-P4.4 accepted on `main`; GW-P4.5 durable coordination and recovery
+implemented on `feat/aionui-p4-coordination-recovery`, with directed local
+validation and review remediation in progress
 
 Date: 2026-07-30
 
 Exact base:
-`671587813bea18411b6cdc2ee388d94cd18d6c50`
+`7ec009c6384a93c17f24e4276469e98cb5f2b71d`
 
 ## Entry evidence
 
 The branch starts from the exact `main` squash merge for
-[pull request 11](https://github.com/bignormal/actestra-desktop/pull/11).
-[Main CI run 30481890911](https://github.com/bignormal/actestra-desktop/actions/runs/30481890911)
+[pull request 12](https://github.com/bignormal/actestra-desktop/pull/12).
+[Main CI run 30486544268](https://github.com/bignormal/actestra-desktop/actions/runs/30486544268)
 passes on that commit.
 
 [ADR-0016](../architecture/decisions/0016-p4-general-work-process-and-content-boundaries.md),
 [ADR-0017](../architecture/decisions/0017-general-worker-process-and-agent-adapter-v2.md),
-and
-[ADR-0018](../architecture/decisions/0018-scoped-native-text-tools-and-policy.md)
+[ADR-0018](../architecture/decisions/0018-scoped-native-text-tools-and-policy.md), and
+[ADR-0019](../architecture/decisions/0019-general-work-durable-coordination-and-recovery.md)
 retain AionUi as the product UI, Actestra Core as the sole authority, and the
 General Worker as an unprivileged supervised process.
 
@@ -168,7 +168,7 @@ passes.
 
 ### GW-P4.4 — Scoped native tools and policy
 
-Implemented on the current branch:
+Accepted on `main` through pull request 12:
 
 - [ADR-0018](../architecture/decisions/0018-scoped-native-text-tools-and-policy.md)
   registers only `actestra.workspace.read-text` and
@@ -233,16 +233,91 @@ Current local evidence:
 Exit: success, denial, failure, cancellation, and output-conflict tests prove
 no scope or policy bypass.
 
+The exact GW-P4.4 head
+`34f2d2201581c19b3dc67c5a7936f8a411bff9e1` passed
+[pull-request CI run 30486392525](https://github.com/bignormal/actestra-desktop/actions/runs/30486392525).
+It squash merged as `7ec009c6384a93c17f24e4276469e98cb5f2b71d`;
+exact
+[merged-main CI run 30486544268](https://github.com/bignormal/actestra-desktop/actions/runs/30486544268)
+passes.
+
 ### GW-P4.5 — Coordination and recovery
 
-- connect tasks, attempts, worker supervision, tool gateway, events, audit,
-  content, artifacts, and terminal evidence;
-- preserve persist-before-acknowledge and supervisor-release ordering;
-- recover after worker, persistence, and application failure with fresh
-  identities where required; and
-- prove no orphan process or silent-success state remains.
+Implemented on the current branch:
 
-Exit: all non-UI fixtures and recovery paths pass locally and in exact-head CI.
+- [ADR-0019](../architecture/decisions/0019-general-work-durable-coordination-and-recovery.md)
+  adds a schema version 7 recovery journal with immutable attempt identity,
+  bounded append-only events, a verified sliding resume baseline whose evicted
+  prefix is first committed to the normalized event store, explicit tool
+  ambiguity, a pre-execution workspace-grant identity, file-artifact intent
+  and exact-owner output binding, monotonic revisions, and active,
+  terminal-pending, and finalized phases;
+- main persists the in-flight tool before gateway execution and persists its
+  terminal result and artifact event before Adapter acknowledgement;
+- a failed persistence or projection barrier retains the exact tool result and
+  retries only the barrier and resolution path, so create-only output cannot
+  execute twice;
+- Adapter cleanup completes before terminal-pending state, then authoritative
+  event history, artifact ownership, serialized domain graph reconciliation,
+  normalized events, terminal evidence, and finalized state persist before
+  Supervisor release;
+- active application-interrupted attempts become explicit failed or cancelled
+  terminal evidence, while terminal-pending attempts resume idempotently;
+- non-finalized checkpoint admission and startup recovery are bounded at 100;
+  process crash replacement uses fresh session, worker, stream, and process
+  identities; artifact conflicts, unknown identity, duplicate event IDs,
+  missing content, and unprojected authoritative events fail closed; and
+- the preserved AionUI main process runs recovery after schema version 7 and
+  scoped-tool readiness but before creating the original window, with no
+  renderer, route, preload, or feature-entry change.
+
+Current directed evidence:
+
+- strict root TypeScript passes;
+- the final affected root set passes 9 files and 80 tests, covering the
+  recovery contract, coordinator, persistence client and SQLite adapter,
+  utility protocol, lifecycle cleanup, retained-result retry, event identity,
+  exact artifact projection, grant ownership, checkpoint bounds, and restart;
+- the downstream contract passes with 129 declared files, 4 frozen R0
+  invariants, and 43 reviewed Actestra source copies;
+- the materialized AionUI recovery, persistence, worker, and native-tool files
+  pass 4 files and 5 tests after the latest review remediation and formatting;
+  and
+- the first full CodeRabbit pass produced nine candidates; five valid findings
+  were fixed and four invalid findings were dispositioned. Its changed-diff
+  follow-up later waited about 25 minutes without a conclusion and was
+  terminated as an orphan, so it is recorded as incomplete rather than zero
+  findings. A complete manual/static review of all 43 changed files then fixed
+  six additional event-history, grant-ownership, artifact-contract,
+  checkpoint-bound, and serialized-reconciliation issues. The two
+  smoke-contract files added by the gate remediation were reviewed separately;
+- root pre-commit gates pass zero-warning format/lint, strict types, the
+  Electron SQLite probe, 44 files and 256 tests, the smoke harness, 61-source
+  boundary, exact foundation/downstream contracts, and production build. Four
+  ignored `.DS_Store` files caused one environment-only foundation failure;
+  removing those exact files and resuming from the failed gate passed without
+  repeating the root suite;
+- the first complete native attempt is recorded as an environment failure
+  because the disposable tree lacked installed dependencies. After the exact
+  3,177-package lock was installed, strict TypeScript exposed and closed two
+  coordinator callback annotations; the complete native regression passes 336
+  files and 2,613 tests, with 1 file and 5 tests skipped;
+- the native production build passes after 591 main, 7 preload, and 10,163
+  renderer modules and preserves separate Utility and General Worker entries;
+- the unsigned compatibility package passes identity and graph verification.
+  Its obsolete schema-6 smoke assertion was corrected to schema 7 after the
+  application itself reached all readiness markers; the affected harness and
+  real packaged smoke pass; and
+- a real isolated-profile materialized AionUI launch with local exact
+  `aioncore 0.1.52` reaches scoped-tool readiness, schema 7, zero recovered
+  attempts, Adapter v2/Worker v1 completion, backend health, original window,
+  and renderer load. The authoritative SQLite event, artifact, and checkpoint
+  tables are present with no pending checkpoint, and shutdown leaves no
+  Electron, Utility, Worker, or AionCore process.
+
+Exit criterion: all non-UI fixtures and recovery paths must pass locally and
+in exact-head CI. Exact-head GW-P4.5 CI remains pending until the branch is
+pushed.
 
 ### GW-P4.6 — Preserved-AionUi journey
 
@@ -276,17 +351,18 @@ P4 is complete only after:
 
 - The General Worker is a real deterministic process used by the isolated
   probe; it is not yet connected to a user-submitted AionUI task.
-- GW-P4.4 has complete local implementation and validation evidence.
-  Full-diff review and remediation are complete; push, exact-head CI, merge,
-  and merged-main CI are pending.
+- GW-P4.4 is accepted on `main` through pull request 12 and exact merged-main
+  CI 30486544268.
 - The two native tools are main-process capabilities for the deterministic
-  attempt fixture. They are not yet a complete authoritative task/artifact
-  journey or a renderer-selected generic filesystem API.
+  attempt fixture. GW-P4.5 now coordinates their Task, Attempt, event,
+  artifact, audit, cleanup, and restart state, but it is not yet a
+  user-submitted preserved-AionUI journey or a renderer-selected generic
+  filesystem API.
 - No shell, network, credential, MCP, publish, Git, arbitrary workspace
   mutation, model, Goose adapter, CrewAI sidecar, or Team orchestration is
   active.
 - Utility-process separation is not OS sandbox evidence.
-- Schema 6 is forward-only; development rollback uses a fresh profile rather
+- Schema 7 is forward-only; development rollback uses a fresh profile rather
   than deleting or downgrading user state.
 - The successful native launch uses the exact local AionCore binary. The frozen
   repository still does not contain an approved distributable AionCore bundle;

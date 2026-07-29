@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MAX_WORKLOAD_CONTENT_BYTES,
@@ -45,12 +46,14 @@ import {
   type AgentAdapterSupervisorConfig,
 } from "../../apps/desktop/src/main/workers/agentAdapterSupervisor";
 import { DeterministicAgentClock } from "../../apps/desktop/src/main/workers/deterministicFakeAgentAdapter";
+import { ScopedNativeToolCoordinator } from "../../apps/desktop/src/main/workers/scopedNativeToolCoordinator";
 import {
   GENERAL_WORKER_ADAPTER_KIND,
   type GeneralWorkerProcessAdapter,
 } from "../../apps/desktop/src/main/workers/generalWorkerProcessAdapter";
 import type { GeneralWorkerExecutionMode } from "../../apps/desktop/src/shared/generalWorkerProtocol";
 import type { PersistenceUtilityClient } from "../../apps/desktop/src/main/persistence/persistenceUtilityClient";
+import { resolveCoreDatabasePath } from "../../apps/desktop/src/utility/persistence/sqliteCorePersistence";
 import { openTestGeneralWorker } from "../fixtures/generalWorker";
 import { openTestPersistenceUtility } from "../fixtures/persistenceUtility";
 
@@ -407,6 +410,63 @@ describe("GW-P4.4 scoped native tool execution", () => {
     await expectTerminal(harness, "completed");
   });
 
+  it("reuses a retained terminal result when the persistence barrier retries", async () => {
+    const harness = await openHarness("retained-result", "task-output-write-text-fixture");
+    const input = {
+      contractVersion: 1,
+      relativePath: "retained.txt",
+      mediaType: "text/plain; charset=utf-8",
+      content: "execute exactly once",
+    } as const;
+    const inputRef = await storeInput(
+      harness,
+      TASK_OUTPUT_WRITE_TEXT_TOOL_ID,
+      input,
+      "retained-result",
+    );
+    const gateway = vi.spyOn(harness.platform.toolGateway, "invoke");
+    let barrierAttempts = 0;
+    const coordinator = new ScopedNativeToolCoordinator(
+      harness.supervisor,
+      harness.platform.toolGateway,
+      harness.clock,
+      async () => {
+        barrierAttempts += 1;
+        if (barrierAttempts === 1) {
+          throw new Error("Injected durable barrier failure");
+        }
+      },
+    );
+    const invocation = {
+      sessionId: harness.request.sessionId,
+      requestId: harness.requestId,
+      inputRef,
+    };
+
+    await expect(coordinator.invoke(invocation)).rejects.toThrow(
+      "Injected durable barrier failure",
+    );
+    expect(gateway).toHaveBeenCalledTimes(1);
+    await expect(coordinator.invoke(invocation)).resolves.toMatchObject({
+      status: "succeeded",
+    });
+    expect(gateway).toHaveBeenCalledTimes(1);
+    expect(barrierAttempts).toBe(2);
+    expect(
+      fs.readFileSync(
+        path.join(
+          harness.workspaceRoot,
+          ".actestra",
+          "task-output",
+          harness.request.taskId,
+          "retained.txt",
+        ),
+        "utf8",
+      ),
+    ).toBe(input.content);
+    await expectTerminal(harness, "completed");
+  });
+
   it("rejects an executor timeout above the registered manifest ceiling", async () => {
     const harness = await openHarness("timeout-ceiling", "workspace-read-text-fixture");
     const inputRef = toolInputReference("input-native-timeout-ceiling");
@@ -584,6 +644,24 @@ describe("GW-P4.4 scoped native tool execution", () => {
     await expect(harness.persistence.summarizePrivilegedAudit()).resolves.toEqual({
       recordCount: 3,
       lastSequence: 3,
+    });
+    const database = new DatabaseSync(resolveCoreDatabasePath(harness.directory), {
+      readOnly: true,
+    });
+    const row = database
+      .prepare(
+        `SELECT record_json
+         FROM privileged_audit_records
+         WHERE event_type = 'tool.failed'`,
+      )
+      .get() as { readonly record_json: string };
+    database.close();
+    expect(JSON.parse(row.record_json)).toMatchObject({
+      event: {
+        type: "tool.failed",
+        errorCode: "output-reference-unavailable",
+        mayHaveExecuted: true,
+      },
     });
   });
 

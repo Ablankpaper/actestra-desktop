@@ -122,6 +122,7 @@ interface SupervisedAttempt {
   cancelRequestedAt?: Instant;
   forcedCancellation: boolean;
   disposed: boolean;
+  cleanupPromise?: Promise<void>;
   incident?: AgentSupervisorIncident;
   crashRetryable?: boolean;
   unsubscribe?: UnsubscribeAgentSignals;
@@ -393,6 +394,18 @@ export class AgentAdapterSupervisor {
     this.attempts.delete(session);
   }
 
+  async awaitCleanup(session: SessionId): Promise<AgentAttemptSnapshot> {
+    const attempt = this.requireAttempt(session);
+    if (!TERMINAL_ATTEMPT_STATES.includes(attempt.state)) {
+      throw new AgentAdapterError(
+        "invalid-state",
+        `Session ${session} must be terminal before awaiting cleanup`,
+      );
+    }
+    await this.cleanup(attempt);
+    return this.snapshot(session);
+  }
+
   async checkHealth(): Promise<void> {
     const now = this.now();
     const cleanup: Promise<void>[] = [];
@@ -479,6 +492,34 @@ export class AgentAdapterSupervisor {
 
   coreEvents(session: SessionId): readonly CoreEvent[] {
     return Object.freeze([...this.requireAttempt(session).events]);
+  }
+
+  async appendAuthoritativeArtifactEvent(
+    session: SessionId,
+    event: CoreEvent<"artifact.created" | "artifact.updated">,
+  ): Promise<AgentAttemptSnapshot> {
+    const attempt = this.requireAttempt(session);
+    if (event.type !== "artifact.created" && event.type !== "artifact.updated") {
+      throw new AgentAdapterError(
+        "invalid-request",
+        "Supervisor accepts only main-owned artifact events",
+      );
+    }
+    await this.runAdapterOperation(
+      attempt,
+      "appendAuthoritativeArtifactEvent",
+      this.adapter.appendAuthoritativeArtifactEvent(session, event),
+    );
+    if (attempt.coreState.previous?.eventId !== event.eventId) {
+      const error = new AgentAdapterError(
+        "terminal-reconciliation-failed",
+        "Adapter did not publish the authoritative artifact event",
+      );
+      this.failProtocol(attempt, error);
+      await this.cleanup(attempt);
+      throw error;
+    }
+    return this.snapshot(session);
   }
 
   activeToolRequest(session: SessionId): ToolRequestId | undefined {
@@ -991,25 +1032,38 @@ export class AgentAdapterSupervisor {
   }
 
   private async cleanup(attempt: SupervisedAttempt): Promise<void> {
-    if (attempt.disposed) {
-      return;
+    if (attempt.cleanupPromise !== undefined) {
+      return attempt.cleanupPromise;
     }
 
-    attempt.disposed = true;
     attempt.pendingApproval = undefined;
     attempt.pendingTool = undefined;
-    attempt.unsubscribe?.();
-    attempt.unsubscribe = undefined;
-
     try {
-      await this.adapter.dispose(attempt.request.sessionId);
+      attempt.unsubscribe?.();
     } catch {
       attempt.incident ??= this.incident(
         "adapter-operation-failed",
-        `AgentAdapter dispose failed for session ${attempt.request.sessionId}`,
-        this.now(),
+        `AgentAdapter unsubscribe failed for session ${attempt.request.sessionId}`,
+        attempt.lastSignalAt,
       );
+    } finally {
+      attempt.unsubscribe = undefined;
+      attempt.disposed = true;
     }
+
+    const cleanup = (async (): Promise<void> => {
+      try {
+        await this.adapter.dispose(attempt.request.sessionId);
+      } catch {
+        attempt.incident ??= this.incident(
+          "adapter-operation-failed",
+          `AgentAdapter dispose failed for session ${attempt.request.sessionId}`,
+          attempt.lastSignalAt,
+        );
+      }
+    })();
+    attempt.cleanupPromise = cleanup;
+    return cleanup;
   }
 
   private async runAdapterOperation(

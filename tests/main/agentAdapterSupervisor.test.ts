@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   AGENT_ADAPTER_PROTOCOL_VERSION,
   AgentAdapterError,
+  artifactId,
   approvalId,
   eventStreamId,
   instant,
@@ -49,6 +50,7 @@ const SUPERVISOR_CONFIG = {
 
 class ManualAgentAdapter implements AgentAdapter {
   readonly disposed = new Set<SessionId>();
+  throwOnUnsubscribe = false;
   private readonly handlers = new Map<SessionId, Set<(signal: AgentSignal) => void>>();
 
   constructor(
@@ -67,6 +69,11 @@ class ManualAgentAdapter implements AgentAdapter {
 
   async start(_request: AgentStartRequest): Promise<void> {}
 
+  async appendAuthoritativeArtifactEvent(
+    _sessionId: SessionId,
+    _event: CoreEvent<"artifact.created" | "artifact.updated">,
+  ): Promise<void> {}
+
   async send(_sessionId: SessionId, _input: AgentInput): Promise<void> {}
 
   async approve(_requestId: ToolRequestId, _decision: AgentApprovalDecision): Promise<void> {}
@@ -80,7 +87,12 @@ class ManualAgentAdapter implements AgentAdapter {
     handlers.add(handler);
     this.handlers.set(session, handlers);
 
-    return () => handlers.delete(handler);
+    return () => {
+      if (this.throwOnUnsubscribe) {
+        throw new Error("Injected unsubscribe failure");
+      }
+      handlers.delete(handler);
+    };
   }
 
   async dispose(session: SessionId): Promise<void> {
@@ -155,6 +167,86 @@ describe("AgentAdapterSupervisor", () => {
       code: "unsupported-capability",
     });
     expect(supervisor.listAttempts()).toEqual([]);
+  });
+
+  it("finishes adapter disposal when unsubscribe cleanup throws", async () => {
+    const clock = new DeterministicAgentClock(instant("2026-07-28T08:00:00.000Z"));
+    const adapter = new ManualAgentAdapter();
+    const supervisor = new AgentAdapterSupervisor(adapter, clock, SUPERVISOR_CONFIG);
+    const request = createAgentStartRequest();
+
+    await supervisor.start(request);
+    adapter.emit(controlSignal(request, 1, "ready"));
+    adapter.emit(
+      coreSignal(
+        request,
+        2,
+        attemptEvent(request, 1, "task.started", {
+          from: "ready",
+          to: "running",
+        }),
+      ),
+    );
+    adapter.throwOnUnsubscribe = true;
+    adapter.emit(
+      coreSignal(
+        request,
+        3,
+        attemptEvent(request, 2, "task.completed", {
+          from: "running",
+          to: "completed",
+        }),
+      ),
+    );
+    adapter.emit(controlSignal(request, 4, "completed"));
+
+    await expect(supervisor.awaitCleanup(request.sessionId)).resolves.toMatchObject({
+      state: "completed",
+      disposed: true,
+      incident: {
+        code: "adapter-operation-failed",
+      },
+    });
+    expect(adapter.disposed.has(request.sessionId)).toBe(true);
+  });
+
+  it("fails and cleans up when an adapter does not project an authoritative artifact", async () => {
+    const clock = new DeterministicAgentClock(instant("2026-07-28T08:00:00.000Z"));
+    const adapter = new ManualAgentAdapter();
+    const supervisor = new AgentAdapterSupervisor(adapter, clock, SUPERVISOR_CONFIG);
+    const request = createAgentStartRequest();
+
+    await supervisor.start(request);
+    adapter.emit(controlSignal(request, 1, "ready"));
+    adapter.emit(
+      coreSignal(
+        request,
+        2,
+        attemptEvent(request, 1, "task.started", {
+          from: "ready",
+          to: "running",
+        }),
+      ),
+    );
+    const artifactEvent = attemptEvent(request, 2, "artifact.created", {
+      artifactId: artifactId("artifact-unprojected"),
+      kind: "file",
+      label: "Unprojected artifact",
+    });
+
+    await expect(
+      supervisor.appendAuthoritativeArtifactEvent(request.sessionId, artifactEvent),
+    ).rejects.toMatchObject({
+      code: "terminal-reconciliation-failed",
+    });
+    await expect(supervisor.awaitCleanup(request.sessionId)).resolves.toMatchObject({
+      state: "protocol-failed",
+      disposed: true,
+      incident: {
+        code: "terminal-reconciliation-failed",
+      },
+    });
+    expect(adapter.disposed.has(request.sessionId)).toBe(true);
   });
 
   it("times out a silent startup and disposes the attempt", async () => {

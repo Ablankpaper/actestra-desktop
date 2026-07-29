@@ -132,6 +132,12 @@ if (!hasSingleInstanceLock) {
       );
       const services = createMainPlatformServices(persistence);
       platformServices = services;
+      const recoveredGeneralWork = await services.recoverGeneralWork();
+      console.info(
+        `ACTESTRA_GENERAL_WORK_RECOVERY_READY ${JSON.stringify({
+          recoveredAttempts: recoveredGeneralWork.length,
+        })}`,
+      );
       if (process.env.ACTESTRA_E2E_TEST === "1") {
         const workerProbe = await runGeneralWorkerProbe({
           modulePath: path.join(__dirname, "general-worker.js"),

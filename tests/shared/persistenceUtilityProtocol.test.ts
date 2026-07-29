@@ -6,6 +6,7 @@ import {
   assertPersistenceUtilityRequest,
   createPersistenceUtilityReadyMessage,
 } from "../../apps/desktop/src/shared/persistenceUtilityProtocol";
+import { createGeneralWorkCheckpoint } from "../fixtures/generalWorkRecovery";
 
 describe("persistence utility protocol", () => {
   it("accepts exact ready, request, and operation-specific response envelopes", () => {
@@ -32,6 +33,29 @@ describe("persistence utility protocol", () => {
         status: "ok",
         result: {
           schemaVersion: 6,
+        },
+      }),
+    ).not.toThrow();
+    const checkpoint = createGeneralWorkCheckpoint();
+    expect(() =>
+      assertPersistenceUtilityRequest({
+        protocolVersion: 1,
+        type: "request",
+        requestId: "persistence-request-3",
+        operation: "persist-general-work-checkpoint",
+        payload: { checkpoint },
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertPersistenceUtilityMessage({
+        protocolVersion: 1,
+        type: "response",
+        requestId: "persistence-request-3",
+        operation: "persist-general-work-checkpoint",
+        status: "ok",
+        result: {
+          status: "stored",
+          checkpoint,
         },
       }),
     ).not.toThrow();
