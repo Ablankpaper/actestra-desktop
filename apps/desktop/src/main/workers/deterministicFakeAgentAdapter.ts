@@ -8,6 +8,7 @@ import {
   assertAgentInput,
   assertAgentSignal,
   assertAgentStartRequest,
+  assertAgentToolResult,
   createCoreEventStreamState,
   eventId,
   instant,
@@ -21,6 +22,7 @@ import {
   type AgentSignal,
   type AgentSignalHandler,
   type AgentStartRequest,
+  type AgentToolResult,
   type ApprovalId,
   type CoreEvent,
   type CoreEventStreamState,
@@ -79,6 +81,12 @@ export type DeterministicFakeStep =
       readonly expiresAt?: Instant;
     }
   | {
+      readonly type: "tool";
+      readonly requestId: ToolRequestId;
+      readonly toolName: string;
+      readonly summary: string;
+    }
+  | {
       readonly type: "complete";
     }
   | {
@@ -113,6 +121,10 @@ interface PendingFakeApproval {
   readonly approvalId: ApprovalId;
 }
 
+interface PendingFakeTool {
+  readonly requestId: ToolRequestId;
+}
+
 interface FakeAttempt {
   readonly request: AgentStartRequest;
   readonly plan: DeterministicFakePlan;
@@ -121,13 +133,20 @@ interface FakeAttempt {
   nextStepIndex: number;
   coreState: CoreEventStreamState;
   pendingApproval?: PendingFakeApproval;
+  pendingTool?: PendingFakeTool;
   disposed: boolean;
 }
 
 const CAPABILITIES = Object.freeze({
   protocolVersion: AGENT_ADAPTER_PROTOCOL_VERSION,
   adapterKind: "deterministic-fake",
-  capabilities: Object.freeze(["messages", "approvals", "cancellation", "heartbeats"] as const),
+  capabilities: Object.freeze([
+    "messages",
+    "approvals",
+    "cancellation",
+    "heartbeats",
+    "tool-results",
+  ] as const),
   maxConcurrentSessions: 64,
   heartbeatIntervalMs: 1_000,
 }) satisfies AgentCapabilities;
@@ -195,6 +214,12 @@ function assertDeterministicFakeStep(value: unknown, index: number): void {
       if (step.expiresAt !== undefined) {
         instant(planString(step.expiresAt, `${label}.expiresAt`));
       }
+      return;
+    case "tool":
+      exactPlanKeys(step, ["type", "requestId", "toolName", "summary"], label);
+      toolRequestId(planString(step.requestId, `${label}.requestId`));
+      planString(step.toolName, `${label}.toolName`);
+      planString(step.summary, `${label}.summary`);
       return;
     case "fail":
       exactPlanKeys(step, ["type", "errorCode", "message"], label);
@@ -419,6 +444,84 @@ export class DeterministicFakeAgentAdapter implements AgentAdapter {
     });
   }
 
+  async resolveTool(requestIdValue: ToolRequestId, result: AgentToolResult): Promise<void> {
+    toolRequestId(requestIdValue);
+    assertAgentToolResult(result);
+    const attempt = [...this.attempts.values()].find(
+      (candidate) => !candidate.disposed && candidate.pendingTool?.requestId === requestIdValue,
+    );
+
+    if (
+      attempt === undefined ||
+      attempt.pendingTool === undefined ||
+      attempt.state !== "blocked" ||
+      result.requestId !== requestIdValue
+    ) {
+      throw new AgentAdapterError(
+        "invalid-state",
+        `No pending deterministic tool references request ${requestIdValue}`,
+      );
+    }
+
+    this.emitCoreEvent(attempt, "tool.started", {
+      requestId: requestIdValue,
+    });
+    attempt.pendingTool = undefined;
+
+    if (result.status === "succeeded") {
+      this.emitCoreEvent(attempt, "tool.completed", {
+        requestId: requestIdValue,
+        ...(result.summary === undefined ? {} : { summary: result.summary }),
+      });
+      this.emitCoreEvent(attempt, "task.updated", {
+        from: "blocked",
+        to: "running",
+        reason: "Tool result received",
+      });
+      attempt.state = "running";
+      this.emitSignal(attempt, { type: "resumed" });
+      return;
+    }
+
+    if (result.status === "failed") {
+      this.emitCoreEvent(attempt, "tool.failed", {
+        requestId: requestIdValue,
+        errorCode: result.errorCode,
+        message: result.message,
+      });
+      this.emitCoreEvent(attempt, "task.failed", {
+        from: "blocked",
+        to: "failed",
+        errorCode: result.errorCode,
+        message: result.message,
+      });
+      attempt.state = "failed";
+      this.emitSignal(attempt, {
+        type: "failed",
+        errorCode: result.errorCode,
+        message: result.message,
+      });
+      return;
+    }
+
+    const reason = result.reason ?? "Tool execution cancelled";
+    this.emitCoreEvent(attempt, "tool.failed", {
+      requestId: requestIdValue,
+      errorCode: "tool-cancelled",
+      message: reason,
+    });
+    this.emitCoreEvent(attempt, "task.cancelled", {
+      from: "blocked",
+      to: "cancelled",
+      reason,
+    });
+    attempt.state = "cancelled";
+    this.emitSignal(attempt, {
+      type: "cancelled",
+      reason,
+    });
+  }
+
   async cancel(session: SessionId, reason?: string): Promise<void> {
     sessionId(session);
     const attempt = this.attempts.get(session);
@@ -452,6 +555,7 @@ export class DeterministicFakeAgentAdapter implements AgentAdapter {
       ...(reason === undefined ? {} : { reason }),
     });
     attempt.pendingApproval = undefined;
+    attempt.pendingTool = undefined;
     attempt.state = "cancelled";
     this.emitSignal(attempt, {
       type: "cancelled",
@@ -484,6 +588,7 @@ export class DeterministicFakeAgentAdapter implements AgentAdapter {
     const attempt = this.attempts.get(session);
     if (attempt !== undefined) {
       attempt.pendingApproval = undefined;
+      attempt.pendingTool = undefined;
       attempt.disposed = true;
     }
   }
@@ -556,6 +661,31 @@ export class DeterministicFakeAgentAdapter implements AgentAdapter {
           approvalId: step.approvalId,
         });
         break;
+      case "tool":
+        this.requireAttemptState(attempt, "running", "request a tool");
+        this.emitCoreEvent(attempt, "tool.requested", {
+          requestId: step.requestId,
+          toolName: step.toolName,
+          summary: step.summary,
+        });
+        this.emitCoreEvent(attempt, "task.updated", {
+          from: "running",
+          to: "blocked",
+          reason: "Tool result required",
+        });
+        this.emitCoreEvent(attempt, "worker.blocked", {
+          reason: "tool",
+        });
+        attempt.pendingTool = {
+          requestId: step.requestId,
+        };
+        attempt.state = "blocked";
+        this.emitSignal(attempt, {
+          type: "blocked",
+          reason: "tool",
+          requestId: step.requestId,
+        });
+        break;
       case "complete":
         this.requireAttemptState(attempt, "running", "complete");
         this.emitCoreEvent(attempt, "task.completed", {
@@ -574,6 +704,7 @@ export class DeterministicFakeAgentAdapter implements AgentAdapter {
           message: step.message,
         });
         attempt.pendingApproval = undefined;
+        attempt.pendingTool = undefined;
         attempt.state = "failed";
         this.emitSignal(attempt, {
           type: "failed",
@@ -599,6 +730,7 @@ export class DeterministicFakeAgentAdapter implements AgentAdapter {
           retryable: step.retryable,
         });
         attempt.pendingApproval = undefined;
+        attempt.pendingTool = undefined;
         attempt.state = "crashed";
         this.emitSignal(attempt, {
           type: "crashed",
@@ -720,6 +852,15 @@ export class DeterministicFakeAgentAdapter implements AgentAdapter {
           readonly errorCode: string;
           readonly message: string;
           readonly retryable: boolean;
+        }
+      | {
+          readonly type: "protocol-error";
+          readonly errorCode:
+            | "incompatible-protocol"
+            | "invalid-signal"
+            | "signal-identity-mismatch"
+            | "signal-sequence-gap";
+          readonly message: string;
         },
   ): void {
     attempt.controlSequence += 1;

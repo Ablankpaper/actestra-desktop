@@ -14,6 +14,7 @@ import {
   type AgentInput,
   type AgentSignal,
   type AgentStartRequest,
+  type AgentToolResult,
   type CoreEvent,
   type CoreEventType,
   type EventPayloadByType,
@@ -39,7 +40,7 @@ import { createEvent } from "../fixtures/core";
 
 const SUPERVISOR_CONFIG = {
   expectedAdapterKind: "deterministic-fake",
-  requiredCapabilities: ["messages", "approvals", "cancellation", "heartbeats"],
+  requiredCapabilities: ["messages", "approvals", "cancellation", "heartbeats", "tool-results"],
   startupTimeoutMs: 2_000,
   heartbeatTimeoutMs: 3_000,
   cancellationTimeoutMs: 1_000,
@@ -54,7 +55,7 @@ class ManualAgentAdapter implements AgentAdapter {
     private readonly declaration: AgentCapabilities = {
       protocolVersion: AGENT_ADAPTER_PROTOCOL_VERSION,
       adapterKind: "deterministic-fake",
-      capabilities: ["messages", "approvals", "cancellation", "heartbeats"],
+      capabilities: ["messages", "approvals", "cancellation", "heartbeats", "tool-results"],
       maxConcurrentSessions: 1,
       heartbeatIntervalMs: 1_000,
     },
@@ -69,6 +70,8 @@ class ManualAgentAdapter implements AgentAdapter {
   async send(_sessionId: SessionId, _input: AgentInput): Promise<void> {}
 
   async approve(_requestId: ToolRequestId, _decision: AgentApprovalDecision): Promise<void> {}
+
+  async resolveTool(_requestId: ToolRequestId, _result: AgentToolResult): Promise<void> {}
 
   async cancel(_sessionId: SessionId, _reason?: string): Promise<void> {}
 
@@ -141,7 +144,7 @@ describe("AgentAdapterSupervisor", () => {
     const adapter = new ManualAgentAdapter({
       protocolVersion: AGENT_ADAPTER_PROTOCOL_VERSION,
       adapterKind: "deterministic-fake",
-      capabilities: ["messages", "cancellation", "heartbeats"],
+      capabilities: ["messages", "cancellation", "heartbeats", "tool-results"],
       maxConcurrentSessions: 1,
       heartbeatIntervalMs: 1_000,
     });

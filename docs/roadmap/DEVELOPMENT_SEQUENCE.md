@@ -35,14 +35,14 @@ are merged on `main`. Pull request 8 reached exact final head
 `c841ed9cb6a54bcb2e4078ca2be941adce0ac4ad`; exact main CI run 30449520722
 passes. Pull request 9 then recorded the P6 sidecar direction and squash
 merged as `327d5ca5abf3a0090bc2b3d3193e2935bbd47f38`; exact main CI run
-30470505690 passes. Seven bounded native metadata domains remain inert schema version 4
-shadow evidence. Desktop confirmation responses use the schema version 5
-persist-before-deliver outbox, while F3.2 and F3.3 gate response delivery and
-the bounded boolean reconciliation read through separate P3 policy and durable
-audit paths without changing the original AionUi permission and pet UI.
-General-work GW-P4.2 is implemented and locally validated on
-`feat/aionui-p4-persistence-utility`, but it is not yet pushed, CI-backed, or
-merged. Candidate and release remain separate.
+30470505690 passes. General-work GW-P4.2 reached pull request 10, passed
+exact-head CI run 30475836615, and squash merged as
+`8e32882108b10272c1489c1a46a77cede1cc4fb7`; exact main CI run
+30476091907 passes. GW-P4.3 is implemented and locally validated on
+`feat/aionui-p4-general-worker`: Adapter v2 and one deterministic real General
+Worker process pass root, native, build, package-graph, smoke, and isolated
+AionUi launch validation. Push, PR CI, merge, candidate, and release remain
+separate.
 
 ## P0 — Project Foundation
 
@@ -101,7 +101,7 @@ merged. Candidate and release remain separate.
 
 - Define task, session, workspace, worker, approval, event, and artifact models.
 - Implement the `AgentAdapter` lifecycle: capabilities, start, send, approve,
-  cancel, subscribe, and dispose.
+  typed tool resolution, cancel, subscribe, and dispose.
 - Implement a versioned unified event envelope.
 - Establish Actestra-owned persistence and migrations.
 - Establish credential broker, policy engine, approval service, MCP/tool gateway,

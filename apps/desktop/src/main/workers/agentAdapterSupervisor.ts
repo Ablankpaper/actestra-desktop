@@ -7,6 +7,7 @@ import {
   assertAgentInput,
   assertAgentSignal,
   assertAgentStartRequest,
+  assertAgentToolResult,
   createCoreEventStreamState,
   instant,
   toolRequestId,
@@ -19,6 +20,7 @@ import {
   type AgentInput,
   type AgentSignal,
   type AgentStartRequest,
+  type AgentToolResult,
   type ApprovalId,
   type CorrelationId,
   type CoreEvent,
@@ -94,6 +96,15 @@ interface PendingApprovalReference {
   readonly approvalId: ApprovalId;
 }
 
+interface PendingToolReference {
+  readonly requestId: ToolRequestId;
+}
+
+interface PendingBlockReferences {
+  readonly approval?: PendingApprovalReference;
+  readonly tool?: PendingToolReference;
+}
+
 interface SupervisedAttempt {
   readonly request: AgentStartRequest;
   state: AgentAttemptState;
@@ -107,6 +118,7 @@ interface SupervisedAttempt {
   readonly restartedFromSessionId?: SessionId;
   replacementSessionId?: SessionId;
   pendingApproval?: PendingApprovalReference;
+  pendingTool?: PendingToolReference;
   cancelRequestedAt?: Instant;
   forcedCancellation: boolean;
   disposed: boolean;
@@ -303,6 +315,32 @@ export class AgentAdapterSupervisor {
     );
   }
 
+  async resolveTool(requestIdValue: ToolRequestId, result: AgentToolResult): Promise<void> {
+    toolRequestId(requestIdValue);
+    assertAgentToolResult(result);
+    const attempt = [...this.attempts.values()].find(
+      (candidate) => candidate.pendingTool?.requestId === requestIdValue,
+    );
+
+    if (
+      attempt === undefined ||
+      attempt.pendingTool === undefined ||
+      attempt.state !== "blocked" ||
+      result.requestId !== requestIdValue
+    ) {
+      throw new AgentAdapterError(
+        "invalid-state",
+        `No tool-blocked attempt owns request ${requestIdValue}`,
+      );
+    }
+
+    await this.runAdapterOperation(
+      attempt,
+      "resolveTool",
+      this.adapter.resolveTool(requestIdValue, result),
+    );
+  }
+
   async cancel(session: SessionId, reason?: string): Promise<void> {
     const attempt = this.requireAttempt(session);
 
@@ -351,6 +389,7 @@ export class AgentAdapterSupervisor {
     await this.cleanup(attempt);
     attempt.events.splice(0);
     attempt.pendingApproval = undefined;
+    attempt.pendingTool = undefined;
     this.attempts.delete(session);
   }
 
@@ -636,7 +675,11 @@ export class AgentAdapterSupervisor {
         return;
       case "blocked":
         this.requireState(attempt, ["running"], "become blocked");
-        attempt.pendingApproval = this.reconcileBlockedSignal(attempt, signal);
+        {
+          const references = this.reconcileBlockedSignal(attempt, signal);
+          attempt.pendingApproval = references.approval;
+          attempt.pendingTool = references.tool;
+        }
         attempt.state = "blocked";
         return;
       case "resumed":
@@ -651,6 +694,7 @@ export class AgentAdapterSupervisor {
           );
         }
         attempt.pendingApproval = undefined;
+        attempt.pendingTool = undefined;
         attempt.state = "running";
         return;
       case "completed":
@@ -703,6 +747,8 @@ export class AgentAdapterSupervisor {
         void this.cleanup(attempt);
         return;
       }
+      case "protocol-error":
+        throw new AgentAdapterError(signal.errorCode, signal.message);
       default: {
         const unsupportedSignal: never = signal;
         throw new AgentAdapterError(
@@ -762,7 +808,7 @@ export class AgentAdapterSupervisor {
   private reconcileBlockedSignal(
     attempt: SupervisedAttempt,
     signal: Extract<AgentSignal, { type: "blocked" }>,
-  ): PendingApprovalReference | undefined {
+  ): PendingBlockReferences {
     const blockEvent = attempt.coreState.previous;
     if (
       attempt.coreState.taskState !== "blocked" ||
@@ -783,7 +829,45 @@ export class AgentAdapterSupervisor {
           "Only an approval block may carry an approval reference",
         );
       }
-      return undefined;
+      if (signal.reason !== "tool") {
+        if (signal.requestId !== undefined) {
+          throw new AgentAdapterError(
+            "invalid-signal",
+            "Only approval or tool blocks may carry a request reference",
+          );
+        }
+        return {};
+      }
+
+      if (signal.requestId === undefined) {
+        throw new AgentAdapterError("invalid-signal", "A tool block requires a request reference");
+      }
+      const requestEvent = [...attempt.events]
+        .reverse()
+        .find(
+          (event) =>
+            event.type === "tool.requested" && event.payload.requestId === signal.requestId,
+        );
+      if (requestEvent === undefined) {
+        throw new AgentAdapterError(
+          "terminal-reconciliation-failed",
+          "A tool block request does not match an ordered tool.requested event",
+        );
+      }
+      const duplicate = [...this.attempts.values()].find(
+        (candidate) =>
+          candidate !== attempt &&
+          !candidate.disposed &&
+          ACTIVE_ATTEMPT_STATES.includes(candidate.state) &&
+          candidate.pendingTool?.requestId === signal.requestId,
+      );
+      if (duplicate !== undefined) {
+        throw new AgentAdapterError(
+          "signal-identity-mismatch",
+          "Tool request references must be unique across active supervised attempts",
+        );
+      }
+      return { tool: { requestId: signal.requestId } };
     }
 
     if (signal.requestId === undefined || signal.approvalId === undefined) {
@@ -842,8 +926,10 @@ export class AgentAdapterSupervisor {
     }
 
     return {
-      requestId: signal.requestId,
-      approvalId: signal.approvalId,
+      approval: {
+        requestId: signal.requestId,
+        approvalId: signal.approvalId,
+      },
     };
   }
 
@@ -903,6 +989,7 @@ export class AgentAdapterSupervisor {
 
     attempt.disposed = true;
     attempt.pendingApproval = undefined;
+    attempt.pendingTool = undefined;
     attempt.unsubscribe?.();
     attempt.unsubscribe = undefined;
 

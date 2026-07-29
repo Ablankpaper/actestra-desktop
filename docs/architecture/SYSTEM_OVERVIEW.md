@@ -1,8 +1,9 @@
 # System Overview
 
-Status: P3 and F0 through F3.3 accepted on `main`; GW-P4.2 workload persistence
-implemented and locally validated but not yet pushed or merged; CrewAI accepted
-as the first P6 planner-sidecar candidate but not implemented or packaged
+Status: P3, F0 through F3.3, and GW-P4.2 accepted on `main`; GW-P4.3 General
+Worker and Adapter v2 implemented and locally validated but not yet pushed or
+merged; CrewAI accepted as the first P6 planner-sidecar candidate but not
+implemented or packaged
 
 ## Context
 
@@ -69,11 +70,13 @@ functional entries.
 
 P3.1 and P3.2 add a runtime-neutral core domain, lifecycle validation, and
 version 1 event stream contract. P3.3 adds a storage-neutral port plus a SQLite
-adapter with schema versions 1 and 2. P3.4 adds the version 1
+adapter with schema versions 1 and 2. P3.4 historically added the version 1
 `AgentAdapter` contract, a main-owned lifecycle supervisor, and a deterministic
-in-memory fake adapter. P3.5 adds versioned privileged-operation and
-tool-manifest contracts plus main-owned deterministic policy, approval, opaque
-credential-lease, metadata-audit, and tool-gateway services.
+in-memory fake adapter. GW-P4.3 advances that boundary to Adapter v2 and a real
+deterministic process while retaining the accepted lifecycle rules. P3.5 adds
+versioned privileged-operation and tool-manifest contracts plus main-owned
+deterministic policy, approval, opaque credential-lease, metadata-audit, and
+tool-gateway services.
 
 P3.6 adds SQLite schema version 3 for durable metadata-only privileged audit
 and immutable terminal-attempt evidence. Electron main registers an inert
@@ -84,8 +87,9 @@ loopback response-delivery manifest, policy rule, in-memory bounded input
 reference, and executor beneath the existing F3.1 service. F3.3 separately
 gates the bounded boolean reconciliation read. At that merged baseline there
 is no credential backend, general content-reference store, general MCP or
-native-tool transport, process transport, or real worker adapter. GW-P4.2 below
-adds the content-reference store and persistence process only.
+native-tool transport, process transport, or real worker adapter. GW-P4.2 adds
+the content-reference store and persistence process; GW-P4.3 adds the first
+real deterministic worker process but no native tool.
 
 P4.2 adds the separate compatibility boundary accepted in
 [ADR-0011](decisions/0011-aionui-shadow-projection.md). Successful native HTTP
@@ -118,9 +122,9 @@ GW-P4.2 general work, governed by
 moves schemas 1 through 5 and every P3/F2/F3 persistence operation together
 behind a dedicated utility process. Schema version 6 adds durable workspace
 grants and immutable, 1 MiB-bounded UTF-8 content references with exact owner,
-kind, lifecycle, length, and SHA-256 validation. This is implemented and
-locally validated on `feat/aionui-p4-persistence-utility`, but is not yet
-pushed or merged. No real General Worker or filesystem tool is activated.
+kind, lifecycle, length, and SHA-256 validation. Pull request 10 merged this
+slice as `8e32882108b10272c1489c1a46a77cede1cc4fb7`, and exact main CI run
+30476091907 passes.
 
 The persistence utility exclusively owns `state/actestra.sqlite3` beneath
 Actestra user data, uses one DELETE/FULL connection, and rejects foreign
@@ -130,6 +134,25 @@ AionUi compatibility bridge use one asynchronous, versioned port with no
 synchronous fallback. Source and packaged-graph checks reject `node:sqlite`
 and `DatabaseSync` from the main entry and require them in the utility entry.
 This process separation is not an operating-system sandbox.
+
+GW-P4.3, governed by
+[ADR-0017](decisions/0017-general-worker-process-and-agent-adapter-v2.md),
+advances AgentAdapter to exact version 2 with typed tool-result resolution and
+explicit protocol-error signals. A separate native worker protocol at exact
+version 1 runs one deterministic attempt per Electron utility process. Main
+owns attempt tokens, product IDs, ToolRequest IDs, timestamps, normalized Core
+events, cancellation, and cleanup. The worker receives only a bounded prompt,
+entry state, control messages, and typed tool results with optional opaque
+output references.
+
+The root harness and preserved AionUI downstream both build a distinct General
+Worker entry. A real packaged-harness smoke and a real materialized-AionUI
+launch complete a three-event no-tool process probe. The latter also starts
+the exact local AionCore 0.1.52 and reaches renderer-ready with no
+installation-incomplete fault injection. This is local branch evidence only:
+the probe is not yet wired to a user-submitted task, and no filesystem, shell,
+network, credential, MCP, persistence, policy, or approval authority is
+granted to the worker.
 
 ## Foundation integration boundary
 
@@ -262,9 +285,10 @@ references, credential references, paths, and raw persistence access.
 
 ## Adapter lifecycle
 
-Protocol version 1 is accepted in
-[ADR-0006](decisions/0006-agent-adapter-lifecycle-and-supervision.md) and owns
-this language-level boundary:
+The lifecycle rules originate in
+[ADR-0006](decisions/0006-agent-adapter-lifecycle-and-supervision.md).
+[ADR-0017](decisions/0017-general-worker-process-and-agent-adapter-v2.md)
+supersedes its version-1 interface with exact Adapter version 2:
 
 ```ts
 interface AgentAdapter {
@@ -274,6 +298,10 @@ interface AgentAdapter {
   approve(
     requestId: ToolRequestId,
     decision: AgentApprovalDecision,
+  ): Promise<void>
+  resolveTool(
+    requestId: ToolRequestId,
+    result: AgentToolResult,
   ): Promise<void>
   cancel(sessionId: SessionId, reason?: string): Promise<void>
   subscribe(sessionId: SessionId, handler: AgentSignalHandler): Unsubscribe
@@ -293,9 +321,10 @@ record. Only then does it cross the supervisor release barrier and clear
 in-memory events. Failed writes retain the snapshot for an idempotent retry.
 
 Adapters translate external formats. The UI and app core must not branch on a
-Goose-specific or future-worker-specific event format. The deterministic fake
-performs no filesystem, network, process, shell, model, credential, or tool
-operation.
+General Worker, Goose, or future-worker private event format. The deterministic
+fake performs no I/O. The GW-P4.3 process worker performs only protocol and
+lifecycle computation; it has no filesystem, network, shell, model,
+credential, persistence, Electron, or tool-execution authority.
 
 ## Event contract
 

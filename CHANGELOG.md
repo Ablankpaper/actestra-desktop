@@ -86,6 +86,16 @@ releases begin.
 - Preserved-AionUi initialization for the persistence utility, explicit
   compatibility unavailability, native type/test/build coverage, and source
   plus packaged-graph enforcement that SQLite is utility-only.
+- ADR-0017 and GW-P4.3 AgentAdapter version 2 with typed tool-result
+  resolution, explicit protocol-error signals, and a separate exact General
+  Worker protocol version 1.
+- A supervised, single-attempt General Worker utility process with strict
+  negotiation, main-owned identities and normalized events, bounded messages,
+  deterministic no-tool/tool/cancel fixtures, timeout and crash handling, and
+  idempotent listener cleanup.
+- Preserved-AionUi downstream worker materialization, native unit coverage,
+  exact build-entry and authority-graph checks, and clean-profile startup
+  probes that leave the renderer and original routes unchanged.
 
 ### Changed
 
@@ -105,3 +115,7 @@ releases begin.
   Actestra authority is fused behind compatible providers.
 - Assigned Goose to the preserved AionUi agent/ACP experience and Eigent-style
   orchestration to the preserved AionUi Team experience.
+- Clarified that ADR-0017 supersedes only the AgentAdapter version and
+  interface portions of ADR-0006; Actestra Core remains the sole event and
+  attempt authority, and the deterministic P3 fake remains test
+  infrastructure.

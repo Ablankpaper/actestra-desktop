@@ -1,19 +1,19 @@
 # P4 General-Work Vertical Slice
 
-Status: GW-P4.2 implemented and locally validated on
-`feat/aionui-p4-persistence-utility`; push, pull-request CI, merge, and
-merged-main CI are pending
+Status: GW-P4.2 accepted on `main`; GW-P4.3 implemented and locally validated
+on `feat/aionui-p4-general-worker`; push, pull-request CI, merge, and
+merged-main CI for GW-P4.3 are pending
 
 Date: 2026-07-30
 
 Exact base:
-`327d5ca5abf3a0090bc2b3d3193e2935bbd47f38`
+`8e32882108b10272c1489c1a46a77cede1cc4fb7`
 
 ## Entry evidence
 
 The branch starts from the exact `main` squash merge for
-[pull request 9](https://github.com/bignormal/actestra-desktop/pull/9).
-[Main CI run 30470505690](https://github.com/bignormal/actestra-desktop/actions/runs/30470505690)
+[pull request 10](https://github.com/bignormal/actestra-desktop/pull/10).
+[Main CI run 30476091907](https://github.com/bignormal/actestra-desktop/actions/runs/30476091907)
 passes on that commit.
 
 [ADR-0016](../architecture/decisions/0016-p4-general-work-process-and-content-boundaries.md)
@@ -43,7 +43,7 @@ distribution readiness, Goose, CrewAI, or a production OS sandbox.
 
 ### GW-P4.2 — Persistence utility, grants, and content references
 
-Implemented on the current local branch:
+Accepted on `main` through pull request 10:
 
 - Electron main launches a dedicated persistence utility and communicates
   through a strict version 1 structured-clone protocol;
@@ -61,7 +61,7 @@ Implemented on the current local branch:
 - utility startup failure leaves preserved AionUi available while Actestra
   compatibility providers report an explicit unavailable state.
 
-Local validation completed before the documentation update:
+Validation completed before pull request 10 merged:
 
 - focused protocol, client, migration, grant, and content tests: 8 files,
   27 tests passed;
@@ -91,6 +91,12 @@ Local validation completed before the documentation update:
   verification, then reached persistence utility, application, window, and
   renderer readiness from a clean profile with schema 6.
 
+The exact GW-P4.2 implementation head
+`9003cc0387cb4266c4b1240308092366ef365bf4` passed pull-request CI run
+30475836615 and a complete 50-file CodeRabbit review with zero findings.
+It squash merged as `8e32882108b10272c1489c1a46a77cede1cc4fb7`;
+exact merged-main CI run 30476091907 passes.
+
 The live launch used the frozen snapshot without an AionCore distribution
 binary, so its existing installation-incomplete dialog was expected fixture
 behavior and is not backend-success evidence. The launch was terminated
@@ -100,14 +106,51 @@ harness; target AionUi packaging remains a separate GW-P4.6 gate.
 
 ### GW-P4.3 — General Worker and Adapter v2
 
-- define a closed native worker protocol separate from normalized Actestra
-  events;
-- add exact version and capability negotiation plus typed tool-result
-  resolution;
-- launch the deterministic General Worker as a separate utility process with a
-  minimal environment; and
-- cover startup, malformed messages, stale attempt identity, timeout,
-  cancellation, crash, and cleanup.
+Implemented and locally validated on the current branch:
+
+- [ADR-0017](../architecture/decisions/0017-general-worker-process-and-agent-adapter-v2.md)
+  advances AgentAdapter to exact version 2, adds the closed `tool-results`
+  capability, typed result resolution, and explicit protocol-error signals;
+- the worker speaks a separate exact native protocol version 1 with exact
+  implementation identity, closed capabilities, 256 KiB message and 64 KiB
+  prompt bounds, and no Actestra Core event authority;
+- Electron main creates attempt tokens, tool-request IDs, event IDs,
+  timestamps, normalized events, and terminal mappings;
+- one Electron utility process accepts exactly one immutable attempt, receives
+  an allowlist-only environment, and cannot be reused after disposal;
+- source and packaged-graph checks reject filesystem, shell, network, SQLite,
+  and Electron authority from the worker graph;
+- typed tool results carry only status, timestamps, bounded diagnostics, and an
+  optional opaque output reference; and
+- startup negotiation, no-tool completion, tool blocking/resume,
+  cancellation, crash, timeout, malformed messages, stale identity, sequence
+  gaps, duplicate attempts, and cleanup are covered.
+
+Current local evidence:
+
+- focused Adapter v2 and worker validation: 8 files and 47 tests passed;
+- complete root `bun run check`: formatting, zero-warning lint, strict types,
+  Electron SQLite probe, 40 files and 217 tests, smoke-harness regression,
+  55-source boundary, exact frozen foundation, 120-file downstream contract,
+  and three-entry production build passed;
+- root coverage: 79.76% statements, 72.23% branches, 87.30% functions, and
+  79.95% lines without threshold changes;
+- root macOS arm64 directory package passed identity and recursive worker-graph
+  verification; clean-profile smoke observed persistence, real General Worker,
+  application, window, and renderer readiness with schema 6;
+- materialized AionUI strict TypeScript passed;
+- all 13 Actestra native files and 34 tests passed;
+- complete native regression passed 334 files and 2,610 tests, with 1 file and
+  5 tests skipped by retained upstream configuration;
+- the full native build transformed 584 main modules and emitted separate
+  `index.js`, `actestra-persistence-utility.js`, and
+  `actestra-general-worker.js` entries without changing the renderer;
+- reachable worker output contains the exact protocols and no filesystem,
+  shell, network, SQLite, or Electron import; and
+- a real isolated-profile native launch, with no startup-failure injection and
+  the exact local `aioncore 0.1.52`, logged the Adapter v2/worker v1 completion
+  marker, AionCore health, renderer load, and window readiness. Terminal
+  shutdown left no Actestra, worker, or AionCore process.
 
 Exit: a no-tool fixture completes through a real worker process and every
 invalid or terminal path fails deterministically.
@@ -166,13 +209,17 @@ P4 is complete only after:
 
 ## Current non-claims
 
-- GW-P4.2 is locally implemented but is not yet pushed, CI-backed, merged, or
+- GW-P4.3 is locally implemented but is not yet pushed, CI-backed, merged, or
   accepted on `main`.
-- No real General Worker, native filesystem tool, content-consuming task,
-  credential backend, model, Goose adapter, CrewAI sidecar, or Team
-  orchestration is active.
+- The General Worker is a real deterministic process used by the isolated
+  probe; it is not yet connected to a user-submitted AionUI task.
+- No native filesystem tool, content-consuming task, credential backend,
+  model, Goose adapter, CrewAI sidecar, or Team orchestration is active.
 - Utility-process separation is not OS sandbox evidence.
 - Schema 6 is forward-only; development rollback uses a fresh profile rather
   than deleting or downgrading user state.
+- The successful native launch uses the exact local AionCore binary. The frozen
+  repository still does not contain an approved distributable AionCore bundle;
+  target packaging remains GW-P4.6/P8 work.
 - The produced applications are unsigned local builds, not candidates,
   releases, deployments, distributions, or user acceptance.

@@ -38,6 +38,7 @@ export default defineConfig({
             desktopRoot,
             "src/utility/persistence/persistenceUtilityEntry.ts",
           ),
+          "general-worker": path.join(desktopRoot, "src/utility/worker/generalWorkerEntry.ts"),
         },
         output: {
           entryFileNames: "[name].js",

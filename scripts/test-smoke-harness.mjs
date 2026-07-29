@@ -69,6 +69,7 @@ database.exec(\`
 \`);
 database.close();
 console.log("ACTESTRA_PERSISTENCE_UTILITY_READY");
+console.log("ACTESTRA_GENERAL_WORKER_READY");
 console.log("ACTESTRA_READY");
 console.log("ACTESTRA_WINDOW_READY");
 console.log("ACTESTRA_RENDERER_READY");

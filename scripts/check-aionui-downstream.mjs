@@ -6,6 +6,7 @@ import {
   materializeAionUiDownstream,
   resolveContainedPath,
 } from "./materialize-aionui-downstream.mjs";
+import { inspectGeneralWorkerModuleGraph } from "./general-worker-authority-rules.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const overlayPath = path.join(repositoryRoot, "downstream", "aionui-v2.1.41", "overlay.json");
@@ -112,11 +113,11 @@ function main() {
 
   if (
     overlay.schemaVersion !== 1 ||
-    overlay.phase !== "GW-P4.2" ||
+    overlay.phase !== "GW-P4.3" ||
     overlay.uiContract.layoutChangesAllowed !== false ||
     overlay.uiContract.featureEntryRemovalAllowed !== false
   ) {
-    throw new Error("Invalid GW-P4.2 downstream overlay policy");
+    throw new Error("Invalid GW-P4.3 downstream overlay policy");
   }
 
   for (const patch of overlay.patches) {
@@ -291,11 +292,16 @@ function main() {
   requireText(path.join(outputRoot, "packages/desktop/electron.vite.config.ts"), [
     "'actestra-persistence-utility'",
     "persistenceUtilityEntry.ts",
+    "'actestra-general-worker'",
+    "generalWorkerEntry.ts",
     "entryFileNames: '[name].js'",
   ]);
   requireText(path.join(outputRoot, "packages/desktop/src/index.ts"), [
     "await initializeProcess();",
     "await initializeActestraPersistenceUtility(app.getPath('userData'));",
+    "runGeneralWorkerProbe",
+    "actestra-general-worker.js",
+    "ACTESTRA_GENERAL_WORKER_READY",
     "registerActestraShadowBridge(mainWindow);",
   ]);
   requireText(
@@ -436,12 +442,88 @@ function main() {
     ),
     ["node:sqlite", "DatabaseSync", "persistWorkspaceGrant", "storeContentReference"],
   );
+  requireText(path.join(outputRoot, "packages/desktop/src/actestra/core/agentAdapter.ts"), [
+    "AGENT_ADAPTER_PROTOCOL_VERSION = 2",
+    '"tool-results"',
+    "AgentToolResult",
+    "resolveTool",
+    '"protocol-error"',
+  ]);
+  requireText(
+    path.join(outputRoot, "packages/desktop/src/actestra/shared/generalWorkerProtocol.ts"),
+    [
+      "GENERAL_WORKER_PROTOCOL_VERSION = 1",
+      'GENERAL_WORKER_IMPLEMENTATION_VERSION = "0.1.0"',
+      "MAX_GENERAL_WORKER_MESSAGE_BYTES",
+      "MAX_GENERAL_WORKER_PROMPT_BYTES",
+      '"tool-result-accepted"',
+      "assertGeneralWorkerMessage",
+    ],
+  );
+  requireText(
+    path.join(
+      outputRoot,
+      "packages/desktop/src/actestra/main/workers/generalWorkerProcessAdapter.ts",
+    ),
+    [
+      "implements AgentAdapter",
+      "GENERAL_WORKER_ADAPTER_KIND",
+      "newToolRequestId",
+      '"signal-identity-mismatch"',
+      '"signal-sequence-gap"',
+      '"tool.started"',
+      '"worker.failed"',
+      "listenersCleaned",
+    ],
+  );
+  requireText(
+    path.join(outputRoot, "packages/desktop/src/actestra/main/workers/electronGeneralWorker.ts"),
+    [
+      'ACTESTRA_UTILITY_ROLE: "general-worker"',
+      "utilityProcess.fork",
+      "allowLoadingUnsignedLibraries: false",
+      "respondToAuthRequestsFromMainProcess: false",
+    ],
+  );
+  requireText(
+    path.join(outputRoot, "packages/desktop/src/actestra/utility/worker/generalWorkerService.ts"),
+    [
+      "private attemptStarted = false",
+      "accepts exactly one immutable attempt",
+      '"no-tool-complete"',
+      '"tool-fixture"',
+      '"cancelled"',
+    ],
+  );
+  const workerGraph = inspectGeneralWorkerModuleGraph({
+    rootPath: path.join(outputRoot, "packages/desktop/src"),
+    entryPaths: [
+      path.join(outputRoot, "packages/desktop/src/actestra/utility/worker/generalWorkerEntry.ts"),
+    ],
+    isAllowedLocalModule: (relativePath) =>
+      relativePath.startsWith("actestra/utility/worker/") ||
+      relativePath === "actestra/shared/generalWorkerProtocol.ts" ||
+      relativePath.startsWith("actestra/core/"),
+  });
+  if (workerGraph.findings.length > 0) {
+    throw new Error(
+      `Actestra downstream General Worker authority graph is invalid: ${workerGraph.findings.join(
+        "; ",
+      )}`,
+    );
+  }
+  requireText(path.join(outputRoot, "tests/unit/actestra/generalWorkerProcessAdapter.test.ts"), [
+    "General Worker process adapter",
+    "protocolVersion: 2",
+    "'task.started', 'agent.message', 'task.completed'",
+  ]);
 
   console.log(
-    `Verified Actestra GW-P4.2 downstream overlay: ${changedFiles.size} declared files, ` +
+    `Verified Actestra GW-P4.3 downstream overlay: ${changedFiles.size} declared files, ` +
       `${overlay.invariantFiles.length} R0 invariant files, ${overlay.sourceCopies.length} ` +
       "reviewed source copies, preserved AionUI surfaces, utility-owned persistence, shadow and " +
-      "approval authority, workspace grants, and bounded content references present.",
+      "approval authority, workspace grants, bounded content references, AgentAdapter v2, and " +
+      "the supervised General Worker process present.",
   );
 }
 

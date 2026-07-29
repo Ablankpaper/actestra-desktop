@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { inspectGeneralWorkerModuleGraph } from "./general-worker-authority-rules.mjs";
 import { preloadPrivilegePatterns, rendererPrivilegePatterns } from "./product-boundary-rules.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -9,6 +10,7 @@ const productSourceRoot = path.join(repositoryRoot, "apps", "desktop", "src");
 const rendererRoot = path.join(productSourceRoot, "renderer");
 const preloadRoot = path.join(productSourceRoot, "preload");
 const mainRoot = path.join(productSourceRoot, "main");
+const generalWorkerRoot = path.join(productSourceRoot, "utility", "worker");
 
 const forbiddenProductPatterns = [
   { label: "AionUi product identity", pattern: /\baionui\b/i },
@@ -75,6 +77,15 @@ const mainPersistenceFindings = reportPatternMatches(listFiles(mainRoot), [
     pattern: /(?:from\s+["']node:sqlite["']|\bDatabaseSync\b)/,
   },
 ]);
+const generalWorkerGraph = inspectGeneralWorkerModuleGraph({
+  rootPath: productSourceRoot,
+  entryPaths: [path.join(generalWorkerRoot, "generalWorkerEntry.ts")],
+  isAllowedLocalModule: (relativePath) =>
+    relativePath.startsWith("utility/worker/") ||
+    relativePath === "shared/generalWorkerProtocol.ts" ||
+    relativePath.startsWith("core/"),
+});
+const generalWorkerAuthorityFindings = generalWorkerGraph.findings;
 
 const packageJson = JSON.parse(fs.readFileSync(path.join(repositoryRoot, "package.json"), "utf8"));
 const builderConfiguration = fs.readFileSync(
@@ -114,6 +125,7 @@ const findings = [
   ...rendererFindings,
   ...preloadFindings,
   ...mainPersistenceFindings,
+  ...generalWorkerAuthorityFindings,
   ...metadataFindings,
 ];
 if (findings.length > 0) {
