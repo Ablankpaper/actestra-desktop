@@ -173,6 +173,18 @@ remains on its isolated native compatibility path. See
 and
 [ADR-0012](decisions/0012-aionui-approval-decision-authority.md).
 
+Current second slice: F3.2 keeps those response and reconciliation semantics,
+but routes only delivery of the already persisted response through one exact P3
+`network.request` capability. The fixed manifest, exact policy rule, durable
+policy/start/outcome audit, bounded in-memory input reference, structured native
+error preservation, uncertain-outcome reconciliation, and explicit F3.1
+rollback are defined in
+[AionUi F3.2 Approval Delivery Policy Gate](../product/AIONUI_F3_APPROVAL_POLICY_GATE.md)
+and
+[ADR-0013](decisions/0013-aionui-approval-delivery-policy-gate.md). F3.2 does
+not infer the native tool action, create a second approval, or move pending
+request and protected-operation authority out of AionCore.
+
 ### F4 — Goose inside the preserved agent experience
 
 - Pin and supervise Goose behind `AgentAdapter`.

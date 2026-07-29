@@ -1,19 +1,23 @@
-# AionUi-first Draft PR 6 Review Closure
+# AionUi-first PR 6 Review Closure
 
 Status: Review remediation is implemented at
 `e343e83a7c22d8977bb2e9dd06169a69ed9826d5`, pushed on
 `feat/aionui-first-foundation`, and passes exact-head
 [CI run 30431363721](https://github.com/bignormal/actestra-desktop/actions/runs/30431363721).
-Ready transition, merge, candidate, release, distribution, and acceptance
-remain separate gates.
+Pull request 6 subsequently reached final head
+`70b2f29329fec26bf0e3d6384d8563aedcb7a4ce`, squash merged as
+`61b9405fc007aa8cb16ec05a65f421cb7d277b51`, and passed exact main CI run
+30434563810. Candidate, release, distribution, and acceptance remain separate
+gates.
 
 Date: 2026-07-29
 
 ## Scope and preservation rule
 
-This review covers Draft PR 6 against `main`, with the immutable AionUi
-`v2.1.41` foundation excluded from downstream edits but included in byte-level
-preservation verification.
+This document first records the review performed while PR 6 was Draft against
+`main`, with the immutable AionUi `v2.1.41` foundation excluded from downstream
+edits but included in byte-level preservation verification. The subsequent
+closure outcome is recorded separately below.
 
 No AionUi route, sidebar entry, permission card, pet window, Guide workflow,
 provider selector, workspace composer, settings surface, or renderer layout was
@@ -149,11 +153,16 @@ The temporary `~/.actestra-v1` CLI-safe symlink created by the packaged launch
 was removed after graceful exit; its isolated profile target was retained under
 `/tmp` for this review session.
 
-## Remaining closure gates
+## Subsequent closure outcome
 
-1. Retry the final changed-file follow-up review after quota recovery; do not
-   represent the rate-limited attempt as zero-issue evidence.
-2. Resolve or reproduce the local macOS provenance/signing behavior on a clean
-   signing host before calling the package gate passed.
-3. Keep PR 6 Draft until owner review; do not merge or create a release from
-   this local evidence.
+1. A scoped local follow-up reviewed all 21 final owned changed files and
+   completed with zero findings. This is review evidence for that owned change
+   surface, not a completed single-pass review of the 1,774-file pull request.
+2. Exact final-head CI run 30431557027 passed. The Ready-triggered GitHub
+   CodeRabbit check skipped because 1,774 files exceeded its 150-file limit, so
+   that status is not substituted for the completed scoped local review.
+3. Pull request 6 squash merged as
+   `61b9405fc007aa8cb16ec05a65f421cb7d277b51`, and exact main CI run
+   30434563810 passed.
+4. The macOS provenance/signing behavior still requires reproduction on a
+   clean signing host before any signed-package or candidate claim.

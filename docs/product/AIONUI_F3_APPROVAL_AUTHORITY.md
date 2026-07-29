@@ -243,8 +243,12 @@ bundle, packaged identity and product boundary, and clean-profile smoke.
 
 The full native suite, visual UI parity, real local AionCore failure path, and
 restart reconciliation remain local evidence. A pushed implementation and
-passing CI run are not merge, candidate, release, distribution, or user
-acceptance.
+passing implementation CI run were not then merge evidence. Pull request 6
+subsequently reached final head
+`70b2f29329fec26bf0e3d6384d8563aedcb7a4ce`, squash merged as
+`61b9405fc007aa8cb16ec05a65f421cb7d277b51`, and passed exact main CI run
+30434563810. That closes the merge gate, not candidate, release, distribution,
+or user acceptance.
 
 ## Non-claims
 
@@ -258,11 +262,11 @@ F3.1 does not prove:
   authority;
 - remote WebUI approval authority;
 - supervised utility-process persistence;
-- signed candidate, merge, release, distribution, or user acceptance.
+- signed candidate, release, distribution, or user acceptance.
 
-The next F3 slice must either connect this durable decision to the accepted P3
-policy/audit/tool-release path or select another single domain with equally
-explicit migration, rollback, restart, error, and UI-parity proof.
+F3.2 connects only delivery of this already durable decision to a fixed P3
+policy and audit path. Pending-request creation, provider semantics, and generic
+protected-operation authority remain outside that subsequent slice.
 
 ## Governing decisions
 

@@ -1,8 +1,8 @@
 # System Overview
 
-Status: P3 accepted on `main`; P4.0/F0, P4.1/F1, and P4.2/F2 CI-backed;
-P4.3/F3.1 approval-decision authority is under validation on
-`feat/aionui-first-foundation`
+Status: P3 and P4.0/F0 through P4.3/F3.1 accepted on `main`;
+P4.3/F3.2 approval-delivery policy and audit is pushed and exact implementation
+CI-backed on Draft PR 7
 
 ## Context
 
@@ -71,14 +71,15 @@ in-memory fake adapter. P3.5 adds versioned privileged-operation and
 tool-manifest contracts plus main-owned deterministic policy, approval, opaque
 credential-lease, metadata-audit, and tool-gateway services.
 
-P3.6 adds SQLite schema version 3 for durable metadata-only privileged
-audit and immutable terminal-attempt evidence. Electron main now registers an
-inert deny-by-default composition root, a disabled executor, trusted-main-frame
-IPC, and a bounded renderer projection. Preload exposes only application
-metadata, platform snapshot, and renderer-ready intents. There is no production
-policy snapshot, credential backend, input-reference store, real tool executor,
-MCP transport, process transport, or real worker adapter behind any component
-shown above.
+P3.6 adds SQLite schema version 3 for durable metadata-only privileged audit
+and immutable terminal-attempt evidence. Electron main registers an inert
+deny-by-default composition root, a disabled executor, trusted-main-frame IPC,
+and a bounded renderer projection. Preload exposes only application metadata,
+platform snapshot, and renderer-ready intents. F3.2 locally adds one separate,
+exact loopback response-delivery manifest, policy rule, in-memory bounded input
+reference, and executor beneath the existing F3.1 service. There is no
+credential backend, general input-reference store, general MCP or native-tool
+transport, process transport, or real worker adapter.
 
 P4.2 adds the separate compatibility boundary accepted in
 [ADR-0011](decisions/0011-aionui-shadow-projection.md). Successful native HTTP
@@ -95,9 +96,16 @@ desktop confirmation surfaces submit one fixed response intent to main. Main
 persists an immutable schema version 5 response and delivery outbox before
 calling the loopback native confirmation endpoint. Exact duplicates are
 idempotent, changed responses conflict, and a prior or failed attempt must be
-reconciled against the native pending list before redelivery. This slice does
-not activate the P3 policy, protected-operation, credential, audit, or tool
-release services.
+reconciled against the native pending list before redelivery.
+
+P4.3/F3.2, governed by
+[ADR-0013](decisions/0013-aionui-approval-delivery-policy-gate.md), routes only
+that persisted response-delivery effect through the P3 gateway as one fixed
+`network.request` to an `external-service`. Policy and tool-start audit must
+persist before the loopback POST, and completion or failure audit must persist
+before the result is final. Compatibility-scoped hashes correlate the audit
+without storing native identifiers or creating authoritative P3 domain rows.
+This slice does not infer, approve, or execute the underlying native tool.
 
 The SQLite adapter owns `state/actestra.sqlite3` beneath Actestra user data,
 uses one DELETE/FULL connection, and rejects foreign ownership, future schemas,
@@ -139,6 +147,13 @@ provider-specific option validity, and protected-operation execution. The
 preserved AionUi UI remains the presentation layer, and headless WebUI stays on
 its isolated native compatibility path. The exact split is recorded in
 [AionUi F3.1 Approval Decision Authority](../product/AIONUI_F3_APPROVAL_AUTHORITY.md).
+
+F3.2 introduces no second user confirmation. The exact allow rule applies only
+to transport of the response already selected in the preserved UI and persisted
+by F3.1. A structured native rejection is returned only after failure audit
+persists; an outcome-audit failure is uncertain and re-enters F3.1
+reconciliation. The exact split is recorded in
+[AionUi F3.2 Approval Delivery Policy Gate](../product/AIONUI_F3_APPROVAL_POLICY_GATE.md).
 
 ## Authority boundaries
 
@@ -286,12 +301,13 @@ Initial event types:
 | Data | System of record |
 | --- | --- |
 | Product settings and migrations | Actestra |
-| Native conversation, task, provider, workspace, artifact, runtime, and pending-confirmation state through F3.1 | Native AionUi |
+| Native conversation, task, provider, workspace, artifact, runtime, and pending-confirmation state through F3.2 | Native AionUi |
 | F2 compatibility shadow evidence | Actestra SQLite, inert and non-authoritative |
 | F3.1 desktop confirmation response and delivery state | Actestra SQLite schema 5 |
+| F3.2 response-delivery policy and audit evidence | Actestra fixed policy plus SQLite schema 3 audit |
 | Workspace grants | Actestra |
 | Tasks and dependency graph | Actestra |
-| P3 protected-operation approval evidence | Actestra target contract; not activated by F3.1 |
+| P3 protected-operation approval evidence for the underlying native tool | Actestra target contract; not activated by F3.2 |
 | Event and audit history | Actestra |
 | Artifact metadata | Actestra |
 | Secret values | Operating-system secure storage via Actestra broker |

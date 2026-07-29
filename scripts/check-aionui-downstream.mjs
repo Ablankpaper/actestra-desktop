@@ -89,11 +89,11 @@ function main() {
 
   if (
     overlay.schemaVersion !== 1 ||
-    overlay.phase !== "F3.1" ||
+    overlay.phase !== "F3.2" ||
     overlay.uiContract.layoutChangesAllowed !== false ||
     overlay.uiContract.featureEntryRemovalAllowed !== false
   ) {
-    throw new Error("Invalid F3.1 downstream overlay policy");
+    throw new Error("Invalid F3.2 downstream overlay policy");
   }
 
   for (const patch of overlay.patches) {
@@ -251,6 +251,8 @@ function main() {
       "ACTESTRA_APPROVAL_DECIDE_CHANNEL",
       "AionUiApprovalAuthorityService",
       "ACTESTRA_APPROVAL_AUTHORITY",
+      "ACTESTRA_APPROVAL_POLICY_GATE",
+      "createPolicyGatedAionUiApprovalNativeTransport",
       "nativeFallback",
       "recoverPending",
     ],
@@ -266,6 +268,18 @@ function main() {
     "routeActestraApprovalRequest",
     "BackendHttpError",
   ]);
+  requireText(
+    path.join(
+      outputRoot,
+      "packages/desktop/src/actestra/main/compatibility/aionuiApprovalPolicyGate.ts",
+    ),
+    [
+      "PolicyGatedAionUiApprovalNativeTransport",
+      "network.request",
+      "external-service",
+      "PrivilegedToolGateway",
+    ],
+  );
   requireText(
     path.join(
       outputRoot,
@@ -303,9 +317,10 @@ function main() {
   );
 
   console.log(
-    `Verified Actestra F3.1 downstream overlay: ${changedFiles.size} declared files, ` +
+    `Verified Actestra F3.2 downstream overlay: ${changedFiles.size} declared files, ` +
       `${overlay.invariantFiles.length} R0 invariant files, ${overlay.sourceCopies.length} ` +
-      "reviewed source copies, identity/isolation, shadow projection and approval authority present.",
+      "reviewed source copies, identity/isolation, shadow projection, approval authority and " +
+      "policy-gated delivery present.",
   );
 }
 

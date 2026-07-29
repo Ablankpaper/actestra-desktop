@@ -10,7 +10,7 @@ Base: `a32b7cb4516f5592e8e1fe6f1f5afad7c50de991`
 
 Implementation: `13270ca0abd7353710541afca9ddf46c47670be3`
 
-Draft PR: [6](https://github.com/bignormal/actestra-desktop/pull/6)
+Merged PR: [6](https://github.com/bignormal/actestra-desktop/pull/6)
 
 ## Result
 
@@ -76,6 +76,9 @@ passes the root source/test/boundary/documentation/package/smoke workflow. The
 full native AionUi tests, native build, and visual launch in this document are
 local evidence and are not represented as CI.
 
-PR 6 remains Draft. CodeRabbit explicitly skipped review because of that Draft
-state, so its successful status is not review evidence. This is not merge,
-candidate, signed package, release, distribution, or user-acceptance evidence.
+Pull request 6 subsequently reached final head
+`70b2f29329fec26bf0e3d6384d8563aedcb7a4ce`, squash merged as
+`61b9405fc007aa8cb16ec05a65f421cb7d277b51`, and passed exact main CI run
+30434563810. The F0 local evidence in this document remains distinct from that
+merge proof and does not establish a candidate, signed package, release,
+distribution, or user acceptance.
