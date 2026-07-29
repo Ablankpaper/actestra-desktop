@@ -4,7 +4,7 @@ Last updated: 2026-07-29
 
 ## Current phase
 
-### F0-F3.2 accepted on main; F3.3 is committed and locally validated
+### F0-F3.2 accepted on main; F3.3 is in Draft PR review
 
 Pull request 7 reached exact final head
 `df821ca203bea7b611fa8fb8092d00a16cabe578` and squash merged F3.2 as
@@ -15,9 +15,12 @@ passes on that exact merge. Branch
 ADR-0014 and F3.3 implementation
 `c2fa4bbc4989b9a41bf6a283b5f0eb1f2f523acb` route only the bounded
 pending-state read used by retry and restart reconciliation through an exact
-P3 policy, capability, and durable audit path. Push, PR, and CI remain
-separate. The real AionUi application, original functional UI, and original
-functions remain the product baseline.
+P3 policy, capability, and durable audit path. Draft pull request 8 reached
+evidence head `53e7041399518969c67af0fb78bf92499ebe28fd`, whose exact CI run
+30445531680 passed. Review remediation
+`228ff385afd1d0dfc03655d1d46eaad9998bedc3` is locally validated; its push and
+exact-head CI remain separate. The real AionUi application, original
+functional UI, and original functions remain the product baseline.
 
 F0 implementation commit
 `13270ca0abd7353710541afca9ddf46c47670be3` first established the preserved
@@ -283,18 +286,22 @@ Detailed scope, rollback, failure, and non-claims are recorded in
 and
 [ADR-0014](architecture/decisions/0014-aionui-approval-reconciliation-policy-gate.md).
 These local results are recorded on implementation commit
-`c2fa4bbc4989b9a41bf6a283b5f0eb1f2f523acb`; they are not yet push, PR, CI,
-candidate, release, distribution, or acceptance evidence.
+`c2fa4bbc4989b9a41bf6a283b5f0eb1f2f523acb`. Draft pull request 8 and
+exact-head CI run 30445531680 verify evidence head
+`53e7041399518969c67af0fb78bf92499ebe28fd`; review remediation
+`228ff385afd1d0dfc03655d1d46eaad9998bedc3` remains local until its next push
+and CI. Candidate, release, distribution, and acceptance remain separate.
 
-Three completed local CodeRabbit reviews informed F3.3. The first covered 13
+Four completed local CodeRabbit reviews informed F3.3. The first covered 13
 tracked files and raised two valid documentation/checker issues plus one
 invalid request to treat an Actestra-owned source copy as upstream provenance.
 The next two covered all 18 files and raised five valid lifecycle, cleanup,
-rollback, and concurrency issues. All seven valid issues were fixed. A final
-redundant review attempt after concurrent-read coalescing was rate-limited
-before review with a 31-minute wait, so it is not zero-issue evidence. Full
-local tests, builds, package smoke, and manual staged-diff review are the
-current closure evidence; remote review remains pending.
+rollback, and concurrency issues. After a rate-limited attempt recovered, the
+fourth complete 18-file review raised one valid minor request to prove durable
+failure-event ordering and private-data exclusion directly from SQLite. All
+eight valid issues are fixed, with the latest assertion in
+`228ff385afd1d0dfc03655d1d46eaad9998bedc3`. A zero-issue follow-up review
+remains pending and is not claimed.
 
 The implementation run
 [30421071039](https://github.com/bignormal/actestra-desktop/actions/runs/30421071039)
@@ -601,7 +608,7 @@ Review closure validation at
 | P4.3/F3.1 approval decision authority | Accepted on `main` through PR 6 | Implementation `cf61ffb8453a888cdc03f73457ebeaf72708511a`; ADR-0012; schema version 5 persist-before-deliver outbox; 30/153 root and 330/2,602 native tests; run 30425061316 passes |
 | PR 6 review and merge closure | Accepted on `main` | Final head `70b2f29329fec26bf0e3d6384d8563aedcb7a4ce`; exact-head CI 30431557027 passes; local review of 21 final changed files returned zero findings; squash merge `61b9405fc007aa8cb16ec05a65f421cb7d277b51`; exact main CI 30434563810 passes |
 | F3.2 approval delivery policy gate | Accepted on `main` through PR 7 | Implementation `20e3c0fcada0d072fc35820d43b85c953bf93929`; final head `df821ca203bea7b611fa8fb8092d00a16cabe578`; squash merge `ce19dbe072328e16dcdaf116b8199d5502cb44c6`; exact main CI run 30442166290 passes |
-| F3.3 approval reconciliation policy gate | Committed and locally validated | Implementation `c2fa4bbc4989b9a41bf6a283b5f0eb1f2f523acb`; ADR-0014; exact pending-state read capability and policy; metadata-only audit; root 33/178, native 332/2,608, strict types, 104-file downstream declaration, 4 R0 invariants, 22 source copies, and production builds pass; push, PR, and CI pending |
+| F3.3 approval reconciliation policy gate | Draft PR 8 under review | Implementation `c2fa4bbc4989b9a41bf6a283b5f0eb1f2f523acb`; evidence head `53e7041399518969c67af0fb78bf92499ebe28fd` passes CI run 30445531680; review remediation `228ff385afd1d0dfc03655d1d46eaad9998bedc3` is locally validated; root 33/178, native 332/2,608, strict types, 104-file downstream declaration, 4 R0 invariants, 22 source copies, and production builds pass; remediation push and CI pending |
 | Native AionUi source | Exact local desktop snapshot | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot |
 | Native preservation contract | Local pass | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified |
 | Native AionUi build and launch | Local pass | Frozen install, production build, isolated native Electron launch, and actual Guide screenshot pass |

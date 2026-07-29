@@ -36,10 +36,12 @@ metadata domains remain inert schema version 4 shadow evidence, while desktop
 confirmation responses use the schema version 5 persist-before-deliver outbox
 without changing the original AionUi permission and pet UI. F3.2 places the
 exact loopback response delivery behind P3 policy and durable audit. F3.3 is
-locally committed as `c2fa4bbc4989b9a41bf6a283b5f0eb1f2f523acb` on
-`feat/aionui-f3-reconciliation-audit`: the separate, bounded pending-state read
-used by retry and restart now enters its own exact policy and durable audit
-path. Push, PR, CI, candidate, and release remain separate.
+in Draft pull request 8. Implementation
+`c2fa4bbc4989b9a41bf6a283b5f0eb1f2f523acb` reached exact-head CI run
+30445531680 through evidence commit
+`53e7041399518969c67af0fb78bf92499ebe28fd`. Review remediation
+`228ff385afd1d0dfc03655d1d46eaad9998bedc3` is locally validated. Its next
+push and CI, Ready review, candidate, and release remain separate.
 
 ## P0 — Project Foundation
 

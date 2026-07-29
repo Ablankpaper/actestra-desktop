@@ -8,6 +8,8 @@ Base: `ce19dbe072328e16dcdaf116b8199d5502cb44c6`
 
 Implementation: `c2fa4bbc4989b9a41bf6a283b5f0eb1f2f523acb`
 
+Review remediation: `228ff385afd1d0dfc03655d1d46eaad9998bedc3`
+
 ## Outcome
 
 F3.3 preserves the original AionUi confirmation UI and closes the remaining
@@ -124,13 +126,18 @@ Existing decision and audit rows remain immutable after rollback.
   clean-profile application/window/renderer smoke pass as regression evidence.
 
 These results are verified on implementation commit
-`c2fa4bbc4989b9a41bf6a283b5f0eb1f2f523acb`. They are not yet push, PR, CI,
-candidate, release, distribution, or user-acceptance evidence.
+`c2fa4bbc4989b9a41bf6a283b5f0eb1f2f523acb`. Draft pull request 8 reached
+evidence head `53e7041399518969c67af0fb78bf92499ebe28fd`, and exact-head CI run
+30445531680 passes. Review remediation
+`228ff385afd1d0dfc03655d1d46eaad9998bedc3` remains locally validated until
+its next push and CI. Candidate, release, distribution, and user acceptance
+remain separate.
 
-Three completed local CodeRabbit reviews raised seven valid issues and one
-invalid provenance request. All valid issues were fixed. The final redundant
-re-review after concurrent-read coalescing was rate-limited before review with
-a 31-minute wait, so it is not represented as zero-issue evidence.
+Four completed local CodeRabbit reviews raised eight valid issues and one
+invalid provenance request. All valid issues were fixed. The latest complete
+18-file review requested direct durable failure-event ordering and privacy
+assertions; remediation `228ff385afd1d0dfc03655d1d46eaad9998bedc3` adds
+them. A zero-issue follow-up review remains pending and is not claimed.
 
 ## Non-claims
 

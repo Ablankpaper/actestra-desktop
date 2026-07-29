@@ -86,9 +86,12 @@ audit implementation `20e3c0fcada0d072fc35820d43b85c953bf93929` reached
 `ce19dbe072328e16dcdaf116b8199d5502cb44c6`.
 [Main CI run 30442166290](https://github.com/bignormal/actestra-desktop/actions/runs/30442166290)
 passes on that exact merge. F3.3 approval-reconciliation policy and audit is
-locally committed as `c2fa4bbc4989b9a41bf6a283b5f0eb1f2f523acb` on
-`feat/aionui-f3-reconciliation-audit`; push, pull request, and CI remain
-separate.
+in [Draft PR 8](https://github.com/bignormal/actestra-desktop/pull/8).
+Implementation `c2fa4bbc4989b9a41bf6a283b5f0eb1f2f523acb` reached exact-head
+[CI run 30445531680](https://github.com/bignormal/actestra-desktop/actions/runs/30445531680)
+through evidence commit `53e7041399518969c67af0fb78bf92499ebe28fd`.
+Review remediation `228ff385afd1d0dfc03655d1d46eaad9998bedc3` is locally
+validated; its push and exact-head CI remain separate.
 
 - The repository now contains the exact, unmodified 1,766-file AionUi
   `v2.1.41` runnable desktop source foundation at commit
