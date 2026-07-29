@@ -1,8 +1,8 @@
 # AionUi F3.1 Approval Decision Authority
 
-Status: Implemented and fully validated locally on
-`feat/aionui-first-foundation`; exact pushed-head and CI evidence are recorded
-only after those separate gates complete.
+Status: Implemented, pushed, and exact-implementation CI-backed on
+`feat/aionui-first-foundation`; Draft review, merge, candidate, release,
+distribution, and acceptance remain separate gates.
 
 ## Outcome
 
@@ -190,7 +190,7 @@ inert and are not deleted.
 | Documentation | Pass; 40 Markdown files and all relative links |
 | Runtime parity and restart | Pass on an isolated profile; details below |
 | Explicit rollback | Pass; main returns only `native-fallback` and creates no new row |
-| CI | Pending exact pushed-head run; no older F2 run is reused |
+| CI | Pass; exact implementation run 30425061316 on `cf61ffb8453a888cdc03f73457ebeaf72708511a` |
 
 The complete native suite emits its existing non-failing process-listener
 warning. The production build emits existing upstream circular-chunk,
@@ -230,8 +230,21 @@ The synthetic path cannot be mistaken for successful native approval or
 protected-operation evidence: it intentionally exercised the durable failure,
 restart, and rollback behavior only.
 
-A passing local check, build, or desktop run is not a pushed commit, CI run,
-merge, candidate, release, distribution, or user acceptance.
+## Remote evidence
+
+Implementation commit
+`cf61ffb8453a888cdc03f73457ebeaf72708511a` is pushed to
+`feat/aionui-first-foundation`.
+[macOS arm64 CI run 30425061316](https://github.com/bignormal/actestra-desktop/actions/runs/30425061316)
+passes on that exact commit, including root source/test/boundary checks,
+documentation links, downstream materialization and install, strict type
+checks, identity and isolation checks, native production build, unsigned
+bundle, packaged identity and product boundary, and clean-profile smoke.
+
+The full native suite, visual UI parity, real local AionCore failure path, and
+restart reconciliation remain local evidence. A pushed implementation and
+passing CI run are not merge, candidate, release, distribution, or user
+acceptance.
 
 ## Non-claims
 

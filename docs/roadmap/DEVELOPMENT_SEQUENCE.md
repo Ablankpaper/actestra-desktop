@@ -34,11 +34,11 @@ exact-implementation CI-backed on Draft pull request 6. P4.2/F2 is also pushed
 and exact-head CI-backed: seven bounded native metadata domains project into
 separate SQLite schema version 4 shadow evidence without changing native UI or
 authoritative P3 tables. Full native regression and real desktop projection
-remain local evidence. P4.3/F3.1 is now implemented locally as the first
-authority slice: desktop confirmation responses and delivery state move to a
-schema version 5 persist-before-deliver outbox while the original AionUi
-permission and pet UI remain intact. Exact pushed-head CI, merge, and release
-states remain separate.
+remain local evidence. P4.3/F3.1 is implemented, pushed, and exact-head
+CI-backed as the first authority slice: desktop confirmation responses and
+delivery state move to a schema version 5 persist-before-deliver outbox while
+the original AionUi permission and pet UI remain intact. Draft review, merge,
+candidate, and release states remain separate.
 
 ## P0 — Project Foundation
 

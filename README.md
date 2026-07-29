@@ -67,8 +67,10 @@ P4.1/F1 identity-and-isolation implementation are CI-backed on
 `632573fa03c34fdb789c85d8efc1ce1e0f8e8177` plus packaged-boundary
 remediation `1478726d62302fa885525024eb4839af5e98b4dd` pass
 [macOS arm64 CI run 30421351204](https://github.com/bignormal/actestra-desktop/actions/runs/30421351204);
-P4.3/F3.1 approval-decision authority is implemented and under local
-validation on the same branch. Pull request 6 remains Draft.
+P4.3/F3.1 approval-decision authority implementation
+`cf61ffb8453a888cdc03f73457ebeaf72708511a` passes
+[macOS arm64 CI run 30425061316](https://github.com/bignormal/actestra-desktop/actions/runs/30425061316)
+on the same branch. Pull request 6 remains Draft.
 
 - The repository now contains the exact, unmodified 1,766-file AionUi
   `v2.1.41` runnable desktop source foundation at commit
