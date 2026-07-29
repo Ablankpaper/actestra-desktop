@@ -2,6 +2,10 @@
 
 - Status: Accepted
 - Date: 2026-07-28
+- Superseded in part by:
+  [ADR-0017](0017-general-worker-process-and-agent-adapter-v2.md) for the current
+  protocol version, interface, control-error signal, and capability vocabulary.
+  The remaining lifecycle and supervision decision stays accepted.
 
 ## Context
 

@@ -102,7 +102,7 @@ describe("main terminal-attempt persistence integration", () => {
     const adapter = new DeterministicFakeAgentAdapter(clock);
     const supervisor = new AgentAdapterSupervisor(adapter, clock, {
       expectedAdapterKind: "deterministic-fake",
-      requiredCapabilities: ["messages", "approvals", "cancellation", "heartbeats"],
+      requiredCapabilities: ["messages", "approvals", "cancellation", "heartbeats", "tool-results"],
       startupTimeoutMs: 2_000,
       heartbeatTimeoutMs: 3_000,
       cancellationTimeoutMs: 1_000,

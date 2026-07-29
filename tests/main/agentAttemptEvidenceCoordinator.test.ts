@@ -16,7 +16,7 @@ import { PRIVILEGED_TIME } from "../fixtures/privilegedServices";
 
 const SUPERVISOR_CONFIG = {
   expectedAdapterKind: "deterministic-fake",
-  requiredCapabilities: ["messages", "approvals", "cancellation", "heartbeats"],
+  requiredCapabilities: ["messages", "approvals", "cancellation", "heartbeats", "tool-results"],
   startupTimeoutMs: 2_000,
   heartbeatTimeoutMs: 3_000,
   cancellationTimeoutMs: 1_000,

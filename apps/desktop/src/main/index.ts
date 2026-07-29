@@ -11,6 +11,7 @@ import {
 import { isActestraDeepLink, PRODUCT_NAME, resolveUserDataPath } from "./productIdentity";
 import { installSessionSecurity, installWindowSecurity } from "./security";
 import { createWindowOptions } from "./windowOptions";
+import { runGeneralWorkerProbe } from "./workers/generalWorkerProbe";
 
 let mainWindow: BrowserWindow | null = null;
 let platformServices: MainPlatformServices | null = null;
@@ -131,6 +132,13 @@ if (!hasSingleInstanceLock) {
       );
       const services = createMainPlatformServices(persistence);
       platformServices = services;
+      if (process.env.ACTESTRA_E2E_TEST === "1") {
+        const workerProbe = await runGeneralWorkerProbe({
+          modulePath: path.join(__dirname, "general-worker.js"),
+          workingDirectory: process.resourcesPath,
+        });
+        console.info(`ACTESTRA_GENERAL_WORKER_READY ${JSON.stringify(workerProbe)}`);
+      }
       disposeDesktopIpc = registerDesktopIpc({
         ipcMain,
         trustedWebContents: () => mainWindow?.webContents ?? null,

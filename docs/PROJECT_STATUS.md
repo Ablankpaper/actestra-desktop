@@ -4,7 +4,7 @@ Last updated: 2026-07-30
 
 ## Current phase
 
-### F0-F3.3 and the P6 direction are on main; GW-P4.2 is locally validated
+### GW-P4.2 is on main; GW-P4.3 is locally validated
 
 Pull request 8 reached exact final head
 `3f85e13072f5fb13fb43c9dae94f992bb0b7fb9c` and squash merged F3.3 as
@@ -31,47 +31,57 @@ product and acceptance reference. This is an accepted architecture direction
 only: CrewAI is not imported, installed, bundled, or implemented, and P6
 remains ordered after the P4 and P5 gates.
 
-General-work GW-P4.2 is implemented on local branch
-`feat/aionui-p4-persistence-utility`, based on the exact merge above.
+General-work GW-P4.2 reached
+[pull request 10](https://github.com/bignormal/actestra-desktop/pull/10) at
+exact final head `9003cc0387cb4266c4b1240308092366ef365bf4`, passed
+[PR CI run 30475836615](https://github.com/bignormal/actestra-desktop/actions/runs/30475836615),
+and completed a 50-file CodeRabbit review with zero findings. It squash merged
+as `8e32882108b10272c1489c1a46a77cede1cc4fb7`; exact merged-main
+[CI run 30476091907](https://github.com/bignormal/actestra-desktop/actions/runs/30476091907)
+passes.
 [ADR-0016](architecture/decisions/0016-p4-general-work-process-and-content-boundaries.md)
-records the accepted process and content boundary. The branch moves schemas 1
-through 5 and every P3/F2/F3 persistence operation behind one asynchronous
-persistence utility, adds schema version 6 grants and bounded content
-references, and routes the preserved AionUi compatibility providers through
-the same port. It has no synchronous SQLite fallback in Electron main.
+records the accepted process and content boundary: schemas 1 through 6 and all
+P3/F2/F3 operations now run behind the asynchronous persistence utility, with
+durable grants and bounded content references and no synchronous SQLite
+fallback in Electron main.
 
-Current GW-P4.2 local evidence:
+GW-P4.3 is implemented and locally validated on
+`feat/aionui-p4-general-worker`, based on the exact GW-P4.2 merge.
+[ADR-0017](architecture/decisions/0017-general-worker-process-and-agent-adapter-v2.md)
+advances AgentAdapter to version 2, adds typed tool-result resolution, and
+defines a separate strict General Worker protocol. One Electron utility
+process accepts one immutable attempt; Electron main owns attempt, tool,
+event, and timestamp identity and maps only validated worker signals into
+Actestra events.
 
-- focused protocol, client, migration, grant, and content validation passes 8
-  files and 27 tests;
+Current GW-P4.3 local evidence:
+
+- focused Adapter v2 and worker validation passes 8 files and 47 tests;
 - complete root `bun run check` passes formatting, zero-warning lint, strict
-  types, the Electron SQLite probe, 37 files and 194 tests, process smoke,
-  49-source boundary, foundation/downstream checks, and the dual-entry build;
-- coverage passes at 81.85% statements, 74.17% branches, 90.73% functions, and
-  82.07% lines;
-- materialized native strict TypeScript passes;
-- the native CI-targeted suite passes 22 files and 144 tests;
-- the complete native suite passes 333 files and 2,609 tests, with 1 file and
-  5 tests skipped by upstream configuration;
-- the native production build emits separate main and persistence-utility
-  entries, with recursive inspection finding SQLite only in the utility entry;
-- a real isolated-profile native AionUi launch logged persistence readiness at
-  schema 6, created the preserved window, reached renderer-ready, and left no
-  orphan utility process after termination; and
-- the live database contained the schema 6 grant/content tables plus retained
-  F2 shadow and F3 approval tables.
-- all 48 relative documentation links resolve, the 9 changed Markdown files
-  have zero lint issues, and the working diff has no whitespace errors;
-- an unsigned arm64 legacy-harness package passes identity/graph verification
-  and clean-profile smoke through utility, application, window, and renderer
-  readiness with schema 6.
+  types, the Electron SQLite probe, 40 files and 217 tests, process smoke,
+  55-source boundary, foundation/downstream checks, and the three-entry build;
+- coverage passes at 79.76% statements, 72.23% branches, 87.30% functions, and
+  79.95% lines without threshold changes;
+- the unsigned arm64 legacy-harness directory bundle passes identity,
+  recursive worker-graph verification, and clean-profile smoke through
+  persistence, real General Worker, window, and renderer readiness;
+- materialized native strict TypeScript and all 13 Actestra native files with
+  34 tests pass;
+- the complete native suite passes 334 files and 2,610 tests, with 1 file and
+  5 tests skipped by retained upstream configuration;
+- the native production build emits distinct main, persistence-utility, and
+  General Worker entries without changing the renderer; and
+- a real isolated-profile AionUi launch without fault injection used the exact
+  local `aioncore 0.1.52`, logged worker completion, AionCore health, window,
+  and renderer readiness, and left no Actestra, worker, or AionCore process
+  after terminal shutdown.
 
-The launch intentionally used the frozen snapshot without a distributed
-AionCore binary, so its existing installation-incomplete dialog is not a
-backend-success claim. The packaged smoke is the platform regression harness,
-not the target AionUi product package. GW-P4.2 remains unpushed and has no PR-head CI, merge,
-merged-main CI, candidate, release, deployment, distribution, or user
-acceptance evidence yet.
+This real launch diagnoses the installation-incomplete screenshot: the dialog
+is the retained AionUi fail-closed state when AionCore is absent or startup is
+intentionally failed. The local exact AionCore binary starts successfully when
+discoverable. No approved distributable AionCore bundle is committed, so this
+is local runtime evidence, not target-package, candidate, release, deployment,
+distribution, or user-acceptance evidence.
 
 F0 implementation commit
 `13270ca0abd7353710541afca9ddf46c47670be3` first established the preserved
@@ -664,12 +674,13 @@ Review closure validation at
 | PR 6 review and merge closure | Accepted on `main` | Final head `70b2f29329fec26bf0e3d6384d8563aedcb7a4ce`; exact-head CI 30431557027 passes; local review of 21 final changed files returned zero findings; squash merge `61b9405fc007aa8cb16ec05a65f421cb7d277b51`; exact main CI 30434563810 passes |
 | F3.2 approval delivery policy gate | Accepted on `main` through PR 7 | Implementation `20e3c0fcada0d072fc35820d43b85c953bf93929`; final head `df821ca203bea7b611fa8fb8092d00a16cabe578`; squash merge `ce19dbe072328e16dcdaf116b8199d5502cb44c6`; exact main CI run 30442166290 passes |
 | F3.3 approval reconciliation policy gate | Accepted on `main` through PR 8 | Implementation `c2fa4bbc4989b9a41bf6a283b5f0eb1f2f523acb`; final head `3f85e13072f5fb13fb43c9dae94f992bb0b7fb9c`; squash merge `c841ed9cb6a54bcb2e4078ca2be941adce0ac4ad`; exact main CI run 30449520722 passes; the complete local 18-file review raised zero issues before merge |
-| GW-P4.2 persistence utility and content foundation | Local implementation and validation only | Branch `feat/aionui-p4-persistence-utility` based on `327d5ca5abf3a0090bc2b3d3193e2935bbd47f38`; schema 6; 37/194 root and 333/2,609 native tests; native build and real isolated launch pass; push, PR CI, merge, and main CI pending |
+| GW-P4.2 persistence utility and content foundation | Accepted on `main` through PR 10 | Final head `9003cc0387cb4266c4b1240308092366ef365bf4`; exact-head CI 30475836615; zero-finding 50-file review; squash merge `8e32882108b10272c1489c1a46a77cede1cc4fb7`; exact main CI 30476091907 |
+| GW-P4.3 General Worker and Adapter v2 | Local implementation and validation only | Branch `feat/aionui-p4-general-worker` based on `8e32882108b10272c1489c1a46a77cede1cc4fb7`; ADR-0017; 40/217 root and 334/2,610 native tests; build, unsigned harness package, real utility-worker smoke, and isolated native AionUi/AionCore launch pass; push, PR CI, merge, and main CI pending |
 | P6 orchestration boundary | Accepted architecture direction only | ADR-0015; CrewAI `1.15.8` at `e9caf1e1b89343bb833b5da6660faa91804a9dce` verified as the first supervised sidecar candidate; Eigent `v1.0.2` at `e478094a9ff433132b3cf1928e4143338ddaab20` retained as a reference; neither is imported, bundled, or implemented |
 | Native AionUi source | Exact local desktop snapshot | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot |
 | Native preservation contract | Local pass | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified |
 | Native AionUi build and launch | Local pass | Frozen install, production build, isolated native Electron launch, and actual Guide screenshot pass |
-| Native AionUi tests | Latest local pass | 333 files passed, 1 skipped; 2,609 tests passed, 5 skipped; 0 failures |
+| Native AionUi tests | Latest local pass | 334 files passed, 1 skipped; 2,610 tests passed, 5 skipped; 0 failures |
 | Legacy product shell | P3 harness only | Original Actestra Electron/React shell remains for platform-contract and packaging regression; it is not the target product UI |
 | Renderer boundary | CI-backed through P3.6 | Context isolation, sandbox, Node and packaged DevTools disabled, production CSP denies connections, exact frozen preload allowlist, trusted-frame zero-argument IPC, and direct-client source checks |
 | Automated tests | Exact merged-main CI pass | Main run 30378191752 passes 24 Vitest files with 130 tests, the exact Electron SQLite probe, process-failure harness, 34-source boundary check, build, package identity, and clean-profile smoke |
@@ -677,7 +688,7 @@ Review closure validation at
 | P3 domain contracts | Implemented and CI-backed | Typed IDs and timestamps; workspace, task, session, worker, approval, and artifact records; transition and graph invariants; exact commit and run above |
 | P3 event contract | Implemented and CI-backed | Schema version 1; per-attempt gapless order, exact-id idempotency, verified replay cursors, terminal enforcement, and diagnostic redaction; exact commit and run above |
 | P3 persistence and migrations | Implemented and CI-backed | ADR-0005 schemas 1 and 2 plus ADR-0008 schema 3 for privileged audit and terminal-attempt evidence; exact runs above |
-| P3 worker lifecycle | Implemented and CI-backed | ADR-0006, protocol version 1, runtime validation, supervisor, observed-time health, cancellation, crash, bounded fresh-attempt restart, deterministic fake, and 22 focused tests; exact commit and run above |
+| P3 worker lifecycle | Implemented and CI-backed; locally advanced by GW-P4.3 | ADR-0006 protocol v1, supervisor, lifecycle, and fake are accepted; ADR-0017 locally supersedes only the AgentAdapter version/interface with v2 and adds a separate General Worker protocol v1, typed tool results, and a real deterministic utility process |
 | P3 privileged services | Implemented and CI-backed | ADR-0007; protected-operation and manifest contracts; policy, approval, opaque lease, metadata-only audit, and deterministic gateway services; exact commit and run above |
 | P3 main integration | Implemented and CI-backed | ADR-0008; main-only inert composition, durable audit, persist-before-release barrier, fixed IPC allowlist, bounded renderer projection, and packaged startup smoke; exact commit and run above |
 | F2 shadow persistence | Local and CI-backed contract evidence | ADR-0011; schema version 4; gapless and idempotent metadata-only evidence; no authoritative domain or event writes; real Guide read remains local proof |
@@ -742,16 +753,16 @@ The ordered implementation index and P3 non-claims are in
 
 ## Next gate
 
-1. Finish complete root, documentation, package, and product-boundary checks on
-   `feat/aionui-p4-persistence-utility`.
-2. Push the exact GW-P4.2 head, require pull-request CI, verify the selected repo,
-   branch, SHA, and artifacts, then merge without importing draft pull request
-   5 wholesale.
-3. Require merged-main CI before calling GW-P4.2 accepted.
-4. Start GW-P4.3 from that verified main and implement the real deterministic
-   General Worker process plus `AgentAdapter` v2.
-5. Continue through scoped native tools and the complete P4 journey before
-   Goose P5 and CrewAI-assisted Team P6 production work.
+1. Finish the final documentation, full validation, independent review, and
+   exact diff audit on `feat/aionui-p4-general-worker`.
+2. Push the exact GW-P4.3 head, require pull-request CI, verify the selected
+   repository, branch, SHA, checks, and artifacts, then squash merge.
+3. Require merged-main CI before calling GW-P4.3 accepted.
+4. Start GW-P4.4 from that verified main and implement only the two scoped
+   native text capabilities through grants, policy, audit, and typed content
+   references.
+5. Continue through the complete P4 journey before Goose P5 and CrewAI-assisted
+   Team P6 production work.
 
 ## Open decisions
 
@@ -785,30 +796,30 @@ The ordered implementation index and P3 non-claims are in
   rate-limited before reviewing the final four-document status range. Its
   successful status is limit-handling evidence; exact final-head CI run
   30376696055 passed.
-- Merged `main` still runs the SQLite registry in Electron main and migrates
-  through schema 5. The local GW-P4.2 branch moves the whole adapter to a utility
-  and migrates through schema 6. The downstream main accepts
-  one fixed shadow-observation operation and one fixed desktop confirmation
-  response operation. F3.2 gates only that response's native delivery, while
-  merged F3.3 separately gates only the boolean pending-state reconciliation
-  read. It exposes no generic persistence, renderer-selected protected
-  operation, tool transport, credential value, or worker control.
-- The P3.4 deterministic fake is test infrastructure, not a worker process or
-  evidence of packaged crash recovery.
+- Merged `main` runs the full schemas 1 through 6 adapter in a dedicated
+  persistence utility. The downstream main accepts one fixed
+  shadow-observation operation and one fixed desktop confirmation response
+  operation. F3.2 gates only that response's native delivery, while F3.3
+  separately gates only the boolean pending-state reconciliation read. It
+  exposes no renderer-selected protected operation, generic tool transport,
+  credential value, or worker control.
+- The P3.4 deterministic fake remains test infrastructure. Local GW-P4.3 adds
+  a real deterministic utility process and packaged-process probe, but it is
+  not yet connected to a user-submitted task or native tool.
 - P3.6 makes metadata-only audit and terminal-attempt evidence durable.
   Approval, credential-lease, and policy state remains in memory and contains no
   secret value. F3.1 separately makes the bounded native confirmation response
   and outbox durable. Local F3.2 activates the accepted P3 sequence for exactly
   one compatibility delivery capability, not for generic native tool
   execution.
-- GW-P4.2 locally removes synchronous SQLite from both root and native Electron
-  main entry graphs. It has no in-main fallback, but its push, PR CI, merge,
-  merged-main CI, and transparent hot-recovery behavior remain open.
+- GW-P4.2 removes synchronous SQLite from both root and native Electron main
+  entry graphs and is accepted on `main`. It has no in-main fallback;
+  transparent hot recovery remains future GW-P4.5 work.
 - F2 shadow evidence is renderer-originated compatibility evidence, not trusted
   audit, product, policy, approval, migration, or user-workload state.
-- The P3 contracts and fake-worker gate have passed. Real-worker integration is
-  later P4/P5 work and still requires dedicated scope, decisions, branch, and
-  tests.
+- The P3 contracts and fake-worker gate have passed. A bounded deterministic
+  General Worker integration is locally validated in GW-P4.3; native tools,
+  user-task coordination, and specialized Goose work remain later gates.
 - F0 alone proves only that the original AionUi application can be preserved
   and run. F1, F2, F3.1, F3.2, and merged F3.3 add their separately recorded
   identity, shadow, narrow decision-authority, fixed-delivery audit, and

@@ -104,17 +104,21 @@ recorded the supervised CrewAI P6 direction, reached exact final head
 [Main CI run 30470505690](https://github.com/bignormal/actestra-desktop/actions/runs/30470505690)
 passes on that exact merge.
 
-GW-P4.2 general-work persistence is implemented and locally validated on
-`feat/aionui-p4-persistence-utility`. It moves schemas 1 through 5 and all
-P3/F2/F3 operations to a dedicated persistence utility, adds schema 6
-workspace grants and bounded content references, and connects the preserved
-AionUi providers through the same asynchronous port. Root tests pass 37 files
-and 194 tests; the complete materialized native suite passes 333 files and
-2,609 tests, with 1 file and 5 tests skipped by retained upstream
-configuration. Native typecheck, production build, and an isolated real
-AionUi launch with the separate schema 6 utility also pass. The branch is not
-yet pushed, CI-backed, merged, packaged as a candidate, released, deployed, or
-accepted.
+GW-P4.2 general-work persistence reached
+[pull request 10](https://github.com/bignormal/actestra-desktop/pull/10), passed
+exact-head CI run 30475836615, and squash merged as
+`8e32882108b10272c1489c1a46a77cede1cc4fb7`; exact merged-main
+[CI run 30476091907](https://github.com/bignormal/actestra-desktop/actions/runs/30476091907)
+passes. GW-P4.3 is implemented and locally validated on
+`feat/aionui-p4-general-worker`. It advances AgentAdapter to version 2 and
+launches one deterministic General Worker utility process through a separate
+closed protocol. Root checks pass 40 files and 217 tests; the complete
+materialized native suite passes 334 files and 2,610 tests, with 1 file and
+5 tests skipped by retained upstream configuration. Native typecheck,
+production build, package-graph validation, the legacy package smoke, and an
+isolated real AionUi launch with local AionCore `0.1.52` also pass. GW-P4.3 is
+not yet pushed, CI-backed, merged, packaged as a candidate, released,
+deployed, or accepted.
 
 - The repository now contains the exact, unmodified 1,766-file AionUi
   `v2.1.41` runnable desktop source foundation at commit
@@ -130,12 +134,12 @@ accepted.
 - The renderer is sandboxed and receives only three fixed, non-privileged
   metadata intents. External HTTP, HTTPS, WebSocket, permissions, navigation,
   new windows, telemetry, updates, and accounts are inactive.
-- Thirty-three test files with 178 tests, an exact Electron-runtime SQLite
-  probe, a three-scenario process-failure harness, formatting, lint, strict
-  types, a 42-source product-boundary check, renderer build, packaged
-  identity/CSP checks, and a fresh-profile three-stage startup smoke pass
-  locally. P3.1-P3.6 and review remediation also have exact implementation CI.
-  Unsigned arm64 app/DMG/ZIP packaging passes locally.
+- Forty root test files with 217 tests, an exact Electron-runtime SQLite probe,
+  deterministic process-failure coverage, formatting, lint, strict types, a
+  55-source product-boundary check, a three-entry build, packaged identity/CSP
+  and worker-graph checks, and a fresh-profile startup smoke pass locally.
+  P3.1-P3.6 and GW-P4.2 also have exact implementation CI. Unsigned arm64
+  package evidence remains local and non-candidate.
 - The pure TypeScript core contract has no Electron, filesystem, shell, network,
   credential, or renderer authority. SQLite, worker supervision, policy,
   approval, opaque credential leases, the metadata-only audit trail, and the
@@ -144,9 +148,11 @@ accepted.
   three fixed metadata intents and no generic IPC or protected operation.
   F3.2 activates only one main-owned loopback approval-response delivery
   executor. Merged F3.3 separately gates the boolean pending-state
-  reconciliation read. Local GW-P4.2 moves SQLite and content-reference storage
-  to a utility; there is still no real worker process, credential backend,
-  general native-tool transport, or orchestration.
+  reconciliation read. Merged GW-P4.2 moves SQLite and content-reference
+  storage to a utility. Local GW-P4.3 adds a real deterministic General Worker
+  process and typed tool-result protocol, but it is still an isolated probe;
+  there is no credential backend, native-tool execution, user-task
+  coordination, or orchestration.
 - There is no CI-backed candidate, signed release, deployment, distribution, or
   user acceptance.
 - A reviewable downstream overlay now applies Actestra identity, icons,

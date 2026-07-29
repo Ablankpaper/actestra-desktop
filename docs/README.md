@@ -24,6 +24,7 @@ planning, and governance documents.
 | [AionUi–Actestra Fusion](architecture/AIONUI_ACTESTRA_FUSION.md) | Preserve-first topology, authority transition, phases, and patch rules |
 | [CrewAI P6 Sidecar Decision](architecture/decisions/0015-crewai-supervised-orchestration-sidecar.md) | CrewAI candidate role, Actestra authority, process isolation, admission, and packaging gates |
 | [P4 Process and Content Decision](architecture/decisions/0016-p4-general-work-process-and-content-boundaries.md) | Persistence utility authority, workspace grants, bounded content references, AionUi preservation, and ordered follow-up |
+| [General Worker and Adapter v2 Decision](architecture/decisions/0017-general-worker-process-and-agent-adapter-v2.md) | One-process-per-attempt supervision, native protocol, typed tool results, event mapping, and rollback |
 | [Architecture Decisions](architecture/decisions/README.md) | Accepted and proposed architectural decisions |
 
 ## Governance

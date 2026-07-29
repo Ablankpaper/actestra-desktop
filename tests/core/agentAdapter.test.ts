@@ -5,6 +5,10 @@ import {
   assertAgentCapabilities,
   assertAgentSignal,
   assertAgentStartRequest,
+  assertAgentToolResult,
+  instant,
+  toolOutputReference,
+  toolRequestId,
   type AgentAdapterErrorCode,
   type AgentCapabilities,
 } from "../../apps/desktop/src/core";
@@ -18,7 +22,7 @@ import {
 const CAPABILITIES = {
   protocolVersion: AGENT_ADAPTER_PROTOCOL_VERSION,
   adapterKind: "deterministic-fake",
-  capabilities: ["messages", "approvals", "cancellation", "heartbeats"],
+  capabilities: ["messages", "approvals", "cancellation", "heartbeats", "tool-results"],
   maxConcurrentSessions: 1,
   heartbeatIntervalMs: 1_000,
 } as const satisfies AgentCapabilities;
@@ -43,7 +47,7 @@ describe("AgentAdapter protocol contract", () => {
       () =>
         assertAgentCapabilities({
           ...CAPABILITIES,
-          protocolVersion: 2,
+          protocolVersion: 1,
         }),
       "incompatible-protocol",
     );
@@ -147,6 +151,47 @@ describe("AgentAdapter protocol contract", () => {
           type: "heartbeat",
         }),
       "invalid-signal",
+    );
+
+    expect(() =>
+      assertAgentSignal({
+        protocolVersion: AGENT_ADAPTER_PROTOCOL_VERSION,
+        sequence: 2,
+        occurredAt: FIXTURE_AGENT_START_TIME,
+        sessionId: FIXTURE_AGENT_SESSION_ID,
+        workerId: FIXTURE_AGENT_WORKER_ID,
+        type: "protocol-error",
+        errorCode: "signal-time-regression",
+        message: "Worker timestamps moved backwards.",
+      }),
+    ).not.toThrow();
+  });
+
+  it("accepts only bounded typed tool results with monotonic timestamps", () => {
+    const result = {
+      requestId: toolRequestId("tool-result-request"),
+      status: "succeeded",
+      startedAt: instant("2026-07-30T01:00:00.000Z"),
+      completedAt: instant("2026-07-30T01:00:01.000Z"),
+      outputRef: toolOutputReference("tool-result-output"),
+      summary: "Created one output reference.",
+    } as const;
+    expect(() => assertAgentToolResult(result)).not.toThrow();
+    expectAdapterError(
+      () =>
+        assertAgentToolResult({
+          ...result,
+          completedAt: instant("2026-07-30T00:59:59.000Z"),
+        }),
+      "invalid-request",
+    );
+    expectAdapterError(
+      () =>
+        assertAgentToolResult({
+          ...result,
+          rawContent: "must-not-cross",
+        }),
+      "invalid-request",
     );
   });
 });

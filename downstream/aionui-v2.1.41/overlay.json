@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
-  "phase": "GW-P4.2",
+  "phase": "GW-P4.3",
   "upstream": {
     "tag": "v2.1.41",
     "commit": "2d8925fc67a97a20996fadcd2a0862b778b572ba",
     "manifestSha256": "252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f"
   },
-  "authorityOwner": "Actestra Core through the supervised desktop persistence utility",
+  "authorityOwner": "Actestra Core through supervised persistence and General Worker utility processes",
   "classifications": ["R0", "R1", "R2"],
   "migration": {
-    "strategy": "Fresh Actestra profile v1; native AionUi profiles remain untouched. Forward-only schema v6 retains schemas v1-v5 exactly, adds canonical workspace grants and bounded opaque content references, and moves all Actestra SQLite ownership—including existing AionUI shadow evidence and approval authority—behind one supervised Electron utility-process protocol. A utility startup failure leaves the preserved AionUI product available while Actestra shadow and approval authority report an explicit unavailable state.",
-    "rollback": "Regenerate without patch 0006 to return to schema v5 direct-main persistence. Existing schema v6 rows remain inert and are never rewritten or deleted; use a fresh Actestra profile for a true downgrade. The frozen AionUi foundation and native AionUi profiles stay byte-identical."
+    "strategy": "Fresh Actestra profile v1; native AionUi profiles remain untouched. Forward-only schema v6 retains schemas v1-v5 exactly, adds canonical workspace grants and bounded opaque content references, and keeps all Actestra SQLite ownership—including existing AionUI shadow evidence and approval authority—behind one supervised Electron persistence utility protocol. AgentAdapter v2 adds typed tool results, while each deterministic General Worker attempt runs in one separately supervised Electron utility process with an exact native protocol, main-owned identities and events, a minimal environment, and no renderer, filesystem, shell, network, credential, MCP, or persistence authority.",
+    "rollback": "Regenerate without patch 0007 to remove the General Worker process probe and Adapter v2 native entry while retaining GW-P4.2 schema v6 persistence. Regenerate without patch 0006 as well to return to schema v5 direct-main persistence. Existing schema v6 rows remain inert and are never rewritten or deleted; use a fresh Actestra profile for a true data downgrade. The frozen AionUi foundation and native AionUi profiles stay byte-identical."
   },
   "uiContract": {
     "layoutChangesAllowed": false,
@@ -94,6 +94,18 @@
       ],
       "authorityOwner": "Actestra Core through the supervised desktop persistence utility",
       "rollback": "Regenerate without this patch and use a fresh Actestra profile. Schema v6 data remains inert; no native AionUi profile or frozen foundation file is mutated."
+    },
+    {
+      "path": "patches/0007-actestra-general-worker.mjs",
+      "classification": ["R1"],
+      "domains": [
+        "General Worker process",
+        "AgentAdapter v2",
+        "typed tool-result transport",
+        "worker supervision and cancellation"
+      ],
+      "authorityOwner": "Actestra Core through the supervised desktop General Worker utility process",
+      "rollback": "Regenerate without this patch. The preserved AionUI renderer, routes, features, native backend, profile, and GW-P4.2 persistence utility remain unchanged."
     }
   ],
   "sourceCopies": [
@@ -174,6 +186,22 @@
       "destination": "packages/desktop/src/actestra/main/persistence/persistenceUtilityClient.ts"
     },
     {
+      "source": "apps/desktop/src/main/workers/agentAdapterSupervisor.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/agentAdapterSupervisor.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/workers/electronGeneralWorker.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/electronGeneralWorker.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/workers/generalWorkerProcessAdapter.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/generalWorkerProcessAdapter.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/workers/generalWorkerProbe.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/generalWorkerProbe.ts"
+    },
+    {
       "source": "apps/desktop/src/main/privileged/deterministicPolicyEngine.ts",
       "destination": "packages/desktop/src/actestra/main/privileged/deterministicPolicyEngine.ts"
     },
@@ -198,6 +226,10 @@
       "destination": "packages/desktop/src/actestra/shared/persistenceUtilityProtocol.ts"
     },
     {
+      "source": "apps/desktop/src/shared/generalWorkerProtocol.ts",
+      "destination": "packages/desktop/src/actestra/shared/generalWorkerProtocol.ts"
+    },
+    {
       "source": "apps/desktop/src/utility/persistence/persistenceUtilityEntry.ts",
       "destination": "packages/desktop/src/actestra/utility/persistence/persistenceUtilityEntry.ts"
     },
@@ -212,6 +244,14 @@
     {
       "source": "apps/desktop/src/utility/persistence/sqliteMigrations.ts",
       "destination": "packages/desktop/src/actestra/utility/persistence/sqliteMigrations.ts"
+    },
+    {
+      "source": "apps/desktop/src/utility/worker/generalWorkerEntry.ts",
+      "destination": "packages/desktop/src/actestra/utility/worker/generalWorkerEntry.ts"
+    },
+    {
+      "source": "apps/desktop/src/utility/worker/generalWorkerService.ts",
+      "destination": "packages/desktop/src/actestra/utility/worker/generalWorkerService.ts"
     }
   ],
   "assetCopies": [
@@ -279,16 +319,23 @@
     "packages/desktop/src/actestra/main/compatibility/aionuiShadowProjectionService.ts",
     "packages/desktop/src/actestra/main/persistence/electronPersistenceUtility.ts",
     "packages/desktop/src/actestra/main/persistence/persistenceUtilityClient.ts",
+    "packages/desktop/src/actestra/main/workers/agentAdapterSupervisor.ts",
+    "packages/desktop/src/actestra/main/workers/electronGeneralWorker.ts",
+    "packages/desktop/src/actestra/main/workers/generalWorkerProbe.ts",
+    "packages/desktop/src/actestra/main/workers/generalWorkerProcessAdapter.ts",
     "packages/desktop/src/actestra/main/privileged/deterministicPolicyEngine.ts",
     "packages/desktop/src/actestra/main/privileged/inMemoryApprovalService.ts",
     "packages/desktop/src/actestra/main/privileged/persistentAuditTrail.ts",
     "packages/desktop/src/actestra/main/privileged/referenceCredentialBroker.ts",
     "packages/desktop/src/actestra/main/privileged/toolGateway.ts",
     "packages/desktop/src/actestra/shared/persistenceUtilityProtocol.ts",
+    "packages/desktop/src/actestra/shared/generalWorkerProtocol.ts",
     "packages/desktop/src/actestra/utility/persistence/persistenceUtilityEntry.ts",
     "packages/desktop/src/actestra/utility/persistence/persistenceUtilityService.ts",
     "packages/desktop/src/actestra/utility/persistence/sqliteCorePersistence.ts",
     "packages/desktop/src/actestra/utility/persistence/sqliteMigrations.ts",
+    "packages/desktop/src/actestra/utility/worker/generalWorkerEntry.ts",
+    "packages/desktop/src/actestra/utility/worker/generalWorkerService.ts",
     "packages/desktop/src/common/adapter/actestraApprovalAuthorityClient.ts",
     "packages/desktop/src/common/adapter/actestraShadowPublisher.ts",
     "packages/desktop/src/common/adapter/httpBridge.ts",
@@ -354,6 +401,7 @@
     "tests/unit/actestra/approvalAuthorityService.test.ts",
     "tests/unit/actestra/approvalNativeTransport.test.ts",
     "tests/unit/actestra/externalEffectIsolation.test.ts",
+    "tests/unit/actestra/generalWorkerProcessAdapter.test.ts",
     "tests/unit/actestra/productBoundary.test.ts",
     "tests/unit/actestra/persistenceUtilityClient.test.ts",
     "tests/unit/actestra/shadowPersistence.test.ts",

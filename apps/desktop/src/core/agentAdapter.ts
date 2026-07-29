@@ -1,5 +1,6 @@
 import {
   approvalId,
+  compareInstants,
   correlationId,
   instant,
   sessionId,
@@ -17,10 +18,17 @@ import {
   type WorkspaceId,
 } from "./domain";
 import { assertCoreEvent, eventStreamId, type CoreEvent, type EventStreamId } from "./events";
+import { toolOutputReference, type ToolOutputReference } from "./privilegedServices";
 
-export const AGENT_ADAPTER_PROTOCOL_VERSION = 1 as const;
+export const AGENT_ADAPTER_PROTOCOL_VERSION = 2 as const;
 
-export const AGENT_CAPABILITIES = ["messages", "approvals", "cancellation", "heartbeats"] as const;
+export const AGENT_CAPABILITIES = [
+  "messages",
+  "approvals",
+  "cancellation",
+  "heartbeats",
+  "tool-results",
+] as const;
 
 export type AgentCapability = (typeof AGENT_CAPABILITIES)[number];
 
@@ -87,6 +95,28 @@ export interface AgentApprovalDecision {
   readonly decidedAt: Instant;
 }
 
+interface AgentToolResultBase {
+  readonly requestId: ToolRequestId;
+  readonly startedAt: Instant;
+  readonly completedAt: Instant;
+}
+
+export type AgentToolResult =
+  | (AgentToolResultBase & {
+      readonly status: "succeeded";
+      readonly outputRef?: ToolOutputReference;
+      readonly summary?: string;
+    })
+  | (AgentToolResultBase & {
+      readonly status: "failed";
+      readonly errorCode: string;
+      readonly message: string;
+    })
+  | (AgentToolResultBase & {
+      readonly status: "cancelled";
+      readonly reason?: string;
+    });
+
 interface AgentSignalBase {
   readonly protocolVersion: typeof AGENT_ADAPTER_PROTOCOL_VERSION;
   readonly sequence: number;
@@ -134,6 +164,16 @@ export type AgentSignal =
       readonly errorCode: string;
       readonly message: string;
       readonly retryable: boolean;
+    })
+  | (AgentSignalBase & {
+      readonly type: "protocol-error";
+      readonly errorCode:
+        | "incompatible-protocol"
+        | "invalid-signal"
+        | "signal-identity-mismatch"
+        | "signal-sequence-gap"
+        | "signal-time-regression";
+      readonly message: string;
     });
 
 export type AgentSignalHandler = (signal: AgentSignal) => void;
@@ -144,6 +184,7 @@ export interface AgentAdapter {
   start(request: AgentStartRequest): Promise<void>;
   send(sessionId: SessionId, input: AgentInput): Promise<void>;
   approve(requestId: ToolRequestId, decision: AgentApprovalDecision): Promise<void>;
+  resolveTool(requestId: ToolRequestId, result: AgentToolResult): Promise<void>;
   cancel(sessionId: SessionId, reason?: string): Promise<void>;
   subscribe(sessionId: SessionId, handler: AgentSignalHandler): UnsubscribeAgentSignals;
   dispose(sessionId: SessionId): Promise<void>;
@@ -163,6 +204,7 @@ const SIGNAL_TYPES = [
   "failed",
   "cancelled",
   "crashed",
+  "protocol-error",
 ] as const;
 const APPROVAL_DECISIONS: readonly AgentApprovalDecisionKind[] = [
   "approved",
@@ -430,6 +472,72 @@ export function assertAgentApprovalDecision(
   validateInstant(value.decidedAt, "Agent approval decision.decidedAt", "invalid-request");
 }
 
+export function assertAgentToolResult(value: unknown): asserts value is AgentToolResult {
+  assertRecord(value, "invalid-request", "Agent tool result");
+  validateBrandedString(
+    value.requestId,
+    "Agent tool result.requestId",
+    toolRequestId,
+    "invalid-request",
+  );
+  validateInstant(value.startedAt, "Agent tool result.startedAt", "invalid-request");
+  validateInstant(value.completedAt, "Agent tool result.completedAt", "invalid-request");
+  if (compareInstants(value.completedAt as Instant, value.startedAt as Instant) < 0) {
+    throw new AgentAdapterError(
+      "invalid-request",
+      "Agent tool result.completedAt cannot predate startedAt",
+    );
+  }
+
+  switch (value.status) {
+    case "succeeded":
+      assertExactKeys(
+        value,
+        ["requestId", "status", "startedAt", "completedAt", "outputRef", "summary"],
+        "invalid-request",
+        "Agent succeeded tool result",
+      );
+      if (value.outputRef !== undefined) {
+        validateBrandedString(
+          value.outputRef,
+          "Agent tool result.outputRef",
+          toolOutputReference,
+          "invalid-request",
+        );
+      }
+      if (value.summary !== undefined) {
+        assertString(value.summary, "invalid-request", "Agent tool result.summary", true);
+      }
+      return;
+    case "failed":
+      assertExactKeys(
+        value,
+        ["requestId", "status", "startedAt", "completedAt", "errorCode", "message"],
+        "invalid-request",
+        "Agent failed tool result",
+      );
+      assertString(value.errorCode, "invalid-request", "Agent tool result.errorCode");
+      assertString(value.message, "invalid-request", "Agent tool result.message", true);
+      return;
+    case "cancelled":
+      assertExactKeys(
+        value,
+        ["requestId", "status", "startedAt", "completedAt", "reason"],
+        "invalid-request",
+        "Agent cancelled tool result",
+      );
+      if (value.reason !== undefined) {
+        assertString(value.reason, "invalid-request", "Agent tool result.reason", true);
+      }
+      return;
+    default:
+      throw new AgentAdapterError(
+        "invalid-request",
+        "Agent tool result.status must be succeeded, failed, or cancelled",
+      );
+  }
+}
+
 function assertSignalBase(value: Record<string, unknown>): void {
   validateProtocolVersion(value.protocolVersion, "Agent signal", "invalid-signal");
 
@@ -555,6 +663,27 @@ export function assertAgentSignal(value: unknown): asserts value is AgentSignal 
         "Agent crashed signal",
       );
       assertSignalErrorFields(value, true);
+      return;
+    case "protocol-error":
+      assertExactKeys(
+        value,
+        [...SIGNAL_BASE_KEYS, "errorCode", "message"],
+        "invalid-signal",
+        "Agent protocol-error signal",
+      );
+      if (
+        value.errorCode !== "incompatible-protocol" &&
+        value.errorCode !== "invalid-signal" &&
+        value.errorCode !== "signal-identity-mismatch" &&
+        value.errorCode !== "signal-sequence-gap" &&
+        value.errorCode !== "signal-time-regression"
+      ) {
+        throw new AgentAdapterError(
+          "invalid-signal",
+          "Agent protocol-error signal.errorCode is unsupported",
+        );
+      }
+      assertString(value.message, "invalid-signal", "Agent protocol-error signal.message", true);
       return;
   }
 }

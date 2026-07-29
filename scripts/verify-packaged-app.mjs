@@ -4,6 +4,10 @@ import process from "node:process";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { extractFile, listPackage, statFile } from "@electron/asar";
+import {
+  extractStaticModuleSpecifiers,
+  findGeneralWorkerAuthorityFindings,
+} from "./general-worker-authority-rules.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const appBundle = path.resolve(
@@ -80,18 +84,7 @@ function extractArchiveText(archiveRelativePath) {
 }
 
 function localModuleSpecifiers(source) {
-  const specifiers = new Set();
-  const patterns = [
-    /\bfrom\s+["'](\.[^"']+)["']/g,
-    /\bimport\s*(?:\(\s*)?["'](\.[^"']+)["']/g,
-    /\brequire\s*\(\s*["'](\.[^"']+)["']/g,
-  ];
-  for (const pattern of patterns) {
-    for (const match of source.matchAll(pattern)) {
-      specifiers.add(match[1]);
-    }
-  }
-  return specifiers;
+  return extractStaticModuleSpecifiers(source).filter((specifier) => specifier.startsWith("."));
 }
 
 function resolvePackagedModule(importer, specifier) {
@@ -151,6 +144,25 @@ if (
   fail("packaged persistence utility does not own the SQLite implementation");
 }
 
+const packagedGeneralWorkerModules = reachablePackagedModules("out/main/general-worker.js");
+for (const [modulePath, source] of packagedGeneralWorkerModules) {
+  const authorityFindings = findGeneralWorkerAuthorityFindings(source, modulePath);
+  if (authorityFindings.length > 0) {
+    fail(`General Worker entry graph contains undeclared authority: ${authorityFindings[0]}`);
+  }
+}
+const packagedGeneralWorkerGraph = [...packagedGeneralWorkerModules.values()].join("\n");
+for (const requiredWorkerMarker of [
+  "general-worker",
+  "no-tool-complete",
+  "tool-results",
+  "General Worker requires protocol version",
+]) {
+  if (!packagedGeneralWorkerGraph.includes(requiredWorkerMarker)) {
+    fail(`packaged General Worker graph is missing ${requiredWorkerMarker}`);
+  }
+}
+
 const archiveStrings = execFileSync("/usr/bin/strings", [archivePath], {
   encoding: "utf8",
   maxBuffer: 16 * 1024 * 1024,
@@ -171,6 +183,7 @@ function isDeclaredAionUiCompatibilityFile(archiveFile) {
   return (
     archiveFile === "out/main/index.js" ||
     archiveFile === "out/main/persistence-utility.js" ||
+    archiveFile === "out/main/general-worker.js" ||
     /^out\/main\/chunks\/persistenceUtilityProtocol-[A-Za-z0-9_-]+\.js$/u.test(archiveFile)
   );
 }

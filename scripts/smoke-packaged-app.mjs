@@ -25,6 +25,7 @@ if (!fs.existsSync(executable)) {
 const child = spawn(executable, [], {
   env: {
     ...process.env,
+    ACTESTRA_E2E_TEST: "1",
     ACTESTRA_USER_DATA_DIR: profileDirectory,
   },
   stdio: ["ignore", "pipe", "pipe"],
@@ -99,6 +100,7 @@ while (
   Date.now() - startedAt < timeoutMilliseconds &&
   (!output.includes("ACTESTRA_READY") ||
     !output.includes("ACTESTRA_PERSISTENCE_UTILITY_READY") ||
+    !output.includes("ACTESTRA_GENERAL_WORKER_READY") ||
     !output.includes("ACTESTRA_WINDOW_READY") ||
     !output.includes("ACTESTRA_RENDERER_READY"))
 ) {
@@ -113,6 +115,7 @@ while (
 if (
   !output.includes("ACTESTRA_READY") ||
   !output.includes("ACTESTRA_PERSISTENCE_UTILITY_READY") ||
+  !output.includes("ACTESTRA_GENERAL_WORKER_READY") ||
   !output.includes("ACTESTRA_WINDOW_READY") ||
   !output.includes("ACTESTRA_RENDERER_READY")
 ) {
@@ -190,6 +193,6 @@ try {
 }
 
 console.info(
-  "Packaged smoke passed: Actestra reached persistence utility, application, window, and renderer ready markers with SQLite schema 6.",
+  "Packaged smoke passed: Actestra reached persistence utility, General Worker, application, window, and renderer ready markers with SQLite schema 6.",
 );
 console.info(`Isolated profile: ${profileDirectory}`);
