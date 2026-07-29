@@ -70,10 +70,14 @@ Checks will be added when the application toolchain exists. Until then:
 Run the bootstrap documentation checks from the repository root:
 
 ```bash
-npx --yes markdownlint-cli2@0.20.0 "**/*.md" "#node_modules"
+npx --yes markdownlint-cli2@0.20.0 "docs/**/*.md" "*.md"
 node scripts/check-doc-links.mjs
 git diff --check
 ```
+
+The frozen upstream foundation and generated downstream tree are excluded from
+Actestra Markdown style checks; their contents are governed by source hashes
+and the downstream overlay contract.
 
 Application changes later require, at minimum:
 

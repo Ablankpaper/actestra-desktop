@@ -38,6 +38,32 @@ jobs:
       - name: Verify documentation links
         run: bun run docs:check
 
+      - name: Install materialized Actestra AionUi dependencies
+        run: bun run downstream:aionui:install
+
+      - name: Type-check materialized Actestra AionUi application
+        working-directory: .actestra/aionui-v2.1.41
+        run: bunx tsc --noEmit --pretty false
+
+      - name: Verify Actestra identity and isolation contracts
+        working-directory: .actestra/aionui-v2.1.41
+        run: >-
+          bun run test
+          tests/unit/actestra
+          tests/unit/bootstrap/buildWithBuilder.test.ts
+          tests/unit/feedback/FeedbackReportModal.dom.test.tsx
+          tests/unit/feedback/submitFeedbackReport.test.ts
+          tests/unit/process/services/autoUpdaterService.test.ts
+          tests/unit/providers/ClientFactory.test.ts
+          tests/unit/renderer/layout/LayoutSiderBrandHome.dom.test.tsx
+          tests/unit/renderer/useDesktopTurnNotification.dom.test.tsx
+          tests/unit/sentry.test.ts
+          tests/unit/updateBridgeCdnRewrite.test.ts
+          tests/unit/updateBridgeDownloadDedupe.test.ts
+
+      - name: Build materialized Actestra AionUi application
+        run: bun run --cwd .actestra/aionui-v2.1.41 package
+
       - name: Build unsigned local app bundle
         run: bun run dist:dir
         env:

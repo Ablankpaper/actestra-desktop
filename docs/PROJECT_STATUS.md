@@ -4,7 +4,7 @@ Last updated: 2026-07-29
 
 ## Current phase
 
-### P3 accepted; P4.0 native AionUi preservation active
+### P3 accepted; P4.0 CI-backed; P4.1 identity and isolation locally complete
 
 Branch `feat/aionui-first-foundation` starts from `origin/main` commit
 `a32b7cb4516f5592e8e1fe6f1f5afad7c50de991` and implements the corrected
@@ -40,6 +40,32 @@ Current F0 evidence:
 - after restoring one exact upstream workflow fixture omitted by the initial
   archive selection, the complete native rerun passes 321 files with 1 skipped
   and 2,576 tests with 5 skipped; there are 0 failures.
+
+Current F1 implementation and local evidence:
+
+- a reviewable downstream overlay materializes Actestra from the exact frozen
+  AionUi source without editing the 1,766-file foundation;
+- the overlay checker passes 64 declared changed files and 4 protected R0
+  layout/bridge files;
+- the real AionUi routes, layout, Guide, feature entries, and bridge surface
+  remain; product identity, icons, application ID, executable, protocol,
+  repository, and release links are Actestra-owned;
+- a fresh versioned Actestra profile is created independently from native
+  AionUi data with `0700` directories and a `0600` manifest;
+- telemetry, updates, feedback uploads, known upstream official services, and
+  public listeners are disabled by default without deleting their UI entries;
+- strict types, 12 focused F1/retained-provider files with 120 tests, 323
+  complete native files with 2,585 passing tests, and native production build
+  pass;
+- a real downstream Electron launch shows the preserved AionUi desktop
+  structure with the Actestra title and wordmark;
+- the runtime listener snapshot is loopback-only and the settled process tree
+  has no non-loopback established socket or official-service log match.
+
+Detailed implementation and non-claim evidence is recorded in
+[AionUi F1 Identity and Isolation](product/AIONUI_F1_IDENTITY_ISOLATION.md).
+F1 is local validation at this point in the document: exact-head CI, merge,
+candidate, release, distribution, and acceptance remain separate gates.
 
 Native AionUi full tests, build, and visual launch remain local evidence. The
 foundation manifest and compatibility checks are CI-backed on the exact

@@ -38,6 +38,17 @@ releases begin.
 - Native AionUi install, test, build, launch, and visual-evidence entrypoints.
 - Full AionUi functional-UI retention matrix, preserve-first fusion topology,
   downstream patch rules, and F0-F7 migration phases.
+- Reviewable F1 downstream overlay that materializes Actestra from the frozen
+  AionUi foundation without modifying the upstream snapshot.
+- Actestra-owned identity, icons, application ID, executable, protocol,
+  repository links, and a private versioned profile with restrictive
+  permissions.
+- Fail-closed isolation for telemetry, updates, feedback upload, upstream
+  official services, and public listeners while retaining the corresponding
+  AionUi implementation and functional UI entries.
+- Native F1 policy tests, full native regression execution, production build,
+  real Electron launch, runtime-boundary evidence, and an Actestra visual
+  preservation screenshot.
 
 ### Changed
 
