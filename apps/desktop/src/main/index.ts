@@ -3,6 +3,7 @@ import { app, BrowserWindow, ipcMain, session } from "electron";
 import type { AppInfo } from "../shared/contracts";
 import { CURRENT_DATA_LAYOUT_VERSION, ensureDataLayout } from "./dataLayout";
 import { registerDesktopIpc } from "./ipc/desktopIpc";
+import { launchElectronPersistenceUtility } from "./persistence/electronPersistenceUtility";
 import {
   createMainPlatformServices,
   type MainPlatformServices,
@@ -117,7 +118,18 @@ if (!hasSingleInstanceLock) {
       );
 
       installSessionSecurity(session.defaultSession, app.isPackaged);
-      const services = createMainPlatformServices(app.getPath("userData"));
+      const persistence = await launchElectronPersistenceUtility({
+        modulePath: path.join(__dirname, "persistence-utility.js"),
+        userDataPath: app.getPath("userData"),
+        workingDirectory: process.resourcesPath,
+      });
+      console.info(
+        `ACTESTRA_PERSISTENCE_UTILITY_READY ${JSON.stringify({
+          schemaVersion: persistence.schemaVersion,
+          mode: "utility-process",
+        })}`,
+      );
+      const services = createMainPlatformServices(persistence);
       platformServices = services;
       disposeDesktopIpc = registerDesktopIpc({
         ipcMain,

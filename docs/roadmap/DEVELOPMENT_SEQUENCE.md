@@ -29,17 +29,20 @@ features are implemented.
 | P7 | Security and reliability hardening | P4-P6 |
 | P8 | Cross-platform internal beta | P7 |
 
-Current execution state on 2026-07-30: P4.0/F0 through P4.3/F3.3 are merged on
-`main`. Pull request 8 reached exact final head
+Current execution state on 2026-07-30: native-fusion slices F0 through F3.3
+are merged on `main`. Pull request 8 reached exact final head
 `3f85e13072f5fb13fb43c9dae94f992bb0b7fb9c` and squash merged as
 `c841ed9cb6a54bcb2e4078ca2be941adce0ac4ad`; exact main CI run 30449520722
-passes. Seven bounded native metadata domains remain inert schema version 4
+passes. Pull request 9 then recorded the P6 sidecar direction and squash
+merged as `327d5ca5abf3a0090bc2b3d3193e2935bbd47f38`; exact main CI run
+30470505690 passes. Seven bounded native metadata domains remain inert schema version 4
 shadow evidence. Desktop confirmation responses use the schema version 5
 persist-before-deliver outbox, while F3.2 and F3.3 gate response delivery and
 the bounded boolean reconciliation read through separate P3 policy and durable
 audit paths without changing the original AionUi permission and pet UI.
-General-work authority remains incomplete. Candidate and release remain
-separate.
+General-work GW-P4.2 is implemented and locally validated on
+`feat/aionui-p4-persistence-utility`, but it is not yet pushed, CI-backed, or
+merged. Candidate and release remain separate.
 
 ## P0 — Project Foundation
 
@@ -114,20 +117,26 @@ separate.
 
 ## P4 — Native AionUi Preservation and Actestra Fusion
 
+The `F` labels below are the native-fusion track already used by F0 through
+F3.3. The `GW-P4.n` labels are the separate ordered general-work execution
+track. The `GW` prefix is mandatory in cross-track status text so, for example,
+GW-P4.3 General Worker cannot be confused with the historical F3.1 authority
+slice previously described as P4.3/F3.1.
+
 ### Deliverables
 
-- **P4.0 — native baseline:** freeze the exact AionUi source, preserve all
+- **F0 — native baseline:** freeze the exact AionUi source, preserve all
   routes and bridge domains, run the native test/build/launch path, record
   golden screenshots, and establish the R0/R1/R2 retention matrix.
-- **P4.1 — identity and isolation:** apply Actestra identity and versioned
+- **F1 — identity and isolation:** apply Actestra identity and versioned
   profiles without changing the AionUi layout or removing feature entries;
   isolate upstream account, telemetry, update, feedback, catalog, and other
   unowned external effects while retaining their UI states.
-- **P4.2 — compatibility projection:** map native conversation, task, provider,
+- **F2 — compatibility projection:** map native conversation, task, provider,
   workspace, approval, artifact, and runtime shapes to read-only or
   metadata-only P3 shadow projections. ADR-0011 keeps those projections inert,
   main-owned, fail-isolated, and separate from authoritative P3 tables.
-- **P4.3 — authoritative general work:** move one functional domain at a time to
+- **F3 — narrow native authority:** move one functional domain at a time to
   Actestra persistence, policy, approval, audit, artifact, and worker authority
   while keeping AionUi bridge and UI semantics.
   - **F3.1 — approval response and delivery:** reserve the immutable desktop
@@ -148,6 +157,27 @@ separate.
     consumes it; persist only metadata policy/start/outcome audit, keep native
     request creation and content authoritative in AionCore, and retain an
     explicit rollback of the read to F3.1 while retaining F3.2 delivery.
+- **GW-P4.2 — general-work persistence foundation:** move schemas 1 through 5 and
+  all P3/F2/F3 persistence operations behind a dedicated utility process; add
+  schema version 6 workspace grants and immutable, bounded UTF-8 content
+  references; prove that SQLite is unreachable from Electron main. Preserve
+  the complete AionUi application and expose an explicit compatibility
+  unavailable state if the utility cannot start.
+- **GW-P4.3 — General Worker and Adapter v2:** launch one deterministic real worker
+  process, negotiate its exact protocol and capabilities, add typed tool-result
+  resolution, and prove timeout, malformed-message, stale-attempt, crash,
+  cancellation, and cleanup behavior.
+- **GW-P4.4 — scoped native tools and policy:** admit only bounded workspace
+  text-read and create-only task-output write capabilities through trusted
+  manifests, workspace grants, deny-by-default policy, and durable audit.
+- **GW-P4.5 — coordination and recovery:** connect task/attempt state, worker
+  supervision, tools, normalized events, content, artifacts, cancellation,
+  terminal evidence, and restart recovery without orphan processes or silent
+  success.
+- **GW-P4.6 — preserved-AionUi journey:** map the completed general-work flow into
+  original AionUi conversation, workspace, permission, preview, artifact, and
+  status surfaces through bounded intents and projections; extend target-app
+  packaged smoke through restart, denial, and cancellation.
 - Support scoped workspace reads and task-output writes through the preserved
   file, workspace, conversation, preview, and artifact surfaces.
 - Add representative file, research, writing, office-document, schedule,

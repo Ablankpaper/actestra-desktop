@@ -252,7 +252,12 @@ export function materializeAionUiDownstream(options = {}) {
   }
 
   const sourceEntries = parseSourceManifest(sourceManifestContents.toString("utf8"));
-  fs.rmSync(outputRoot, { recursive: true, force: true });
+  fs.rmSync(outputRoot, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 100,
+  });
   fs.mkdirSync(outputRoot, { recursive: true });
   copyManifestSelection(sourceRoot, outputRoot, sourceEntries);
   copyOwnedSources(outputRoot, overlay.sourceCopies ?? []);

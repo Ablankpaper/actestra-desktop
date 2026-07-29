@@ -71,6 +71,86 @@ if (!fs.existsSync(archivePath)) {
   fail("app.asar is missing");
 }
 
+function extractArchiveText(archiveRelativePath) {
+  try {
+    return extractFile(archivePath, archiveRelativePath).toString("utf8");
+  } catch {
+    fail(`packaged module is missing: ${archiveRelativePath}`);
+  }
+}
+
+function localModuleSpecifiers(source) {
+  const specifiers = new Set();
+  const patterns = [
+    /\bfrom\s+["'](\.[^"']+)["']/g,
+    /\bimport\s*(?:\(\s*)?["'](\.[^"']+)["']/g,
+    /\brequire\s*\(\s*["'](\.[^"']+)["']/g,
+  ];
+  for (const pattern of patterns) {
+    for (const match of source.matchAll(pattern)) {
+      specifiers.add(match[1]);
+    }
+  }
+  return specifiers;
+}
+
+function resolvePackagedModule(importer, specifier) {
+  const cleanSpecifier = specifier.split(/[?#]/u, 1)[0];
+  const resolved = path.posix.normalize(
+    path.posix.join(path.posix.dirname(importer), cleanSpecifier),
+  );
+  if (!resolved.startsWith("out/main/")) {
+    fail(`main module import escapes its packaged root: ${importer} -> ${specifier}`);
+  }
+
+  const candidates = path.posix.extname(resolved)
+    ? [resolved]
+    : [`${resolved}.js`, path.posix.join(resolved, "index.js")];
+  for (const candidate of candidates) {
+    try {
+      extractFile(archivePath, candidate);
+      return candidate;
+    } catch {
+      // Continue to the next supported ESM resolution candidate.
+    }
+  }
+  fail(`main module import is missing: ${importer} -> ${specifier}`);
+}
+
+function reachablePackagedModules(entry) {
+  const reachable = new Map();
+  const pending = [entry];
+  while (pending.length > 0) {
+    const modulePath = pending.pop();
+    if (reachable.has(modulePath)) {
+      continue;
+    }
+    const source = extractArchiveText(modulePath);
+    reachable.set(modulePath, source);
+    for (const specifier of localModuleSpecifiers(source)) {
+      pending.push(resolvePackagedModule(modulePath, specifier));
+    }
+  }
+  return reachable;
+}
+
+const packagedMainModules = reachablePackagedModules("out/main/index.js");
+const forbiddenMainPersistencePattern = /node:sqlite|DatabaseSync|openSqliteCorePersistence/;
+for (const [modulePath, source] of packagedMainModules) {
+  if (forbiddenMainPersistencePattern.test(source)) {
+    fail(`Electron main entry graph contains synchronous SQLite: ${modulePath}`);
+  }
+}
+
+const packagedPersistenceModules = reachablePackagedModules("out/main/persistence-utility.js");
+if (
+  ![...packagedPersistenceModules.values()].some((source) =>
+    /node:sqlite|DatabaseSync/.test(source),
+  )
+) {
+  fail("packaged persistence utility does not own the SQLite implementation");
+}
+
 const archiveStrings = execFileSync("/usr/bin/strings", [archivePath], {
   encoding: "utf8",
   maxBuffer: 16 * 1024 * 1024,
@@ -87,7 +167,14 @@ for (const forbiddenValue of forbiddenArchivePatterns) {
   }
 }
 
-const declaredAionUiCompatibilityFiles = new Set(["out/main/index.js"]);
+function isDeclaredAionUiCompatibilityFile(archiveFile) {
+  return (
+    archiveFile === "out/main/index.js" ||
+    archiveFile === "out/main/persistence-utility.js" ||
+    /^out\/main\/chunks\/persistenceUtilityProtocol-[A-Za-z0-9_-]+\.js$/u.test(archiveFile)
+  );
+}
+
 const textualArchiveExtensions = new Set([".cjs", ".css", ".html", ".js", ".json", ".mjs", ".txt"]);
 for (const archiveEntry of listPackage(archivePath, { isPack: false })) {
   const archiveFile = archiveEntry.replace(/^[/\\]+/u, "");
@@ -100,17 +187,20 @@ for (const archiveEntry of listPackage(archivePath, { isPack: false })) {
     continue;
   }
   const contents = extractFile(archivePath, archiveFile).toString("utf8");
-  if (/\baionui\b/iu.test(contents) && !declaredAionUiCompatibilityFiles.has(archiveFile)) {
+  if (/\baionui\b/iu.test(contents) && !isDeclaredAionUiCompatibilityFile(archiveFile)) {
     fail(`undeclared AionUi identity appears in app.asar file: ${archiveFile}`);
   }
 }
 
-const packagedMain = extractFile(archivePath, "out/main/index.js").toString("utf8");
-if (
-  /\baionui\b/iu.test(packagedMain) &&
-  (!packagedMain.includes("aionui-shadow-evidence") || !packagedMain.includes("aionui-v2.1.41"))
-) {
-  fail("packaged main contains AionUi text outside the declared F2 compatibility contract");
+const packagedCompatibilityGraph = [...packagedPersistenceModules.values()].join("\n");
+for (const requiredCompatibilityMarker of [
+  "aionui-shadow-evidence",
+  "reserve-aionui-approval-decision",
+  "aionui-v2.1.41",
+]) {
+  if (!packagedCompatibilityGraph.includes(requiredCompatibilityMarker)) {
+    fail(`packaged compatibility graph is missing ${requiredCompatibilityMarker}`);
+  }
 }
 
 const packagedRendererHtml = extractFile(archivePath, "out/renderer/index.html").toString("utf8");

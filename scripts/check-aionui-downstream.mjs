@@ -53,6 +53,15 @@ function requireText(filePath, values) {
   }
 }
 
+function rejectText(filePath, values) {
+  const contents = fs.readFileSync(filePath, "utf8");
+  for (const value of values) {
+    if (contents.includes(value)) {
+      throw new Error(`${path.relative(repositoryRoot, filePath)} contains forbidden ${value}`);
+    }
+  }
+}
+
 function requireOrderedText(filePath, anchor, first, second) {
   const contents = fs.readFileSync(filePath, "utf8");
   const anchorIndex = contents.indexOf(anchor);
@@ -103,11 +112,11 @@ function main() {
 
   if (
     overlay.schemaVersion !== 1 ||
-    overlay.phase !== "F3.3" ||
+    overlay.phase !== "GW-P4.2" ||
     overlay.uiContract.layoutChangesAllowed !== false ||
     overlay.uiContract.featureEntryRemovalAllowed !== false
   ) {
-    throw new Error("Invalid F3.3 downstream overlay policy");
+    throw new Error("Invalid GW-P4.2 downstream overlay policy");
   }
 
   for (const patch of overlay.patches) {
@@ -260,7 +269,9 @@ function main() {
     path.join(outputRoot, "packages/desktop/src/process/services/actestraShadowBridge.ts"),
     [
       "event.senderFrame !== currentWindow.webContents.mainFrame",
-      "openSqliteCorePersistence",
+      "initializeActestraPersistenceUtility",
+      "launchElectronPersistenceUtility",
+      "actestra-persistence-utility.js",
       "persistence-unavailable",
       "ACTESTRA_APPROVAL_DECIDE_CHANNEL",
       "AionUiApprovalAuthorityService",
@@ -273,6 +284,20 @@ function main() {
       "recoverPending",
     ],
   );
+  rejectText(
+    path.join(outputRoot, "packages/desktop/src/process/services/actestraShadowBridge.ts"),
+    ["openSqliteCorePersistence", "node:sqlite", "DatabaseSync"],
+  );
+  requireText(path.join(outputRoot, "packages/desktop/electron.vite.config.ts"), [
+    "'actestra-persistence-utility'",
+    "persistenceUtilityEntry.ts",
+    "entryFileNames: '[name].js'",
+  ]);
+  requireText(path.join(outputRoot, "packages/desktop/src/index.ts"), [
+    "await initializeProcess();",
+    "await initializeActestraPersistenceUtility(app.getPath('userData'));",
+    "registerActestraShadowBridge(mainWindow);",
+  ]);
   requireText(
     path.join(
       outputRoot,
@@ -387,20 +412,36 @@ function main() {
     "environment: process.env",
   );
   requireText(
-    path.join(outputRoot, "packages/desktop/src/actestra/main/persistence/sqliteMigrations.ts"),
+    path.join(outputRoot, "packages/desktop/src/actestra/utility/persistence/sqliteMigrations.ts"),
     [
-      "CURRENT_CORE_SCHEMA_VERSION = 5",
+      "CURRENT_CORE_SCHEMA_VERSION = 6",
       "aionui_shadow_evidence",
       "aionui_approval_decisions",
       "pending-delivery",
+      "workspace_grants",
+      "content_references",
     ],
+  );
+  rejectText(
+    path.join(
+      outputRoot,
+      "packages/desktop/src/actestra/main/persistence/persistenceUtilityClient.ts",
+    ),
+    ["node:sqlite", "DatabaseSync", "openSqliteCorePersistence"],
+  );
+  requireText(
+    path.join(
+      outputRoot,
+      "packages/desktop/src/actestra/utility/persistence/sqliteCorePersistence.ts",
+    ),
+    ["node:sqlite", "DatabaseSync", "persistWorkspaceGrant", "storeContentReference"],
   );
 
   console.log(
-    `Verified Actestra F3.3 downstream overlay: ${changedFiles.size} declared files, ` +
+    `Verified Actestra GW-P4.2 downstream overlay: ${changedFiles.size} declared files, ` +
       `${overlay.invariantFiles.length} R0 invariant files, ${overlay.sourceCopies.length} ` +
-      "reviewed source copies, identity/isolation, shadow projection, approval authority and " +
-      "policy-gated delivery plus reconciliation present.",
+      "reviewed source copies, preserved AionUI surfaces, utility-owned persistence, shadow and " +
+      "approval authority, workspace grants, and bounded content references present.",
   );
 }
 

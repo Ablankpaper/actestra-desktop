@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
-  "phase": "F3.3",
+  "phase": "GW-P4.2",
   "upstream": {
     "tag": "v2.1.41",
     "commit": "2d8925fc67a97a20996fadcd2a0862b778b572ba",
     "manifestSha256": "252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f"
   },
-  "authorityOwner": "Actestra desktop main process",
+  "authorityOwner": "Actestra Core through the supervised desktop persistence utility",
   "classifications": ["R0", "R1", "R2"],
   "migration": {
-    "strategy": "Fresh Actestra profile v1; native AionUi profiles remain untouched. Schema v5 retains the authoritative approval-decision outbox. F3.2 gates delivery of an already persisted response, and F3.3 separately gates only the bounded loopback pending-state read used for retry and restart reconciliation. Both reuse the accepted schema v3 metadata-only privileged audit store and neither migrates or infers the underlying native tool operation.",
-    "rollback": "Set ACTESTRA_APPROVAL_RECONCILIATION_GATE=0 to bypass only the F3.3 isPending wrapper, returning that read to F3.1 direct native reconciliation while retaining F3.2 delivery. Set ACTESTRA_APPROVAL_POLICY_GATE=0 to retain F3.1 persistence with direct native delivery and reconciliation reads, set ACTESTRA_APPROVAL_AUTHORITY=0 for the explicit native fallback, or regenerate without the corresponding patch. Existing schema v5 decisions and privileged audit rows remain inert and the frozen AionUi foundation stays byte-identical."
+    "strategy": "Fresh Actestra profile v1; native AionUi profiles remain untouched. Forward-only schema v6 retains schemas v1-v5 exactly, adds canonical workspace grants and bounded opaque content references, and moves all Actestra SQLite ownership—including existing AionUI shadow evidence and approval authority—behind one supervised Electron utility-process protocol. A utility startup failure leaves the preserved AionUI product available while Actestra shadow and approval authority report an explicit unavailable state.",
+    "rollback": "Regenerate without patch 0006 to return to schema v5 direct-main persistence. Existing schema v6 rows remain inert and are never rewritten or deleted; use a fresh Actestra profile for a true downgrade. The frozen AionUi foundation and native AionUi profiles stay byte-identical."
   },
   "uiContract": {
     "layoutChangesAllowed": false,
@@ -82,6 +82,18 @@
       ],
       "authorityOwner": "Actestra desktop main process",
       "rollback": "Set ACTESTRA_APPROVAL_RECONCILIATION_GATE=0 to return only the isPending read to F3.1 direct native reconciliation while retaining the exact F3.2 policy-gated delivery path, or regenerate without this patch. Existing audit rows remain immutable."
+    },
+    {
+      "path": "patches/0006-actestra-persistence-utility.mjs",
+      "classification": ["R1"],
+      "domains": [
+        "persistence utility process",
+        "workspace authorization",
+        "bounded content references",
+        "AionUI shadow and approval persistence"
+      ],
+      "authorityOwner": "Actestra Core through the supervised desktop persistence utility",
+      "rollback": "Regenerate without this patch and use a fresh Actestra profile. Schema v6 data remains inert; no native AionUi profile or frozen foundation file is mutated."
     }
   ],
   "sourceCopies": [
@@ -106,12 +118,20 @@
       "destination": "packages/desktop/src/actestra/core/persistence.ts"
     },
     {
+      "source": "apps/desktop/src/core/productPersistence.ts",
+      "destination": "packages/desktop/src/actestra/core/productPersistence.ts"
+    },
+    {
       "source": "apps/desktop/src/core/platform.ts",
       "destination": "packages/desktop/src/actestra/core/platform.ts"
     },
     {
       "source": "apps/desktop/src/core/privilegedServices.ts",
       "destination": "packages/desktop/src/actestra/core/privilegedServices.ts"
+    },
+    {
+      "source": "apps/desktop/src/core/workloadContent.ts",
+      "destination": "packages/desktop/src/actestra/core/workloadContent.ts"
     },
     {
       "source": "apps/desktop/src/compatibility/aionui/index.ts",
@@ -146,12 +166,12 @@
       "destination": "packages/desktop/src/actestra/main/compatibility/aionuiShadowProjectionService.ts"
     },
     {
-      "source": "apps/desktop/src/main/persistence/sqliteCorePersistence.ts",
-      "destination": "packages/desktop/src/actestra/main/persistence/sqliteCorePersistence.ts"
+      "source": "apps/desktop/src/main/persistence/electronPersistenceUtility.ts",
+      "destination": "packages/desktop/src/actestra/main/persistence/electronPersistenceUtility.ts"
     },
     {
-      "source": "apps/desktop/src/main/persistence/sqliteMigrations.ts",
-      "destination": "packages/desktop/src/actestra/main/persistence/sqliteMigrations.ts"
+      "source": "apps/desktop/src/main/persistence/persistenceUtilityClient.ts",
+      "destination": "packages/desktop/src/actestra/main/persistence/persistenceUtilityClient.ts"
     },
     {
       "source": "apps/desktop/src/main/privileged/deterministicPolicyEngine.ts",
@@ -172,6 +192,26 @@
     {
       "source": "apps/desktop/src/main/privileged/toolGateway.ts",
       "destination": "packages/desktop/src/actestra/main/privileged/toolGateway.ts"
+    },
+    {
+      "source": "apps/desktop/src/shared/persistenceUtilityProtocol.ts",
+      "destination": "packages/desktop/src/actestra/shared/persistenceUtilityProtocol.ts"
+    },
+    {
+      "source": "apps/desktop/src/utility/persistence/persistenceUtilityEntry.ts",
+      "destination": "packages/desktop/src/actestra/utility/persistence/persistenceUtilityEntry.ts"
+    },
+    {
+      "source": "apps/desktop/src/utility/persistence/persistenceUtilityService.ts",
+      "destination": "packages/desktop/src/actestra/utility/persistence/persistenceUtilityService.ts"
+    },
+    {
+      "source": "apps/desktop/src/utility/persistence/sqliteCorePersistence.ts",
+      "destination": "packages/desktop/src/actestra/utility/persistence/sqliteCorePersistence.ts"
+    },
+    {
+      "source": "apps/desktop/src/utility/persistence/sqliteMigrations.ts",
+      "destination": "packages/desktop/src/actestra/utility/persistence/sqliteMigrations.ts"
     }
   ],
   "assetCopies": [
@@ -230,18 +270,25 @@
     "packages/desktop/src/actestra/core/index.ts",
     "packages/desktop/src/actestra/core/persistence.ts",
     "packages/desktop/src/actestra/core/platform.ts",
+    "packages/desktop/src/actestra/core/productPersistence.ts",
     "packages/desktop/src/actestra/core/privilegedServices.ts",
+    "packages/desktop/src/actestra/core/workloadContent.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiApprovalAuthorityService.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiApprovalPolicyGate.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiApprovalReconciliationPolicyGate.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiShadowProjectionService.ts",
-    "packages/desktop/src/actestra/main/persistence/sqliteCorePersistence.ts",
-    "packages/desktop/src/actestra/main/persistence/sqliteMigrations.ts",
+    "packages/desktop/src/actestra/main/persistence/electronPersistenceUtility.ts",
+    "packages/desktop/src/actestra/main/persistence/persistenceUtilityClient.ts",
     "packages/desktop/src/actestra/main/privileged/deterministicPolicyEngine.ts",
     "packages/desktop/src/actestra/main/privileged/inMemoryApprovalService.ts",
     "packages/desktop/src/actestra/main/privileged/persistentAuditTrail.ts",
     "packages/desktop/src/actestra/main/privileged/referenceCredentialBroker.ts",
     "packages/desktop/src/actestra/main/privileged/toolGateway.ts",
+    "packages/desktop/src/actestra/shared/persistenceUtilityProtocol.ts",
+    "packages/desktop/src/actestra/utility/persistence/persistenceUtilityEntry.ts",
+    "packages/desktop/src/actestra/utility/persistence/persistenceUtilityService.ts",
+    "packages/desktop/src/actestra/utility/persistence/sqliteCorePersistence.ts",
+    "packages/desktop/src/actestra/utility/persistence/sqliteMigrations.ts",
     "packages/desktop/src/common/adapter/actestraApprovalAuthorityClient.ts",
     "packages/desktop/src/common/adapter/actestraShadowPublisher.ts",
     "packages/desktop/src/common/adapter/httpBridge.ts",
@@ -308,6 +355,7 @@
     "tests/unit/actestra/approvalNativeTransport.test.ts",
     "tests/unit/actestra/externalEffectIsolation.test.ts",
     "tests/unit/actestra/productBoundary.test.ts",
+    "tests/unit/actestra/persistenceUtilityClient.test.ts",
     "tests/unit/actestra/shadowPersistence.test.ts",
     "tests/unit/actestra/shadowProjection.test.ts",
     "tests/unit/actestra/shadowPublisher.test.ts",

@@ -14,25 +14,28 @@ export type CorrelationId = BrandedString<"CorrelationId">;
 export type ToolRequestId = BrandedString<"ToolRequestId">;
 export type Instant = BrandedString<"Instant">;
 
-export type CoreContractErrorCode =
-  | "invalid-identifier"
-  | "invalid-timestamp"
-  | "invalid-transition"
-  | "invalid-record"
-  | "duplicate-id"
-  | "missing-reference"
-  | "cross-workspace-reference"
-  | "invalid-reference"
-  | "invalid-event"
-  | "invalid-event-redaction"
-  | "event-id-conflict"
-  | "event-sequence-gap"
-  | "event-sequence-conflict"
-  | "event-time-regression"
-  | "event-identity-mismatch"
-  | "event-state-mismatch"
-  | "event-after-terminal"
-  | "invalid-event-cursor";
+export const CORE_CONTRACT_ERROR_CODES = [
+  "invalid-identifier",
+  "invalid-timestamp",
+  "invalid-transition",
+  "invalid-record",
+  "duplicate-id",
+  "missing-reference",
+  "cross-workspace-reference",
+  "invalid-reference",
+  "invalid-event",
+  "invalid-event-redaction",
+  "event-id-conflict",
+  "event-sequence-gap",
+  "event-sequence-conflict",
+  "event-time-regression",
+  "event-identity-mismatch",
+  "event-state-mismatch",
+  "event-after-terminal",
+  "invalid-event-cursor",
+] as const;
+
+export type CoreContractErrorCode = (typeof CORE_CONTRACT_ERROR_CODES)[number];
 
 export class CoreContractError extends Error {
   constructor(

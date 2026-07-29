@@ -32,7 +32,16 @@ export default defineConfig({
     build: {
       outDir: path.join(projectRoot, "out/main"),
       rollupOptions: {
-        input: path.join(desktopRoot, "src/main/index.ts"),
+        input: {
+          index: path.join(desktopRoot, "src/main/index.ts"),
+          "persistence-utility": path.join(
+            desktopRoot,
+            "src/utility/persistence/persistenceUtilityEntry.ts",
+          ),
+        },
+        output: {
+          entryFileNames: "[name].js",
+        },
       },
     },
   },

@@ -17,11 +17,13 @@ planning, and governance documents.
 | [AionUi F3.1 Approval Decision Authority](product/AIONUI_F3_APPROVAL_AUTHORITY.md) | Persist-before-deliver desktop confirmation authority, reconciliation, rollback, parity, and non-claims |
 | [AionUi F3.2 Approval Delivery Policy Gate](product/AIONUI_F3_APPROVAL_POLICY_GATE.md) | Exact loopback delivery capability, P3 policy and durable audit order, rollback, and non-claims |
 | [AionUi F3.3 Approval Reconciliation Policy Gate](product/AIONUI_F3_APPROVAL_RECONCILIATION_GATE.md) | Exact pending-state read capability, retry/restart policy and audit, rollback, and non-claims |
+| [P4 General Work](product/P4_GENERAL_WORK.md) | Persistence utility, content/grant foundation, real-worker and native-tool sequence, validation, and non-claims |
 | [AionUi-first PR 6 Review Closure](product/AIONUI_FIRST_PR6_REVIEW_CLOSURE.md) | Partitioned review coverage, valid remediation, rejected candidates, package proof, blockers, and final gates |
 | [Development Sequence](roadmap/DEVELOPMENT_SEQUENCE.md) | Ordered phases, dependencies, and exit gates |
 | [System Overview](architecture/SYSTEM_OVERVIEW.md) | Product boundaries, components, data ownership, and isolation |
 | [AionUi–Actestra Fusion](architecture/AIONUI_ACTESTRA_FUSION.md) | Preserve-first topology, authority transition, phases, and patch rules |
 | [CrewAI P6 Sidecar Decision](architecture/decisions/0015-crewai-supervised-orchestration-sidecar.md) | CrewAI candidate role, Actestra authority, process isolation, admission, and packaging gates |
+| [P4 Process and Content Decision](architecture/decisions/0016-p4-general-work-process-and-content-boundaries.md) | Persistence utility authority, workspace grants, bounded content references, AionUi preservation, and ordered follow-up |
 | [Architecture Decisions](architecture/decisions/README.md) | Accepted and proposed architectural decisions |
 
 ## Governance

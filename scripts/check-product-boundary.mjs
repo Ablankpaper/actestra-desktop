@@ -8,6 +8,7 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 const productSourceRoot = path.join(repositoryRoot, "apps", "desktop", "src");
 const rendererRoot = path.join(productSourceRoot, "renderer");
 const preloadRoot = path.join(productSourceRoot, "preload");
+const mainRoot = path.join(productSourceRoot, "main");
 
 const forbiddenProductPatterns = [
   { label: "AionUi product identity", pattern: /\baionui\b/i },
@@ -22,12 +23,16 @@ const aionUiCompatibilityIdentityFiles = new Set([
   "apps/desktop/src/compatibility/aionui/approvalAuthority.ts",
   "apps/desktop/src/compatibility/aionui/nativeObservations.ts",
   "apps/desktop/src/compatibility/aionui/shadowProjection.ts",
+  "apps/desktop/src/core/productPersistence.ts",
   "apps/desktop/src/main/compatibility/aionuiApprovalAuthorityService.ts",
   "apps/desktop/src/main/compatibility/aionuiApprovalPolicyGate.ts",
   "apps/desktop/src/main/compatibility/aionuiApprovalReconciliationPolicyGate.ts",
   "apps/desktop/src/main/compatibility/aionuiShadowProjectionService.ts",
-  "apps/desktop/src/main/persistence/sqliteCorePersistence.ts",
-  "apps/desktop/src/main/persistence/sqliteMigrations.ts",
+  "apps/desktop/src/main/persistence/persistenceUtilityClient.ts",
+  "apps/desktop/src/shared/persistenceUtilityProtocol.ts",
+  "apps/desktop/src/utility/persistence/persistenceUtilityService.ts",
+  "apps/desktop/src/utility/persistence/sqliteCorePersistence.ts",
+  "apps/desktop/src/utility/persistence/sqliteMigrations.ts",
 ]);
 
 function listFiles(directory) {
@@ -64,6 +69,12 @@ const sourceFiles = listFiles(productSourceRoot);
 const identityFindings = reportPatternMatches(sourceFiles, forbiddenProductPatterns);
 const rendererFindings = reportPatternMatches(listFiles(rendererRoot), rendererPrivilegePatterns);
 const preloadFindings = reportPatternMatches(listFiles(preloadRoot), preloadPrivilegePatterns);
+const mainPersistenceFindings = reportPatternMatches(listFiles(mainRoot), [
+  {
+    label: "synchronous SQLite implementation outside utility process",
+    pattern: /(?:from\s+["']node:sqlite["']|\bDatabaseSync\b)/,
+  },
+]);
 
 const packageJson = JSON.parse(fs.readFileSync(path.join(repositoryRoot, "package.json"), "utf8"));
 const builderConfiguration = fs.readFileSync(
@@ -102,6 +113,7 @@ const findings = [
   ...identityFindings,
   ...rendererFindings,
   ...preloadFindings,
+  ...mainPersistenceFindings,
   ...metadataFindings,
 ];
 if (findings.length > 0) {

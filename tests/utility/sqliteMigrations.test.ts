@@ -9,7 +9,7 @@ import {
   CURRENT_CORE_SCHEMA_VERSION,
   migrateSqliteDatabase,
   type SqliteMigration,
-} from "../../apps/desktop/src/main/persistence/sqliteMigrations";
+} from "../../apps/desktop/src/utility/persistence/sqliteMigrations";
 
 const databases: DatabaseSync[] = [];
 const APPLIED_AT = "2026-07-28T08:00:00.000Z";
@@ -60,7 +60,7 @@ describe("Actestra SQLite migrations", () => {
     expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
       fromVersion: 0,
       toVersion: CURRENT_CORE_SCHEMA_VERSION,
-      appliedVersions: [1, 2, 3, 4, 5],
+      appliedVersions: [1, 2, 3, 4, 5, 6],
     });
     expect(pragmaNumber(database, "application_id")).toBe(ACTESTRA_SQLITE_APPLICATION_ID);
     expect(pragmaNumber(database, "user_version")).toBe(CURRENT_CORE_SCHEMA_VERSION);
@@ -88,6 +88,10 @@ describe("Actestra SQLite migrations", () => {
       {
         version: 5,
         name: "aionui-approval-authority",
+      },
+      {
+        version: 6,
+        name: "workload-content-and-grants",
       },
     ]);
   });
@@ -210,11 +214,13 @@ describe("Actestra SQLite migrations", () => {
         "{}",
       );
 
-    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
-      fromVersion: 4,
-      toVersion: 5,
-      appliedVersions: [5],
-    });
+    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 5), APPLIED_AT)).toEqual(
+      {
+        fromVersion: 4,
+        toVersion: 5,
+        appliedVersions: [5],
+      },
+    );
     expect(database.prepare("SELECT evidence_id FROM aionui_shadow_evidence").all()).toEqual([
       { evidence_id: "shadow-preserved" },
     ]);
@@ -228,6 +234,62 @@ describe("Actestra SQLite migrations", () => {
         .get(),
     ).toEqual({
       name: "aionui_approval_decisions",
+    });
+  });
+
+  it("performs a real 5 -> 6 migration without changing approval authority", () => {
+    const database = createDatabase();
+    migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 5), APPLIED_AT);
+    database
+      .prepare(
+        `INSERT INTO aionui_approval_decisions (
+           decision_id, native_conversation_id, native_call_id, native_message_id,
+           native_path, request_hash, decision, always_allow, delivery_state,
+           attempt_count, created_at, updated_at, last_attempt_at, delivered_at,
+           last_error_code, delivery_body_json, record_json
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        "decision-preserved",
+        "conversation-preserved",
+        "call-preserved",
+        "message-preserved",
+        "confirm",
+        "a".repeat(64),
+        "approved",
+        0,
+        "pending-delivery",
+        0,
+        APPLIED_AT,
+        APPLIED_AT,
+        null,
+        null,
+        null,
+        "{}",
+        "{}",
+      );
+
+    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
+      fromVersion: 5,
+      toVersion: 6,
+      appliedVersions: [6],
+    });
+    expect(
+      database
+        .prepare(
+          `SELECT name
+           FROM sqlite_schema
+           WHERE type = 'table' AND name IN ('workspace_grants', 'content_references')
+           ORDER BY name`,
+        )
+        .all(),
+    ).toEqual([{ name: "content_references" }, { name: "workspace_grants" }]);
+    expect(
+      database
+        .prepare("SELECT decision_id FROM aionui_approval_decisions WHERE decision_id = ?")
+        .get("decision-preserved"),
+    ).toEqual({
+      decision_id: "decision-preserved",
     });
   });
 

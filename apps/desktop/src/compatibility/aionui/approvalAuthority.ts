@@ -369,6 +369,51 @@ export function normalizeAionUiApprovalDecisionRequest(
   });
 }
 
+export function assertNormalizedAionUiApprovalDecision(
+  value: unknown,
+): asserts value is NormalizedAionUiApprovalDecision {
+  if (!isRecord(value)) {
+    throw new AionUiApprovalAuthorityContractError(
+      "Normalized AionUi approval decision must be an object",
+    );
+  }
+  assertExactKeys(
+    value,
+    [
+      "contractVersion",
+      "decisionId",
+      "nativeConversationId",
+      "nativeCallId",
+      "nativeMessageId",
+      "nativePath",
+      "requestHash",
+      "decision",
+      "alwaysAllow",
+      "deliveryBody",
+    ],
+    "Normalized AionUi approval decision",
+  );
+  const normalized = normalizeAionUiApprovalDecisionRequest({
+    contractVersion: value.contractVersion,
+    method: "POST",
+    path: value.nativePath,
+    body: value.deliveryBody,
+  });
+  if (
+    value.decisionId !== normalized.decisionId ||
+    value.nativeConversationId !== normalized.nativeConversationId ||
+    value.nativeCallId !== normalized.nativeCallId ||
+    value.nativeMessageId !== normalized.nativeMessageId ||
+    value.requestHash !== normalized.requestHash ||
+    value.decision !== normalized.decision ||
+    value.alwaysAllow !== normalized.alwaysAllow
+  ) {
+    throw new AionUiApprovalAuthorityContractError(
+      "Normalized AionUi approval decision projection does not match its delivery envelope",
+    );
+  }
+}
+
 export function assertAionUiApprovalDecisionRecord(
   value: unknown,
 ): asserts value is AionUiApprovalDecisionRecord {
@@ -400,25 +445,18 @@ export function assertAionUiApprovalDecisionRecord(
     ],
     "AionUi approval authority record",
   );
-  const normalized = normalizeAionUiApprovalDecisionRequest({
+  assertNormalizedAionUiApprovalDecision({
     contractVersion: value.contractVersion,
-    method: "POST",
-    path: value.nativePath,
-    body: value.deliveryBody,
+    decisionId: value.decisionId,
+    nativeConversationId: value.nativeConversationId,
+    nativeCallId: value.nativeCallId,
+    nativeMessageId: value.nativeMessageId,
+    nativePath: value.nativePath,
+    requestHash: value.requestHash,
+    decision: value.decision,
+    alwaysAllow: value.alwaysAllow,
+    deliveryBody: value.deliveryBody,
   });
-  if (
-    value.decisionId !== normalized.decisionId ||
-    value.nativeConversationId !== normalized.nativeConversationId ||
-    value.nativeCallId !== normalized.nativeCallId ||
-    value.nativeMessageId !== normalized.nativeMessageId ||
-    value.requestHash !== normalized.requestHash ||
-    value.decision !== normalized.decision ||
-    value.alwaysAllow !== normalized.alwaysAllow
-  ) {
-    throw new AionUiApprovalAuthorityContractError(
-      "AionUi approval authority projection does not match its delivery envelope",
-    );
-  }
   if (value.deliveryState !== "pending-delivery" && value.deliveryState !== "delivered") {
     throw new AionUiApprovalAuthorityContractError("AionUi approval delivery state is unsupported");
   }

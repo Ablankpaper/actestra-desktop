@@ -15,7 +15,7 @@ import {
   type AionUiApprovalAuthorityClock,
   type AionUiApprovalNativeTransport,
 } from "../../apps/desktop/src/main/compatibility/aionuiApprovalAuthorityService";
-import { openSqliteCorePersistence } from "../../apps/desktop/src/main/persistence/sqliteCorePersistence";
+import { openSqliteCorePersistence } from "../../apps/desktop/src/utility/persistence/sqliteCorePersistence";
 
 const testDirectories: string[] = [];
 

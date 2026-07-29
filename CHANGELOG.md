@@ -77,6 +77,15 @@ releases begin.
 - ADR-0015 and the P6 orchestration boundary: CrewAI is the first supervised
   planner-sidecar candidate, Actestra remains the authoritative Team state
   machine, and Eigent remains the Team interaction and acceptance reference.
+- ADR-0016 and the GW-P4.2 workload-persistence boundary: a separately built
+  utility owns schemas 1 through 6, existing P3/F2/F3 operations, durable
+  workspace grants, and immutable bounded UTF-8 content references.
+- A strict version 1 persistence-utility protocol and async main client with
+  correlation, size, timeout, digest, ownership, lifecycle, and process-exit
+  validation and no synchronous main-process fallback.
+- Preserved-AionUi initialization for the persistence utility, explicit
+  compatibility unavailability, native type/test/build coverage, and source
+  plus packaged-graph enforcement that SQLite is utility-only.
 
 ### Changed
 

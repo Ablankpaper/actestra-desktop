@@ -13,7 +13,7 @@ import {
 import {
   openSqliteCorePersistence,
   resolveCoreDatabasePath,
-} from "../../apps/desktop/src/main/persistence/sqliteCorePersistence";
+} from "../../apps/desktop/src/utility/persistence/sqliteCorePersistence";
 
 const testDirectories: string[] = [];
 const OBSERVED_AT = Date.parse("2026-07-29T03:00:00.000Z");

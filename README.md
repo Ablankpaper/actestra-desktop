@@ -97,6 +97,24 @@ reached [PR 8](https://github.com/bignormal/actestra-desktop/pull/8) final head
 passes on that exact merge. A complete local CodeRabbit review of all 18
 changed files raised 0 issues before merge; the explicit remote review was
 rate-limited before review and is not represented as review evidence.
+[Pull request 9](https://github.com/bignormal/actestra-desktop/pull/9) then
+recorded the supervised CrewAI P6 direction, reached exact final head
+`d7e615206af0829375db0db1d1fcc6ca205102a8`, and squash merged as
+`327d5ca5abf3a0090bc2b3d3193e2935bbd47f38`.
+[Main CI run 30470505690](https://github.com/bignormal/actestra-desktop/actions/runs/30470505690)
+passes on that exact merge.
+
+GW-P4.2 general-work persistence is implemented and locally validated on
+`feat/aionui-p4-persistence-utility`. It moves schemas 1 through 5 and all
+P3/F2/F3 operations to a dedicated persistence utility, adds schema 6
+workspace grants and bounded content references, and connects the preserved
+AionUi providers through the same asynchronous port. Root tests pass 37 files
+and 194 tests; the complete materialized native suite passes 333 files and
+2,609 tests, with 1 file and 5 tests skipped by retained upstream
+configuration. Native typecheck, production build, and an isolated real
+AionUi launch with the separate schema 6 utility also pass. The branch is not
+yet pushed, CI-backed, merged, packaged as a candidate, released, deployed, or
+accepted.
 
 - The repository now contains the exact, unmodified 1,766-file AionUi
   `v2.1.41` runnable desktop source foundation at commit
@@ -125,10 +143,10 @@ rate-limited before review and is not represented as review evidence.
   inert privileged composition and SQLite evidence only in main; preload exposes
   three fixed metadata intents and no generic IPC or protected operation.
   F3.2 activates only one main-owned loopback approval-response delivery
-  executor. Local F3.3 separately gates the boolean pending-state
-  reconciliation read; there is still no real worker process, credential
-  backend, general input-reference store, general tool transport, or
-  orchestration.
+  executor. Merged F3.3 separately gates the boolean pending-state
+  reconciliation read. Local GW-P4.2 moves SQLite and content-reference storage
+  to a utility; there is still no real worker process, credential backend,
+  general native-tool transport, or orchestration.
 - There is no CI-backed candidate, signed release, deployment, distribution, or
   user acceptance.
 - A reviewable downstream overlay now applies Actestra identity, icons,
@@ -208,6 +226,8 @@ ordered fusion is in
 14. [AionUi F3.3 Approval Reconciliation Policy Gate](docs/product/AIONUI_F3_APPROVAL_RECONCILIATION_GATE.md)
 15. [AionUi-first PR 6 Review Closure](docs/product/AIONUI_FIRST_PR6_REVIEW_CLOSURE.md)
 16. [CrewAI P6 Sidecar Decision](docs/architecture/decisions/0015-crewai-supervised-orchestration-sidecar.md)
+17. [P4 General Work](docs/product/P4_GENERAL_WORK.md)
+18. [P4 Process and Content Decision](docs/architecture/decisions/0016-p4-general-work-process-and-content-boundaries.md)
 
 Repository-wide instructions are in [AGENTS.md](AGENTS.md). Contribution rules
 are in [CONTRIBUTING.md](CONTRIBUTING.md).

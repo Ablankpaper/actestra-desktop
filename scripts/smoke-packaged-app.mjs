@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { spawn } from "node:child_process";
+import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -97,6 +98,7 @@ const startedAt = Date.now();
 while (
   Date.now() - startedAt < timeoutMilliseconds &&
   (!output.includes("ACTESTRA_READY") ||
+    !output.includes("ACTESTRA_PERSISTENCE_UTILITY_READY") ||
     !output.includes("ACTESTRA_WINDOW_READY") ||
     !output.includes("ACTESTRA_RENDERER_READY"))
 ) {
@@ -110,6 +112,7 @@ while (
 
 if (
   !output.includes("ACTESTRA_READY") ||
+  !output.includes("ACTESTRA_PERSISTENCE_UTILITY_READY") ||
   !output.includes("ACTESTRA_WINDOW_READY") ||
   !output.includes("ACTESTRA_RENDERER_READY")
 ) {
@@ -147,7 +150,46 @@ if (childOutcome !== null) {
 
 await terminateChild();
 
+const databasePath = path.join(profileDirectory, "state", "actestra.sqlite3");
+if (!fs.existsSync(databasePath)) {
+  await finishWithFailure("persistence utility did not create the owned SQLite database");
+}
+
+let database;
+try {
+  database = new DatabaseSync(databasePath, {
+    readOnly: true,
+    allowExtension: false,
+    enableDoubleQuotedStringLiterals: false,
+    enableForeignKeyConstraints: true,
+  });
+  const versionRow = database.prepare("PRAGMA user_version").get();
+  if (versionRow?.user_version !== 6) {
+    await finishWithFailure("persistence utility database is not at schema version 6");
+  }
+  const workloadTables = database
+    .prepare(
+      `SELECT name
+       FROM sqlite_schema
+       WHERE type = 'table' AND name IN ('workspace_grants', 'content_references')
+       ORDER BY name`,
+    )
+    .all()
+    .map((row) => row.name);
+  if (
+    workloadTables.length !== 2 ||
+    workloadTables[0] !== "content_references" ||
+    workloadTables[1] !== "workspace_grants"
+  ) {
+    await finishWithFailure("persistence utility workload tables are missing");
+  }
+} catch {
+  await finishWithFailure("persistence utility database could not be verified");
+} finally {
+  database?.close();
+}
+
 console.info(
-  "Packaged smoke passed: Actestra reached application, window, and renderer ready markers.",
+  "Packaged smoke passed: Actestra reached persistence utility, application, window, and renderer ready markers with SQLite schema 6.",
 );
 console.info(`Isolated profile: ${profileDirectory}`);
