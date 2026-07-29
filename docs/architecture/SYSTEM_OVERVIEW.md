@@ -1,8 +1,7 @@
 # System Overview
 
-Status: P3 and P4.0/F0 through P4.3/F3.1 accepted on `main`;
-P4.3/F3.2 approval-delivery policy and audit is pushed and exact implementation
-CI-backed on Draft PR 7
+Status: P3 and P4.0/F0 through P4.3/F3.3 accepted on `main`; CrewAI is accepted
+as the first P6 planner-sidecar candidate but is not implemented or packaged
 
 ## Context
 
@@ -19,6 +18,7 @@ flowchart TD
     MAIN["Desktop Main Process\nwindow and process lifecycle"]
     CORE["Actestra App Core"]
     ROUTER["Task Router and Team Orchestrator"]
+    PLANNER["CrewAI Planner Sidecar\nP6 candidate, non-authoritative"]
     POLICY["Policy and Approval Service"]
     EVENTS["Event Store and Subscription Service"]
     ARTIFACTS["Workspace and Artifact Service"]
@@ -40,6 +40,7 @@ flowchart TD
     CORE --> CREDS
     CORE --> TOOLS
     ROUTER --> ADAPTERS
+    ROUTER --> PLANNER
     ADAPTERS --> GENERAL
     ADAPTERS --> GOOSE
     ADAPTERS --> FUTURE
@@ -75,11 +76,12 @@ P3.6 adds SQLite schema version 3 for durable metadata-only privileged audit
 and immutable terminal-attempt evidence. Electron main registers an inert
 deny-by-default composition root, a disabled executor, trusted-main-frame IPC,
 and a bounded renderer projection. Preload exposes only application metadata,
-platform snapshot, and renderer-ready intents. F3.2 locally adds one separate,
-exact loopback response-delivery manifest, policy rule, in-memory bounded input
-reference, and executor beneath the existing F3.1 service. There is no
-credential backend, general input-reference store, general MCP or native-tool
-transport, process transport, or real worker adapter.
+platform snapshot, and renderer-ready intents. F3.2 adds one separate, exact
+loopback response-delivery manifest, policy rule, in-memory bounded input
+reference, and executor beneath the existing F3.1 service. F3.3 separately
+gates the bounded boolean reconciliation read. There is no credential backend,
+general input-reference store, general MCP or native-tool transport, process
+transport, or real worker adapter.
 
 P4.2 adds the separate compatibility boundary accepted in
 [ADR-0011](decisions/0011-aionui-shadow-projection.md). Successful native HTTP
@@ -155,6 +157,12 @@ persists; an outcome-audit failure is uncertain and re-enters F3.1
 reconciliation. The exact split is recorded in
 [AionUi F3.2 Approval Delivery Policy Gate](../product/AIONUI_F3_APPROVAL_POLICY_GATE.md).
 
+F3.3 introduces no pending-list authority. It routes only the main-owned,
+boolean reconciliation read through its own exact capability, policy, and
+durable audit sequence. AionCore still owns request creation and list content.
+The exact split is recorded in
+[AionUi F3.3 Approval Reconciliation Policy Gate](../product/AIONUI_F3_APPROVAL_RECONCILIATION_GATE.md).
+
 ## Authority boundaries
 
 ### Desktop renderer
@@ -182,6 +190,24 @@ The app core owns:
 - audit history;
 - credential references;
 - migrations and crash recovery.
+
+### Team orchestrator and CrewAI sidecar
+
+The Actestra TeamOrchestrator owns the authoritative dependency graph, worker
+admission, attempt identity, budgets, approvals, artifacts, cancellation,
+replanning versions, and recovery state.
+
+CrewAI is the first P6 planner-sidecar candidate under
+[ADR-0015](decisions/0015-crewai-supervised-orchestration-sidecar.md). It runs
+in a separately supervised Python process and may propose bounded plans,
+replans, worker-capability assignments, and result aggregations. It cannot
+create processes, worktrees, credentials, approvals, tools, authoritative
+identifiers, or durable product state. Its private memory, persistence,
+events, traces, and retries are disposable compatibility state.
+
+Eigent remains the reference for the user-visible Team experience and
+acceptance behavior; its separate application and complete runtime are not
+part of the Actestra process topology.
 
 ### Agent workers
 
@@ -356,11 +382,13 @@ its exact locked dependency graph until a reviewed downstream update.
 ADR-0005 selects Electron's embedded `node:sqlite` and an Actestra-owned
 forward migration registry for durable storage. ADR-0011 selects the bounded
 F2 observation transport and inert shadow storage. ADR-0012 selects the first
-F3 authority slice and persist-before-deliver reconciliation. Later P4 work
-still must order the remaining domain migrations and decide worker sandbox
-mechanisms, real credential storage, input-reference storage, production
-policy, and utility-process hosting. Signing, notarization, update delivery,
-and cross-platform candidate packaging remain P8 work.
+F3 authority slice and persist-before-deliver reconciliation. ADR-0015 fixes
+the authority and process boundary for the first P6 orchestration candidate,
+but does not select a production CrewAI dependency. Later P4 work still must
+order the remaining domain migrations and decide worker sandbox mechanisms,
+real credential storage, input-reference storage, production policy, and
+utility-process hosting. Signing, notarization, update delivery, and
+cross-platform candidate packaging remain P8 work.
 
 This document fixes authority and lifecycle boundaries; a pinned shell
 dependency does not pre-decide worker or persistence architecture.

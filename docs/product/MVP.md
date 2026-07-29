@@ -13,6 +13,11 @@ UI and functions are a preservation baseline, not a menu of optional visual
 references. Actestra changes providers and authority behind compatible
 boundaries.
 
+The product composition is AionUi for the visible desktop experience, Actestra
+Core for state and authority, Goose for professional coding execution, CrewAI
+as the first supervised P6 orchestration candidate, and Eigent as the Team
+experience and acceptance reference.
+
 ## Target users
 
 - Individuals who want AI to work with local files and produce usable artifacts.
@@ -38,7 +43,9 @@ evidence before the user chooses whether to publish.
 
 The user gives Actestra a complex goal. A leader creates a small dependency
 graph, assigns general or coding workers, exposes progress and approval nodes,
-and aggregates the result into one deliverable.
+and aggregates the result into one deliverable. Actestra owns the graph and
+execution state; a supervised CrewAI sidecar may propose plans, replans, and
+aggregations without receiving direct tool or product authority.
 
 ## MVP capabilities
 
@@ -51,6 +58,8 @@ and aggregates the result into one deliverable.
 - Goose worker adapter for repository and terminal tasks.
 - Small team orchestration with a leader, dependencies, parallel workers,
   retries, pause, cancel, and user handoff.
+- A separately supervised planner sidecar whose private state is disposable and
+  whose plan candidates are validated and persisted by Actestra before use.
 - Unified events for messages, tool requests, approvals, artifacts, completion,
   failure, and cancellation.
 - Risk-based approvals for filesystem, shell, network, message, publish, and Git
@@ -69,7 +78,8 @@ and aggregates the result into one deliverable.
 
 - Importing Aera accounts, data, profiles, memory, code, or release systems.
 - Supporting every external agent CLI in the first release.
-- Embedding the full Eigent or CAMEL runtime before the Actestra core is proven.
+- Embedding the full Eigent product or CAMEL runtime, or treating CrewAI as a
+  second product-state, permission, tool, credential, or approval authority.
 - An ungoverned public marketplace for agents, Skills, or MCP servers. The
   original Hub UI is retained, but remote installation remains isolated until
   catalog signing, provenance, permission, and rollback are implemented.

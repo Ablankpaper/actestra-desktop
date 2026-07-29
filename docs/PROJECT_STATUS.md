@@ -1,28 +1,28 @@
 # Project Status
 
-Last updated: 2026-07-29
+Last updated: 2026-07-30
 
 ## Current phase
 
-### F0-F3.2 accepted on main; F3.3 is Ready in PR 8
+### F0-F3.3 accepted on main; P4 general-work authority is next
 
-Pull request 7 reached exact final head
-`df821ca203bea7b611fa8fb8092d00a16cabe578` and squash merged F3.2 as
-`ce19dbe072328e16dcdaf116b8199d5502cb44c6`.
-[Main CI run 30442166290](https://github.com/bignormal/actestra-desktop/actions/runs/30442166290)
-passes on that exact merge. Branch
-`feat/aionui-f3-reconciliation-audit` starts from this verified main commit.
-ADR-0014 and F3.3 implementation
-`c2fa4bbc4989b9a41bf6a283b5f0eb1f2f523acb` route only the bounded
+Pull request 8 reached exact final head
+`3f85e13072f5fb13fb43c9dae94f992bb0b7fb9c` and squash merged F3.3 as
+`c841ed9cb6a54bcb2e4078ca2be941adce0ac4ad`.
+[Main CI run 30449520722](https://github.com/bignormal/actestra-desktop/actions/runs/30449520722)
+passes on that exact merge. ADR-0014 and the merged F3.3 route only the bounded
 pending-state read used by retry and restart reconciliation through an exact
-P3 policy, capability, and durable audit path. Draft pull request 8 reached
-evidence head `53e7041399518969c67af0fb78bf92499ebe28fd`, whose exact CI run
-30445531680 passed. Review remediation
-`228ff385afd1d0dfc03655d1d46eaad9998bedc3` reached Ready evidence head
-`ab7b81957f32fda455c2219cb6ab169842df20a6`, whose exact-head CI run
-30448185324 passed. A complete local CodeRabbit review of all 18 changed files
-raised zero issues on that head. The real AionUi application, original
-functional UI, and original functions remain the product baseline.
+P3 policy, capability, and durable audit path. A complete local CodeRabbit
+review of all 18 changed files raised zero issues before merge; the explicit
+remote review was rate-limited before review and is not represented as review
+evidence. The real AionUi application, original functional UI, and original
+functions remain the product baseline.
+
+ADR-0015 records CrewAI as the first supervised P6 planner-sidecar candidate
+while keeping the Actestra TeamOrchestrator authoritative and Eigent as the
+product and acceptance reference. This is an accepted architecture direction
+only: CrewAI is not imported, installed, bundled, or implemented, and P6
+remains ordered after the P4 and P5 gates.
 
 F0 implementation commit
 `13270ca0abd7353710541afca9ddf46c47670be3` first established the preserved
@@ -614,7 +614,8 @@ Review closure validation at
 | P4.3/F3.1 approval decision authority | Accepted on `main` through PR 6 | Implementation `cf61ffb8453a888cdc03f73457ebeaf72708511a`; ADR-0012; schema version 5 persist-before-deliver outbox; 30/153 root and 330/2,602 native tests; run 30425061316 passes |
 | PR 6 review and merge closure | Accepted on `main` | Final head `70b2f29329fec26bf0e3d6384d8563aedcb7a4ce`; exact-head CI 30431557027 passes; local review of 21 final changed files returned zero findings; squash merge `61b9405fc007aa8cb16ec05a65f421cb7d277b51`; exact main CI 30434563810 passes |
 | F3.2 approval delivery policy gate | Accepted on `main` through PR 7 | Implementation `20e3c0fcada0d072fc35820d43b85c953bf93929`; final head `df821ca203bea7b611fa8fb8092d00a16cabe578`; squash merge `ce19dbe072328e16dcdaf116b8199d5502cb44c6`; exact main CI run 30442166290 passes |
-| F3.3 approval reconciliation policy gate | Ready in PR 8 | Implementation `c2fa4bbc4989b9a41bf6a283b5f0eb1f2f523acb`; review remediation `228ff385afd1d0dfc03655d1d46eaad9998bedc3`; Ready evidence head `ab7b81957f32fda455c2219cb6ab169842df20a6` passes exact-head CI run 30448185324 and a complete 18-file zero-issue local CodeRabbit review; root 33/178, native 332/2,608, strict types, 104-file downstream declaration, 4 R0 invariants, 22 source copies, and production builds pass; merge remains separate |
+| F3.3 approval reconciliation policy gate | Accepted on `main` through PR 8 | Implementation `c2fa4bbc4989b9a41bf6a283b5f0eb1f2f523acb`; final head `3f85e13072f5fb13fb43c9dae94f992bb0b7fb9c`; squash merge `c841ed9cb6a54bcb2e4078ca2be941adce0ac4ad`; exact main CI run 30449520722 passes; the complete local 18-file review raised zero issues before merge |
+| P6 orchestration boundary | Accepted architecture direction only | ADR-0015; CrewAI `1.15.8` at `e9caf1e1b89343bb833b5da6660faa91804a9dce` verified as the first supervised sidecar candidate; Eigent `v1.0.2` at `e478094a9ff433132b3cf1928e4143338ddaab20` retained as a reference; neither is imported, bundled, or implemented |
 | Native AionUi source | Exact local desktop snapshot | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot |
 | Native preservation contract | Local pass | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified |
 | Native AionUi build and launch | Local pass | Frozen install, production build, isolated native Electron launch, and actual Guide screenshot pass |
@@ -644,8 +645,12 @@ Review closure validation at
   state.
 - Goose is integrated through a specialized worker adapter exposed by the
   preserved AionUi agent/ACP experience.
+- CrewAI is the first candidate for a supervised P6 planning, replanning, and
+  aggregation sidecar. Actestra validates every candidate and remains the
+  authoritative team state machine.
 - Eigent-style orchestration is mapped into the preserved AionUi Team
-  experience; its repository and separate UI are not imported wholesale.
+  experience as a product and acceptance reference; its repository, separate
+  UI, backend services, and complete runtime are not imported wholesale.
 - Actestra owns workspaces, tasks, permissions, credentials, events, artifacts,
   and audit history.
 - External workers run behind stable adapter, event, and policy boundaries.
@@ -687,15 +692,16 @@ The ordered implementation index and P3 non-claims are in
 
 ## Next gate
 
-1. Commit and push the exact F3.3 implementation only after documentation,
-   package regression, and diff review pass.
-2. Open a Draft PR and require exact-head CI before any Ready or merge
-   decision.
-3. Keep pending-request creation, native list content, provider policy, and the
-   underlying protected operation native-authoritative; do not infer semantics
-   or create a second system of record.
-4. Do not describe F3.3 as complete approval/general-work authority, candidate,
-   release, distribution, or user acceptance.
+1. Start only from verified main
+   `c841ed9cb6a54bcb2e4078ca2be941adce0ac4ad`; do not merge the displaced
+   custom-shell implementation in draft pull request 5 wholesale.
+2. Implement the next bounded P4 slice beneath preserved AionUi seams:
+   supervised persistence utility, durable content references, and scoped
+   workspace grants.
+3. Require focused tests, complete root and downstream checks, packaged smoke,
+   exact-head CI, and review before accepting that slice on `main`.
+4. Continue with a real General Worker and scoped native-tool journey before
+   Goose P5 and CrewAI-assisted Team P6 production work.
 
 ## Open decisions
 
@@ -707,6 +713,8 @@ The ordered implementation index and P3 non-claims are in
 - Code-signing, notarization, update, and distribution accounts.
 - AionCore license clarification and accepted binary provenance before
   distribution.
+- CrewAI production version and rollback pin, minimal dependency lock, sidecar
+  protocol, vulnerability evidence, and cross-platform packaging strategy.
 - Cloud identity or sync scope, which remains outside the initial MVP unless
   promoted by a new product decision.
 
@@ -730,7 +738,7 @@ The ordered implementation index and P3 non-claims are in
   reference services. The downstream main migrates through schema v5, accepts
   one fixed shadow-observation operation and one fixed desktop confirmation
   response operation. F3.2 gates only that response's native delivery, while
-  local F3.3 separately gates only the boolean pending-state reconciliation
+  merged F3.3 separately gates only the boolean pending-state reconciliation
   read. It exposes no generic persistence, renderer-selected protected
   operation, tool transport, credential value, or worker control.
 - The P3.4 deterministic fake is test infrastructure, not a worker process or
@@ -750,10 +758,13 @@ The ordered implementation index and P3 non-claims are in
   later P4/P5 work and still requires dedicated scope, decisions, branch, and
   tests.
 - F0 alone proves only that the original AionUi application can be preserved
-  and run. F1, F2, F3.1, F3.2, and local F3.3 add their separately recorded
+  and run. F1, F2, F3.1, F3.2, and merged F3.3 add their separately recorded
   identity, shadow, narrow decision-authority, fixed-delivery audit, and
   reconciliation-read audit evidence; they do not prove permission-complete
-  native operations, Goose, or Eigent-style integration.
+  native operations, Goose, CrewAI, or Eigent-style integration.
+- ADR-0015 chooses a P6 candidate and authority boundary; it is not a CrewAI
+  dependency, sidecar implementation, packaged runtime, or Team-completion
+  claim.
 - The local AionCore `v0.1.52` bundle is ignored and used only for native launch
   proof. It is not committed, packaged, or approved for distribution.
 - The upstream managed-Node path and Sentry startup path remain in retained

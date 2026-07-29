@@ -13,7 +13,8 @@ ADR-0010.
 | AionUi | `iOfficeAI/AionUi` | `v2.1.41` | `2d8925fc67a97a20996fadcd2a0862b778b572ba` | Product UI and general-work foundation | P1 reproduced; exact 1,766-file runnable desktop snapshot imported and manifest-verified |
 | AionCore | `iOfficeAI/AionCore` | `v0.1.52` | `76f5554286ba0b6d33fb74d5c2bb2b3b0b83100d` | Initial native compatibility runtime/general worker | P1 locally built; ignored local bundle used for F0 launch; not committed or approved for distribution |
 | Goose | `aaif-goose/goose` | Not selected | Not selected | Worker adapter | Pending P5 |
-| Eigent | `eigent-ai/eigent` | Not selected | Not selected | Reference-first | Pending P6 |
+| CrewAI | `crewAIInc/crewAI` | `1.15.8` evaluation snapshot | `e9caf1e1b89343bb833b5da6660faa91804a9dce` | First supervised planner-sidecar candidate | Metadata and license verified; not imported, installed, bundled, or selected as the production P6 pin |
+| Eigent | `eigent-ai/eigent` | `v1.0.2` reference snapshot | `e478094a9ff433132b3cf1928e4143338ddaab20` | Team product and acceptance reference | Metadata inspected; not imported, installed, bundled, or selected as a runtime |
 
 ## CI action pins
 
@@ -64,6 +65,43 @@ from the corresponding official GitHub tags on 2026-07-28.
 AionCore's root `LICENSE` is Apache-2.0, while its workspace `Cargo.toml`
 declares `license = "MIT"`. There is no root `NOTICE`. This inconsistency must be
 clarified before Actestra distributes AionCore-derived code or binaries.
+
+## CrewAI 1.15.8 evaluation snapshot
+
+- Verification date: 2026-07-30.
+- Upstream URL: <https://github.com/crewAIInc/crewAI>.
+- Release/tag: `1.15.8`, published 2026-07-28.
+- Annotated tag object:
+  `f11db7e821698db558a02320e847beb6f49e7299`; exact commit:
+  `e9caf1e1b89343bb833b5da6660faa91804a9dce`.
+- Root license: MIT.
+- Declared Python range: `>=3.10,<3.14`.
+- Current role: first P6 planner-sidecar candidate under
+  [ADR-0015](../architecture/decisions/0015-crewai-supervised-orchestration-sidecar.md).
+- Import status: none. No CrewAI package, source, lockfile, Python runtime, or
+  binary is committed or distributed by Actestra.
+- Production selection remains blocked on a fresh exact-version review,
+  minimal dependency lock, telemetry and network proof, SBOM, `pip-audit`,
+  protocol and recovery tests, and macOS, Windows, and Linux packaging
+  evidence.
+
+## Eigent v1.0.2 reference snapshot
+
+- Verification date: 2026-07-30.
+- Upstream URL: <https://github.com/eigent-ai/eigent>.
+- Release/tag: `v1.0.2`, published 2026-07-21.
+- Annotated tag object:
+  `6bca9204fd3903455aaed1311e624318b18fc58e`; exact commit:
+  `e478094a9ff433132b3cf1928e4143338ddaab20`.
+- Observed root license: Apache-2.0.
+- Observed root `package.json` license value: `MIT`.
+- Backend Python range: `>=3.11,<3.12`; declared backend dependency:
+  `camel-ai[eigent]==0.2.91a5`.
+- Current role: Team interaction and acceptance reference only. The complete
+  Electron UI, FastAPI service, Task Service, memory, tools, workspace, and
+  CAMEL runtime are not imported.
+- Any future source reuse requires a new exact comparison, license-metadata
+  clarification, attribution record, and accepted integration decision.
 
 ## Required evidence per pin
 

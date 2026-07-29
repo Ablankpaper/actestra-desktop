@@ -29,21 +29,17 @@ features are implemented.
 | P7 | Security and reliability hardening | P4-P6 |
 | P8 | Cross-platform internal beta | P7 |
 
-Current execution state on 2026-07-29: P4.0/F0 through P4.3/F3.2 squash
-merged through pull request 7 as `ce19dbe072328e16dcdaf116b8199d5502cb44c6`.
-Main CI run 30442166290 passes on that exact commit. Seven bounded native
-metadata domains remain inert schema version 4 shadow evidence, while desktop
-confirmation responses use the schema version 5 persist-before-deliver outbox
-without changing the original AionUi permission and pet UI. F3.2 places the
-exact loopback response delivery behind P3 policy and durable audit. F3.3 is
-in Draft pull request 8. Implementation
-`c2fa4bbc4989b9a41bf6a283b5f0eb1f2f523acb` reached exact-head CI run
-30445531680 through evidence commit
-`53e7041399518969c67af0fb78bf92499ebe28fd`. Review remediation
-`228ff385afd1d0dfc03655d1d46eaad9998bedc3` reached Ready evidence head
-`ab7b81957f32fda455c2219cb6ab169842df20a6`, whose exact-head CI run
-30448185324 and complete 18-file zero-issue local review pass. Merge,
-candidate, and release remain separate.
+Current execution state on 2026-07-30: P4.0/F0 through P4.3/F3.3 are merged on
+`main`. Pull request 8 reached exact final head
+`3f85e13072f5fb13fb43c9dae94f992bb0b7fb9c` and squash merged as
+`c841ed9cb6a54bcb2e4078ca2be941adce0ac4ad`; exact main CI run 30449520722
+passes. Seven bounded native metadata domains remain inert schema version 4
+shadow evidence. Desktop confirmation responses use the schema version 5
+persist-before-deliver outbox, while F3.2 and F3.3 gate response delivery and
+the bounded boolean reconciliation read through separate P3 policy and durable
+audit paths without changing the original AionUi permission and pet UI.
+General-work authority remains incomplete. Candidate and release remain
+separate.
 
 ## P0 — Project Foundation
 
@@ -194,6 +190,12 @@ candidate, and release remain separate.
 ### Deliverables
 
 - Leader planning with bounded task decomposition.
+- Keep an Actestra-owned TeamOrchestrator as the only authoritative dependency,
+  attempt, budget, approval, artifact, cancellation, and recovery state
+  machine.
+- Evaluate CrewAI as a separately supervised planner, replanner, and result
+  aggregation sidecar under ADR-0015. Validate every returned plan before it
+  becomes authoritative or schedulable.
 - Map orchestration into the preserved AionUi Team creation, navigation, chat,
   task/slot, worker-status, messaging, pause, cancel, rename, pin, and recovery
   experience; do not add a separate Eigent application UI.
@@ -208,6 +210,8 @@ candidate, and release remain separate.
 - A representative mixed general-and-code fixture completes deterministically.
 - Dependency, partial failure, retry, cancellation, and aggregation tests pass.
 - The UI can explain what each worker is doing and why it is blocked.
+- CrewAI crash, cancellation, restart, or version mismatch leaves the Actestra
+  graph recoverable and creates no orphan process or worker.
 
 ## P7 — Security and Reliability Hardening
 
@@ -247,4 +251,6 @@ candidate, and release remain separate.
 
 A later phase may run a time-boxed spike before the previous gate closes, but
 spike code cannot become production architecture until its dependency gate is
-satisfied and the decision is recorded.
+satisfied and the decision is recorded. ADR-0015 permits a bounded CrewAI
+protocol spike before P6, but it cannot change product authority or count as P6
+implementation.

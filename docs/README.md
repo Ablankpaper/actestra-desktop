@@ -21,6 +21,7 @@ planning, and governance documents.
 | [Development Sequence](roadmap/DEVELOPMENT_SEQUENCE.md) | Ordered phases, dependencies, and exit gates |
 | [System Overview](architecture/SYSTEM_OVERVIEW.md) | Product boundaries, components, data ownership, and isolation |
 | [AionUi–Actestra Fusion](architecture/AIONUI_ACTESTRA_FUSION.md) | Preserve-first topology, authority transition, phases, and patch rules |
+| [CrewAI P6 Sidecar Decision](architecture/decisions/0015-crewai-supervised-orchestration-sidecar.md) | CrewAI candidate role, Actestra authority, process isolation, admission, and packaging gates |
 | [Architecture Decisions](architecture/decisions/README.md) | Accepted and proposed architectural decisions |
 
 ## Governance
@@ -28,7 +29,7 @@ planning, and governance documents.
 | Document | Purpose |
 | --- | --- |
 | [Git Workflow](governance/GIT_WORKFLOW.md) | Branch, commit, pull request, tag, and merge rules |
-| [Upstream Policy](governance/UPSTREAM_POLICY.md) | How AionUi, Goose, Eigent, and future upstreams are evaluated and imported |
+| [Upstream Policy](governance/UPSTREAM_POLICY.md) | How AionUi, Goose, CrewAI, Eigent, and future upstreams are evaluated and imported |
 | [Upstream Versions](governance/UPSTREAM_VERSIONS.md) | Exact upstream revisions and verification evidence |
 | [Release Evidence](governance/RELEASE_EVIDENCE.md) | Required proof from local validation through user acceptance |
 

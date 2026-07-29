@@ -11,11 +11,14 @@ security model, update path, and license trail.
 | --- | --- | --- |
 | [AionUi](https://github.com/iOfficeAI/AionUi) | Complete functional UI and general-work product foundation | Exact frozen downstream source foundation plus reviewed patches under ADR-0010 |
 | [Goose](https://github.com/aaif-goose/goose) | Coding and terminal worker | External worker adapter in P5 |
-| [Eigent](https://github.com/eigent-ai/eigent) | Multi-agent product and orchestration reference | Reference-first; selective reuse only after P6 analysis |
+| [CrewAI](https://github.com/crewAIInc/crewAI) | First P6 planner-sidecar candidate | Reference and protocol evaluation first; no runtime import before the ADR-0015 production gate |
+| [Eigent](https://github.com/eigent-ai/eigent) | Multi-agent product, Team experience, and acceptance reference | Reference-first; no complete UI, service, memory, tool, workspace, or CAMEL-runtime import |
 
 These roles are governed by
 [ADR-0001](../architecture/decisions/0001-capability-fusion.md) and
 [ADR-0010](../architecture/decisions/0010-aionui-first-product-foundation.md).
+The CrewAI and Eigent P6 split is governed by
+[ADR-0015](../architecture/decisions/0015-crewai-supervised-orchestration-sidecar.md).
 
 ## Import requirements
 
@@ -45,7 +48,8 @@ For a new upstream, choose the narrowest maintainable mechanism:
 
 A broad source foundation is a last resort and requires a new accepted ADR.
 ADR-0010 is that accepted exception for the exact AionUi `v2.1.41` snapshot;
-it does not authorize complete imports from Goose, Eigent, or another project.
+it does not authorize complete imports from Goose, CrewAI, Eigent, or another
+project.
 
 ## AionUi preservation rule
 
@@ -64,6 +68,23 @@ An unavailable provider is not a reason to delete its UI.
 
 See the
 [AionUi Retention Matrix](../upstream/AIONUI_RETENTION_MATRIX.md).
+
+## P6 orchestration rule
+
+Actestra owns the P6 dependency graph, attempts, budgets, approvals, artifacts,
+events, audit, cancellation, and recovery state. CrewAI may be evaluated only
+as a separately supervised planner, replanner, and result-aggregation sidecar.
+Its private persistence, memory, identifiers, tracing, retry, human-feedback,
+and tools cannot become product authority.
+
+Eigent remains the reference for visible Team behavior and acceptance. Its
+separate application UI and full runtime are not imported by default.
+
+Before a CrewAI package or runtime is introduced, the implementation change
+must pin the exact version and rollback version, lock a minimal Python
+dependency graph, record license and vulnerability evidence, prove telemetry
+and network isolation, and verify process cleanup and packaging on every target
+platform.
 
 ## Data and authority
 
