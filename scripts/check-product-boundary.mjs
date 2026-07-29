@@ -19,8 +19,10 @@ const forbiddenProductPatterns = [
 ];
 
 const aionUiCompatibilityIdentityFiles = new Set([
+  "apps/desktop/src/compatibility/aionui/approvalAuthority.ts",
   "apps/desktop/src/compatibility/aionui/nativeObservations.ts",
   "apps/desktop/src/compatibility/aionui/shadowProjection.ts",
+  "apps/desktop/src/main/compatibility/aionuiApprovalAuthorityService.ts",
   "apps/desktop/src/main/compatibility/aionuiShadowProjectionService.ts",
   "apps/desktop/src/main/persistence/sqliteCorePersistence.ts",
   "apps/desktop/src/main/persistence/sqliteMigrations.ts",

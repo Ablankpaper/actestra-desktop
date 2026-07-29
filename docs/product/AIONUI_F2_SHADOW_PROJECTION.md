@@ -21,6 +21,12 @@ component, user-visible state, policy result, approval, worker, or tool action.
 The governing boundary is
 [ADR-0011](../architecture/decisions/0011-aionui-shadow-projection.md).
 
+F3.1 later moves only the desktop confirmation response and delivery outbox to
+Actestra authority under
+[ADR-0012](../architecture/decisions/0012-aionui-approval-decision-authority.md).
+The F2 approval observation itself remains inert and is not imported or
+promoted into authority.
+
 ## Data flow and authority
 
 ```mermaid

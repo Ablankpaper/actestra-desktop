@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "phase": "F2",
+  "phase": "F3.1",
   "upstream": {
     "tag": "v2.1.41",
     "commit": "2d8925fc67a97a20996fadcd2a0862b778b572ba",
@@ -9,8 +9,8 @@
   "authorityOwner": "Actestra desktop main process",
   "classifications": ["R0", "R1", "R2"],
   "migration": {
-    "strategy": "Fresh Actestra profile v1; native AionUi profiles remain untouched. Schema v4 appends metadata-only shadow evidence without changing native records or authoritative P3 tables.",
-    "rollback": "Regenerate without the F2 observer patch to stop new projections. Existing shadow evidence remains inert and cannot drive native UI decisions; the frozen AionUi foundation remains byte-identical."
+    "strategy": "Fresh Actestra profile v1; native AionUi profiles remain untouched. Schema v5 retains F2 shadow evidence and adds a private authoritative approval-decision outbox. Pre-F3 resolved decisions cannot be imported because F2 intentionally stored no raw decision bodies; pending native confirmations become authoritative on the first user response.",
+    "rollback": "Set ACTESTRA_APPROVAL_AUTHORITY=0 for the explicit native fallback, or regenerate without the F3.1 patch. Existing schema v5 decision rows remain inert and the frozen AionUi foundation stays byte-identical."
   },
   "uiContract": {
     "layoutChangesAllowed": false,
@@ -49,6 +49,17 @@
       ],
       "authorityOwner": "Actestra desktop main process",
       "rollback": "Regenerate without this patch. Native AionUi response values, routes, state and UI remain authoritative and unchanged."
+    },
+    {
+      "path": "patches/0003-actestra-approval-authority.mjs",
+      "classification": ["R1"],
+      "domains": [
+        "approval decision",
+        "approval delivery outbox",
+        "native confirmation error mapping"
+      ],
+      "authorityOwner": "Actestra desktop main process",
+      "rollback": "Set ACTESTRA_APPROVAL_AUTHORITY=0 or regenerate without this patch. The preserved AionUi permission UI and native fallback route remain available; existing authority rows stay inert."
     }
   ],
   "sourceCopies": [
@@ -85,12 +96,20 @@
       "destination": "packages/desktop/src/actestra/compatibility/aionui/index.ts"
     },
     {
+      "source": "apps/desktop/src/compatibility/aionui/approvalAuthority.ts",
+      "destination": "packages/desktop/src/actestra/compatibility/aionui/approvalAuthority.ts"
+    },
+    {
       "source": "apps/desktop/src/compatibility/aionui/nativeObservations.ts",
       "destination": "packages/desktop/src/actestra/compatibility/aionui/nativeObservations.ts"
     },
     {
       "source": "apps/desktop/src/compatibility/aionui/shadowProjection.ts",
       "destination": "packages/desktop/src/actestra/compatibility/aionui/shadowProjection.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/compatibility/aionuiApprovalAuthorityService.ts",
+      "destination": "packages/desktop/src/actestra/main/compatibility/aionuiApprovalAuthorityService.ts"
     },
     {
       "source": "apps/desktop/src/main/compatibility/aionuiShadowProjectionService.ts",
@@ -151,6 +170,7 @@
     "package.json",
     "packages/desktop/electron-builder.yml",
     "packages/desktop/electron.vite.config.ts",
+    "packages/desktop/src/actestra/compatibility/aionui/approvalAuthority.ts",
     "packages/desktop/src/actestra/compatibility/aionui/index.ts",
     "packages/desktop/src/actestra/compatibility/aionui/nativeObservations.ts",
     "packages/desktop/src/actestra/compatibility/aionui/shadowProjection.ts",
@@ -161,12 +181,15 @@
     "packages/desktop/src/actestra/core/persistence.ts",
     "packages/desktop/src/actestra/core/platform.ts",
     "packages/desktop/src/actestra/core/privilegedServices.ts",
+    "packages/desktop/src/actestra/main/compatibility/aionuiApprovalAuthorityService.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiShadowProjectionService.ts",
     "packages/desktop/src/actestra/main/persistence/sqliteCorePersistence.ts",
     "packages/desktop/src/actestra/main/persistence/sqliteMigrations.ts",
+    "packages/desktop/src/common/adapter/actestraApprovalAuthorityClient.ts",
     "packages/desktop/src/common/adapter/actestraShadowPublisher.ts",
     "packages/desktop/src/common/adapter/httpBridge.ts",
     "packages/desktop/src/common/api/ClientFactory.ts",
+    "packages/desktop/src/common/config/actestraApprovalAuthorityContract.ts",
     "packages/desktop/src/common/config/actestraProduct.ts",
     "packages/desktop/src/common/config/actestraShadowContract.ts",
     "packages/desktop/src/common/platform/ElectronPlatformServices.ts",
@@ -176,6 +199,8 @@
     "packages/desktop/src/preload/main.ts",
     "packages/desktop/src/process/bridge/updateBridge.ts",
     "packages/desktop/src/process/bridge/webuiBridge.ts",
+    "packages/desktop/src/process/pet/petConfirmManager.ts",
+    "packages/desktop/src/process/services/actestraApprovalNativeTransport.ts",
     "packages/desktop/src/process/services/autoUpdaterService.ts",
     "packages/desktop/src/process/services/actestraShadowBridge.ts",
     "packages/desktop/src/process/services/i18n/index.ts",
@@ -216,6 +241,10 @@
     "resources/windows/installer-update-verify.nsh",
     "resources/windows/support/query-lockers.ps1",
     "scripts/build-with-builder.js",
+    "tests/unit/actestra/approvalAuthorityClient.dom.test.ts",
+    "tests/unit/actestra/approvalAuthorityPersistence.test.ts",
+    "tests/unit/actestra/approvalAuthorityService.test.ts",
+    "tests/unit/actestra/approvalNativeTransport.test.ts",
     "tests/unit/actestra/externalEffectIsolation.test.ts",
     "tests/unit/actestra/productBoundary.test.ts",
     "tests/unit/actestra/shadowPersistence.test.ts",

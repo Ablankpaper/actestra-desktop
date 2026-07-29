@@ -162,6 +162,17 @@ Exit: the general-work journey survives restart with Actestra as the declared
 system of record and with denial, cancellation, crash, and artifact-conflict
 proof.
 
+Current first slice: F3.1 keeps the existing renderer permission cards, ACP
+options, pet confirmation window, and native confirmation response semantics.
+Desktop main persists the immutable response and schema version 5 delivery
+outbox before sending it to loopback AionCore, then reconciles ambiguous
+delivery on retry and restart. Native AionCore still owns pending request
+creation, provider semantics, and protected-operation execution; remote WebUI
+remains on its isolated native compatibility path. See
+[AionUi F3.1 Approval Decision Authority](../product/AIONUI_F3_APPROVAL_AUTHORITY.md)
+and
+[ADR-0012](decisions/0012-aionui-approval-decision-authority.md).
+
 ### F4 — Goose inside the preserved agent experience
 
 - Pin and supervise Goose behind `AgentAdapter`.

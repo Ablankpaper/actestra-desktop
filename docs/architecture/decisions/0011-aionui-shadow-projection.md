@@ -154,6 +154,10 @@ authority beyond the single bounded observation operation.
 
 ## Review triggers
 
+The approval-response trigger was reviewed by ADR-0012. That later decision
+does not promote or import F2 shadow evidence; this ADR continues to govern the
+inert observation path.
+
 Review this decision if:
 
 - any shadow record is proposed as product, policy, approval, audit, or

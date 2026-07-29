@@ -25,6 +25,13 @@ Actestra development commands materialize a generated working tree under
 - F2 compatibility observers are metadata-only and fail-isolated. Native
   AionUi responses, routes, state, and UI remain authoritative; shadow evidence
   cannot drive user-visible decisions.
+- F3.1 routes desktop permission-card and pet confirmation decisions through a
+  fixed main-frame operation. The Actestra SQLite outbox is authoritative for
+  the immutable decision before the local native runtime receives it; pending
+  delivery is reconciled on retry and restart.
+- `ACTESTRA_APPROVAL_AUTHORITY=0` is the explicit F3.1 rollback switch. It
+  restores the retained native confirmation path without deleting version 5
+  authority rows or modifying the frozen source.
 - Actestra-owned P3 source files are copied into the generated tree through the
   declared `sourceCopies` contract and must remain byte-identical to their
   reviewed root sources.

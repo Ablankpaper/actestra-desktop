@@ -24,6 +24,7 @@ components or phases.
 | [0008](0008-main-owned-projection-and-ipc.md) | Accepted | Keep platform evidence and closed renderer intents main-owned |
 | [0010](0010-aionui-first-product-foundation.md) | Accepted | Preserve native AionUi as the product foundation and embed Goose and Eigent-style capabilities through its existing UI |
 | [0011](0011-aionui-shadow-projection.md) | Accepted | Observe native AionUi metadata through an inert, main-owned P3 shadow projection |
+| [0012](0012-aionui-approval-decision-authority.md) | Accepted | Persist desktop AionUi confirmation decisions before native delivery and reconcile ambiguous outcomes |
 
 ## Creating an ADR
 

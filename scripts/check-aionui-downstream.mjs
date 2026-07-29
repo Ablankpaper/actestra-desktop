@@ -60,11 +60,11 @@ function main() {
 
   if (
     overlay.schemaVersion !== 1 ||
-    overlay.phase !== "F2" ||
+    overlay.phase !== "F3.1" ||
     overlay.uiContract.layoutChangesAllowed !== false ||
     overlay.uiContract.featureEntryRemovalAllowed !== false
   ) {
-    throw new Error("Invalid F2 downstream overlay policy");
+    throw new Error("Invalid F3.1 downstream overlay policy");
   }
 
   for (const patch of overlay.patches) {
@@ -180,17 +180,49 @@ function main() {
       "event.senderFrame !== currentWindow.webContents.mainFrame",
       "openSqliteCorePersistence",
       "persistence-unavailable",
+      "ACTESTRA_APPROVAL_DECIDE_CHANNEL",
+      "AionUiApprovalAuthorityService",
+      "ACTESTRA_APPROVAL_AUTHORITY",
+      "nativeFallback",
+      "recoverPending",
     ],
   );
   requireText(
+    path.join(
+      outputRoot,
+      "packages/desktop/src/common/config/actestraApprovalAuthorityContract.ts",
+    ),
+    ["actestra:approval-decide-v1", "native-fallback"],
+  );
+  requireText(path.join(outputRoot, "packages/desktop/src/common/adapter/httpBridge.ts"), [
+    "routeActestraApprovalRequest",
+    "BackendHttpError",
+  ]);
+  requireText(
+    path.join(
+      outputRoot,
+      "packages/desktop/src/process/services/actestraApprovalNativeTransport.ts",
+    ),
+    ["127.0.0.1", "AbortSignal.timeout", "MAX_NATIVE_RESPONSE_BYTES"],
+  );
+  requireText(path.join(outputRoot, "packages/desktop/src/process/pet/petConfirmManager.ts"), [
+    "resolveActestraApprovalDecisionFromMain",
+    "native fallback failed",
+  ]);
+  requireText(
     path.join(outputRoot, "packages/desktop/src/actestra/main/persistence/sqliteMigrations.ts"),
-    ["CURRENT_CORE_SCHEMA_VERSION = 4", "aionui_shadow_evidence", "metadata-only"],
+    [
+      "CURRENT_CORE_SCHEMA_VERSION = 5",
+      "aionui_shadow_evidence",
+      "aionui_approval_decisions",
+      "pending-delivery",
+    ],
   );
 
   console.log(
-    `Verified Actestra F2 downstream overlay: ${changedFiles.size} declared files, ` +
+    `Verified Actestra F3.1 downstream overlay: ${changedFiles.size} declared files, ` +
       `${overlay.invariantFiles.length} R0 invariant files, ${overlay.sourceCopies.length} ` +
-      "reviewed source copies, identity/isolation and shadow-projection policies present.",
+      "reviewed source copies, identity/isolation, shadow projection and approval authority present.",
   );
 }
 

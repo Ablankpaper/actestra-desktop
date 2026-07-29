@@ -67,7 +67,8 @@ P4.1/F1 identity-and-isolation implementation are CI-backed on
 `632573fa03c34fdb789c85d8efc1ce1e0f8e8177` plus packaged-boundary
 remediation `1478726d62302fa885525024eb4839af5e98b4dd` pass
 [macOS arm64 CI run 30421351204](https://github.com/bignormal/actestra-desktop/actions/runs/30421351204);
-pull request 6 remains Draft.
+P4.3/F3.1 approval-decision authority is implemented and under local
+validation on the same branch. Pull request 6 remains Draft.
 
 - The repository now contains the exact, unmodified 1,766-file AionUi
   `v2.1.41` runnable desktop source foundation at commit
@@ -83,12 +84,12 @@ pull request 6 remains Draft.
 - The renderer is sandboxed and receives only three fixed, non-privileged
   metadata intents. External HTTP, HTTPS, WebSocket, permissions, navigation,
   new windows, telemetry, updates, and accounts are inactive.
-- Twenty-seven test files with 141 tests, an exact Electron-runtime SQLite
+- Thirty test files with 153 tests, an exact Electron-runtime SQLite
   probe, a three-scenario process-failure harness, formatting, lint, strict
-  types, product-boundary checks, renderer build, packaged identity/CSP checks,
-  and a fresh-profile three-stage startup smoke pass locally. P3.1-P3.6 and
-  review remediation also have exact implementation CI. Unsigned arm64
-  app/DMG/ZIP packaging passes locally.
+  types, a 40-source product-boundary check, renderer build, packaged
+  identity/CSP checks, and a fresh-profile three-stage startup smoke pass
+  locally. P3.1-P3.6 and review remediation also have exact implementation CI.
+  Unsigned arm64 app/DMG/ZIP packaging passes locally.
 - The pure TypeScript core contract has no Electron, filesystem, shell, network,
   credential, or renderer authority. SQLite, worker supervision, policy,
   approval, opaque credential leases, the metadata-only audit trail, and the
@@ -120,9 +121,26 @@ pull request 6 remains Draft.
 - Exact-head CI repeats root boundaries, downstream materialization, strict
   types, 14 focused tests, native production build, unsigned bundle, packaged
   identity and product boundary, and clean-profile smoke.
-- The native AionUi foundation is not yet fused to P3 authoritative data; F2 is
-  compatibility evidence only. Goose and Eigent-style integration have not
-  started.
+- F3.1 preserves the AionUi permission cards, ACP options, pet confirmation,
+  and native confirmation response shape while routing desktop decisions
+  through one fixed trusted-main-frame operation.
+- Main reserves an immutable response and pending-delivery state in SQLite
+  schema version 5 before loopback native delivery. Exact duplicates are
+  idempotent, changed responses conflict, and retry or restart reconciles
+  ambiguous delivery against the native pending list.
+- `ACTESTRA_APPROVAL_AUTHORITY=0` is the explicit native fallback. Authority
+  errors otherwise fail closed instead of silently bypassing persistence.
+- Root full checks pass 30 files and 153 tests. The complete materialized
+  native suite passes 330 files with 1 skipped and 2,602 tests with 5 skipped;
+  strict TypeScript and the 563-main/7-preload/10,163-renderer-module
+  production build also pass.
+- An isolated real desktop run preserves the Guide UI, proves schema version 5
+  persist-before-deliver on a structured native failure, proves restart does
+  not blindly redeliver, and proves the explicit fallback creates no new
+  authority row.
+- F3.1 is the first authoritative write beneath the preserved UI, but it does
+  not activate P3 policy, audit, credential, protected-tool, or other domain
+  authority. Goose and Eigent-style integration have not started.
 
 See [Project Status](docs/PROJECT_STATUS.md) for the evidence-backed state.
 The local P2 proof is recorded in
@@ -147,6 +165,7 @@ ordered fusion is in
 9. [AionUi–Actestra Fusion](docs/architecture/AIONUI_ACTESTRA_FUSION.md)
 10. [AionUi F1 Identity and Isolation](docs/product/AIONUI_F1_IDENTITY_ISOLATION.md)
 11. [AionUi F2 Shadow Projection](docs/product/AIONUI_F2_SHADOW_PROJECTION.md)
+12. [AionUi F3.1 Approval Decision Authority](docs/product/AIONUI_F3_APPROVAL_AUTHORITY.md)
 
 Repository-wide instructions are in [AGENTS.md](AGENTS.md). Contribution rules
 are in [CONTRIBUTING.md](CONTRIBUTING.md).

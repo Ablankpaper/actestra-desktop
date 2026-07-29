@@ -60,7 +60,7 @@ describe("Actestra SQLite migrations", () => {
     expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
       fromVersion: 0,
       toVersion: CURRENT_CORE_SCHEMA_VERSION,
-      appliedVersions: [1, 2, 3, 4],
+      appliedVersions: [1, 2, 3, 4, 5],
     });
     expect(pragmaNumber(database, "application_id")).toBe(ACTESTRA_SQLITE_APPLICATION_ID);
     expect(pragmaNumber(database, "user_version")).toBe(CURRENT_CORE_SCHEMA_VERSION);
@@ -84,6 +84,10 @@ describe("Actestra SQLite migrations", () => {
       {
         version: 4,
         name: "aionui-shadow-evidence",
+      },
+      {
+        version: 5,
+        name: "aionui-approval-authority",
       },
     ]);
   });
@@ -155,11 +159,13 @@ describe("Actestra SQLite migrations", () => {
     const database = createDatabase();
     migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 3), APPLIED_AT);
 
-    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
-      fromVersion: 3,
-      toVersion: 4,
-      appliedVersions: [4],
-    });
+    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 4), APPLIED_AT)).toEqual(
+      {
+        fromVersion: 3,
+        toVersion: 4,
+        appliedVersions: [4],
+      },
+    );
     expect(
       database
         .prepare(
@@ -180,6 +186,49 @@ describe("Actestra SQLite migrations", () => {
       { name: "privileged_audit_records" },
       { name: "workspaces" },
     ]);
+  });
+
+  it("performs a real 4 -> 5 migration without changing F2 shadow evidence", () => {
+    const database = createDatabase();
+    migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 4), APPLIED_AT);
+    database
+      .prepare(
+        `INSERT INTO aionui_shadow_evidence (
+           sequence, evidence_id, captured_at, source, domain,
+           native_identity_hash, native_revision_hash, redaction, evidence_json
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        1,
+        "shadow-preserved",
+        APPLIED_AT,
+        "aionui-v2.1.41",
+        "provider",
+        "identity-hash",
+        "revision-hash",
+        "metadata-only",
+        "{}",
+      );
+
+    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
+      fromVersion: 4,
+      toVersion: 5,
+      appliedVersions: [5],
+    });
+    expect(database.prepare("SELECT evidence_id FROM aionui_shadow_evidence").all()).toEqual([
+      { evidence_id: "shadow-preserved" },
+    ]);
+    expect(
+      database
+        .prepare(
+          `SELECT name
+           FROM sqlite_schema
+           WHERE type = 'table' AND name = 'aionui_approval_decisions'`,
+        )
+        .get(),
+    ).toEqual({
+      name: "aionui_approval_decisions",
+    });
   });
 
   it("rejects a future schema without changing its version", () => {

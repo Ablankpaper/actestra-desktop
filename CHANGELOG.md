@@ -57,6 +57,12 @@ releases begin.
 - F2 mapping, redaction, event ordering, duplicate, restart, corruption,
   persistence-failure, invariant-UI, and real native conversation-read
   evidence.
+- ADR-0012 and F3.1 desktop confirmation authority: one fixed trusted-main-frame
+  intent, immutable schema version 5 response/outbox records, persist-before-
+  deliver ordering, duplicate and conflict handling, ambiguous-delivery and
+  restart reconciliation, bounded native transport, and explicit rollback.
+- Downstream routing for the preserved renderer permission cards and pet
+  confirmation window without replacing their UI or native response shapes.
 
 ### Changed
 

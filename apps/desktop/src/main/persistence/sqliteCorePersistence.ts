@@ -3,11 +3,18 @@ import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { DatabaseSync } from "node:sqlite";
 import {
+  assertAionUiApprovalAuthorityLimit,
+  assertAionUiApprovalDecisionRecord,
   assertAionUiShadowEvidence,
+  type AionUiApprovalAuthorityPersistencePort,
+  type AionUiApprovalAuthoritySummary,
+  type AionUiApprovalDecisionRecord,
   type AionUiShadowEvidence,
   type AionUiShadowPersistencePort,
   type AionUiShadowEvidenceSummary,
   type AppendAionUiShadowEvidenceResult,
+  type NormalizedAionUiApprovalDecision,
+  type ReserveAionUiApprovalDecisionResult,
   type StoredAionUiShadowEvidence,
 } from "../../compatibility/aionui";
 import {
@@ -74,6 +81,12 @@ const AGENT_ATTEMPT_EVIDENCE_COLUMNS = `
 const AIONUI_SHADOW_EVIDENCE_COLUMNS = `
   sequence, evidence_id, captured_at, source, domain, native_identity_hash,
   native_revision_hash, redaction, evidence_json
+`;
+const AIONUI_APPROVAL_DECISION_COLUMNS = `
+  decision_id, native_conversation_id, native_call_id, native_message_id,
+  native_path, request_hash, decision, always_allow, delivery_state,
+  attempt_count, created_at, updated_at, last_attempt_at, delivered_at,
+  last_error_code, delivery_body_json, record_json
 `;
 
 type SqliteRow = Record<string, unknown>;
@@ -351,6 +364,135 @@ function parseStoredAionUiShadowEvidence(row: SqliteRow): StoredAionUiShadowEvid
   });
 }
 
+function parseStoredAionUiApprovalDecision(row: SqliteRow): AionUiApprovalDecisionRecord {
+  const encoded = requiredString(row, "record_json");
+  let value: unknown;
+
+  try {
+    value = JSON.parse(encoded);
+    assertAionUiApprovalDecisionRecord(value);
+  } catch (error) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted AionUi approval authority record violates its contract",
+      {
+        cause: error,
+      },
+    );
+  }
+
+  const deliveryBody = requiredString(row, "delivery_body_json");
+  let parsedDeliveryBody: unknown;
+  try {
+    parsedDeliveryBody = JSON.parse(deliveryBody);
+  } catch (error) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted AionUi approval delivery body is not valid JSON",
+      {
+        cause: error,
+      },
+    );
+  }
+
+  if (
+    requiredString(row, "decision_id") !== value.decisionId ||
+    requiredString(row, "native_conversation_id") !== value.nativeConversationId ||
+    requiredString(row, "native_call_id") !== value.nativeCallId ||
+    requiredString(row, "native_message_id") !== value.nativeMessageId ||
+    requiredString(row, "native_path") !== value.nativePath ||
+    requiredString(row, "request_hash") !== value.requestHash ||
+    requiredString(row, "decision") !== value.decision ||
+    requiredNumber(row, "always_allow") !== (value.alwaysAllow ? 1 : 0) ||
+    requiredString(row, "delivery_state") !== value.deliveryState ||
+    requiredNumber(row, "attempt_count") !== value.attemptCount ||
+    requiredString(row, "created_at") !== value.createdAt ||
+    requiredString(row, "updated_at") !== value.updatedAt ||
+    optionalString(row, "last_attempt_at") !== value.lastAttemptAt ||
+    optionalString(row, "delivered_at") !== value.deliveredAt ||
+    optionalString(row, "last_error_code") !== value.lastErrorCode ||
+    !isDeepStrictEqual(parsedDeliveryBody, value.deliveryBody)
+  ) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted AionUi approval projection does not match its canonical record",
+    );
+  }
+
+  return deepFreeze(value);
+}
+
+function approvalDecisionMatches(
+  record: AionUiApprovalDecisionRecord,
+  decision: NormalizedAionUiApprovalDecision,
+): boolean {
+  return (
+    record.contractVersion === decision.contractVersion &&
+    record.decisionId === decision.decisionId &&
+    record.nativeConversationId === decision.nativeConversationId &&
+    record.nativeCallId === decision.nativeCallId &&
+    record.nativeMessageId === decision.nativeMessageId &&
+    record.nativePath === decision.nativePath &&
+    record.requestHash === decision.requestHash &&
+    record.decision === decision.decision &&
+    record.alwaysAllow === decision.alwaysAllow &&
+    isDeepStrictEqual(record.deliveryBody, decision.deliveryBody)
+  );
+}
+
+function validatedApprovalRecord(value: unknown): AionUiApprovalDecisionRecord {
+  try {
+    assertAionUiApprovalDecisionRecord(value);
+  } catch (error) {
+    throw new PersistenceError("invalid-record", "AionUi approval authority update is invalid", {
+      cause: error,
+    });
+  }
+  return deepFreeze(value);
+}
+
+function loadApprovalDecision(
+  database: DatabaseSync,
+  decisionId: string,
+): AionUiApprovalDecisionRecord | undefined {
+  const row = database
+    .prepare(
+      `SELECT ${AIONUI_APPROVAL_DECISION_COLUMNS}
+       FROM aionui_approval_decisions
+       WHERE decision_id = ?`,
+    )
+    .get(decisionId) as SqliteRow | undefined;
+  return row === undefined ? undefined : parseStoredAionUiApprovalDecision(row);
+}
+
+function updateApprovalDecision(
+  database: DatabaseSync,
+  record: AionUiApprovalDecisionRecord,
+): void {
+  database
+    .prepare(
+      `UPDATE aionui_approval_decisions
+       SET delivery_state = ?,
+           attempt_count = ?,
+           updated_at = ?,
+           last_attempt_at = ?,
+           delivered_at = ?,
+           last_error_code = ?,
+           record_json = ?
+       WHERE decision_id = ?`,
+    )
+    .run(
+      record.deliveryState,
+      record.attemptCount,
+      record.updatedAt,
+      record.lastAttemptAt ?? null,
+      record.deliveredAt ?? null,
+      record.lastErrorCode ?? null,
+      JSON.stringify(record),
+      record.decisionId,
+    );
+}
+
 function verifyNoForeignKeyViolations(database: DatabaseSync): void {
   const violations = database.prepare("PRAGMA foreign_key_check").all();
 
@@ -367,7 +509,11 @@ export function resolveCoreDatabasePath(userDataPath: string): string {
 }
 
 export interface ActestraPersistencePort
-  extends CorePersistencePort, PlatformEvidencePersistencePort, AionUiShadowPersistencePort {}
+  extends
+    CorePersistencePort,
+    PlatformEvidencePersistencePort,
+    AionUiShadowPersistencePort,
+    AionUiApprovalAuthorityPersistencePort {}
 
 class SqliteCorePersistence implements ActestraPersistencePort {
   private database: DatabaseSync | null;
@@ -1166,6 +1312,276 @@ class SqliteCorePersistence implements ActestraPersistencePort {
       throw new PersistenceError(
         "corrupt-database",
         "AionUi shadow evidence sequence is not gapless",
+      );
+    }
+    return summary;
+  }
+
+  async reserveAionUiApprovalDecision(
+    decision: NormalizedAionUiApprovalDecision,
+    now: string,
+  ): Promise<ReserveAionUiApprovalDecisionResult> {
+    const database = this.requireDatabase();
+    const candidate = validatedApprovalRecord({
+      ...decision,
+      deliveryState: "pending-delivery",
+      attemptCount: 0,
+      createdAt: now,
+      updatedAt: now,
+    });
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const existing = loadApprovalDecision(database, candidate.decisionId);
+      if (existing !== undefined) {
+        if (!approvalDecisionMatches(existing, decision)) {
+          throw new PersistenceError(
+            "evidence-conflict",
+            "AionUi approval identifier conflicts with an immutable decision",
+          );
+        }
+        database.exec("COMMIT");
+        return {
+          status: "duplicate",
+          record: existing,
+        };
+      }
+
+      const identityRow = database
+        .prepare(
+          `SELECT ${AIONUI_APPROVAL_DECISION_COLUMNS}
+           FROM aionui_approval_decisions
+           WHERE native_conversation_id = ? AND native_call_id = ?`,
+        )
+        .get(candidate.nativeConversationId, candidate.nativeCallId) as SqliteRow | undefined;
+      if (identityRow !== undefined) {
+        throw new PersistenceError(
+          "evidence-conflict",
+          "AionUi approval identity conflicts with an immutable decision",
+        );
+      }
+
+      database
+        .prepare(
+          `INSERT INTO aionui_approval_decisions (
+             decision_id, native_conversation_id, native_call_id, native_message_id,
+             native_path, request_hash, decision, always_allow, delivery_state,
+             attempt_count, created_at, updated_at, last_attempt_at, delivered_at,
+             last_error_code, delivery_body_json, record_json
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          candidate.decisionId,
+          candidate.nativeConversationId,
+          candidate.nativeCallId,
+          candidate.nativeMessageId,
+          candidate.nativePath,
+          candidate.requestHash,
+          candidate.decision,
+          candidate.alwaysAllow ? 1 : 0,
+          candidate.deliveryState,
+          candidate.attemptCount,
+          candidate.createdAt,
+          candidate.updatedAt,
+          null,
+          null,
+          null,
+          JSON.stringify(candidate.deliveryBody),
+          JSON.stringify(candidate),
+        );
+      database.exec("COMMIT");
+      return {
+        status: "created",
+        record: candidate,
+      };
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) {
+        throw error;
+      }
+      throw new PersistenceError(
+        "corrupt-database",
+        "Actestra could not reserve the AionUi approval decision",
+        {
+          cause: error,
+        },
+      );
+    }
+  }
+
+  async beginAionUiApprovalDelivery(
+    decisionId: string,
+    now: string,
+  ): Promise<AionUiApprovalDecisionRecord> {
+    const database = this.requireDatabase();
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const existing = loadApprovalDecision(database, decisionId);
+      if (existing === undefined) {
+        throw new PersistenceError("invalid-record", "AionUi approval decision was not found");
+      }
+      if (existing.deliveryState === "delivered") {
+        database.exec("COMMIT");
+        return existing;
+      }
+      if (existing.attemptCount >= Number.MAX_SAFE_INTEGER) {
+        throw new PersistenceError(
+          "invalid-record",
+          "AionUi approval delivery attempt count is exhausted",
+        );
+      }
+      const updated = validatedApprovalRecord({
+        ...existing,
+        attemptCount: existing.attemptCount + 1,
+        updatedAt: now,
+        lastAttemptAt: now,
+        lastErrorCode: undefined,
+      });
+      updateApprovalDecision(database, updated);
+      database.exec("COMMIT");
+      return updated;
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) {
+        throw error;
+      }
+      throw new PersistenceError(
+        "corrupt-database",
+        "Actestra could not begin AionUi approval delivery",
+        {
+          cause: error,
+        },
+      );
+    }
+  }
+
+  async markAionUiApprovalDelivered(
+    decisionId: string,
+    now: string,
+  ): Promise<AionUiApprovalDecisionRecord> {
+    const database = this.requireDatabase();
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const existing = loadApprovalDecision(database, decisionId);
+      if (existing === undefined) {
+        throw new PersistenceError("invalid-record", "AionUi approval decision was not found");
+      }
+      if (existing.deliveryState === "delivered") {
+        database.exec("COMMIT");
+        return existing;
+      }
+      const updated = validatedApprovalRecord({
+        ...existing,
+        deliveryState: "delivered",
+        updatedAt: now,
+        deliveredAt: now,
+        lastErrorCode: undefined,
+      });
+      updateApprovalDecision(database, updated);
+      database.exec("COMMIT");
+      return updated;
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) {
+        throw error;
+      }
+      throw new PersistenceError(
+        "corrupt-database",
+        "Actestra could not complete AionUi approval delivery",
+        {
+          cause: error,
+        },
+      );
+    }
+  }
+
+  async markAionUiApprovalDeliveryFailed(
+    decisionId: string,
+    errorCode: string,
+    now: string,
+  ): Promise<AionUiApprovalDecisionRecord> {
+    const database = this.requireDatabase();
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const existing = loadApprovalDecision(database, decisionId);
+      if (existing === undefined) {
+        throw new PersistenceError("invalid-record", "AionUi approval decision was not found");
+      }
+      if (existing.deliveryState === "delivered") {
+        throw new PersistenceError(
+          "evidence-conflict",
+          "A delivered AionUi approval cannot be marked failed",
+        );
+      }
+      const updated = validatedApprovalRecord({
+        ...existing,
+        updatedAt: now,
+        lastErrorCode: errorCode,
+      });
+      updateApprovalDecision(database, updated);
+      database.exec("COMMIT");
+      return updated;
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) {
+        throw error;
+      }
+      throw new PersistenceError(
+        "corrupt-database",
+        "Actestra could not record the AionUi approval delivery failure",
+        {
+          cause: error,
+        },
+      );
+    }
+  }
+
+  async getAionUiApprovalDecision(
+    decisionId: string,
+  ): Promise<AionUiApprovalDecisionRecord | undefined> {
+    return loadApprovalDecision(this.requireDatabase(), decisionId);
+  }
+
+  async listPendingAionUiApprovalDecisions(
+    limit: number,
+  ): Promise<readonly AionUiApprovalDecisionRecord[]> {
+    const database = this.requireDatabase();
+    assertAionUiApprovalAuthorityLimit(limit);
+    const rows = asRows(
+      database
+        .prepare(
+          `SELECT ${AIONUI_APPROVAL_DECISION_COLUMNS}
+           FROM aionui_approval_decisions
+           WHERE delivery_state = 'pending-delivery'
+           ORDER BY created_at, decision_id
+           LIMIT ?`,
+        )
+        .all(limit),
+    );
+    return Object.freeze(rows.map(parseStoredAionUiApprovalDecision));
+  }
+
+  async summarizeAionUiApprovalAuthority(): Promise<AionUiApprovalAuthoritySummary> {
+    const database = this.requireDatabase();
+    const row = database
+      .prepare(
+        `SELECT
+           COUNT(*) AS record_count,
+           COALESCE(SUM(CASE WHEN delivery_state = 'pending-delivery' THEN 1 ELSE 0 END), 0)
+             AS pending_count,
+           COALESCE(SUM(CASE WHEN delivery_state = 'delivered' THEN 1 ELSE 0 END), 0)
+             AS delivered_count
+         FROM aionui_approval_decisions`,
+      )
+      .get() as SqliteRow;
+    const summary = Object.freeze({
+      recordCount: requiredNumber(row, "record_count"),
+      pendingCount: requiredNumber(row, "pending_count"),
+      deliveredCount: requiredNumber(row, "delivered_count"),
+    });
+    if (summary.recordCount !== summary.pendingCount + summary.deliveredCount) {
+      throw new PersistenceError(
+        "corrupt-database",
+        "AionUi approval authority summary is inconsistent",
       );
     }
     return summary;

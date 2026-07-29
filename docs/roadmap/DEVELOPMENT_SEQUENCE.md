@@ -34,8 +34,11 @@ exact-implementation CI-backed on Draft pull request 6. P4.2/F2 is also pushed
 and exact-head CI-backed: seven bounded native metadata domains project into
 separate SQLite schema version 4 shadow evidence without changing native UI or
 authoritative P3 tables. Full native regression and real desktop projection
-remain local evidence. P4.3/F3 domain authority is the next product slice;
-merge and release states remain separate.
+remain local evidence. P4.3/F3.1 is now implemented locally as the first
+authority slice: desktop confirmation responses and delivery state move to a
+schema version 5 persist-before-deliver outbox while the original AionUi
+permission and pet UI remain intact. Exact pushed-head CI, merge, and release
+states remain separate.
 
 ## P0 — Project Foundation
 
@@ -126,6 +129,11 @@ merge and release states remain separate.
 - **P4.3 — authoritative general work:** move one functional domain at a time to
   Actestra persistence, policy, approval, audit, artifact, and worker authority
   while keeping AionUi bridge and UI semantics.
+  - **F3.1 — approval response and delivery:** reserve the immutable desktop
+    confirmation response before native delivery, reconcile uncertain attempts
+    on retry and restart, retain structured native errors, and provide an
+    explicit native rollback. Pending-request creation, policy, audit, and
+    protected-operation execution remain future slices.
 - Support scoped workspace reads and task-output writes through the preserved
   file, workspace, conversation, preview, and artifact surfaces.
 - Add representative file, research, writing, office-document, schedule,
