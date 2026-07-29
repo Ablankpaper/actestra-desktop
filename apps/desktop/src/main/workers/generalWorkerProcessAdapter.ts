@@ -275,6 +275,45 @@ export class GeneralWorkerProcessAdapter implements AgentAdapter {
     }
   }
 
+  async appendAuthoritativeArtifactEvent(
+    session: SessionId,
+    event: CoreEvent<"artifact.created" | "artifact.updated">,
+  ): Promise<void> {
+    this.assertAvailable();
+    const attempt = this.requireAttempt(session);
+    if (
+      attempt.terminal ||
+      attempt.disposed ||
+      (event.type !== "artifact.created" && event.type !== "artifact.updated") ||
+      event.workspaceId !== attempt.request.workspaceId ||
+      event.taskId !== attempt.request.taskId ||
+      event.sessionId !== attempt.request.sessionId ||
+      event.workerId !== attempt.request.workerId ||
+      event.streamId !== attempt.request.streamId ||
+      event.correlationId !== attempt.request.correlationId ||
+      attempt.eventIds.has(event.eventId)
+    ) {
+      throw new AgentAdapterError(
+        "invalid-state",
+        `General Worker session ${session} cannot accept the artifact event`,
+      );
+    }
+    try {
+      attempt.coreState = advanceCoreEventStreamState(attempt.coreState, event);
+    } catch (error) {
+      throw new AgentAdapterError(
+        "invalid-signal",
+        "Authoritative artifact event conflicts with the General Worker stream",
+        { cause: error },
+      );
+    }
+    attempt.eventIds.add(event.eventId);
+    this.emitSignal(attempt, {
+      type: "core-event",
+      event,
+    });
+  }
+
   async send(session: SessionId, input: AgentInput): Promise<void> {
     this.assertAvailable();
     assertAgentInput(input);
@@ -661,12 +700,14 @@ export class GeneralWorkerProcessAdapter implements AgentAdapter {
             requestId: pendingTool.requestId,
             errorCode: result.errorCode,
             message: result.message,
+            mayHaveExecuted: result.mayHaveExecuted,
           });
         } else {
           this.emitCoreEvent(attempt, "tool.failed", {
             requestId: pendingTool.requestId,
             errorCode: "tool-cancelled",
             message: result.reason ?? "Tool execution cancelled",
+            mayHaveExecuted: false,
           });
         }
         attempt.acceptedToolResult = result;

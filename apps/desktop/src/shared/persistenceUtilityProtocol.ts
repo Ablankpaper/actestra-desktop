@@ -23,6 +23,7 @@ import {
   assertCoreEventCursor,
   assertCoreEventStream,
   assertDomainGraph,
+  assertGeneralWorkCheckpoint,
   assertPersistContentReferenceResult,
   assertPersistWorkspaceGrantResult,
   assertResolveContentReferenceInput,
@@ -32,6 +33,7 @@ import {
   correlationId,
   eventStreamId,
   instant,
+  sessionId,
   workspaceId,
   type AgentAttemptEvidence,
   type AppendPrivilegedAuditInput,
@@ -41,6 +43,8 @@ import {
   type CoreEventCursor,
   type DomainGraph,
   type EventStreamId,
+  type GeneralWorkCheckpoint,
+  type PersistGeneralWorkCheckpointResult,
   type PersistContentReferenceResult,
   type PersistEvidenceResult,
   type PersistEventResult,
@@ -52,6 +56,7 @@ import {
   type StoreContentReferenceInput,
   type WorkspaceGrant,
   type WorkspaceId,
+  type SessionId,
 } from "../core";
 
 export const PERSISTENCE_UTILITY_PROTOCOL_VERSION = 1 as const;
@@ -196,6 +201,24 @@ export interface PersistenceUtilityOperationMap {
     };
     readonly result: ResolvedContentReference;
   };
+  readonly "persist-general-work-checkpoint": {
+    readonly request: {
+      readonly checkpoint: GeneralWorkCheckpoint;
+    };
+    readonly result: PersistGeneralWorkCheckpointResult;
+  };
+  readonly "get-general-work-checkpoint": {
+    readonly request: {
+      readonly sessionId: SessionId;
+    };
+    readonly result: GeneralWorkCheckpoint | null;
+  };
+  readonly "list-recoverable-general-work-checkpoints": {
+    readonly request: {
+      readonly limit: number;
+    };
+    readonly result: readonly GeneralWorkCheckpoint[];
+  };
   readonly close: {
     readonly request: Record<string, never>;
     readonly result: null;
@@ -228,6 +251,9 @@ export const PERSISTENCE_UTILITY_OPERATIONS = [
   "get-active-workspace-grant",
   "store-content-reference",
   "resolve-content-reference",
+  "persist-general-work-checkpoint",
+  "get-general-work-checkpoint",
+  "list-recoverable-general-work-checkpoints",
   "close",
 ] as const satisfies readonly (keyof PersistenceUtilityOperationMap)[];
 
@@ -689,6 +715,26 @@ function assertRequestPayload(request: PersistenceUtilityRequest): void {
       assertExactKeys(payload, ["input"], "resolve-content-reference request");
       assertResolveContentReferenceInput(payload.input);
       return;
+    case "persist-general-work-checkpoint":
+      assertRecord(payload, "persist-general-work-checkpoint request");
+      assertExactKeys(payload, ["checkpoint"], "persist-general-work-checkpoint request");
+      assertGeneralWorkCheckpoint(payload.checkpoint);
+      return;
+    case "get-general-work-checkpoint":
+      assertRecord(payload, "get-general-work-checkpoint request");
+      assertExactKeys(payload, ["sessionId"], "get-general-work-checkpoint request");
+      if (typeof payload.sessionId !== "string") {
+        throw new PersistenceUtilityProtocolError(
+          "get-general-work-checkpoint sessionId is invalid",
+        );
+      }
+      sessionId(payload.sessionId);
+      return;
+    case "list-recoverable-general-work-checkpoints":
+      assertRecord(payload, "list-recoverable-general-work-checkpoints request");
+      assertExactKeys(payload, ["limit"], "list-recoverable-general-work-checkpoints request");
+      assertBoundedLimit(payload.limit, 100, "list-recoverable-general-work-checkpoints limit");
+      return;
     default:
       assertNeverOperation(request);
   }
@@ -779,6 +825,33 @@ function assertSuccessResult(operation: PersistenceUtilityOperation, result: unk
       return;
     case "resolve-content-reference":
       assertResolvedContentReference(result);
+      return;
+    case "persist-general-work-checkpoint":
+      assertRecord(result, "persist-general-work-checkpoint result");
+      assertExactKeys(result, ["status", "checkpoint"], "persist-general-work-checkpoint result");
+      if (
+        result.status !== "stored" &&
+        result.status !== "updated" &&
+        result.status !== "duplicate"
+      ) {
+        throw new PersistenceUtilityProtocolError(
+          "persist-general-work-checkpoint status is invalid",
+        );
+      }
+      assertGeneralWorkCheckpoint(result.checkpoint);
+      return;
+    case "get-general-work-checkpoint":
+      if (result !== null) {
+        assertGeneralWorkCheckpoint(result);
+      }
+      return;
+    case "list-recoverable-general-work-checkpoints":
+      if (!Array.isArray(result) || result.length > 100) {
+        throw new PersistenceUtilityProtocolError(
+          "list-recoverable-general-work-checkpoints result is invalid",
+        );
+      }
+      result.forEach(assertGeneralWorkCheckpoint);
       return;
     default:
       assertNeverOperation(operation);

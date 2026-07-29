@@ -19,6 +19,7 @@ export const PERSISTENCE_ERROR_CODES = [
   "content-expired",
   "content-integrity",
   "content-too-large",
+  "general-work-conflict",
 ] as const;
 
 export type PersistenceErrorCode = (typeof PERSISTENCE_ERROR_CODES)[number];

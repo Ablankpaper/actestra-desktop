@@ -5,6 +5,7 @@ import {
   assertAgentAttemptEvidence,
   type AgentAttemptEvidence,
   type CorePersistencePort,
+  type GeneralWorkAttemptRecord,
   type PersistEventResult,
   type PlatformEvidencePersistencePort,
   type SessionId,
@@ -23,6 +24,48 @@ export interface PersistedAttemptRelease {
   readonly evidenceResult: {
     readonly status: "appended" | "duplicate";
   };
+}
+
+type AgentAttemptEvidenceSource = AgentAttemptSnapshot | GeneralWorkAttemptRecord;
+
+export function createAgentAttemptEvidence(
+  snapshot: AgentAttemptEvidenceSource,
+): AgentAttemptEvidence {
+  const evidence = Object.freeze({
+    contractVersion: PLATFORM_EVIDENCE_CONTRACT_VERSION,
+    redaction: "metadata",
+    workspaceId: snapshot.workspaceId,
+    taskId: snapshot.taskId,
+    correlationId: snapshot.correlationId,
+    sessionId: snapshot.sessionId,
+    workerId: snapshot.workerId,
+    streamId: snapshot.streamId,
+    state: snapshot.state as AgentAttemptEvidence["state"],
+    ...(snapshot.taskState === undefined ? {} : { taskState: snapshot.taskState }),
+    startedAt: snapshot.startedAt,
+    lastSignalAt: snapshot.lastSignalAt,
+    lastControlSequence: snapshot.lastControlSequence,
+    lastCoreEventSequence: snapshot.lastCoreEventSequence,
+    restartCount: snapshot.restartCount,
+    ...(snapshot.restartedFromSessionId === undefined
+      ? {}
+      : { restartedFromSessionId: snapshot.restartedFromSessionId }),
+    ...(snapshot.replacementSessionId === undefined
+      ? {}
+      : { replacementSessionId: snapshot.replacementSessionId }),
+    disposed: true,
+    forcedCancellation: snapshot.forcedCancellation,
+    ...(snapshot.incident === undefined
+      ? {}
+      : {
+          incident: Object.freeze({
+            code: snapshot.incident.code,
+            occurredAt: snapshot.incident.occurredAt,
+          }),
+        }),
+  }) satisfies AgentAttemptEvidence;
+  assertAgentAttemptEvidence(evidence);
+  return evidence;
 }
 
 export class AgentAttemptEvidenceCoordinator {
@@ -69,7 +112,7 @@ export class AgentAttemptEvidenceCoordinator {
 
     const events = supervisor.coreEvents(session);
     this.assertEventProjection(snapshot, events);
-    const evidence = this.createEvidence(snapshot);
+    const evidence = createAgentAttemptEvidence(snapshot);
     const eventResults: PersistEventResult[] = [];
     // A failure after any append leaves the terminal attempt available for
     // retry. The two persistence ports therefore must honor their documented
@@ -86,44 +129,6 @@ export class AgentAttemptEvidenceCoordinator {
       eventResults: Object.freeze(eventResults),
       evidenceResult: Object.freeze({ ...evidenceResult }),
     });
-  }
-
-  private createEvidence(snapshot: AgentAttemptSnapshot): AgentAttemptEvidence {
-    const evidence = Object.freeze({
-      contractVersion: PLATFORM_EVIDENCE_CONTRACT_VERSION,
-      redaction: "metadata",
-      workspaceId: snapshot.workspaceId,
-      taskId: snapshot.taskId,
-      correlationId: snapshot.correlationId,
-      sessionId: snapshot.sessionId,
-      workerId: snapshot.workerId,
-      streamId: snapshot.streamId,
-      state: snapshot.state as AgentAttemptEvidence["state"],
-      ...(snapshot.taskState === undefined ? {} : { taskState: snapshot.taskState }),
-      startedAt: snapshot.startedAt,
-      lastSignalAt: snapshot.lastSignalAt,
-      lastControlSequence: snapshot.lastControlSequence,
-      lastCoreEventSequence: snapshot.lastCoreEventSequence,
-      restartCount: snapshot.restartCount,
-      ...(snapshot.restartedFromSessionId === undefined
-        ? {}
-        : { restartedFromSessionId: snapshot.restartedFromSessionId }),
-      ...(snapshot.replacementSessionId === undefined
-        ? {}
-        : { replacementSessionId: snapshot.replacementSessionId }),
-      disposed: true,
-      forcedCancellation: snapshot.forcedCancellation,
-      ...(snapshot.incident === undefined
-        ? {}
-        : {
-            incident: Object.freeze({
-              code: snapshot.incident.code,
-              occurredAt: snapshot.incident.occurredAt,
-            }),
-          }),
-    }) satisfies AgentAttemptEvidence;
-    assertAgentAttemptEvidence(evidence);
-    return evidence;
   }
 
   private assertEventProjection(

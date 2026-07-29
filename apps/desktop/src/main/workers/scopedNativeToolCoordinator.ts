@@ -41,10 +41,27 @@ export interface ScopedNativeToolInvocation {
   readonly signal?: AbortSignal;
 }
 
+export interface ScopedNativeToolResolutionContext {
+  readonly invocation: ScopedNativeToolInvocation;
+  readonly toolName: string;
+  readonly result: AgentToolResult;
+}
+
+export type ScopedNativeToolResolutionBarrier = (
+  context: ScopedNativeToolResolutionContext,
+) => Promise<void>;
+
 interface InFlightInvocation {
   readonly controller: AbortController;
   cancellationReason?: string;
   readonly removeExternalAbort?: () => void;
+}
+
+interface RetainedToolResolution {
+  readonly sessionId: SessionId;
+  readonly inputRef: ToolInputReference;
+  readonly toolName: string;
+  readonly result: AgentToolResult;
 }
 
 function protectedExecutionCause(error: unknown): ProtectedToolExecutionError | undefined {
@@ -104,11 +121,13 @@ function assertInvocationSignal(signal: AbortSignal | undefined): void {
 
 export class ScopedNativeToolCoordinator {
   private readonly inFlight = new Map<ToolRequestId, InFlightInvocation>();
+  private readonly retainedResults = new Map<ToolRequestId, RetainedToolResolution>();
 
   constructor(
     private readonly supervisor: AgentAdapterSupervisor,
     private readonly gateway: ToolGateway,
     private readonly clock: AgentClock,
+    private readonly beforeResolve?: ScopedNativeToolResolutionBarrier,
   ) {}
 
   async invoke(invocation: ScopedNativeToolInvocation): Promise<AgentToolResult> {
@@ -154,6 +173,18 @@ export class ScopedNativeToolCoordinator {
         "Scoped native tool request event is unavailable",
       );
     }
+    const retained = this.retainedResults.get(invocation.requestId);
+    if (
+      retained !== undefined &&
+      (retained.sessionId !== invocation.sessionId ||
+        retained.inputRef !== invocation.inputRef ||
+        retained.toolName !== requestEvent.payload.toolName)
+    ) {
+      throw new ScopedNativeToolCoordinatorError(
+        "request-mismatch",
+        `Retained tool result does not match request ${invocation.requestId}`,
+      );
+    }
 
     const controller = new AbortController();
     let removeExternalAbort: (() => void) | undefined;
@@ -183,69 +214,90 @@ export class ScopedNativeToolCoordinator {
     this.inFlight.set(invocation.requestId, active);
 
     try {
-      const startedAt = this.now();
-      let result: AgentToolResult;
-      try {
-        const definition = scopedNativeToolDefinition(requestEvent.payload.toolName);
-        const operation = Object.freeze({
-          contractVersion: PRIVILEGED_CONTRACT_VERSION,
-          requestId: invocation.requestId,
-          workspaceId: snapshot.workspaceId,
-          taskId: snapshot.taskId,
-          sessionId: snapshot.sessionId,
-          workerId: snapshot.workerId,
-          toolId: definition.toolId,
-          inputRef: invocation.inputRef,
-          action: definition.action,
-          resourceKind: definition.resourceKind,
-          summary: requestEvent.payload.summary,
-          credentialRefs: Object.freeze([]),
-          requestedAt: requestEvent.occurredAt,
-        }) satisfies ProtectedOperation;
-        const gatewayResult = await this.gateway.invoke(operation, undefined, {
-          signal: controller.signal,
-        });
-        if (gatewayResult.status !== "executed") {
-          throw new PrivilegedServiceError(
-            "approval-not-granted",
-            "Scoped native tools cannot require an implicit approval",
-          );
-        }
-        result = Object.freeze({
-          requestId: invocation.requestId,
-          status: "succeeded",
-          startedAt,
-          completedAt: this.now(),
-          ...(gatewayResult.result.outputRef === undefined
-            ? {}
-            : { outputRef: gatewayResult.result.outputRef }),
-          summary: "Scoped native tool completed.",
-        });
-      } catch (error) {
-        const execution = protectedExecutionCause(error);
-        if (execution?.errorCode === "tool-cancelled" && !execution.mayHaveExecuted) {
+      let result = retained?.result;
+      if (result === undefined) {
+        const startedAt = this.now();
+        try {
+          const definition = scopedNativeToolDefinition(requestEvent.payload.toolName);
+          const operation = Object.freeze({
+            contractVersion: PRIVILEGED_CONTRACT_VERSION,
+            requestId: invocation.requestId,
+            workspaceId: snapshot.workspaceId,
+            taskId: snapshot.taskId,
+            sessionId: snapshot.sessionId,
+            workerId: snapshot.workerId,
+            toolId: definition.toolId,
+            inputRef: invocation.inputRef,
+            action: definition.action,
+            resourceKind: definition.resourceKind,
+            summary: requestEvent.payload.summary,
+            credentialRefs: Object.freeze([]),
+            requestedAt: requestEvent.occurredAt,
+          }) satisfies ProtectedOperation;
+          const gatewayResult = await this.gateway.invoke(operation, undefined, {
+            signal: controller.signal,
+          });
+          if (gatewayResult.status !== "executed") {
+            throw new PrivilegedServiceError(
+              "approval-not-granted",
+              "Scoped native tools cannot require an implicit approval",
+            );
+          }
           result = Object.freeze({
             requestId: invocation.requestId,
-            status: "cancelled",
+            status: "succeeded",
             startedAt,
             completedAt: this.now(),
-            reason: active.cancellationReason ?? "Tool execution cancelled",
+            ...(gatewayResult.result.outputRef === undefined
+              ? {}
+              : { outputRef: gatewayResult.result.outputRef }),
+            summary: "Scoped native tool completed.",
           });
-        } else {
-          const failure = stableFailure(error);
-          result = Object.freeze({
-            requestId: invocation.requestId,
-            status: "failed",
-            startedAt,
-            completedAt: this.now(),
-            errorCode: failure.errorCode,
-            message: failure.message,
-          });
+        } catch (error) {
+          const execution = protectedExecutionCause(error);
+          if (execution?.errorCode === "tool-cancelled" && !execution.mayHaveExecuted) {
+            result = Object.freeze({
+              requestId: invocation.requestId,
+              status: "cancelled",
+              startedAt,
+              completedAt: this.now(),
+              reason: active.cancellationReason ?? "Tool execution cancelled",
+            });
+          } else {
+            const failure = stableFailure(error);
+            result = Object.freeze({
+              requestId: invocation.requestId,
+              status: "failed",
+              startedAt,
+              completedAt: this.now(),
+              errorCode: failure.errorCode,
+              message: failure.message,
+              mayHaveExecuted:
+                execution?.mayHaveExecuted ??
+                (error instanceof PrivilegedServiceError ? error.mayHaveExecuted : false),
+            });
+          }
         }
+        assertAgentToolResult(result);
+        this.retainedResults.set(
+          invocation.requestId,
+          Object.freeze({
+            sessionId: invocation.sessionId,
+            inputRef: invocation.inputRef,
+            toolName: requestEvent.payload.toolName,
+            result,
+          }),
+        );
       }
 
       assertAgentToolResult(result);
+      await this.beforeResolve?.({
+        invocation,
+        toolName: requestEvent.payload.toolName,
+        result,
+      });
       await this.supervisor.resolveTool(invocation.requestId, result);
+      this.retainedResults.delete(invocation.requestId);
       return result;
     } finally {
       removeExternalAbort?.();
@@ -268,6 +320,19 @@ export class ScopedNativeToolCoordinator {
     active.cancellationReason = reason;
     active.controller.abort(reason);
     return true;
+  }
+
+  releaseRetainedResult(request: ToolRequestId): boolean {
+    toolRequestId(request);
+    if (this.inFlight.has(request)) {
+      return false;
+    }
+    return this.retainedResults.delete(request);
+  }
+
+  hasRetainedResult(request: ToolRequestId): boolean {
+    toolRequestId(request);
+    return this.retainedResults.has(request);
   }
 
   private now() {

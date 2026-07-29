@@ -8,11 +8,14 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   CoreContractError,
+  MAX_RECOVERABLE_GENERAL_WORK_CHECKPOINTS,
   PersistenceError,
+  correlationId,
   coreEventCursor,
   eventId,
   eventStreamId,
   sessionId,
+  workerId,
   type DomainGraph,
 } from "../../apps/desktop/src/core";
 import {
@@ -26,6 +29,7 @@ import {
   createStartedEvent,
   FIXTURE_STREAM_ID,
 } from "../fixtures/core";
+import { createGeneralWorkCheckpoint } from "../fixtures/generalWorkRecovery";
 
 const testDirectories: string[] = [];
 
@@ -152,6 +156,93 @@ describe("Actestra SQLite core persistence", () => {
       code: "domain-reference",
     });
     await expect(persistence.replayEvents(FIXTURE_STREAM_ID)).resolves.toEqual([]);
+    await persistence.close();
+  });
+
+  it("persists recoverable checkpoints with compare-and-swap revisions across reopen", async () => {
+    const userDataPath = createTestDirectory();
+    const active = createGeneralWorkCheckpoint();
+    const persistence = openSqliteCorePersistence(userDataPath);
+    await expect(persistence.persistGeneralWorkCheckpoint(active)).resolves.toMatchObject({
+      status: "stored",
+      checkpoint: active,
+    });
+    await expect(persistence.persistGeneralWorkCheckpoint(active)).resolves.toMatchObject({
+      status: "duplicate",
+    });
+    await expect(persistence.listRecoverableGeneralWorkCheckpoints(100)).resolves.toEqual([active]);
+    await persistence.close();
+
+    const reopened = openSqliteCorePersistence(userDataPath);
+    await expect(reopened.getGeneralWorkCheckpoint(active.attempt.sessionId)).resolves.toEqual(
+      active,
+    );
+    await expect(
+      reopened.persistGeneralWorkCheckpoint({
+        ...active,
+        revision: 3,
+        updatedAt: active.updatedAt,
+      }),
+    ).rejects.toMatchObject({
+      code: "general-work-conflict",
+    });
+    await expect(reopened.getGeneralWorkCheckpoint(active.attempt.sessionId)).resolves.toEqual(
+      active,
+    );
+    await reopened.close();
+  });
+
+  it("bounds the number of recoverable general-work checkpoints", async () => {
+    const persistence = openSqliteCorePersistence(createTestDirectory());
+    const fixture = createGeneralWorkCheckpoint();
+    for (let index = 0; index < MAX_RECOVERABLE_GENERAL_WORK_CHECKPOINTS; index += 1) {
+      const suffix = String(index + 1);
+      const checkpointSession = sessionId(`session-recovery-bound-${suffix}`);
+      const checkpointWorker = workerId(`worker-recovery-bound-${suffix}`);
+      const checkpointStream = eventStreamId(`stream-recovery-bound-${suffix}`);
+      const checkpointCorrelation = correlationId(`correlation-recovery-bound-${suffix}`);
+      await persistence.persistGeneralWorkCheckpoint({
+        ...fixture,
+        attempt: {
+          ...fixture.attempt,
+          sessionId: checkpointSession,
+          workerId: checkpointWorker,
+          streamId: checkpointStream,
+          correlationId: checkpointCorrelation,
+        },
+        events: fixture.events.map((event) => ({
+          ...event,
+          eventId: eventId(`event-recovery-bound-${suffix}-${String(event.sequence)}`),
+          sessionId: checkpointSession,
+          workerId: checkpointWorker,
+          streamId: checkpointStream,
+          correlationId: checkpointCorrelation,
+        })),
+      });
+    }
+
+    await expect(
+      persistence.persistGeneralWorkCheckpoint({
+        ...fixture,
+        attempt: {
+          ...fixture.attempt,
+          sessionId: sessionId("session-recovery-bound-overflow"),
+          workerId: workerId("worker-recovery-bound-overflow"),
+          streamId: eventStreamId("stream-recovery-bound-overflow"),
+          correlationId: correlationId("correlation-recovery-bound-overflow"),
+        },
+        events: fixture.events.map((event) => ({
+          ...event,
+          eventId: eventId(`event-recovery-bound-overflow-${String(event.sequence)}`),
+          sessionId: sessionId("session-recovery-bound-overflow"),
+          workerId: workerId("worker-recovery-bound-overflow"),
+          streamId: eventStreamId("stream-recovery-bound-overflow"),
+          correlationId: correlationId("correlation-recovery-bound-overflow"),
+        })),
+      }),
+    ).rejects.toMatchObject({
+      code: "general-work-conflict",
+    });
     await persistence.close();
   });
 

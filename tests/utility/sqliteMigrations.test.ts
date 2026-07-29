@@ -60,7 +60,7 @@ describe("Actestra SQLite migrations", () => {
     expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
       fromVersion: 0,
       toVersion: CURRENT_CORE_SCHEMA_VERSION,
-      appliedVersions: [1, 2, 3, 4, 5, 6],
+      appliedVersions: [1, 2, 3, 4, 5, 6, 7],
     });
     expect(pragmaNumber(database, "application_id")).toBe(ACTESTRA_SQLITE_APPLICATION_ID);
     expect(pragmaNumber(database, "user_version")).toBe(CURRENT_CORE_SCHEMA_VERSION);
@@ -92,6 +92,10 @@ describe("Actestra SQLite migrations", () => {
       {
         version: 6,
         name: "workload-content-and-grants",
+      },
+      {
+        version: 7,
+        name: "general-work-recovery-checkpoints",
       },
     ]);
   });
@@ -269,11 +273,13 @@ describe("Actestra SQLite migrations", () => {
         "{}",
       );
 
-    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
-      fromVersion: 5,
-      toVersion: 6,
-      appliedVersions: [6],
-    });
+    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 6), APPLIED_AT)).toEqual(
+      {
+        fromVersion: 5,
+        toVersion: 6,
+        appliedVersions: [6],
+      },
+    );
     expect(
       database
         .prepare(
@@ -291,6 +297,35 @@ describe("Actestra SQLite migrations", () => {
     ).toEqual({
       decision_id: "decision-preserved",
     });
+  });
+
+  it("performs a real 6 -> 7 migration without changing content ownership", () => {
+    const database = createDatabase();
+    migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 6), APPLIED_AT);
+
+    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
+      fromVersion: 6,
+      toVersion: 7,
+      appliedVersions: [7],
+    });
+    expect(
+      database
+        .prepare(
+          `SELECT name
+           FROM sqlite_schema
+           WHERE type = 'table' AND name IN (
+             'workspace_grants',
+             'content_references',
+             'general_work_checkpoints'
+           )
+           ORDER BY name`,
+        )
+        .all(),
+    ).toEqual([
+      { name: "content_references" },
+      { name: "general_work_checkpoints" },
+      { name: "workspace_grants" },
+    ]);
   });
 
   it("rejects a future schema without changing its version", () => {

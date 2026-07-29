@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  REQUIRED_REDACTION_BY_EVENT_TYPE,
+  artifactId,
   approvalId,
+  eventId,
   eventStreamId,
   instant,
   sessionId,
@@ -141,6 +144,43 @@ describe("deterministic fake AgentAdapter", () => {
     expect(signals.filter(({ type }) => type === "cancelled")).toHaveLength(1);
     expect(signals.at(-1)?.type).toBe("cancelled");
     expect(adapter.isDisposed(FIXTURE_AGENT_SESSION_ID)).toBe(true);
+  });
+
+  it("rejects an authoritative artifact event that reuses an accepted event id", async () => {
+    const clock = new DeterministicAgentClock(instant("2026-07-28T08:00:00.000Z"));
+    const adapter = new DeterministicFakeAgentAdapter(clock);
+    const request = createAgentStartRequest();
+    const signals: AgentSignal[] = [];
+
+    adapter.registerPlan(request.sessionId, { steps: [] });
+    adapter.subscribe(request.sessionId, (signal) => signals.push(signal));
+    await adapter.start(request);
+    const duplicate: CoreEvent<"artifact.created"> = {
+      schemaVersion: 1,
+      eventId: eventId(`${request.sessionId}:event:1`),
+      streamId: request.streamId,
+      sequence: 2,
+      occurredAt: clock.now(),
+      workspaceId: request.workspaceId,
+      taskId: request.taskId,
+      sessionId: request.sessionId,
+      workerId: request.workerId,
+      correlationId: request.correlationId,
+      type: "artifact.created",
+      redaction: REQUIRED_REDACTION_BY_EVENT_TYPE["artifact.created"],
+      payload: {
+        artifactId: artifactId("artifact-duplicate-event-id"),
+        kind: "file",
+        label: "Duplicate event identifier",
+      },
+    };
+
+    await expect(
+      adapter.appendAuthoritativeArtifactEvent(request.sessionId, duplicate),
+    ).rejects.toMatchObject({
+      code: "invalid-signal",
+    });
+    expect(coreEvents(signals).map(({ type }) => type)).toEqual(["task.started"]);
   });
 
   it("does not consume a planned step when the current lifecycle state rejects it", async () => {

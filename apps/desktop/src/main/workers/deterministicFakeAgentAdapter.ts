@@ -27,6 +27,7 @@ import {
   type CoreEvent,
   type CoreEventStreamState,
   type CoreEventType,
+  type EventId,
   type EventPayloadByType,
   type Instant,
   type SessionId,
@@ -132,6 +133,7 @@ interface FakeAttempt {
   controlSequence: number;
   nextStepIndex: number;
   coreState: CoreEventStreamState;
+  readonly eventIds: Set<EventId>;
   pendingApproval?: PendingFakeApproval;
   pendingTool?: PendingFakeTool;
   disposed: boolean;
@@ -338,6 +340,7 @@ export class DeterministicFakeAgentAdapter implements AgentAdapter {
       controlSequence: 0,
       nextStepIndex: 0,
       coreState: createCoreEventStreamState([]),
+      eventIds: new Set(),
       disposed: false,
     };
     this.attempts.set(request.sessionId, attempt);
@@ -350,6 +353,48 @@ export class DeterministicFakeAgentAdapter implements AgentAdapter {
         to: "running",
       });
     }
+  }
+
+  async appendAuthoritativeArtifactEvent(
+    session: SessionId,
+    event: CoreEvent<"artifact.created" | "artifact.updated">,
+  ): Promise<void> {
+    sessionId(session);
+    const attempt = this.activeAttempt(session, "accept an artifact event");
+    if (
+      (event.type !== "artifact.created" && event.type !== "artifact.updated") ||
+      event.workspaceId !== attempt.request.workspaceId ||
+      event.taskId !== attempt.request.taskId ||
+      event.sessionId !== attempt.request.sessionId ||
+      event.workerId !== attempt.request.workerId ||
+      event.streamId !== attempt.request.streamId ||
+      event.correlationId !== attempt.request.correlationId
+    ) {
+      throw new AgentAdapterError(
+        "signal-identity-mismatch",
+        `Artifact event identity does not match session ${session}`,
+      );
+    }
+    if (attempt.eventIds.has(event.eventId)) {
+      throw new AgentAdapterError(
+        "invalid-signal",
+        "Authoritative artifact event reuses a deterministic event identifier",
+      );
+    }
+    try {
+      attempt.coreState = advanceCoreEventStreamState(attempt.coreState, event);
+    } catch (error) {
+      throw new AgentAdapterError(
+        "invalid-signal",
+        "Authoritative artifact event conflicts with the deterministic stream",
+        { cause: error },
+      );
+    }
+    attempt.eventIds.add(event.eventId);
+    this.emitSignal(attempt, {
+      type: "core-event",
+      event,
+    });
   }
 
   async send(session: SessionId, input: AgentInput): Promise<void> {
@@ -488,6 +533,7 @@ export class DeterministicFakeAgentAdapter implements AgentAdapter {
         requestId: requestIdValue,
         errorCode: result.errorCode,
         message: result.message,
+        mayHaveExecuted: result.mayHaveExecuted,
       });
       this.emitCoreEvent(attempt, "task.failed", {
         from: "blocked",
@@ -509,6 +555,7 @@ export class DeterministicFakeAgentAdapter implements AgentAdapter {
       requestId: requestIdValue,
       errorCode: "tool-cancelled",
       message: reason,
+      mayHaveExecuted: false,
     });
     this.emitCoreEvent(attempt, "task.cancelled", {
       from: "blocked",
@@ -803,9 +850,16 @@ export class DeterministicFakeAgentAdapter implements AgentAdapter {
     payload: EventPayloadByType[Type],
   ): CoreEvent<Type> {
     const sequence = (attempt.coreState.previous?.sequence ?? 0) + 1;
+    const generatedEventId = eventId(`${attempt.request.sessionId}:event:${sequence}`);
+    if (attempt.eventIds.has(generatedEventId)) {
+      throw new AgentAdapterError(
+        "invalid-signal",
+        "Deterministic event identifier was already accepted",
+      );
+    }
     const event = {
       schemaVersion: 1,
-      eventId: eventId(`${attempt.request.sessionId}:event:${sequence}`),
+      eventId: generatedEventId,
       streamId: attempt.request.streamId,
       sequence,
       occurredAt: this.clock.now(),
@@ -820,6 +874,7 @@ export class DeterministicFakeAgentAdapter implements AgentAdapter {
     } as CoreEvent<Type>;
 
     attempt.coreState = advanceCoreEventStreamState(attempt.coreState, event);
+    attempt.eventIds.add(generatedEventId);
     this.emitSignal(attempt, {
       type: "core-event",
       event: event as CoreEvent,

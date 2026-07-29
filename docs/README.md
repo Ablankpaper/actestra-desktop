@@ -26,6 +26,7 @@ planning, and governance documents.
 | [P4 Process and Content Decision](architecture/decisions/0016-p4-general-work-process-and-content-boundaries.md)     | Persistence utility authority, workspace grants, bounded content references, AionUi preservation, and ordered follow-up |
 | [General Worker and Adapter v2 Decision](architecture/decisions/0017-general-worker-process-and-agent-adapter-v2.md) | One-process-per-attempt supervision, native protocol, typed tool results, event mapping, and rollback                   |
 | [Scoped Native Text Tools Decision](architecture/decisions/0018-scoped-native-text-tools-and-policy.md)              | Closed text-read and create-only output capabilities, active-attempt derivation, scope, policy, audit, and rollback     |
+| [General Work Recovery Decision](architecture/decisions/0019-general-work-durable-coordination-and-recovery.md)      | Schema 7 checkpoints, persist-before-acknowledgement/release, artifact binding, and deterministic restart recovery      |
 | [Architecture Decisions](architecture/decisions/README.md)                                                           | Accepted and proposed architectural decisions                                                                           |
 
 ## Governance

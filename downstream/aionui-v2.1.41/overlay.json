@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
-  "phase": "GW-P4.4",
+  "phase": "GW-P4.5",
   "upstream": {
     "tag": "v2.1.41",
     "commit": "2d8925fc67a97a20996fadcd2a0862b778b572ba",
     "manifestSha256": "252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f"
   },
-  "authorityOwner": "Actestra Core through supervised persistence and General Worker processes plus the scoped desktop main-process tool gateway",
+  "authorityOwner": "Actestra Core through durable General Work checkpoints, supervised persistence and Worker processes, and the scoped desktop main-process tool gateway",
   "classifications": ["R0", "R1", "R2"],
   "migration": {
-    "strategy": "Fresh Actestra profile v1; native AionUi profiles remain untouched. Forward-only schema v6 retains schemas v1-v5 exactly, adds canonical workspace grants and bounded opaque content references, and keeps all Actestra SQLite ownership—including existing AionUI shadow evidence and approval authority—behind one supervised Electron persistence utility protocol. AgentAdapter v2 adds typed tool results, while each deterministic General Worker attempt runs in one separately supervised Electron utility process with an exact native protocol, main-owned identities and events, a minimal environment, and no renderer, filesystem, shell, network, credential, MCP, or persistence authority. GW-P4.4 registers only bounded workspace UTF-8 read and create-only task-output UTF-8 write in Electron main, with exact manifests, deny-by-default policy, canonical grant containment, opaque input/output references, durable metadata-only audit, and no new renderer or route.",
-    "rollback": "Regenerate without patch 0008 to remove the scoped native tool platform while retaining the GW-P4.3 General Worker and GW-P4.2 persistence utility. Regenerate without patch 0007 to remove the General Worker process probe and Adapter v2 native entry while retaining GW-P4.2 schema v6 persistence. Regenerate without patch 0006 as well to return to schema v5 direct-main persistence. Existing schema v6 rows remain inert and are never rewritten or deleted; use a fresh Actestra profile for a true data downgrade. The frozen AionUi foundation and native AionUi profiles stay byte-identical."
+    "strategy": "Fresh Actestra profile v1; native AionUi profiles remain untouched. Forward-only schema v7 retains schemas v1-v6 exactly, adds a revisioned General Work recovery journal, and keeps all Actestra SQLite ownership—including existing AionUI shadow evidence, approval authority, workspace grants, bounded content references, terminal evidence, and recovery checkpoints—behind one supervised Electron persistence utility protocol. AgentAdapter v2 runs each General Worker attempt in one separately supervised Electron utility process with exact main-owned identities and events. The scoped main-process gateway remains limited to bounded workspace UTF-8 read and create-only task-output UTF-8 write. GW-P4.5 now persists tool ambiguity, artifact ownership, event order, terminal cleanup, and Task/Session/Worker reconciliation before acknowledging or releasing an attempt, and performs deterministic startup recovery before the preserved AionUI window is created. No renderer, route, Goose, CrewAI, shell, arbitrary network, credential, MCP, or second state authority is added.",
+    "rollback": "Regenerate without patch 0009 to remove AionUI startup recovery wiring while retaining GW-P4.4 scoped native tools and the General Worker. Regenerate without patch 0008 to remove the scoped native tool platform while retaining GW-P4.3. Regenerate without patch 0007 to remove the General Worker process probe and Adapter v2 entry while retaining the persistence utility. Existing schema v7 checkpoints and schema v6 rows remain inert and are never rewritten or deleted; use a fresh Actestra profile for a true data downgrade. The frozen AionUi foundation and native AionUi profiles stay byte-identical."
   },
   "uiContract": {
     "layoutChangesAllowed": false,
@@ -119,6 +119,19 @@
       ],
       "authorityOwner": "Actestra Core through the desktop main-process tool gateway and persistence utility",
       "rollback": "Regenerate without this patch. The preserved AionUI UI, routes, General Worker, persistence utility, native backend, profile, and existing evidence remain unchanged."
+    },
+    {
+      "path": "patches/0009-actestra-general-work-recovery.mjs",
+      "classification": ["R1"],
+      "domains": [
+        "General Work recovery checkpoints",
+        "tool execution ambiguity",
+        "artifact ownership and content references",
+        "terminal event and attempt evidence reconciliation",
+        "startup recovery"
+      ],
+      "authorityOwner": "Actestra Core through the supervised persistence utility and main-process General Work coordinator",
+      "rollback": "Regenerate without this patch to remove native startup recovery wiring. Schema v7 recovery rows remain inert; use a fresh Actestra profile for a true data downgrade. The preserved AionUI UI, routes, native backend, profile, and earlier GW-P4 capabilities remain unchanged."
     }
   ],
   "sourceCopies": [
@@ -133,6 +146,10 @@
     {
       "source": "apps/desktop/src/core/events.ts",
       "destination": "packages/desktop/src/actestra/core/events.ts"
+    },
+    {
+      "source": "apps/desktop/src/core/generalWorkRecovery.ts",
+      "destination": "packages/desktop/src/actestra/core/generalWorkRecovery.ts"
     },
     {
       "source": "apps/desktop/src/core/index.ts",
@@ -207,12 +224,20 @@
       "destination": "packages/desktop/src/actestra/main/workers/agentAdapterSupervisor.ts"
     },
     {
+      "source": "apps/desktop/src/main/workers/agentAttemptEvidenceCoordinator.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/agentAttemptEvidenceCoordinator.ts"
+    },
+    {
       "source": "apps/desktop/src/main/workers/electronGeneralWorker.ts",
       "destination": "packages/desktop/src/actestra/main/workers/electronGeneralWorker.ts"
     },
     {
       "source": "apps/desktop/src/main/workers/generalWorkerProcessAdapter.ts",
       "destination": "packages/desktop/src/actestra/main/workers/generalWorkerProcessAdapter.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/workers/generalWorkCoordinator.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/generalWorkCoordinator.ts"
     },
     {
       "source": "apps/desktop/src/main/workers/generalWorkerProbe.ts",
@@ -336,6 +361,7 @@
     "packages/desktop/src/actestra/core/agentAdapter.ts",
     "packages/desktop/src/actestra/core/domain.ts",
     "packages/desktop/src/actestra/core/events.ts",
+    "packages/desktop/src/actestra/core/generalWorkRecovery.ts",
     "packages/desktop/src/actestra/core/index.ts",
     "packages/desktop/src/actestra/core/persistence.ts",
     "packages/desktop/src/actestra/core/platform.ts",
@@ -350,9 +376,11 @@
     "packages/desktop/src/actestra/main/persistence/electronPersistenceUtility.ts",
     "packages/desktop/src/actestra/main/persistence/persistenceUtilityClient.ts",
     "packages/desktop/src/actestra/main/workers/agentAdapterSupervisor.ts",
+    "packages/desktop/src/actestra/main/workers/agentAttemptEvidenceCoordinator.ts",
     "packages/desktop/src/actestra/main/workers/electronGeneralWorker.ts",
     "packages/desktop/src/actestra/main/workers/generalWorkerProbe.ts",
     "packages/desktop/src/actestra/main/workers/generalWorkerProcessAdapter.ts",
+    "packages/desktop/src/actestra/main/workers/generalWorkCoordinator.ts",
     "packages/desktop/src/actestra/main/workers/scopedNativeToolCoordinator.ts",
     "packages/desktop/src/actestra/main/privileged/deterministicPolicyEngine.ts",
     "packages/desktop/src/actestra/main/privileged/inMemoryApprovalService.ts",
@@ -434,6 +462,7 @@
     "tests/unit/actestra/approvalAuthorityService.test.ts",
     "tests/unit/actestra/approvalNativeTransport.test.ts",
     "tests/unit/actestra/externalEffectIsolation.test.ts",
+    "tests/unit/actestra/generalWorkRecovery.test.ts",
     "tests/unit/actestra/generalWorkerProcessAdapter.test.ts",
     "tests/unit/actestra/productBoundary.test.ts",
     "tests/unit/actestra/persistenceUtilityClient.test.ts",

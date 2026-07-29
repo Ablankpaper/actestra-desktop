@@ -50,7 +50,12 @@ Actestra development commands materialize a generated working tree under
   reconciliation while retaining F3.2 delivery.
   `ACTESTRA_APPROVAL_POLICY_GATE=0` retains the broader F3.1 rollback, so
   reconciliation does not remain enabled without the F3.2 delivery gate.
-- Actestra-owned P3 source files are copied into the generated tree through the
+- GW-P4.5 performs bounded General Work recovery after the schema v7
+  persistence utility and scoped native tool platform are ready, but before
+  the preserved AionUI window is created. Recovery checkpoints, tool ambiguity,
+  artifact ownership, terminal events, domain state, and attempt evidence stay
+  under Actestra Core authority; no renderer route or feature entry changes.
+- Actestra-owned source files are copied into the generated tree through the
   declared `sourceCopies` contract and must remain byte-identical to their
   reviewed root sources.
 - Binary product assets are copied from Actestra-owned source assets with

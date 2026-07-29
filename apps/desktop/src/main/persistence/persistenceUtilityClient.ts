@@ -20,6 +20,8 @@ import {
   type CoreEventCursor,
   type DomainGraph,
   type EventStreamId,
+  type GeneralWorkCheckpoint,
+  type PersistGeneralWorkCheckpointResult,
   type PersistContentReferenceResult,
   type PersistEvidenceResult,
   type PersistEventResult,
@@ -30,6 +32,7 @@ import {
   type StoreContentReferenceInput,
   type WorkspaceGrant,
   type WorkspaceId,
+  type SessionId,
 } from "../../core";
 import {
   PERSISTENCE_UTILITY_PROTOCOL_VERSION,
@@ -303,6 +306,22 @@ export class PersistenceUtilityClient implements ActestraPersistencePort {
     input: ResolveContentReferenceInput,
   ): Promise<ResolvedContentReference> {
     return this.invoke("resolve-content-reference", { input });
+  }
+
+  async persistGeneralWorkCheckpoint(
+    checkpoint: GeneralWorkCheckpoint,
+  ): Promise<PersistGeneralWorkCheckpointResult> {
+    return this.invoke("persist-general-work-checkpoint", { checkpoint });
+  }
+
+  async getGeneralWorkCheckpoint(session: SessionId): Promise<GeneralWorkCheckpoint | null> {
+    return this.invoke("get-general-work-checkpoint", { sessionId: session });
+  }
+
+  async listRecoverableGeneralWorkCheckpoints(
+    limit: number,
+  ): Promise<readonly GeneralWorkCheckpoint[]> {
+    return this.invoke("list-recoverable-general-work-checkpoints", { limit });
   }
 
   async close(): Promise<void> {

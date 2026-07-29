@@ -3,7 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { PersistenceError } from "../../core";
 
 export const ACTESTRA_SQLITE_APPLICATION_ID = 1_095_980_114;
-export const CURRENT_CORE_SCHEMA_VERSION = 6;
+export const CURRENT_CORE_SCHEMA_VERSION = 7;
 
 export interface SqliteMigration {
   readonly version: number;
@@ -299,6 +299,31 @@ export const CORE_SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
       CREATE INDEX content_references_request_idx
         ON content_references(request_id)
         WHERE request_id IS NOT NULL;
+    `,
+  },
+  {
+    version: 7,
+    name: "general-work-recovery-checkpoints",
+    sql: `
+      CREATE TABLE general_work_checkpoints (
+        session_id TEXT PRIMARY KEY,
+        contract_version INTEGER NOT NULL CHECK (contract_version = 1),
+        phase TEXT NOT NULL CHECK (
+          phase IN ('active', 'terminal-pending', 'finalized')
+        ),
+        revision INTEGER NOT NULL CHECK (revision > 0),
+        workspace_id TEXT NOT NULL,
+        task_id TEXT NOT NULL,
+        worker_id TEXT NOT NULL,
+        stream_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL CHECK (updated_at >= created_at),
+        checkpoint_json TEXT NOT NULL
+      ) STRICT;
+
+      CREATE INDEX general_work_recoverable_idx
+        ON general_work_checkpoints(phase, updated_at, session_id)
+        WHERE phase != 'finalized';
     `,
   },
 ] as const;

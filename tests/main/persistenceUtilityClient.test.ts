@@ -12,6 +12,7 @@ import {
 import { instant, toolInputReference, workspaceGrantId } from "../../apps/desktop/src/core";
 import { PersistenceUtilityError } from "../../apps/desktop/src/main/persistence/persistenceUtilityClient";
 import { createDomainGraph, FIXTURE_WORKSPACE_ID } from "../fixtures/core";
+import { createGeneralWorkCheckpoint } from "../fixtures/generalWorkRecovery";
 import { openTestPersistenceUtility } from "../fixtures/persistenceUtility";
 
 const testDirectories: string[] = [];
@@ -105,10 +106,19 @@ describe("persistence utility client", () => {
     const workspaceRoot = path.join(userDataPath, "fixture-workspace");
     fs.mkdirSync(workspaceRoot);
     const { client, transport } = await openTestPersistenceUtility(userDataPath);
-    expect(client.schemaVersion).toBe(6);
+    expect(client.schemaVersion).toBe(7);
     const graph = createDomainGraph();
     await client.replaceDomainGraph(graph);
     await expect(client.loadDomainGraph()).resolves.toEqual(graph);
+    const checkpoint = createGeneralWorkCheckpoint();
+    await expect(client.persistGeneralWorkCheckpoint(checkpoint)).resolves.toMatchObject({
+      status: "stored",
+      checkpoint,
+    });
+    await expect(client.getGeneralWorkCheckpoint(checkpoint.attempt.sessionId)).resolves.toEqual(
+      checkpoint,
+    );
+    await expect(client.listRecoverableGeneralWorkCheckpoints(100)).resolves.toEqual([checkpoint]);
 
     const grant = {
       contractVersion: 1,

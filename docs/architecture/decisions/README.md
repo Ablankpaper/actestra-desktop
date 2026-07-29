@@ -33,6 +33,7 @@ components or phases.
 | [0016](0016-p4-general-work-process-and-content-boundaries.md) | Accepted                     | Move workload persistence behind a utility boundary and add bounded workspace grants and content references before real workers or tools |
 | [0017](0017-general-worker-process-and-agent-adapter-v2.md)    | Accepted                     | Run one supervised General Worker process per immutable Adapter v2 attempt                                                               |
 | [0018](0018-scoped-native-text-tools-and-policy.md)            | Accepted                     | Admit only scoped workspace text read and create-only task-output write through trusted manifests and policy                             |
+| [0019](0019-general-work-durable-coordination-and-recovery.md) | Accepted                     | Persist tool, artifact, event, terminal, and cleanup state before acknowledgement or release, then recover deterministically             |
 
 ## Creating an ADR
 

@@ -365,6 +365,7 @@ export type AuditEvent =
       readonly type: "tool.failed";
       readonly context: PrivilegedAuditContext;
       readonly errorCode: string;
+      readonly mayHaveExecuted: boolean;
     };
 
 export interface AuditRecord {
@@ -1443,11 +1444,17 @@ export function assertAuditEvent(value: unknown): asserts value is AuditEvent {
     case "tool.failed":
       assertExactKeys(
         value,
-        ["type", "context", "errorCode"],
+        ["type", "context", "errorCode", "mayHaveExecuted"],
         "invalid-audit",
         "Tool failure audit event",
       );
       assertSafeErrorCode(value.errorCode);
+      if (typeof value.mayHaveExecuted !== "boolean") {
+        throw new PrivilegedServiceError(
+          "invalid-audit",
+          "Tool failure audit event.mayHaveExecuted must be boolean",
+        );
+      }
   }
 }
 

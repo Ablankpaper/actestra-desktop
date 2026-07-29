@@ -13,6 +13,7 @@ const appBundle = path.resolve(
 const executable = path.join(appBundle, "Contents", "MacOS", "Actestra");
 const profileDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-smoke-"));
 const timeoutMilliseconds = 20_000;
+const expectedPersistenceSchemaVersion = 7;
 let output = "";
 let childOutcome = null;
 let resolveChildOutcome;
@@ -167,8 +168,10 @@ try {
     enableForeignKeyConstraints: true,
   });
   const versionRow = database.prepare("PRAGMA user_version").get();
-  if (versionRow?.user_version !== 6) {
-    await finishWithFailure("persistence utility database is not at schema version 6");
+  if (versionRow?.user_version !== expectedPersistenceSchemaVersion) {
+    await finishWithFailure(
+      `persistence utility database is not at schema version ${expectedPersistenceSchemaVersion}`,
+    );
   }
   const workloadTables = database
     .prepare(
@@ -193,6 +196,6 @@ try {
 }
 
 console.info(
-  "Packaged smoke passed: Actestra reached persistence utility, General Worker, application, window, and renderer ready markers with SQLite schema 6.",
+  `Packaged smoke passed: Actestra reached persistence utility, General Worker, application, window, and renderer ready markers with SQLite schema ${expectedPersistenceSchemaVersion}.`,
 );
 console.info(`Isolated profile: ${profileDirectory}`);

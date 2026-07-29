@@ -12,6 +12,7 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 const overlayPath = path.join(repositoryRoot, "downstream", "aionui-v2.1.41", "overlay.json");
 const provenancePath = path.join(repositoryRoot, "foundation", "aionui-v2.1.41.provenance.json");
 const generatedNames = new Set([
+  ".DS_Store",
   ".actestra-overlay.json",
   "_sentry-dsn.generated.nsh",
   "node_modules",
@@ -113,11 +114,11 @@ function main() {
 
   if (
     overlay.schemaVersion !== 1 ||
-    overlay.phase !== "GW-P4.4" ||
+    overlay.phase !== "GW-P4.5" ||
     overlay.uiContract.layoutChangesAllowed !== false ||
     overlay.uiContract.featureEntryRemovalAllowed !== false
   ) {
-    throw new Error("Invalid GW-P4.4 downstream overlay policy");
+    throw new Error("Invalid GW-P4.5 downstream overlay policy");
   }
 
   for (const patch of overlay.patches) {
@@ -284,6 +285,9 @@ function main() {
       "createScopedNativeToolPlatform",
       "getActestraScopedNativeToolPlatform",
       "[Actestra native tools] Ready tools=",
+      "GeneralWorkCoordinator",
+      "ACTESTRA_GENERAL_WORK_RECOVERY_READY",
+      "[Actestra general work] Recovery unavailable at startup",
       "nativeFallback",
       "recoverPending",
     ],
@@ -306,6 +310,21 @@ function main() {
     "actestra-general-worker.js",
     "ACTESTRA_GENERAL_WORKER_READY",
     "registerActestraShadowBridge(mainWindow);",
+  ]);
+  requireOrderedFragments(
+    path.join(outputRoot, "packages/desktop/src/process/services/actestraShadowBridge.ts"),
+    [
+      "configurePersistenceServices(utility);",
+      "new GeneralWorkCoordinator({",
+      "}).recover();",
+      "ACTESTRA_GENERAL_WORK_RECOVERY_READY",
+      "[Actestra persistence] Utility ready schema=",
+    ],
+  );
+  requireOrderedFragments(path.join(outputRoot, "packages/desktop/src/index.ts"), [
+    "await initializeActestraPersistenceUtility(app.getPath('userData'));",
+    "rendererInitialLanguage = ProcessConfig.getSync('language') ?? null;",
+    "createWindow({ showOnReady: showMainWindowOnReady });",
   ]);
   requireText(
     path.join(
@@ -423,12 +442,13 @@ function main() {
   requireText(
     path.join(outputRoot, "packages/desktop/src/actestra/utility/persistence/sqliteMigrations.ts"),
     [
-      "CURRENT_CORE_SCHEMA_VERSION = 6",
+      "CURRENT_CORE_SCHEMA_VERSION = 7",
       "aionui_shadow_evidence",
       "aionui_approval_decisions",
       "pending-delivery",
       "workspace_grants",
       "content_references",
+      "general_work_checkpoints",
     ],
   );
   rejectText(
@@ -443,8 +463,22 @@ function main() {
       outputRoot,
       "packages/desktop/src/actestra/utility/persistence/sqliteCorePersistence.ts",
     ),
-    ["node:sqlite", "DatabaseSync", "persistWorkspaceGrant", "storeContentReference"],
+    [
+      "node:sqlite",
+      "DatabaseSync",
+      "persistWorkspaceGrant",
+      "storeContentReference",
+      "persistGeneralWorkCheckpoint",
+      "listRecoverableGeneralWorkCheckpoints",
+    ],
   );
+  requireText(path.join(outputRoot, "packages/desktop/src/actestra/core/generalWorkRecovery.ts"), [
+    "GENERAL_WORK_RECOVERY_CONTRACT_VERSION = 1",
+    "MAX_RECOVERABLE_GENERAL_WORK_CHECKPOINTS",
+    '"terminal-pending"',
+    "mayHaveExecuted",
+    "assertGeneralWorkCheckpointTransition",
+  ]);
   requireText(path.join(outputRoot, "packages/desktop/src/actestra/core/agentAdapter.ts"), [
     "AGENT_ADAPTER_PROTOCOL_VERSION = 2",
     '"tool-results"',
@@ -494,8 +528,11 @@ function main() {
     [
       "activeToolRequest",
       "scopedNativeToolDefinition",
+      "retainedResults",
       "this.gateway.invoke",
+      "this.beforeResolve",
       "this.supervisor.resolveTool",
+      "hasRetainedResult",
     ],
   );
   requireText(
@@ -507,6 +544,32 @@ function main() {
       "MAX_GENERAL_WORKER_PROMPT_BYTES",
       '"tool-result-accepted"',
       "assertGeneralWorkerMessage",
+    ],
+  );
+  requireText(
+    path.join(outputRoot, "packages/desktop/src/actestra/main/workers/generalWorkCoordinator.ts"),
+    [
+      "persistGeneralWorkCheckpoint",
+      "listRecoverableGeneralWorkCheckpoints",
+      "appendAuthoritativeArtifactEvent",
+      "resumePersistedToolResolution",
+      "hasRetainedResult",
+      "releaseRetainedResult",
+      "application-restart",
+      "terminal-pending",
+      "createAgentAttemptEvidence",
+      "reconcileDomainGraph",
+    ],
+  );
+  requireOrderedFragments(
+    path.join(outputRoot, "packages/desktop/src/actestra/main/workers/generalWorkCoordinator.ts"),
+    [
+      "await this.config.persistence.resolveContentReference({",
+      "await this.reconcileDomainGraph(checkpoint);",
+      "await this.config.persistence.appendEvent(event)",
+      "await this.config.persistence.appendAgentAttemptEvidence(evidence)",
+      'phase: "finalized"',
+      "await supervisor?.dispose(checkpoint.attempt.sessionId);",
     ],
   );
   requireText(
@@ -573,13 +636,23 @@ function main() {
     "fails closed for traversal and unknown fields",
     "actestra.shell.execute",
   ]);
+  requireText(path.join(outputRoot, "tests/unit/actestra/generalWorkRecovery.test.ts"), [
+    "native general-work recovery contract",
+    "active to terminal-pending",
+    "application-restart",
+    "assertGeneralWorkCheckpointTransition",
+  ]);
+  requireText(path.join(outputRoot, "tests/unit/actestra/persistenceUtilityClient.test.ts"), [
+    "schema v7 utility IPC",
+    "expect(client.schemaVersion).toBe(7)",
+  ]);
 
   console.log(
-    `Verified Actestra GW-P4.4 downstream overlay: ${changedFiles.size} declared files, ` +
+    `Verified Actestra GW-P4.5 downstream overlay: ${changedFiles.size} declared files, ` +
       `${overlay.invariantFiles.length} R0 invariant files, ${overlay.sourceCopies.length} ` +
       "reviewed source copies, preserved AionUI surfaces, utility-owned persistence, shadow and " +
       "approval authority, workspace grants, bounded content references, AgentAdapter v2, and " +
-      "the supervised General Worker plus scoped native text tools present.",
+      "the supervised General Worker, scoped native text tools, and deterministic recovery present.",
   );
 }
 

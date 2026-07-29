@@ -18,6 +18,10 @@ import {
 } from "../privileged/scopedNativeToolPlatform";
 import { AgentAdapterSupervisor } from "../workers/agentAdapterSupervisor";
 import { AgentAttemptEvidenceCoordinator } from "../workers/agentAttemptEvidenceCoordinator";
+import {
+  GeneralWorkCoordinator,
+  type GeneralWorkRecoveryResult,
+} from "../workers/generalWorkCoordinator";
 import { ScopedNativeToolCoordinator } from "../workers/scopedNativeToolCoordinator";
 
 const PLATFORM_ATTEMPT_LIMIT = 50;
@@ -94,6 +98,24 @@ export class MainPlatformServices {
   ): ScopedNativeToolCoordinator {
     this.assertOpen();
     return this.nativeTools.createCoordinator(supervisor);
+  }
+
+  createGeneralWorkCoordinator(supervisor: AgentAdapterSupervisor): GeneralWorkCoordinator {
+    this.assertOpen();
+    return new GeneralWorkCoordinator({
+      persistence: this.persistence,
+      clock: this.nativeTools.clock,
+      supervisor,
+      nativeTools: this.nativeTools,
+    });
+  }
+
+  async recoverGeneralWork(): Promise<readonly GeneralWorkRecoveryResult[]> {
+    this.assertOpen();
+    return new GeneralWorkCoordinator({
+      persistence: this.persistence,
+      clock: this.nativeTools.clock,
+    }).recover();
   }
 
   async close(): Promise<void> {

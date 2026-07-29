@@ -62,6 +62,9 @@ aggregations without receiving direct tool or product authority.
   whose plan candidates are validated and persisted by Actestra before use.
 - Unified events for messages, tool requests, approvals, artifacts, completion,
   failure, and cancellation.
+- Durable General Work checkpoints that persist tool ambiguity, artifact
+  ownership, normalized events, cleanup, and terminal evidence before
+  acknowledgement or release, then recover deterministically after restart.
 - Risk-based approvals for filesystem, shell, network, message, publish, and Git
   actions.
 - Diff, command, test, and artifact previews.

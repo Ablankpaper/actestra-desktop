@@ -79,6 +79,7 @@ export interface EventPayloadByType {
     readonly requestId: ToolRequestId;
     readonly errorCode: string;
     readonly message: string;
+    readonly mayHaveExecuted: boolean;
   };
   readonly "approval.required": {
     readonly approvalId: ApprovalId;
@@ -321,11 +322,21 @@ function assertPayload(type: CoreEventType, payload: unknown): void {
       assertOptionalString(payload.summary, "tool.completed payload.summary");
       return;
     case "tool.failed":
-      assertExactKeys(payload, ["requestId", "errorCode", "message"], "tool.failed payload");
+      assertExactKeys(
+        payload,
+        ["requestId", "errorCode", "message", "mayHaveExecuted"],
+        "tool.failed payload",
+      );
       assertString(payload.requestId, "tool.failed payload.requestId");
       toolRequestId(payload.requestId);
       assertString(payload.errorCode, "tool.failed payload.errorCode");
       assertString(payload.message, "tool.failed payload.message", true);
+      if (typeof payload.mayHaveExecuted !== "boolean") {
+        throw new CoreContractError(
+          "invalid-event",
+          "tool.failed payload.mayHaveExecuted must be boolean",
+        );
+      }
       return;
     case "approval.required":
       assertExactKeys(payload, ["approvalId", "action", "expiresAt"], "approval.required payload");
@@ -752,6 +763,38 @@ export function assertCoreEventStream(events: readonly CoreEvent[]): void {
 
 export function createCoreEventStreamState(events: readonly CoreEvent[]): CoreEventStreamState {
   return streamState(validateCoreEventStream(events));
+}
+
+export function resumeCoreEventStreamState(
+  previous: CoreEvent,
+  taskState: TaskState,
+): CoreEventStreamState {
+  assertCoreEvent(previous);
+  assertTaskState(taskState, "Core event resume task state");
+
+  const projectedTaskState =
+    previous.type === "task.started"
+      ? previous.payload.to
+      : previous.type === "task.updated" ||
+          previous.type === "task.completed" ||
+          previous.type === "task.failed" ||
+          previous.type === "task.cancelled"
+        ? previous.payload.to
+        : undefined;
+  if (projectedTaskState !== undefined && projectedTaskState !== taskState) {
+    throw new CoreContractError(
+      "event-state-mismatch",
+      `Core event resume state ${taskState} conflicts with sequence ${previous.sequence}`,
+    );
+  }
+
+  const immutablePrevious = immutableCoreEvent(previous);
+  return Object.freeze({
+    first: immutablePrevious,
+    previous: immutablePrevious,
+    taskState,
+    [coreEventStreamStateBrand]: true as const,
+  });
 }
 
 export function advanceCoreEventStreamState(
