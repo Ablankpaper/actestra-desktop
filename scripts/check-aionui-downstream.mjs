@@ -75,6 +75,20 @@ function requireOrderedText(filePath, anchor, first, second) {
   }
 }
 
+function requireOrderedFragments(filePath, fragments) {
+  const contents = fs.readFileSync(filePath, "utf8");
+  let cursor = 0;
+  for (const fragment of fragments) {
+    const index = contents.indexOf(fragment, cursor);
+    if (index === -1) {
+      throw new Error(
+        `${path.relative(repositoryRoot, filePath)} is missing ordered structure ${fragment}`,
+      );
+    }
+    cursor = index + fragment.length;
+  }
+}
+
 function main() {
   const overlay = readJson(overlayPath);
   const provenance = readJson(provenancePath);
@@ -89,11 +103,11 @@ function main() {
 
   if (
     overlay.schemaVersion !== 1 ||
-    overlay.phase !== "F3.2" ||
+    overlay.phase !== "F3.3" ||
     overlay.uiContract.layoutChangesAllowed !== false ||
     overlay.uiContract.featureEntryRemovalAllowed !== false
   ) {
-    throw new Error("Invalid F3.2 downstream overlay policy");
+    throw new Error("Invalid F3.3 downstream overlay policy");
   }
 
   for (const patch of overlay.patches) {
@@ -252,7 +266,9 @@ function main() {
       "AionUiApprovalAuthorityService",
       "ACTESTRA_APPROVAL_AUTHORITY",
       "ACTESTRA_APPROVAL_POLICY_GATE",
+      "ACTESTRA_APPROVAL_RECONCILIATION_GATE",
       "createPolicyGatedAionUiApprovalNativeTransport",
+      "createPolicyGatedAionUiApprovalReconciliationTransport",
       "nativeFallback",
       "recoverPending",
     ],
@@ -278,6 +294,70 @@ function main() {
       "network.request",
       "external-service",
       "PrivilegedToolGateway",
+    ],
+  );
+  requireText(
+    path.join(
+      outputRoot,
+      "packages/desktop/src/actestra/main/compatibility/aionuiApprovalReconciliationPolicyGate.ts",
+    ),
+    [
+      "PolicyGatedAionUiApprovalReconciliationTransport",
+      "aionui-approval-reconciliation-read-v1",
+      "aionui-approval-reconciliation-request",
+      "aionui-approval-reconciliation-${conversationHash}-${callHash}",
+      "network.request",
+      "PrivilegedToolGateway",
+    ],
+  );
+  requireOrderedFragments(
+    path.join(
+      outputRoot,
+      "packages/desktop/src/actestra/main/compatibility/aionuiApprovalReconciliationPolicyGate.ts",
+    ),
+    [
+      'if (record.deliveryState !== "pending-delivery" || record.attemptCount < 1)',
+      "inputRef: toolInputReference(",
+      "const pending = await this.transport.isPending(active.record, active.signal);",
+      'if (typeof pending !== "boolean")',
+      "active.pending = pending;",
+      "active.completed = true;",
+      "const inputRef = operation.inputRef;",
+      "this.activeReads.set(inputRef, active);",
+      "const result = await this.gateway.invoke(operation);",
+      'if (result.status !== "executed")',
+      'if (!active.completed || typeof active.pending !== "boolean")',
+      "return active.pending;",
+      "const existing = this.inFlightReads.get(inputRef);",
+      "if (existing !== undefined)",
+      "return existing;",
+      "this.inFlightReads.set(inputRef, inFlight);",
+      "this.inFlightReads.delete(inputRef);",
+      "return this.config.transport.deliver(record, signal);",
+    ],
+  );
+  requireOrderedFragments(
+    path.join(outputRoot, "packages/desktop/src/process/services/actestraShadowBridge.ts"),
+    [
+      "const nativeApprovalTransport =",
+      "const deliveryGatedApprovalTransport = approvalPolicyGateEnabled",
+      "createPolicyGatedAionUiApprovalNativeTransport({",
+      "const approvalTransport =",
+      "approvalPolicyGateEnabled && approvalReconciliationGateEnabled",
+      "createPolicyGatedAionUiApprovalReconciliationTransport({",
+      ": deliveryGatedApprovalTransport;",
+      "new AionUiApprovalAuthorityService(",
+    ],
+  );
+  requireOrderedFragments(
+    path.join(outputRoot, "tests/unit/actestra/approvalReconciliationPolicyGate.test.ts"),
+    [
+      "service.resolve({",
+      "disposition: 'reconciled'",
+      "expect(isPending).toHaveBeenCalledTimes(1);",
+      "expect(deliver).not.toHaveBeenCalled();",
+      "persistence.summarizePrivilegedAudit()",
+      "recordCount: 3",
     ],
   );
   requireText(
@@ -317,10 +397,10 @@ function main() {
   );
 
   console.log(
-    `Verified Actestra F3.2 downstream overlay: ${changedFiles.size} declared files, ` +
+    `Verified Actestra F3.3 downstream overlay: ${changedFiles.size} declared files, ` +
       `${overlay.invariantFiles.length} R0 invariant files, ${overlay.sourceCopies.length} ` +
       "reviewed source copies, identity/isolation, shadow projection, approval authority and " +
-      "policy-gated delivery present.",
+      "policy-gated delivery plus reconciliation present.",
   );
 }
 

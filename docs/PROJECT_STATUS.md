@@ -4,20 +4,19 @@ Last updated: 2026-07-29
 
 ## Current phase
 
-### F0-F3.1 accepted on main; F3.2 is pushed and CI-backed on Draft PR 7
+### F0-F3.2 accepted on main; F3.3 is locally validated
 
-Pull request 6 reached exact final head
-`70b2f29329fec26bf0e3d6384d8563aedcb7a4ce` and squash merged F0 through
-F3.1 as `61b9405fc007aa8cb16ec05a65f421cb7d277b51`. Main CI run 30434563810
-passes on that exact merge. Branch `feat/aionui-f3-policy-audit` starts from
-that verified main commit. Implementation
-`20e3c0fcada0d072fc35820d43b85c953bf93929` is pushed to
-[Draft PR 7](https://github.com/bignormal/actestra-desktop/pull/7), and exact
-[CI run 30437387097](https://github.com/bignormal/actestra-desktop/actions/runs/30437387097)
-passes. ADR-0013 limits this slice to delivery of an already persisted
-confirmation response through P3 policy, capability, and durable audit. The
-real AionUi application, original functional UI, and original functions remain
-the product baseline.
+Pull request 7 reached exact final head
+`df821ca203bea7b611fa8fb8092d00a16cabe578` and squash merged F3.2 as
+`ce19dbe072328e16dcdaf116b8199d5502cb44c6`.
+[Main CI run 30442166290](https://github.com/bignormal/actestra-desktop/actions/runs/30442166290)
+passes on that exact merge. Branch
+`feat/aionui-f3-reconciliation-audit` starts from this verified main commit.
+ADR-0014 and the local F3.3 implementation route only the bounded
+pending-state read used by retry and restart reconciliation through an exact
+P3 policy, capability, and durable audit path. Commit, push, PR, and CI remain
+separate. The real AionUi application, original functional UI, and original
+functions remain the product baseline.
 
 F0 implementation commit
 `13270ca0abd7353710541afca9ddf46c47670be3` first established the preserved
@@ -227,14 +226,63 @@ Detailed scope, sequence, rollback, and non-claims are recorded in
 and
 [ADR-0013](architecture/decisions/0013-aionui-approval-delivery-policy-gate.md).
 Implementation `20e3c0fcada0d072fc35820d43b85c953bf93929` is pushed on
-Draft PR 7, and exact implementation CI run 30437387097 passes the root,
+PR 7, and exact implementation CI run 30437387097 passes the root,
 documentation, materialized AionUi, unsigned bundle, package-boundary, and
 clean-profile smoke gates. A local CodeRabbit review raised three valid
 documentation issues; all were fixed, and the 23-file follow-up completed with
-zero issues. The GitHub CodeRabbit status explicitly skipped because the pull
-request is Draft and is not remote review evidence. Owner review, Ready
-transition, merge, candidate, release, distribution, live F3.2 desktop proof,
+zero issues. Final PR head `df821ca203bea7b611fa8fb8092d00a16cabe578`
+passed CI run 30437723459. The Ready-triggered GitHub CodeRabbit walkthrough
+selected all 23 files and completed successfully with no submitted review or
+inline comment; it is not independent approval evidence. PR 7 squash merged as
+`ce19dbe072328e16dcdaf116b8199d5502cb44c6`, and exact main CI run
+30442166290 passed. Candidate, release, distribution, live F3.2 desktop proof,
 and acceptance remain separate gates.
+
+Current F3.3 implementation and local evidence:
+
+- only schema version 5 `pending-delivery` decisions with a prior delivery
+  attempt can enter the new reconciliation gate;
+- the fixed capability is `aionui-approval-reconciliation-read-v1` with
+  `network.request` against `external-service`, no credentials, and one exact
+  allow rule;
+- the existing bounded loopback transport reduces the native confirmation list
+  to one boolean before it returns to the gate. Native list content, prompts,
+  commands, paths, option values, and provider details are not persisted or
+  audited;
+- a unique request identifier and compatibility-scoped stable input reference
+  enter the metadata-only `policy.evaluated`, `tool.started`, and terminal
+  audit sequence. Concurrent reads for the same private confirmation identity
+  coalesce to one native read and one audit sequence;
+- policy or pre-execution audit failure prevents native access. A
+  post-execution audit failure yields an uncertain read that cannot mark the
+  response delivered or permit redelivery;
+- `deliver` delegates unchanged to the accepted F3.2 transport.
+  `ACTESTRA_APPROVAL_RECONCILIATION_GATE=0` bypasses only the F3.3
+  `isPending` wrapper, returning that read to F3.1 direct native
+  reconciliation while retaining F3.2 delivery. F3.3 activates only while the
+  F3.2 gate is enabled;
+- no schema, preload, renderer, route, permission-card, pet, or Team UI change
+  is introduced. The four R0 invariant files remain byte-identical;
+- new root tests pass 1 file and 7 tests; focused F3 regression passes 4 files
+  and 24 tests;
+- the complete root gate passes 33 files and 178 tests, Electron SQLite,
+  process smoke, the 42-source product boundary, frozen/downstream checks, and
+  production build;
+- the 104-file downstream declaration, four R0 invariants, and 22 reviewed
+  source copies pass. Materialized strict TypeScript, 21-file/143-test
+  Actestra integration, and the five-file/11-test focused F3 set pass;
+- the complete materialized native suite passes 332 files with 1 skipped and
+  2,608 tests with 5 skipped. Production build passes with 570 main, 7 preload,
+  and 10,163 renderer modules.
+- unsigned legacy-harness bundle, packaged identity/product boundary, and
+  clean-profile application/window/renderer smoke pass as regression evidence.
+
+Detailed scope, rollback, failure, and non-claims are recorded in
+[AionUi F3.3 Approval Reconciliation Policy Gate](product/AIONUI_F3_APPROVAL_RECONCILIATION_GATE.md)
+and
+[ADR-0014](architecture/decisions/0014-aionui-approval-reconciliation-policy-gate.md).
+These are local working-tree results, not commit, push, CI, candidate, release,
+distribution, or acceptance evidence.
 
 The implementation run
 [30421071039](https://github.com/bignormal/actestra-desktop/actions/runs/30421071039)
@@ -540,11 +588,12 @@ Review closure validation at
 | P4.2 compatibility shadow | Accepted on `main` through PR 6 | Implementation `632573fa03c34fdb789c85d8efc1ce1e0f8e8177`; packaged-boundary remediation `1478726d62302fa885525024eb4839af5e98b4dd`; run 30421351204 passes |
 | P4.3/F3.1 approval decision authority | Accepted on `main` through PR 6 | Implementation `cf61ffb8453a888cdc03f73457ebeaf72708511a`; ADR-0012; schema version 5 persist-before-deliver outbox; 30/153 root and 330/2,602 native tests; run 30425061316 passes |
 | PR 6 review and merge closure | Accepted on `main` | Final head `70b2f29329fec26bf0e3d6384d8563aedcb7a4ce`; exact-head CI 30431557027 passes; local review of 21 final changed files returned zero findings; squash merge `61b9405fc007aa8cb16ec05a65f421cb7d277b51`; exact main CI 30434563810 passes |
-| F3.2 approval delivery policy gate | Implemented, pushed, and exact implementation CI-backed; Draft PR 7 | Implementation `20e3c0fcada0d072fc35820d43b85c953bf93929`; CI run 30437387097 passes; ADR-0013 fixed P3 capability and policy; durable metadata-only audit around F3.1 delivery; root 32/171, native 331/2,607, strict types, 102-file downstream declaration, production builds, unsigned legacy-harness package identity, and clean-profile smoke pass |
+| F3.2 approval delivery policy gate | Accepted on `main` through PR 7 | Implementation `20e3c0fcada0d072fc35820d43b85c953bf93929`; final head `df821ca203bea7b611fa8fb8092d00a16cabe578`; squash merge `ce19dbe072328e16dcdaf116b8199d5502cb44c6`; exact main CI run 30442166290 passes |
+| F3.3 approval reconciliation policy gate | Locally validated working tree | ADR-0014; exact pending-state read capability and policy; metadata-only audit; root 33/178, native 332/2,608, strict types, 104-file downstream declaration, 4 R0 invariants, 22 source copies, and production builds pass; commit, push, and CI pending |
 | Native AionUi source | Exact local desktop snapshot | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot |
 | Native preservation contract | Local pass | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified |
 | Native AionUi build and launch | Local pass | Frozen install, production build, isolated native Electron launch, and actual Guide screenshot pass |
-| Native AionUi tests | Latest local pass | 331 files passed, 1 skipped; 2,607 tests passed, 5 skipped; 0 failures |
+| Native AionUi tests | Latest local pass | 332 files passed, 1 skipped; 2,608 tests passed, 5 skipped; 0 failures |
 | Legacy product shell | P3 harness only | Original Actestra Electron/React shell remains for platform-contract and packaging regression; it is not the target product UI |
 | Renderer boundary | CI-backed through P3.6 | Context isolation, sandbox, Node and packaged DevTools disabled, production CSP denies connections, exact frozen preload allowlist, trusted-frame zero-argument IPC, and direct-client source checks |
 | Automated tests | Exact merged-main CI pass | Main run 30378191752 passes 24 Vitest files with 130 tests, the exact Electron SQLite probe, process-failure harness, 34-source boundary check, build, package identity, and clean-profile smoke |
@@ -613,15 +662,14 @@ The ordered implementation index and P3 non-claims are in
 
 ## Next gate
 
-1. Review Draft PR 7 and retain the exact F3.2 authority boundary before any
-   Ready or merge decision.
-2. Select the next single F3 slice only after this gate closes. Do not infer
-   underlying native tool semantics or promote pending-request creation,
-   provider policy, or generic protected-operation authority without a
-   separate contract and proof.
-3. Keep every unselected domain native-authoritative or isolated; do not create
-   a second implicit system of record.
-4. Do not describe F3.2 as complete approval/general-work authority, candidate,
+1. Commit and push the exact F3.3 implementation only after documentation,
+   package regression, and diff review pass.
+2. Open a Draft PR and require exact-head CI before any Ready or merge
+   decision.
+3. Keep pending-request creation, native list content, provider policy, and the
+   underlying protected operation native-authoritative; do not infer semantics
+   or create a second system of record.
+4. Do not describe F3.3 as complete approval/general-work authority, candidate,
    release, distribution, or user acceptance.
 
 ## Open decisions
@@ -656,10 +704,10 @@ The ordered implementation index and P3 non-claims are in
 - The legacy harness main registers the current SQLite registry and inert P3.5
   reference services. The downstream main migrates through schema v5, accepts
   one fixed shadow-observation operation and one fixed desktop confirmation
-  response operation, and the local F3.2 branch gates only that response's
-  native delivery as a fixed protected operation. It exposes no generic
-  persistence, renderer-selected protected operation, tool transport,
-  credential value, or worker control.
+  response operation. F3.2 gates only that response's native delivery, while
+  local F3.3 separately gates only the boolean pending-state reconciliation
+  read. It exposes no generic persistence, renderer-selected protected
+  operation, tool transport, credential value, or worker control.
 - The P3.4 deterministic fake is test infrastructure, not a worker process or
   evidence of packaged crash recovery.
 - P3.6 makes metadata-only audit and terminal-attempt evidence durable.
@@ -677,10 +725,10 @@ The ordered implementation index and P3 non-claims are in
   later P4/P5 work and still requires dedicated scope, decisions, branch, and
   tests.
 - F0 alone proves only that the original AionUi application can be preserved
-  and run. F1, F2, F3.1, and local F3.2 add their separately recorded identity,
-  shadow, narrow decision-authority, and fixed-delivery audit evidence; they do
-  not prove permission-complete native operations, Goose, or Eigent-style
-  integration.
+  and run. F1, F2, F3.1, F3.2, and local F3.3 add their separately recorded
+  identity, shadow, narrow decision-authority, fixed-delivery audit, and
+  reconciliation-read audit evidence; they do not prove permission-complete
+  native operations, Goose, or Eigent-style integration.
 - The local AionCore `v0.1.52` bundle is ignored and used only for native launch
   proof. It is not committed, packaged, or approved for distribution.
 - The upstream managed-Node path and Sentry startup path remain in retained

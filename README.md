@@ -80,10 +80,14 @@ completed a scoped 21-file CodeRabbit CLI review with 0 findings, and squash
 merged as `61b9405fc007aa8cb16ec05a65f421cb7d277b51`.
 [Main CI run 30434563810](https://github.com/bignormal/actestra-desktop/actions/runs/30434563810)
 passes on that exact squash commit. P4.3/F3.2 approval-delivery policy and
-audit implementation `20e3c0fcada0d072fc35820d43b85c953bf93929` is pushed
-to [Draft PR 7](https://github.com/bignormal/actestra-desktop/pull/7), and
-[exact implementation CI run 30437387097](https://github.com/bignormal/actestra-desktop/actions/runs/30437387097)
-passes.
+audit implementation `20e3c0fcada0d072fc35820d43b85c953bf93929` reached
+[PR 7](https://github.com/bignormal/actestra-desktop/pull/7) final head
+`df821ca203bea7b611fa8fb8092d00a16cabe578` and squash merged as
+`ce19dbe072328e16dcdaf116b8199d5502cb44c6`.
+[Main CI run 30442166290](https://github.com/bignormal/actestra-desktop/actions/runs/30442166290)
+passes on that exact merge. F3.3 approval-reconciliation policy and audit is
+locally implemented on `feat/aionui-f3-reconciliation-audit`; commit, push, and
+CI remain separate.
 
 - The repository now contains the exact, unmodified 1,766-file AionUi
   `v2.1.41` runnable desktop source foundation at commit
@@ -99,9 +103,9 @@ passes.
 - The renderer is sandboxed and receives only three fixed, non-privileged
   metadata intents. External HTTP, HTTPS, WebSocket, permissions, navigation,
   new windows, telemetry, updates, and accounts are inactive.
-- Thirty-two test files with 171 tests, an exact Electron-runtime SQLite
+- Thirty-three test files with 178 tests, an exact Electron-runtime SQLite
   probe, a three-scenario process-failure harness, formatting, lint, strict
-  types, a 41-source product-boundary check, renderer build, packaged
+  types, a 42-source product-boundary check, renderer build, packaged
   identity/CSP checks, and a fresh-profile three-stage startup smoke pass
   locally. P3.1-P3.6 and review remediation also have exact implementation CI.
   Unsigned arm64 app/DMG/ZIP packaging passes locally.
@@ -111,9 +115,11 @@ passes.
   deterministic tool gateway remain behind main-owned ports. P3.6 registers the
   inert privileged composition and SQLite evidence only in main; preload exposes
   three fixed metadata intents and no generic IPC or protected operation.
-  F3.2 locally activates only one main-owned loopback approval-response delivery
-  executor; there is still no real worker process, credential backend, general
-  input-reference store, general tool transport, or orchestration.
+  F3.2 activates only one main-owned loopback approval-response delivery
+  executor. Local F3.3 separately gates the boolean pending-state
+  reconciliation read; there is still no real worker process, credential
+  backend, general input-reference store, general tool transport, or
+  orchestration.
 - There is no CI-backed candidate, signed release, deployment, distribution, or
   user acceptance.
 - A reviewable downstream overlay now applies Actestra identity, icons,
@@ -146,9 +152,9 @@ passes.
   ambiguous delivery against the native pending list.
 - `ACTESTRA_APPROVAL_AUTHORITY=0` is the explicit native fallback. Authority
   errors otherwise fail closed instead of silently bypassing persistence.
-- Root full checks pass 32 files and 171 tests. The complete materialized
-  native suite passes 331 files with 1 skipped and 2,607 tests with 5 skipped;
-  strict TypeScript and the 569-main/7-preload/10,163-renderer-module
+- Root full checks pass 33 files and 178 tests. The complete materialized
+  native suite passes 332 files with 1 skipped and 2,608 tests with 5 skipped;
+  strict TypeScript and the 570-main/7-preload/10,163-renderer-module
   production build also pass.
 - An isolated real desktop run preserves the Guide UI, proves schema version 5
   persist-before-deliver on a structured native failure, proves restart does
@@ -158,7 +164,11 @@ passes.
   not authorize the underlying native operation. F3.2 locally routes only the
   already persisted response-delivery `network.request` through one exact P3
   manifest, policy rule, and durable policy/start/outcome audit sequence.
-  `ACTESTRA_APPROVAL_POLICY_GATE=0` returns to F3.1 direct delivery. Goose and
+  F3.3 locally gives the separate pending-state reconciliation read its own
+  exact manifest, policy, and audit path while retaining only an in-memory
+  boolean result. `ACTESTRA_APPROVAL_RECONCILIATION_GATE=0` returns only that
+  read to F3.1 direct native reconciliation while retaining F3.2 delivery;
+  `ACTESTRA_APPROVAL_POLICY_GATE=0` is the broader F3.1 rollback. Goose and
   Eigent-style integration have not started.
 
 See [Project Status](docs/PROJECT_STATUS.md) for the evidence-backed state.
@@ -186,7 +196,8 @@ ordered fusion is in
 11. [AionUi F2 Shadow Projection](docs/product/AIONUI_F2_SHADOW_PROJECTION.md)
 12. [AionUi F3.1 Approval Decision Authority](docs/product/AIONUI_F3_APPROVAL_AUTHORITY.md)
 13. [AionUi F3.2 Approval Delivery Policy Gate](docs/product/AIONUI_F3_APPROVAL_POLICY_GATE.md)
-14. [AionUi-first PR 6 Review Closure](docs/product/AIONUI_FIRST_PR6_REVIEW_CLOSURE.md)
+14. [AionUi F3.3 Approval Reconciliation Policy Gate](docs/product/AIONUI_F3_APPROVAL_RECONCILIATION_GATE.md)
+15. [AionUi-first PR 6 Review Closure](docs/product/AIONUI_FIRST_PR6_REVIEW_CLOSURE.md)
 
 Repository-wide instructions are in [AGENTS.md](AGENTS.md). Contribution rules
 are in [CONTRIBUTING.md](CONTRIBUTING.md).

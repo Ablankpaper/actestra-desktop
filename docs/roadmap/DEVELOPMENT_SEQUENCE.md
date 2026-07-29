@@ -29,18 +29,17 @@ features are implemented.
 | P7 | Security and reliability hardening | P4-P6 |
 | P8 | Cross-platform internal beta | P7 |
 
-Current execution state on 2026-07-29: P4.0/F0 through P4.3/F3.1 squash
-merged through pull request 6 as `61b9405fc007aa8cb16ec05a65f421cb7d277b51`.
-Main CI run 30434563810 passes on that exact commit. Seven bounded native
+Current execution state on 2026-07-29: P4.0/F0 through P4.3/F3.2 squash
+merged through pull request 7 as `ce19dbe072328e16dcdaf116b8199d5502cb44c6`.
+Main CI run 30442166290 passes on that exact commit. Seven bounded native
 metadata domains remain inert schema version 4 shadow evidence, while desktop
 confirmation responses use the schema version 5 persist-before-deliver outbox
-without changing the original AionUi permission and pet UI. P4.3/F3.2
-implementation `20e3c0fcada0d072fc35820d43b85c953bf93929` is pushed to
-[Draft PR 7](https://github.com/bignormal/actestra-desktop/pull/7): one exact
-loopback response-delivery capability enters P3 policy and durable audit,
-without claiming authority over the underlying native operation. Exact
-implementation CI run 30437387097 passes. Owner review, Ready, merge,
-candidate, and release remain separate.
+without changing the original AionUi permission and pet UI. F3.2 places the
+exact loopback response delivery behind P3 policy and durable audit. F3.3 is
+locally implemented on `feat/aionui-f3-reconciliation-audit`: the separate,
+bounded pending-state read used by retry and restart now enters its own exact
+policy and durable audit path. Commit, push, CI, candidate, and release remain
+separate.
 
 ## P0 — Project Foundation
 
@@ -143,6 +142,12 @@ candidate, and release remain separate.
     policy, start, and outcome audit before acknowledging delivery. Do not
     infer or authorize the underlying native tool, and retain an explicit F3.1
     rollback.
+  - **F3.3 — approval reconciliation policy and audit:** gate only the bounded
+    loopback pending-state read used after an ambiguous attempt and during
+    restart. Reduce the native list to an in-memory boolean before the gateway
+    consumes it; persist only metadata policy/start/outcome audit, keep native
+    request creation and content authoritative in AionCore, and retain an
+    explicit rollback of the read to F3.1 while retaining F3.2 delivery.
 - Support scoped workspace reads and task-output writes through the preserved
   file, workspace, conversation, preview, and artifact surfaces.
 - Add representative file, research, writing, office-document, schedule,

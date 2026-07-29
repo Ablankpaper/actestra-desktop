@@ -172,6 +172,11 @@ require separate slices.
 
 ## Review triggers
 
+The pending-list read trigger was reviewed by
+[ADR-0014](0014-aionui-approval-reconciliation-policy-gate.md). That later
+decision wraps the F3.2 transport without changing this delivery capability,
+policy revision, or rollback.
+
 Review this decision if:
 
 - pending-confirmation creation moves to Actestra;
