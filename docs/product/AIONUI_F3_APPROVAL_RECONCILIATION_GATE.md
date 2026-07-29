@@ -10,6 +10,8 @@ Implementation: `c2fa4bbc4989b9a41bf6a283b5f0eb1f2f523acb`
 
 Review remediation: `228ff385afd1d0dfc03655d1d46eaad9998bedc3`
 
+Ready evidence: `ab7b81957f32fda455c2219cb6ab169842df20a6`
+
 ## Outcome
 
 F3.3 preserves the original AionUi confirmation UI and closes the remaining
@@ -129,15 +131,19 @@ These results are verified on implementation commit
 `c2fa4bbc4989b9a41bf6a283b5f0eb1f2f523acb`. Draft pull request 8 reached
 evidence head `53e7041399518969c67af0fb78bf92499ebe28fd`, and exact-head CI run
 30445531680 passes. Review remediation
-`228ff385afd1d0dfc03655d1d46eaad9998bedc3` remains locally validated until
-its next push and CI. Candidate, release, distribution, and user acceptance
-remain separate.
+`228ff385afd1d0dfc03655d1d46eaad9998bedc3` reached Ready evidence head
+`ab7b81957f32fda455c2219cb6ab169842df20a6`; exact-head CI run 30448185324
+passes. Candidate, release, distribution, and user acceptance remain
+separate.
 
 Four completed local CodeRabbit reviews raised eight valid issues and one
 invalid provenance request. All valid issues were fixed. The latest complete
 18-file review requested direct durable failure-event ordering and privacy
 assertions; remediation `228ff385afd1d0dfc03655d1d46eaad9998bedc3` adds
-them. A zero-issue follow-up review remains pending and is not claimed.
+them. A fifth complete review covered all 18 changed files on Ready evidence
+head `ab7b81957f32fda455c2219cb6ab169842df20a6` and raised zero issues. The
+explicit remote review selected those 18 files but was rate-limited before
+review with a 26-minute wait, so it is not remote review evidence.
 
 ## Non-claims
 

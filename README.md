@@ -90,8 +90,12 @@ in [Draft PR 8](https://github.com/bignormal/actestra-desktop/pull/8).
 Implementation `c2fa4bbc4989b9a41bf6a283b5f0eb1f2f523acb` reached exact-head
 [CI run 30445531680](https://github.com/bignormal/actestra-desktop/actions/runs/30445531680)
 through evidence commit `53e7041399518969c67af0fb78bf92499ebe28fd`.
-Review remediation `228ff385afd1d0dfc03655d1d46eaad9998bedc3` is locally
-validated; its push and exact-head CI remain separate.
+Review remediation `228ff385afd1d0dfc03655d1d46eaad9998bedc3` reached Ready
+evidence head `ab7b81957f32fda455c2219cb6ab169842df20a6`, whose exact-head
+[CI run 30448185324](https://github.com/bignormal/actestra-desktop/actions/runs/30448185324)
+passes. A complete local CodeRabbit review of all 18 changed files raised 0
+issues on that head; the explicit remote review was rate-limited before review
+and is not represented as review evidence.
 
 - The repository now contains the exact, unmodified 1,766-file AionUi
   `v2.1.41` runnable desktop source foundation at commit

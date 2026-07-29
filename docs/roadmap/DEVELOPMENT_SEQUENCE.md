@@ -40,8 +40,10 @@ in Draft pull request 8. Implementation
 `c2fa4bbc4989b9a41bf6a283b5f0eb1f2f523acb` reached exact-head CI run
 30445531680 through evidence commit
 `53e7041399518969c67af0fb78bf92499ebe28fd`. Review remediation
-`228ff385afd1d0dfc03655d1d46eaad9998bedc3` is locally validated. Its next
-push and CI, Ready review, candidate, and release remain separate.
+`228ff385afd1d0dfc03655d1d46eaad9998bedc3` reached Ready evidence head
+`ab7b81957f32fda455c2219cb6ab169842df20a6`, whose exact-head CI run
+30448185324 and complete 18-file zero-issue local review pass. Merge,
+candidate, and release remain separate.
 
 ## P0 — Project Foundation
 
