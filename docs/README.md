@@ -15,6 +15,7 @@ planning, and governance documents.
 | [AionUi F1 Identity and Isolation](product/AIONUI_F1_IDENTITY_ISOLATION.md) | Downstream overlay, identity, private profile, effect policy, visual parity, and local plus CI evidence |
 | [AionUi F2 Shadow Projection](product/AIONUI_F2_SHADOW_PROJECTION.md) | Seven-domain compatibility contract, metadata-only P3 shadow evidence, restart and UI-preservation proof |
 | [AionUi F3.1 Approval Decision Authority](product/AIONUI_F3_APPROVAL_AUTHORITY.md) | Persist-before-deliver desktop confirmation authority, reconciliation, rollback, parity, and non-claims |
+| [AionUi-first PR 6 Review Closure](product/AIONUI_FIRST_PR6_REVIEW_CLOSURE.md) | Partitioned review coverage, valid remediation, rejected candidates, package proof, blockers, and final gates |
 | [Development Sequence](roadmap/DEVELOPMENT_SEQUENCE.md) | Ordered phases, dependencies, and exit gates |
 | [System Overview](architecture/SYSTEM_OVERVIEW.md) | Product boundaries, components, data ownership, and isolation |
 | [AionUi–Actestra Fusion](architecture/AIONUI_ACTESTRA_FUSION.md) | Preserve-first topology, authority transition, phases, and patch rules |

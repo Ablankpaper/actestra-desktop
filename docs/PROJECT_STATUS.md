@@ -4,7 +4,7 @@ Last updated: 2026-07-29
 
 ## Current phase
 
-### P3 accepted; F0-F3.1 CI-backed; PR remains Draft
+### P3 accepted; F0-F3.1 and review remediation CI-backed; PR remains Draft
 
 Branch `feat/aionui-first-foundation` starts from `origin/main` commit
 `a32b7cb4516f5592e8e1fe6f1f5afad7c50de991` and implements the corrected
@@ -472,6 +472,7 @@ Review closure validation at
 | P4.1 identity and isolation | Implemented, pushed, CI-backed; draft PR | Implementation `836a9f1f81687f091e1c5b92ce30bff167e9da4f`; resource-only CI remediation `462a1b0d920279d42f124fdd28673d77dc55b765`; run 30417692550 passes |
 | P4.2 compatibility shadow | Implemented, pushed, and CI-backed; draft PR | Implementation `632573fa03c34fdb789c85d8efc1ce1e0f8e8177`; packaged-boundary remediation `1478726d62302fa885525024eb4839af5e98b4dd`; run 30421351204 passes |
 | P4.3/F3.1 approval decision authority | Implemented, pushed, and CI-backed; draft PR | Implementation `cf61ffb8453a888cdc03f73457ebeaf72708511a`; ADR-0012; schema version 5 persist-before-deliver outbox; 30/153 root and 330/2,602 native tests; run 30425061316 passes |
+| Draft PR 6 review remediation | Implemented, pushed, and CI-backed; draft PR | Implementation `e343e83a7c22d8977bb2e9dd06169a69ed9826d5`; exact-head run 30431363721 passes; partitioned CodeRabbit review raised 27 candidates, with 20 valid fixes and 7 evidence-backed rejections; successive full remediation reviews raised 8 additional valid issues, all fixed; the final zero-issue attempt was rate-limited; root 31/164 and native 330/2,606 pass; packaged CDP denial passes; local ad-hoc signing remains blocked by a persistent macOS provenance attribute |
 | Native AionUi source | Exact local desktop snapshot | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot |
 | Native preservation contract | Local pass | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified |
 | Native AionUi build and launch | Local pass | Frozen install, production build, isolated native Electron launch, and actual Guide screenshot pass |

@@ -70,7 +70,10 @@ remediation `1478726d62302fa885525024eb4839af5e98b4dd` pass
 P4.3/F3.1 approval-decision authority implementation
 `cf61ffb8453a888cdc03f73457ebeaf72708511a` passes
 [macOS arm64 CI run 30425061316](https://github.com/bignormal/actestra-desktop/actions/runs/30425061316)
-on the same branch. Pull request 6 remains Draft.
+on the same branch. Review remediation
+`e343e83a7c22d8977bb2e9dd06169a69ed9826d5` passes
+[macOS arm64 CI run 30431363721](https://github.com/bignormal/actestra-desktop/actions/runs/30431363721).
+Pull request 6 remains Draft.
 
 - The repository now contains the exact, unmodified 1,766-file AionUi
   `v2.1.41` runnable desktop source foundation at commit
@@ -86,7 +89,7 @@ on the same branch. Pull request 6 remains Draft.
 - The renderer is sandboxed and receives only three fixed, non-privileged
   metadata intents. External HTTP, HTTPS, WebSocket, permissions, navigation,
   new windows, telemetry, updates, and accounts are inactive.
-- Thirty test files with 153 tests, an exact Electron-runtime SQLite
+- Thirty-one test files with 164 tests, an exact Electron-runtime SQLite
   probe, a three-scenario process-failure harness, formatting, lint, strict
   types, a 40-source product-boundary check, renderer build, packaged
   identity/CSP checks, and a fresh-profile three-stage startup smoke pass
@@ -132,8 +135,8 @@ on the same branch. Pull request 6 remains Draft.
   ambiguous delivery against the native pending list.
 - `ACTESTRA_APPROVAL_AUTHORITY=0` is the explicit native fallback. Authority
   errors otherwise fail closed instead of silently bypassing persistence.
-- Root full checks pass 30 files and 153 tests. The complete materialized
-  native suite passes 330 files with 1 skipped and 2,602 tests with 5 skipped;
+- Root full checks pass 31 files and 164 tests. The complete materialized
+  native suite passes 330 files with 1 skipped and 2,606 tests with 5 skipped;
   strict TypeScript and the 563-main/7-preload/10,163-renderer-module
   production build also pass.
 - An isolated real desktop run preserves the Guide UI, proves schema version 5
@@ -168,6 +171,7 @@ ordered fusion is in
 10. [AionUi F1 Identity and Isolation](docs/product/AIONUI_F1_IDENTITY_ISOLATION.md)
 11. [AionUi F2 Shadow Projection](docs/product/AIONUI_F2_SHADOW_PROJECTION.md)
 12. [AionUi F3.1 Approval Decision Authority](docs/product/AIONUI_F3_APPROVAL_AUTHORITY.md)
+13. [AionUi-first PR 6 Review Closure](docs/product/AIONUI_FIRST_PR6_REVIEW_CLOSURE.md)
 
 Repository-wide instructions are in [AGENTS.md](AGENTS.md). Contribution rules
 are in [CONTRIBUTING.md](CONTRIBUTING.md).
