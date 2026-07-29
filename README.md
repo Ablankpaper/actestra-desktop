@@ -12,8 +12,12 @@ The product direction is intentionally modular:
   boundaries instead of redrawing or removing its workflows.
 - Goose is integrated later as a specialized coding and terminal worker through
   AionUi's existing agent/ACP and conversation experience.
-- Eigent-style orchestration is mapped into AionUi's existing Team experience;
-  the Eigent repository is not merged wholesale into Actestra.
+- CrewAI is the first P6 candidate for a separately supervised planning,
+  replanning, and aggregation sidecar. Actestra remains the authoritative Team
+  state machine.
+- Eigent-style orchestration is mapped into AionUi's existing Team experience
+  as the interaction and acceptance reference; the Eigent repository is not
+  merged wholesale into Actestra.
 
 Actestra is a new product. It does not share code, identity, data, configuration,
 release infrastructure, or product boundaries with Aera.
@@ -85,17 +89,14 @@ audit implementation `20e3c0fcada0d072fc35820d43b85c953bf93929` reached
 `df821ca203bea7b611fa8fb8092d00a16cabe578` and squash merged as
 `ce19dbe072328e16dcdaf116b8199d5502cb44c6`.
 [Main CI run 30442166290](https://github.com/bignormal/actestra-desktop/actions/runs/30442166290)
-passes on that exact merge. F3.3 approval-reconciliation policy and audit is
-in [Draft PR 8](https://github.com/bignormal/actestra-desktop/pull/8).
-Implementation `c2fa4bbc4989b9a41bf6a283b5f0eb1f2f523acb` reached exact-head
-[CI run 30445531680](https://github.com/bignormal/actestra-desktop/actions/runs/30445531680)
-through evidence commit `53e7041399518969c67af0fb78bf92499ebe28fd`.
-Review remediation `228ff385afd1d0dfc03655d1d46eaad9998bedc3` reached Ready
-evidence head `ab7b81957f32fda455c2219cb6ab169842df20a6`, whose exact-head
-[CI run 30448185324](https://github.com/bignormal/actestra-desktop/actions/runs/30448185324)
-passes. A complete local CodeRabbit review of all 18 changed files raised 0
-issues on that head; the explicit remote review was rate-limited before review
-and is not represented as review evidence.
+passes on that exact merge. F3.3 approval-reconciliation policy and audit
+reached [PR 8](https://github.com/bignormal/actestra-desktop/pull/8) final head
+`3f85e13072f5fb13fb43c9dae94f992bb0b7fb9c` and squash merged as
+`c841ed9cb6a54bcb2e4078ca2be941adce0ac4ad`.
+[Main CI run 30449520722](https://github.com/bignormal/actestra-desktop/actions/runs/30449520722)
+passes on that exact merge. A complete local CodeRabbit review of all 18
+changed files raised 0 issues before merge; the explicit remote review was
+rate-limited before review and is not represented as review evidence.
 
 - The repository now contains the exact, unmodified 1,766-file AionUi
   `v2.1.41` runnable desktop source foundation at commit
@@ -169,15 +170,15 @@ and is not represented as review evidence.
   not blindly redeliver, and proves the explicit fallback creates no new
   authority row.
 - F3.1 is the first authoritative write beneath the preserved UI, but it does
-  not authorize the underlying native operation. F3.2 locally routes only the
+  not authorize the underlying native operation. Merged F3.2 routes only the
   already persisted response-delivery `network.request` through one exact P3
   manifest, policy rule, and durable policy/start/outcome audit sequence.
-  F3.3 locally gives the separate pending-state reconciliation read its own
+  Merged F3.3 gives the separate pending-state reconciliation read its own
   exact manifest, policy, and audit path while retaining only an in-memory
   boolean result. `ACTESTRA_APPROVAL_RECONCILIATION_GATE=0` returns only that
   read to F3.1 direct native reconciliation while retaining F3.2 delivery;
   `ACTESTRA_APPROVAL_POLICY_GATE=0` is the broader F3.1 rollback. Goose and
-  Eigent-style integration have not started.
+  CrewAI-assisted Eigent-style integration have not started.
 
 See [Project Status](docs/PROJECT_STATUS.md) for the evidence-backed state.
 The local P2 proof is recorded in
@@ -206,6 +207,7 @@ ordered fusion is in
 13. [AionUi F3.2 Approval Delivery Policy Gate](docs/product/AIONUI_F3_APPROVAL_POLICY_GATE.md)
 14. [AionUi F3.3 Approval Reconciliation Policy Gate](docs/product/AIONUI_F3_APPROVAL_RECONCILIATION_GATE.md)
 15. [AionUi-first PR 6 Review Closure](docs/product/AIONUI_FIRST_PR6_REVIEW_CLOSURE.md)
+16. [CrewAI P6 Sidecar Decision](docs/architecture/decisions/0015-crewai-supervised-orchestration-sidecar.md)
 
 Repository-wide instructions are in [AGENTS.md](AGENTS.md). Contribution rules
 are in [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -224,6 +226,7 @@ flowchart LR
     CORE --> GENERAL["General Worker"]
     CORE --> GOOSE["Goose Worker"]
     CORE --> TEAM["Team Orchestrator"]
+    TEAM --> PLANNER["CrewAI Planner Sidecar"]
     GENERAL --> TOOLS["MCP and Tool Gateway"]
     GOOSE --> TOOLS
     TEAM --> GENERAL

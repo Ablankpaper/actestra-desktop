@@ -25,7 +25,8 @@ flowchart TD
     STORE["Actestra persistence\nmigrations and projections"]
     GENERAL["General worker\ninitial AionCore compatibility runtime"]
     GOOSE["Goose worker\nthrough AgentAdapter"]
-    TEAM["Actestra team orchestrator\nEigent-style behavior"]
+    TEAM["Actestra TeamOrchestrator\nauthoritative state machine"]
+    PLANNER["CrewAI planner sidecar\nP6 candidate"]
     TOOLS["Actestra tool gateway\nworkspace, credential, policy, approval"]
 
     UI --> CONTRACT
@@ -35,6 +36,7 @@ flowchart TD
     CORE --> GENERAL
     CORE --> GOOSE
     CORE --> TEAM
+    TEAM --> PLANNER
     GENERAL --> TOOLS
     GOOSE --> TOOLS
     TEAM --> GENERAL
@@ -43,8 +45,10 @@ flowchart TD
 
 The user sees one application and one coherent history. Goose does not add a
 second coding UI; it appears through the preserved AionUi agent/ACP and
-conversation surfaces. Eigent-style orchestration does not add a second team
-application; it appears through the preserved AionUi Team surfaces.
+conversation surfaces. CrewAI does not add a second team application or state
+authority; its bounded planning candidates enter an Actestra-owned
+TeamOrchestrator and appear through the preserved AionUi Team surfaces. Eigent
+remains the Team interaction and acceptance reference.
 
 ## Stable seams
 
@@ -205,16 +209,21 @@ and
 Exit: coding work is usable without opening or reproducing Goose's separate
 application UI.
 
-### F5 — Eigent-style orchestration inside Team
+### F5 — CrewAI-assisted Eigent-style orchestration inside Team
 
 - Map Actestra leaders, workers, dependencies, slots, child turns, approvals,
   pause, retry, replacement, handoff, and aggregation into the existing AionUi
   Team types and views.
+- Keep the Actestra TeamOrchestrator authoritative and evaluate CrewAI only as
+  a supervised planner, replanner, and aggregation sidecar under ADR-0015.
+- Validate every plan and replan for schema, cycles, bounds, budget, policy,
+  and available worker capabilities before persistence or scheduling.
 - Preserve native Team creation, navigation, chat, status, rename/pin/delete,
   messaging, and recovery behaviors.
 
 Exit: a mixed general-and-code fixture completes through the preserved Team UI
-with deterministic failure and restart proof.
+with deterministic failure and restart proof, and a CrewAI crash or version
+mismatch cannot corrupt authoritative state.
 
 ### F6 — Remote and ecosystem providers
 

@@ -3,7 +3,7 @@
 Actestra uses third-party runtime and development packages from locked Bun
 dependency graphs. The AionUi-first foundation contains the exact AionUi source
 snapshot recorded below. It contains no committed AionCore binary, Goose,
-Eigent, Aera, or AgentEra source or asset.
+CrewAI, Eigent, Aera, or AgentEra source or asset.
 
 ## Distributed runtime components
 
@@ -58,7 +58,8 @@ Exact evaluation pins do not change their non-imported status.
 | --- | --- | --- | --- | --- |
 | AionCore | `v0.1.52` (`76f5554286ba0b6d33fb74d5c2bb2b3b0b83100d`) | Root Apache-2.0; Cargo metadata says MIT; no root `NOTICE` | Ignored local F0 launch runtime and proposed initial general-worker compatibility runtime; not committed or approved for distribution | <https://github.com/iOfficeAI/AionCore> |
 | Goose | Not selected | Not yet inspected | Specialized coding and terminal worker | <https://github.com/aaif-goose/goose> |
-| Eigent | Not selected | Not yet inspected | Multi-agent orchestration reference | <https://github.com/eigent-ai/eigent> |
+| CrewAI | `1.15.8` (`e9caf1e1b89343bb833b5da6660faa91804a9dce`) | MIT | First supervised P6 planner-sidecar candidate; metadata inspected only, with no source or package imported | <https://github.com/crewAIInc/crewAI> |
+| Eigent | `v1.0.2` (`e478094a9ff433132b3cf1928e4143338ddaab20`) | Root Apache-2.0; root `package.json` says MIT | Team product and acceptance reference; metadata inspected only, with no source or runtime imported | <https://github.com/eigent-ai/eigent> |
 
 This file must be updated in the same change that imports, vendors, bundles,
 upgrades, or distributes third-party code or assets. A reference link alone

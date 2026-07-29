@@ -27,6 +27,7 @@ components or phases.
 | [0012](0012-aionui-approval-decision-authority.md) | Accepted | Persist desktop AionUi confirmation decisions before native delivery and reconcile ambiguous outcomes |
 | [0013](0013-aionui-approval-delivery-policy-gate.md) | Accepted | Gate persisted AionUi response delivery through one exact P3 policy, capability, and durable audit path |
 | [0014](0014-aionui-approval-reconciliation-policy-gate.md) | Accepted | Gate the bounded native pending-state read used by retry and restart reconciliation |
+| [0015](0015-crewai-supervised-orchestration-sidecar.md) | Accepted | Evaluate CrewAI as a supervised P6 planner sidecar while Actestra retains team authority and Eigent remains the experience reference |
 
 ## Creating an ADR
 

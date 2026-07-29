@@ -74,6 +74,9 @@ releases begin.
   retry and restart behavior, and an explicit rollback of the read to F3.1
   while retaining F3.2 delivery, without persisting native confirmation
   content.
+- ADR-0015 and the P6 orchestration boundary: CrewAI is the first supervised
+  planner-sidecar candidate, Actestra remains the authoritative Team state
+  machine, and Eigent remains the Team interaction and acceptance reference.
 
 ### Changed
 
