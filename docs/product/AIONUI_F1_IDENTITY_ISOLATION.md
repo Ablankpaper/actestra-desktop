@@ -6,7 +6,7 @@ Host: macOS arm64
 
 Branch: `feat/aionui-first-foundation`
 
-Draft PR: [6](https://github.com/bignormal/actestra-desktop/pull/6)
+Merged PR: [6](https://github.com/bignormal/actestra-desktop/pull/6)
 
 ## Result
 

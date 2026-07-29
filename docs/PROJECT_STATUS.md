@@ -4,18 +4,23 @@ Last updated: 2026-07-29
 
 ## Current phase
 
-### P3 accepted; F0-F3.1 and review remediation CI-backed; PR remains Draft
+### F0-F3.1 accepted on main; F3.2 policy-gated delivery is local
 
-Branch `feat/aionui-first-foundation` starts from `origin/main` commit
-`a32b7cb4516f5592e8e1fe6f1f5afad7c50de991` and implements the corrected
-product direction in ADR-0010: the real AionUi application, original functional
-UI, and original functions are the product baseline; the accepted Actestra P3
-core will be fused beneath compatible bridge domains.
+Pull request 6 reached exact final head
+`70b2f29329fec26bf0e3d6384d8563aedcb7a4ce` and squash merged F0 through
+F3.1 as `61b9405fc007aa8cb16ec05a65f421cb7d277b51`. Main CI run 30434563810
+passes on that exact merge. Branch `feat/aionui-f3-policy-audit` starts from
+that verified main commit and implements the next narrow authority slice under
+ADR-0013: only delivery of an already persisted confirmation response enters
+P3 policy, capability, and durable audit. The real AionUi application,
+original functional UI, and original functions remain the product baseline.
 
 F0 implementation commit
-`13270ca0abd7353710541afca9ddf46c47670be3` is pushed to
-[draft pull request 6](https://github.com/bignormal/actestra-desktop/pull/6).
-Its exact-head
+`13270ca0abd7353710541afca9ddf46c47670be3` first established the preserved
+foundation on
+[pull request 6](https://github.com/bignormal/actestra-desktop/pull/6), which
+subsequently merged through the exact final head recorded above. Its early
+exact-head
 [CI run 30392140461](https://github.com/bignormal/actestra-desktop/actions/runs/30392140461)
 passes the macOS arm64 foundation job, including source, tests, boundaries,
 documentation, unsigned legacy-harness package, packaged identity, and
@@ -72,8 +77,8 @@ Current F1 implementation and evidence:
 
 Detailed implementation and non-claim evidence is recorded in
 [AionUi F1 Identity and Isolation](product/AIONUI_F1_IDENTITY_ISOLATION.md).
-F1 implementation is CI-backed but remains on a Draft pull request. Merge,
-candidate, release, distribution, and acceptance remain separate gates.
+F1 implementation is CI-backed and merged through pull request 6. Candidate,
+release, distribution, and acceptance remain separate gates.
 
 Current F2 implementation and evidence:
 
@@ -174,6 +179,53 @@ F3.1 owns only the desktop response and delivery record. Pending-request
 creation, provider semantics, protected-operation execution, P3 policy/audit
 release, and headless WebUI authority remain outside this slice.
 
+Current F3.2 implementation and local evidence:
+
+- the already persisted F3.1 confirmation response is the only protected
+  operation entering the accepted P3 privileged gateway;
+- the fixed capability is `aionui-approval-delivery-v1` with
+  `network.request` against `external-service`; renderer input cannot select a
+  different tool, action, resource, policy, credential, or executor;
+- deterministic policy evaluation and an in-memory policy authorization grant
+  run before native delivery; no second user prompt or replacement approval UI
+  is introduced;
+- `policy.evaluated`, `tool.started`, and terminal `tool.completed` or
+  `tool.failed` evidence are written through the existing durable metadata-only
+  audit path;
+- compatibility-scoped hashes replace raw native request and response
+  identifiers in audit evidence. Response bodies, approval descriptions,
+  workspace paths, credentials, and arbitrary native diagnostics are not
+  audited;
+- native structured rejection remains the F3.1 compatibility result only when
+  its terminal failure evidence commits. Failure after execution but before
+  outcome audit remains uncertain and is not converted into a retryable native
+  rejection;
+- pending-list reconciliation remains a bounded retained native read and does
+  not invent protected-operation semantics for an unknown upstream tool;
+- no schema or renderer change is required. The explicit rollback switch
+  `ACTESTRA_APPROVAL_POLICY_GATE=0` restores the accepted F3.1 delivery path;
+- targeted local verification passes 7 root policy-gate tests and the
+  six-file/44-test F3/P3 compatibility set;
+- the complete root gate passes 32 files and 171 tests, Electron SQLite,
+  process smoke, the 41-source product boundary, frozen/downstream checks, and
+  production build;
+- the 102-file downstream declaration, four R0 invariants, and 21 reviewed
+  source copies pass; materialized strict TypeScript and the four-file/10-test
+  focused integration set pass;
+- the complete materialized native suite passes 331 files with 1 skipped and
+  2,607 tests with 5 skipped; production build passes with 569 main, 7 preload,
+  and 10,163 renderer modules;
+- unsigned legacy-harness packaging, packaged identity/product boundary, and
+  clean-profile application/window/renderer smoke pass as regression evidence.
+
+Detailed scope, sequence, rollback, and non-claims are recorded in
+[AionUi F3.2 Approval Delivery Policy Gate](product/AIONUI_F3_APPROVAL_POLICY_GATE.md)
+and
+[ADR-0013](architecture/decisions/0013-aionui-approval-delivery-policy-gate.md).
+This remains local branch evidence only. Review, push, pull-request CI, merge,
+candidate, release, distribution, live F3.2 desktop proof, and acceptance
+remain separate gates.
+
 The implementation run
 [30421071039](https://github.com/bignormal/actestra-desktop/actions/runs/30421071039)
 passed through unsigned bundle creation but failed the legacy packaged-boundary
@@ -186,10 +238,15 @@ The full native suite, F2 live projection, F3.1 restart reconciliation, and
 visual/runtime socket inspection remain local evidence. F0-F3.1 foundation,
 downstream overlay, focused contracts, native production build, unsigned
 package boundary, and clean-profile smoke are CI-backed on their recorded exact
-commits. PR 6 remains Draft and is not merge, candidate, release, distribution,
-or acceptance evidence. CodeRabbit returned
-a successful status but explicitly skipped review because the PR is Draft; it
-is not review evidence.
+commits. Pull request 6 reached exact final head
+`70b2f29329fec26bf0e3d6384d8563aedcb7a4ce`; exact-head CI run 30431557027
+passed, and a scoped local CodeRabbit review completed across the 21 final
+changed files with zero findings. The Ready-triggered GitHub CodeRabbit job
+explicitly skipped because 1,774 files exceeded its 150-file limit, so that
+status is not review evidence. Pull request 6 squash merged as
+`61b9405fc007aa8cb16ec05a65f421cb7d277b51`, and main run 30434563810 passed
+on that exact merge. These facts prove merge and main CI, not candidate,
+release, distribution, or acceptance.
 
 P3.1-P3.6 and review remediation are pushed and CI-backed. The full independent
 review and remediation review are complete.
@@ -468,15 +525,16 @@ Review closure validation at
 | P3 Ready gate | Pass | Owner authorized the Ready transition; runs 30374447377 and 30376456379 passed on their exact heads; final PR-head run 30376696055 passed; the first Ready-triggered CodeRabbit selected 67 files and completed successfully with 0 review submissions and 0 threads |
 | P3 merge | Accepted on `main` | PR 3 squash merged exact final head `71bf3e3fb1d7661fee053ee811279d44f1fdf45f` as `f6833c50eaf5a426948bac7999f93a08b19a425e` |
 | P3 main CI | Pass | Main push run 30378191752 passed on exact squash commit `f6833c50eaf5a426948bac7999f93a08b19a425e` |
-| P4.0 branch | Pushed; draft PR | Implementation `13270ca0abd7353710541afca9ddf46c47670be3`; draft PR 6; exact-head CI run 30392140461 passes |
-| P4.1 identity and isolation | Implemented, pushed, CI-backed; draft PR | Implementation `836a9f1f81687f091e1c5b92ce30bff167e9da4f`; resource-only CI remediation `462a1b0d920279d42f124fdd28673d77dc55b765`; run 30417692550 passes |
-| P4.2 compatibility shadow | Implemented, pushed, and CI-backed; draft PR | Implementation `632573fa03c34fdb789c85d8efc1ce1e0f8e8177`; packaged-boundary remediation `1478726d62302fa885525024eb4839af5e98b4dd`; run 30421351204 passes |
-| P4.3/F3.1 approval decision authority | Implemented, pushed, and CI-backed; draft PR | Implementation `cf61ffb8453a888cdc03f73457ebeaf72708511a`; ADR-0012; schema version 5 persist-before-deliver outbox; 30/153 root and 330/2,602 native tests; run 30425061316 passes |
-| Draft PR 6 review remediation | Implemented, pushed, and CI-backed; draft PR | Implementation `e343e83a7c22d8977bb2e9dd06169a69ed9826d5`; exact-head run 30431363721 passes; partitioned CodeRabbit review raised 27 candidates, with 20 valid fixes and 7 evidence-backed rejections; successive full remediation reviews raised 8 additional valid issues, all fixed; the final zero-issue attempt was rate-limited; root 31/164 and native 330/2,606 pass; packaged CDP denial passes; local ad-hoc signing remains blocked by a persistent macOS provenance attribute |
+| P4.0 foundation | Accepted on `main` through PR 6 | Implementation `13270ca0abd7353710541afca9ddf46c47670be3`; early exact-head CI run 30392140461 passes |
+| P4.1 identity and isolation | Accepted on `main` through PR 6 | Implementation `836a9f1f81687f091e1c5b92ce30bff167e9da4f`; resource-only CI remediation `462a1b0d920279d42f124fdd28673d77dc55b765`; run 30417692550 passes |
+| P4.2 compatibility shadow | Accepted on `main` through PR 6 | Implementation `632573fa03c34fdb789c85d8efc1ce1e0f8e8177`; packaged-boundary remediation `1478726d62302fa885525024eb4839af5e98b4dd`; run 30421351204 passes |
+| P4.3/F3.1 approval decision authority | Accepted on `main` through PR 6 | Implementation `cf61ffb8453a888cdc03f73457ebeaf72708511a`; ADR-0012; schema version 5 persist-before-deliver outbox; 30/153 root and 330/2,602 native tests; run 30425061316 passes |
+| PR 6 review and merge closure | Accepted on `main` | Final head `70b2f29329fec26bf0e3d6384d8563aedcb7a4ce`; exact-head CI 30431557027 passes; local review of 21 final changed files returned zero findings; squash merge `61b9405fc007aa8cb16ec05a65f421cb7d277b51`; exact main CI 30434563810 passes |
+| F3.2 approval delivery policy gate | Implemented and full local gates pass; not pushed | ADR-0013; fixed P3 capability and policy; durable metadata-only audit around F3.1 delivery; root 32/171, native 331/2,607, strict types, 102-file downstream declaration, production builds, unsigned legacy-harness package identity, and clean-profile smoke pass |
 | Native AionUi source | Exact local desktop snapshot | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot |
 | Native preservation contract | Local pass | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified |
 | Native AionUi build and launch | Local pass | Frozen install, production build, isolated native Electron launch, and actual Guide screenshot pass |
-| Native AionUi tests | Local pass | 326 files passed, 1 skipped; 2,590 tests passed, 5 skipped; 0 failures |
+| Native AionUi tests | Latest local pass | 331 files passed, 1 skipped; 2,607 tests passed, 5 skipped; 0 failures |
 | Legacy product shell | P3 harness only | Original Actestra Electron/React shell remains for platform-contract and packaging regression; it is not the target product UI |
 | Renderer boundary | CI-backed through P3.6 | Context isolation, sandbox, Node and packaged DevTools disabled, production CSP denies connections, exact frozen preload allowlist, trusted-frame zero-argument IPC, and direct-client source checks |
 | Automated tests | Exact merged-main CI pass | Main run 30378191752 passes 24 Vitest files with 130 tests, the exact Electron SQLite probe, process-failure harness, 34-source boundary check, build, package identity, and clean-profile smoke |
@@ -545,15 +603,16 @@ The ordered implementation index and P3 non-claims are in
 
 ## Next gate
 
-1. Review Draft PR 6 while retaining every route, feature entry, native
-   response shape, the F2 inert boundary, and the F3.1 narrow authority split.
-2. Select the next single F3 slice: connect durable responses to P3
-   policy/audit/tool release, or migrate another domain with a separate
-   forward migration, rollback, restart, error, and parity gate.
+1. Review the exact F3.2 diff, then push it and obtain pull-request CI before
+   considering merge.
+2. Select the next single F3 slice only after this gate closes. Do not infer
+   underlying native tool semantics or promote pending-request creation,
+   provider policy, or generic protected-operation authority without a
+   separate contract and proof.
 3. Keep every unselected domain native-authoritative or isolated; do not create
    a second implicit system of record.
-4. Do not describe F3.1 as complete approval/general-work authority, merge,
-   candidate, release, distribution, or user acceptance.
+4. Do not describe F3.2 as complete approval/general-work authority, candidate,
+   release, distribution, or user acceptance.
 
 ## Open decisions
 
@@ -587,15 +646,18 @@ The ordered implementation index and P3 non-claims are in
 - The legacy harness main registers the current SQLite registry and inert P3.5
   reference services. The downstream main migrates through schema v5, accepts
   one fixed shadow-observation operation and one fixed desktop confirmation
-  response operation, but exposes no generic persistence, protected operation,
-  tool transport, credential value, or worker control.
+  response operation, and the local F3.2 branch gates only that response's
+  native delivery as a fixed protected operation. It exposes no generic
+  persistence, renderer-selected protected operation, tool transport,
+  credential value, or worker control.
 - The P3.4 deterministic fake is test infrastructure, not a worker process or
   evidence of packaged crash recovery.
 - P3.6 makes metadata-only audit and terminal-attempt evidence durable.
   Approval, credential-lease, and policy state remains in memory and contains no
-  secret value or real tool execution. F3.1 separately makes the bounded native
-  confirmation response and outbox durable; it does not activate those P3
-  services.
+  secret value. F3.1 separately makes the bounded native confirmation response
+  and outbox durable. Local F3.2 activates the accepted P3 sequence for exactly
+  one compatibility delivery capability, not for generic native tool
+  execution.
 - SQLite still runs synchronously in main. F3.1 permits one bounded,
   low-frequency response write, but broader or high-volume user-workload writes
   require a supervised persistence utility.
@@ -605,9 +667,10 @@ The ordered implementation index and P3 non-claims are in
   later P4/P5 work and still requires dedicated scope, decisions, branch, and
   tests.
 - F0 alone proves only that the original AionUi application can be preserved
-  and run. F1, F2, and F3.1 add their separately recorded identity, shadow, and
-  narrow decision-authority evidence; they do not prove permission-complete
-  native operations, Goose, or Eigent-style integration.
+  and run. F1, F2, F3.1, and local F3.2 add their separately recorded identity,
+  shadow, narrow decision-authority, and fixed-delivery audit evidence; they do
+  not prove permission-complete native operations, Goose, or Eigent-style
+  integration.
 - The local AionCore `v0.1.52` bundle is ignored and used only for native launch
   proof. It is not committed, packaged, or approved for distribution.
 - The upstream managed-Node path and Sentry startup path remain in retained
@@ -616,9 +679,11 @@ The ordered implementation index and P3 non-claims are in
 - Draft pull request 5 follows the displaced custom-shell general-work route.
   Preserve it for compatible P3-core mining, but do not merge it as the product
   UI foundation.
-- PR 6 CodeRabbit run `4c42ce22-31b1-4554-a6fc-d2639f45dbda`
-  returned a successful status but explicitly skipped review because the PR is
-  Draft. It provides no line-by-line review or zero-issue evidence.
+- PR 6's Ready-triggered GitHub CodeRabbit check returned success but
+  explicitly skipped because 1,774 files exceeded its 150-file limit. It is not
+  line-by-line review evidence. The separate scoped local review did complete
+  across the 21 final changed files with zero findings before the evidenced
+  squash merge.
 - The local P2 package remains deliberately unsigned and is not a candidate.
 - The `main` branch currently has no GitHub branch-protection rule; explicit
   owner-gated PR discipline remains required.

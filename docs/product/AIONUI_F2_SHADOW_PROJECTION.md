@@ -5,7 +5,7 @@ Date: 2026-07-29
 Branch: `feat/aionui-first-foundation`
 
 Pull request:
-[draft PR 6](https://github.com/bignormal/actestra-desktop/pull/6)
+[merged PR 6](https://github.com/bignormal/actestra-desktop/pull/6)
 
 ## Result
 
@@ -182,7 +182,7 @@ inert because no native or Actestra-authoritative read path consumes them.
 ## Remote evidence
 
 F2 implementation commit
-`632573fa03c34fdb789c85d8efc1ce1e0f8e8177` is pushed to Draft PR 6.
+`632573fa03c34fdb789c85d8efc1ce1e0f8e8177` was pushed through pull request 6.
 [CI run 30421071039](https://github.com/bignormal/actestra-desktop/actions/runs/30421071039)
 passed source, documentation, dependency install, strict types, 14 focused
 tests, native production build, and unsigned bundle creation, then failed the
@@ -203,7 +203,9 @@ downstream materialization and install, strict types, all 14 focused tests,
 native production build, unsigned app bundle, packaged identity and product
 boundary, and clean-profile smoke.
 
-Draft PR status, merge, candidate, release, distribution, and user acceptance
+Pull request 6 subsequently squash merged as
+`61b9405fc007aa8cb16ec05a65f421cb7d277b51`, with exact main CI run
+30434563810 passing. Candidate, release, distribution, and user acceptance
 remain separate states.
 
 ## Non-claims and next gate

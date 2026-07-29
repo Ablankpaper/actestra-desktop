@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "phase": "F3.1",
+  "phase": "F3.2",
   "upstream": {
     "tag": "v2.1.41",
     "commit": "2d8925fc67a97a20996fadcd2a0862b778b572ba",
@@ -9,8 +9,8 @@
   "authorityOwner": "Actestra desktop main process",
   "classifications": ["R0", "R1", "R2"],
   "migration": {
-    "strategy": "Fresh Actestra profile v1; native AionUi profiles remain untouched. Schema v5 retains F2 shadow evidence and adds a private authoritative approval-decision outbox. Pre-F3 resolved decisions cannot be imported because F2 intentionally stored no raw decision bodies; pending native confirmations become authoritative on the first user response.",
-    "rollback": "Set ACTESTRA_APPROVAL_AUTHORITY=0 for the explicit native fallback, or regenerate without the F3.1 patch. Existing schema v5 decision rows remain inert and the frozen AionUi foundation stays byte-identical."
+    "strategy": "Fresh Actestra profile v1; native AionUi profiles remain untouched. Schema v5 retains the authoritative approval-decision outbox. F3.2 reuses the accepted schema v3 privileged audit store and gates only delivery of an already persisted response through one exact loopback network.request capability; it does not migrate or infer the underlying native tool operation.",
+    "rollback": "Set ACTESTRA_APPROVAL_POLICY_GATE=0 to retain F3.1 persistence with direct native delivery, set ACTESTRA_APPROVAL_AUTHORITY=0 for the explicit native fallback, or regenerate without the F3.2 patch. Existing schema v5 decisions and privileged audit rows remain inert and the frozen AionUi foundation stays byte-identical."
   },
   "uiContract": {
     "layoutChangesAllowed": false,
@@ -60,6 +60,17 @@
       ],
       "authorityOwner": "Actestra desktop main process",
       "rollback": "Set ACTESTRA_APPROVAL_AUTHORITY=0 or regenerate without this patch. The preserved AionUi permission UI and native fallback route remain available; existing authority rows stay inert."
+    },
+    {
+      "path": "patches/0004-actestra-approval-policy-gate.mjs",
+      "classification": ["R1"],
+      "domains": [
+        "approval response delivery policy",
+        "approval response delivery audit",
+        "loopback native delivery capability"
+      ],
+      "authorityOwner": "Actestra desktop main process",
+      "rollback": "Set ACTESTRA_APPROVAL_POLICY_GATE=0 or regenerate without this patch. F3.1 persist-before-deliver remains available; existing audit rows remain immutable."
     }
   ],
   "sourceCopies": [
@@ -112,6 +123,10 @@
       "destination": "packages/desktop/src/actestra/main/compatibility/aionuiApprovalAuthorityService.ts"
     },
     {
+      "source": "apps/desktop/src/main/compatibility/aionuiApprovalPolicyGate.ts",
+      "destination": "packages/desktop/src/actestra/main/compatibility/aionuiApprovalPolicyGate.ts"
+    },
+    {
       "source": "apps/desktop/src/main/compatibility/aionuiShadowProjectionService.ts",
       "destination": "packages/desktop/src/actestra/main/compatibility/aionuiShadowProjectionService.ts"
     },
@@ -122,6 +137,26 @@
     {
       "source": "apps/desktop/src/main/persistence/sqliteMigrations.ts",
       "destination": "packages/desktop/src/actestra/main/persistence/sqliteMigrations.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/privileged/deterministicPolicyEngine.ts",
+      "destination": "packages/desktop/src/actestra/main/privileged/deterministicPolicyEngine.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/privileged/inMemoryApprovalService.ts",
+      "destination": "packages/desktop/src/actestra/main/privileged/inMemoryApprovalService.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/privileged/persistentAuditTrail.ts",
+      "destination": "packages/desktop/src/actestra/main/privileged/persistentAuditTrail.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/privileged/referenceCredentialBroker.ts",
+      "destination": "packages/desktop/src/actestra/main/privileged/referenceCredentialBroker.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/privileged/toolGateway.ts",
+      "destination": "packages/desktop/src/actestra/main/privileged/toolGateway.ts"
     }
   ],
   "assetCopies": [
@@ -182,9 +217,15 @@
     "packages/desktop/src/actestra/core/platform.ts",
     "packages/desktop/src/actestra/core/privilegedServices.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiApprovalAuthorityService.ts",
+    "packages/desktop/src/actestra/main/compatibility/aionuiApprovalPolicyGate.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiShadowProjectionService.ts",
     "packages/desktop/src/actestra/main/persistence/sqliteCorePersistence.ts",
     "packages/desktop/src/actestra/main/persistence/sqliteMigrations.ts",
+    "packages/desktop/src/actestra/main/privileged/deterministicPolicyEngine.ts",
+    "packages/desktop/src/actestra/main/privileged/inMemoryApprovalService.ts",
+    "packages/desktop/src/actestra/main/privileged/persistentAuditTrail.ts",
+    "packages/desktop/src/actestra/main/privileged/referenceCredentialBroker.ts",
+    "packages/desktop/src/actestra/main/privileged/toolGateway.ts",
     "packages/desktop/src/common/adapter/actestraApprovalAuthorityClient.ts",
     "packages/desktop/src/common/adapter/actestraShadowPublisher.ts",
     "packages/desktop/src/common/adapter/httpBridge.ts",
@@ -245,6 +286,7 @@
     "scripts/build-with-builder.js",
     "tests/unit/actestra/approvalAuthorityClient.dom.test.ts",
     "tests/unit/actestra/approvalAuthorityPersistence.test.ts",
+    "tests/unit/actestra/approvalPolicyGate.test.ts",
     "tests/unit/actestra/approvalAuthorityService.test.ts",
     "tests/unit/actestra/approvalNativeTransport.test.ts",
     "tests/unit/actestra/externalEffectIsolation.test.ts",

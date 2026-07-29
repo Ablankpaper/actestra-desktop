@@ -29,16 +29,16 @@ features are implemented.
 | P7 | Security and reliability hardening | P4-P6 |
 | P8 | Cross-platform internal beta | P7 |
 
-Current execution state on 2026-07-29: P4.0/F0 and P4.1/F1 are pushed and
-exact-implementation CI-backed on Draft pull request 6. P4.2/F2 is also pushed
-and exact-head CI-backed: seven bounded native metadata domains project into
-separate SQLite schema version 4 shadow evidence without changing native UI or
-authoritative P3 tables. Full native regression and real desktop projection
-remain local evidence. P4.3/F3.1 is implemented, pushed, and exact-head
-CI-backed as the first authority slice: desktop confirmation responses and
-delivery state move to a schema version 5 persist-before-deliver outbox while
-the original AionUi permission and pet UI remain intact. Draft review, merge,
-candidate, and release states remain separate.
+Current execution state on 2026-07-29: P4.0/F0 through P4.3/F3.1 squash
+merged through pull request 6 as `61b9405fc007aa8cb16ec05a65f421cb7d277b51`.
+Main CI run 30434563810 passes on that exact commit. Seven bounded native
+metadata domains remain inert schema version 4 shadow evidence, while desktop
+confirmation responses use the schema version 5 persist-before-deliver outbox
+without changing the original AionUi permission and pet UI. P4.3/F3.2 is local
+on `feat/aionui-f3-policy-audit`: one exact loopback response-delivery
+capability enters P3 policy and durable audit, without claiming authority over
+the underlying native operation. Push, PR, CI, candidate, and release remain
+separate.
 
 ## P0 — Project Foundation
 
@@ -132,8 +132,15 @@ candidate, and release states remain separate.
   - **F3.1 — approval response and delivery:** reserve the immutable desktop
     confirmation response before native delivery, reconcile uncertain attempts
     on retry and restart, retain structured native errors, and provide an
-    explicit native rollback. Pending-request creation, policy, audit, and
-    protected-operation execution remain future slices.
+    explicit native rollback. Pending-request creation, provider semantics,
+    policy and approval for the underlying protected operation, and that
+    operation's execution remain future slices.
+  - **F3.2 — approval delivery policy and audit:** represent only delivery of
+    the persisted response as one fixed loopback `network.request`; validate an
+    exact capability manifest, evaluate one exact policy rule, and persist
+    policy, start, and outcome audit before acknowledging delivery. Do not
+    infer or authorize the underlying native tool, and retain an explicit F3.1
+    rollback.
 - Support scoped workspace reads and task-output writes through the preserved
   file, workspace, conversation, preview, and artifact surfaces.
 - Add representative file, research, writing, office-document, schedule,

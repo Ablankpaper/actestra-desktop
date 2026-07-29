@@ -63,6 +63,11 @@ releases begin.
   restart reconciliation, bounded native transport, and explicit rollback.
 - Downstream routing for the preserved renderer permission cards and pet
   confirmation window without replacing their UI or native response shapes.
+- ADR-0013 and F3.2 policy-gated approval response delivery: one exact
+  loopback `network.request` manifest and allow rule, durable policy/start/
+  outcome audit ordering, private compatibility-scoped correlation hashes,
+  native structured-error preservation, uncertain-outcome reconciliation, and
+  explicit F3.1 rollback without inferring the underlying native tool.
 
 ### Changed
 

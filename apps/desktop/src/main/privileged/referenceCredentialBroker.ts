@@ -344,8 +344,8 @@ export class ReferenceCredentialBroker implements CredentialBroker {
   private runExclusive<Result>(operation: () => Promise<Result>): Promise<Result> {
     const result = this.mutationTail.then(operation, operation);
     this.mutationTail = result.then(
-      () => undefined,
-      () => undefined,
+      (): void => {},
+      (): void => {},
     );
     return result;
   }
