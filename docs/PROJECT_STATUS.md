@@ -4,16 +4,20 @@ Last updated: 2026-07-29
 
 ## Current phase
 
-### F0-F3.1 accepted on main; F3.2 policy-gated delivery is local
+### F0-F3.1 accepted on main; F3.2 is pushed and CI-backed on Draft PR 7
 
 Pull request 6 reached exact final head
 `70b2f29329fec26bf0e3d6384d8563aedcb7a4ce` and squash merged F0 through
 F3.1 as `61b9405fc007aa8cb16ec05a65f421cb7d277b51`. Main CI run 30434563810
 passes on that exact merge. Branch `feat/aionui-f3-policy-audit` starts from
-that verified main commit and implements the next narrow authority slice under
-ADR-0013: only delivery of an already persisted confirmation response enters
-P3 policy, capability, and durable audit. The real AionUi application,
-original functional UI, and original functions remain the product baseline.
+that verified main commit. Implementation
+`20e3c0fcada0d072fc35820d43b85c953bf93929` is pushed to
+[Draft PR 7](https://github.com/bignormal/actestra-desktop/pull/7), and exact
+[CI run 30437387097](https://github.com/bignormal/actestra-desktop/actions/runs/30437387097)
+passes. ADR-0013 limits this slice to delivery of an already persisted
+confirmation response through P3 policy, capability, and durable audit. The
+real AionUi application, original functional UI, and original functions remain
+the product baseline.
 
 F0 implementation commit
 `13270ca0abd7353710541afca9ddf46c47670be3` first established the preserved
@@ -222,9 +226,15 @@ Detailed scope, sequence, rollback, and non-claims are recorded in
 [AionUi F3.2 Approval Delivery Policy Gate](product/AIONUI_F3_APPROVAL_POLICY_GATE.md)
 and
 [ADR-0013](architecture/decisions/0013-aionui-approval-delivery-policy-gate.md).
-This remains local branch evidence only. Review, push, pull-request CI, merge,
-candidate, release, distribution, live F3.2 desktop proof, and acceptance
-remain separate gates.
+Implementation `20e3c0fcada0d072fc35820d43b85c953bf93929` is pushed on
+Draft PR 7, and exact implementation CI run 30437387097 passes the root,
+documentation, materialized AionUi, unsigned bundle, package-boundary, and
+clean-profile smoke gates. A local CodeRabbit review raised three valid
+documentation issues; all were fixed, and the 23-file follow-up completed with
+zero issues. The GitHub CodeRabbit status explicitly skipped because the pull
+request is Draft and is not remote review evidence. Owner review, Ready
+transition, merge, candidate, release, distribution, live F3.2 desktop proof,
+and acceptance remain separate gates.
 
 The implementation run
 [30421071039](https://github.com/bignormal/actestra-desktop/actions/runs/30421071039)
@@ -530,7 +540,7 @@ Review closure validation at
 | P4.2 compatibility shadow | Accepted on `main` through PR 6 | Implementation `632573fa03c34fdb789c85d8efc1ce1e0f8e8177`; packaged-boundary remediation `1478726d62302fa885525024eb4839af5e98b4dd`; run 30421351204 passes |
 | P4.3/F3.1 approval decision authority | Accepted on `main` through PR 6 | Implementation `cf61ffb8453a888cdc03f73457ebeaf72708511a`; ADR-0012; schema version 5 persist-before-deliver outbox; 30/153 root and 330/2,602 native tests; run 30425061316 passes |
 | PR 6 review and merge closure | Accepted on `main` | Final head `70b2f29329fec26bf0e3d6384d8563aedcb7a4ce`; exact-head CI 30431557027 passes; local review of 21 final changed files returned zero findings; squash merge `61b9405fc007aa8cb16ec05a65f421cb7d277b51`; exact main CI 30434563810 passes |
-| F3.2 approval delivery policy gate | Implemented and full local gates pass; not pushed | ADR-0013; fixed P3 capability and policy; durable metadata-only audit around F3.1 delivery; root 32/171, native 331/2,607, strict types, 102-file downstream declaration, production builds, unsigned legacy-harness package identity, and clean-profile smoke pass |
+| F3.2 approval delivery policy gate | Implemented, pushed, and exact implementation CI-backed; Draft PR 7 | Implementation `20e3c0fcada0d072fc35820d43b85c953bf93929`; CI run 30437387097 passes; ADR-0013 fixed P3 capability and policy; durable metadata-only audit around F3.1 delivery; root 32/171, native 331/2,607, strict types, 102-file downstream declaration, production builds, unsigned legacy-harness package identity, and clean-profile smoke pass |
 | Native AionUi source | Exact local desktop snapshot | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot |
 | Native preservation contract | Local pass | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified |
 | Native AionUi build and launch | Local pass | Frozen install, production build, isolated native Electron launch, and actual Guide screenshot pass |
@@ -603,8 +613,8 @@ The ordered implementation index and P3 non-claims are in
 
 ## Next gate
 
-1. Review the exact F3.2 diff, then push it and obtain pull-request CI before
-   considering merge.
+1. Review Draft PR 7 and retain the exact F3.2 authority boundary before any
+   Ready or merge decision.
 2. Select the next single F3 slice only after this gate closes. Do not infer
    underlying native tool semantics or promote pending-request creation,
    provider policy, or generic protected-operation authority without a

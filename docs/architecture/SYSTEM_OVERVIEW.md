@@ -1,8 +1,8 @@
 # System Overview
 
 Status: P3 and P4.0/F0 through P4.3/F3.1 accepted on `main`;
-P4.3/F3.2 approval-delivery policy and audit is under local validation on
-`feat/aionui-f3-policy-audit`
+P4.3/F3.2 approval-delivery policy and audit is pushed and exact implementation
+CI-backed on Draft PR 7
 
 ## Context
 

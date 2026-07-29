@@ -34,11 +34,13 @@ merged through pull request 6 as `61b9405fc007aa8cb16ec05a65f421cb7d277b51`.
 Main CI run 30434563810 passes on that exact commit. Seven bounded native
 metadata domains remain inert schema version 4 shadow evidence, while desktop
 confirmation responses use the schema version 5 persist-before-deliver outbox
-without changing the original AionUi permission and pet UI. P4.3/F3.2 is local
-on `feat/aionui-f3-policy-audit`: one exact loopback response-delivery
-capability enters P3 policy and durable audit, without claiming authority over
-the underlying native operation. Push, PR, CI, candidate, and release remain
-separate.
+without changing the original AionUi permission and pet UI. P4.3/F3.2
+implementation `20e3c0fcada0d072fc35820d43b85c953bf93929` is pushed to
+[Draft PR 7](https://github.com/bignormal/actestra-desktop/pull/7): one exact
+loopback response-delivery capability enters P3 policy and durable audit,
+without claiming authority over the underlying native operation. Exact
+implementation CI run 30437387097 passes. Owner review, Ready, merge,
+candidate, and release remain separate.
 
 ## P0 — Project Foundation
 

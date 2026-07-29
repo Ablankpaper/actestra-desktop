@@ -6,6 +6,10 @@ Branch: `feat/aionui-f3-policy-audit`
 
 Base: `61b9405fc007aa8cb16ec05a65f421cb7d277b51`
 
+Implementation: `20e3c0fcada0d072fc35820d43b85c953bf93929`
+
+Draft PR: [7](https://github.com/bignormal/actestra-desktop/pull/7)
+
 ## Outcome
 
 F3.2 keeps the original AionUi confirmation experience and places one exact
@@ -109,8 +113,24 @@ Local validation:
 - unsigned legacy-harness package identity and clean-profile
   application/window/renderer smoke pass as regression evidence.
 
-Review, push, pull-request CI, merge, signed candidate, and live F3.2 desktop
-evidence remain separate gates until recorded.
+## Remote evidence
+
+Implementation `20e3c0fcada0d072fc35820d43b85c953bf93929` is pushed to
+Draft PR 7. Exact implementation
+[CI run 30437387097](https://github.com/bignormal/actestra-desktop/actions/runs/30437387097)
+passes root source, test, type, boundary and build gates; documentation links;
+materialized strict types and Actestra identity/isolation tests; native
+production build; unsigned legacy-harness bundle; packaged identity/product
+boundary; and clean-profile smoke.
+
+The local CodeRabbit review raised three valid documentation issues. All were
+fixed, and the follow-up completed with zero issues across all 23 changed
+files. The GitHub CodeRabbit status explicitly says
+`Review skipped: draft pull request`, so that remote status is not review
+evidence.
+
+Owner review, Ready transition, merge, signed candidate, and live F3.2 desktop
+evidence remain separate gates.
 
 ## Non-claims
 

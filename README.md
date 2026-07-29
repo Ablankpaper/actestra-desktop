@@ -80,7 +80,10 @@ completed a scoped 21-file CodeRabbit CLI review with 0 findings, and squash
 merged as `61b9405fc007aa8cb16ec05a65f421cb7d277b51`.
 [Main CI run 30434563810](https://github.com/bignormal/actestra-desktop/actions/runs/30434563810)
 passes on that exact squash commit. P4.3/F3.2 approval-delivery policy and
-audit work is now local on `feat/aionui-f3-policy-audit`.
+audit implementation `20e3c0fcada0d072fc35820d43b85c953bf93929` is pushed
+to [Draft PR 7](https://github.com/bignormal/actestra-desktop/pull/7), and
+[exact implementation CI run 30437387097](https://github.com/bignormal/actestra-desktop/actions/runs/30437387097)
+passes.
 
 - The repository now contains the exact, unmodified 1,766-file AionUi
   `v2.1.41` runnable desktop source foundation at commit
