@@ -1,7 +1,7 @@
 export const APP_INFO_CHANNEL = "actestra:app-info";
 export const PLATFORM_SNAPSHOT_CHANNEL = "actestra:platform-snapshot";
 export const RENDERER_READY_CHANNEL = "actestra:renderer-ready";
-export const PLATFORM_SNAPSHOT_CONTRACT_VERSION = 1 as const;
+export const PLATFORM_SNAPSHOT_CONTRACT_VERSION = 2 as const;
 
 export interface AppInfo {
   readonly name: string;
@@ -44,10 +44,10 @@ export interface PlatformAttemptProjection {
 export interface PlatformSnapshot {
   readonly contractVersion: typeof PLATFORM_SNAPSHOT_CONTRACT_VERSION;
   readonly authority: "main-only";
-  readonly privilegedServices: "registered-inert";
+  readonly privilegedServices: "scoped-native-active";
   readonly policy: "deny-by-default";
   readonly credentials: "opaque-references-only";
-  readonly tools: "disabled";
+  readonly tools: "workspace-read-task-output-create";
   readonly audit: {
     readonly durability: "sqlite-metadata-only";
     readonly recordCount: number;
@@ -241,10 +241,10 @@ export function assertPlatformSnapshot(value: unknown): asserts value is Platfor
   }
   if (
     value.authority !== "main-only" ||
-    value.privilegedServices !== "registered-inert" ||
+    value.privilegedServices !== "scoped-native-active" ||
     value.policy !== "deny-by-default" ||
     value.credentials !== "opaque-references-only" ||
-    value.tools !== "disabled"
+    value.tools !== "workspace-read-task-output-create"
   ) {
     throw new DesktopContractError("invalid-response", "Platform snapshot boundary is unsupported");
   }

@@ -99,6 +99,7 @@ describe("General Worker process AgentAdapter v2", () => {
     const supervisor = new AgentAdapterSupervisor(adapter, agentClock, SUPERVISOR_CONFIG);
     await supervisor.start(createAgentStartRequest({ startedAt: agentClock.now() }));
     expect(supervisor.snapshot(FIXTURE_AGENT_SESSION_ID).state).toBe("blocked");
+    expect(supervisor.activeToolRequest(FIXTURE_AGENT_SESSION_ID)).toBe(requestIdValue);
     expect(supervisor.coreEvents(FIXTURE_AGENT_SESSION_ID).map((event) => event.type)).toEqual([
       "task.started",
       "tool.requested",
@@ -116,6 +117,7 @@ describe("General Worker process AgentAdapter v2", () => {
       summary: "Created one bounded output reference.",
     });
     await settledSnapshot(supervisor, "completed");
+    expect(supervisor.activeToolRequest(FIXTURE_AGENT_SESSION_ID)).toBeUndefined();
     expect(supervisor.coreEvents(FIXTURE_AGENT_SESSION_ID).map((event) => event.type)).toEqual([
       "task.started",
       "tool.requested",

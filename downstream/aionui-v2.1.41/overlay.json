@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
-  "phase": "GW-P4.3",
+  "phase": "GW-P4.4",
   "upstream": {
     "tag": "v2.1.41",
     "commit": "2d8925fc67a97a20996fadcd2a0862b778b572ba",
     "manifestSha256": "252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f"
   },
-  "authorityOwner": "Actestra Core through supervised persistence and General Worker utility processes",
+  "authorityOwner": "Actestra Core through supervised persistence and General Worker processes plus the scoped desktop main-process tool gateway",
   "classifications": ["R0", "R1", "R2"],
   "migration": {
-    "strategy": "Fresh Actestra profile v1; native AionUi profiles remain untouched. Forward-only schema v6 retains schemas v1-v5 exactly, adds canonical workspace grants and bounded opaque content references, and keeps all Actestra SQLite ownership—including existing AionUI shadow evidence and approval authority—behind one supervised Electron persistence utility protocol. AgentAdapter v2 adds typed tool results, while each deterministic General Worker attempt runs in one separately supervised Electron utility process with an exact native protocol, main-owned identities and events, a minimal environment, and no renderer, filesystem, shell, network, credential, MCP, or persistence authority.",
-    "rollback": "Regenerate without patch 0007 to remove the General Worker process probe and Adapter v2 native entry while retaining GW-P4.2 schema v6 persistence. Regenerate without patch 0006 as well to return to schema v5 direct-main persistence. Existing schema v6 rows remain inert and are never rewritten or deleted; use a fresh Actestra profile for a true data downgrade. The frozen AionUi foundation and native AionUi profiles stay byte-identical."
+    "strategy": "Fresh Actestra profile v1; native AionUi profiles remain untouched. Forward-only schema v6 retains schemas v1-v5 exactly, adds canonical workspace grants and bounded opaque content references, and keeps all Actestra SQLite ownership—including existing AionUI shadow evidence and approval authority—behind one supervised Electron persistence utility protocol. AgentAdapter v2 adds typed tool results, while each deterministic General Worker attempt runs in one separately supervised Electron utility process with an exact native protocol, main-owned identities and events, a minimal environment, and no renderer, filesystem, shell, network, credential, MCP, or persistence authority. GW-P4.4 registers only bounded workspace UTF-8 read and create-only task-output UTF-8 write in Electron main, with exact manifests, deny-by-default policy, canonical grant containment, opaque input/output references, durable metadata-only audit, and no new renderer or route.",
+    "rollback": "Regenerate without patch 0008 to remove the scoped native tool platform while retaining the GW-P4.3 General Worker and GW-P4.2 persistence utility. Regenerate without patch 0007 to remove the General Worker process probe and Adapter v2 native entry while retaining GW-P4.2 schema v6 persistence. Regenerate without patch 0006 as well to return to schema v5 direct-main persistence. Existing schema v6 rows remain inert and are never rewritten or deleted; use a fresh Actestra profile for a true data downgrade. The frozen AionUi foundation and native AionUi profiles stay byte-identical."
   },
   "uiContract": {
     "layoutChangesAllowed": false,
@@ -106,6 +106,19 @@
       ],
       "authorityOwner": "Actestra Core through the supervised desktop General Worker utility process",
       "rollback": "Regenerate without this patch. The preserved AionUI renderer, routes, features, native backend, profile, and GW-P4.2 persistence utility remain unchanged."
+    },
+    {
+      "path": "patches/0008-actestra-scoped-native-tools.mjs",
+      "classification": ["R1"],
+      "domains": [
+        "workspace UTF-8 read",
+        "create-only task output write",
+        "trusted tool manifests",
+        "production deny-by-default policy",
+        "canonical workspace scope"
+      ],
+      "authorityOwner": "Actestra Core through the desktop main-process tool gateway and persistence utility",
+      "rollback": "Regenerate without this patch. The preserved AionUI UI, routes, General Worker, persistence utility, native backend, profile, and existing evidence remain unchanged."
     }
   ],
   "sourceCopies": [
@@ -140,6 +153,10 @@
     {
       "source": "apps/desktop/src/core/privilegedServices.ts",
       "destination": "packages/desktop/src/actestra/core/privilegedServices.ts"
+    },
+    {
+      "source": "apps/desktop/src/core/scopedNativeTools.ts",
+      "destination": "packages/desktop/src/actestra/core/scopedNativeTools.ts"
     },
     {
       "source": "apps/desktop/src/core/workloadContent.ts",
@@ -202,6 +219,10 @@
       "destination": "packages/desktop/src/actestra/main/workers/generalWorkerProbe.ts"
     },
     {
+      "source": "apps/desktop/src/main/workers/scopedNativeToolCoordinator.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/scopedNativeToolCoordinator.ts"
+    },
+    {
       "source": "apps/desktop/src/main/privileged/deterministicPolicyEngine.ts",
       "destination": "packages/desktop/src/actestra/main/privileged/deterministicPolicyEngine.ts"
     },
@@ -216,6 +237,14 @@
     {
       "source": "apps/desktop/src/main/privileged/referenceCredentialBroker.ts",
       "destination": "packages/desktop/src/actestra/main/privileged/referenceCredentialBroker.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/privileged/scopedNativeTextToolExecutor.ts",
+      "destination": "packages/desktop/src/actestra/main/privileged/scopedNativeTextToolExecutor.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/privileged/scopedNativeToolPlatform.ts",
+      "destination": "packages/desktop/src/actestra/main/privileged/scopedNativeToolPlatform.ts"
     },
     {
       "source": "apps/desktop/src/main/privileged/toolGateway.ts",
@@ -312,6 +341,7 @@
     "packages/desktop/src/actestra/core/platform.ts",
     "packages/desktop/src/actestra/core/productPersistence.ts",
     "packages/desktop/src/actestra/core/privilegedServices.ts",
+    "packages/desktop/src/actestra/core/scopedNativeTools.ts",
     "packages/desktop/src/actestra/core/workloadContent.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiApprovalAuthorityService.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiApprovalPolicyGate.ts",
@@ -323,10 +353,13 @@
     "packages/desktop/src/actestra/main/workers/electronGeneralWorker.ts",
     "packages/desktop/src/actestra/main/workers/generalWorkerProbe.ts",
     "packages/desktop/src/actestra/main/workers/generalWorkerProcessAdapter.ts",
+    "packages/desktop/src/actestra/main/workers/scopedNativeToolCoordinator.ts",
     "packages/desktop/src/actestra/main/privileged/deterministicPolicyEngine.ts",
     "packages/desktop/src/actestra/main/privileged/inMemoryApprovalService.ts",
     "packages/desktop/src/actestra/main/privileged/persistentAuditTrail.ts",
     "packages/desktop/src/actestra/main/privileged/referenceCredentialBroker.ts",
+    "packages/desktop/src/actestra/main/privileged/scopedNativeTextToolExecutor.ts",
+    "packages/desktop/src/actestra/main/privileged/scopedNativeToolPlatform.ts",
     "packages/desktop/src/actestra/main/privileged/toolGateway.ts",
     "packages/desktop/src/actestra/shared/persistenceUtilityProtocol.ts",
     "packages/desktop/src/actestra/shared/generalWorkerProtocol.ts",
@@ -407,6 +440,7 @@
     "tests/unit/actestra/shadowPersistence.test.ts",
     "tests/unit/actestra/shadowProjection.test.ts",
     "tests/unit/actestra/shadowPublisher.test.ts",
+    "tests/unit/actestra/scopedNativeTools.test.ts",
     "tests/unit/bootstrap/buildWithBuilder.test.ts",
     "tests/unit/feedback/FeedbackReportModal.dom.test.tsx",
     "tests/unit/feedback/submitFeedbackReport.test.ts",

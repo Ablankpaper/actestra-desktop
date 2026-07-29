@@ -481,6 +481,14 @@ export class AgentAdapterSupervisor {
     return Object.freeze([...this.requireAttempt(session).events]);
   }
 
+  activeToolRequest(session: SessionId): ToolRequestId | undefined {
+    const attempt = this.requireAttempt(session);
+    if (attempt.disposed || attempt.state !== "blocked" || attempt.pendingTool === undefined) {
+      return undefined;
+    }
+    return attempt.pendingTool.requestId;
+  }
+
   private async startAttempt(
     request: AgentStartRequest,
     restartCount: number,

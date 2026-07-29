@@ -113,11 +113,11 @@ function main() {
 
   if (
     overlay.schemaVersion !== 1 ||
-    overlay.phase !== "GW-P4.3" ||
+    overlay.phase !== "GW-P4.4" ||
     overlay.uiContract.layoutChangesAllowed !== false ||
     overlay.uiContract.featureEntryRemovalAllowed !== false
   ) {
-    throw new Error("Invalid GW-P4.3 downstream overlay policy");
+    throw new Error("Invalid GW-P4.4 downstream overlay policy");
   }
 
   for (const patch of overlay.patches) {
@@ -281,6 +281,9 @@ function main() {
       "ACTESTRA_APPROVAL_RECONCILIATION_GATE",
       "createPolicyGatedAionUiApprovalNativeTransport",
       "createPolicyGatedAionUiApprovalReconciliationTransport",
+      "createScopedNativeToolPlatform",
+      "getActestraScopedNativeToolPlatform",
+      "[Actestra native tools] Ready tools=",
       "nativeFallback",
       "recoverPending",
     ],
@@ -449,6 +452,52 @@ function main() {
     "resolveTool",
     '"protocol-error"',
   ]);
+  requireText(path.join(outputRoot, "packages/desktop/src/actestra/core/scopedNativeTools.ts"), [
+    "WORKSPACE_READ_TEXT_TOOL_ID",
+    "TASK_OUTPUT_WRITE_TEXT_TOOL_ID",
+    "actestra.workspace.read-text",
+    "actestra.task-output.write-text",
+    "assertPortableRelativePath",
+    "Only the two GW-P4.4 scoped native tools are registered",
+  ]);
+  requireText(
+    path.join(
+      outputRoot,
+      "packages/desktop/src/actestra/main/privileged/scopedNativeTextToolExecutor.ts",
+    ),
+    [
+      "implements ProtectedToolExecutor",
+      "workspace-grant-invalid",
+      "symlink-denied",
+      "output-conflict",
+      "fsConstants.O_EXCL",
+      'OUTPUT_ROOT_SEGMENTS = [".actestra", "task-output"]',
+    ],
+  );
+  requireText(
+    path.join(
+      outputRoot,
+      "packages/desktop/src/actestra/main/privileged/scopedNativeToolPlatform.ts",
+    ),
+    [
+      "policy-gw-p4-4-scoped-native-text-v1",
+      "rule-gw-p4-4-workspace-read-text",
+      "rule-gw-p4-4-task-output-write-text",
+      'credentialUse: "none"',
+    ],
+  );
+  requireText(
+    path.join(
+      outputRoot,
+      "packages/desktop/src/actestra/main/workers/scopedNativeToolCoordinator.ts",
+    ),
+    [
+      "activeToolRequest",
+      "scopedNativeToolDefinition",
+      "this.gateway.invoke",
+      "this.supervisor.resolveTool",
+    ],
+  );
   requireText(
     path.join(outputRoot, "packages/desktop/src/actestra/shared/generalWorkerProtocol.ts"),
     [
@@ -492,6 +541,8 @@ function main() {
       "accepts exactly one immutable attempt",
       '"no-tool-complete"',
       '"tool-fixture"',
+      '"workspace-read-text-fixture"',
+      '"task-output-write-text-fixture"',
       '"cancelled"',
     ],
   );
@@ -517,13 +568,18 @@ function main() {
     "protocolVersion: 2",
     "'task.started', 'agent.message', 'task.completed'",
   ]);
+  requireText(path.join(outputRoot, "tests/unit/actestra/scopedNativeTools.test.ts"), [
+    "registers only the two GW-P4.4 capabilities",
+    "fails closed for traversal and unknown fields",
+    "actestra.shell.execute",
+  ]);
 
   console.log(
-    `Verified Actestra GW-P4.3 downstream overlay: ${changedFiles.size} declared files, ` +
+    `Verified Actestra GW-P4.4 downstream overlay: ${changedFiles.size} declared files, ` +
       `${overlay.invariantFiles.length} R0 invariant files, ${overlay.sourceCopies.length} ` +
       "reviewed source copies, preserved AionUI surfaces, utility-owned persistence, shadow and " +
       "approval authority, workspace grants, bounded content references, AgentAdapter v2, and " +
-      "the supervised General Worker process present.",
+      "the supervised General Worker plus scoped native text tools present.",
   );
 }
 

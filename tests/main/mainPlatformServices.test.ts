@@ -4,8 +4,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { auditContextFor, policyRevision } from "../../apps/desktop/src/core";
+import { auditContextFor } from "../../apps/desktop/src/core";
 import { createMainPlatformServices } from "../../apps/desktop/src/main/platform/mainPlatformServices";
+import { SCOPED_NATIVE_POLICY_REVISION } from "../../apps/desktop/src/main/privileged/scopedNativeToolPlatform";
 import { openTestPersistenceUtility } from "../fixtures/persistenceUtility";
 import { createProtectedOperation } from "../fixtures/privilegedServices";
 
@@ -30,16 +31,16 @@ afterEach(() => {
 });
 
 describe("main-owned platform composition", () => {
-  it("registers inert services and returns only a bounded renderer projection", async () => {
+  it("registers scoped native services and returns only a bounded renderer projection", async () => {
     const { client } = await openTestPersistenceUtility(createTestDirectory());
     const services = createMainPlatformServices(client);
     await expect(services.snapshot()).resolves.toEqual({
-      contractVersion: 1,
+      contractVersion: 2,
       authority: "main-only",
-      privilegedServices: "registered-inert",
+      privilegedServices: "scoped-native-active",
       policy: "deny-by-default",
       credentials: "opaque-references-only",
-      tools: "disabled",
+      tools: "workspace-read-task-output-create",
       audit: {
         durability: "sqlite-metadata-only",
         recordCount: 0,
@@ -72,7 +73,7 @@ describe("main-owned platform composition", () => {
     await first.auditTrail.append({
       type: "policy.evaluated",
       context: auditContextFor(operation),
-      policyRevision: policyRevision("policy-main-deny-by-default-v1"),
+      policyRevision: SCOPED_NATIVE_POLICY_REVISION,
       decision: "deny",
       reasonCode: "no-matching-rule",
       matchedRuleIds: [],

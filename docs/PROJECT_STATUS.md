@@ -4,7 +4,7 @@ Last updated: 2026-07-30
 
 ## Current phase
 
-### GW-P4.2 is on main; GW-P4.3 is locally validated
+### GW-P4.3 is on main; GW-P4.4 has complete local validation
 
 Pull request 8 reached exact final head
 `3f85e13072f5fb13fb43c9dae94f992bb0b7fb9c` and squash merged F3.3 as
@@ -45,8 +45,13 @@ P3/F2/F3 operations now run behind the asynchronous persistence utility, with
 durable grants and bounded content references and no synchronous SQLite
 fallback in Electron main.
 
-GW-P4.3 is implemented and locally validated on
-`feat/aionui-p4-general-worker`, based on the exact GW-P4.2 merge.
+GW-P4.3 reached
+[pull request 11](https://github.com/bignormal/actestra-desktop/pull/11) at
+exact final head `b3a3bc7e27d7dab44dadeff6dcedc92cec1b3ee5`, passed
+[PR CI run 30481670123](https://github.com/bignormal/actestra-desktop/actions/runs/30481670123),
+and squash merged as `671587813bea18411b6cdc2ee388d94cd18d6c50`.
+[Merged-main CI run 30481890911](https://github.com/bignormal/actestra-desktop/actions/runs/30481890911)
+passes on that exact merge.
 [ADR-0017](architecture/decisions/0017-general-worker-process-and-agent-adapter-v2.md)
 advances AgentAdapter to version 2, adds typed tool-result resolution, and
 defines a separate strict General Worker protocol. One Electron utility
@@ -54,7 +59,7 @@ process accepts one immutable attempt; Electron main owns attempt, tool,
 event, and timestamp identity and maps only validated worker signals into
 Actestra events.
 
-Current GW-P4.3 local evidence:
+GW-P4.3 validation completed before merge:
 
 - focused Adapter v2 and worker validation passes 8 files and 47 tests;
 - complete root `bun run check` passes formatting, zero-warning lint, strict
@@ -75,6 +80,61 @@ Current GW-P4.3 local evidence:
   local `aioncore 0.1.52`, logged worker completion, AionCore health, window,
   and renderer readiness, and left no Actestra, worker, or AionCore process
   after terminal shutdown.
+
+GW-P4.4 is implemented with complete local validation on
+`feat/aionui-p4-scoped-native-tools`, based on the exact GW-P4.3 merge.
+[ADR-0018](architecture/decisions/0018-scoped-native-text-tools-and-policy.md)
+admits only bounded workspace text read and create-only task-output text write.
+The worker selects only a registered tool name; main derives the operation from
+the current pending request and trusted registry, while workspace grants,
+exact-owner content references, closed manifests, deny-by-default policy, and
+durable audit remain Actestra-owned.
+
+Current GW-P4.4 local evidence:
+
+- root strict types and zero-warning lint pass;
+- the two scoped-native root suites pass 15 tests across success, denial, traversal,
+  symbolic-link escape, invalid UTF-8, size, ownership, malicious identity,
+  cancellation, conflict, unsupported-tool, timeout-ceiling, cleanup-failure,
+  and coordinator-unlock cases;
+- the downstream overlay contract passes with 125 declared files, 4 frozen R0
+  invariants, and 40 reviewed Actestra source copies; and
+- three focused materialized-AionUi files pass 4 tests;
+- complete root `bun run check` passes 42 files and 232 tests, the Electron
+  SQLite probe, 59-source authority boundary, frozen foundation, downstream
+  contract, smoke harness, and the three-entry production build;
+- root coverage passes at 80.80% statements, 73.59% branches, 86.88%
+  functions, and 81.01% lines;
+- the first native strict-TypeScript gate found three missing explicit callback
+  return types; the minimal source fix passed the same gate;
+- complete native regression passes 335 files and 2,612 tests, with 1 file and
+  5 tests skipped by retained upstream configuration;
+- the native production build transforms 588 main modules and emits distinct
+  main, persistence-utility, and General Worker entries;
+- the unsigned arm64 harness package passes identity, recursive authority-graph
+  verification, and clean-profile persistence/worker/window/renderer smoke;
+  and
+- a real isolated native launch logs the two exact native tools, schema 6,
+  Adapter v2/Worker v1 completion, exact local `aioncore 0.1.52` health, window,
+  and renderer readiness, then exits gracefully with no orphan process.
+
+An initial CodeRabbit pass reviewed the 21 already-tracked changed files and
+raised three issues. Two requested changing `2026-07-30` to the prior UTC date
+and are invalid for the recorded Asia/Shanghai work date. The third requested
+copying the legacy-harness `MainPlatformServices` into the native downstream
+and is invalid because patch 0008 directly composes the scoped platform in the
+AionUi main process; copying that unreferenced file would not connect it. The
+new untracked implementation files were outside that pass.
+
+The subsequent full staged-diff CodeRabbit pass covered all 30 implementation
+files and raised nine issues. Seven valid findings were remediated: portable
+Windows path characters and invalid UTF-16, the manifest timeout ceiling,
+typed persistence ownership errors, post-publication temporary-file cleanup,
+coordinator lock release, failed test-harness initialization cleanup, and the
+shared content-size constant. The two rejected findings were another UTC-date
+change and a redundant explicit `.`/`..` task check already enforced by
+`assertPortableRelativePath`. Focused and complete gates above pass after
+those changes. Push, exact-head CI, merge, and merged-main CI remain pending.
 
 This real launch diagnoses the installation-incomplete screenshot: the dialog
 is the retained AionUi fail-closed state when AionCore is absent or startup is
@@ -652,48 +712,49 @@ Review closure validation at
 
 ## Evidence snapshot
 
-| Area | State | Evidence or blocker |
-| --- | --- | --- |
-| Repository | F0-F3.3 and P6 architecture accepted on `main` | PR 9 final head `d7e615206af0829375db0db1d1fcc6ca205102a8`; squash merge `327d5ca5abf3a0090bc2b3d3193e2935bbd47f38`; main CI 30470505690 passes |
-| P2 merge | Accepted on `main` | PR 2 final head `f972bb6c33c925f3e333a6ee87d20e5bbb72cece`; squash merge `76d6a58b20c3e010ee759358f2c86be80bc6a6c1` |
-| P2 main CI | Pass | Main push run 30329620829 passed on the exact squash merge |
-| P3 kickoff CI | Pass | Pull-request run 30329964305 passed on exact pushed head `b9c1119479c805c02452e4054a3d904649a3ca03` |
-| P3.1/P3.2 CI | Pass | Pull-request run 30331681309 passed on exact implementation commit `31dd6e4178eb7641b45be0ee2bccb862a96dac99` |
-| P3.3 CI | Pass | Pull-request run 30335076556 passed on exact implementation commit `4de756984269624a02fbfdf77e558c958a03c2e0` |
-| P3.4 CI | Pass | Pull-request run 30339662937 passed on exact implementation commit `2b1ad9200ff44f2b6be219a8a4b58b0083ebd45b` |
-| P3.5 CI | Pass | Pull-request run 30345370507 passed on exact implementation commit `cec0cdc554656c021cdff7f2341ddd3f9b5d83dd` |
-| P3.6 CI | Pass | Pull-request run 30350732223 passed on exact implementation commit `950fe0efa2fdc5adc69d013acc9f417d201cb28e` |
-| P3 review closure | Pass with one documented invalid issue | Full 67-file review completed with 10 issues; 9 valid issues fixed; all 9 remediation files then completed a zero-issue review; exact remediation CI run 30374144474 passed |
-| P3 Ready gate | Pass | Owner authorized the Ready transition; runs 30374447377 and 30376456379 passed on their exact heads; final PR-head run 30376696055 passed; the first Ready-triggered CodeRabbit selected 67 files and completed successfully with 0 review submissions and 0 threads |
-| P3 merge | Accepted on `main` | PR 3 squash merged exact final head `71bf3e3fb1d7661fee053ee811279d44f1fdf45f` as `f6833c50eaf5a426948bac7999f93a08b19a425e` |
-| P3 main CI | Pass | Main push run 30378191752 passed on exact squash commit `f6833c50eaf5a426948bac7999f93a08b19a425e` |
-| P4.0 foundation | Accepted on `main` through PR 6 | Implementation `13270ca0abd7353710541afca9ddf46c47670be3`; early exact-head CI run 30392140461 passes |
-| P4.1 identity and isolation | Accepted on `main` through PR 6 | Implementation `836a9f1f81687f091e1c5b92ce30bff167e9da4f`; resource-only CI remediation `462a1b0d920279d42f124fdd28673d77dc55b765`; run 30417692550 passes |
-| P4.2 compatibility shadow | Accepted on `main` through PR 6 | Implementation `632573fa03c34fdb789c85d8efc1ce1e0f8e8177`; packaged-boundary remediation `1478726d62302fa885525024eb4839af5e98b4dd`; run 30421351204 passes |
-| P4.3/F3.1 approval decision authority | Accepted on `main` through PR 6 | Implementation `cf61ffb8453a888cdc03f73457ebeaf72708511a`; ADR-0012; schema version 5 persist-before-deliver outbox; 30/153 root and 330/2,602 native tests; run 30425061316 passes |
-| PR 6 review and merge closure | Accepted on `main` | Final head `70b2f29329fec26bf0e3d6384d8563aedcb7a4ce`; exact-head CI 30431557027 passes; local review of 21 final changed files returned zero findings; squash merge `61b9405fc007aa8cb16ec05a65f421cb7d277b51`; exact main CI 30434563810 passes |
-| F3.2 approval delivery policy gate | Accepted on `main` through PR 7 | Implementation `20e3c0fcada0d072fc35820d43b85c953bf93929`; final head `df821ca203bea7b611fa8fb8092d00a16cabe578`; squash merge `ce19dbe072328e16dcdaf116b8199d5502cb44c6`; exact main CI run 30442166290 passes |
-| F3.3 approval reconciliation policy gate | Accepted on `main` through PR 8 | Implementation `c2fa4bbc4989b9a41bf6a283b5f0eb1f2f523acb`; final head `3f85e13072f5fb13fb43c9dae94f992bb0b7fb9c`; squash merge `c841ed9cb6a54bcb2e4078ca2be941adce0ac4ad`; exact main CI run 30449520722 passes; the complete local 18-file review raised zero issues before merge |
-| GW-P4.2 persistence utility and content foundation | Accepted on `main` through PR 10 | Final head `9003cc0387cb4266c4b1240308092366ef365bf4`; exact-head CI 30475836615; zero-finding 50-file review; squash merge `8e32882108b10272c1489c1a46a77cede1cc4fb7`; exact main CI 30476091907 |
-| GW-P4.3 General Worker and Adapter v2 | Local implementation and validation only | Branch `feat/aionui-p4-general-worker` based on `8e32882108b10272c1489c1a46a77cede1cc4fb7`; ADR-0017; 40/217 root and 334/2,610 native tests; build, unsigned harness package, real utility-worker smoke, and isolated native AionUi/AionCore launch pass; push, PR CI, merge, and main CI pending |
-| P6 orchestration boundary | Accepted architecture direction only | ADR-0015; CrewAI `1.15.8` at `e9caf1e1b89343bb833b5da6660faa91804a9dce` verified as the first supervised sidecar candidate; Eigent `v1.0.2` at `e478094a9ff433132b3cf1928e4143338ddaab20` retained as a reference; neither is imported, bundled, or implemented |
-| Native AionUi source | Exact local desktop snapshot | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot |
-| Native preservation contract | Local pass | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified |
-| Native AionUi build and launch | Local pass | Frozen install, production build, isolated native Electron launch, and actual Guide screenshot pass |
-| Native AionUi tests | Latest local pass | 334 files passed, 1 skipped; 2,610 tests passed, 5 skipped; 0 failures |
-| Legacy product shell | P3 harness only | Original Actestra Electron/React shell remains for platform-contract and packaging regression; it is not the target product UI |
-| Renderer boundary | CI-backed through P3.6 | Context isolation, sandbox, Node and packaged DevTools disabled, production CSP denies connections, exact frozen preload allowlist, trusted-frame zero-argument IPC, and direct-client source checks |
-| Automated tests | Exact merged-main CI pass | Main run 30378191752 passes 24 Vitest files with 130 tests, the exact Electron SQLite probe, process-failure harness, 34-source boundary check, build, package identity, and clean-profile smoke |
-| Desktop package | Local and CI unsigned evidence | macOS arm64 app bundle, packaged identity, and clean-profile smoke verified; not a candidate |
-| P3 domain contracts | Implemented and CI-backed | Typed IDs and timestamps; workspace, task, session, worker, approval, and artifact records; transition and graph invariants; exact commit and run above |
-| P3 event contract | Implemented and CI-backed | Schema version 1; per-attempt gapless order, exact-id idempotency, verified replay cursors, terminal enforcement, and diagnostic redaction; exact commit and run above |
-| P3 persistence and migrations | Implemented and CI-backed | ADR-0005 schemas 1 and 2 plus ADR-0008 schema 3 for privileged audit and terminal-attempt evidence; exact runs above |
-| P3 worker lifecycle | Implemented and CI-backed; locally advanced by GW-P4.3 | ADR-0006 protocol v1, supervisor, lifecycle, and fake are accepted; ADR-0017 locally supersedes only the AgentAdapter version/interface with v2 and adds a separate General Worker protocol v1, typed tool results, and a real deterministic utility process |
-| P3 privileged services | Implemented and CI-backed | ADR-0007; protected-operation and manifest contracts; policy, approval, opaque lease, metadata-only audit, and deterministic gateway services; exact commit and run above |
-| P3 main integration | Implemented and CI-backed | ADR-0008; main-only inert composition, durable audit, persist-before-release barrier, fixed IPC allowlist, bounded renderer projection, and packaged startup smoke; exact commit and run above |
-| F2 shadow persistence | Local and CI-backed contract evidence | ADR-0011; schema version 4; gapless and idempotent metadata-only evidence; no authoritative domain or event writes; real Guide read remains local proof |
-| F3.1 approval response persistence | Implemented and CI-backed | ADR-0012; schema version 5 immutable response and delivery outbox; exact implementation run 30425061316; restart and explicit-fallback live proof remains local; native pending-request and protected-operation authority remain separate |
-| Release | None | No candidate, signed artifact, deployment, distribution, or user acceptance |
+| Area                                               | State                                                      | Evidence or blocker                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| -------------------------------------------------- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Repository                                         | F0-F3.3 and P6 architecture accepted on `main`             | PR 9 final head `d7e615206af0829375db0db1d1fcc6ca205102a8`; squash merge `327d5ca5abf3a0090bc2b3d3193e2935bbd47f38`; main CI 30470505690 passes                                                                                                                                                                                                                                                                                                     |
+| P2 merge                                           | Accepted on `main`                                         | PR 2 final head `f972bb6c33c925f3e333a6ee87d20e5bbb72cece`; squash merge `76d6a58b20c3e010ee759358f2c86be80bc6a6c1`                                                                                                                                                                                                                                                                                                                                 |
+| P2 main CI                                         | Pass                                                       | Main push run 30329620829 passed on the exact squash merge                                                                                                                                                                                                                                                                                                                                                                                          |
+| P3 kickoff CI                                      | Pass                                                       | Pull-request run 30329964305 passed on exact pushed head `b9c1119479c805c02452e4054a3d904649a3ca03`                                                                                                                                                                                                                                                                                                                                                 |
+| P3.1/P3.2 CI                                       | Pass                                                       | Pull-request run 30331681309 passed on exact implementation commit `31dd6e4178eb7641b45be0ee2bccb862a96dac99`                                                                                                                                                                                                                                                                                                                                       |
+| P3.3 CI                                            | Pass                                                       | Pull-request run 30335076556 passed on exact implementation commit `4de756984269624a02fbfdf77e558c958a03c2e0`                                                                                                                                                                                                                                                                                                                                       |
+| P3.4 CI                                            | Pass                                                       | Pull-request run 30339662937 passed on exact implementation commit `2b1ad9200ff44f2b6be219a8a4b58b0083ebd45b`                                                                                                                                                                                                                                                                                                                                       |
+| P3.5 CI                                            | Pass                                                       | Pull-request run 30345370507 passed on exact implementation commit `cec0cdc554656c021cdff7f2341ddd3f9b5d83dd`                                                                                                                                                                                                                                                                                                                                       |
+| P3.6 CI                                            | Pass                                                       | Pull-request run 30350732223 passed on exact implementation commit `950fe0efa2fdc5adc69d013acc9f417d201cb28e`                                                                                                                                                                                                                                                                                                                                       |
+| P3 review closure                                  | Pass with one documented invalid issue                     | Full 67-file review completed with 10 issues; 9 valid issues fixed; all 9 remediation files then completed a zero-issue review; exact remediation CI run 30374144474 passed                                                                                                                                                                                                                                                                         |
+| P3 Ready gate                                      | Pass                                                       | Owner authorized the Ready transition; runs 30374447377 and 30376456379 passed on their exact heads; final PR-head run 30376696055 passed; the first Ready-triggered CodeRabbit selected 67 files and completed successfully with 0 review submissions and 0 threads                                                                                                                                                                                |
+| P3 merge                                           | Accepted on `main`                                         | PR 3 squash merged exact final head `71bf3e3fb1d7661fee053ee811279d44f1fdf45f` as `f6833c50eaf5a426948bac7999f93a08b19a425e`                                                                                                                                                                                                                                                                                                                        |
+| P3 main CI                                         | Pass                                                       | Main push run 30378191752 passed on exact squash commit `f6833c50eaf5a426948bac7999f93a08b19a425e`                                                                                                                                                                                                                                                                                                                                                  |
+| P4.0 foundation                                    | Accepted on `main` through PR 6                            | Implementation `13270ca0abd7353710541afca9ddf46c47670be3`; early exact-head CI run 30392140461 passes                                                                                                                                                                                                                                                                                                                                               |
+| P4.1 identity and isolation                        | Accepted on `main` through PR 6                            | Implementation `836a9f1f81687f091e1c5b92ce30bff167e9da4f`; resource-only CI remediation `462a1b0d920279d42f124fdd28673d77dc55b765`; run 30417692550 passes                                                                                                                                                                                                                                                                                          |
+| P4.2 compatibility shadow                          | Accepted on `main` through PR 6                            | Implementation `632573fa03c34fdb789c85d8efc1ce1e0f8e8177`; packaged-boundary remediation `1478726d62302fa885525024eb4839af5e98b4dd`; run 30421351204 passes                                                                                                                                                                                                                                                                                         |
+| P4.3/F3.1 approval decision authority              | Accepted on `main` through PR 6                            | Implementation `cf61ffb8453a888cdc03f73457ebeaf72708511a`; ADR-0012; schema version 5 persist-before-deliver outbox; 30/153 root and 330/2,602 native tests; run 30425061316 passes                                                                                                                                                                                                                                                                 |
+| PR 6 review and merge closure                      | Accepted on `main`                                         | Final head `70b2f29329fec26bf0e3d6384d8563aedcb7a4ce`; exact-head CI 30431557027 passes; local review of 21 final changed files returned zero findings; squash merge `61b9405fc007aa8cb16ec05a65f421cb7d277b51`; exact main CI 30434563810 passes                                                                                                                                                                                                   |
+| F3.2 approval delivery policy gate                 | Accepted on `main` through PR 7                            | Implementation `20e3c0fcada0d072fc35820d43b85c953bf93929`; final head `df821ca203bea7b611fa8fb8092d00a16cabe578`; squash merge `ce19dbe072328e16dcdaf116b8199d5502cb44c6`; exact main CI run 30442166290 passes                                                                                                                                                                                                                                     |
+| F3.3 approval reconciliation policy gate           | Accepted on `main` through PR 8                            | Implementation `c2fa4bbc4989b9a41bf6a283b5f0eb1f2f523acb`; final head `3f85e13072f5fb13fb43c9dae94f992bb0b7fb9c`; squash merge `c841ed9cb6a54bcb2e4078ca2be941adce0ac4ad`; exact main CI run 30449520722 passes; the complete local 18-file review raised zero issues before merge                                                                                                                                                                  |
+| GW-P4.2 persistence utility and content foundation | Accepted on `main` through PR 10                           | Final head `9003cc0387cb4266c4b1240308092366ef365bf4`; exact-head CI 30475836615; zero-finding 50-file review; squash merge `8e32882108b10272c1489c1a46a77cede1cc4fb7`; exact main CI 30476091907                                                                                                                                                                                                                                                   |
+| GW-P4.3 General Worker and Adapter v2              | Accepted on `main` through PR 11                           | Final head `b3a3bc7e27d7dab44dadeff6dcedc92cec1b3ee5`; exact-head CI 30481670123; squash merge `671587813bea18411b6cdc2ee388d94cd18d6c50`; exact main CI 30481890911; ADR-0017; 40/217 root and 334/2,610 native tests; build, unsigned harness package, real utility-worker smoke, and isolated native AionUi/AionCore launch pass                                                                                                                 |
+| GW-P4.4 scoped native tools and policy             | Complete local validation and review; remote gates pending | Branch `feat/aionui-p4-scoped-native-tools` based on `671587813bea18411b6cdc2ee388d94cd18d6c50`; ADR-0018; exactly two closed native text tools; 42/232 root and 335/2,612 native tests; root/native build, unsigned harness package, scoped desktop registration, and isolated native AionUi/AionCore launch pass; complete 30-file review remediated seven valid findings and rejected two invalid findings; push, CI, merge, and main CI pending |
+| P6 orchestration boundary                          | Accepted architecture direction only                       | ADR-0015; CrewAI `1.15.8` at `e9caf1e1b89343bb833b5da6660faa91804a9dce` verified as the first supervised sidecar candidate; Eigent `v1.0.2` at `e478094a9ff433132b3cf1928e4143338ddaab20` retained as a reference; neither is imported, bundled, or implemented                                                                                                                                                                                     |
+| Native AionUi source                               | Exact local desktop snapshot                               | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot                                                                                                                                                                                                                                                                                                                                  |
+| Native preservation contract                       | Local pass                                                 | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified                                                                                                                                                                                                                                                                                                                       |
+| Native AionUi build and launch                     | Local pass                                                 | Frozen install, production build, isolated native Electron launch, and actual Guide screenshot pass                                                                                                                                                                                                                                                                                                                                                 |
+| Native AionUi tests                                | Latest local pass                                          | 334 files passed, 1 skipped; 2,610 tests passed, 5 skipped; 0 failures                                                                                                                                                                                                                                                                                                                                                                              |
+| Legacy product shell                               | P3 harness only                                            | Original Actestra Electron/React shell remains for platform-contract and packaging regression; it is not the target product UI                                                                                                                                                                                                                                                                                                                      |
+| Renderer boundary                                  | CI-backed through P3.6                                     | Context isolation, sandbox, Node and packaged DevTools disabled, production CSP denies connections, exact frozen preload allowlist, trusted-frame zero-argument IPC, and direct-client source checks                                                                                                                                                                                                                                                |
+| Automated tests                                    | Exact merged-main CI pass                                  | Main run 30378191752 passes 24 Vitest files with 130 tests, the exact Electron SQLite probe, process-failure harness, 34-source boundary check, build, package identity, and clean-profile smoke                                                                                                                                                                                                                                                    |
+| Desktop package                                    | Local and CI unsigned evidence                             | macOS arm64 app bundle, packaged identity, and clean-profile smoke verified; not a candidate                                                                                                                                                                                                                                                                                                                                                        |
+| P3 domain contracts                                | Implemented and CI-backed                                  | Typed IDs and timestamps; workspace, task, session, worker, approval, and artifact records; transition and graph invariants; exact commit and run above                                                                                                                                                                                                                                                                                             |
+| P3 event contract                                  | Implemented and CI-backed                                  | Schema version 1; per-attempt gapless order, exact-id idempotency, verified replay cursors, terminal enforcement, and diagnostic redaction; exact commit and run above                                                                                                                                                                                                                                                                              |
+| P3 persistence and migrations                      | Implemented and CI-backed                                  | ADR-0005 schemas 1 and 2 plus ADR-0008 schema 3 for privileged audit and terminal-attempt evidence; exact runs above                                                                                                                                                                                                                                                                                                                                |
+| P3 worker lifecycle                                | Implemented and CI-backed through GW-P4.3                  | ADR-0006 protocol v1, supervisor, lifecycle, and fake are accepted; ADR-0017 supersedes only the AgentAdapter version/interface with v2 and adds a separate General Worker protocol v1, typed tool results, and a real deterministic utility process                                                                                                                                                                                                |
+| P3 privileged services                             | Implemented and CI-backed                                  | ADR-0007; protected-operation and manifest contracts; policy, approval, opaque lease, metadata-only audit, and deterministic gateway services; exact commit and run above                                                                                                                                                                                                                                                                           |
+| P3 main integration                                | Implemented and CI-backed                                  | ADR-0008; main-only inert composition, durable audit, persist-before-release barrier, fixed IPC allowlist, bounded renderer projection, and packaged startup smoke; exact commit and run above                                                                                                                                                                                                                                                      |
+| F2 shadow persistence                              | Local and CI-backed contract evidence                      | ADR-0011; schema version 4; gapless and idempotent metadata-only evidence; no authoritative domain or event writes; real Guide read remains local proof                                                                                                                                                                                                                                                                                             |
+| F3.1 approval response persistence                 | Implemented and CI-backed                                  | ADR-0012; schema version 5 immutable response and delivery outbox; exact implementation run 30425061316; restart and explicit-fallback live proof remains local; native pending-request and protected-operation authority remain separate                                                                                                                                                                                                           |
+| Release                                            | None                                                       | No candidate, signed artifact, deployment, distribution, or user acceptance                                                                                                                                                                                                                                                                                                                                                                         |
 
 ## Accepted direction
 
@@ -718,19 +779,19 @@ Review closure validation at
 
 ## P2 acceptance evidence
 
-| Requirement | Result |
-| --- | --- |
-| Independent identity, icon, protocol, and data path | Pass on merged `main` |
-| No upstream or Aera brand, account, endpoint, updater, telemetry, or application source | Pass on merged `main` |
-| Sandboxed renderer and narrow preload bridge | Pass on merged `main` |
-| Deny-by-default permissions, navigation, windows, and external network | Pass on merged `main` |
-| Account-free clean-profile launch | Pass locally and in CI smoke |
-| Unsigned macOS arm64 app, DMG, and ZIP packaging | Pass locally; deliberately non-candidate |
-| Packaged identity, notices, CSP, and architecture verification | Pass locally and in CI |
-| Independent review remediation | 13 valid CodeRabbit CLI issues fixed; one invalid `void` Promise suggestion documented |
-| Final GitHub review | No submitted review; CodeRabbit summary/status succeeded on the exact final head with 0 review threads, then the owner merged after CLI remediation and CI |
-| Final PR-head CI | Pass on `f972bb6c33c925f3e333a6ee87d20e5bbb72cece` |
-| Main CI | Pass on squash commit `76d6a58b20c3e010ee759358f2c86be80bc6a6c1` |
+| Requirement                                                                             | Result                                                                                                                                                     |
+| --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Independent identity, icon, protocol, and data path                                     | Pass on merged `main`                                                                                                                                      |
+| No upstream or Aera brand, account, endpoint, updater, telemetry, or application source | Pass on merged `main`                                                                                                                                      |
+| Sandboxed renderer and narrow preload bridge                                            | Pass on merged `main`                                                                                                                                      |
+| Deny-by-default permissions, navigation, windows, and external network                  | Pass on merged `main`                                                                                                                                      |
+| Account-free clean-profile launch                                                       | Pass locally and in CI smoke                                                                                                                               |
+| Unsigned macOS arm64 app, DMG, and ZIP packaging                                        | Pass locally; deliberately non-candidate                                                                                                                   |
+| Packaged identity, notices, CSP, and architecture verification                          | Pass locally and in CI                                                                                                                                     |
+| Independent review remediation                                                          | 13 valid CodeRabbit CLI issues fixed; one invalid `void` Promise suggestion documented                                                                     |
+| Final GitHub review                                                                     | No submitted review; CodeRabbit summary/status succeeded on the exact final head with 0 review threads, then the owner merged after CLI remediation and CI |
+| Final PR-head CI                                                                        | Pass on `f972bb6c33c925f3e333a6ee87d20e5bbb72cece`                                                                                                         |
+| Main CI                                                                                 | Pass on squash commit `76d6a58b20c3e010ee759358f2c86be80bc6a6c1`                                                                                           |
 
 Detailed commands, review history, package hashes, screenshot, and non-claims are
 in [P2 Product Shell](product/P2_PRODUCT_SHELL.md).
@@ -753,14 +814,14 @@ The ordered implementation index and P3 non-claims are in
 
 ## Next gate
 
-1. Finish the final documentation, full validation, independent review, and
-   exact diff audit on `feat/aionui-p4-general-worker`.
-2. Push the exact GW-P4.3 head, require pull-request CI, verify the selected
+1. Finish the exact diff and secret audit, then commit
+   `feat/aionui-p4-scoped-native-tools`.
+2. Push the exact GW-P4.4 head, require pull-request CI, verify the selected
    repository, branch, SHA, checks, and artifacts, then squash merge.
-3. Require merged-main CI before calling GW-P4.3 accepted.
-4. Start GW-P4.4 from that verified main and implement only the two scoped
-   native text capabilities through grants, policy, audit, and typed content
-   references.
+3. Require merged-main CI before calling GW-P4.4 accepted.
+4. Start GW-P4.5 from that verified main and implement only authoritative
+   task/attempt coordination, artifact ownership, persistence ordering, and
+   recovery around the two admitted tools.
 5. Continue through the complete P4 journey before Goose P5 and CrewAI-assisted
    Team P6 production work.
 
@@ -768,8 +829,8 @@ The ordered implementation index and P3 non-claims are in
 
 - License for original Actestra source.
 - Credential storage mechanism and platform-keychain boundary.
-- Native-tool transport, content-reference retention, and future binary/large
-  payload handling.
+- Content-reference retention and any future binary, streaming, large-payload,
+  or broader native-tool capability.
 - Worker sandbox implementation per operating system.
 - Long-term dependency upgrade policy.
 - Code-signing, notarization, update, and distribution accounts.
@@ -803,13 +864,14 @@ The ordered implementation index and P3 non-claims are in
   separately gates only the boolean pending-state reconciliation read. It
   exposes no renderer-selected protected operation, generic tool transport,
   credential value, or worker control.
-- The P3.4 deterministic fake remains test infrastructure. Local GW-P4.3 adds
-  a real deterministic utility process and packaged-process probe, but it is
-  not yet connected to a user-submitted task or native tool.
+- The P3.4 deterministic fake remains test infrastructure. Accepted GW-P4.3
+  adds a real deterministic utility process and packaged-process probe.
+  GW-P4.4 locally connects its blocked fixture to exactly two main-owned native
+  tools, but not yet to a user-submitted AionUi task.
 - P3.6 makes metadata-only audit and terminal-attempt evidence durable.
   Approval, credential-lease, and policy state remains in memory and contains no
   secret value. F3.1 separately makes the bounded native confirmation response
-  and outbox durable. Local F3.2 activates the accepted P3 sequence for exactly
+  and outbox durable. F3.2 activates the accepted P3 sequence for exactly
   one compatibility delivery capability, not for generic native tool
   execution.
 - GW-P4.2 removes synchronous SQLite from both root and native Electron main
@@ -817,9 +879,11 @@ The ordered implementation index and P3 non-claims are in
   transparent hot recovery remains future GW-P4.5 work.
 - F2 shadow evidence is renderer-originated compatibility evidence, not trusted
   audit, product, policy, approval, migration, or user-workload state.
-- The P3 contracts and fake-worker gate have passed. A bounded deterministic
-  General Worker integration is locally validated in GW-P4.3; native tools,
-  user-task coordination, and specialized Goose work remain later gates.
+- The P3 contracts and fake-worker gate have passed. The bounded deterministic
+  General Worker is accepted through GW-P4.3. Exactly two scoped native text
+  tools have complete local GW-P4.4 evidence; complete task/artifact
+  coordination, recovery, preserved-AionUi journey mapping, and specialized
+  Goose work remain later gates.
 - F0 alone proves only that the original AionUi application can be preserved
   and run. F1, F2, F3.1, F3.2, and merged F3.3 add their separately recorded
   identity, shadow, narrow decision-authority, fixed-delivery audit, and

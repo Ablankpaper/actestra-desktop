@@ -187,6 +187,30 @@ export class GeneralWorkerService {
           }),
         );
         break;
+      case "workspace-read-text-fixture":
+        attempt.state = "blocked";
+        attempt.pendingCallId = "general-worker-workspace-read-text-call";
+        events.push(
+          this.event(attempt, {
+            type: "tool-requested",
+            callId: attempt.pendingCallId,
+            toolName: "actestra.workspace.read-text",
+            summary: "Read one bounded UTF-8 workspace file.",
+          }),
+        );
+        break;
+      case "task-output-write-text-fixture":
+        attempt.state = "blocked";
+        attempt.pendingCallId = "general-worker-task-output-write-text-call";
+        events.push(
+          this.event(attempt, {
+            type: "tool-requested",
+            callId: attempt.pendingCallId,
+            toolName: "actestra.task-output.write-text",
+            summary: "Create one bounded UTF-8 task output.",
+          }),
+        );
+        break;
     }
 
     return events;
