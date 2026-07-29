@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   AionUiShadowProjectionError,
   assertAionUiNativeObservation,
+  assertAionUiShadowEvidence,
   collectAionUiHttpObservations,
   collectAionUiWebSocketObservations,
   projectAionUiObservation,
@@ -149,6 +150,86 @@ describe("AionUi F2 native observation collection", () => {
     expect(JSON.stringify(observations)).not.toContain("Run a private command");
   });
 
+  it("records the complete bounded workspace entry count without retaining entry content", () => {
+    const response = Array.from({ length: 75 }, (_, index) => ({
+      name: `private-${index}.txt`,
+      type: "file",
+    }));
+    const [observation] = collectAionUiHttpObservations({
+      method: "GET",
+      path: "/api/conversations/conversation-1/workspace",
+      observedAtMs: OBSERVED_AT,
+      response,
+    });
+
+    expect(observation).toMatchObject({
+      kind: "workspace",
+      entryCount: 75,
+    });
+    expect(JSON.stringify(observation)).not.toContain("private-0.txt");
+  });
+
+  it("does not fabricate a failed runtime from an empty failure kind", () => {
+    expect(
+      collectAionUiHttpObservations({
+        method: "GET",
+        path: "/api/conversations/conversation-1/active-lease",
+        observedAtMs: OBSERVED_AT,
+        response: {
+          runtime: {
+            failure_kind: "",
+          },
+        },
+      }),
+    ).toEqual([]);
+  });
+
+  it("preserves explicit failed and cancelled turn completion statuses", () => {
+    const [failed] = collectAionUiWebSocketObservations({
+      eventName: "turn.completed",
+      observedAtMs: OBSERVED_AT,
+      payload: {
+        session_id: "conversation-1",
+        turn_id: "turn-failed",
+        status: "failed",
+        state: "unknown",
+      },
+    });
+    const [cancelled] = collectAionUiWebSocketObservations({
+      eventName: "turn.completed",
+      observedAtMs: OBSERVED_AT,
+      payload: {
+        session_id: "conversation-1",
+        turn_id: "turn-cancelled",
+        status: "cancelled",
+        state: "unknown",
+      },
+    });
+    const [failedState] = collectAionUiWebSocketObservations({
+      eventName: "turn.completed",
+      observedAtMs: OBSERVED_AT,
+      payload: {
+        session_id: "conversation-1",
+        turn_id: "turn-failed-state",
+        state: "failed",
+      },
+    });
+    const [cancelledState] = collectAionUiWebSocketObservations({
+      eventName: "turn.completed",
+      observedAtMs: OBSERVED_AT,
+      payload: {
+        session_id: "conversation-1",
+        turn_id: "turn-cancelled-state",
+        state: "canceled",
+      },
+    });
+
+    expect(failed).toMatchObject({ kind: "task", status: "failed" });
+    expect(cancelled).toMatchObject({ kind: "task", status: "cancelled" });
+    expect(failedState).toMatchObject({ kind: "task", status: "failed" });
+    expect(cancelledState).toMatchObject({ kind: "task", status: "cancelled" });
+  });
+
   it("ignores malformed and unrelated responses instead of changing native behavior", () => {
     expect(
       collectAionUiHttpObservations({
@@ -251,6 +332,72 @@ describe("AionUi F2 P3 shadow projection", () => {
       },
     ]);
     assertCoreEventStream(evidence.events);
+  });
+
+  it("uses a canonical revision independent of capture time and property order", () => {
+    const first = projectAionUiObservation({
+      contractVersion: 1,
+      kind: "provider",
+      nativeId: "provider-1",
+      observedAtMs: OBSERVED_AT,
+      providerId: "provider-1",
+      available: true,
+      platform: "openai",
+    });
+    const replayed = projectAionUiObservation({
+      platform: "openai",
+      available: true,
+      providerId: "provider-1",
+      observedAtMs: OBSERVED_AT + 10_000,
+      nativeId: "provider-1",
+      kind: "provider",
+      contractVersion: 1,
+    });
+
+    expect(replayed.nativeRevisionHash).toBe(first.nativeRevisionHash);
+    expect(replayed.evidenceId).toBe(first.evidenceId);
+    expect(replayed.capturedAt).not.toBe(first.capturedAt);
+  });
+
+  it("requires normalized millisecond timestamps at the projection boundary", () => {
+    expect(() =>
+      assertAionUiNativeObservation({
+        contractVersion: 1,
+        kind: "conversation",
+        nativeId: "conversation-1",
+        observedAtMs: OBSERVED_AT,
+        conversationId: "conversation-1",
+        conversationType: "acp",
+        status: "running",
+        createdAtMs: 1_700_000_000,
+      }),
+    ).toThrow(/normalized millisecond timestamp/u);
+  });
+
+  it("normalizes delegated core validation failures to invalid evidence", () => {
+    const evidence = projectAionUiObservation({
+      contractVersion: 1,
+      kind: "provider",
+      nativeId: "provider-1",
+      observedAtMs: OBSERVED_AT,
+      providerId: "provider-1",
+      available: true,
+    });
+    const invalid = {
+      ...evidence,
+      graph: {
+        ...evidence.graph,
+        workspaces: [],
+      },
+    };
+
+    try {
+      assertAionUiShadowEvidence(invalid);
+      throw new Error("Expected invalid shadow evidence");
+    } catch (error) {
+      expect(error).toBeInstanceOf(AionUiShadowProjectionError);
+      expect(error).toMatchObject({ code: "invalid-evidence" });
+    }
   });
 
   it("rejects undeclared fields before projection", () => {

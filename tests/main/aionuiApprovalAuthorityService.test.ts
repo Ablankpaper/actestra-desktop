@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
+  AionUiApprovalAuthorityPersistencePort,
   AionUiApprovalDecisionRecord,
   AionUiApprovalDecisionRequest,
 } from "../../apps/desktop/src/compatibility/aionui";
@@ -224,5 +225,79 @@ describe("AionUi F3 approval authority service", () => {
       deliveredCount: 1,
     });
     await reopened.close();
+  });
+
+  it("bounds a transport that never settles and blocks redelivery while it remains in flight", async () => {
+    const persistence = openSqliteCorePersistence(createTestDirectory());
+    let settleDelivery: (() => void) | undefined;
+    const delivery = new Promise<void>((resolve) => {
+      settleDelivery = resolve;
+    });
+    let observedSignal: AbortSignal | undefined;
+    const native = transport({
+      isPending: vi.fn(async () => false),
+      deliver: vi.fn((_record: AionUiApprovalDecisionRecord, signal: AbortSignal) => {
+        observedSignal = signal;
+        return delivery;
+      }),
+    });
+    const service = new AionUiApprovalAuthorityService(persistence, native, clock(), 5);
+
+    await expect(service.resolve(request())).resolves.toEqual({
+      status: "rejected",
+      httpStatus: 503,
+      body: {
+        success: false,
+        error: "The native approval response could not be delivered.",
+        code: "ACTESTRA_APPROVAL_DELIVERY_UNAVAILABLE",
+      },
+    });
+    expect(observedSignal?.aborted).toBe(true);
+    await expect(persistence.summarizeAionUiApprovalAuthority()).resolves.toEqual({
+      recordCount: 1,
+      pendingCount: 1,
+      deliveredCount: 0,
+    });
+    await expect(service.resolve(request())).resolves.toMatchObject({
+      status: "rejected",
+      httpStatus: 503,
+    });
+    expect(native.deliver).toHaveBeenCalledTimes(1);
+    expect(native.isPending).not.toHaveBeenCalled();
+
+    settleDelivery?.();
+    await delivery;
+    await expect(service.resolve(request())).resolves.toMatchObject({
+      status: "delivered",
+      disposition: "reconciled",
+      attemptCount: 1,
+    });
+    expect(native.deliver).toHaveBeenCalledTimes(1);
+    expect(native.isPending).toHaveBeenCalledTimes(1);
+    await persistence.close();
+  });
+
+  it("fails closed when persistence returns an invalid durable record", async () => {
+    const persistence = {
+      reserveAionUiApprovalDecision: vi.fn(async () => ({
+        status: "created" as const,
+        record: {
+          decisionId: "invalid-record",
+        } as AionUiApprovalDecisionRecord,
+      })),
+    } as unknown as AionUiApprovalAuthorityPersistencePort;
+    const native = transport();
+    const service = new AionUiApprovalAuthorityService(persistence, native, clock());
+
+    await expect(service.resolve(request())).resolves.toEqual({
+      status: "rejected",
+      httpStatus: 503,
+      body: {
+        success: false,
+        error: "Actestra loaded an invalid durable approval decision.",
+        code: "ACTESTRA_APPROVAL_AUTHORITY_UNAVAILABLE",
+      },
+    });
+    expect(native.deliver).not.toHaveBeenCalled();
   });
 });

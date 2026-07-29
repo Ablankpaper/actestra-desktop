@@ -31,8 +31,8 @@ export type AionUiApprovalAuthorityResult =
     };
 
 export interface AionUiApprovalNativeTransport {
-  isPending(record: AionUiApprovalDecisionRecord): Promise<boolean>;
-  deliver(record: AionUiApprovalDecisionRecord): Promise<void>;
+  isPending(record: AionUiApprovalDecisionRecord, signal: AbortSignal): Promise<boolean>;
+  deliver(record: AionUiApprovalDecisionRecord, signal: AbortSignal): Promise<void>;
 }
 
 export interface AionUiApprovalAuthorityClock {
@@ -67,8 +67,17 @@ const GENERIC_NATIVE_ERROR: AionUiApprovalAuthorityErrorBody = Object.freeze({
   error: "The native approval response could not be delivered.",
   code: "ACTESTRA_APPROVAL_DELIVERY_UNAVAILABLE",
 });
+const DEFAULT_NATIVE_TRANSPORT_TIMEOUT_MS = 12_000;
+const MAX_NATIVE_TRANSPORT_TIMEOUT_MS = 60_000;
 const SENSITIVE_DETAIL_KEY = /api[_-]?key|authorization|token|secret|credential/i;
 const MAX_NATIVE_DETAILS_BYTES = 4_096;
+
+class AionUiApprovalNativeTimeoutError extends Error {
+  constructor() {
+    super("Native AionUi approval transport timed out");
+    this.name = "AionUiApprovalNativeTimeoutError";
+  }
+}
 
 function sanitizedNativeDetails(value: unknown): unknown {
   if (value === undefined) {
@@ -149,12 +158,23 @@ function errorCodeForFailure(error: unknown): string {
 export class AionUiApprovalAuthorityService {
   private readonly clock: AionUiApprovalAuthorityClock;
   private readonly activeDecisions = new Map<string, Promise<AionUiApprovalAuthorityResult>>();
+  private readonly activeNativeOperations = new Map<string, Promise<unknown>>();
 
   constructor(
     private readonly persistence: AionUiApprovalAuthorityPersistencePort,
     private readonly transport: AionUiApprovalNativeTransport,
     clock: AionUiApprovalAuthorityClock = new SystemApprovalAuthorityClock(),
+    private readonly transportTimeoutMs = DEFAULT_NATIVE_TRANSPORT_TIMEOUT_MS,
   ) {
+    if (
+      !Number.isSafeInteger(transportTimeoutMs) ||
+      transportTimeoutMs < 1 ||
+      transportTimeoutMs > MAX_NATIVE_TRANSPORT_TIMEOUT_MS
+    ) {
+      throw new RangeError(
+        `AionUi approval transport timeout must be between 1 and ${MAX_NATIVE_TRANSPORT_TIMEOUT_MS} milliseconds`,
+      );
+    }
     this.clock = clock;
   }
 
@@ -167,9 +187,9 @@ export class AionUiApprovalAuthorityService {
         return rejected(400, "ACTESTRA_APPROVAL_INVALID_REQUEST", error.message);
       }
       return rejected(
-        400,
-        "ACTESTRA_APPROVAL_INVALID_REQUEST",
-        "The approval response is invalid.",
+        503,
+        "ACTESTRA_APPROVAL_AUTHORITY_UNAVAILABLE",
+        "Actestra approval validation is unavailable.",
       );
     }
 
@@ -254,7 +274,15 @@ export class AionUiApprovalAuthorityService {
     record: AionUiApprovalDecisionRecord,
     disposition: "new" | "duplicate" | "reconciled",
   ): Promise<AionUiApprovalAuthorityResult> {
-    assertAionUiApprovalDecisionRecord(record);
+    try {
+      assertAionUiApprovalDecisionRecord(record);
+    } catch {
+      return rejected(
+        503,
+        "ACTESTRA_APPROVAL_AUTHORITY_UNAVAILABLE",
+        "Actestra loaded an invalid durable approval decision.",
+      );
+    }
     if (record.deliveryState === "delivered") {
       return Object.freeze({
         status: "delivered",
@@ -266,7 +294,11 @@ export class AionUiApprovalAuthorityService {
 
     if (record.attemptCount > 0) {
       try {
-        if (!(await this.transport.isPending(record))) {
+        if (
+          !(await this.withTransportDeadline(record.decisionId, (signal) =>
+            this.transport.isPending(record, signal),
+          ))
+        ) {
           const reconciled = await this.persistence.markAionUiApprovalDelivered(
             record.decisionId,
             this.clock.now(),
@@ -310,7 +342,9 @@ export class AionUiApprovalAuthorityService {
     }
 
     try {
-      await this.transport.deliver(attempted);
+      await this.withTransportDeadline(attempted.decisionId, (signal) =>
+        this.transport.deliver(attempted, signal),
+      );
       const delivered = await this.persistence.markAionUiApprovalDelivered(
         attempted.decisionId,
         this.clock.now(),
@@ -323,7 +357,11 @@ export class AionUiApprovalAuthorityService {
       });
     } catch (error) {
       try {
-        if (!(await this.transport.isPending(attempted))) {
+        if (
+          !(await this.withTransportDeadline(attempted.decisionId, (signal) =>
+            this.transport.isPending(attempted, signal),
+          ))
+        ) {
           const delivered = await this.persistence.markAionUiApprovalDelivered(
             attempted.decisionId,
             this.clock.now(),
@@ -355,6 +393,41 @@ export class AionUiApprovalAuthorityService {
       return error instanceof AionUiApprovalNativeTransportError
         ? nativeErrorResult(error)
         : rejected(503, GENERIC_NATIVE_ERROR.code, GENERIC_NATIVE_ERROR.error);
+    }
+  }
+
+  private async withTransportDeadline<Result>(
+    decisionId: string,
+    operation: (signal: AbortSignal) => Promise<Result>,
+  ): Promise<Result> {
+    if (this.activeNativeOperations.has(decisionId)) {
+      throw new AionUiApprovalNativeTimeoutError();
+    }
+
+    const abortController = new AbortController();
+    const operationPromise = operation(abortController.signal);
+    this.activeNativeOperations.set(decisionId, operationPromise);
+    const releaseOperation = (): void => {
+      if (this.activeNativeOperations.get(decisionId) === operationPromise) {
+        this.activeNativeOperations.delete(decisionId);
+      }
+    };
+    void operationPromise.then(releaseOperation, releaseOperation);
+
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_resolve, reject) => {
+      timeout = setTimeout(() => {
+        const error = new AionUiApprovalNativeTimeoutError();
+        abortController.abort(error);
+        reject(error);
+      }, this.transportTimeoutMs);
+    });
+    try {
+      return await Promise.race([operationPromise, deadline]);
+    } finally {
+      if (timeout !== undefined) {
+        clearTimeout(timeout);
+      }
     }
   }
 }

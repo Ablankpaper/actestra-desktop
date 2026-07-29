@@ -22,6 +22,15 @@ Actestra development commands materialize a generated working tree under
   the user flow.
 - R2 patches retain the entry and return an explicit isolation reason instead
   of performing an unowned external effect.
+- CDP classification is R0 for unchanged settings UI, R1 for the
+  Actestra-owned `ACTESTRA_CDP_PORT` primary input and compatible legacy shim,
+  and R2 for packaged-listener denial. The Actestra downstream compatibility
+  layer owns the retained `AIONUI_CDP_PORT` shim on behalf of frozen upstream
+  E2E and benchmark callers. Remove it only after those callers migrate to
+  `ACTESTRA_CDP_PORT`; the Actestra variable always takes precedence. Packaged
+  applications deny CDP regardless of either variable or saved config. See the
+  [compatibility policy test](patches/0001-actestra-identity-and-isolation.mjs)
+  and [native packaged-launch proof](../../docs/product/AIONUI_FIRST_PR6_REVIEW_CLOSURE.md#local-verification).
 - F2 compatibility observers are metadata-only and fail-isolated. Native
   AionUi responses, routes, state, and UI remain authoritative; shadow evidence
   cannot drive user-visible decisions.
@@ -41,12 +50,17 @@ Actestra development commands materialize a generated working tree under
 ## Commands
 
 ```bash
+bun run foundation:aionui:check
 bun run downstream:aionui:materialize
 bun run downstream:aionui:check
 bun run downstream:aionui:test
 bun run downstream:aionui:package
 bun run downstream:aionui:dev
 ```
+
+Run `foundation:aionui:check` before reviewing or shipping any downstream
+materialization. It is the mandatory proof that the immutable upstream source
+still matches its pinned provenance and SHA-256 manifest.
 
 The generated `.actestra` tree is disposable and ignored by Git. Removing it
 does not remove the frozen source or the downstream patch series.

@@ -449,14 +449,30 @@ function eventsForObservation(
 }
 
 function revisionInput(observation: AionUiNativeObservation): unknown {
-  if (
-    (observation.kind === "conversation" || observation.kind === "artifact") &&
-    (observation.updatedAtMs !== undefined || observation.createdAtMs !== undefined)
-  ) {
-    const { observedAtMs: _observedAtMs, ...stable } = observation;
-    return stable;
+  const { observedAtMs: _observedAtMs, ...stable } = observation;
+  return stable;
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(",")}]`;
   }
-  return observation;
+  if (typeof value === "object" && value !== null) {
+    const record = value as Record<string, unknown>;
+    const entries = Object.keys(record)
+      .filter((key) => record[key] !== undefined)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`);
+    return `{${entries.join(",")}}`;
+  }
+  const encoded = JSON.stringify(value);
+  if (encoded === undefined) {
+    throw new AionUiShadowProjectionError(
+      "projection-failed",
+      "AionUi observation contains a non-JSON revision value",
+    );
+  }
+  return encoded;
 }
 
 export function projectAionUiObservation(value: unknown): AionUiShadowEvidence {
@@ -466,7 +482,7 @@ export function projectAionUiObservation(value: unknown): AionUiShadowEvidence {
     const nativeIdentityHash = hash(
       `${AIONUI_NATIVE_SOURCE_VERSION}\u0000${value.kind}\u0000${value.nativeId}`,
     );
-    const nativeRevisionHash = hash(JSON.stringify(revisionInput(value)));
+    const nativeRevisionHash = hash(canonicalJson(revisionInput(value)));
     const graph = graphForObservation(value, capturedAt);
     assertDomainGraph(graph);
     const events = eventsForObservation(value, graph, capturedAt);
@@ -534,6 +550,19 @@ function sha256String(value: unknown, field: string): string {
   return value;
 }
 
+function assertEvidenceComponent(validation: () => void, message: string): void {
+  try {
+    validation();
+  } catch (error) {
+    if (error instanceof AionUiShadowProjectionError) {
+      throw error;
+    }
+    throw new AionUiShadowProjectionError("invalid-evidence", message, {
+      cause: error,
+    });
+  }
+}
+
 export function assertAionUiShadowEvidence(value: unknown): asserts value is AionUiShadowEvidence {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new AionUiShadowProjectionError(
@@ -587,7 +616,9 @@ export function assertAionUiShadowEvidence(value: unknown): asserts value is Aio
       "AionUi shadow evidence identifier is invalid",
     );
   }
-  instant(record.capturedAt as string);
+  assertEvidenceComponent(() => {
+    instant(record.capturedAt as string);
+  }, "AionUi shadow evidence capture timestamp is invalid");
   if (record.source !== `aionui-v${AIONUI_NATIVE_SOURCE_VERSION}`) {
     throw new AionUiShadowProjectionError(
       "invalid-evidence",
@@ -600,14 +631,28 @@ export function assertAionUiShadowEvidence(value: unknown): asserts value is Aio
       "AionUi shadow evidence must remain metadata-only",
     );
   }
-  sha256String(record.nativeIdentityHash, "nativeIdentityHash");
-  sha256String(record.nativeRevisionHash, "nativeRevisionHash");
-  assertDomainGraph(record.graph as DomainGraph);
+  const nativeIdentityHash = sha256String(record.nativeIdentityHash, "nativeIdentityHash");
+  const nativeRevisionHash = sha256String(record.nativeRevisionHash, "nativeRevisionHash");
+  const expectedEvidenceId = projectedId(
+    "aionui-shadow-evidence",
+    `${record.domain}\u0000${nativeIdentityHash}\u0000${nativeRevisionHash}`,
+  );
+  if (record.evidenceId !== expectedEvidenceId) {
+    throw new AionUiShadowProjectionError(
+      "invalid-evidence",
+      "AionUi shadow evidence identifier does not match its native revision",
+    );
+  }
+  assertEvidenceComponent(() => {
+    assertDomainGraph(record.graph as DomainGraph);
+  }, "AionUi shadow evidence graph violates the core domain contract");
   if (!Array.isArray(record.events)) {
     throw new AionUiShadowProjectionError(
       "invalid-evidence",
       "AionUi shadow evidence events must be an array",
     );
   }
-  assertCoreEventStream(record.events as CoreEvent[]);
+  assertEvidenceComponent(() => {
+    assertCoreEventStream(record.events as CoreEvent[]);
+  }, "AionUi shadow evidence events violate the core event contract");
 }

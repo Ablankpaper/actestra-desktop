@@ -62,6 +62,16 @@ function taskEvidence() {
   return projectAionUiObservation(observation);
 }
 
+function providerEvidence(observedAtMs: number) {
+  const [observation] = collectAionUiHttpObservations({
+    method: "GET",
+    path: "/api/providers",
+    observedAtMs,
+    response: [{ id: "provider-1", platform: "openai", enabled: true }],
+  });
+  return projectAionUiObservation(observation);
+}
+
 afterEach(() => {
   for (const directory of testDirectories.splice(0)) {
     if (!directory.startsWith(path.join(os.tmpdir(), "actestra-aionui-shadow-test-"))) {
@@ -138,5 +148,29 @@ describe("AionUi F2 SQLite shadow evidence", () => {
       code: "corrupt-database",
     });
     await reopened.close();
+  });
+
+  it("deduplicates an unchanged native revision observed at a later capture time", async () => {
+    const persistence = openSqliteCorePersistence(createTestDirectory());
+    const first = providerEvidence(OBSERVED_AT);
+    const replayed = providerEvidence(OBSERVED_AT + 10_000);
+
+    expect(replayed.evidenceId).toBe(first.evidenceId);
+    expect(replayed.capturedAt).not.toBe(first.capturedAt);
+    await expect(persistence.appendAionUiShadowEvidence(first)).resolves.toEqual({
+      status: "appended",
+      sequence: 1,
+    });
+    await expect(persistence.appendAionUiShadowEvidence(replayed)).resolves.toEqual({
+      status: "duplicate",
+      sequence: 1,
+    });
+    await expect(persistence.listRecentAionUiShadowEvidence(1)).resolves.toEqual([
+      {
+        sequence: 1,
+        evidence: first,
+      },
+    ]);
+    await persistence.close();
   });
 });

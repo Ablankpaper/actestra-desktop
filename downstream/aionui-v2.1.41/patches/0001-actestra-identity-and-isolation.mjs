@@ -74,6 +74,40 @@ export const ACTESTRA_EXTERNAL_EFFECTS = Object.freeze({
   publicListeners: false,
 });
 
+export type ActestraCdpEnvironment = Readonly<{
+  ACTESTRA_CDP_PORT?: string;
+  AIONUI_CDP_PORT?: string;
+}>;
+
+/**
+ * AIONUI_CDP_PORT remains a temporary compatibility input owned by the frozen
+ * upstream E2E and benchmark tooling. Remove it only after those retained
+ * callers migrate to ACTESTRA_CDP_PORT. The Actestra variable always wins.
+ */
+export function resolveActestraCdpEnvironmentValue(
+  environment: ActestraCdpEnvironment,
+): string | undefined {
+  return environment.ACTESTRA_CDP_PORT ?? environment.AIONUI_CDP_PORT;
+}
+
+export function shouldEnableActestraCdp(input: {
+  packaged: boolean;
+  environment: ActestraCdpEnvironment;
+  configuredEnabled?: boolean;
+}): boolean {
+  if (input.packaged) {
+    return false;
+  }
+  const environmentValue = resolveActestraCdpEnvironmentValue(input.environment);
+  if (environmentValue === '0' || environmentValue === 'false') {
+    return false;
+  }
+  if (environmentValue !== undefined && environmentValue !== '') {
+    return true;
+  }
+  return input.configuredEnabled ?? false;
+}
+
 export type ActestraIsolatedEffect =
   | 'feedback'
   | 'public-listener'
@@ -342,7 +376,10 @@ for (const [before, after] of [
   ["appId: com.aionui.app", "appId: com.bignormal.actestra"],
   ["productName: AionUi", "productName: Actestra"],
   ["executableName: AionUi", "executableName: Actestra"],
-  ["copyright: Copyright © 2024 AionUi", "copyright: Copyright © 2026 bignormal"],
+  [
+    "copyright: Copyright © 2024 AionUi",
+    "copyright: Copyright © 2026 bignormal. Portions Copyright © 2024 AionUi contributors.",
+  ],
   ["- name: AionUi Protocol", "- name: Actestra Protocol"],
   ["      - aionui", "      - actestra"],
   ["  maintainer: aionui", "  maintainer: bignormal"],
@@ -364,7 +401,11 @@ write(builderPath, builder);
 replaceOnce(
   "packages/desktop/src/process/utils/configureChromium.ts",
   "import { getDevAppName } from '@/common/platform';",
-  `import { ACTESTRA_PRODUCT } from '@/common/config/actestraProduct';
+  `import {
+  ACTESTRA_PRODUCT,
+  resolveActestraCdpEnvironmentValue,
+  shouldEnableActestraCdp,
+} from '@/common/config/actestraProduct';
 import {
   ensureActestraPrivateDirectory,
   ensureActestraProfileLayout,
@@ -432,12 +473,17 @@ replaceOnce(
 replaceAll(
   "packages/desktop/src/process/utils/configureChromium.ts",
   "const envVal = process.env.AIONUI_CDP_PORT;",
-  "const envVal = process.env.ACTESTRA_CDP_PORT ?? process.env.AIONUI_CDP_PORT;",
+  "const envVal = resolveActestraCdpEnvironmentValue(process.env);",
   2,
 );
 replaceOnce(
   "packages/desktop/src/process/utils/configureChromium.ts",
-  `  if (app.isPackaged) {
+  `function shouldEnableCdp(config: CdpConfig): boolean {
+  const envVal = resolveActestraCdpEnvironmentValue(process.env);
+  if (envVal === '0' || envVal === 'false') return false;
+  if (envVal) return true;
+
+  if (app.isPackaged) {
     return false;
   }
 
@@ -445,14 +491,15 @@ replaceOnce(
     return config.enabled;
   }
 
-  return true;`,
-  `  if (config.enabled !== undefined) {
-    return config.enabled;
-  }
-
-  // F1 is closed by default. A local developer may still opt in explicitly
-  // through ACTESTRA_CDP_PORT or the preserved settings control.
-  return false;`,
+  return true;
+}`,
+  `function shouldEnableCdp(config: CdpConfig): boolean {
+  return shouldEnableActestraCdp({
+    packaged: app.isPackaged,
+    environment: process.env,
+    configuredEnabled: config.enabled,
+  });
+}`,
 );
 
 replaceOnce(
@@ -1329,6 +1376,32 @@ replaceOnce(
   `    \`!define AIONUI_SENTRY_DSN "\${escapeNsisDefineValue(process.env.SENTRY_DSN || '')}"\\n\``,
   `    '!define AIONUI_SENTRY_DSN ""\\n'`,
 );
+replaceOnce(
+  "scripts/afterSign.js",
+  "const { execSync } = require('child_process');",
+  "const { execFileSync } = require('child_process');",
+);
+replaceOnce(
+  "scripts/afterSign.js",
+  "    execSync(`codesign --verify --verbose \"${appPath}\"`, { stdio: 'pipe' });",
+  "    execFileSync('codesign', ['--verify', '--verbose', appPath], { stdio: 'pipe' });",
+);
+replaceOnce(
+  "scripts/afterSign.js",
+  "      execSync(`codesign --force --deep --sign - \"${appPath}\"`, { stdio: 'inherit' });",
+  `      execFileSync('xattr', ['-cr', appPath], { stdio: 'inherit' });
+      execFileSync(
+        'codesign',
+        ['--force', '--deep', '--sign', '-', appPath],
+        { stdio: 'inherit' },
+      );`,
+);
+replaceOnce(
+  "scripts/afterSign.js",
+  "      console.error('Ad-hoc signing failed:', adHocError.message);",
+  `      console.error('Ad-hoc signing failed:', adHocError.message);
+      throw adHocError;`,
+);
 
 for (const relativePath of ["resources/messages.yml", "resources/windows/installer-messages.nsh"]) {
   write(relativePath, read(relativePath).replaceAll("AionUi", "Actestra"));
@@ -1360,6 +1433,11 @@ replaceOnce(
     INSTALLER_LAST_FAILURE_FILE_NAME,
   );`,
 );
+replaceOnce(
+  "resources/windows/installer-process-control.nsh",
+  "$$appDir = Join-Path $$env:APPDATA 'AionUi';",
+  "$$appDir = Join-Path $$env:APPDATA 'Actestra\\profiles\\v1\\default';",
+);
 
 writeNew(
   "tests/unit/actestra/productBoundary.test.ts",
@@ -1374,6 +1452,8 @@ import {
   assertActestraBridgeRequestAllowed,
   brandActestraValue,
   isUpstreamOfficialUrl,
+  resolveActestraCdpEnvironmentValue,
+  shouldEnableActestraCdp,
 } from '@/common/config/actestraProduct';
 import {
   ACTESTRA_PROFILE_MANIFEST,
@@ -1405,6 +1485,38 @@ describe('Actestra F1 product boundary', () => {
       upstreamOfficialServices: false,
       publicListeners: false,
     });
+  });
+
+  it('keeps the retained CDP compatibility input subordinate and denies packaged CDP', () => {
+    expect(
+      resolveActestraCdpEnvironmentValue({
+        ACTESTRA_CDP_PORT: '9231',
+        AIONUI_CDP_PORT: '0',
+      }),
+    ).toBe('9231');
+    expect(
+      resolveActestraCdpEnvironmentValue({
+        AIONUI_CDP_PORT: '9232',
+      }),
+    ).toBe('9232');
+    expect(
+      shouldEnableActestraCdp({
+        packaged: false,
+        environment: {
+          ACTESTRA_CDP_PORT: '0',
+          AIONUI_CDP_PORT: '9232',
+        },
+      }),
+    ).toBe(false);
+    expect(
+      shouldEnableActestraCdp({
+        packaged: true,
+        environment: {
+          ACTESTRA_CDP_PORT: '9231',
+        },
+        configuredEnabled: true,
+      }),
+    ).toBe(false);
   });
 
   it('isolates known upstream-owned URLs and Hub bridge requests', () => {

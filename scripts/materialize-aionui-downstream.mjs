@@ -9,6 +9,7 @@ const overlayDirectory = path.join(repositoryRoot, "downstream", "aionui-v2.1.41
 const overlayPath = path.join(overlayDirectory, "overlay.json");
 const provenancePath = path.join(repositoryRoot, "foundation", "aionui-v2.1.41.provenance.json");
 const defaultOutputRoot = path.join(repositoryRoot, ".actestra", "aionui-v2.1.41");
+const generatedOutputDirectory = path.join(repositoryRoot, ".actestra");
 
 function sha256(contents) {
   return crypto.createHash("sha256").update(contents).digest("hex");
@@ -55,25 +56,51 @@ function parseArguments(argv) {
   return { linkLocalDependencies, outputRoot };
 }
 
+export function resolveContainedPath(root, declaredPath, label) {
+  if (
+    typeof declaredPath !== "string" ||
+    declaredPath.length === 0 ||
+    declaredPath.includes("\0") ||
+    path.isAbsolute(declaredPath)
+  ) {
+    throw new Error(`${label} must be a non-empty relative path`);
+  }
+  const resolvedRoot = path.resolve(root);
+  const resolved = path.resolve(resolvedRoot, declaredPath);
+  const relative = path.relative(resolvedRoot, resolved);
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error(`${label} escapes its declared root: ${declaredPath}`);
+  }
+  return resolved;
+}
+
 function assertSafeGeneratedOutput(outputRoot) {
   const resolved = path.resolve(outputRoot);
-  const parsed = path.parse(resolved);
-  if (
-    resolved === parsed.root ||
-    resolved === repositoryRoot ||
-    resolved === path.resolve(process.env.HOME ?? parsed.root)
-  ) {
-    throw new Error(`Refusing unsafe downstream output path: ${resolved}`);
+  fs.mkdirSync(generatedOutputDirectory, { recursive: true, mode: 0o700 });
+  const generatedState = fs.lstatSync(generatedOutputDirectory);
+  if (!generatedState.isDirectory() || generatedState.isSymbolicLink()) {
+    throw new Error("Actestra generated-output root must be a real directory");
   }
-  if (path.basename(resolved) !== "aionui-v2.1.41") {
+  if (
+    path.dirname(resolved) !== generatedOutputDirectory ||
+    path.basename(resolved) !== "aionui-v2.1.41"
+  ) {
     throw new Error(`Downstream output must end in aionui-v2.1.41, received: ${resolved}`);
   }
 }
 
 function copyManifestSelection(sourceRoot, outputRoot, sourceEntries) {
   for (const entry of sourceEntries) {
-    const sourcePath = path.join(sourceRoot, entry.relativePath);
-    const destinationPath = path.join(outputRoot, entry.relativePath);
+    const sourcePath = resolveContainedPath(
+      sourceRoot,
+      entry.relativePath,
+      "Frozen source-manifest entry",
+    );
+    const destinationPath = resolveContainedPath(
+      outputRoot,
+      entry.relativePath,
+      "Generated source-manifest entry",
+    );
     const contents = fs.readFileSync(sourcePath);
     const actualHash = sha256(contents);
     if (actualHash !== entry.hash) {
@@ -123,8 +150,12 @@ function applyPatch(outputRoot, patchPath) {
 
 function copyOwnedAssets(outputRoot, assetCopies) {
   for (const asset of assetCopies) {
-    const sourcePath = path.join(repositoryRoot, asset.source);
-    const destinationPath = path.join(outputRoot, asset.destination);
+    const sourcePath = resolveContainedPath(repositoryRoot, asset.source, "Actestra asset source");
+    const destinationPath = resolveContainedPath(
+      outputRoot,
+      asset.destination,
+      "Actestra asset destination",
+    );
     const contents = fs.readFileSync(sourcePath);
     const actualHash = sha256(contents);
     if (actualHash !== asset.sha256) {
@@ -141,8 +172,16 @@ function copyOwnedAssets(outputRoot, assetCopies) {
 
 function copyOwnedSources(outputRoot, sourceCopies) {
   for (const sourceCopy of sourceCopies) {
-    const sourcePath = path.join(repositoryRoot, sourceCopy.source);
-    const destinationPath = path.join(outputRoot, sourceCopy.destination);
+    const sourcePath = resolveContainedPath(
+      repositoryRoot,
+      sourceCopy.source,
+      "Actestra source-copy source",
+    );
+    const destinationPath = resolveContainedPath(
+      outputRoot,
+      sourceCopy.destination,
+      "Actestra source-copy destination",
+    );
     if (!fs.existsSync(sourcePath)) {
       throw new Error(`Actestra source copy is missing: ${sourceCopy.source}`);
     }
@@ -189,8 +228,16 @@ function linkLocalRuntimeInputs(sourceRoot, outputRoot) {
 export function materializeAionUiDownstream(options = {}) {
   const overlay = readJson(overlayPath);
   const provenance = readJson(provenancePath);
-  const sourceRoot = path.join(repositoryRoot, provenance.sourceRoot);
-  const sourceManifestPath = path.join(repositoryRoot, provenance.manifest);
+  const sourceRoot = resolveContainedPath(
+    repositoryRoot,
+    provenance.sourceRoot,
+    "AionUi provenance source root",
+  );
+  const sourceManifestPath = resolveContainedPath(
+    repositoryRoot,
+    provenance.manifest,
+    "AionUi provenance manifest",
+  );
   const sourceManifestContents = fs.readFileSync(sourceManifestPath);
   const outputRoot = path.resolve(options.outputRoot ?? defaultOutputRoot);
 
@@ -211,7 +258,10 @@ export function materializeAionUiDownstream(options = {}) {
   copyOwnedSources(outputRoot, overlay.sourceCopies ?? []);
 
   for (const patch of overlay.patches) {
-    applyPatch(outputRoot, path.join(overlayDirectory, patch.path));
+    applyPatch(
+      outputRoot,
+      resolveContainedPath(overlayDirectory, patch.path, "AionUi downstream patch"),
+    );
   }
   copyOwnedAssets(outputRoot, overlay.assetCopies);
 
@@ -225,7 +275,13 @@ export function materializeAionUiDownstream(options = {}) {
     upstream: overlay.upstream,
     patches: overlay.patches.map((patch) => patch.path),
     sourceCopies: (overlay.sourceCopies ?? []).map((sourceCopy) => {
-      const contents = fs.readFileSync(path.join(repositoryRoot, sourceCopy.source));
+      const contents = fs.readFileSync(
+        resolveContainedPath(
+          repositoryRoot,
+          sourceCopy.source,
+          "Actestra source-copy evidence source",
+        ),
+      );
       return {
         destination: sourceCopy.destination,
         sha256: sha256(contents),

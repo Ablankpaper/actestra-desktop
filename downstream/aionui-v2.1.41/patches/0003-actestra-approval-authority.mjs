@@ -273,6 +273,7 @@ async function nativeRequest(
   method: 'GET' | 'POST',
   requestPath: string,
   body?: unknown,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   assertActestraBridgeRequestAllowed(requestPath, body);
   const response = await fetch(
@@ -281,7 +282,13 @@ async function nativeRequest(
       method,
       headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(NATIVE_REQUEST_TIMEOUT_MS),
+      signal:
+        signal === undefined
+          ? AbortSignal.timeout(NATIVE_REQUEST_TIMEOUT_MS)
+          : AbortSignal.any([
+              signal,
+              AbortSignal.timeout(NATIVE_REQUEST_TIMEOUT_MS),
+            ]),
     },
   );
   const parsed = await responseBody(response);
@@ -313,10 +320,15 @@ function pendingIdentity(value: unknown): string | undefined {
 export class LoopbackAionUiApprovalNativeTransport
   implements AionUiApprovalNativeTransport
 {
-  async isPending(record: AionUiApprovalDecisionRecord): Promise<boolean> {
+  async isPending(
+    record: AionUiApprovalDecisionRecord,
+    signal?: AbortSignal,
+  ): Promise<boolean> {
     const result = await nativeRequest(
       'GET',
       \`/api/conversations/\${encodeURIComponent(record.nativeConversationId)}/confirmations\`,
+      undefined,
+      signal,
     );
     if (!Array.isArray(result)) {
       throw new Error('Native confirmation list returned an invalid response');
@@ -324,8 +336,11 @@ export class LoopbackAionUiApprovalNativeTransport
     return result.some((entry) => pendingIdentity(entry) === record.nativeCallId);
   }
 
-  async deliver(record: AionUiApprovalDecisionRecord): Promise<void> {
-    await nativeRequest('POST', record.nativePath, record.deliveryBody);
+  async deliver(
+    record: AionUiApprovalDecisionRecord,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    await nativeRequest('POST', record.nativePath, record.deliveryBody, signal);
   }
 }
 `,
@@ -820,6 +835,60 @@ describe('Actestra F3 downstream approval service', () => {
       attemptCount: 1,
     });
     expect(transport.deliver).not.toHaveBeenCalled();
+    await persistence.close();
+  });
+
+  it('bounds a native transport and blocks redelivery while it remains in flight', async () => {
+    const persistence = openSqliteCorePersistence(directory());
+    let settleDelivery: (() => void) | undefined;
+    const delivery = new Promise<void>((resolve) => {
+      settleDelivery = resolve;
+    });
+    let observedSignal: AbortSignal | undefined;
+    const transport = {
+      isPending: vi.fn(async () => false),
+      deliver: vi.fn(
+        (_record: AionUiApprovalDecisionRecord, signal: AbortSignal) => {
+          observedSignal = signal;
+          return delivery;
+        },
+      ),
+    };
+    const service = new AionUiApprovalAuthorityService(
+      persistence,
+      transport,
+      clock(),
+      5,
+    );
+    await expect(service.resolve(request())).resolves.toMatchObject({
+      status: 'rejected',
+      httpStatus: 503,
+      body: {
+        code: 'ACTESTRA_APPROVAL_DELIVERY_UNAVAILABLE',
+      },
+    });
+    expect(observedSignal?.aborted).toBe(true);
+    await expect(persistence.summarizeAionUiApprovalAuthority()).resolves.toEqual({
+      recordCount: 1,
+      pendingCount: 1,
+      deliveredCount: 0,
+    });
+    await expect(service.resolve(request())).resolves.toMatchObject({
+      status: 'rejected',
+      httpStatus: 503,
+    });
+    expect(transport.deliver).toHaveBeenCalledTimes(1);
+    expect(transport.isPending).not.toHaveBeenCalled();
+
+    settleDelivery?.();
+    await delivery;
+    await expect(service.resolve(request())).resolves.toMatchObject({
+      status: 'delivered',
+      disposition: 'reconciled',
+      attemptCount: 1,
+    });
+    expect(transport.deliver).toHaveBeenCalledTimes(1);
+    expect(transport.isPending).toHaveBeenCalledTimes(1);
     await persistence.close();
   });
 });

@@ -66,6 +66,13 @@ releases begin.
 
 ### Changed
 
+- Hardened the AionUi-first review boundary with canonical capture-independent
+  shadow revisions, exact workspace counts, explicit terminal-state mapping,
+  durable evidence-tuple checks, normalized validation errors, service-owned
+  abortable approval transport deadlines with in-flight retry guards, packaged
+  CDP denial and an explicit legacy-variable compatibility contract, aligned
+  Windows installer markers, contained materialization paths, bounded IPv4/IPv6
+  loopback CDP evidence capture, and fail-closed macOS ad-hoc signing.
 - Hardened the P2 merge gate with immutable CI action pins, canonical unique
   development staging, deterministic packaged-process cleanup, dynamic-import
   boundary checks, packaged DevTools denial, and environment-specific renderer

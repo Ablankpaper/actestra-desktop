@@ -4,6 +4,7 @@ export const AIONUI_NATIVE_SOURCE_VERSION = "2.1.41" as const;
 const MAX_OBSERVATIONS_PER_RESPONSE = 50;
 const MAX_IDENTIFIER_LENGTH = 256;
 const MAX_WORKSPACE_KEY_LENGTH = 4_096;
+const MAX_WORKSPACE_ENTRY_COUNT = 100_000;
 
 type ConversationStatus = "finished" | "pending" | "running" | "unknown";
 type RuntimeState =
@@ -285,10 +286,11 @@ function runtimeObservation(
     return undefined;
   }
   const runtime = optionalRecord(value.runtime) ?? value;
+  const failureKind = boundedString(runtime.failure_kind);
   const state =
     knownRuntimeState(runtime.state) ??
     knownRuntimeState(runtime.phase) ??
-    (runtime.failure_kind === undefined ? undefined : "failed");
+    (failureKind === undefined ? undefined : "failed");
   if (state === undefined) {
     return undefined;
   }
@@ -297,7 +299,6 @@ function runtimeObservation(
     boundedString(runtime.resource_id) ??
     boundedString(value.turn_id) ??
     conversationId;
-  const failureKind = boundedString(runtime.failure_kind);
   return frozen({
     ...base("runtime", runtimeId, observedAtMs),
     conversationId,
@@ -315,6 +316,18 @@ function responseItems(value: unknown): readonly unknown[] {
     return value.items.slice(0, MAX_OBSERVATIONS_PER_RESPONSE);
   }
   return [];
+}
+
+function workspaceEntryCount(value: unknown): number | undefined {
+  const entries = Array.isArray(value)
+    ? value
+    : isRecord(value) && Array.isArray(value.items)
+      ? value.items
+      : undefined;
+  if (entries === undefined || entries.length > MAX_WORKSPACE_ENTRY_COUNT) {
+    return undefined;
+  }
+  return entries.length;
 }
 
 function decodedPathSegment(value: string): string | undefined {
@@ -400,12 +413,13 @@ export function collectAionUiHttpObservations(input: {
   const workspaceMatch = /^\/api\/conversations\/([^/]+)\/workspace$/u.exec(pathname);
   if (workspaceMatch !== null) {
     const conversationId = decodedPathSegment(workspaceMatch[1]);
-    if (conversationId !== undefined) {
+    const entryCount = workspaceEntryCount(input.response);
+    if (conversationId !== undefined && entryCount !== undefined) {
       add(
         frozen({
           ...base("workspace", conversationId, observedAtMs),
           conversationId,
-          entryCount: responseItems(input.response).length,
+          entryCount,
         }),
       );
     }
@@ -451,9 +465,17 @@ export function collectAionUiWebSocketObservations(input: {
       const rawStatus = payload.status;
       const rawState = payload.state;
       const status =
-        rawState === "error"
+        rawState === "error" ||
+        rawState === "failed" ||
+        rawStatus === "failed" ||
+        rawStatus === "error"
           ? "failed"
-          : rawState === "stopped"
+          : rawState === "stopped" ||
+              rawState === "cancelled" ||
+              rawState === "canceled" ||
+              rawStatus === "cancelled" ||
+              rawStatus === "canceled" ||
+              rawStatus === "stopped"
             ? "cancelled"
             : rawStatus === "pending" || rawStatus === "running"
               ? rawStatus
@@ -582,10 +604,15 @@ function requireString(
 }
 
 function assertOptionalTimestamp(record: Record<string, unknown>, key: string): void {
-  if (record[key] !== undefined && timestampMilliseconds(record[key]) === undefined) {
+  const value = record[key];
+  const milliseconds = nonNegativeInteger(value);
+  if (
+    value !== undefined &&
+    (milliseconds === undefined || (milliseconds > 0 && milliseconds < 10_000_000_000))
+  ) {
     throw new AionUiShadowContractError(
       "invalid-observation",
-      `AionUi observation ${key} must be a non-negative integer timestamp`,
+      `AionUi observation ${key} must be a normalized millisecond timestamp`,
     );
   }
 }
@@ -686,11 +713,11 @@ export function assertAionUiNativeObservation(
     requireString(value, "conversationId");
     if (
       nonNegativeInteger(value.entryCount) === undefined ||
-      (value.entryCount as number) > MAX_OBSERVATIONS_PER_RESPONSE
+      (value.entryCount as number) > MAX_WORKSPACE_ENTRY_COUNT
     ) {
       throw new AionUiShadowContractError(
         "invalid-observation",
-        "AionUi workspace entry count must be between 0 and 50",
+        `AionUi workspace entry count must be between 0 and ${MAX_WORKSPACE_ENTRY_COUNT}`,
       );
     }
     if (value.workspaceKey !== undefined) {

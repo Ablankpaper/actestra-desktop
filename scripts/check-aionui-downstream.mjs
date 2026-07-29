@@ -2,7 +2,10 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { materializeAionUiDownstream } from "./materialize-aionui-downstream.mjs";
+import {
+  materializeAionUiDownstream,
+  resolveContainedPath,
+} from "./materialize-aionui-downstream.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const overlayPath = path.join(repositoryRoot, "downstream", "aionui-v2.1.41", "overlay.json");
@@ -50,10 +53,36 @@ function requireText(filePath, values) {
   }
 }
 
+function requireOrderedText(filePath, anchor, first, second) {
+  const contents = fs.readFileSync(filePath, "utf8");
+  const anchorIndex = contents.indexOf(anchor);
+  const bodyStart = anchorIndex === -1 ? -1 : contents.indexOf("{", anchorIndex + anchor.length);
+  const bodyEnd = bodyStart === -1 ? -1 : contents.indexOf("\n}", bodyStart + 1);
+  const body = bodyStart === -1 || bodyEnd === -1 ? "" : contents.slice(bodyStart + 1, bodyEnd);
+  const firstIndex = body.indexOf(first);
+  const secondIndex = body.indexOf(second);
+  if (
+    anchorIndex === -1 ||
+    bodyStart === -1 ||
+    bodyEnd === -1 ||
+    firstIndex === -1 ||
+    secondIndex === -1 ||
+    firstIndex >= secondIndex
+  ) {
+    throw new Error(
+      `${path.relative(repositoryRoot, filePath)} must place ${first} before ${second}`,
+    );
+  }
+}
+
 function main() {
   const overlay = readJson(overlayPath);
   const provenance = readJson(provenancePath);
-  const sourceRoot = path.join(repositoryRoot, provenance.sourceRoot);
+  const sourceRoot = resolveContainedPath(
+    repositoryRoot,
+    provenance.sourceRoot,
+    "AionUi provenance source root",
+  );
   const { outputRoot } = materializeAionUiDownstream({
     linkLocalDependencies: true,
   });
@@ -68,6 +97,7 @@ function main() {
   }
 
   for (const patch of overlay.patches) {
+    resolveContainedPath(path.dirname(overlayPath), patch.path, "AionUi downstream patch metadata");
     if (
       !Array.isArray(patch.classification) ||
       patch.classification.length === 0 ||
@@ -110,8 +140,12 @@ function main() {
   }
 
   for (const filePath of overlay.invariantFiles) {
-    const sourceHash = sha256(fs.readFileSync(path.join(sourceRoot, filePath)));
-    const outputHash = sha256(fs.readFileSync(path.join(outputRoot, filePath)));
+    const sourceHash = sha256(
+      fs.readFileSync(resolveContainedPath(sourceRoot, filePath, "AionUi invariant source file")),
+    );
+    const outputHash = sha256(
+      fs.readFileSync(resolveContainedPath(outputRoot, filePath, "AionUi invariant output file")),
+    );
     if (sourceHash !== outputHash) {
       throw new Error(`R0 invariant file changed: ${filePath}`);
     }
@@ -129,12 +163,43 @@ function main() {
       throw new Error(`Invalid Actestra source-copy contract: ${JSON.stringify(sourceCopy)}`);
     }
     sourceCopyDestinations.add(sourceCopy.destination);
-    const sourceHash = sha256(fs.readFileSync(path.join(repositoryRoot, sourceCopy.source)));
-    const outputHash = sha256(fs.readFileSync(path.join(outputRoot, sourceCopy.destination)));
+    const sourceHash = sha256(
+      fs.readFileSync(
+        resolveContainedPath(repositoryRoot, sourceCopy.source, "Actestra source-copy source"),
+      ),
+    );
+    const outputHash = sha256(
+      fs.readFileSync(
+        resolveContainedPath(
+          outputRoot,
+          sourceCopy.destination,
+          "Actestra source-copy destination",
+        ),
+      ),
+    );
     if (sourceHash !== outputHash) {
       throw new Error(
         `Actestra source copy drifted from its reviewed source: ${sourceCopy.destination}`,
       );
+    }
+  }
+
+  for (const assetCopy of overlay.assetCopies) {
+    const sourcePath = resolveContainedPath(
+      repositoryRoot,
+      assetCopy.source,
+      "Actestra asset-copy source",
+    );
+    const destinationPath = resolveContainedPath(
+      outputRoot,
+      assetCopy.destination,
+      "Actestra asset-copy destination",
+    );
+    if (
+      sha256(fs.readFileSync(sourcePath)) !== assetCopy.sha256 ||
+      sha256(fs.readFileSync(destinationPath)) !== assetCopy.sha256
+    ) {
+      throw new Error(`Actestra asset copy drifted: ${assetCopy.destination}`);
     }
   }
 
@@ -151,6 +216,7 @@ function main() {
     "appId: com.bignormal.actestra",
     "productName: Actestra",
     "executableName: Actestra",
+    "Portions Copyright © 2024 AionUi contributors.",
     "- actestra",
   ]);
   requireText(path.join(outputRoot, "packages/desktop/src/common/config/actestraProduct.ts"), [
@@ -162,6 +228,8 @@ function main() {
     "feedback: false",
     "upstreamOfficialServices: false",
     "publicListeners: false",
+    "return environment.ACTESTRA_CDP_PORT ?? environment.AIONUI_CDP_PORT",
+    "if (input.packaged)",
   ]);
   requireText(path.join(outputRoot, "packages/desktop/src/renderer/components/layout/Layout.tsx"), [
     ">Actestra<",
@@ -209,6 +277,21 @@ function main() {
     "resolveActestraApprovalDecisionFromMain",
     "native fallback failed",
   ]);
+  requireText(path.join(outputRoot, "resources/windows/installer-process-control.nsh"), [
+    "Actestra\\profiles\\v1\\default",
+    "installer-last-failure.json",
+  ]);
+  requireText(path.join(outputRoot, "scripts/afterSign.js"), [
+    "execFileSync('xattr', ['-cr', appPath]",
+    "['--force', '--deep', '--sign', '-', appPath]",
+    "throw adHocError",
+  ]);
+  requireOrderedText(
+    path.join(outputRoot, "packages/desktop/src/process/utils/configureChromium.ts"),
+    "function shouldEnableCdp",
+    "packaged: app.isPackaged",
+    "environment: process.env",
+  );
   requireText(
     path.join(outputRoot, "packages/desktop/src/actestra/main/persistence/sqliteMigrations.ts"),
     [

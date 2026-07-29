@@ -364,6 +364,36 @@ function parseStoredAionUiShadowEvidence(row: SqliteRow): StoredAionUiShadowEvid
   });
 }
 
+const AIONUI_CAPTURE_TIME_FIELDS = new Set([
+  "capturedAt",
+  "createdAt",
+  "occurredAt",
+  "requestedAt",
+  "resolvedAt",
+  "updatedAt",
+]);
+
+function withoutAionUiCaptureTimes(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(withoutAionUiCaptureTimes);
+  }
+  if (typeof value !== "object" || value === null) {
+    return value;
+  }
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => !AIONUI_CAPTURE_TIME_FIELDS.has(key))
+      .map(([key, child]) => [key, withoutAionUiCaptureTimes(child)]),
+  );
+}
+
+function isSameAionUiShadowRevision(
+  left: AionUiShadowEvidence,
+  right: AionUiShadowEvidence,
+): boolean {
+  return isDeepStrictEqual(withoutAionUiCaptureTimes(left), withoutAionUiCaptureTimes(right));
+}
+
 function parseStoredAionUiApprovalDecision(row: SqliteRow): AionUiApprovalDecisionRecord {
   const encoded = requiredString(row, "record_json");
   let value: unknown;
@@ -1206,7 +1236,7 @@ class SqliteCorePersistence implements ActestraPersistencePort {
         .get(stableEvidence.evidenceId) as SqliteRow | undefined;
       if (existingRow !== undefined) {
         const existing = parseStoredAionUiShadowEvidence(existingRow);
-        if (isDeepStrictEqual(existing.evidence, stableEvidence)) {
+        if (isSameAionUiShadowRevision(existing.evidence, stableEvidence)) {
           database.exec("COMMIT");
           return {
             status: "duplicate",
@@ -1216,6 +1246,27 @@ class SqliteCorePersistence implements ActestraPersistencePort {
         throw new PersistenceError(
           "evidence-conflict",
           "AionUi shadow evidence identifier conflicts with durable evidence",
+        );
+      }
+
+      const conflictingRevisionRow = database
+        .prepare(
+          `SELECT ${AIONUI_SHADOW_EVIDENCE_COLUMNS}
+           FROM aionui_shadow_evidence
+           WHERE domain = ?
+             AND native_identity_hash = ?
+             AND native_revision_hash = ?`,
+        )
+        .get(
+          stableEvidence.domain,
+          stableEvidence.nativeIdentityHash,
+          stableEvidence.nativeRevisionHash,
+        ) as SqliteRow | undefined;
+      if (conflictingRevisionRow !== undefined) {
+        parseStoredAionUiShadowEvidence(conflictingRevisionRow);
+        throw new PersistenceError(
+          "evidence-conflict",
+          "AionUi shadow native revision conflicts with a durable identifier",
         );
       }
 

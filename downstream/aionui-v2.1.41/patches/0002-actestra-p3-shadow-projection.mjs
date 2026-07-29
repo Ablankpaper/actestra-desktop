@@ -439,6 +439,71 @@ describe('Actestra F2 AionUi shadow projection', () => {
       [2, 'task.completed'],
     ]);
   });
+
+  it('keeps complete workspace counts and explicit terminal states', () => {
+    const [workspace] = collectAionUiHttpObservations({
+      method: 'GET',
+      path: '/api/conversations/conversation-1/workspace',
+      observedAtMs: OBSERVED_AT,
+      response: Array.from({ length: 75 }, (_, index) => ({
+        name: \`private-\${index}.txt\`,
+      })),
+    });
+    const [failed] = collectAionUiWebSocketObservations({
+      eventName: 'turn.completed',
+      observedAtMs: OBSERVED_AT,
+      payload: {
+        session_id: 'conversation-1',
+        turn_id: 'turn-failed',
+        status: 'failed',
+        state: 'unknown',
+      },
+    });
+    const [cancelledState] = collectAionUiWebSocketObservations({
+      eventName: 'turn.completed',
+      observedAtMs: OBSERVED_AT,
+      payload: {
+        session_id: 'conversation-1',
+        turn_id: 'turn-cancelled-state',
+        state: 'cancelled',
+      },
+    });
+    expect(workspace).toMatchObject({ kind: 'workspace', entryCount: 75 });
+    expect(failed).toMatchObject({ kind: 'task', status: 'failed' });
+    expect(cancelledState).toMatchObject({ kind: 'task', status: 'cancelled' });
+    expect(
+      collectAionUiHttpObservations({
+        method: 'GET',
+        path: '/api/conversations/conversation-1/active-lease',
+        observedAtMs: OBSERVED_AT,
+        response: { runtime: { failure_kind: '' } },
+      }),
+    ).toEqual([]);
+  });
+
+  it('uses capture-independent canonical revisions for unchanged metadata', () => {
+    const first = projectAionUiObservation({
+      contractVersion: 1,
+      kind: 'provider',
+      nativeId: 'provider-1',
+      observedAtMs: OBSERVED_AT,
+      providerId: 'provider-1',
+      available: true,
+      platform: 'openai',
+    });
+    const replayed = projectAionUiObservation({
+      platform: 'openai',
+      available: true,
+      providerId: 'provider-1',
+      observedAtMs: OBSERVED_AT + 10_000,
+      nativeId: 'provider-1',
+      kind: 'provider',
+      contractVersion: 1,
+    });
+    expect(replayed.evidenceId).toBe(first.evidenceId);
+    expect(replayed.nativeRevisionHash).toBe(first.nativeRevisionHash);
+    expect(replayed.capturedAt).not.toBe(first.capturedAt);
+  });
 });
 `,
 );
@@ -602,7 +667,10 @@ describe('Actestra F2 downstream shadow persistence', () => {
       status: 'appended',
       sequence: 1,
     });
-    await expect(firstService.observe(observation)).resolves.toMatchObject({
+    await expect(firstService.observe({
+      ...observation,
+      observedAtMs: observation.observedAtMs + 10_000,
+    })).resolves.toMatchObject({
       status: 'duplicate',
       sequence: 1,
     });
