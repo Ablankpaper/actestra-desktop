@@ -216,7 +216,8 @@ describe("AionUi F3.3 approval reconciliation policy gate", () => {
   });
 
   it("rejects an invalid native read result after durable failure evidence", async () => {
-    const persistence = openSqliteCorePersistence(createTestDirectory());
+    const userDataPath = createTestDirectory();
+    const persistence = openSqliteCorePersistence(userDataPath);
     const native = transport({
       isPending: vi.fn(async () => "pending" as unknown as boolean),
     });
@@ -238,6 +239,18 @@ describe("AionUi F3.3 approval reconciliation policy gate", () => {
       lastSequence: 3,
     });
     await persistence.close();
+
+    const rows = auditRows(userDataPath);
+    expect(rows.map(({ event_type }) => event_type)).toEqual([
+      "policy.evaluated",
+      "tool.started",
+      "tool.failed",
+    ]);
+    const encodedAudit = rows.map(({ record_json }) => record_json).join("\n");
+    expect(encodedAudit).not.toContain("private-conversation");
+    expect(encodedAudit).not.toContain("private-call");
+    expect(encodedAudit).not.toContain("private-message");
+    expect(encodedAudit).not.toContain("proceed_once");
   });
 
   it("rejects reconciliation before a delivery attempt without native access or audit", async () => {
