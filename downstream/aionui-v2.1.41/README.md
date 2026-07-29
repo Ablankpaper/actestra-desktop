@@ -41,6 +41,15 @@ Actestra development commands materialize a generated working tree under
 - `ACTESTRA_APPROVAL_AUTHORITY=0` is the explicit F3.1 rollback switch. It
   restores the retained native confirmation path without deleting version 5
   authority rows or modifying the frozen source.
+- F3.2 gates only delivery of the persisted response through an exact loopback
+  capability. F3.3 separately gates the bounded pending-state read used before
+  a retry and during restart recovery. Neither path interprets or authorizes
+  the underlying native tool.
+- `ACTESTRA_APPROVAL_RECONCILIATION_GATE=0` bypasses only the F3.3
+  `isPending` wrapper, returning that read to F3.1 direct native
+  reconciliation while retaining F3.2 delivery.
+  `ACTESTRA_APPROVAL_POLICY_GATE=0` retains the broader F3.1 rollback, so
+  reconciliation does not remain enabled without the F3.2 delivery gate.
 - Actestra-owned P3 source files are copied into the generated tree through the
   declared `sourceCopies` contract and must remain byte-identical to their
   reviewed root sources.

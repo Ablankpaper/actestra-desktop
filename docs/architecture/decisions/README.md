@@ -26,6 +26,7 @@ components or phases.
 | [0011](0011-aionui-shadow-projection.md) | Accepted | Observe native AionUi metadata through an inert, main-owned P3 shadow projection |
 | [0012](0012-aionui-approval-decision-authority.md) | Accepted | Persist desktop AionUi confirmation decisions before native delivery and reconcile ambiguous outcomes |
 | [0013](0013-aionui-approval-delivery-policy-gate.md) | Accepted | Gate persisted AionUi response delivery through one exact P3 policy, capability, and durable audit path |
+| [0014](0014-aionui-approval-reconciliation-policy-gate.md) | Accepted | Gate the bounded native pending-state read used by retry and restart reconciliation |
 
 ## Creating an ADR
 

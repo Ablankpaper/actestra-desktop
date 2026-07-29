@@ -8,7 +8,11 @@ Base: `61b9405fc007aa8cb16ec05a65f421cb7d277b51`
 
 Implementation: `20e3c0fcada0d072fc35820d43b85c953bf93929`
 
-Draft PR: [7](https://github.com/bignormal/actestra-desktop/pull/7)
+Pull request: [7](https://github.com/bignormal/actestra-desktop/pull/7)
+
+Final PR head: `df821ca203bea7b611fa8fb8092d00a16cabe578`
+
+Squash merge: `ce19dbe072328e16dcdaf116b8199d5502cb44c6`
 
 ## Outcome
 
@@ -81,6 +85,10 @@ execution.
 The native pending-list query remains a bounded ambiguity-reconciliation read;
 it is not claimed as a migrated tool or approval domain.
 
+F3.3 later places that read behind its own capability, policy, and audit while
+preserving this F3.2 delivery contract. See
+[AionUi F3.3 Approval Reconciliation Policy Gate](AIONUI_F3_APPROVAL_RECONCILIATION_GATE.md).
+
 ## Migration and rollback
 
 No schema version is added. F3.2 reuses schema version 5 decisions and schema
@@ -115,8 +123,8 @@ Local validation:
 
 ## Remote evidence
 
-Implementation `20e3c0fcada0d072fc35820d43b85c953bf93929` is pushed to
-Draft PR 7. Exact implementation
+Implementation `20e3c0fcada0d072fc35820d43b85c953bf93929` was pushed to
+PR 7. Exact implementation
 [CI run 30437387097](https://github.com/bignormal/actestra-desktop/actions/runs/30437387097)
 passes root source, test, type, boundary and build gates; documentation links;
 materialized strict types and Actestra identity/isolation tests; native
@@ -125,12 +133,19 @@ boundary; and clean-profile smoke.
 
 The local CodeRabbit review raised three valid documentation issues. All were
 fixed, and the follow-up completed with zero issues across all 23 changed
-files. The GitHub CodeRabbit status explicitly says
-`Review skipped: draft pull request`, so that remote status is not review
-evidence.
+files. Final PR head `df821ca203bea7b611fa8fb8092d00a16cabe578`
+passed
+[CI run 30437723459](https://github.com/bignormal/actestra-desktop/actions/runs/30437723459).
+The Ready-triggered GitHub CodeRabbit run selected all 23 files and completed
+successfully under the Free-plan walkthrough, with no submitted review or
+inline comment; it is not represented as an independent approval.
 
-Owner review, Ready transition, merge, signed candidate, and live F3.2 desktop
-evidence remain separate gates.
+PR 7 squash merged the exact final head as
+`ce19dbe072328e16dcdaf116b8199d5502cb44c6`.
+[Main CI run 30442166290](https://github.com/bignormal/actestra-desktop/actions/runs/30442166290)
+passes on that exact merge, including the root, documentation, materialized
+AionUi, unsigned bundle, package-boundary, and clean-profile smoke gates.
+Signed candidate and live F3.2 desktop evidence remain separate.
 
 ## Non-claims
 

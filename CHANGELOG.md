@@ -68,6 +68,12 @@ releases begin.
   outcome audit ordering, private compatibility-scoped correlation hashes,
   native structured-error preservation, uncertain-outcome reconciliation, and
   explicit F3.1 rollback without inferring the underlying native tool.
+- ADR-0014 and F3.3 policy-gated approval reconciliation: one exact loopback
+  pending-state read capability and allow rule, boolean-only in-memory result,
+  concurrent-read coalescing, durable policy/start/outcome audit, fail-closed
+  retry and restart behavior, and an explicit rollback of the read to F3.1
+  while retaining F3.2 delivery, without persisting native confirmation
+  content.
 
 ### Changed
 

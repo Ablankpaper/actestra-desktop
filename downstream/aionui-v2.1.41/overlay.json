@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "phase": "F3.2",
+  "phase": "F3.3",
   "upstream": {
     "tag": "v2.1.41",
     "commit": "2d8925fc67a97a20996fadcd2a0862b778b572ba",
@@ -9,8 +9,8 @@
   "authorityOwner": "Actestra desktop main process",
   "classifications": ["R0", "R1", "R2"],
   "migration": {
-    "strategy": "Fresh Actestra profile v1; native AionUi profiles remain untouched. Schema v5 retains the authoritative approval-decision outbox. F3.2 reuses the accepted schema v3 privileged audit store and gates only delivery of an already persisted response through one exact loopback network.request capability; it does not migrate or infer the underlying native tool operation.",
-    "rollback": "Set ACTESTRA_APPROVAL_POLICY_GATE=0 to retain F3.1 persistence with direct native delivery, set ACTESTRA_APPROVAL_AUTHORITY=0 for the explicit native fallback, or regenerate without the F3.2 patch. Existing schema v5 decisions and privileged audit rows remain inert and the frozen AionUi foundation stays byte-identical."
+    "strategy": "Fresh Actestra profile v1; native AionUi profiles remain untouched. Schema v5 retains the authoritative approval-decision outbox. F3.2 gates delivery of an already persisted response, and F3.3 separately gates only the bounded loopback pending-state read used for retry and restart reconciliation. Both reuse the accepted schema v3 metadata-only privileged audit store and neither migrates or infers the underlying native tool operation.",
+    "rollback": "Set ACTESTRA_APPROVAL_RECONCILIATION_GATE=0 to bypass only the F3.3 isPending wrapper, returning that read to F3.1 direct native reconciliation while retaining F3.2 delivery. Set ACTESTRA_APPROVAL_POLICY_GATE=0 to retain F3.1 persistence with direct native delivery and reconciliation reads, set ACTESTRA_APPROVAL_AUTHORITY=0 for the explicit native fallback, or regenerate without the corresponding patch. Existing schema v5 decisions and privileged audit rows remain inert and the frozen AionUi foundation stays byte-identical."
   },
   "uiContract": {
     "layoutChangesAllowed": false,
@@ -71,6 +71,17 @@
       ],
       "authorityOwner": "Actestra desktop main process",
       "rollback": "Set ACTESTRA_APPROVAL_POLICY_GATE=0 or regenerate without this patch. F3.1 persist-before-deliver remains available; existing audit rows remain immutable."
+    },
+    {
+      "path": "patches/0005-actestra-approval-reconciliation-policy-gate.mjs",
+      "classification": ["R1"],
+      "domains": [
+        "approval retry reconciliation policy",
+        "approval restart reconciliation audit",
+        "loopback native pending-state read capability"
+      ],
+      "authorityOwner": "Actestra desktop main process",
+      "rollback": "Set ACTESTRA_APPROVAL_RECONCILIATION_GATE=0 to return only the isPending read to F3.1 direct native reconciliation while retaining the exact F3.2 policy-gated delivery path, or regenerate without this patch. Existing audit rows remain immutable."
     }
   ],
   "sourceCopies": [
@@ -125,6 +136,10 @@
     {
       "source": "apps/desktop/src/main/compatibility/aionuiApprovalPolicyGate.ts",
       "destination": "packages/desktop/src/actestra/main/compatibility/aionuiApprovalPolicyGate.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/compatibility/aionuiApprovalReconciliationPolicyGate.ts",
+      "destination": "packages/desktop/src/actestra/main/compatibility/aionuiApprovalReconciliationPolicyGate.ts"
     },
     {
       "source": "apps/desktop/src/main/compatibility/aionuiShadowProjectionService.ts",
@@ -218,6 +233,7 @@
     "packages/desktop/src/actestra/core/privilegedServices.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiApprovalAuthorityService.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiApprovalPolicyGate.ts",
+    "packages/desktop/src/actestra/main/compatibility/aionuiApprovalReconciliationPolicyGate.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiShadowProjectionService.ts",
     "packages/desktop/src/actestra/main/persistence/sqliteCorePersistence.ts",
     "packages/desktop/src/actestra/main/persistence/sqliteMigrations.ts",
@@ -287,6 +303,7 @@
     "tests/unit/actestra/approvalAuthorityClient.dom.test.ts",
     "tests/unit/actestra/approvalAuthorityPersistence.test.ts",
     "tests/unit/actestra/approvalPolicyGate.test.ts",
+    "tests/unit/actestra/approvalReconciliationPolicyGate.test.ts",
     "tests/unit/actestra/approvalAuthorityService.test.ts",
     "tests/unit/actestra/approvalNativeTransport.test.ts",
     "tests/unit/actestra/externalEffectIsolation.test.ts",

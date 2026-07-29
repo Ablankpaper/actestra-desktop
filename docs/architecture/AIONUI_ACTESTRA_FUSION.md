@@ -185,6 +185,16 @@ and
 not infer the native tool action, create a second approval, or move pending
 request and protected-operation authority out of AionCore.
 
+Current third slice: F3.3 routes only the bounded pending-state read used by
+F3.1 retry and restart reconciliation through its own exact P3 capability,
+policy rule, and durable audit sequence. The loopback transport reduces the
+native list to an in-memory boolean; list content, request creation, provider
+semantics, and the underlying protected operation remain native-owned. F3.3
+wraps F3.2 without changing delivery semantics or the preserved AionUi UI. See
+[AionUi F3.3 Approval Reconciliation Policy Gate](../product/AIONUI_F3_APPROVAL_RECONCILIATION_GATE.md)
+and
+[ADR-0014](decisions/0014-aionui-approval-reconciliation-policy-gate.md).
+
 ### F4 — Goose inside the preserved agent experience
 
 - Pin and supervise Goose behind `AgentAdapter`.
