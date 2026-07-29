@@ -18,6 +18,14 @@ const forbiddenProductPatterns = [
   { label: "unapproved telemetry client", pattern: /\bsentry\b/i },
 ];
 
+const aionUiCompatibilityIdentityFiles = new Set([
+  "apps/desktop/src/compatibility/aionui/nativeObservations.ts",
+  "apps/desktop/src/compatibility/aionui/shadowProjection.ts",
+  "apps/desktop/src/main/compatibility/aionuiShadowProjectionService.ts",
+  "apps/desktop/src/main/persistence/sqliteCorePersistence.ts",
+  "apps/desktop/src/main/persistence/sqliteMigrations.ts",
+]);
+
 function listFiles(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const resolvedPath = path.join(directory, entry.name);
@@ -35,8 +43,12 @@ function reportPatternMatches(files, rules) {
   for (const filePath of files) {
     const content = fs.readFileSync(filePath, "utf8");
     for (const rule of rules) {
-      if (rule.pattern.test(content)) {
-        findings.push(`${relativePath(filePath)}: ${rule.label}`);
+      const repositoryPath = relativePath(filePath);
+      const isDeclaredAionUiCompatibilityReference =
+        rule.label === "AionUi product identity" &&
+        aionUiCompatibilityIdentityFiles.has(repositoryPath);
+      if (rule.pattern.test(content) && !isDeclaredAionUiCompatibilityReference) {
+        findings.push(`${repositoryPath}: ${rule.label}`);
       }
     }
   }

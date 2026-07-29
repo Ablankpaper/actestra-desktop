@@ -140,6 +140,14 @@ unapproved upstream account, endpoint, update, or telemetry effect.
 Exit: representative native journeys create valid P3 shadow evidence, but no
 domain is falsely described as Actestra-authoritative.
 
+Current implementation: the seven-domain contract, fixed observation bridge,
+main-owned projection, SQLite schema version 4 evidence, restart behavior,
+redaction, failure isolation, and real native conversation read are locally
+validated. See
+[AionUi F2 Shadow Projection](../product/AIONUI_F2_SHADOW_PROJECTION.md) and
+[ADR-0011](decisions/0011-aionui-shadow-projection.md). F2 does not write
+authoritative P3 domain or event tables.
+
 ### F3 — Actestra authority by functional domain
 
 - Move conversation/task/session persistence, workspace grants, protected
@@ -220,7 +228,7 @@ It classifies all 27 routes as R0 and every one of the 41 bridge domains exactly
 once as R1 or R2. At F0 it explicitly permits no user-interface change and
 claims no Actestra-authoritative bridge domain.
 
-## Non-claims at F0
+## Non-claims of the native snapshot alone
 
 The native snapshot and its running application prove that the chosen AionUi
 UI and original functions are present and reproducible. They do not yet prove:

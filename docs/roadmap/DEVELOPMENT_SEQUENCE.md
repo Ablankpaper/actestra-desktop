@@ -29,11 +29,13 @@ features are implemented.
 | P7 | Security and reliability hardening | P4-P6 |
 | P8 | Cross-platform internal beta | P7 |
 
-Current execution state on 2026-07-29: P4.0/F0 and the P4.1/F1 identity and
-isolation implementation are pushed and exact-implementation CI-backed on
-Draft pull request 6. Full native regression, launch, visual, and runtime
-socket evidence also pass locally. P4.2/F2 compatibility projection is the
-next development slice; merge and release states remain separate.
+Current execution state on 2026-07-29: P4.0/F0 and P4.1/F1 are pushed and
+exact-implementation CI-backed on Draft pull request 6. P4.2/F2 is implemented
+and locally validated: seven bounded native metadata domains project into
+separate SQLite schema version 4 shadow evidence without changing native UI or
+authoritative P3 tables. Its commit, push, and exact-head CI remain pending.
+P4.3/F3 domain authority is the next product slice only after F2 evidence is
+recorded; merge and release states remain separate.
 
 ## P0 — Project Foundation
 
@@ -119,7 +121,8 @@ next development slice; merge and release states remain separate.
   unowned external effects while retaining their UI states.
 - **P4.2 — compatibility projection:** map native conversation, task, provider,
   workspace, approval, artifact, and runtime shapes to read-only or
-  metadata-only P3 shadow projections.
+  metadata-only P3 shadow projections. ADR-0011 keeps those projections inert,
+  main-owned, fail-isolated, and separate from authoritative P3 tables.
 - **P4.3 — authoritative general work:** move one functional domain at a time to
   Actestra persistence, policy, approval, audit, artifact, and worker authority
   while keeping AionUi bridge and UI semantics.

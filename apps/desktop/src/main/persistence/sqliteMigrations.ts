@@ -3,7 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { PersistenceError } from "../../core";
 
 export const ACTESTRA_SQLITE_APPLICATION_ID = 1_095_980_114;
-export const CURRENT_CORE_SCHEMA_VERSION = 3;
+export const CURRENT_CORE_SCHEMA_VERSION = 4;
 
 export interface SqliteMigration {
   readonly version: number;
@@ -171,6 +171,37 @@ export const CORE_SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
         redaction TEXT NOT NULL CHECK (redaction = 'metadata'),
         evidence_json TEXT NOT NULL
       ) STRICT;
+    `,
+  },
+  {
+    version: 4,
+    name: "aionui-shadow-evidence",
+    sql: `
+      CREATE TABLE aionui_shadow_evidence (
+        sequence INTEGER PRIMARY KEY CHECK (sequence > 0),
+        evidence_id TEXT NOT NULL UNIQUE,
+        captured_at TEXT NOT NULL,
+        source TEXT NOT NULL CHECK (source = 'aionui-v2.1.41'),
+        domain TEXT NOT NULL CHECK (
+          domain IN (
+            'conversation',
+            'task',
+            'provider',
+            'workspace',
+            'approval',
+            'artifact',
+            'runtime'
+          )
+        ),
+        native_identity_hash TEXT NOT NULL,
+        native_revision_hash TEXT NOT NULL,
+        redaction TEXT NOT NULL CHECK (redaction = 'metadata-only'),
+        evidence_json TEXT NOT NULL,
+        UNIQUE (domain, native_identity_hash, native_revision_hash)
+      ) STRICT;
+
+      CREATE INDEX aionui_shadow_domain_sequence_idx
+        ON aionui_shadow_evidence(domain, sequence);
     `,
   },
 ] as const;

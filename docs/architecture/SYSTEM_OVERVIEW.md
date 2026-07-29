@@ -1,7 +1,7 @@
 # System Overview
 
-Status: P3 accepted on `main`; P4.0 native AionUi preservation active on
-`feat/aionui-first-foundation`
+Status: P3 accepted on `main`; P4.0/F0 and P4.1/F1 CI-backed, with P4.2/F2
+locally validated on `feat/aionui-first-foundation`
 
 ## Context
 
@@ -57,9 +57,10 @@ harness. That shell is not the target product UI.
 
 P4.0 adds a separate exact, frozen AionUi `v2.1.41` native source foundation.
 It preserves 1,766 runnable desktop files, 27 routes, 41 bridge domains, and
-the complete native functional UI. It installs, builds, and launches locally in an isolated
-profile. At F0 it is not yet fused to the P3 services, does not carry Actestra
-identity, and is not a candidate.
+the complete native functional UI. P4.1 applies Actestra identity, a versioned
+private profile, and isolated external-effect providers as a reviewable
+downstream overlay. It does not edit the frozen source or remove original
+functional entries.
 
 P3.1 and P3.2 add a runtime-neutral core domain, lifecycle validation, and
 version 1 event stream contract. P3.3 adds a storage-neutral port plus a
@@ -77,6 +78,15 @@ metadata, platform snapshot, and renderer-ready intents. There is no production
 policy snapshot, credential backend, input-reference store, real tool executor,
 MCP transport, process transport, or real worker adapter behind any component
 shown above.
+
+P4.2 adds the separate compatibility boundary accepted in
+[ADR-0011](decisions/0011-aionui-shadow-projection.md). Successful native HTTP
+responses and declared WebSocket events may publish seven strict metadata
+observation shapes through one fixed preload operation. Main hashes native
+identity, validates a P3 graph and optional task event stream, and appends
+SQLite schema version 4 shadow evidence. It does not insert shadow records into
+the authoritative P3 domain or core-event tables. Native AionUi continues to
+own user-visible state, and projection failure cannot alter the native result.
 
 The SQLite adapter owns `state/actestra.sqlite3` beneath Actestra user data,
 uses one DELETE/FULL connection, and rejects foreign ownership, future schemas,
@@ -105,6 +115,12 @@ migration:
 
 The detailed non-regression scope is the
 [AionUi Retention Matrix](../upstream/AIONUI_RETENTION_MATRIX.md).
+
+The F2 shadow state is deliberately not shown as a second authority in the
+component view. It is compatibility evidence only, has no renderer read path,
+and cannot drive policy, approval, tool, worker, migration, or UI decisions.
+Its implementation and live proof are recorded in
+[AionUi F2 Shadow Projection](../product/AIONUI_F2_SHADOW_PROJECTION.md).
 
 ## Authority boundaries
 
@@ -252,6 +268,8 @@ Initial event types:
 | Data | System of record |
 | --- | --- |
 | Product settings and migrations | Actestra |
+| Native conversation, task, provider, workspace, approval, artifact, and runtime state during F2 | Native AionUi |
+| F2 compatibility shadow evidence | Actestra SQLite, inert and non-authoritative |
 | Workspace grants | Actestra |
 | Tasks and dependency graph | Actestra |
 | User approval evidence | Actestra |
@@ -301,11 +319,12 @@ P2 pins Node.js 24.13.0, Bun 1.3.9, Electron 37.10.3, React 19.2.4, and data
 layout version 1 for the legacy harness. The native AionUi foundation retains
 its exact locked dependency graph until a reviewed downstream update.
 ADR-0005 selects Electron's embedded `node:sqlite` and an Actestra-owned
-forward migration registry for durable storage. P4 and later work still must
-decide the compatibility transport, authoritative domain migration order,
-worker sandbox mechanisms, real credential storage, input-reference storage,
-production policy, and utility-process hosting. Signing, notarization, update
-delivery, and cross-platform candidate packaging remain P8 work.
+forward migration registry for durable storage. ADR-0011 selects the bounded
+F2 observation transport and inert shadow storage. P4 and later work still must
+decide the authoritative domain migration order, worker sandbox mechanisms,
+real credential storage, input-reference storage, production policy, and
+utility-process hosting. Signing, notarization, update delivery, and
+cross-platform candidate packaging remain P8 work.
 
 This document fixes authority and lifecycle boundaries; a pinned shell
 dependency does not pre-decide worker or persistence architecture.

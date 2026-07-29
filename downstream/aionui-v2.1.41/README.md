@@ -22,6 +22,12 @@ Actestra development commands materialize a generated working tree under
   the user flow.
 - R2 patches retain the entry and return an explicit isolation reason instead
   of performing an unowned external effect.
+- F2 compatibility observers are metadata-only and fail-isolated. Native
+  AionUi responses, routes, state, and UI remain authoritative; shadow evidence
+  cannot drive user-visible decisions.
+- Actestra-owned P3 source files are copied into the generated tree through the
+  declared `sourceCopies` contract and must remain byte-identical to their
+  reviewed root sources.
 - Binary product assets are copied from Actestra-owned source assets with
   recorded SHA-256 values.
 

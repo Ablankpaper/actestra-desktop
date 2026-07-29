@@ -3,6 +3,14 @@ import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { DatabaseSync } from "node:sqlite";
 import {
+  assertAionUiShadowEvidence,
+  type AionUiShadowEvidence,
+  type AionUiShadowPersistencePort,
+  type AionUiShadowEvidenceSummary,
+  type AppendAionUiShadowEvidenceResult,
+  type StoredAionUiShadowEvidence,
+} from "../../compatibility/aionui";
+import {
   CoreContractError,
   PersistenceError,
   advanceCoreEventStreamState,
@@ -62,6 +70,10 @@ const PRIVILEGED_AUDIT_COLUMNS = `
 const AGENT_ATTEMPT_EVIDENCE_COLUMNS = `
   sequence, session_id, workspace_id, task_id, worker_id, stream_id, state,
   last_core_event_sequence, incident_code, redaction, evidence_json
+`;
+const AIONUI_SHADOW_EVIDENCE_COLUMNS = `
+  sequence, evidence_id, captured_at, source, domain, native_identity_hash,
+  native_revision_hash, redaction, evidence_json
 `;
 
 type SqliteRow = Record<string, unknown>;
@@ -300,6 +312,45 @@ function parseStoredAgentAttemptEvidence(row: SqliteRow): AgentAttemptEvidence {
   return deepFreeze(value);
 }
 
+function parseStoredAionUiShadowEvidence(row: SqliteRow): StoredAionUiShadowEvidence {
+  const encoded = requiredString(row, "evidence_json");
+  let value: unknown;
+
+  try {
+    value = JSON.parse(encoded);
+    assertAionUiShadowEvidence(value);
+  } catch (error) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted AionUi shadow evidence violates its contract",
+      {
+        cause: error,
+      },
+    );
+  }
+
+  const sequence = requiredNumber(row, "sequence");
+  if (
+    requiredString(row, "evidence_id") !== value.evidenceId ||
+    requiredString(row, "captured_at") !== value.capturedAt ||
+    requiredString(row, "source") !== value.source ||
+    requiredString(row, "domain") !== value.domain ||
+    requiredString(row, "native_identity_hash") !== value.nativeIdentityHash ||
+    requiredString(row, "native_revision_hash") !== value.nativeRevisionHash ||
+    requiredString(row, "redaction") !== value.redaction
+  ) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted AionUi shadow projection does not match its canonical evidence",
+    );
+  }
+
+  return deepFreeze({
+    sequence,
+    evidence: value,
+  });
+}
+
 function verifyNoForeignKeyViolations(database: DatabaseSync): void {
   const violations = database.prepare("PRAGMA foreign_key_check").all();
 
@@ -316,7 +367,7 @@ export function resolveCoreDatabasePath(userDataPath: string): string {
 }
 
 export interface ActestraPersistencePort
-  extends CorePersistencePort, PlatformEvidencePersistencePort {}
+  extends CorePersistencePort, PlatformEvidencePersistencePort, AionUiShadowPersistencePort {}
 
 class SqliteCorePersistence implements ActestraPersistencePort {
   private database: DatabaseSync | null;
@@ -978,6 +1029,146 @@ class SqliteCorePersistence implements ActestraPersistencePort {
         .all(limit),
     );
     return Object.freeze(rows.map(parseStoredAgentAttemptEvidence));
+  }
+
+  async appendAionUiShadowEvidence(
+    evidence: AionUiShadowEvidence,
+  ): Promise<AppendAionUiShadowEvidenceResult> {
+    const database = this.requireDatabase();
+    let encodedEvidence: string;
+    let stableEvidence: AionUiShadowEvidence;
+    try {
+      assertAionUiShadowEvidence(evidence);
+      encodedEvidence = JSON.stringify(evidence);
+      const normalizedEvidence: unknown = JSON.parse(encodedEvidence);
+      assertAionUiShadowEvidence(normalizedEvidence);
+      stableEvidence = deepFreeze(normalizedEvidence);
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "AionUi shadow evidence is invalid", {
+        cause: error,
+      });
+    }
+
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const existingRow = database
+        .prepare(
+          `SELECT ${AIONUI_SHADOW_EVIDENCE_COLUMNS}
+           FROM aionui_shadow_evidence
+           WHERE evidence_id = ?`,
+        )
+        .get(stableEvidence.evidenceId) as SqliteRow | undefined;
+      if (existingRow !== undefined) {
+        const existing = parseStoredAionUiShadowEvidence(existingRow);
+        if (isDeepStrictEqual(existing.evidence, stableEvidence)) {
+          database.exec("COMMIT");
+          return {
+            status: "duplicate",
+            sequence: existing.sequence,
+          };
+        }
+        throw new PersistenceError(
+          "evidence-conflict",
+          "AionUi shadow evidence identifier conflicts with durable evidence",
+        );
+      }
+
+      const summary = database
+        .prepare(
+          `SELECT COUNT(*) AS record_count, COALESCE(MAX(sequence), 0) AS last_sequence
+           FROM aionui_shadow_evidence`,
+        )
+        .get() as SqliteRow;
+      const recordCount = requiredNumber(summary, "record_count");
+      const lastSequence = requiredNumber(summary, "last_sequence");
+      if (recordCount !== lastSequence || lastSequence >= Number.MAX_SAFE_INTEGER) {
+        throw new PersistenceError(
+          "corrupt-database",
+          "AionUi shadow evidence sequence is not gapless",
+        );
+      }
+
+      const sequence = lastSequence + 1;
+      database
+        .prepare(
+          `INSERT INTO aionui_shadow_evidence (
+             sequence, evidence_id, captured_at, source, domain,
+             native_identity_hash, native_revision_hash, redaction, evidence_json
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          sequence,
+          stableEvidence.evidenceId,
+          stableEvidence.capturedAt,
+          stableEvidence.source,
+          stableEvidence.domain,
+          stableEvidence.nativeIdentityHash,
+          stableEvidence.nativeRevisionHash,
+          stableEvidence.redaction,
+          encodedEvidence,
+        );
+      database.exec("COMMIT");
+      return {
+        status: "appended",
+        sequence,
+      };
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) {
+        throw error;
+      }
+      throw new PersistenceError(
+        "corrupt-database",
+        "Actestra could not append AionUi shadow evidence",
+        {
+          cause: error,
+        },
+      );
+    }
+  }
+
+  async listRecentAionUiShadowEvidence(
+    limit: number,
+  ): Promise<readonly StoredAionUiShadowEvidence[]> {
+    const database = this.requireDatabase();
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 50) {
+      throw new PersistenceError(
+        "invalid-record",
+        "AionUi shadow evidence limit must be between 1 and 50",
+      );
+    }
+    const rows = asRows(
+      database
+        .prepare(
+          `SELECT ${AIONUI_SHADOW_EVIDENCE_COLUMNS}
+           FROM aionui_shadow_evidence
+           ORDER BY sequence DESC
+           LIMIT ?`,
+        )
+        .all(limit),
+    );
+    return Object.freeze(rows.map(parseStoredAionUiShadowEvidence));
+  }
+
+  async summarizeAionUiShadowEvidence(): Promise<AionUiShadowEvidenceSummary> {
+    const database = this.requireDatabase();
+    const row = database
+      .prepare(
+        `SELECT COUNT(*) AS record_count, COALESCE(MAX(sequence), 0) AS last_sequence
+         FROM aionui_shadow_evidence`,
+      )
+      .get() as SqliteRow;
+    const summary = Object.freeze({
+      recordCount: requiredNumber(row, "record_count"),
+      lastSequence: requiredNumber(row, "last_sequence"),
+    });
+    if (summary.recordCount !== summary.lastSequence) {
+      throw new PersistenceError(
+        "corrupt-database",
+        "AionUi shadow evidence sequence is not gapless",
+      );
+    }
+    return summary;
   }
 
   async close(): Promise<void> {

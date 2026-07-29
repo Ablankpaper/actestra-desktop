@@ -60,11 +60,11 @@ function main() {
 
   if (
     overlay.schemaVersion !== 1 ||
-    overlay.phase !== "F1" ||
+    overlay.phase !== "F2" ||
     overlay.uiContract.layoutChangesAllowed !== false ||
     overlay.uiContract.featureEntryRemovalAllowed !== false
   ) {
-    throw new Error("Invalid F1 downstream overlay policy");
+    throw new Error("Invalid F2 downstream overlay policy");
   }
 
   for (const patch of overlay.patches) {
@@ -117,6 +117,27 @@ function main() {
     }
   }
 
+  const sourceCopyDestinations = new Set();
+  for (const sourceCopy of overlay.sourceCopies) {
+    if (
+      typeof sourceCopy.source !== "string" ||
+      !sourceCopy.source.startsWith("apps/desktop/src/") ||
+      typeof sourceCopy.destination !== "string" ||
+      !sourceCopy.destination.startsWith("packages/desktop/src/actestra/") ||
+      sourceCopyDestinations.has(sourceCopy.destination)
+    ) {
+      throw new Error(`Invalid Actestra source-copy contract: ${JSON.stringify(sourceCopy)}`);
+    }
+    sourceCopyDestinations.add(sourceCopy.destination);
+    const sourceHash = sha256(fs.readFileSync(path.join(repositoryRoot, sourceCopy.source)));
+    const outputHash = sha256(fs.readFileSync(path.join(outputRoot, sourceCopy.destination)));
+    if (sourceHash !== outputHash) {
+      throw new Error(
+        `Actestra source copy drifted from its reviewed source: ${sourceCopy.destination}`,
+      );
+    }
+  }
+
   const packageJson = readJson(path.join(outputRoot, "package.json"));
   if (
     packageJson.name !== "actestra-desktop" ||
@@ -145,10 +166,31 @@ function main() {
   requireText(path.join(outputRoot, "packages/desktop/src/renderer/components/layout/Layout.tsx"), [
     ">Actestra<",
   ]);
+  requireText(path.join(outputRoot, "packages/desktop/src/common/adapter/httpBridge.ts"), [
+    "publishActestraHttpObservation",
+    "publishActestraWebSocketObservation",
+  ]);
+  requireText(
+    path.join(outputRoot, "packages/desktop/src/common/config/actestraShadowContract.ts"),
+    ["actestra:shadow-observe-v1"],
+  );
+  requireText(
+    path.join(outputRoot, "packages/desktop/src/process/services/actestraShadowBridge.ts"),
+    [
+      "event.senderFrame !== currentWindow.webContents.mainFrame",
+      "openSqliteCorePersistence",
+      "persistence-unavailable",
+    ],
+  );
+  requireText(
+    path.join(outputRoot, "packages/desktop/src/actestra/main/persistence/sqliteMigrations.ts"),
+    ["CURRENT_CORE_SCHEMA_VERSION = 4", "aionui_shadow_evidence", "metadata-only"],
+  );
 
   console.log(
-    `Verified Actestra F1 downstream overlay: ${changedFiles.size} declared files, ` +
-      `${overlay.invariantFiles.length} R0 invariant files, identity/profile/effect policy present.`,
+    `Verified Actestra F2 downstream overlay: ${changedFiles.size} declared files, ` +
+      `${overlay.invariantFiles.length} R0 invariant files, ${overlay.sourceCopies.length} ` +
+      "reviewed source copies, identity/isolation and shadow-projection policies present.",
   );
 }
 

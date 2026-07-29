@@ -4,7 +4,7 @@ Last updated: 2026-07-29
 
 ## Current phase
 
-### P3 accepted; P4.0 and P4.1 implementations CI-backed; PR remains Draft
+### P3 accepted; F0/F1 CI-backed; F2 locally validated; PR remains Draft
 
 Branch `feat/aionui-first-foundation` starts from `origin/main` commit
 `a32b7cb4516f5592e8e1fe6f1f5afad7c50de991` and implements the corrected
@@ -75,13 +75,52 @@ Detailed implementation and non-claim evidence is recorded in
 F1 implementation is CI-backed but remains on a Draft pull request. Merge,
 candidate, release, distribution, and acceptance remain separate gates.
 
-The complete native suite and visual/runtime socket inspection remain local
-evidence. The foundation manifest, downstream overlay, focused contracts,
+Current F2 implementation and local evidence:
+
+- native conversation, task, provider, workspace, approval, artifact, and
+  runtime shapes are collected through strict contract version 1;
+- the existing AionUi HTTP and WebSocket adapter publishes recognized metadata
+  through one fire-and-forget preload operation while returning every native
+  response and event payload unchanged;
+- main validates and hashes native identity, derives valid P3 domain graphs and
+  task event streams, and appends only metadata-only SQLite schema version 4
+  shadow evidence;
+- raw native identifiers, titles, descriptions, prompts, messages, filenames,
+  workspace paths, approval descriptions, artifact payloads, credentials, and
+  arbitrary diagnostics are absent from durable evidence;
+- shadow writes remain separate from authoritative P3 workspace, task, session,
+  worker, approval, artifact, and core-event tables;
+- duplicate evidence is idempotent, sequence remains gapless after restart,
+  canonical-to-index corruption fails closed, and projection or persistence
+  failure returns a bounded rejection without changing native UI state;
+- the downstream checker passes 83 declared changed files, 4 byte-identical R0
+  invariant files, and 13 reviewed root-to-downstream source copies;
+- root focused tests pass 4 files and 18 tests; the complete root check passes
+  27 files and 141 tests; downstream focused tests pass 5 files and 14 tests;
+- the complete native suite passes 326 files with 1 skipped and 2,590 tests
+  with 5 skipped; the native production build passes with 558 main, 6 preload,
+  and 10,162 renderer modules;
+- an isolated real Electron run proves append, restart duplicate, ordered task
+  events, invalid-field rejection, and unchanged Guide UI;
+- one actual native conversation was created and displayed through the existing
+  Guide read path, which automatically appended shadow sequence 3 without
+  persisting its raw identifier, title, or workspace path; the native fixture
+  was then deleted and the isolated profile and workspace moved to Trash.
+
+Detailed implementation, authority, rollback, automated, and live evidence is
+recorded in
+[AionUi F2 Shadow Projection](product/AIONUI_F2_SHADOW_PROJECTION.md) and
+[ADR-0011](architecture/decisions/0011-aionui-shadow-projection.md). F2 is
+currently local working-tree evidence. Commit, push, and exact-head CI remain
+pending.
+
+The full native suite, F2 live projection, and visual/runtime socket inspection
+remain local evidence. F0/F1 foundation, downstream overlay, focused contracts,
 native production build, unsigned package boundary, and clean-profile smoke
-are CI-backed on the exact implementation plus resource-only remediation.
-PR 6 remains Draft and is not merge, candidate, release, distribution, or
-acceptance evidence. CodeRabbit returned a successful status but explicitly
-skipped review because the PR is Draft; it is not review evidence.
+are CI-backed on their recorded exact commits. PR 6 remains Draft and is not
+merge, candidate, release, distribution, or acceptance evidence. CodeRabbit
+returned a successful status but explicitly skipped review because the PR is
+Draft; it is not review evidence.
 
 P3.1-P3.6 and review remediation are pushed and CI-backed. The full independent
 review and remediation review are complete.
@@ -362,10 +401,11 @@ Review closure validation at
 | P3 main CI | Pass | Main push run 30378191752 passed on exact squash commit `f6833c50eaf5a426948bac7999f93a08b19a425e` |
 | P4.0 branch | Pushed; draft PR | Implementation `13270ca0abd7353710541afca9ddf46c47670be3`; draft PR 6; exact-head CI run 30392140461 passes |
 | P4.1 identity and isolation | Implemented, pushed, CI-backed; draft PR | Implementation `836a9f1f81687f091e1c5b92ce30bff167e9da4f`; resource-only CI remediation `462a1b0d920279d42f124fdd28673d77dc55b765`; run 30417692550 passes |
+| P4.2 compatibility shadow | Implemented and locally validated; commit, push, and CI pending | Seven strict domains; SQLite schema 4 inert evidence; root 141 tests; downstream 14 focused tests; native 2,590 tests; real native Guide read |
 | Native AionUi source | Exact local desktop snapshot | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot |
 | Native preservation contract | Local pass | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified |
 | Native AionUi build and launch | Local pass | Frozen install, production build, isolated native Electron launch, and actual Guide screenshot pass |
-| Native AionUi tests | Local pass | 321 files passed, 1 skipped; 2,576 tests passed, 5 skipped; 0 failures |
+| Native AionUi tests | Local pass | 326 files passed, 1 skipped; 2,590 tests passed, 5 skipped; 0 failures |
 | Legacy product shell | P3 harness only | Original Actestra Electron/React shell remains for platform-contract and packaging regression; it is not the target product UI |
 | Renderer boundary | CI-backed through P3.6 | Context isolation, sandbox, Node and packaged DevTools disabled, production CSP denies connections, exact frozen preload allowlist, trusted-frame zero-argument IPC, and direct-client source checks |
 | Automated tests | Exact merged-main CI pass | Main run 30378191752 passes 24 Vitest files with 130 tests, the exact Electron SQLite probe, process-failure harness, 34-source boundary check, build, package identity, and clean-profile smoke |
@@ -376,6 +416,7 @@ Review closure validation at
 | P3 worker lifecycle | Implemented and CI-backed | ADR-0006, protocol version 1, runtime validation, supervisor, observed-time health, cancellation, crash, bounded fresh-attempt restart, deterministic fake, and 22 focused tests; exact commit and run above |
 | P3 privileged services | Implemented and CI-backed | ADR-0007; protected-operation and manifest contracts; policy, approval, opaque lease, metadata-only audit, and deterministic gateway services; exact commit and run above |
 | P3 main integration | Implemented and CI-backed | ADR-0008; main-only inert composition, durable audit, persist-before-release barrier, fixed IPC allowlist, bounded renderer projection, and packaged startup smoke; exact commit and run above |
+| F2 shadow persistence | Local pass; remote evidence pending | ADR-0011; schema version 4; gapless and idempotent metadata-only evidence; no authoritative domain or event writes |
 | Release | None | No candidate, signed artifact, deployment, distribution, or user acceptance |
 
 ## Accepted direction
@@ -432,17 +473,17 @@ The ordered implementation index and P3 non-claims are in
 
 ## Next gate
 
-1. Review draft PR 6 and retain the exact frozen source plus downstream-overlay
-   boundary during any remediation.
-2. Begin P4.2/F2 with a compatibility inventory for native conversation, task,
-   provider, workspace, approval, artifact, and runtime shapes.
-3. Add read-only or metadata-only P3 shadow projections before moving any
-   native AionUi domain to Actestra authority.
-4. Keep every retained AionUi route and functional UI entry stable while the
-   compatibility projection is introduced and regression-tested.
-5. Do not describe F0/F1 as merged, Actestra-authoritative general work,
-   Goose/Eigent integration, candidate, release, distribution, or user
-   acceptance.
+1. Commit and push the reviewed F2 implementation without editing the frozen
+   AionUi source.
+2. Require exact-head CI to repeat root boundaries, downstream
+   materialization, focused tests, native production build, unsigned package,
+   packaged identity, and clean-profile smoke.
+3. Review Draft PR 6 while retaining all routes, feature entries, native
+   response behavior, and the inert shadow-authority boundary.
+4. For P4.3/F3, choose one functional domain and define its write authority,
+   forward migration, rollback, restart, error mapping, and UI-parity gate.
+5. Do not describe F2 as Actestra-authoritative general work, merge, candidate,
+   release, distribution, or user acceptance.
 
 ## Open decisions
 
@@ -454,7 +495,6 @@ The ordered implementation index and P3 non-claims are in
 - Code-signing, notarization, update, and distribution accounts.
 - AionCore license clarification and accepted binary provenance before
   distribution.
-- Exact downstream patch-series mechanism for F1 and later AionUi updates.
 - Cloud identity or sync scope, which remains outside the initial MVP unless
   promoted by a new product decision.
 
@@ -474,9 +514,10 @@ The ordered implementation index and P3 non-claims are in
   rate-limited before reviewing the final four-document status range. Its
   successful status is limit-handling evidence; exact final-head CI run
   30376696055 passed.
-- Main startup registers SQLite v3 and inert P3.5 reference services, but no
-  protected operation, tool transport, credential value, or worker control is
-  renderer-visible.
+- The legacy harness main registers SQLite v3 and inert P3.5 reference
+  services. The F2 downstream main migrates to schema v4 and accepts one fixed
+  shadow-observation operation, but exposes no generic persistence, protected
+  operation, tool transport, credential value, or worker control.
 - The P3.4 deterministic fake is test infrastructure, not a worker process or
   evidence of packaged crash recovery.
 - P3.6 makes metadata-only audit and terminal-attempt evidence durable.
@@ -484,6 +525,8 @@ The ordered implementation index and P3 non-claims are in
   secret value or real tool execution.
 - SQLite still runs synchronously in main; it must move behind a supervised
   persistence utility before real user-workload writes are enabled.
+- F2 shadow evidence is renderer-originated compatibility evidence, not trusted
+  audit, product, policy, approval, migration, or user-workload state.
 - The P3 contracts and fake-worker gate have passed. Real-worker integration is
   P4 work and still requires the dedicated scope, decisions, branch, and tests
   described above.
@@ -492,9 +535,9 @@ The ordered implementation index and P3 non-claims are in
   permission-complete native operations, Goose, or Eigent-style integration.
 - The local AionCore `v0.1.52` bundle is ignored and used only for native launch
   proof. It is not committed, packaged, or approved for distribution.
-- The upstream managed-Node path can download a runtime on first launch, and
-  the Sentry startup path reports a missing-DSN error. F1 must isolate or
-  replace these effects while keeping their functional UI and recovery states.
+- The upstream managed-Node path and Sentry startup path remain in retained
+  source. F1 disables their unowned external effects by default while keeping
+  the corresponding functional UI and recovery states.
 - Draft pull request 5 follows the displaced custom-shell general-work route.
   Preserve it for compatible P3-core mining, but do not merge it as the product
   UI foundation.

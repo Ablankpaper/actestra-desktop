@@ -63,7 +63,8 @@ and squash merged as `f6833c50eaf5a426948bac7999f93a08b19a425e`.
 [Main CI run 30378191752](https://github.com/bignormal/actestra-desktop/actions/runs/30378191752)
 passes on that exact squash commit, closing the P3 exit gate. P4.0/F0 and the
 P4.1/F1 identity-and-isolation implementation are CI-backed on
-`feat/aionui-first-foundation`; pull request 6 remains Draft.
+`feat/aionui-first-foundation`. P4.2/F2 shadow projection is locally validated
+and pending commit, push, and exact-head CI; pull request 6 remains Draft.
 
 - The repository now contains the exact, unmodified 1,766-file AionUi
   `v2.1.41` runnable desktop source foundation at commit
@@ -79,12 +80,12 @@ P4.1/F1 identity-and-isolation implementation are CI-backed on
 - The renderer is sandboxed and receives only three fixed, non-privileged
   metadata intents. External HTTP, HTTPS, WebSocket, permissions, navigation,
   new windows, telemetry, updates, and accounts are inactive.
-- Twenty-four test files with 130 tests, an exact Electron-runtime SQLite probe, a
-  three-scenario process-failure harness, formatting, lint, strict types,
-  product-boundary checks, renderer build, packaged identity/CSP checks, and a
-  fresh-profile three-stage startup smoke pass locally. P3.1-P3.6 and review
-  remediation also have exact implementation CI. Unsigned arm64 app/DMG/ZIP
-  packaging passes locally.
+- Twenty-seven test files with 141 tests, an exact Electron-runtime SQLite
+  probe, a three-scenario process-failure harness, formatting, lint, strict
+  types, product-boundary checks, renderer build, packaged identity/CSP checks,
+  and a fresh-profile three-stage startup smoke pass locally. P3.1-P3.6 and
+  review remediation also have exact implementation CI. Unsigned arm64
+  app/DMG/ZIP packaging passes locally.
 - The pure TypeScript core contract has no Electron, filesystem, shell, network,
   credential, or renderer authority. SQLite, worker supervision, policy,
   approval, opaque credential leases, the metadata-only audit trail, and the
@@ -104,8 +105,18 @@ P4.1/F1 identity-and-isolation implementation are CI-backed on
   [macOS arm64 CI run 30417692550](https://github.com/bignormal/actestra-desktop/actions/runs/30417692550),
   including the materialized native build, unsigned bundle, packaged identity,
   and clean-profile smoke.
-- The native AionUi foundation is not yet fused to P3 authoritative data.
-  Goose and Eigent-style integration have not started.
+- F2 recognizes conversation, task, provider, workspace, approval, artifact,
+  and runtime metadata through a fixed, fail-isolated observation operation.
+  Main hashes native identity, validates P3 graphs and task events, and appends
+  inert SQLite schema version 4 evidence without writing authoritative P3
+  tables.
+- Focused root and downstream F2 tests, the 141-test root check, all 2,590
+  passing native tests, native production build, restart and duplicate proof,
+  rejection containment, and one real native conversation read pass locally.
+  The preserved Guide and its original functional entries remain visible.
+- The native AionUi foundation is not yet fused to P3 authoritative data; F2 is
+  compatibility evidence only. Goose and Eigent-style integration have not
+  started.
 
 See [Project Status](docs/PROJECT_STATUS.md) for the evidence-backed state.
 The local P2 proof is recorded in
@@ -129,6 +140,7 @@ ordered fusion is in
 8. [AionUi Retention Matrix](docs/upstream/AIONUI_RETENTION_MATRIX.md)
 9. [AionUi–Actestra Fusion](docs/architecture/AIONUI_ACTESTRA_FUSION.md)
 10. [AionUi F1 Identity and Isolation](docs/product/AIONUI_F1_IDENTITY_ISOLATION.md)
+11. [AionUi F2 Shadow Projection](docs/product/AIONUI_F2_SHADOW_PROJECTION.md)
 
 Repository-wide instructions are in [AGENTS.md](AGENTS.md). Contribution rules
 are in [CONTRIBUTING.md](CONTRIBUTING.md).

@@ -139,6 +139,26 @@ function copyOwnedAssets(outputRoot, assetCopies) {
   }
 }
 
+function copyOwnedSources(outputRoot, sourceCopies) {
+  for (const sourceCopy of sourceCopies) {
+    const sourcePath = path.join(repositoryRoot, sourceCopy.source);
+    const destinationPath = path.join(outputRoot, sourceCopy.destination);
+    if (!fs.existsSync(sourcePath)) {
+      throw new Error(`Actestra source copy is missing: ${sourceCopy.source}`);
+    }
+    if (fs.existsSync(destinationPath)) {
+      throw new Error(
+        `Actestra source copy would overwrite a frozen-source path: ${sourceCopy.destination}`,
+      );
+    }
+    const contents = fs.readFileSync(sourcePath);
+    fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
+    fs.writeFileSync(destinationPath, contents, {
+      mode: fs.statSync(sourcePath).mode,
+    });
+  }
+}
+
 function linkLocalRuntimeInputs(sourceRoot, outputRoot) {
   const relativePaths = ["node_modules", "resources/bundled-aioncore"];
   const sourcePackagesRoot = path.join(sourceRoot, "packages");
@@ -188,6 +208,7 @@ export function materializeAionUiDownstream(options = {}) {
   fs.rmSync(outputRoot, { recursive: true, force: true });
   fs.mkdirSync(outputRoot, { recursive: true });
   copyManifestSelection(sourceRoot, outputRoot, sourceEntries);
+  copyOwnedSources(outputRoot, overlay.sourceCopies ?? []);
 
   for (const patch of overlay.patches) {
     applyPatch(outputRoot, path.join(overlayDirectory, patch.path));
@@ -203,6 +224,14 @@ export function materializeAionUiDownstream(options = {}) {
     generatedAt: new Date().toISOString(),
     upstream: overlay.upstream,
     patches: overlay.patches.map((patch) => patch.path),
+    sourceCopies: (overlay.sourceCopies ?? []).map((sourceCopy) => {
+      const contents = fs.readFileSync(path.join(repositoryRoot, sourceCopy.source));
+      return {
+        destination: sourceCopy.destination,
+        sha256: sha256(contents),
+        source: sourceCopy.source,
+      };
+    }),
     assetCopies: overlay.assetCopies.map((asset) => ({
       destination: asset.destination,
       sha256: asset.sha256,

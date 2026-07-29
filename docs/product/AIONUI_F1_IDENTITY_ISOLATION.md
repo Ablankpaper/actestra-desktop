@@ -165,4 +165,5 @@ bun run downstream:aionui:materialize
   merged candidate, signed package, release, distribution, or user acceptance.
   Passing implementation CI does not change those states.
 - P3 has not yet become authoritative behind the preserved native bridge.
-  Compatibility projection is the next development slice.
+  F2 compatibility projection is now locally validated as inert evidence; see
+  [AionUi F2 Shadow Projection](AIONUI_F2_SHADOW_PROJECTION.md).

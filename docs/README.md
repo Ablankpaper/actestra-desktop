@@ -13,6 +13,7 @@ planning, and governance documents.
 | [P3 Platform Core](product/P3_PLATFORM_CORE.md) | Current phase order, decisions, exit evidence, and non-claims |
 | [AionUi Native Foundation](product/AIONUI_NATIVE_FOUNDATION.md) | Exact native source, install, test, build, launch, visual evidence, and non-claims |
 | [AionUi F1 Identity and Isolation](product/AIONUI_F1_IDENTITY_ISOLATION.md) | Downstream overlay, identity, private profile, effect policy, visual parity, and local plus CI evidence |
+| [AionUi F2 Shadow Projection](product/AIONUI_F2_SHADOW_PROJECTION.md) | Seven-domain compatibility contract, metadata-only P3 shadow evidence, restart and UI-preservation proof |
 | [Development Sequence](roadmap/DEVELOPMENT_SEQUENCE.md) | Ordered phases, dependencies, and exit gates |
 | [System Overview](architecture/SYSTEM_OVERVIEW.md) | Product boundaries, components, data ownership, and isolation |
 | [AionUi–Actestra Fusion](architecture/AIONUI_ACTESTRA_FUSION.md) | Preserve-first topology, authority transition, phases, and patch rules |

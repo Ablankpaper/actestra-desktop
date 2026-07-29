@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "phase": "F1",
+  "phase": "F2",
   "upstream": {
     "tag": "v2.1.41",
     "commit": "2d8925fc67a97a20996fadcd2a0862b778b572ba",
@@ -9,8 +9,8 @@
   "authorityOwner": "Actestra desktop main process",
   "classifications": ["R0", "R1", "R2"],
   "migration": {
-    "strategy": "Fresh Actestra profile v1; native AionUi profiles remain untouched and are not read automatically.",
-    "rollback": "Stop the generated Actestra tree and remove its versioned profile; the frozen AionUi foundation remains byte-identical."
+    "strategy": "Fresh Actestra profile v1; native AionUi profiles remain untouched. Schema v4 appends metadata-only shadow evidence without changing native records or authoritative P3 tables.",
+    "rollback": "Regenerate without the F2 observer patch to stop new projections. Existing shadow evidence remains inert and cannot drive native UI decisions; the frozen AionUi foundation remains byte-identical."
   },
   "uiContract": {
     "layoutChangesAllowed": false,
@@ -34,6 +34,75 @@
       ],
       "authorityOwner": "Actestra desktop main process",
       "rollback": "Regenerate without this patch; no frozen-source or native-profile mutation is required."
+    },
+    {
+      "path": "patches/0002-actestra-p3-shadow-projection.mjs",
+      "classification": ["R1"],
+      "domains": [
+        "conversation",
+        "task",
+        "provider",
+        "workspace",
+        "approval",
+        "artifact",
+        "runtime"
+      ],
+      "authorityOwner": "Actestra desktop main process",
+      "rollback": "Regenerate without this patch. Native AionUi response values, routes, state and UI remain authoritative and unchanged."
+    }
+  ],
+  "sourceCopies": [
+    {
+      "source": "apps/desktop/src/core/agentAdapter.ts",
+      "destination": "packages/desktop/src/actestra/core/agentAdapter.ts"
+    },
+    {
+      "source": "apps/desktop/src/core/domain.ts",
+      "destination": "packages/desktop/src/actestra/core/domain.ts"
+    },
+    {
+      "source": "apps/desktop/src/core/events.ts",
+      "destination": "packages/desktop/src/actestra/core/events.ts"
+    },
+    {
+      "source": "apps/desktop/src/core/index.ts",
+      "destination": "packages/desktop/src/actestra/core/index.ts"
+    },
+    {
+      "source": "apps/desktop/src/core/persistence.ts",
+      "destination": "packages/desktop/src/actestra/core/persistence.ts"
+    },
+    {
+      "source": "apps/desktop/src/core/platform.ts",
+      "destination": "packages/desktop/src/actestra/core/platform.ts"
+    },
+    {
+      "source": "apps/desktop/src/core/privilegedServices.ts",
+      "destination": "packages/desktop/src/actestra/core/privilegedServices.ts"
+    },
+    {
+      "source": "apps/desktop/src/compatibility/aionui/index.ts",
+      "destination": "packages/desktop/src/actestra/compatibility/aionui/index.ts"
+    },
+    {
+      "source": "apps/desktop/src/compatibility/aionui/nativeObservations.ts",
+      "destination": "packages/desktop/src/actestra/compatibility/aionui/nativeObservations.ts"
+    },
+    {
+      "source": "apps/desktop/src/compatibility/aionui/shadowProjection.ts",
+      "destination": "packages/desktop/src/actestra/compatibility/aionui/shadowProjection.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/compatibility/aionuiShadowProjectionService.ts",
+      "destination": "packages/desktop/src/actestra/main/compatibility/aionuiShadowProjectionService.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/persistence/sqliteCorePersistence.ts",
+      "destination": "packages/desktop/src/actestra/main/persistence/sqliteCorePersistence.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/persistence/sqliteMigrations.ts",
+      "destination": "packages/desktop/src/actestra/main/persistence/sqliteMigrations.ts"
     }
   ],
   "assetCopies": [
@@ -82,9 +151,24 @@
     "package.json",
     "packages/desktop/electron-builder.yml",
     "packages/desktop/electron.vite.config.ts",
+    "packages/desktop/src/actestra/compatibility/aionui/index.ts",
+    "packages/desktop/src/actestra/compatibility/aionui/nativeObservations.ts",
+    "packages/desktop/src/actestra/compatibility/aionui/shadowProjection.ts",
+    "packages/desktop/src/actestra/core/agentAdapter.ts",
+    "packages/desktop/src/actestra/core/domain.ts",
+    "packages/desktop/src/actestra/core/events.ts",
+    "packages/desktop/src/actestra/core/index.ts",
+    "packages/desktop/src/actestra/core/persistence.ts",
+    "packages/desktop/src/actestra/core/platform.ts",
+    "packages/desktop/src/actestra/core/privilegedServices.ts",
+    "packages/desktop/src/actestra/main/compatibility/aionuiShadowProjectionService.ts",
+    "packages/desktop/src/actestra/main/persistence/sqliteCorePersistence.ts",
+    "packages/desktop/src/actestra/main/persistence/sqliteMigrations.ts",
+    "packages/desktop/src/common/adapter/actestraShadowPublisher.ts",
     "packages/desktop/src/common/adapter/httpBridge.ts",
     "packages/desktop/src/common/api/ClientFactory.ts",
     "packages/desktop/src/common/config/actestraProduct.ts",
+    "packages/desktop/src/common/config/actestraShadowContract.ts",
     "packages/desktop/src/common/platform/ElectronPlatformServices.ts",
     "packages/desktop/src/common/platform/NodePlatformServices.ts",
     "packages/desktop/src/common/platform/index.ts",
@@ -93,6 +177,7 @@
     "packages/desktop/src/process/bridge/updateBridge.ts",
     "packages/desktop/src/process/bridge/webuiBridge.ts",
     "packages/desktop/src/process/services/autoUpdaterService.ts",
+    "packages/desktop/src/process/services/actestraShadowBridge.ts",
     "packages/desktop/src/process/services/i18n/index.ts",
     "packages/desktop/src/process/services/installerLastFailure.ts",
     "packages/desktop/src/process/utils/actestraProfile.ts",
@@ -133,6 +218,9 @@
     "scripts/build-with-builder.js",
     "tests/unit/actestra/externalEffectIsolation.test.ts",
     "tests/unit/actestra/productBoundary.test.ts",
+    "tests/unit/actestra/shadowPersistence.test.ts",
+    "tests/unit/actestra/shadowProjection.test.ts",
+    "tests/unit/actestra/shadowPublisher.test.ts",
     "tests/unit/bootstrap/buildWithBuilder.test.ts",
     "tests/unit/feedback/FeedbackReportModal.dom.test.tsx",
     "tests/unit/feedback/submitFeedbackReport.test.ts",

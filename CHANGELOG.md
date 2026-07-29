@@ -49,6 +49,14 @@ releases begin.
 - Native F1 policy tests, CI-backed production and packaged smoke coverage,
   full local native regression execution, real Electron launch,
   runtime-boundary evidence, and an Actestra visual preservation screenshot.
+- Strict AionUi `v2.1.41` metadata observers for conversation, task, provider,
+  workspace, approval, artifact, and runtime shapes.
+- ADR-0011, a fixed fail-isolated observation bridge, deterministic
+  metadata-only P3 projection, and SQLite schema version 4 shadow evidence
+  separated from authoritative domain and event tables.
+- F2 mapping, redaction, event ordering, duplicate, restart, corruption,
+  persistence-failure, invariant-UI, and real native conversation-read
+  evidence.
 
 ### Changed
 

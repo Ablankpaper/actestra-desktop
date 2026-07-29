@@ -60,7 +60,7 @@ describe("Actestra SQLite migrations", () => {
     expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
       fromVersion: 0,
       toVersion: CURRENT_CORE_SCHEMA_VERSION,
-      appliedVersions: [1, 2, 3],
+      appliedVersions: [1, 2, 3, 4],
     });
     expect(pragmaNumber(database, "application_id")).toBe(ACTESTRA_SQLITE_APPLICATION_ID);
     expect(pragmaNumber(database, "user_version")).toBe(CURRENT_CORE_SCHEMA_VERSION);
@@ -80,6 +80,10 @@ describe("Actestra SQLite migrations", () => {
       {
         version: 3,
         name: "platform-evidence",
+      },
+      {
+        version: 4,
+        name: "aionui-shadow-evidence",
       },
     ]);
   });
@@ -120,11 +124,13 @@ describe("Actestra SQLite migrations", () => {
     const database = createDatabase();
     migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 2), APPLIED_AT);
 
-    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
-      fromVersion: 2,
-      toVersion: 3,
-      appliedVersions: [3],
-    });
+    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 3), APPLIED_AT)).toEqual(
+      {
+        fromVersion: 2,
+        toVersion: 3,
+        appliedVersions: [3],
+      },
+    );
     expect(
       database
         .prepare(
@@ -142,6 +148,37 @@ describe("Actestra SQLite migrations", () => {
       { name: "agent_attempt_evidence" },
       { name: "core_events" },
       { name: "privileged_audit_records" },
+    ]);
+  });
+
+  it("performs a real 3 -> 4 migration without changing authoritative P3 tables", () => {
+    const database = createDatabase();
+    migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 3), APPLIED_AT);
+
+    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
+      fromVersion: 3,
+      toVersion: 4,
+      appliedVersions: [4],
+    });
+    expect(
+      database
+        .prepare(
+          `SELECT name
+           FROM sqlite_schema
+           WHERE type = 'table' AND name IN (
+             'workspaces',
+             'core_events',
+             'privileged_audit_records',
+             'aionui_shadow_evidence'
+           )
+           ORDER BY name`,
+        )
+        .all(),
+    ).toEqual([
+      { name: "aionui_shadow_evidence" },
+      { name: "core_events" },
+      { name: "privileged_audit_records" },
+      { name: "workspaces" },
     ]);
   });
 
