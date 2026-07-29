@@ -16,12 +16,15 @@ components or phases.
 | --- | --- | --- |
 | [0001](0001-capability-fusion.md) | Accepted | Fuse capabilities, not repositories |
 | [0002](0002-single-source-of-truth.md) | Accepted | Actestra owns product state behind adapter and event boundaries |
-| [0003](0003-clean-shell-selective-ports.md) | Accepted | Build an Actestra-owned shell and port upstream modules selectively |
+| [0003](0003-clean-shell-selective-ports.md) | Superseded | Build an Actestra-owned shell and port upstream modules selectively |
 | [0004](0004-core-domain-event-stream.md) | Accepted | Own the core domain and order events per worker attempt |
 | [0005](0005-sqlite-persistence-and-migrations.md) | Accepted | Use embedded SQLite behind ports with forward-only migrations |
 | [0006](0006-agent-adapter-lifecycle-and-supervision.md) | Accepted | Version and supervise immutable agent attempts |
 | [0007](0007-privileged-service-authorization.md) | Accepted | Gate privileged tools with policy, approval, credential, and audit evidence |
 | [0008](0008-main-owned-projection-and-ipc.md) | Accepted | Keep platform evidence and closed renderer intents main-owned |
+| [0010](0010-aionui-first-product-foundation.md) | Accepted | Preserve native AionUi as the product foundation and embed Goose and Eigent-style capabilities through its existing UI |
+| [0011](0011-aionui-shadow-projection.md) | Accepted | Observe native AionUi metadata through an inert, main-owned P3 shadow projection |
+| [0012](0012-aionui-approval-decision-authority.md) | Accepted | Persist desktop AionUi confirmation decisions before native delivery and reconcile ambiguous outcomes |
 
 ## Creating an ADR
 

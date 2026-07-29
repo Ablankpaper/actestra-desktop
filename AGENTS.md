@@ -7,9 +7,20 @@ These instructions apply to the entire repository.
 - Actestra is an independent product.
 - Do not import code, configuration, credentials, user data, release state, or
   branding from Aera or any other local checkout.
-- AionUi, Goose, and Eigent are upstream references with distinct roles. Do not
-  combine their repositories into one source tree without an accepted
-  architecture decision and recorded provenance.
+- AionUi `v2.1.41` is the pinned user-interface and general-work product
+  foundation. Preserve its original functional UI and functions by default
+  under ADR-0010 and the AionUi retention matrix; retain Actestra identity,
+  policy, data, and release authority behind compatible providers.
+- Goose is the isolated coding worker. Eigent supplies team-orchestration
+  behavior inside the same AionUi-first surface. Do not add either upstream's
+  separate application UI.
+- The frozen AionUi runnable desktop source snapshot under `foundation/` is the
+  one accepted broad-foundation exception. Its exact scope is recorded next to
+  the manifest. Do not edit it in place; use a recorded downstream patch or
+  overlay.
+- Do not merge Goose, Eigent, Aera, AgentEra, or another complete repository
+  into this source tree. Every additional import requires an exact pin,
+  provenance, license handling, boundary tests, and an Actestra owner.
 
 ## Before making changes
 
@@ -35,6 +46,13 @@ change.
 ## Development rules
 
 - Build vertical slices behind stable interfaces.
+- Start product UI changes from the native AionUi foundation, not the legacy P2
+  shell or a visual recreation.
+- Preserve routes, bridge domains, workflows, and error states. If a provider
+  is not ready, retain the entry and show an explicit isolated/unavailable
+  state instead of deleting the feature.
+- Classify every affected AionUi area as R0, R1, or R2 and add native plus
+  compatibility proof for user-visible changes.
 - Keep the renderer free of runtime, credential, shell, and filesystem authority.
 - Run external agents in isolated worker processes.
 - Treat coding workspaces as isolated Git worktrees.
@@ -49,6 +67,8 @@ change.
 - Pin every imported upstream to an exact commit.
 - Record imports in
   [docs/governance/UPSTREAM_VERSIONS.md](docs/governance/UPSTREAM_VERSIONS.md).
+- Run `bun run foundation:aionui:check` after any foundation, manifest, route,
+  bridge, provenance, or retention-contract change.
 - Preserve applicable LICENSE, NOTICE, copyright, and attribution text.
 - Mark modified upstream files where the upstream license requires it.
 - Update [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) in the same change.

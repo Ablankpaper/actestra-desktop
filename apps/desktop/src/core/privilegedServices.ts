@@ -966,6 +966,10 @@ export function assertApprovalRequestSnapshot(
   if (value.consumedAt !== undefined) {
     assertInstant(value.consumedAt, "invalid-contract", "Approval request snapshot.consumedAt");
   }
+  // Keep the validated optional instants narrowed under both Actestra's strict
+  // TypeScript config and the preserved downstream noImplicitAny-only config.
+  const resolvedAt = value.resolvedAt as Instant | undefined;
+  const consumedAt = value.consumedAt as Instant | undefined;
 
   const terminal = value.state !== "pending";
   if (
@@ -980,11 +984,11 @@ export function assertApprovalRequestSnapshot(
     );
   }
   if (
-    value.resolvedAt !== undefined &&
-    (compareInstants(value.resolvedAt, value.requestedAt) < 0 ||
+    resolvedAt !== undefined &&
+    (compareInstants(resolvedAt, value.requestedAt) < 0 ||
       (value.state === "expired"
-        ? compareInstants(value.resolvedAt, value.expiresAt) < 0
-        : compareInstants(value.resolvedAt, value.expiresAt) >= 0))
+        ? compareInstants(resolvedAt, value.expiresAt) < 0
+        : compareInstants(resolvedAt, value.expiresAt) >= 0))
   ) {
     throw new PrivilegedServiceError(
       "invalid-contract",
@@ -992,11 +996,11 @@ export function assertApprovalRequestSnapshot(
     );
   }
   if (
-    value.consumedAt !== undefined &&
+    consumedAt !== undefined &&
     (value.state !== "approved" ||
-      value.resolvedAt === undefined ||
-      compareInstants(value.consumedAt, value.resolvedAt) < 0 ||
-      compareInstants(value.consumedAt, value.expiresAt) >= 0)
+      resolvedAt === undefined ||
+      compareInstants(consumedAt, resolvedAt) < 0 ||
+      compareInstants(consumedAt, value.expiresAt) >= 0)
   ) {
     throw new PrivilegedServiceError(
       "invalid-contract",

@@ -8,6 +8,11 @@ Actestra is a desktop AI workspace that lets a user complete general work,
 delegate coding tasks to a specialized worker, and coordinate a small team of
 agents without learning multiple tools or managing separate runtime state.
 
+The desktop experience starts from AionUi `v2.1.41`. Its original functional
+UI and functions are a preservation baseline, not a menu of optional visual
+references. Actestra changes providers and authority behind compatible
+boundaries.
+
 ## Target users
 
 - Individuals who want AI to work with local files and produce usable artifacts.
@@ -37,6 +42,8 @@ and aggregates the result into one deliverable.
 
 ## MVP capabilities
 
+- The preserved AionUi desktop frame, Guide, navigation, conversation history,
+  settings, appearance, and platform interactions.
 - Desktop onboarding and model/provider configuration.
 - Local workspace selection with explicit scope.
 - One Actestra-owned task and conversation history.
@@ -52,13 +59,20 @@ and aggregates the result into one deliverable.
 - Local credential storage through operating-system secure storage.
 - Crash recovery for task, approval, and artifact metadata.
 - Audit trail for user-approved operations.
+- Preserved AionUi assistants, Skills, MCP/tools, previews, document workflows,
+  scheduled tasks, Team experience, extensions, Hub, WebUI, remote agents,
+  channels, notifications, deep links, pet, diagnostics, and updater UI.
+  Capabilities that require an unready external provider stay visible with an
+  explicit isolated state until their Actestra boundary passes its gate.
 
 ## Explicit non-goals
 
 - Importing Aera accounts, data, profiles, memory, code, or release systems.
 - Supporting every external agent CLI in the first release.
 - Embedding the full Eigent or CAMEL runtime before the Actestra core is proven.
-- A public marketplace for agents, skills, or MCP servers.
+- An ungoverned public marketplace for agents, Skills, or MCP servers. The
+  original Hub UI is retained, but remote installation remains isolated until
+  catalog signing, provenance, permission, and rollback are implemented.
 - Organization administration, billing, mobile clients, or cloud collaboration.
 - Autonomous payment, message sending, deployment, publishing, or Git push
   without explicit confirmation.
@@ -91,3 +105,5 @@ The MVP is ready for internal alpha only when:
 7. artifacts, checksums, SBOM, third-party notices, and exact source commit are
    available for the candidate;
 8. fresh-user acceptance is recorded separately from CI and packaging proof.
+9. the AionUi retention matrix has no unexplained missing functional entry,
+   route, bridge domain, or user-visible behavior in the exact candidate.

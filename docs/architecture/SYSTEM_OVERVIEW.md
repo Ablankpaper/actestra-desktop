@@ -1,6 +1,8 @@
 # System Overview
 
-Status: P3 accepted on `main`; P4 not started
+Status: P3 accepted on `main`; P4.0/F0, P4.1/F1, and P4.2/F2 CI-backed;
+P4.3/F3.1 approval-decision authority is under validation on
+`feat/aionui-first-foundation`
 
 ## Context
 
@@ -12,7 +14,8 @@ maintaining one coherent task, permission, data, and audit model across them.
 
 ```mermaid
 flowchart TD
-    RENDERER["Desktop Renderer\nUI only"]
+    RENDERER["Preserved AionUi Renderer\nfunctional UI only"]
+    COMPAT["AionUi Compatibility Layer\nbridge shapes and availability"]
     MAIN["Desktop Main Process\nwindow and process lifecycle"]
     CORE["Actestra App Core"]
     ROUTER["Task Router and Team Orchestrator"]
@@ -27,7 +30,8 @@ flowchart TD
     FUTURE["Future Worker Process"]
     STORE["Actestra-owned Local Store"]
 
-    RENDERER --> MAIN
+    RENDERER --> COMPAT
+    COMPAT --> MAIN
     MAIN --> CORE
     CORE --> ROUTER
     CORE --> POLICY
@@ -48,10 +52,16 @@ flowchart TD
 
 ## Current implementation boundary
 
-P2 implements the renderer, a minimal context-isolated preload bridge, and the
-Electron main process. The renderer can request application metadata and report
-that it rendered; neither operation grants filesystem, shell, process,
-credential, installation, or publishing authority.
+The accepted P2 renderer, minimal context-isolated preload bridge, and Electron
+main process remain on `main` as a P3 platform-contract and package-regression
+harness. That shell is not the target product UI.
+
+P4.0 adds a separate exact, frozen AionUi `v2.1.41` native source foundation.
+It preserves 1,766 runnable desktop files, 27 routes, 41 bridge domains, and
+the complete native functional UI. P4.1 applies Actestra identity, a versioned
+private profile, and isolated external-effect providers as a reviewable
+downstream overlay. It does not edit the frozen source or remove original
+functional entries.
 
 P3.1 and P3.2 add a runtime-neutral core domain, lifecycle validation, and
 version 1 event stream contract. P3.3 adds a storage-neutral port plus a
@@ -70,12 +80,65 @@ policy snapshot, credential backend, input-reference store, real tool executor,
 MCP transport, process transport, or real worker adapter behind any component
 shown above.
 
+P4.2 adds the separate compatibility boundary accepted in
+[ADR-0011](decisions/0011-aionui-shadow-projection.md). Successful native HTTP
+responses and declared WebSocket events may publish seven strict metadata
+observation shapes through one fixed preload operation. Main hashes native
+identity, validates a P3 graph and optional task event stream, and appends
+SQLite schema version 4 shadow evidence. It does not insert shadow records into
+the authoritative P3 domain or core-event tables. Native AionUi continues to
+own user-visible state, and projection failure cannot alter the native result.
+
+P4.3/F3.1 adds the first narrowly authoritative write accepted in
+[ADR-0012](decisions/0012-aionui-approval-decision-authority.md). The preserved
+desktop confirmation surfaces submit one fixed response intent to main. Main
+persists an immutable schema version 5 response and delivery outbox before
+calling the loopback native confirmation endpoint. Exact duplicates are
+idempotent, changed responses conflict, and a prior or failed attempt must be
+reconciled against the native pending list before redelivery. This slice does
+not activate the P3 policy, protected-operation, credential, audit, or tool
+release services.
+
 The SQLite adapter owns `state/actestra.sqlite3` beneath Actestra user data,
 uses one DELETE/FULL connection, and rejects foreign ownership, future schemas,
 inconsistent migration history, invalid domain graphs, and corrupt event
 projections. Its asynchronous port prevents storage technology from entering
 core consumers, but its current synchronous implementation must move to a
 supervised persistence utility before user-workload writes are activated.
+
+## Foundation integration boundary
+
+ADR-0010 and the
+[fusion architecture](AIONUI_ACTESTRA_FUSION.md) invert the earlier shell
+migration:
+
+- AionUi routes, components, interaction design, and functional entries remain
+  the user-facing application;
+- its 41 bridge domains form the renderer compatibility contract;
+- Actestra adapters replace provider and authority behavior beneath that
+  contract;
+- domains transition from isolated native baseline, through shadow projection,
+  to one declared Actestra system of record;
+- unready external effects are isolated with visible reasons instead of having
+  their UI deleted;
+- Goose enters through the preserved agent/ACP experience;
+- Eigent-style orchestration enters through the preserved Team experience.
+
+The detailed non-regression scope is the
+[AionUi Retention Matrix](../upstream/AIONUI_RETENTION_MATRIX.md).
+
+The F2 shadow state is deliberately not shown as a second authority in the
+component view. It is compatibility evidence only, has no renderer read path,
+and cannot drive policy, approval, tool, worker, migration, or UI decisions.
+Its implementation and live proof are recorded in
+[AionUi F2 Shadow Projection](../product/AIONUI_F2_SHADOW_PROJECTION.md).
+
+F3.1 introduces a separate authority only for the desktop confirmation response
+and its outbox state. AionCore still owns pending confirmation creation,
+provider-specific option validity, and protected-operation execution. The
+preserved AionUi UI remains the presentation layer, and headless WebUI stays on
+its isolated native compatibility path. The exact split is recorded in
+[AionUi F3.1 Approval Decision Authority](../product/AIONUI_F3_APPROVAL_AUTHORITY.md).
 
 ## Authority boundaries
 
@@ -223,9 +286,12 @@ Initial event types:
 | Data | System of record |
 | --- | --- |
 | Product settings and migrations | Actestra |
+| Native conversation, task, provider, workspace, artifact, runtime, and pending-confirmation state through F3.1 | Native AionUi |
+| F2 compatibility shadow evidence | Actestra SQLite, inert and non-authoritative |
+| F3.1 desktop confirmation response and delivery state | Actestra SQLite schema 5 |
 | Workspace grants | Actestra |
 | Tasks and dependency graph | Actestra |
-| User approval evidence | Actestra |
+| P3 protected-operation approval evidence | Actestra target contract; not activated by F3.1 |
 | Event and audit history | Actestra |
 | Artifact metadata | Actestra |
 | Secret values | Operating-system secure storage via Actestra broker |
@@ -269,9 +335,13 @@ metadata-only attempt state through trusted main-frame IPC.
 ## Deferred choices
 
 P2 pins Node.js 24.13.0, Bun 1.3.9, Electron 37.10.3, React 19.2.4, and data
-layout version 1 for the current shell. ADR-0005 selects Electron's embedded
-`node:sqlite` and an Actestra-owned forward migration registry for durable
-storage. P4 and later work still must decide process transport, worker sandbox
+layout version 1 for the legacy harness. The native AionUi foundation retains
+its exact locked dependency graph until a reviewed downstream update.
+ADR-0005 selects Electron's embedded `node:sqlite` and an Actestra-owned
+forward migration registry for durable storage. ADR-0011 selects the bounded
+F2 observation transport and inert shadow storage. ADR-0012 selects the first
+F3 authority slice and persist-before-deliver reconciliation. Later P4 work
+still must order the remaining domain migrations and decide worker sandbox
 mechanisms, real credential storage, input-reference storage, production
 policy, and utility-process hosting. Signing, notarization, update delivery,
 and cross-platform candidate packaging remain P8 work.

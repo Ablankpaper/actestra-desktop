@@ -11,8 +11,14 @@ planning, and governance documents.
 | [MVP Definition](product/MVP.md) | Target users, journeys, scope, and success criteria |
 | [P2 Product Shell](product/P2_PRODUCT_SHELL.md) | Implementation, review remediation, boundary, package, launch, and non-claim evidence |
 | [P3 Platform Core](product/P3_PLATFORM_CORE.md) | Current phase order, decisions, exit evidence, and non-claims |
+| [AionUi Native Foundation](product/AIONUI_NATIVE_FOUNDATION.md) | Exact native source, install, test, build, launch, visual evidence, and non-claims |
+| [AionUi F1 Identity and Isolation](product/AIONUI_F1_IDENTITY_ISOLATION.md) | Downstream overlay, identity, private profile, effect policy, visual parity, and local plus CI evidence |
+| [AionUi F2 Shadow Projection](product/AIONUI_F2_SHADOW_PROJECTION.md) | Seven-domain compatibility contract, metadata-only P3 shadow evidence, restart and UI-preservation proof |
+| [AionUi F3.1 Approval Decision Authority](product/AIONUI_F3_APPROVAL_AUTHORITY.md) | Persist-before-deliver desktop confirmation authority, reconciliation, rollback, parity, and non-claims |
+| [AionUi-first PR 6 Review Closure](product/AIONUI_FIRST_PR6_REVIEW_CLOSURE.md) | Partitioned review coverage, valid remediation, rejected candidates, package proof, blockers, and final gates |
 | [Development Sequence](roadmap/DEVELOPMENT_SEQUENCE.md) | Ordered phases, dependencies, and exit gates |
 | [System Overview](architecture/SYSTEM_OVERVIEW.md) | Product boundaries, components, data ownership, and isolation |
+| [AionUi–Actestra Fusion](architecture/AIONUI_ACTESTRA_FUSION.md) | Preserve-first topology, authority transition, phases, and patch rules |
 | [Architecture Decisions](architecture/decisions/README.md) | Accepted and proposed architectural decisions |
 
 ## Governance
@@ -29,7 +35,8 @@ planning, and governance documents.
 | Document | Purpose |
 | --- | --- |
 | [AionUi v2.1.41 Baseline](upstream/AIONUI_V2.1.41_BASELINE.md) | Exact pins, commands, validation, inventory, package evidence, and blockers |
-| [AionUi Module Map](upstream/AIONUI_MODULE_MAP.md) | Keep, wrap, replace, remove, and defer decisions for the evaluated foundation |
+| [AionUi Module Map](upstream/AIONUI_MODULE_MAP.md) | R0, R1, R2, and build-support dispositions for the native foundation |
+| [AionUi Retention Matrix](upstream/AIONUI_RETENTION_MATRIX.md) | Full functional-UI preservation contract and acceptance proof |
 | [Upstream Import Log](upstream/IMPORT_LOG.md) | Per-module provenance, license, modification, and validation record |
 
 ## Repository-level documents

@@ -1,70 +1,90 @@
 # AionUi v2.1.41 Module Map
 
-This map records the P1 disposition of AionUi `v2.1.41`. It is an adoption plan,
-not evidence that any upstream source has been imported.
+This map records how the exact AionUi `v2.1.41` foundation is retained and
+fused with Actestra under ADR-0010. It replaces the earlier
+keep/wrap/replace/remove/defer plan.
+
+The detailed user-function contract is in the
+[AionUi Retention Matrix](AIONUI_RETENTION_MATRIX.md).
 
 ## Disposition meanings
 
 | Disposition | Meaning |
 | --- | --- |
-| Keep | Use as the initial foundation, subject to Actestra tests and ownership |
-| Wrap | Retain behind an Actestra-owned interface or process boundary |
-| Replace | Remove upstream product identity, authority, or infrastructure |
-| Remove | Exclude from the Actestra product unless a later decision restores it |
-| Defer | Do not include in the first vertical slice; reassess in a later phase |
+| R0 — exact retain | Preserve native UI, interaction, source, and behavior as the golden baseline |
+| R1 — compatible provider | Preserve UI and semantics; replace authority behind a stable compatibility seam |
+| R2 — retained but isolated | Preserve source, entry, and workflow; block external effects until the Actestra provider is safe and ready |
+| Build/test support | Preserve in the source foundation; do not treat it as end-user product authority |
 
 ## Target boundary
 
 ```mermaid
 flowchart LR
-    R["Renderer"] --> P["Typed preload bridge"]
-    P --> C["Actestra app core"]
-    C --> W["AionCore-derived general worker adapter"]
-    C --> G["Policy, approval, credential, and tool gateway"]
-    W --> G
-    C --> S["Actestra-owned state and migrations"]
+    UI["Native AionUi UI"]
+    BRIDGE["AionUi bridge contract"]
+    COMPAT["Actestra compatibility layer"]
+    CORE["Actestra P3 core"]
+    GENERAL["General worker"]
+    GOOSE["Goose adapter"]
+    TEAM["Team orchestrator"]
+    TOOLS["Policy and tool gateway"]
+
+    UI --> BRIDGE
+    BRIDGE --> COMPAT
+    COMPAT --> CORE
+    CORE --> GENERAL
+    CORE --> GOOSE
+    CORE --> TEAM
+    GENERAL --> TOOLS
+    GOOSE --> TOOLS
 ```
 
-The renderer must not call AionCore, shell, filesystem, credential, update, or
-telemetry services directly.
+Renderer code keeps the AionUi contract but receives no implicit privileged
+authority. The compatibility layer maps native shapes to main-owned Actestra
+services.
 
 ## Module dispositions
 
-| Upstream area | Representative paths | Disposition | Required Actestra action |
+| Upstream area | Representative paths | Disposition | Fusion action |
 | --- | --- | --- | --- |
-| Electron main, preload, renderer separation | `packages/desktop/src/index.ts`, `preload/`, `renderer/` | Keep | Preserve process separation and add tests that privileged actions cannot bypass the main process |
-| Typed IPC and common contracts | `packages/desktop/src/common/adapter`, `process/bridge` | Keep | Narrow into Actestra contracts; remove upstream product and backend assumptions |
-| Renderer shell and general-work UX | `packages/desktop/src/renderer` | Keep | Rebrand and migrate incrementally after identity and authority boundaries are established |
-| AionCore process lifecycle | `packages/desktop/src/process/backend`, `packages/web-host/src/backend-launcher.ts` | Wrap | Launch as an isolated worker behind `AgentAdapter`; add version, heartbeat, cancellation, timeout, and crash semantics |
-| AionCore HTTP/WebSocket API | desktop bridge and `packages/web-host` | Wrap | Translate to Actestra events and state; do not expose it as the product contract |
-| Database and migrations | `process/services/database`, AionCore database | Replace | Establish Actestra-owned schema, migration authority, backup, and recovery before importing user state |
-| Agent/provider registry | renderer agent hooks and AionCore registry | Wrap | Treat upstream agents as capabilities; route credentials and availability through Actestra |
-| MCP and tool execution | MCP bridges, builtin MCP bundles | Wrap | Route every tool through Actestra policy, approval, audit, and workspace grants |
-| Shell and filesystem access | AionCore shell, file, process modules | Wrap | Move to isolated workers and least-privilege workspace scopes |
-| Product name, bundle ID, protocol, icons, copyright | `electron-builder.yml`, `resources/`, package metadata | Replace | Use Actestra-owned identity before any application package is shared |
-| Application directories and symlinks | `initStorage.ts`, `utils.ts`, web scripts | Replace | Introduce Actestra paths, versioned migration, test cleanup, and no upstream-name collision |
-| Auto-update and publishing | `autoUpdaterService.ts`, `updateFeed.ts`, builder `publish` | Replace | Disable upstream feeds and implement signed Actestra metadata with rollback evidence |
-| Sentry, analytics ID, and log reporting | `packages/desktop/src/sentry.ts` | Replace | Default off; add explicit consent, redaction, retention, and Actestra-owned endpoint policy if telemetry is retained |
-| Runtime and CLI downloader | `packages/shared-scripts/src/prepare-aioncore.js` | Replace | Pin every artifact, verify checksum/signature before extraction, and generate SBOM/provenance |
-| macOS entitlements and signing hooks | `entitlements.plist`, `scripts/afterSign.js` | Replace | Minimize entitlements; fail closed on signing errors; add notarization and Gatekeeper verification |
-| AionHub offline bundle | `scripts/prepareHubResources.js`, `resources/hub` | Defer | Replace moving tags with an allowlisted, immutable, signed extension catalog before enabling |
-| Web host and web CLI | `packages/web-host`, `packages/web-cli` | Defer | Desktop MVP first; retain only shared code needed by an accepted boundary |
-| Remote messaging channels | Telegram, Lark, DingTalk, Weixin, WeCom modules | Defer | Exclude from the first Actestra vertical slice; revisit with identity and secret-isolation design |
-| Upstream team orchestration | team pages, hooks, and AionCore team modules | Defer | Use as product evidence only until P6 contracts and deterministic fixtures exist |
-| Desktop pet windows | `process/pet`, renderer pet components | Remove | Exclude from the MVP product shell unless a later product decision restores it |
-| Upstream installers and release scripts | `scripts/install-*`, release asset scripts | Remove | Build Actestra-owned packaging and release automation |
-| Upstream accounts and official links | auth flows, about/help links, upstream services | Replace | Provide a local-first Actestra flow with no mandatory upstream account |
-| Demonstration media and promotional assets | large tracked files under `resources/` | Remove | Do not import marketing media; retain only separately reviewed application assets |
+| Electron main, preload, renderer application | `packages/desktop/src`, `public` | R0/R1 | Preserve the complete application and functional UI; patch identity and main-owned authority without replacing layout or journeys |
+| Router, layout, Guide, conversations, settings | `renderer/components/layout`, `renderer/pages` | R0 | Use as the golden product experience; require all 27 routes and visual/E2E non-regression |
+| Typed platform and bridge contracts | `common/platform/bridge`, `common/adapter/ipcBridge.ts` | R0/R1 | Keep the 41 functional domains and event shapes; implement Actestra providers behind them |
+| AionCore process lifecycle and API | `process/backend`, `packages/web-host` | R1 | Retain initially for parity; supervise as a general-worker compatibility runtime and migrate authority into P3 contracts |
+| Conversation, task, and database state | bridge domains, AionCore database | R1 | Preserve renderer semantics; migrate one declared system of record at a time to Actestra persistence and projections |
+| Agents and ACP clients | Agent Settings, ACP conversation platform | R0/R1 | Preserve registry, detection, repair, overrides, status, permissions, and UI; register Goose through `AgentAdapter` here |
+| Models and providers | Mode Settings, provider services | R0/R1 | Preserve provider/model UI and validation; move credentials and network policy behind the Actestra broker |
+| Assistants | Assistant Settings and services | R0/R1 | Preserve complete CRUD, import, defaults, prompts, Skills, and state; provide Actestra-owned records through compatible shapes |
+| Skills and Skills Hub | Skills Settings, extension contributions | R0/R2 | Preserve all local workflows; isolate unsigned remote catalog effects until Actestra integrity policy exists |
+| MCP and tool execution | Tools Settings, MCP bridges | R0/R1 | Preserve configuration and status UI; route effects through workspace grants, policy, approvals, leases, audit, and timeouts |
+| Files, shell, workspace, snapshots | file/shell bridges, Workspace | R0/R1 | Preserve interactions; move privileged operations behind path validation and the Actestra tool gateway |
+| Preview and document workflows | Preview panel and document bridges | R0/R1 | Preserve all viewers and generation UI; use Actestra artifact and safe-file services |
+| Scheduled tasks | cron pages and bridge | R0/R1 | Preserve CRUD, history, run, and associations; use durable Actestra scheduling and approval semantics |
+| Team orchestration | team pages, hooks, types, bridge | R0/R1 | Preserve all Team UI and native behaviors; map Eigent-style and Actestra orchestration into this contract |
+| Appearance, language, and pet | themes, appearance/pet settings and processes | R0/R1 | Preserve interactions and settings; patch product identity and main-owned platform operations only |
+| Extensions and Hub | extension loader, contributions, Hub resources | R0/R2 | Preserve full contribution architecture and UI; require signed manifests, capability grants, and an allowlisted catalog before remote activation |
+| Web host, WebUI, remote agents, channels | `packages/web-host`, `packages/web-cli`, remote/channel modules | R0/R2 | Preserve code, settings, and workflows; isolate listeners, credentials, and sends until Actestra identity and network policy are ready |
+| Login, feedback, diagnostics, telemetry | auth, feedback, Sentry/log services | R1/R2 | Keep UI states; make desktop guest/local-first and replace upstream accounts/endpoints with explicit-consent Actestra providers |
+| Auto-update and publishing | updater services, builder publish config | R1/R2 | Preserve update UX; disable upstream feeds and use signed Actestra metadata and rollback |
+| Product identity and application directories | builder metadata, resources, storage initialization | R1 | Patch to Actestra name, icon, protocol, bundle ID, executable, and versioned profiles without altering functional layout |
+| Runtime downloader and bundled binaries | shared scripts, bundled AionCore | R1/R2 | Preserve setup/recovery experience; require exact pins, checksum/signature, SBOM, provenance, and resolved licenses |
+| Entitlements, installers, release scripts | entitlements and scripts | R1/R2 | Preserve required platform behavior; replace signing, publisher, release channel, and credential authority with Actestra-owned automation |
+| Tests, examples, showcase, promotional material | `tests`, `examples`, `/test/components`, resource media | Build/test support | Retain as compatibility and upstream-update evidence; do not expose test-only or promotional surfaces as normal product navigation |
 
-## Adoption order
+## Fusion order
 
-1. Create the Actestra product identity and owned data directories.
-2. Disable upstream update, publishing, telemetry, and remote extension inputs.
-3. Establish main/preload/renderer authority tests.
-4. Put AionCore lifecycle behind the first `AgentAdapter`.
-5. Introduce Actestra-owned task, event, approval, credential, and audit state.
-6. Import only the minimum modules needed for the P4 general-work vertical slice.
-7. Reassess deferred web, channel, Hub, and team modules at their roadmap phases.
+1. Freeze and reproduce the exact native source, tests, build, routes, bridge
+   domains, and UI.
+2. Apply Actestra identity and isolated profiles without removing functions.
+3. Disable unowned external effects while retaining their UI and error states.
+4. Add shape-compatible adapters and P3 shadow projections.
+5. Move one authoritative data or privileged domain at a time to Actestra.
+6. Register Goose through the preserved agent/ACP experience.
+7. Map Eigent-style orchestration into the preserved Team experience.
+8. Activate remote, extension, channel, and update providers only after their
+   identity, integrity, permission, and rollback gates pass.
+9. Run the full retention contract against cross-platform candidate artifacts.
 
-Any change from this disposition requires a documented reason. A broad source
-merge still requires a new accepted architecture decision.
+An unavailable provider is not permission to delete its UI. Any intentional
+retirement requires a new owner-approved decision with migration and
+user-impact evidence.

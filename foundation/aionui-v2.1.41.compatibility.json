@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "upstream": {
+    "tag": "v2.1.41",
+    "commit": "2d8925fc67a97a20996fadcd2a0862b778b572ba"
+  },
+  "defaultDisposition": "retain",
+  "routes": {
+    "R0": [
+      "/login",
+      "/guid",
+      "/conversation/:id",
+      "/team/:id",
+      "/settings/model",
+      "/assistants",
+      "/settings/assistants",
+      "/settings/agent",
+      "/settings/agent/:id/repair",
+      "/settings/skills",
+      "/settings/skills/import-history",
+      "/settings/skills/detail/:skillName",
+      "/settings/tools",
+      "/settings/capabilities",
+      "/settings/capabilities/skills/import-history",
+      "/settings/skills-hub",
+      "/settings/appearance",
+      "/settings/display",
+      "/settings/webui",
+      "/settings/pet",
+      "/settings/system",
+      "/settings/about",
+      "/settings/ext/:tabId",
+      "/settings",
+      "/test/components",
+      "/scheduled",
+      "/scheduled/:job_id"
+    ]
+  },
+  "bridgeDomains": {
+    "R1": [
+      "shell",
+      "assistants",
+      "conversation",
+      "runtime",
+      "application",
+      "dialog",
+      "fs",
+      "fileWatch",
+      "workspaceOfficeWatch",
+      "fileStream",
+      "fileSnapshot",
+      "google",
+      "bedrock",
+      "mode",
+      "acpConversation",
+      "mcpService",
+      "database",
+      "previewHistory",
+      "preview",
+      "document",
+      "pptPreview",
+      "wordPreview",
+      "excelPreview",
+      "deepLink",
+      "windowControls",
+      "theme",
+      "systemSettings",
+      "notification",
+      "task",
+      "cron",
+      "team"
+    ],
+    "R2": [
+      "update",
+      "autoUpdate",
+      "googleAuth",
+      "openclawConversation",
+      "remoteAgent",
+      "webui",
+      "extensions",
+      "channel",
+      "hub",
+      "realtime"
+    ]
+  },
+  "f0Authority": {
+    "mode": "isolated-native-baseline",
+    "actestraAuthoritativeBridgeDomains": [],
+    "userInterfaceChangesAllowed": false
+  }
+}

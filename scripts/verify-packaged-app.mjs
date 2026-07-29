@@ -3,7 +3,7 @@ import path from "node:path";
 import process from "node:process";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { extractFile } from "@electron/asar";
+import { extractFile, listPackage, statFile } from "@electron/asar";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const appBundle = path.resolve(
@@ -76,7 +76,6 @@ const archiveStrings = execFileSync("/usr/bin/strings", [archivePath], {
   maxBuffer: 16 * 1024 * 1024,
 });
 const forbiddenArchivePatterns = [
-  { label: "AionUi", pattern: /\baionui\b/i },
   { label: "AERA", pattern: /\baera\b/i },
   { label: "static.aionui.com", pattern: /static\.aionui\.com/i },
   { label: "iofficeai", pattern: /\biofficeai\b/i },
@@ -86,6 +85,32 @@ for (const forbiddenValue of forbiddenArchivePatterns) {
   if (forbiddenValue.pattern.test(archiveStrings)) {
     fail(`forbidden identity or endpoint appears in app.asar: ${forbiddenValue.label}`);
   }
+}
+
+const declaredAionUiCompatibilityFiles = new Set(["out/main/index.js"]);
+const textualArchiveExtensions = new Set([".cjs", ".css", ".html", ".js", ".json", ".mjs", ".txt"]);
+for (const archiveEntry of listPackage(archivePath, { isPack: false })) {
+  const archiveFile = archiveEntry.replace(/^[/\\]+/u, "");
+  if (!textualArchiveExtensions.has(path.extname(archiveFile))) {
+    continue;
+  }
+
+  const entry = statFile(archivePath, archiveFile);
+  if ("files" in entry || "link" in entry) {
+    continue;
+  }
+  const contents = extractFile(archivePath, archiveFile).toString("utf8");
+  if (/\baionui\b/iu.test(contents) && !declaredAionUiCompatibilityFiles.has(archiveFile)) {
+    fail(`undeclared AionUi identity appears in app.asar file: ${archiveFile}`);
+  }
+}
+
+const packagedMain = extractFile(archivePath, "out/main/index.js").toString("utf8");
+if (
+  /\baionui\b/iu.test(packagedMain) &&
+  (!packagedMain.includes("aionui-shadow-evidence") || !packagedMain.includes("aionui-v2.1.41"))
+) {
+  fail("packaged main contains AionUi text outside the declared F2 compatibility contract");
 }
 
 const packagedRendererHtml = extractFile(archivePath, "out/renderer/index.html").toString("utf8");

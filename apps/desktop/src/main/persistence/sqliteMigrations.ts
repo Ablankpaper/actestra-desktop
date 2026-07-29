@@ -3,7 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { PersistenceError } from "../../core";
 
 export const ACTESTRA_SQLITE_APPLICATION_ID = 1_095_980_114;
-export const CURRENT_CORE_SCHEMA_VERSION = 3;
+export const CURRENT_CORE_SCHEMA_VERSION = 5;
 
 export interface SqliteMigration {
   readonly version: number;
@@ -171,6 +171,70 @@ export const CORE_SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
         redaction TEXT NOT NULL CHECK (redaction = 'metadata'),
         evidence_json TEXT NOT NULL
       ) STRICT;
+    `,
+  },
+  {
+    version: 4,
+    name: "aionui-shadow-evidence",
+    sql: `
+      CREATE TABLE aionui_shadow_evidence (
+        sequence INTEGER PRIMARY KEY CHECK (sequence > 0),
+        evidence_id TEXT NOT NULL UNIQUE,
+        captured_at TEXT NOT NULL,
+        source TEXT NOT NULL CHECK (source = 'aionui-v2.1.41'),
+        domain TEXT NOT NULL CHECK (
+          domain IN (
+            'conversation',
+            'task',
+            'provider',
+            'workspace',
+            'approval',
+            'artifact',
+            'runtime'
+          )
+        ),
+        native_identity_hash TEXT NOT NULL,
+        native_revision_hash TEXT NOT NULL,
+        redaction TEXT NOT NULL CHECK (redaction = 'metadata-only'),
+        evidence_json TEXT NOT NULL,
+        UNIQUE (domain, native_identity_hash, native_revision_hash)
+      ) STRICT;
+
+      CREATE INDEX aionui_shadow_domain_sequence_idx
+        ON aionui_shadow_evidence(domain, sequence);
+    `,
+  },
+  {
+    version: 5,
+    name: "aionui-approval-authority",
+    sql: `
+      CREATE TABLE aionui_approval_decisions (
+        decision_id TEXT PRIMARY KEY,
+        native_conversation_id TEXT NOT NULL,
+        native_call_id TEXT NOT NULL,
+        native_message_id TEXT NOT NULL,
+        native_path TEXT NOT NULL,
+        request_hash TEXT NOT NULL,
+        decision TEXT NOT NULL CHECK (
+          decision IN ('approved', 'denied', 'cancelled', 'selected')
+        ),
+        always_allow INTEGER NOT NULL CHECK (always_allow IN (0, 1)),
+        delivery_state TEXT NOT NULL CHECK (
+          delivery_state IN ('pending-delivery', 'delivered')
+        ),
+        attempt_count INTEGER NOT NULL CHECK (attempt_count >= 0),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        last_attempt_at TEXT,
+        delivered_at TEXT,
+        last_error_code TEXT,
+        delivery_body_json TEXT NOT NULL,
+        record_json TEXT NOT NULL,
+        UNIQUE (native_conversation_id, native_call_id)
+      ) STRICT;
+
+      CREATE INDEX aionui_approval_delivery_state_idx
+        ON aionui_approval_decisions(delivery_state, created_at);
     `,
   },
 ] as const;

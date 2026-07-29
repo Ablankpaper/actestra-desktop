@@ -1,0 +1,27 @@
+{
+  "repository": "https://github.com/iOfficeAI/AionUi.git",
+  "tag": "v2.1.41",
+  "commit": "2d8925fc67a97a20996fadcd2a0862b778b572ba",
+  "scope": "runnable-desktop-foundation",
+  "sourceRoot": "foundation/aionui-v2.1.41",
+  "manifest": "foundation/AIONUI_V2.1.41_SOURCE_MANIFEST.sha256",
+  "manifestSha256": "252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f",
+  "fileCount": 1766,
+  "upstreamTrackedFileCount": 2033,
+  "excludedTrackedFileCount": 267,
+  "completeTrackedSubtrees": [
+    "packages",
+    "public",
+    "patches",
+    "tests",
+    "examples"
+  ],
+  "excludedCategories": {
+    "mobileApplication": 81,
+    "promotionalAndReferenceResources": 60,
+    "upstreamRepositoryDocsGovernanceAndCi": 114,
+    "nonDesktopRootTooling": 12
+  },
+  "license": "Apache-2.0",
+  "localModificationsInsideSnapshot": false
+}

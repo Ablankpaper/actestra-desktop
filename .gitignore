@@ -37,6 +37,7 @@ coverage/
 .turbo/
 .vite/
 .electron-vite/
+.actestra/
 playwright-report/
 test-results/
 

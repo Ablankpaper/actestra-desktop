@@ -1,0 +1,272 @@
+{
+  "schemaVersion": 1,
+  "phase": "F3.1",
+  "upstream": {
+    "tag": "v2.1.41",
+    "commit": "2d8925fc67a97a20996fadcd2a0862b778b572ba",
+    "manifestSha256": "252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f"
+  },
+  "authorityOwner": "Actestra desktop main process",
+  "classifications": ["R0", "R1", "R2"],
+  "migration": {
+    "strategy": "Fresh Actestra profile v1; native AionUi profiles remain untouched. Schema v5 retains F2 shadow evidence and adds a private authoritative approval-decision outbox. Pre-F3 resolved decisions cannot be imported because F2 intentionally stored no raw decision bodies; pending native confirmations become authoritative on the first user response.",
+    "rollback": "Set ACTESTRA_APPROVAL_AUTHORITY=0 for the explicit native fallback, or regenerate without the F3.1 patch. Existing schema v5 decision rows remain inert and the frozen AionUi foundation stays byte-identical."
+  },
+  "uiContract": {
+    "layoutChangesAllowed": false,
+    "identityTokenChangesAllowed": true,
+    "featureEntryRemovalAllowed": false,
+    "goldenEvidence": "docs/evidence/aionui-v2.1.41-native-foundation-macos-arm64.png"
+  },
+  "patches": [
+    {
+      "path": "patches/0001-actestra-identity-and-isolation.mjs",
+      "classification": ["R1", "R2"],
+      "domains": [
+        "product identity",
+        "profile paths",
+        "deep links",
+        "updates",
+        "telemetry",
+        "feedback",
+        "upstream official services",
+        "public listeners"
+      ],
+      "authorityOwner": "Actestra desktop main process",
+      "rollback": "Regenerate without this patch; no frozen-source or native-profile mutation is required."
+    },
+    {
+      "path": "patches/0002-actestra-p3-shadow-projection.mjs",
+      "classification": ["R1"],
+      "domains": [
+        "conversation",
+        "task",
+        "provider",
+        "workspace",
+        "approval",
+        "artifact",
+        "runtime"
+      ],
+      "authorityOwner": "Actestra desktop main process",
+      "rollback": "Regenerate without this patch. Native AionUi response values, routes, state and UI remain authoritative and unchanged."
+    },
+    {
+      "path": "patches/0003-actestra-approval-authority.mjs",
+      "classification": ["R1"],
+      "domains": [
+        "approval decision",
+        "approval delivery outbox",
+        "native confirmation error mapping"
+      ],
+      "authorityOwner": "Actestra desktop main process",
+      "rollback": "Set ACTESTRA_APPROVAL_AUTHORITY=0 or regenerate without this patch. The preserved AionUi permission UI and native fallback route remain available; existing authority rows stay inert."
+    }
+  ],
+  "sourceCopies": [
+    {
+      "source": "apps/desktop/src/core/agentAdapter.ts",
+      "destination": "packages/desktop/src/actestra/core/agentAdapter.ts"
+    },
+    {
+      "source": "apps/desktop/src/core/domain.ts",
+      "destination": "packages/desktop/src/actestra/core/domain.ts"
+    },
+    {
+      "source": "apps/desktop/src/core/events.ts",
+      "destination": "packages/desktop/src/actestra/core/events.ts"
+    },
+    {
+      "source": "apps/desktop/src/core/index.ts",
+      "destination": "packages/desktop/src/actestra/core/index.ts"
+    },
+    {
+      "source": "apps/desktop/src/core/persistence.ts",
+      "destination": "packages/desktop/src/actestra/core/persistence.ts"
+    },
+    {
+      "source": "apps/desktop/src/core/platform.ts",
+      "destination": "packages/desktop/src/actestra/core/platform.ts"
+    },
+    {
+      "source": "apps/desktop/src/core/privilegedServices.ts",
+      "destination": "packages/desktop/src/actestra/core/privilegedServices.ts"
+    },
+    {
+      "source": "apps/desktop/src/compatibility/aionui/index.ts",
+      "destination": "packages/desktop/src/actestra/compatibility/aionui/index.ts"
+    },
+    {
+      "source": "apps/desktop/src/compatibility/aionui/approvalAuthority.ts",
+      "destination": "packages/desktop/src/actestra/compatibility/aionui/approvalAuthority.ts"
+    },
+    {
+      "source": "apps/desktop/src/compatibility/aionui/nativeObservations.ts",
+      "destination": "packages/desktop/src/actestra/compatibility/aionui/nativeObservations.ts"
+    },
+    {
+      "source": "apps/desktop/src/compatibility/aionui/shadowProjection.ts",
+      "destination": "packages/desktop/src/actestra/compatibility/aionui/shadowProjection.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/compatibility/aionuiApprovalAuthorityService.ts",
+      "destination": "packages/desktop/src/actestra/main/compatibility/aionuiApprovalAuthorityService.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/compatibility/aionuiShadowProjectionService.ts",
+      "destination": "packages/desktop/src/actestra/main/compatibility/aionuiShadowProjectionService.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/persistence/sqliteCorePersistence.ts",
+      "destination": "packages/desktop/src/actestra/main/persistence/sqliteCorePersistence.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/persistence/sqliteMigrations.ts",
+      "destination": "packages/desktop/src/actestra/main/persistence/sqliteMigrations.ts"
+    }
+  ],
+  "assetCopies": [
+    {
+      "source": "apps/desktop/resources/Actestra.icns",
+      "destination": "resources/app.icns",
+      "sha256": "c51eb793aa2bd969a19daf27bb997b4df5e66271faaf85bc795c0be7fa8411c2"
+    },
+    {
+      "source": "apps/desktop/resources/Actestra.ico",
+      "destination": "resources/app.ico",
+      "sha256": "c5c6ee1974fda14d7642c302facd236614a8e70447264fbcc36a1475b0ce45df"
+    },
+    {
+      "source": "apps/desktop/resources/Actestra.png",
+      "destination": "resources/app.png",
+      "sha256": "21fd125b8437fe7559f9cd76f47d56e2ab0a1acfb660da158dfe90684021f9a2"
+    },
+    {
+      "source": "apps/desktop/resources/Actestra.png",
+      "destination": "resources/app_dev.png",
+      "sha256": "21fd125b8437fe7559f9cd76f47d56e2ab0a1acfb660da158dfe90684021f9a2"
+    },
+    {
+      "source": "apps/desktop/resources/Actestra.png",
+      "destination": "packages/desktop/src/renderer/assets/logos/brand/app.png",
+      "sha256": "21fd125b8437fe7559f9cd76f47d56e2ab0a1acfb660da158dfe90684021f9a2"
+    },
+    {
+      "source": "apps/desktop/resources/Actestra-180.png",
+      "destination": "public/pwa/icon-180.png",
+      "sha256": "8213ba8524816afc5e321f5735325cd88dfcfef61c6c4c4ee64d46afb9364a63"
+    },
+    {
+      "source": "apps/desktop/resources/Actestra-192.png",
+      "destination": "public/pwa/icon-192.png",
+      "sha256": "ee7c7ec2f17d298055328d3d0dd35ecb0397501a6dee46f5f0960c9622560dec"
+    },
+    {
+      "source": "apps/desktop/resources/Actestra-512.png",
+      "destination": "public/pwa/icon-512.png",
+      "sha256": "67eb8b9a1619d550ff16bde4ce2122face59057a5a1079173fab05ad5ea2aed5"
+    }
+  ],
+  "expectedChangedFiles": [
+    "package.json",
+    "packages/desktop/electron-builder.yml",
+    "packages/desktop/electron.vite.config.ts",
+    "packages/desktop/src/actestra/compatibility/aionui/approvalAuthority.ts",
+    "packages/desktop/src/actestra/compatibility/aionui/index.ts",
+    "packages/desktop/src/actestra/compatibility/aionui/nativeObservations.ts",
+    "packages/desktop/src/actestra/compatibility/aionui/shadowProjection.ts",
+    "packages/desktop/src/actestra/core/agentAdapter.ts",
+    "packages/desktop/src/actestra/core/domain.ts",
+    "packages/desktop/src/actestra/core/events.ts",
+    "packages/desktop/src/actestra/core/index.ts",
+    "packages/desktop/src/actestra/core/persistence.ts",
+    "packages/desktop/src/actestra/core/platform.ts",
+    "packages/desktop/src/actestra/core/privilegedServices.ts",
+    "packages/desktop/src/actestra/main/compatibility/aionuiApprovalAuthorityService.ts",
+    "packages/desktop/src/actestra/main/compatibility/aionuiShadowProjectionService.ts",
+    "packages/desktop/src/actestra/main/persistence/sqliteCorePersistence.ts",
+    "packages/desktop/src/actestra/main/persistence/sqliteMigrations.ts",
+    "packages/desktop/src/common/adapter/actestraApprovalAuthorityClient.ts",
+    "packages/desktop/src/common/adapter/actestraShadowPublisher.ts",
+    "packages/desktop/src/common/adapter/httpBridge.ts",
+    "packages/desktop/src/common/api/ClientFactory.ts",
+    "packages/desktop/src/common/config/actestraApprovalAuthorityContract.ts",
+    "packages/desktop/src/common/config/actestraProduct.ts",
+    "packages/desktop/src/common/config/actestraShadowContract.ts",
+    "packages/desktop/src/common/platform/ElectronPlatformServices.ts",
+    "packages/desktop/src/common/platform/NodePlatformServices.ts",
+    "packages/desktop/src/common/platform/index.ts",
+    "packages/desktop/src/index.ts",
+    "packages/desktop/src/preload/main.ts",
+    "packages/desktop/src/process/bridge/updateBridge.ts",
+    "packages/desktop/src/process/bridge/webuiBridge.ts",
+    "packages/desktop/src/process/pet/petConfirmManager.ts",
+    "packages/desktop/src/process/services/actestraApprovalNativeTransport.ts",
+    "packages/desktop/src/process/services/autoUpdaterService.ts",
+    "packages/desktop/src/process/services/actestraShadowBridge.ts",
+    "packages/desktop/src/process/services/i18n/index.ts",
+    "packages/desktop/src/process/services/installerLastFailure.ts",
+    "packages/desktop/src/process/utils/actestraProfile.ts",
+    "packages/desktop/src/process/utils/configureChromium.ts",
+    "packages/desktop/src/process/utils/deepLink.ts",
+    "packages/desktop/src/process/utils/tray.ts",
+    "packages/desktop/src/process/utils/utils.ts",
+    "packages/desktop/src/renderer/assets/logos/brand/app.png",
+    "packages/desktop/src/renderer/components/layout/InstallationIntegrityDialog.tsx",
+    "packages/desktop/src/renderer/components/layout/Layout.tsx",
+    "packages/desktop/src/renderer/components/layout/Titlebar/index.tsx",
+    "packages/desktop/src/renderer/components/settings/SettingsModal/contents/AboutModalContent.tsx",
+    "packages/desktop/src/renderer/components/settings/SettingsModal/contents/FeedbackReportModal.tsx",
+    "packages/desktop/src/renderer/components/settings/useUpdateNotificationController.ts",
+    "packages/desktop/src/renderer/hooks/system/notification/useBrowserNotification.ts",
+    "packages/desktop/src/renderer/hooks/system/notification/useDesktopTurnNotification.ts",
+    "packages/desktop/src/renderer/index.html",
+    "packages/desktop/src/renderer/main.tsx",
+    "packages/desktop/src/renderer/pages/guid/components/QuickActionButtons.tsx",
+    "packages/desktop/src/renderer/services/feedback/submitFeedbackReport.ts",
+    "packages/desktop/src/renderer/services/i18n/index.ts",
+    "packages/desktop/src/renderer/utils/platform.ts",
+    "packages/desktop/src/sentry.ts",
+    "public/manifest.webmanifest",
+    "public/pwa/icon-180.png",
+    "public/pwa/icon-192.png",
+    "public/pwa/icon-512.png",
+    "resources/app.icns",
+    "resources/app.ico",
+    "resources/app.png",
+    "resources/app_dev.png",
+    "resources/messages.yml",
+    "resources/windows/installer-errors-sentry.nsh",
+    "resources/windows/installer-messages.nsh",
+    "resources/windows/installer-observability.nsh",
+    "resources/windows/installer-process-control.nsh",
+    "resources/windows/installer-update-verify.nsh",
+    "resources/windows/support/query-lockers.ps1",
+    "scripts/afterSign.js",
+    "scripts/build-with-builder.js",
+    "tests/unit/actestra/approvalAuthorityClient.dom.test.ts",
+    "tests/unit/actestra/approvalAuthorityPersistence.test.ts",
+    "tests/unit/actestra/approvalAuthorityService.test.ts",
+    "tests/unit/actestra/approvalNativeTransport.test.ts",
+    "tests/unit/actestra/externalEffectIsolation.test.ts",
+    "tests/unit/actestra/productBoundary.test.ts",
+    "tests/unit/actestra/shadowPersistence.test.ts",
+    "tests/unit/actestra/shadowProjection.test.ts",
+    "tests/unit/actestra/shadowPublisher.test.ts",
+    "tests/unit/bootstrap/buildWithBuilder.test.ts",
+    "tests/unit/feedback/FeedbackReportModal.dom.test.tsx",
+    "tests/unit/feedback/submitFeedbackReport.test.ts",
+    "tests/unit/process/services/autoUpdaterService.test.ts",
+    "tests/unit/providers/ClientFactory.test.ts",
+    "tests/unit/renderer/layout/LayoutSiderBrandHome.dom.test.tsx",
+    "tests/unit/renderer/useDesktopTurnNotification.dom.test.tsx",
+    "tests/unit/sentry.test.ts",
+    "tests/unit/updateBridgeCdnRewrite.test.ts",
+    "tests/unit/updateBridgeDownloadDedupe.test.ts"
+  ],
+  "invariantFiles": [
+    "packages/desktop/src/renderer/components/layout/Router.tsx",
+    "packages/desktop/src/renderer/components/layout/Sider/index.tsx",
+    "packages/desktop/src/renderer/pages/guid/GuidPage.tsx",
+    "packages/desktop/src/common/adapter/ipcBridge.ts"
+  ]
+}
