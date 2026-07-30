@@ -444,7 +444,8 @@ prompt reference; main persists the real Worker-authored write input under its
 exact owner before invoking the accepted create-only tool. Prepared restart
 recovery uses the durable brief and does not re-read native workspace state.
 
-Complete local evidence for the uncommitted writing branch:
+Complete local evidence for writing implementation commit
+`3e9d57407207ee8718fea2ed127a85dbab4daad8`:
 
 - the post-review affected root set passes 7 files and 74 tests; complete `bun
   run check` passes formatting, zero-warning lint, strict TypeScript, Electron
@@ -487,9 +488,10 @@ zero-finding review.
 
 Documentation links pass across 54 Markdown files, Markdown lint reports zero
 issues across 48 files, and `git diff --check` passes on this evidence update.
-Commit, push, pull-request CI, merge, and merged-main CI remain pending. This
-local package and smoke do not claim notarization, candidate, release,
-distribution, or user acceptance.
+The implementation commit exists locally; push, a Ready pull request, exact
+PR-head CI, merge, and merged-main CI remain pending. This local package and
+smoke do not claim notarization, candidate, release, distribution, or user
+acceptance.
 
 Office-document, schedule, representative tool-failure, and Worker-crash
 fixtures still block the full P4 exit gate. No Goose, CrewAI, Eigent runtime,
@@ -1095,7 +1097,7 @@ Review closure validation at
 | GW-P4.6 preserved-AionUI General Work journey      | Accepted on `main` through PR 14                                | Final head `4a07eb9db1907ae8fab2613b4cf11a7d2a8cbee4`; PR CI 30553454459; squash merge `784191bfc59d71a128ed5d3251db3535f1349e45`; main CI 30554447144; ADR-0020; schema 8 atomic journey authority; complete root check passes 50 files/292 tests; native passes 341 files/2,634 tests; production builds, signed local arm64 package, and target-app restart/denial/cancellation smoke pass |
 | P4 representative workspace-file journey           | Accepted on `main` through PR 16                                | Final head `f19b7dd006cf091aa9c7f1559dd484fdad35f200`; PR CI 30567484733; squash merge `2aed0f705bf6f9b3734742c0905c94ac562f501e`; exact main CI 30569476160; schema 9 closed kinds; 50/308 root and 341/2,635 native tests; signed local package and target-app smoke; no submitted reviews or inline comments; Free-plan summary is not line-level review evidence |
 | P4 bounded local-research journey                   | Accepted on `main` through PR 17                                | Final head `5694865462f7209ad413b2cd1dbe2eef0fe955bc`; PR CI 30577647392; squash merge `779880f28106aa8423ba042de5a6a3264bc0452e`; merged-main CI 30577886631; schema 10; 50/313 root and 341/2,637 native tests; builds, signed unnotarized local package, target-app smoke, local review closure; remote CodeRabbit rate-limited before review                                                                                      |
-| P4 bounded writing journey                          | Complete local gates and review; remote delivery pending        | Branch `feat/p4-writing-journey` from `779880f28106aa8423ba042de5a6a3264bc0452e`; ADR-0021; schema 11; 50/325 root and 341/2,639 native tests; root/native builds; ad-hoc-signed unnotarized local arm64 package; schema-11 writing/file/research/denial/cancellation target-app smoke; complete manual review plus documented CodeRabbit coverage; no commit, push, PR, PR CI, merge, or merged-main CI yet                                                                                                  |
+| P4 bounded writing journey                          | Committed locally; remote delivery pending                       | Branch `feat/p4-writing-journey` from `779880f28106aa8423ba042de5a6a3264bc0452e`; implementation commit `3e9d57407207ee8718fea2ed127a85dbab4daad8`; ADR-0021; schema 11; 50/325 root and 341/2,639 native tests; root/native builds; ad-hoc-signed unnotarized local arm64 package; schema-11 writing/file/research/denial/cancellation target-app smoke; complete manual review plus documented CodeRabbit coverage; no push, PR, PR CI, merge, or merged-main CI yet                                                                                     |
 | P6 orchestration boundary                          | Accepted architecture direction only                            | ADR-0015; CrewAI `1.15.8` at `e9caf1e1b89343bb833b5da6660faa91804a9dce` verified as the first supervised sidecar candidate; Eigent `v1.0.2` at `e478094a9ff433132b3cf1928e4143338ddaab20` retained as a reference; neither is imported, bundled, or implemented                                                                                                                               |
 | Native AionUi source                               | Exact local desktop snapshot                                    | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot                                                                                                                                                                                                                                                                            |
 | Native preservation contract                       | Local pass                                                      | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified                                                                                                                                                                                                                                                                 |
@@ -1175,18 +1177,16 @@ The ordered implementation index and P3 non-claims are in
 
 ## Next gate
 
-1. Complete the final range, generated-output, and secret audit for the
-   reviewed writing scope.
-2. Commit and push that exact scope, open a Ready pull request,
+1. Push the exact reviewed and committed writing scope, open a Ready pull request,
    require exact-head CI and repository review/protection gates, squash merge,
    and verify exact merged-main CI.
-3. Start the independent Office-document journey only from updated verified
+2. Start the independent Office-document journey only from updated verified
    `main` after writing is accepted there.
-4. Complete representative tool-failure and Worker-crash evidence in addition
+3. Complete representative tool-failure and Worker-crash evidence in addition
    to the accepted denial, cancellation, persistence, restart, and
    Artifact-conflict paths.
-5. Do not enter Goose P5 until the full P4 exit gate is evidenced.
-6. Keep CrewAI-assisted Team P6 ordered after Goose P5.
+4. Do not enter Goose P5 until the full P4 exit gate is evidenced.
+5. Keep CrewAI-assisted Team P6 ordered after Goose P5.
 
 ## Open decisions
 
@@ -1261,9 +1261,11 @@ The ordered implementation index and P3 non-claims are in
   representative-file extension are accepted through GW-P4.6 plus PR 16. The
   bounded local-research extension is accepted through PR 17 and exact
   merged-main CI. Writing passes local implementation/package/target-app gates
-  but remains uncommitted and unaccepted on `main`; Office-document, schedule,
-  tool-failure, and Worker-crash gates also remain. Full representative P4
-  acceptance is pending, and specialized Goose work remains a later gate.
+  and is committed locally at
+  `3e9d57407207ee8718fea2ed127a85dbab4daad8`, but remains unpushed and
+  unaccepted on `main`; Office-document, schedule, tool-failure, and
+  Worker-crash gates also remain. Full representative P4 acceptance is pending,
+  and specialized Goose work remains a later gate.
 - F0 alone proves only that the original AionUi application can be preserved
   and run. F1, F2, F3.1, F3.2, and merged F3.3 add their separately recorded
   identity, shadow, narrow decision-authority, fixed-delivery audit, and

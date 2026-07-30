@@ -48,9 +48,10 @@ prepared recovery. The implementation passes directed root tests, complete
 ad-hoc-signed unnotarized local arm64 package, and actual schema-11 packaged
 target-app writing/file/research/denial/cancellation smoke. Complete manual
 review and documented CodeRabbit coverage are closed; documentation links,
-Markdown lint, and diff checks pass. Commit, push, exact PR-head CI, merge, and
-merged-main CI remain pending. P5 Goose and P6 CrewAI/Team work have not
-started.
+Markdown lint, and diff checks pass. Implementation commit
+`3e9d57407207ee8718fea2ed127a85dbab4daad8` exists locally; push, exact PR-head
+CI, merge, and merged-main CI remain pending. P5 Goose and P6 CrewAI/Team work
+have not started.
 
 ## P0 — Project Foundation
 

@@ -510,9 +510,10 @@ it omitted the two untracked files and is not represented as a complete
 zero-finding review.
 
 Documentation links pass across 54 Markdown files, Markdown lint reports zero
-issues across 48 files, and `git diff --check` passes. Commit, push, pull
-request, PR-head CI, merge, merged-main CI, notarization, candidate, release,
-distribution, and user acceptance remain pending.
+issues across 48 files, and `git diff --check` passes. Implementation commit
+`3e9d57407207ee8718fea2ed127a85dbab4daad8` exists locally; push, a Ready pull
+request, exact PR-head CI, merge, merged-main CI, notarization, candidate,
+release, distribution, and user acceptance remain pending.
 
 Exit: the complete general-work journey is understandable and recoverable in
 the retained AionUi UI with Actestra as the declared system of record.
@@ -537,9 +538,9 @@ P4 is complete only after:
 ## Current non-claims
 
 - GW-P4.2 through GW-P4.6 plus the representative-file and local-research
-  extensions are accepted on `main`; writing passes local implementation and
-  validation but is not accepted until review, PR, merge, and merged-main gates
-  pass.
+  extensions are accepted on `main`; writing passes local implementation,
+  validation, and review but is not accepted until exact PR-head, merge, and
+  merged-main gates pass.
 - The two native tools are connected to a user-submitted preserved-AionUI task,
   but the file path remains the one main-owned `actestra-input.txt`; this is not
   a renderer-selected generic filesystem API.
