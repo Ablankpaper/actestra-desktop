@@ -669,7 +669,10 @@ replaceOnce(
             },
           },
     launchWorker: async ({ journeyKind, readRequestId, requestId }) => {
-      if (generalWorkSmokeConfig?.scenario === 'prepare-restart') {
+      if (
+        generalWorkSmokeConfig?.scenario === 'prepare-restart' ||
+        generalWorkSmokeConfig?.scenario === 'prepare-writing-restart'
+      ) {
         throw new Error(
           'Actestra target-app smoke interrupted before Worker launch',
         );
@@ -695,7 +698,8 @@ replaceOnce(
         });
       }
       const requestIds =
-        journeyKind !== 'prompt-artifact'
+        journeyKind === 'workspace-file-artifact' ||
+        journeyKind === 'local-research-artifact'
           ? [readRequestId, requestId]
           : [requestId];
       let requestIndex = 0;
@@ -706,6 +710,8 @@ replaceOnce(
           executionMode:
             generalWorkSmokeConfig?.scenario === 'cancellation'
               ? 'hold'
+              : journeyKind === 'writing-artifact'
+                ? 'writing-artifact-fixture'
               : journeyKind === 'local-research-artifact'
                 ? 'local-research-artifact-fixture'
                 : journeyKind === 'workspace-file-artifact'
@@ -921,13 +927,13 @@ contextBridge.exposeInMainWorld('electronAPI', {`,
 replaceOnce(
   "tests/unit/actestra/persistenceUtilityClient.test.ts",
   `keeps AionUI shadow, approval, and recovery authority behind schema v7 utility IPC`,
-  `keeps AionUI shadow, approval, recovery, and journey authority behind schema v10 utility IPC`,
+  `keeps AionUI shadow, approval, recovery, and journey authority behind schema v11 utility IPC`,
 );
 
 replaceOnce(
   "tests/unit/actestra/persistenceUtilityClient.test.ts",
   `expect(client.schemaVersion).toBe(7);`,
-  `expect(client.schemaVersion).toBe(10);`,
+  `expect(client.schemaVersion).toBe(11);`,
 );
 
 writeNew(
@@ -1034,6 +1040,8 @@ import type {
 const SMOKE_SCENARIOS = [
   'prepare-restart',
   'recover-restart',
+  'prepare-writing-restart',
+  'recover-writing-restart',
   'denial',
   'cancellation',
   'local-research',
@@ -1056,6 +1064,14 @@ export interface ActestraGeneralWorkSmokeSummary {
 }
 
 type SmokeEnvironment = Readonly<Record<string, string | undefined>>;
+
+const WRITING_SMOKE_BRIEF = [
+  'Title: Packaged restart-safe launch note',
+  'Audience: Product leadership',
+  'Purpose: Explain the verified packaged release sequence.',
+  'Point: Start with the approved customer outcome.',
+  'Point: Close with the bounded next step.',
+].join('\\n');
 
 export function resolveActestraGeneralWorkSmokeConfig(
   environment: SmokeEnvironment,
@@ -1091,9 +1107,16 @@ export function resolveActestraGeneralWorkSmokeConfig(
 function submissionId(
   scenario: ActestraGeneralWorkSmokeScenario,
 ): string {
-  return scenario === 'prepare-restart' || scenario === 'recover-restart'
-    ? 'submission-aionui-smoke-restart'
-    : \`submission-aionui-smoke-\${scenario}\`;
+  if (scenario === 'prepare-restart' || scenario === 'recover-restart') {
+    return 'submission-aionui-smoke-restart';
+  }
+  if (
+    scenario === 'prepare-writing-restart' ||
+    scenario === 'recover-writing-restart'
+  ) {
+    return 'submission-aionui-smoke-writing-restart';
+  }
+  return \`submission-aionui-smoke-\${scenario}\`;
 }
 
 function prompt(scenario: ActestraGeneralWorkSmokeScenario): string {
@@ -1105,6 +1128,12 @@ function prompt(scenario: ActestraGeneralWorkSmokeScenario): string {
   }
   if (scenario === 'local-research') {
     return 'Compare the approved local source notes.';
+  }
+  if (
+    scenario === 'prepare-writing-restart' ||
+    scenario === 'recover-writing-restart'
+  ) {
+    return WRITING_SMOKE_BRIEF;
   }
   return 'Create the restart-safe Actestra smoke artifact.';
 }
@@ -1126,22 +1155,30 @@ export async function runActestraGeneralWorkSmoke(
   recovery: Promise<AionUiPreparedGeneralWorkRecoverySummary>,
 ): Promise<ActestraGeneralWorkSmokeSummary> {
   const recoverySummary = await recovery;
-  const restartJourney =
+  const fileRestartJourney =
     config.scenario === 'prepare-restart' ||
     config.scenario === 'recover-restart';
+  const writingRestartJourney =
+    config.scenario === 'prepare-writing-restart' ||
+    config.scenario === 'recover-writing-restart';
   const intent = {
     contractVersion: 1,
     nativeConversationId: config.nativeConversationId,
     submissionId: submissionId(config.scenario),
     prompt: prompt(config.scenario),
-    ...(restartJourney
+    ...(writingRestartJourney
+      ? { journeyKind: 'writing-artifact' as const }
+      : fileRestartJourney
       ? { journeyKind: 'workspace-file-artifact' as const }
       : config.scenario === 'local-research'
         ? { journeyKind: 'local-research-artifact' as const }
       : {}),
   } as const;
 
-  if (config.scenario === 'prepare-restart') {
+  if (
+    config.scenario === 'prepare-restart' ||
+    config.scenario === 'prepare-writing-restart'
+  ) {
     if (
       recoverySummary.attempted !== 0 ||
       recoverySummary.started !== 0 ||
@@ -1172,7 +1209,10 @@ export async function runActestraGeneralWorkSmoke(
     });
   }
 
-  if (config.scenario === 'recover-restart') {
+  if (
+    config.scenario === 'recover-restart' ||
+    config.scenario === 'recover-writing-restart'
+  ) {
     if (
       recoverySummary.attempted !== 1 ||
       recoverySummary.started !== 1 ||
@@ -1190,6 +1230,38 @@ export async function runActestraGeneralWorkSmoke(
       projection.artifacts.length !== 1
     ) {
       throw new Error('The recovered smoke task has no completed artifact');
+    }
+    if (config.scenario === 'recover-writing-restart') {
+      const artifact = projection.artifacts[0];
+      if (
+        artifact === undefined ||
+        artifact.kind !== 'document' ||
+        artifact.label !== 'Actestra writing draft' ||
+        artifact.state !== 'available'
+      ) {
+        throw new Error(
+          'The recovered writing smoke has no owned document artifact',
+        );
+      }
+      const preview = await service.preview(
+        config.nativeConversationId,
+        projection.taskId,
+        artifact.artifactId,
+      );
+      if (
+        preview.label !== 'Actestra writing draft' ||
+        preview.mediaType !== 'text/markdown; charset=utf-8' ||
+        !preview.content.includes('# Packaged restart-safe launch note') ||
+        !preview.content.includes('Audience: Product leadership') ||
+        !preview.content.includes(
+          'Explain the verified packaged release sequence.',
+        ) ||
+        !preview.content.includes('Close with the bounded next step.')
+      ) {
+        throw new Error(
+          'The recovered writing smoke did not resolve the exact owned Preview',
+        );
+      }
     }
     return Object.freeze({
       scenario: config.scenario,
@@ -2071,6 +2143,8 @@ function config(
   scenario:
     | 'prepare-restart'
     | 'recover-restart'
+    | 'prepare-writing-restart'
+    | 'recover-writing-restart'
     | 'denial'
     | 'cancellation'
     | 'local-research',
@@ -2243,6 +2317,81 @@ describe('Actestra target-app General Work smoke contract', () => {
       'artifact-local-research-smoke',
     );
   });
+
+  it('requires a recovered writing document and validates its owned Preview', async () => {
+    const prepared = {
+      submit: vi.fn(async () => {
+        throw new Error('interrupted before writing launch');
+      }),
+      list: vi.fn(async () => [
+        {
+          status: 'ready',
+          canCancel: false,
+        },
+      ]),
+    } as unknown as AionUiGeneralWorkJourneyService;
+    await expect(
+      runActestraGeneralWorkSmoke(
+        config('prepare-writing-restart'),
+        prepared,
+        zeroRecovery,
+      ),
+    ).resolves.toMatchObject({
+      scenario: 'prepare-writing-restart',
+      status: 'prepared',
+    });
+    expect(prepared.submit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        journeyKind: 'writing-artifact',
+        prompt: expect.stringContaining('Title: Packaged restart-safe launch note'),
+      }),
+    );
+
+    const recovered = {
+      waitForIdle: vi.fn(async () => undefined),
+      list: vi.fn(async () => [
+        {
+          taskId: 'task-writing-smoke',
+          status: 'completed',
+          canCancel: false,
+          artifacts: [
+            {
+              artifactId: 'artifact-writing-smoke',
+              kind: 'document',
+              label: 'Actestra writing draft',
+              state: 'available',
+            },
+          ],
+        },
+      ]),
+      preview: vi.fn(async () => ({
+        label: 'Actestra writing draft',
+        mediaType: 'text/markdown; charset=utf-8',
+        content:
+          '# Packaged restart-safe launch note\\n\\n' +
+          'Audience: Product leadership\\n\\n' +
+          'Explain the verified packaged release sequence.\\n\\n' +
+          'Close with the bounded next step.\\n',
+      })),
+    } as unknown as AionUiGeneralWorkJourneyService;
+    await expect(
+      runActestraGeneralWorkSmoke(
+        config('recover-writing-restart'),
+        recovered,
+        Promise.resolve({ attempted: 1, started: 1, failed: 0 }),
+      ),
+    ).resolves.toEqual({
+      scenario: 'recover-writing-restart',
+      status: 'completed',
+      taskCount: 1,
+      artifactCount: 1,
+    });
+    expect(recovered.preview).toHaveBeenCalledExactlyOnceWith(
+      'conversation-aionui-smoke',
+      'task-writing-smoke',
+      'artifact-writing-smoke',
+    );
+  });
 });
 `,
 );
@@ -2390,6 +2539,42 @@ describe('Actestra preserved AionUI general-work hook', () => {
       submissionId: expect.stringMatching(/^submission-aionui-/u),
       prompt: 'Compare the approved local source notes',
       journeyKind: 'local-research-artifact',
+    });
+  });
+
+  it('submits the writing command as a closed writing journey', async () => {
+    mocks.list.mockResolvedValue({ status: 'ok', projections: [] });
+    mocks.submit.mockResolvedValue({
+      status: 'ok',
+      projection: {
+        ...projection,
+        status: 'completed',
+        canCancel: false,
+      },
+    });
+    const hook = renderHook(() =>
+      useActestraGeneralWork('conversation-writing-journey'),
+    );
+    await waitFor(() => {
+      expect(mocks.list).toHaveBeenCalled();
+    });
+    const brief = [
+      'Title: Quarterly launch note',
+      'Audience: Product leadership',
+      'Purpose: Explain the approved launch sequence.',
+      'Point: Start with the verified customer outcome.',
+    ].join('\\n');
+
+    await act(async () => {
+      await hook.result.current.run(brief, 'writing-artifact');
+    });
+
+    expect(mocks.submit).toHaveBeenCalledExactlyOnceWith({
+      contractVersion: 1,
+      nativeConversationId: 'conversation-writing-journey',
+      submissionId: expect.stringMatching(/^submission-aionui-/u),
+      prompt: brief,
+      journeyKind: 'writing-artifact',
     });
   });
 
@@ -2912,6 +3097,18 @@ describe('Actestra preserved AionUI general-work client', () => {
     ).toEqual({
       prompt: 'compare the approved local source notes',
       journeyKind: 'local-research-artifact',
+    });
+    const writingBrief = [
+      'Title: Quarterly launch note',
+      'Audience: Product leadership',
+      'Purpose: Explain the approved launch sequence.',
+      'Point: Start with the verified customer outcome.',
+    ].join('\\n');
+    expect(
+      extractActestraGeneralWorkIntent(\`/actestra write \${writingBrief}\`),
+    ).toEqual({
+      prompt: writingBrief,
+      journeyKind: 'writing-artifact',
     });
     expect(extractActestraGeneralWorkPrompt('ordinary native AionUI message')).toBeNull();
   });

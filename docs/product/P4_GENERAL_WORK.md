@@ -1,9 +1,10 @@
 # P4 General-Work Vertical Slice
 
-Status: GW-P4.2 through GW-P4.6 and the representative workspace-file journey
-are accepted on `main`; the bounded local-research journey is implemented
-and pushed on Ready pull request 17; complete local gates, review, and initial
-exact-head PR CI pass while final evidence-head and merge closure remain pending
+Status: GW-P4.2 through GW-P4.6 plus the representative workspace-file and
+bounded local-research journeys are accepted on `main`; ADR-0021 accepts the
+next bounded writing journey, whose implementation, complete local regression,
+package, and target-app smoke pass on `feat/p4-writing-journey`; review and
+remote delivery remain pending
 
 Date: 2026-07-31
 
@@ -450,13 +451,68 @@ Complete local evidence:
 - complete manual review covers all 24 runtime, migration, downstream, smoke,
   test, and evidence-document changes without another in-scope defect.
 
-Implementation `e7f3212f5978d69eb0afeaa140ddf9dcedf2414f` is pushed on
-Ready pull request 17 and exact-head CI run 30577349875 passes. The remote
-CodeRabbit run selected all 24 files but was rate-limited before review; its
-successful status is not a completed review. This evidence update creates a
-new head that must pass its own CI. Final PR-head CI, merge, merged-main CI,
-notarization, candidate, release, distribution, and user acceptance remain
-separate pending gates.
+Implementation `e7f3212f5978d69eb0afeaa140ddf9dcedf2414f` and final head
+`5694865462f7209ad413b2cd1dbe2eef0fe955bc` reached Ready pull request 17.
+Final PR-head CI run 30577647392 passes. It squash merged as
+`779880f28106aa8423ba042de5a6a3264bc0452e`; exact merged-main CI run
+30577886631 passes. The remote CodeRabbit run was rate-limited before review
+and is not review evidence.
+
+ADR-0021 defines the next writing slice as a prompt-derived structured brief,
+not another workspace read or renamed research result. It creates a
+Worker-authored private `draft.md` input, persists it before the accepted
+create-only tool, and projects a `document` Artifact through owned Preview.
+
+The writing implementation is locally complete on
+`feat/p4-writing-journey` from exact main
+`779880f28106aa8423ba042de5a6a3264bc0452e`:
+
+- `/actestra write` validates the closed ordered brief before schema-11
+  prompt-only registration and adds no workspace read, renderer path, generic
+  tool transport, shell, credential, or scheduler authority;
+- the same isolated Worker authors private `draft.md` content, main persists
+  it under the exact write-request owner, and the create-only tool binds one
+  `document` Artifact labeled `Actestra writing draft`;
+- prepared recovery uses the persisted brief without re-reading native
+  workspace state, while normalized events, metadata audit, and renderer
+  projections exclude the private draft input and path; and
+- the original AionUI SendBox, conversation, status, cancellation, error, and
+  non-persisted owned Preview surfaces remain the only UI.
+
+Complete local evidence:
+
+- the post-review affected root set passes 7 files/74 tests and complete `bun
+  run check` passes 50 files/325 tests together with formatting, zero-warning lint,
+  strict TypeScript, Electron SQLite, smoke, boundary, frozen-foundation,
+  downstream, and production-build gates;
+- materialized native strict TypeScript, 4 focused files/9 tests, the complete
+  341-file/2,639-test native regression, and native production build pass. The
+  build transforms 600 main, 21 preload, and 10,181 renderer modules; 1 file
+  and 5 tests remain skipped by retained upstream configuration;
+- `/tmp/actestra-p4-writing-reviewed.8JgbPo/out/mac-arm64/Actestra.app` passes 11
+  resource checks, exact `aioncore 0.1.52`, integrity checks for 13 Hub
+  archives and 17 symbolic links, arm64 identity, and strict recursive ad-hoc
+  signature verification. An earlier Apple Development attempt could not
+  reach the external timestamp service; this reviewed package explicitly uses
+  the local ad-hoc path. Gatekeeper rejects it with status 3 as expected, so it
+  is not a candidate or release; and
+- real packaged target-app smoke passes schema-11 writing prepare/recover,
+  prompt-only prepared state, exact `document`/`draft.md`/owned Preview,
+  private-input event and audit privacy, plus the accepted file restart,
+  research, denial, cancellation, terminal evidence, and cleanup journeys.
+
+Manual review covers all 33 current files and fixes the command-boundary
+Unicode-separator bypass plus stale schema wording. The initial complete
+CodeRabbit pass covered tracked and untracked files and raised two valid issues
+plus one invalid date request. The final 31-tracked-file confirmation raised
+one valid Worker-attempt poisoning issue, fixed with a red-green regression;
+it omitted the two untracked files and is not represented as a complete
+zero-finding review.
+
+Documentation links pass across 54 Markdown files, Markdown lint reports zero
+issues across 48 files, and `git diff --check` passes. Commit, push, pull
+request, PR-head CI, merge, merged-main CI, notarization, candidate, release,
+distribution, and user acceptance remain pending.
 
 Exit: the complete general-work journey is understandable and recoverable in
 the retained AionUi UI with Actestra as the declared system of record.
@@ -480,9 +536,10 @@ P4 is complete only after:
 
 ## Current non-claims
 
-- GW-P4.2 through GW-P4.6 and the representative-file extension are accepted
-  on `main`; the local-research extension is not accepted on `main` until
-  final PR-head CI, required review, merge, and merged-main CI complete.
+- GW-P4.2 through GW-P4.6 plus the representative-file and local-research
+  extensions are accepted on `main`; writing passes local implementation and
+  validation but is not accepted until review, PR, merge, and merged-main gates
+  pass.
 - The two native tools are connected to a user-submitted preserved-AionUI task,
   but the file path remains the one main-owned `actestra-input.txt`; this is not
   a renderer-selected generic filesystem API.
@@ -490,10 +547,10 @@ P4 is complete only after:
   mutation, model, Goose adapter, CrewAI sidecar, or Team orchestration is
   active.
 - Utility-process separation is not OS sandbox evidence.
-- Schemas 7 through 10 are forward-only; development rollback uses a fresh
+- Schemas 7 through 11 are forward-only; development rollback uses a fresh
   profile rather than deleting or downgrading user state.
 - The local target package contains the exact pinned AionCore binary, but
   its license clarification, notarized candidate, distribution, and fresh-user
   acceptance remain unresolved.
-- No new package, candidate, release, deployment, distribution, or user
-  acceptance is claimed for the local-research branch.
+- The writing package is disposable local evidence only; no candidate,
+  release, deployment, distribution, or user acceptance is claimed.

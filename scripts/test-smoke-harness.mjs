@@ -55,8 +55,16 @@ try {
     generalWorkSmokeSource.includes('"actestra-research.txt"') &&
       generalWorkSmokeSource.includes("local-research-artifact") &&
       generalWorkSmokeSource.includes('"research.md"') &&
-      generalWorkSmokeSource.includes("schema version 10"),
-    "General Work target-app smoke must exercise the bounded local-research journey on schema 10",
+      generalWorkSmokeSource.includes("schema version 11"),
+    "General Work target-app smoke must exercise the bounded local-research journey on schema 11",
+  );
+  assert(
+    generalWorkSmokeSource.includes('"prepare-writing-restart"') &&
+      generalWorkSmokeSource.includes('"recover-writing-restart"') &&
+      generalWorkSmokeSource.includes("writing-artifact") &&
+      generalWorkSmokeSource.includes('"draft.md"') &&
+      generalWorkSmokeSource.includes('artifactKind: "document"'),
+    "General Work target-app smoke must recover the bounded writing journey as a document",
   );
 
   const earlyExit = runSmoke(createAppBundle("early-exit", "#!/bin/sh\nexit 7\n"));
@@ -88,7 +96,7 @@ const database = new DatabaseSync(path.join(stateDirectory, "actestra.sqlite3"))
 database.exec(\`
   CREATE TABLE workspace_grants (id TEXT PRIMARY KEY) STRICT;
   CREATE TABLE content_references (id TEXT PRIMARY KEY) STRICT;
-  PRAGMA user_version = 10;
+  PRAGMA user_version = 11;
 \`);
 database.close();
 console.log("ACTESTRA_PERSISTENCE_UTILITY_READY");

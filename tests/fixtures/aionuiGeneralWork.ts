@@ -165,3 +165,28 @@ export function createAionUiLocalResearchRegistration(
     },
   };
 }
+
+export function createAionUiWritingRegistration(
+  suffix = "1",
+  rootPath = fs.realpathSync(process.cwd()),
+) {
+  const registration = createAionUiGeneralWorkRegistration(suffix, rootPath);
+  const { toolInputReference: _toolInputReference, ...base } = registration;
+  return {
+    ...base,
+    link: {
+      ...base.link,
+      journeyKind: "writing-artifact",
+    },
+    promptReference: {
+      ...base.promptReference,
+      content: [
+        "Title: Quarterly launch note",
+        "Audience: Product leadership",
+        "Purpose: Explain the approved launch sequence.",
+        "Point: Start with the verified customer outcome.",
+        "Point: Close with the bounded next step.",
+      ].join("\n"),
+    },
+  } as const;
+}

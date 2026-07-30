@@ -35,6 +35,7 @@ components or phases.
 | [0018](0018-scoped-native-text-tools-and-policy.md)            | Accepted                     | Admit only scoped workspace text read and create-only task-output write through trusted manifests and policy                             |
 | [0019](0019-general-work-durable-coordination-and-recovery.md) | Accepted                     | Persist tool, artifact, event, terminal, and cleanup state before acknowledgement or release, then recover deterministically             |
 | [0020](0020-preserved-aionui-general-work-journey.md)          | Accepted                     | Map one bounded General Work journey into preserved AionUI while Actestra retains workspace, task, artifact, and recovery authority      |
+| [0021](0021-bounded-writing-artifact-journey.md)               | Accepted                     | Add one prompt-derived writing journey whose Worker-authored draft input persists before create-only document output                     |
 
 ## Creating an ADR
 

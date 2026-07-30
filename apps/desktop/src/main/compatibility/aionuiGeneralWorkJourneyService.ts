@@ -23,6 +23,7 @@ import {
   compareInstants,
   correlationId,
   eventStreamId,
+  parseWritingArtifactBrief,
   sessionId,
   serializeScopedNativeToolInput,
   taskId,
@@ -218,33 +219,14 @@ function registrationFor(
   createdAt: Instant,
   nativeContext: AionUiGeneralWorkNativeContext,
 ): AionUiGeneralWorkRegistration {
-  const title = boundedPresentationText(intent.prompt, MAX_TITLE_BYTES);
   const journeyKind = intent.journeyKind ?? "prompt-artifact";
+  const title = boundedPresentationText(
+    journeyKind === "writing-artifact"
+      ? parseWritingArtifactBrief(intent.prompt).title
+      : intent.prompt,
+    MAX_TITLE_BYTES,
+  );
   const outputContent = `# Actestra result\n\n${intent.prompt.trim()}\n`;
-  const initialToolInput =
-    journeyKind !== "prompt-artifact"
-      ? {
-          reference: identities.readInputRef,
-          requestId: identities.readRequestId,
-          content: serializeScopedNativeToolInput(WORKSPACE_READ_TEXT_TOOL_ID, {
-            contractVersion: 1,
-            relativePath:
-              journeyKind === "local-research-artifact"
-                ? "actestra-research.txt"
-                : "actestra-input.txt",
-            maximumBytes: MAX_GENERAL_WORKER_SEND_CONTENT_BYTES,
-          }),
-        }
-      : {
-          reference: identities.toolInputRef,
-          requestId: identities.requestId,
-          content: serializeScopedNativeToolInput(TASK_OUTPUT_WRITE_TEXT_TOOL_ID, {
-            contractVersion: 1,
-            relativePath: "result.md",
-            mediaType: "text/markdown; charset=utf-8",
-            content: outputContent,
-          }),
-        };
   const common = {
     workspace: Object.freeze({
       id: identities.workspaceId,
@@ -306,6 +288,42 @@ function registrationFor(
       createdAt,
     }),
   } as const;
+  if (journeyKind === "writing-artifact") {
+    return Object.freeze({
+      ...common,
+      link: Object.freeze({
+        contractVersion: AIONUI_GENERAL_WORK_CONTRACT_VERSION,
+        conversationHash,
+        taskId: identities.taskId,
+        journeyKind: "writing-artifact",
+        createdAt,
+      }),
+    });
+  }
+  const initialToolInput =
+    journeyKind !== "prompt-artifact"
+      ? {
+          reference: identities.readInputRef,
+          requestId: identities.readRequestId,
+          content: serializeScopedNativeToolInput(WORKSPACE_READ_TEXT_TOOL_ID, {
+            contractVersion: 1,
+            relativePath:
+              journeyKind === "local-research-artifact"
+                ? "actestra-research.txt"
+                : "actestra-input.txt",
+            maximumBytes: MAX_GENERAL_WORKER_SEND_CONTENT_BYTES,
+          }),
+        }
+      : {
+          reference: identities.toolInputRef,
+          requestId: identities.requestId,
+          content: serializeScopedNativeToolInput(TASK_OUTPUT_WRITE_TEXT_TOOL_ID, {
+            contractVersion: 1,
+            relativePath: "result.md",
+            mediaType: "text/markdown; charset=utf-8",
+            content: outputContent,
+          }),
+        };
   const initialInputReference = Object.freeze({
     contractVersion: WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
     reference: initialToolInput.reference,
@@ -799,8 +817,12 @@ export class AionUiGeneralWorkJourneyService {
           try {
             const activeRequest = supervisor.activeToolRequest(identities.sessionId);
             if (activeRequest !== undefined) {
-              const expectedRequest =
-                journeyKind !== "prompt-artifact" ? identities.readRequestId : identities.requestId;
+              const readsWorkspace =
+                journeyKind === "workspace-file-artifact" ||
+                journeyKind === "local-research-artifact";
+              const expectedRequest = readsWorkspace
+                ? identities.readRequestId
+                : identities.requestId;
               if (activeRequest !== expectedRequest) {
                 throw new Error("General Worker requested an unexpected tool identity");
               }
@@ -822,7 +844,47 @@ export class AionUiGeneralWorkJourneyService {
                 await coordinator.finalizeAttempt(identities.sessionId);
                 return;
               }
-              if (journeyKind !== "prompt-artifact") {
+              if (journeyKind === "writing-artifact") {
+                const writeInput = adapter.activeToolInput(identities.requestId);
+                if (writeInput === undefined) {
+                  throw new Error("General Worker did not provide its private writing input");
+                }
+                const serializedWriteInput = serializeScopedNativeToolInput(
+                  TASK_OUTPUT_WRITE_TEXT_TOOL_ID,
+                  writeInput,
+                );
+                await this.config.persistence.storeContentReference({
+                  contractVersion: WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
+                  reference: identities.toolInputRef,
+                  kind: "tool-input",
+                  owner: {
+                    workspaceId: identities.workspaceId,
+                    taskId: identities.taskId,
+                    sessionId: identities.sessionId,
+                    workerId: identities.workerId,
+                    requestId: identities.requestId,
+                    grantId: identities.grantId,
+                  },
+                  classification: "task-content",
+                  mediaType: "text/plain; charset=utf-8",
+                  content: serializedWriteInput,
+                  createdAt: this.config.clock.now(),
+                });
+                await coordinator.invokeScopedTool({
+                  invocation: {
+                    sessionId: identities.sessionId,
+                    requestId: identities.requestId,
+                    inputRef: identities.toolInputRef,
+                  },
+                  artifact: {
+                    artifactId: identities.artifactId,
+                    kind: "document",
+                    label: "Actestra writing draft",
+                  },
+                });
+                return;
+              }
+              if (readsWorkspace) {
                 const read = await coordinator.invokeScopedToolStep({
                   invocation: {
                     sessionId: identities.sessionId,

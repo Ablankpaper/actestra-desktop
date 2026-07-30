@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "phase": "GW-P4.6",
+  "phase": "P4-writing",
   "upstream": {
     "tag": "v2.1.41",
     "commit": "2d8925fc67a97a20996fadcd2a0862b778b572ba",
@@ -9,8 +9,8 @@
   "authorityOwner": "Actestra Core through durable AionUI journey links, General Work checkpoints, supervised persistence and Worker processes, and the scoped desktop main-process tool gateway",
   "classifications": ["R0", "R1", "R2"],
   "migration": {
-    "strategy": "Fresh Actestra profile v1; native AionUi profiles remain untouched. Forward-only schema v9 retains schemas v1-v8 exactly and classifies every durable AionUI journey as prompt-artifact or workspace-file-artifact. Schema v8 supplies the atomic metadata-only AionUI conversation-to-task journey link, and all Actestra SQLite ownership—including existing AionUI shadow evidence, approval authority, workspace grants, bounded content references, terminal evidence, recovery checkpoints, and journey links—remains behind one supervised Electron persistence utility protocol. AgentAdapter v2 runs each General Worker attempt in one separately supervised Electron utility process with exact main-owned identities and events. The preserved AionUI SendBox keeps the typed /actestra intent and adds /actestra file for the fixed actestra-input.txt representative journey while ordinary AionUI sends remain unchanged; renderer projections contain only bounded task status, summary, incident code, and artifact metadata. Workspace source text remains private to main-owned content references and the isolated Worker and never enters Core events. No raw native conversation identity, workspace path, content reference, session identity, worker identity, tool argument, Goose, CrewAI, shell, arbitrary network, credential, MCP, second UI, or second state authority is added.",
-    "rollback": "Regenerate without patch 0010 to remove the preserved AionUI General Work journey bridge and /actestra SendBox intents while retaining GW-P4.5 recovery. Existing schema v9 journey links, journey kinds, and task-owned content references remain inert; use a fresh Actestra profile for a true data downgrade. Regenerate without patch 0009 to remove AionUI startup recovery wiring while retaining GW-P4.4 scoped native tools and the General Worker. The frozen AionUi foundation and native AionUi profiles stay byte-identical."
+    "strategy": "Fresh Actestra profile v1; native AionUi profiles remain untouched. Forward-only schema v11 retains schemas v1-v10 exactly and expands the closed journey-kind set with writing-artifact. Schema v8 supplies the atomic metadata-only AionUI conversation-to-task journey link, and all Actestra SQLite ownership—including existing AionUI shadow evidence, approval authority, workspace grants, bounded content references, terminal evidence, recovery checkpoints, and journey links—remains behind one supervised Electron persistence utility protocol. AgentAdapter v2 runs each General Worker attempt in one separately supervised Electron utility process with exact main-owned identities and events. The preserved AionUI SendBox retains /actestra, /actestra file, and /actestra research and adds /actestra write for one structured brief; the isolated Worker authors a private draft.md input that main persists before the existing create-only tool produces a document Artifact. Ordinary AionUI sends remain unchanged; renderer projections contain only bounded task status, summary, incident code, and artifact metadata. No raw native conversation identity, workspace path, content reference, private tool input, Goose, CrewAI, shell, arbitrary network, credential, MCP, second UI, or second state authority is added.",
+    "rollback": "Regenerate without patch 0010 to remove the preserved AionUI General Work journey bridge and /actestra SendBox intents while retaining GW-P4.5 recovery. Existing schema v11 journey links, journey kinds, and task-owned content references remain inert; use a fresh Actestra profile for a true data downgrade. Regenerate without patch 0009 to remove AionUI startup recovery wiring while retaining GW-P4.4 scoped native tools and the General Worker. The frozen AionUi foundation and native AionUi profiles stay byte-identical."
   },
   "uiContract": {
     "layoutChangesAllowed": false,
@@ -141,11 +141,13 @@
         "typed General Work preload bridge",
         "authoritative conversation-to-task link",
         "fixed reserved-workspace-file read and private Worker processing",
+        "structured writing brief and private Worker-authored draft input",
+        "document Artifact and owned non-persisted Preview",
         "redacted task and artifact projection",
         "user cancellation and projection restoration"
       ],
       "authorityOwner": "Actestra Core through the supervised persistence utility, General Work journey service, and real General Worker process",
-      "rollback": "Regenerate without this patch. The original AionUI SendBox, ordinary native sends, routes, features, backend, and profile remain available; schema v9 journey rows remain inert."
+      "rollback": "Regenerate without this patch. The original AionUI SendBox, ordinary native sends, routes, features, backend, and profile remain available; schema v11 journey rows remain inert."
     }
   ],
   "sourceCopies": [
@@ -192,6 +194,10 @@
     {
       "source": "apps/desktop/src/core/workloadContent.ts",
       "destination": "packages/desktop/src/actestra/core/workloadContent.ts"
+    },
+    {
+      "source": "apps/desktop/src/core/writingArtifact.ts",
+      "destination": "packages/desktop/src/actestra/core/writingArtifact.ts"
     },
     {
       "source": "apps/desktop/src/compatibility/aionui/index.ts",
@@ -410,6 +416,7 @@
     "packages/desktop/src/actestra/core/privilegedServices.ts",
     "packages/desktop/src/actestra/core/scopedNativeTools.ts",
     "packages/desktop/src/actestra/core/workloadContent.ts",
+    "packages/desktop/src/actestra/core/writingArtifact.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiApprovalAuthorityService.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiApprovalPolicyGate.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiApprovalReconciliationPolicyGate.ts",

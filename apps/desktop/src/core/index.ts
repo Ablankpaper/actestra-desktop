@@ -8,3 +8,4 @@ export * from "./productPersistence";
 export * from "./privilegedServices";
 export * from "./scopedNativeTools";
 export * from "./workloadContent";
+export * from "./writingArtifact";

@@ -23,6 +23,7 @@ export const GENERAL_WORKER_EXECUTION_MODES = [
   "task-output-write-text-fixture",
   "workspace-read-then-task-output-write-fixture",
   "local-research-artifact-fixture",
+  "writing-artifact-fixture",
 ] as const;
 export const MAX_GENERAL_WORKER_MESSAGE_BYTES = 256 * 1024;
 export const MAX_GENERAL_WORKER_PROMPT_BYTES = 64 * 1024;

@@ -30,29 +30,27 @@ features are implemented.
 | P8    | Cross-platform internal beta                             | P7                |
 
 Current execution state on 2026-07-31: native-fusion slices F0 through F3.3,
-general-work through GW-P4.6, and the representative workspace-file extension
-are accepted on `main`. Pull request 16 reached exact head
-`f19b7dd006cf091aa9c7f1559dd484fdad35f200`, passed PR CI run 30567484733,
-and squash merged as `2aed0f705bf6f9b3734742c0905c94ac562f501e`; exact
-merged-main CI run 30569476160 passes.
+general-work through GW-P4.6, and the representative workspace-file and
+bounded local-research extensions are accepted on `main`. Local research
+reached final head `5694865462f7209ad413b2cd1dbe2eef0fe955bc`, passed PR CI
+run 30577647392, squash merged as
+`779880f28106aa8423ba042de5a6a3264bc0452e`, and passed exact merged-main CI
+run 30577886631. The remote CodeRabbit run was rate-limited before review and
+is not remote review evidence.
 
-The bounded local-research extension is implemented locally on
-`feat/p4-representative-knowledge-work` from that exact main commit.
-`/actestra research <instruction>` maps to schema version 10's exact
-`local-research-artifact` kind, reads only main-owned
-`actestra-research.txt`, processes at most 64 KiB privately in the same
-supervised Worker, and creates a create-only `research.md` file Artifact.
-Directed root, native hook/smoke, persistence-reopen, downstream-contract, and
-smoke-harness tests pass locally. Complete root regression passes 50 files and
-313 tests; complete native regression passes 341 files and 2,637 tests. Root
-and native production builds, the signed but unnotarized local arm64 package,
-real target-app restart/research/denial/cancellation smoke, and complete
-24-file review pass. Implementation `e7f3212f5978d69eb0afeaa140ddf9dcedf2414f`
-is pushed on Ready pull request 17 and exact-head CI run 30577349875 passes.
-The remote CodeRabbit run selected all files but was rate-limited before
-review, so it is not remote review evidence. The status-evidence update, final
-PR-head CI, merge, and merged-main CI remain pending. P5 Goose and P6
-CrewAI/Team work have not started.
+ADR-0021 accepts the next independent writing slice on
+`feat/p4-writing-journey`: one closed structured prompt brief, no workspace
+read, schema 11 `writing-artifact`, a Worker-authored private `draft.md` input
+persisted before create-only output, a `document` Artifact, owned Preview, and
+prepared recovery. The implementation passes directed root tests, complete
+50-file/325-test root regression, materialized strict TypeScript, complete
+341-file/2,639-test native regression, root and native production builds, an
+ad-hoc-signed unnotarized local arm64 package, and actual schema-11 packaged
+target-app writing/file/research/denial/cancellation smoke. Complete manual
+review and documented CodeRabbit coverage are closed; documentation links,
+Markdown lint, and diff checks pass. Commit, push, exact PR-head CI, merge, and
+merged-main CI remain pending. P5 Goose and P6 CrewAI/Team work have not
+started.
 
 ## P0 — Project Foundation
 
@@ -199,9 +197,13 @@ slice previously described as P4.3/F3.1.
   `/actestra research` intent, schema-version-10 kind persistence, the fixed
   main-owned `actestra-research.txt` source, private deterministic
   same-Worker evidence processing, and one create-only `research.md` file
-  Artifact. Neither extension adds generic local or network research,
-  renderer-selected paths, or another UI. The phase exit gate remains pending
-  until the remaining representative journeys and failure smokes pass.
+  Artifact. The writing extension adds one closed `/actestra write` intent,
+  schema-version-11 kind persistence, prompt-only registration, private
+  Worker-authored `draft.md` content persisted by main before create-only
+  output, and one `document` Artifact. These extensions add no generic local
+  or network research, renderer-selected paths, or another UI. The phase exit
+  gate remains pending until writing reaches merged-main evidence and the
+  remaining representative journeys and failure smokes pass.
 - Support scoped workspace reads and task-output writes through the preserved
   file, workspace, conversation, preview, and artifact surfaces.
 - Add representative file, research, writing, office-document, schedule,

@@ -296,6 +296,133 @@ describe("General Worker utility service", () => {
     ]);
   });
 
+  it("does not register an attempt when the writing brief cannot be parsed", async () => {
+    const service = new GeneralWorkerService();
+    const rejected = await service.handle(
+      request("start", {
+        attemptToken: "attempt-invalid-writing-artifact",
+        prompt: "Draft an unstructured document.",
+        entryState: "ready",
+        executionMode: "writing-artifact-fixture",
+      }),
+    );
+
+    expect(rejected).toMatchObject([
+      {
+        type: "response",
+        operation: "start",
+        ok: false,
+      },
+    ]);
+
+    const accepted = await service.handle(
+      request("start", {
+        attemptToken: "attempt-valid-writing-artifact",
+        prompt: [
+          "Title: Quarterly launch note",
+          "Audience: Product leadership",
+          "Purpose: Explain the approved launch sequence.",
+          "Point: Start with the verified customer outcome.",
+        ].join("\n"),
+        entryState: "ready",
+        executionMode: "writing-artifact-fixture",
+      }),
+    );
+
+    expect(accepted).toMatchObject([
+      { type: "event", sequence: 1, event: { type: "started" } },
+      { type: "event", sequence: 2, event: { type: "message" } },
+      { type: "event", sequence: 3, event: { type: "tool-requested" } },
+      { type: "response", operation: "start", ok: true },
+    ]);
+  });
+
+  it("turns the persisted writing brief into one private draft input without a workspace read", async () => {
+    const service = new GeneralWorkerService();
+    const attemptToken = "attempt-writing-artifact";
+    const prompt = [
+      "Title: Quarterly launch note",
+      "Audience: Product leadership",
+      "Purpose: Explain the approved launch sequence.",
+      "Point: Start with the verified customer outcome.",
+      "Point: Close with the bounded next step.",
+    ].join("\n");
+    const started = await service.handle(
+      request("start", {
+        attemptToken,
+        prompt,
+        entryState: "ready",
+        executionMode: "writing-artifact-fixture",
+      }),
+    );
+
+    expect(started).toMatchObject([
+      { type: "event", sequence: 1, event: { type: "started" } },
+      {
+        type: "event",
+        sequence: 2,
+        event: {
+          type: "message",
+          role: "assistant",
+          content: "Prepared a writing draft from 2 ordered points.",
+        },
+      },
+      {
+        type: "event",
+        sequence: 3,
+        event: {
+          type: "tool-requested",
+          callId: "general-worker-task-output-write-text-call",
+          toolName: "actestra.task-output.write-text",
+          summary: "Create the bounded writing draft.",
+          input: {
+            contractVersion: 1,
+            relativePath: "draft.md",
+            mediaType: "text/markdown; charset=utf-8",
+            content:
+              "# Quarterly launch note\n\n" +
+              "Audience: Product leadership\n\n" +
+              "Explain the approved launch sequence.\n\n" +
+              "Start with the verified customer outcome.\n\n" +
+              "Close with the bounded next step.\n",
+          },
+        },
+      },
+      { type: "response", operation: "start", ok: true },
+    ]);
+    expect(started).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: expect.objectContaining({ toolName: "actestra.workspace.read-text" }),
+        }),
+      ]),
+    );
+
+    const written = await service.handle(
+      request("resolve-tool", {
+        attemptToken,
+        callId: "general-worker-task-output-write-text-call",
+        result: {
+          requestId: toolRequestId("tool-request-writing-write"),
+          status: "succeeded",
+          startedAt: instant("2026-07-30T01:00:02.000Z"),
+          completedAt: instant("2026-07-30T01:00:03.000Z"),
+          outputRef: toolOutputReference("tool-output-writing-write"),
+        },
+      }),
+    );
+    expect(written).toMatchObject([
+      {
+        type: "event",
+        sequence: 4,
+        event: { type: "tool-result-accepted", status: "succeeded" },
+      },
+      { type: "event", sequence: 5, event: { type: "resumed" } },
+      { type: "event", sequence: 6, event: { type: "completed" } },
+      { type: "response", operation: "resolve-tool", ok: true },
+    ]);
+  });
+
   it("acknowledges cancellation and rejects stale attempt tokens", async () => {
     const service = new GeneralWorkerService();
     await service.handle(
