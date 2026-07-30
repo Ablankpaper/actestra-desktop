@@ -1,21 +1,21 @@
 # P4 General-Work Vertical Slice
 
-Status: GW-P4.2 through GW-P4.6 accepted on `main`; the first representative
-workspace-file journey is implemented and locally validated on
-`feat/p4-representative-file-journey`; local complete gates and full-diff
-review pass, while remote closure remains pending
+Status: GW-P4.2 through GW-P4.6 and the representative workspace-file journey
+are accepted on `main`; the bounded local-research journey is implemented
+and pushed on Ready pull request 17; complete local gates, review, and initial
+exact-head PR CI pass while final evidence-head and merge closure remain pending
 
 Date: 2026-07-31
 
 Exact base:
-`d32fd6712ea10295af40a4a45833088a9e9b1f95`
+`2aed0f705bf6f9b3734742c0905c94ac562f501e`
 
 ## Entry evidence
 
-The branch starts from the exact verified `main` status-closure merge for
-[pull request 15](https://github.com/bignormal/actestra-desktop/pull/15).
-[Main CI run 30555498924](https://github.com/bignormal/actestra-desktop/actions/runs/30555498924)
-passes on that commit.
+The branch starts from the exact verified representative-file squash merge for
+[pull request 16](https://github.com/bignormal/actestra-desktop/pull/16).
+[Main CI run 30569476160](https://github.com/bignormal/actestra-desktop/actions/runs/30569476160)
+passes on that exact commit.
 
 [ADR-0016](../architecture/decisions/0016-p4-general-work-process-and-content-boundaries.md),
 [ADR-0017](../architecture/decisions/0017-general-worker-process-and-agent-adapter-v2.md),
@@ -339,7 +339,7 @@ The exact GW-P4.6 head
 `784191bfc59d71a128ed5d3251db3535f1349e45`; exact merged-main CI run
 30554447144 passes.
 
-Current representative-file extension:
+Accepted representative-file extension:
 
 - `/actestra file <instruction>` selects a closed
   `workspace-file-artifact` journey; ordinary `/actestra` remains
@@ -388,6 +388,76 @@ Complete local evidence for the feature branch:
   rate-limited before review with a 21-minute wait and is not zero-issue
   evidence.
 
+The exact representative-file head
+`f19b7dd006cf091aa9c7f1559dd484fdad35f200` passed pull-request CI run
+30567484733. Pull request 16 has no submitted reviews or inline review
+comments; its successful Free-plan CodeRabbit result is summary/walkthrough
+evidence, not line-level review evidence. It squash merged as
+`2aed0f705bf6f9b3734742c0905c94ac562f501e`; exact merged-main CI run
+30569476160 passes.
+
+Current bounded local-research extension:
+
+- `/actestra research <instruction>` selects only
+  `local-research-artifact`; ordinary `/actestra` and `/actestra file` retain
+  their accepted meanings;
+- schema version 10 rebuilds the journey-link table with the three exact
+  accepted kinds, preserving every schema-9 prompt and file row while
+  rejecting arbitrary kinds;
+- main owns one 64 KiB-bounded `actestra-research.txt` input and both exact
+  tool-request identities; no renderer path, network operation, credential,
+  or generic research provider is added;
+- the same isolated General Worker converts at most 32 non-empty local
+  evidence lines into a private `research.md` write input;
+- main stores that write input under its exact owner before the accepted
+  create-only tool produces a `file` Artifact labeled
+  `Actestra local research brief`;
+- local source text stays out of normalized Core events and renderer
+  projections, while the existing exact-owner, non-persisted native Preview
+  renders the final Markdown;
+- duplicate registration, SQLite reopen, and a real persistence-utility reopen
+  plus prepared-task recovery retain the exact research kind and input without
+  replaying native workspace context; and
+- the target-app smoke contract now includes one fixed local-research scenario,
+  schema 10, exact `research.md`, owned Preview validation, Core-event privacy,
+  and process cleanup.
+
+Complete local evidence:
+
+- complete root `bun run check` passes formatting, zero-warning lint, strict
+  TypeScript, Electron SQLite, 50 files and 313 tests, the smoke harness,
+  67-source boundary, frozen foundation, 156-file/49-source-copy downstream
+  contract, and three-entry production build;
+- materialized native strict TypeScript and the complete native suite pass 341
+  files and 2,637 tests, with 1 file and 5 tests skipped by retained upstream
+  configuration;
+- the native production build transforms 599 main, 20 preload, and 10,180
+  renderer modules;
+- the local macOS arm64 package under
+  `/tmp/actestra-p4-research.fXes59/out/mac-arm64/Actestra.app` passes 11
+  resource checks, exact `aioncore 0.1.52`, 13 integrity-checked Hub fallback
+  archives, 17 valid symbolic links, arm64 identity, and strict recursive
+  signing verification. It has an Apple Development signature but no
+  notarization, so it is not a candidate or release;
+- actual packaged target-app smoke exits zero through local-research prepared
+  restart and recovery, exact `research.md`, exact-owner non-persisted Preview,
+  schema 10, Core-event source privacy, denial, cancellation, finalized
+  evidence, and process cleanup;
+- the complete 24-file CodeRabbit review raised four issues. Two valid test
+  issues were fixed and the affected 2 files pass 24 tests; the requested date
+  change and stale packaged-smoke status were rejected against current local
+  evidence; and
+- complete manual review covers all 24 runtime, migration, downstream, smoke,
+  test, and evidence-document changes without another in-scope defect.
+
+Implementation `e7f3212f5978d69eb0afeaa140ddf9dcedf2414f` is pushed on
+Ready pull request 17 and exact-head CI run 30577349875 passes. The remote
+CodeRabbit run selected all 24 files but was rate-limited before review; its
+successful status is not a completed review. This evidence update creates a
+new head that must pass its own CI. Final PR-head CI, merge, merged-main CI,
+notarization, candidate, release, distribution, and user acceptance remain
+separate pending gates.
+
 Exit: the complete general-work journey is understandable and recoverable in
 the retained AionUi UI with Actestra as the declared system of record.
 
@@ -396,7 +466,8 @@ the retained AionUi UI with Actestra as the declared system of record.
 P4 is complete only after:
 
 - the general-work journey completes after restart;
-- scoped file, local research, writing, and artifact fixtures pass;
+- scoped file, local research, writing, office-document, schedule, and
+  artifact fixtures pass;
 - denial, cancellation, tool failure, persistence failure, worker crash, and
   artifact conflict are covered;
 - renderer code cannot bypass main-owned state, policy, process, scope, or
@@ -409,9 +480,9 @@ P4 is complete only after:
 
 ## Current non-claims
 
-- GW-P4.2 through GW-P4.6 are accepted on `main`; the representative-file
-  extension is not accepted on `main` until PR-head CI, review, merge, and
-  merged-main CI complete.
+- GW-P4.2 through GW-P4.6 and the representative-file extension are accepted
+  on `main`; the local-research extension is not accepted on `main` until
+  final PR-head CI, required review, merge, and merged-main CI complete.
 - The two native tools are connected to a user-submitted preserved-AionUI task,
   but the file path remains the one main-owned `actestra-input.txt`; this is not
   a renderer-selected generic filesystem API.
@@ -419,10 +490,10 @@ P4 is complete only after:
   mutation, model, Goose adapter, CrewAI sidecar, or Team orchestration is
   active.
 - Utility-process separation is not OS sandbox evidence.
-- Schemas 7 through 9 are forward-only; development rollback uses a fresh
+- Schemas 7 through 10 are forward-only; development rollback uses a fresh
   profile rather than deleting or downgrading user state.
-- The accepted target package contains the exact pinned AionCore binary, but
+- The local target package contains the exact pinned AionCore binary, but
   its license clarification, notarized candidate, distribution, and fresh-user
   acceptance remain unresolved.
 - No new package, candidate, release, deployment, distribution, or user
-  acceptance is claimed for the representative-file branch.
+  acceptance is claimed for the local-research branch.

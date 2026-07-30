@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createAionUiGeneralWorkRegistration,
+  createAionUiLocalResearchRegistration,
   createAionUiWorkspaceFileRegistration,
 } from "../fixtures/aionuiGeneralWork";
 
@@ -25,7 +26,7 @@ describe("AionUI general-work journey identity", () => {
 });
 
 describe("AionUI general-work intent", () => {
-  it("maps the preserved commands to prompt and workspace-file journeys", async () => {
+  it("maps preserved commands to the closed prompt, file, and local-research journeys", async () => {
     const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
       string,
       unknown
@@ -44,6 +45,14 @@ describe("AionUI general-work intent", () => {
     expect(parseCommand("/actestra file")).toEqual({
       prompt: "",
       journeyKind: "workspace-file-artifact",
+    });
+    expect(parseCommand("/actestra research compare the approved source notes")).toEqual({
+      prompt: "compare the approved source notes",
+      journeyKind: "local-research-artifact",
+    });
+    expect(parseCommand("/actestra research")).toEqual({
+      prompt: "",
+      journeyKind: "local-research-artifact",
     });
     expect(parseCommand("ordinary native AionUI message")).toBeNull();
   });
@@ -70,6 +79,15 @@ describe("AionUI general-work intent", () => {
         submissionId: "submission-native-file-1",
         prompt: "Process the reserved workspace text.",
         journeyKind: "workspace-file-artifact",
+      }),
+    ).not.toThrow();
+    expect(() =>
+      (compatibility.assertAionUiGeneralWorkIntent as (value: unknown) => void)({
+        contractVersion: 1,
+        nativeConversationId: "conversation-native-1",
+        submissionId: "submission-native-research-1",
+        prompt: "Compare the approved local source notes.",
+        journeyKind: "local-research-artifact",
       }),
     ).not.toThrow();
   });
@@ -126,9 +144,11 @@ describe("AionUI general-work authoritative registration", () => {
     ) => void;
     const prompt = createAionUiGeneralWorkRegistration("prompt-kind");
     const file = createAionUiWorkspaceFileRegistration("file-kind");
+    const research = createAionUiLocalResearchRegistration("research-kind");
 
     expect(() => assertRegistration(prompt)).not.toThrow();
     expect(() => assertRegistration(file)).not.toThrow();
+    expect(() => assertRegistration(research)).not.toThrow();
   });
 
   it("rejects mismatched, ambiguous, or missing initial input fields", async () => {

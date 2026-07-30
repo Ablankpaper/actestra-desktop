@@ -291,6 +291,7 @@ function main() {
       "ACTESTRA_GENERAL_WORK_PREVIEW_CHANNEL",
       "runActestraGeneralWorkSmoke",
       "ACTESTRA_AIONUI_GENERAL_WORK_SMOKE_READY",
+      "local-research-artifact-fixture",
       "[Actestra general work] Recovery unavailable at startup",
       "nativeFallback",
       "recoverPending",
@@ -305,13 +306,19 @@ function main() {
     ["useActestraGeneralWork", "extractActestraGeneralWorkIntent", "effectiveLoading"],
   );
   requireText(
+    path.join(outputRoot, "packages/desktop/src/renderer/hooks/chat/useActestraGeneralWork.ts"),
+    ["journeyKind !== 'prompt-artifact'"],
+  );
+  requireText(
     path.join(
       outputRoot,
       "packages/desktop/src/actestra/main/compatibility/aionuiGeneralWorkJourneyService.ts",
     ),
     [
       '"actestra-input.txt"',
+      '"actestra-research.txt"',
       '"workspace-file-artifact"',
+      '"local-research-artifact"',
       "invokeScopedToolStep",
       "activeToolInput",
       "MAX_GENERAL_WORKER_SEND_CONTENT_BYTES",
@@ -326,7 +333,17 @@ function main() {
   );
   requireText(
     path.join(outputRoot, "packages/desktop/src/process/services/actestraGeneralWorkSmoke.ts"),
-    ["prepare-restart", "recover-restart", "denial", "cancellation", "ACTESTRA_E2E_TEST"],
+    [
+      "prepare-restart",
+      "recover-restart",
+      "denial",
+      "cancellation",
+      "local-research",
+      "local-research-artifact",
+      "Actestra local research brief",
+      "service.preview(",
+      "ACTESTRA_E2E_TEST",
+    ],
   );
   requireText(path.join(outputRoot, "packages/desktop/src/process/utils/utils.ts"), [
     "shouldBypassActestraCliSafeSymlink",
@@ -348,6 +365,10 @@ function main() {
     "[AionUi] Renderer did-finish-load",
     '"actestra-input.txt"',
     "workspace-file-artifact",
+    '"actestra-research.txt"',
+    '"research.md"',
+    "local-research-artifact",
+    "schema version 10",
   ]);
   rejectText(path.join(repositoryRoot, "scripts/smoke-aionui-general-work.mjs"), [
     "Electron.app",
@@ -500,7 +521,7 @@ function main() {
   requireText(
     path.join(outputRoot, "packages/desktop/src/actestra/utility/persistence/sqliteMigrations.ts"),
     [
-      "CURRENT_CORE_SCHEMA_VERSION = 9",
+      "CURRENT_CORE_SCHEMA_VERSION = 10",
       "aionui_shadow_evidence",
       "aionui_approval_decisions",
       "pending-delivery",
@@ -508,6 +529,7 @@ function main() {
       "content_references",
       "general_work_checkpoints",
       "journey_kind",
+      "local-research-artifact",
     ],
   );
   rejectText(
@@ -665,6 +687,7 @@ function main() {
       '"tool-fixture"',
       '"workspace-read-text-fixture"',
       '"workspace-read-then-task-output-write-fixture"',
+      '"local-research-artifact-fixture"',
       '"task-output-write-text-fixture"',
       '"cancelled"',
     ],
@@ -703,8 +726,8 @@ function main() {
     "assertGeneralWorkCheckpointTransition",
   ]);
   requireText(path.join(outputRoot, "tests/unit/actestra/persistenceUtilityClient.test.ts"), [
-    "schema v9 utility IPC",
-    "expect(client.schemaVersion).toBe(9)",
+    "schema v10 utility IPC",
+    "expect(client.schemaVersion).toBe(10)",
   ]);
 
   console.log(

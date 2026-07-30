@@ -30,6 +30,35 @@ interface GeneralWorkerAttempt {
   awaitingWorkspaceContent?: boolean;
 }
 
+function localResearchArtifact(
+  prompt: string,
+  source: string,
+): {
+  readonly byteLength: number;
+  readonly noteCount: number;
+  readonly content: string;
+} {
+  const byteLength = new TextEncoder().encode(source).byteLength;
+  const notes = source
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .slice(0, 32);
+  const evidence =
+    notes.length === 0
+      ? "- No non-empty evidence notes were provided."
+      : notes.map((note) => `- ${note}`).join("\n");
+  return Object.freeze({
+    byteLength,
+    noteCount: notes.length,
+    content:
+      "# Actestra local research brief\n\n" +
+      `Instruction: ${prompt.trim()}\n\n` +
+      "## Evidence notes\n\n" +
+      `${evidence}\n`,
+  });
+}
+
 class GeneralWorkerServiceError extends Error {
   constructor(
     readonly code: GeneralWorkerErrorCode,
@@ -207,6 +236,18 @@ export class GeneralWorkerService {
           }),
         );
         break;
+      case "local-research-artifact-fixture":
+        attempt.state = "blocked";
+        attempt.pendingCallId = "general-worker-workspace-read-text-call";
+        events.push(
+          this.event(attempt, {
+            type: "tool-requested",
+            callId: attempt.pendingCallId,
+            toolName: "actestra.workspace.read-text",
+            summary: "Read the bounded local research source.",
+          }),
+        );
+        break;
       case "task-output-write-text-fixture":
         attempt.state = "blocked";
         attempt.pendingCallId = "general-worker-task-output-write-text-call";
@@ -235,13 +276,37 @@ export class GeneralWorkerService {
       );
     }
     if (
-      attempt.executionMode === "workspace-read-then-task-output-write-fixture" &&
+      (attempt.executionMode === "workspace-read-then-task-output-write-fixture" ||
+        attempt.executionMode === "local-research-artifact-fixture") &&
       attempt.awaitingWorkspaceContent
     ) {
       attempt.awaitingWorkspaceContent = false;
       attempt.state = "blocked";
       attempt.pendingCallId = "general-worker-task-output-write-text-call";
       const byteLength = new TextEncoder().encode(request.payload.content).byteLength;
+      if (attempt.executionMode === "local-research-artifact-fixture") {
+        const research = localResearchArtifact(attempt.prompt, request.payload.content);
+        return [
+          this.event(attempt, { type: "heartbeat" }),
+          this.event(attempt, {
+            type: "message",
+            role: "assistant",
+            content: `Prepared a local research brief from ${String(research.byteLength)} bytes and ${String(research.noteCount)} evidence notes.`,
+          }),
+          this.event(attempt, {
+            type: "tool-requested",
+            callId: attempt.pendingCallId,
+            toolName: "actestra.task-output.write-text",
+            summary: "Create the bounded local research brief.",
+            input: Object.freeze({
+              contractVersion: 1,
+              relativePath: "research.md",
+              mediaType: "text/markdown; charset=utf-8",
+              content: research.content,
+            }),
+          }),
+        ];
+      }
       const source = request.payload.content.endsWith("\n")
         ? request.payload.content
         : `${request.payload.content}\n`;
@@ -297,7 +362,8 @@ export class GeneralWorkerService {
 
     const result = request.payload.result;
     const completedWorkspaceRead =
-      attempt.executionMode === "workspace-read-then-task-output-write-fixture" &&
+      (attempt.executionMode === "workspace-read-then-task-output-write-fixture" ||
+        attempt.executionMode === "local-research-artifact-fixture") &&
       request.payload.callId === "general-worker-workspace-read-text-call";
     attempt.pendingCallId = undefined;
     const events: GeneralWorkerEventMessage[] = [

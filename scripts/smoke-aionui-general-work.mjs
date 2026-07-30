@@ -211,8 +211,8 @@ function verifyPreparedProfile(profilePath) {
     enableForeignKeyConstraints: true,
   });
   try {
-    if (databaseValue(database, "PRAGMA user_version") !== 9) {
-      fail("prepare-restart did not create schema version 9");
+    if (databaseValue(database, "PRAGMA user_version") !== 10) {
+      fail("prepare-restart did not create schema version 10");
     }
     if (
       databaseValue(database, "SELECT COUNT(*) FROM aionui_general_work_journeys") !== 1 ||
@@ -243,7 +243,7 @@ function verifyTerminalProfile(profilePath, expected) {
       `SELECT COUNT(*) FROM core_events WHERE type = '${expected.eventType}'`,
     );
     if (
-      databaseValue(database, "PRAGMA user_version") !== 9 ||
+      databaseValue(database, "PRAGMA user_version") !== 10 ||
       databaseValue(database, "SELECT COUNT(*) FROM aionui_general_work_journeys") !== 1 ||
       databaseValue(
         database,
@@ -264,6 +264,11 @@ function verifyTerminalProfile(profilePath, expected) {
         `SELECT COUNT(*) FROM agent_attempt_evidence WHERE state = '${expected.state}'`,
       ) !== 1 ||
       databaseValue(database, "SELECT COUNT(*) FROM artifacts") !== expected.artifactCount ||
+      (expected.artifactLabel !== undefined &&
+        databaseValue(
+          database,
+          `SELECT COUNT(*) FROM artifacts WHERE label = '${expected.artifactLabel}'`,
+        ) !== 1) ||
       eventCount !== 1 ||
       database.prepare("PRAGMA foreign_key_check").all().length !== 0
     ) {
@@ -331,6 +336,71 @@ try {
     fail("Recovered representative file artifact does not contain the owned source");
   }
 
+  const researchProfile = path.join(smokeRoot, "local-research-profile");
+  const researchWorkspace = path.join(smokeRoot, "local-research-workspace");
+  const researchSourceLines = ["Packaged alpha evidence", "Packaged beta evidence"];
+  fs.mkdirSync(researchWorkspace, { recursive: true });
+  fs.writeFileSync(
+    path.join(researchWorkspace, "actestra-research.txt"),
+    `${researchSourceLines.join("\n")}\n`,
+    "utf8",
+  );
+  const research = await runScenario(
+    "local-research",
+    researchProfile,
+    researchWorkspace,
+    packagedExecutable,
+  );
+  if (research.status !== "completed" || research.artifactCount !== 1) {
+    fail("local-research returned the wrong terminal evidence");
+  }
+  const researchTaskId = verifyTerminalProfile(researchProfile, {
+    state: "completed",
+    eventType: "task.completed",
+    artifactCount: 1,
+    artifactLabel: "Actestra local research brief",
+    journeyKind: "local-research-artifact",
+  });
+  const researchOutput = path.join(
+    researchWorkspace,
+    ".actestra",
+    "task-output",
+    researchTaskId,
+    "research.md",
+  );
+  requireFile(researchOutput, "Local research Markdown artifact");
+  const researchContents = fs.readFileSync(researchOutput, "utf8");
+  if (
+    !researchContents.includes("# Actestra local research brief") ||
+    !researchContents.includes("Instruction: Compare the approved local source notes.") ||
+    researchSourceLines.some((line) => !researchContents.includes(`- ${line}`))
+  ) {
+    fail("Local research Markdown artifact does not contain the bounded research brief");
+  }
+  const researchDatabase = new DatabaseSync(
+    path.join(researchProfile, "state", "actestra.sqlite3"),
+    {
+      readOnly: true,
+      allowExtension: false,
+      enableDoubleQuotedStringLiterals: false,
+      enableForeignKeyConstraints: true,
+    },
+  );
+  try {
+    const leakedCoreEventCount = researchDatabase
+      .prepare(
+        `SELECT COUNT(*) AS count
+         FROM core_events
+         WHERE instr(envelope_json, ?) > 0 OR instr(envelope_json, ?) > 0`,
+      )
+      .get(...researchSourceLines).count;
+    if (leakedCoreEventCount !== 0) {
+      fail("Local research source text leaked into normalized Core events");
+    }
+  } finally {
+    researchDatabase.close();
+  }
+
   for (const scenario of ["denial", "cancellation"]) {
     const profilePath = path.join(smokeRoot, `${scenario}-profile`);
     const workspacePath = path.join(smokeRoot, `${scenario}-workspace`);
@@ -357,7 +427,7 @@ try {
 
   succeeded = true;
   console.info(
-    "Packaged target-app GW-P4.6 smoke passed: representative workspace-file restart recovery, workspace-grant denial, cancellation, finalized checkpoints, events, artifacts, and terminal evidence are exact.",
+    "Packaged target-app GW-P4.6 smoke passed: representative workspace-file restart recovery, local research and owned Preview, workspace-grant denial, cancellation, finalized checkpoints, events, artifacts, and terminal evidence are exact.",
   );
 } catch (error) {
   console.error(

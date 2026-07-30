@@ -200,6 +200,102 @@ describe("General Worker utility service", () => {
     ]);
   });
 
+  it("turns one bounded local research source into a private research artifact input", async () => {
+    const service = new GeneralWorkerService();
+    const attemptToken = "attempt-local-research";
+    const prompt = "Compare the approved local source notes.";
+    const started = await service.handle({
+      protocolVersion: GENERAL_WORKER_PROTOCOL_VERSION,
+      type: "request",
+      requestId: "request-local-research-start",
+      operation: "start",
+      payload: {
+        attemptToken,
+        prompt,
+        entryState: "ready",
+        executionMode: "local-research-artifact-fixture",
+      },
+    });
+    expect(started).toMatchObject([
+      { type: "event", sequence: 1, event: { type: "started" } },
+      {
+        type: "event",
+        sequence: 2,
+        event: {
+          type: "tool-requested",
+          callId: "general-worker-workspace-read-text-call",
+          toolName: "actestra.workspace.read-text",
+          summary: "Read the bounded local research source.",
+        },
+      },
+      { type: "response", operation: "start", ok: true },
+    ]);
+
+    const readResolved = await service.handle(
+      request("resolve-tool", {
+        attemptToken,
+        callId: "general-worker-workspace-read-text-call",
+        result: {
+          requestId: toolRequestId("tool-request-local-research-read"),
+          status: "succeeded",
+          startedAt: instant("2026-07-30T01:00:00.000Z"),
+          completedAt: instant("2026-07-30T01:00:01.000Z"),
+          outputRef: toolOutputReference("tool-output-local-research-read"),
+        },
+      }),
+    );
+    expect(readResolved).toMatchObject([
+      {
+        type: "event",
+        sequence: 3,
+        event: { type: "tool-result-accepted", status: "succeeded" },
+      },
+      { type: "event", sequence: 4, event: { type: "resumed" } },
+      { type: "response", operation: "resolve-tool", ok: true },
+    ]);
+
+    const processed = await service.handle(
+      request("send", {
+        attemptToken,
+        content: "Alpha evidence\nBeta evidence\n",
+      }),
+    );
+    expect(processed).toMatchObject([
+      { type: "event", sequence: 5, event: { type: "heartbeat" } },
+      {
+        type: "event",
+        sequence: 6,
+        event: {
+          type: "message",
+          role: "assistant",
+          content: "Prepared a local research brief from 29 bytes and 2 evidence notes.",
+        },
+      },
+      {
+        type: "event",
+        sequence: 7,
+        event: {
+          type: "tool-requested",
+          callId: "general-worker-task-output-write-text-call",
+          toolName: "actestra.task-output.write-text",
+          summary: "Create the bounded local research brief.",
+          input: {
+            contractVersion: 1,
+            relativePath: "research.md",
+            mediaType: "text/markdown; charset=utf-8",
+            content:
+              "# Actestra local research brief\n\n" +
+              `Instruction: ${prompt}\n\n` +
+              "## Evidence notes\n\n" +
+              "- Alpha evidence\n" +
+              "- Beta evidence\n",
+          },
+        },
+      },
+      { type: "response", operation: "send", ok: true },
+    ]);
+  });
+
   it("acknowledges cancellation and rejects stale attempt tokens", async () => {
     const service = new GeneralWorkerService();
     await service.handle(

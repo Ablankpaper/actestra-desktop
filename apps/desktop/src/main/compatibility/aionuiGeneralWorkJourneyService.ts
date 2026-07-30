@@ -222,13 +222,16 @@ function registrationFor(
   const journeyKind = intent.journeyKind ?? "prompt-artifact";
   const outputContent = `# Actestra result\n\n${intent.prompt.trim()}\n`;
   const initialToolInput =
-    journeyKind === "workspace-file-artifact"
+    journeyKind !== "prompt-artifact"
       ? {
           reference: identities.readInputRef,
           requestId: identities.readRequestId,
           content: serializeScopedNativeToolInput(WORKSPACE_READ_TEXT_TOOL_ID, {
             contractVersion: 1,
-            relativePath: "actestra-input.txt",
+            relativePath:
+              journeyKind === "local-research-artifact"
+                ? "actestra-research.txt"
+                : "actestra-input.txt",
             maximumBytes: MAX_GENERAL_WORKER_SEND_CONTENT_BYTES,
           }),
         }
@@ -328,6 +331,19 @@ function registrationFor(
         conversationHash,
         taskId: identities.taskId,
         journeyKind: "workspace-file-artifact",
+        createdAt,
+      }),
+      readInputReference: initialInputReference,
+    });
+  }
+  if (journeyKind === "local-research-artifact") {
+    return Object.freeze({
+      ...common,
+      link: Object.freeze({
+        contractVersion: AIONUI_GENERAL_WORK_CONTRACT_VERSION,
+        conversationHash,
+        taskId: identities.taskId,
+        journeyKind: "local-research-artifact",
         createdAt,
       }),
       readInputReference: initialInputReference,
@@ -784,9 +800,7 @@ export class AionUiGeneralWorkJourneyService {
             const activeRequest = supervisor.activeToolRequest(identities.sessionId);
             if (activeRequest !== undefined) {
               const expectedRequest =
-                journeyKind === "workspace-file-artifact"
-                  ? identities.readRequestId
-                  : identities.requestId;
+                journeyKind !== "prompt-artifact" ? identities.readRequestId : identities.requestId;
               if (activeRequest !== expectedRequest) {
                 throw new Error("General Worker requested an unexpected tool identity");
               }
@@ -808,7 +822,7 @@ export class AionUiGeneralWorkJourneyService {
                 await coordinator.finalizeAttempt(identities.sessionId);
                 return;
               }
-              if (journeyKind === "workspace-file-artifact") {
+              if (journeyKind !== "prompt-artifact") {
                 const read = await coordinator.invokeScopedToolStep({
                   invocation: {
                     sessionId: identities.sessionId,
@@ -884,7 +898,10 @@ export class AionUiGeneralWorkJourneyService {
                   artifact: {
                     artifactId: identities.artifactId,
                     kind: "file",
-                    label: "Actestra file result",
+                    label:
+                      journeyKind === "local-research-artifact"
+                        ? "Actestra local research brief"
+                        : "Actestra file result",
                   },
                 });
                 return;
