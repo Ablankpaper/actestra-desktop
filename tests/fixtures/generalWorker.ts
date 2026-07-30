@@ -22,6 +22,7 @@ export class LoopbackGeneralWorkerTransport implements GeneralWorkerProcessTrans
   private transform: ((message: GeneralWorkerMessage) => unknown) | null = null;
   private queue: Promise<void> = Promise.resolve();
   private droppedResponses = 0;
+  private separateMessageTurns = false;
   private exited = false;
   killCount = 0;
 
@@ -32,7 +33,12 @@ export class LoopbackGeneralWorkerTransport implements GeneralWorkerProcessTrans
     this.queue = this.queue
       .then(async () => {
         const messages = await this.service.handle(message);
-        for (const response of messages) {
+        for (const [index, response] of messages.entries()) {
+          if (this.separateMessageTurns && index > 0) {
+            await new Promise<void>((resolve) => {
+              setImmediate(resolve);
+            });
+          }
           if (this.exited) {
             return;
           }
@@ -127,6 +133,10 @@ export class LoopbackGeneralWorkerTransport implements GeneralWorkerProcessTrans
 
   dropNextResponse(): void {
     this.droppedResponses += 1;
+  }
+
+  deliverMessagesOnSeparateTurns(): void {
+    this.separateMessageTurns = true;
   }
 
   transformNextMessage(transform: (message: GeneralWorkerMessage) => unknown): void {

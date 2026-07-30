@@ -6,7 +6,12 @@ import { DatabaseSync } from "node:sqlite";
 import {
   assertAionUiApprovalAuthorityLimit,
   assertAionUiApprovalDecisionRecord,
+  AIONUI_GENERAL_WORK_MAX_JOURNEYS_PER_CONVERSATION,
+  assertAionUiGeneralWorkLink,
+  assertAionUiGeneralWorkRegistration,
   assertAionUiShadowEvidence,
+  type AionUiGeneralWorkLink,
+  type AionUiGeneralWorkRegistration,
   type AionUiApprovalAuthoritySummary,
   type AionUiApprovalDecisionRecord,
   type AionUiShadowEvidence,
@@ -14,6 +19,7 @@ import {
   type AppendAionUiShadowEvidenceResult,
   type NormalizedAionUiApprovalDecision,
   type ReserveAionUiApprovalDecisionResult,
+  type RegisterAionUiGeneralWorkJourneyResult,
   type StoredAionUiShadowEvidence,
 } from "../../compatibility/aionui";
 import {
@@ -122,6 +128,9 @@ const CONTENT_REFERENCE_COLUMNS = `
 const GENERAL_WORK_CHECKPOINT_COLUMNS = `
   session_id, contract_version, phase, revision, workspace_id, task_id,
   worker_id, stream_id, created_at, updated_at, checkpoint_json
+`;
+const AIONUI_GENERAL_WORK_JOURNEY_COLUMNS = `
+  task_id, contract_version, conversation_hash, created_at
 `;
 
 type SqliteRow = Record<string, unknown>;
@@ -404,6 +413,25 @@ function parseStoredGeneralWorkCheckpoint(row: SqliteRow): GeneralWorkCheckpoint
     );
   }
 
+  return deepFreeze(value);
+}
+
+function parseStoredAionUiGeneralWorkLink(row: SqliteRow): AionUiGeneralWorkLink {
+  const value: unknown = {
+    contractVersion: requiredNumber(row, "contract_version"),
+    conversationHash: requiredString(row, "conversation_hash"),
+    taskId: requiredString(row, "task_id"),
+    createdAt: requiredString(row, "created_at"),
+  };
+  try {
+    assertAionUiGeneralWorkLink(value);
+  } catch (error) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted AionUI general-work link violates its contract",
+      { cause: error },
+    );
+  }
   return deepFreeze(value);
 }
 
@@ -807,6 +835,101 @@ function immutableContentMetadata(metadata: ContentReferenceMetadata): object {
   };
 }
 
+function contentRecord(input: StoreContentReferenceInput): {
+  readonly bytes: Buffer;
+  readonly metadata: ContentReferenceMetadata;
+} {
+  const bytes = Buffer.from(input.content, "utf8");
+  const metadata = deepFreeze({
+    contractVersion: input.contractVersion,
+    reference: input.reference,
+    kind: input.kind,
+    owner: structuredClone(input.owner),
+    classification: input.classification,
+    mediaType: input.mediaType,
+    byteLength: bytes.byteLength,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+    createdAt: input.createdAt,
+    ...(input.expiresAt === undefined ? {} : { expiresAt: input.expiresAt }),
+  } satisfies ContentReferenceMetadata);
+  assertContentReferenceMetadata(metadata);
+  return { bytes, metadata };
+}
+
+function storedContentMatches(
+  row: SqliteRow | undefined,
+  input: StoreContentReferenceInput,
+): boolean {
+  if (row === undefined) {
+    return false;
+  }
+  const expected = contentRecord(input);
+  const actual = parseStoredContentMetadata(row);
+  return (
+    isDeepStrictEqual(
+      immutableContentMetadata(actual),
+      immutableContentMetadata(expected.metadata),
+    ) && decodeStoredContent(row, actual) === input.content
+  );
+}
+
+function insertWorkspaceGrant(database: DatabaseSync, grant: WorkspaceGrant): void {
+  database
+    .prepare(
+      `INSERT INTO workspace_grants (
+         grant_id, contract_version, workspace_id, root_path, display_name,
+         state, created_at, updated_at, grant_json
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      grant.grantId,
+      grant.contractVersion,
+      grant.workspaceId,
+      grant.rootPath,
+      grant.displayName,
+      grant.state,
+      grant.createdAt,
+      grant.updatedAt,
+      JSON.stringify(grant),
+    );
+}
+
+function insertContentReference(
+  database: DatabaseSync,
+  input: StoreContentReferenceInput,
+  record = contentRecord(input),
+): void {
+  const { bytes, metadata } = record;
+  database
+    .prepare(
+      `INSERT INTO content_references (
+         reference, contract_version, kind, workspace_id, task_id, session_id,
+         worker_id, request_id, grant_id, classification, media_type,
+         byte_length, sha256, created_at, expires_at, consumed_at,
+         metadata_json, content_blob
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
+    )
+    .run(
+      metadata.reference,
+      metadata.contractVersion,
+      metadata.kind,
+      metadata.owner.workspaceId,
+      metadata.owner.taskId,
+      metadata.owner.sessionId,
+      metadata.owner.workerId,
+      metadata.owner.requestId ?? null,
+      metadata.owner.grantId ?? null,
+      metadata.classification,
+      metadata.mediaType,
+      metadata.byteLength,
+      metadata.sha256,
+      metadata.createdAt,
+      metadata.expiresAt ?? null,
+      JSON.stringify(metadata),
+      bytes,
+    );
+}
+
 function verifyNoForeignKeyViolations(database: DatabaseSync): void {
   const violations = database.prepare("PRAGMA foreign_key_check").all();
 
@@ -1129,6 +1252,10 @@ class SqliteCorePersistence implements ActestraPersistencePort {
         );
       }
 
+      database.exec(`
+        DELETE FROM aionui_general_work_journeys
+        WHERE task_id NOT IN (SELECT id FROM tasks);
+      `);
       verifyNoForeignKeyViolations(database);
       database.exec("COMMIT");
       this.streamStates.clear();
@@ -1405,7 +1532,6 @@ class SqliteCorePersistence implements ActestraPersistencePort {
           "Agent attempt session conflicts with immutable durable evidence",
         );
       }
-
       database
         .prepare(
           `INSERT INTO agent_attempt_evidence (
@@ -1658,6 +1784,310 @@ class SqliteCorePersistence implements ActestraPersistencePort {
         .all(limit),
     );
     return Object.freeze(rows.map(parseStoredGeneralWorkCheckpoint));
+  }
+
+  async registerAionUiGeneralWorkJourney(
+    registration: AionUiGeneralWorkRegistration,
+  ): Promise<RegisterAionUiGeneralWorkJourneyResult> {
+    const database = this.requireDatabase();
+    let stable: AionUiGeneralWorkRegistration;
+    try {
+      assertAionUiGeneralWorkRegistration(registration);
+      const normalized: unknown = JSON.parse(JSON.stringify(registration));
+      assertAionUiGeneralWorkRegistration(normalized);
+      stable = deepFreeze(normalized);
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "AionUI general-work registration is invalid", {
+        cause: error,
+      });
+    }
+
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const existingRow = database
+        .prepare(
+          `SELECT ${AIONUI_GENERAL_WORK_JOURNEY_COLUMNS}
+           FROM aionui_general_work_journeys
+           WHERE task_id = ?`,
+        )
+        .get(stable.link.taskId) as SqliteRow | undefined;
+      if (existingRow !== undefined) {
+        const existing = parseStoredAionUiGeneralWorkLink(existingRow);
+        const workspaceRow = database
+          .prepare("SELECT name, created_at FROM workspaces WHERE id = ?")
+          .get(stable.workspace.id) as SqliteRow | undefined;
+        const taskRow = database
+          .prepare("SELECT workspace_id, title, created_at FROM tasks WHERE id = ?")
+          .get(stable.task.id) as SqliteRow | undefined;
+        const sessionRow = database
+          .prepare(
+            `SELECT workspace_id, task_id, worker_id, created_at
+             FROM sessions
+             WHERE id = ?`,
+          )
+          .get(stable.session.id) as SqliteRow | undefined;
+        const workerRow = database
+          .prepare("SELECT workspace_id, adapter_kind, created_at FROM workers WHERE id = ?")
+          .get(stable.worker.id) as SqliteRow | undefined;
+        const grantRow = database
+          .prepare(`SELECT ${WORKSPACE_GRANT_COLUMNS} FROM workspace_grants WHERE grant_id = ?`)
+          .get(stable.workspaceGrant.grantId) as SqliteRow | undefined;
+        const promptRow = database
+          .prepare(
+            `SELECT ${CONTENT_REFERENCE_COLUMNS}
+             FROM content_references
+             WHERE reference = ?`,
+          )
+          .get(stable.promptReference.reference) as SqliteRow | undefined;
+        const toolInputRow = database
+          .prepare(
+            `SELECT ${CONTENT_REFERENCE_COLUMNS}
+             FROM content_references
+             WHERE reference = ?`,
+          )
+          .get(stable.toolInputReference.reference) as SqliteRow | undefined;
+        const grant = grantRow === undefined ? undefined : parseStoredWorkspaceGrant(grantRow);
+        const recordsMatch =
+          isDeepStrictEqual(existing, stable.link) &&
+          workspaceRow !== undefined &&
+          requiredString(workspaceRow, "name") === stable.workspace.name &&
+          requiredString(workspaceRow, "created_at") === stable.workspace.createdAt &&
+          taskRow !== undefined &&
+          requiredString(taskRow, "workspace_id") === stable.task.workspaceId &&
+          requiredString(taskRow, "title") === stable.task.title &&
+          requiredString(taskRow, "created_at") === stable.task.createdAt &&
+          sessionRow !== undefined &&
+          requiredString(sessionRow, "workspace_id") === stable.session.workspaceId &&
+          requiredString(sessionRow, "task_id") === stable.session.taskId &&
+          requiredString(sessionRow, "worker_id") === stable.session.workerId &&
+          requiredString(sessionRow, "created_at") === stable.session.createdAt &&
+          workerRow !== undefined &&
+          requiredString(workerRow, "workspace_id") === stable.worker.workspaceId &&
+          requiredString(workerRow, "adapter_kind") === stable.worker.adapterKind &&
+          requiredString(workerRow, "created_at") === stable.worker.createdAt &&
+          grant !== undefined &&
+          grant.contractVersion === stable.workspaceGrant.contractVersion &&
+          grant.grantId === stable.workspaceGrant.grantId &&
+          grant.workspaceId === stable.workspaceGrant.workspaceId &&
+          grant.rootPath === stable.workspaceGrant.rootPath &&
+          grant.displayName === stable.workspaceGrant.displayName &&
+          grant.createdAt === stable.workspaceGrant.createdAt &&
+          storedContentMatches(promptRow, stable.promptReference) &&
+          storedContentMatches(toolInputRow, stable.toolInputReference);
+        if (!recordsMatch) {
+          throw new PersistenceError(
+            "general-work-journey-conflict",
+            "AionUI general-work registration conflicts with durable state",
+          );
+        }
+        database.exec("COMMIT");
+        return deepFreeze({ status: "duplicate", link: existing });
+      }
+
+      const collisions = [
+        ["workspaces", stable.workspace.id],
+        ["tasks", stable.task.id],
+        ["sessions", stable.session.id],
+        ["workers", stable.worker.id],
+      ] as const;
+      for (const [table, identifier] of collisions) {
+        const collision = database.prepare(`SELECT id FROM ${table} WHERE id = ?`).get(identifier);
+        if (collision !== undefined) {
+          throw new PersistenceError(
+            "general-work-journey-conflict",
+            "AionUI general-work registration reuses an authoritative identity",
+          );
+        }
+      }
+      if (
+        database
+          .prepare("SELECT grant_id FROM workspace_grants WHERE grant_id = ?")
+          .get(stable.workspaceGrant.grantId) !== undefined ||
+        database
+          .prepare("SELECT reference FROM content_references WHERE reference = ?")
+          .get(stable.promptReference.reference) !== undefined ||
+        database
+          .prepare("SELECT reference FROM content_references WHERE reference = ?")
+          .get(stable.toolInputReference.reference) !== undefined
+      ) {
+        throw new PersistenceError(
+          "general-work-journey-conflict",
+          "AionUI general-work registration reuses grant or content authority",
+        );
+      }
+      const conversationCountRow = database
+        .prepare(
+          `SELECT COUNT(*) AS journey_count
+           FROM aionui_general_work_journeys
+           WHERE conversation_hash = ?`,
+        )
+        .get(stable.link.conversationHash) as SqliteRow;
+      if (
+        requiredNumber(conversationCountRow, "journey_count") >=
+        AIONUI_GENERAL_WORK_MAX_JOURNEYS_PER_CONVERSATION
+      ) {
+        throw new PersistenceError(
+          "general-work-journey-conflict",
+          "AionUI general-work conversation reached its durable journey limit",
+        );
+      }
+
+      database
+        .prepare(
+          `INSERT INTO workspaces (id, name, state, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?)`,
+        )
+        .run(
+          stable.workspace.id,
+          stable.workspace.name,
+          stable.workspace.state,
+          stable.workspace.createdAt,
+          stable.workspace.updatedAt,
+        );
+      assertCanonicalWorkspaceRoot(stable.workspaceGrant.rootPath);
+      insertWorkspaceGrant(database, stable.workspaceGrant);
+      database
+        .prepare(
+          `INSERT INTO workers (
+             id, workspace_id, adapter_kind, state, created_at, updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          stable.worker.id,
+          stable.worker.workspaceId,
+          stable.worker.adapterKind,
+          stable.worker.state,
+          stable.worker.createdAt,
+          stable.worker.updatedAt,
+        );
+      database
+        .prepare(
+          `INSERT INTO tasks (
+             id, workspace_id, title, state, active_session_id, created_at, updated_at
+           ) VALUES (?, ?, ?, ?, NULL, ?, ?)`,
+        )
+        .run(
+          stable.task.id,
+          stable.task.workspaceId,
+          stable.task.title,
+          stable.task.state,
+          stable.task.createdAt,
+          stable.task.updatedAt,
+        );
+      database
+        .prepare(
+          `INSERT INTO sessions (
+             id, workspace_id, task_id, worker_id, state, created_at, updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          stable.session.id,
+          stable.session.workspaceId,
+          stable.session.taskId,
+          stable.session.workerId,
+          stable.session.state,
+          stable.session.createdAt,
+          stable.session.updatedAt,
+        );
+      database
+        .prepare("UPDATE tasks SET active_session_id = ? WHERE id = ?")
+        .run(stable.session.id, stable.task.id);
+      insertContentReference(database, stable.promptReference);
+      insertContentReference(database, stable.toolInputReference);
+      database
+        .prepare(
+          `INSERT INTO aionui_general_work_journeys (
+             task_id, contract_version, conversation_hash, created_at
+           ) VALUES (?, ?, ?, ?)`,
+        )
+        .run(
+          stable.link.taskId,
+          stable.link.contractVersion,
+          stable.link.conversationHash,
+          stable.link.createdAt,
+        );
+      verifyNoForeignKeyViolations(database);
+      database.exec("COMMIT");
+      return deepFreeze({ status: "stored", link: stable.link });
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) {
+        throw error;
+      }
+      throw new PersistenceError(
+        "corrupt-database",
+        "Actestra could not register the AionUI general-work journey",
+        { cause: error },
+      );
+    }
+  }
+
+  async listAionUiGeneralWorkJourneyLinks(
+    conversationHash: string,
+    limit: number,
+  ): Promise<readonly AionUiGeneralWorkLink[]> {
+    const database = this.requireDatabase();
+    if (
+      !/^[a-f0-9]{64}$/u.test(conversationHash) ||
+      !Number.isSafeInteger(limit) ||
+      limit < 1 ||
+      limit > AIONUI_GENERAL_WORK_MAX_JOURNEYS_PER_CONVERSATION
+    ) {
+      throw new PersistenceError(
+        "invalid-record",
+        "AionUI general-work lookup requires a SHA-256 identity and a limit from 1 to 100",
+      );
+    }
+    const rows = asRows(
+      database
+        .prepare(
+          `SELECT ${AIONUI_GENERAL_WORK_JOURNEY_COLUMNS}
+           FROM aionui_general_work_journeys
+           WHERE conversation_hash = ?
+           ORDER BY created_at, task_id
+           LIMIT ?`,
+        )
+        .all(conversationHash, limit),
+    );
+    return Object.freeze(rows.map(parseStoredAionUiGeneralWorkLink));
+  }
+
+  async listPreparedAionUiGeneralWorkJourneyLinks(
+    limit: number,
+  ): Promise<readonly AionUiGeneralWorkLink[]> {
+    const database = this.requireDatabase();
+    if (
+      !Number.isSafeInteger(limit) ||
+      limit < 1 ||
+      limit > AIONUI_GENERAL_WORK_MAX_JOURNEYS_PER_CONVERSATION
+    ) {
+      throw new PersistenceError(
+        "invalid-record",
+        "Prepared AionUI general-work lookup requires a limit from 1 to 100",
+      );
+    }
+    const rows = asRows(
+      database
+        .prepare(
+          `SELECT
+             journeys.task_id,
+             journeys.contract_version,
+             journeys.conversation_hash,
+             journeys.created_at
+           FROM aionui_general_work_journeys AS journeys
+           JOIN tasks ON tasks.id = journeys.task_id
+           JOIN sessions ON sessions.id = tasks.active_session_id
+           LEFT JOIN general_work_checkpoints
+             ON general_work_checkpoints.session_id = sessions.id
+           WHERE tasks.state = 'ready'
+             AND sessions.state = 'created'
+             AND general_work_checkpoints.session_id IS NULL
+           ORDER BY journeys.created_at, journeys.task_id
+           LIMIT ?`,
+        )
+        .all(limit),
+    );
+    return Object.freeze(rows.map(parseStoredAionUiGeneralWorkLink));
   }
 
   async appendAionUiShadowEvidence(

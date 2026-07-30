@@ -32,10 +32,10 @@ describe("General Worker utility service", () => {
     );
 
     expect(messages).toMatchObject([
-      { type: "response", operation: "start", ok: true },
       { type: "event", sequence: 1, event: { type: "started" } },
       { type: "event", sequence: 2, event: { type: "message" } },
       { type: "event", sequence: 3, event: { type: "completed" } },
+      { type: "response", operation: "start", ok: true },
     ]);
   });
 
@@ -50,7 +50,6 @@ describe("General Worker utility service", () => {
       }),
     );
     expect(started).toMatchObject([
-      { type: "response", ok: true },
       { type: "event", sequence: 1, event: { type: "started" } },
       {
         type: "event",
@@ -60,6 +59,7 @@ describe("General Worker utility service", () => {
           callId: "general-worker-tool-call",
         },
       },
+      { type: "response", operation: "start", ok: true },
     ]);
 
     const resolved = await service.handle(
@@ -76,7 +76,6 @@ describe("General Worker utility service", () => {
       }),
     );
     expect(resolved).toMatchObject([
-      { type: "response", ok: true },
       {
         type: "event",
         sequence: 3,
@@ -84,6 +83,7 @@ describe("General Worker utility service", () => {
       },
       { type: "event", sequence: 4, event: { type: "resumed" } },
       { type: "event", sequence: 5, event: { type: "completed" } },
+      { type: "response", ok: true },
     ]);
   });
 
@@ -105,12 +105,12 @@ describe("General Worker utility service", () => {
         }),
       ),
     ).resolves.toMatchObject([
-      { type: "response", ok: true },
       {
         type: "event",
         sequence: 2,
         event: { type: "cancelled", reason: "User cancelled" },
       },
+      { type: "response", ok: true },
     ]);
     await expect(
       service.handle(

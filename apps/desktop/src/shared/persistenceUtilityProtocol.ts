@@ -1,11 +1,17 @@
 import {
   AIONUI_APPROVAL_AUTHORITY_PENDING_LIMIT,
+  AIONUI_GENERAL_WORK_MAX_JOURNEYS_PER_CONVERSATION,
   assertAionUiApprovalAuthorityLimit,
   assertAionUiApprovalDecisionRecord,
+  assertAionUiGeneralWorkLink,
+  assertAionUiGeneralWorkRegistration,
   assertAionUiShadowEvidence,
   assertNormalizedAionUiApprovalDecision,
   type AionUiApprovalAuthoritySummary,
   type AionUiApprovalDecisionRecord,
+  type AionUiGeneralWorkLink,
+  type AionUiGeneralWorkRegistration,
+  type RegisterAionUiGeneralWorkJourneyResult,
   type AionUiShadowEvidence,
   type AionUiShadowEvidenceSummary,
   type AppendAionUiShadowEvidenceResult,
@@ -219,6 +225,25 @@ export interface PersistenceUtilityOperationMap {
     };
     readonly result: readonly GeneralWorkCheckpoint[];
   };
+  readonly "list-aionui-general-work-links": {
+    readonly request: {
+      readonly conversationHash: string;
+      readonly limit: number;
+    };
+    readonly result: readonly AionUiGeneralWorkLink[];
+  };
+  readonly "list-prepared-aionui-general-work-links": {
+    readonly request: {
+      readonly limit: number;
+    };
+    readonly result: readonly AionUiGeneralWorkLink[];
+  };
+  readonly "register-aionui-general-work": {
+    readonly request: {
+      readonly registration: AionUiGeneralWorkRegistration;
+    };
+    readonly result: RegisterAionUiGeneralWorkJourneyResult;
+  };
   readonly close: {
     readonly request: Record<string, never>;
     readonly result: null;
@@ -254,6 +279,9 @@ export const PERSISTENCE_UTILITY_OPERATIONS = [
   "persist-general-work-checkpoint",
   "get-general-work-checkpoint",
   "list-recoverable-general-work-checkpoints",
+  "list-aionui-general-work-links",
+  "list-prepared-aionui-general-work-links",
+  "register-aionui-general-work",
   "close",
 ] as const satisfies readonly (keyof PersistenceUtilityOperationMap)[];
 
@@ -485,6 +513,15 @@ function assertApprovalSummary(value: unknown): void {
   ) {
     throw new PersistenceUtilityProtocolError("AionUi approval summary is invalid");
   }
+}
+
+function assertAionUiGeneralWorkRegistrationResult(value: unknown): void {
+  assertRecord(value, "AionUI general-work registration result");
+  assertExactKeys(value, ["status", "link"], "AionUI general-work registration result");
+  if (value.status !== "stored" && value.status !== "duplicate") {
+    throw new PersistenceUtilityProtocolError("AionUI general-work registration status is invalid");
+  }
+  assertAionUiGeneralWorkLink(value.link);
 }
 
 function assertErrorData(value: unknown): asserts value is PersistenceUtilityErrorData {
@@ -735,6 +772,41 @@ function assertRequestPayload(request: PersistenceUtilityRequest): void {
       assertExactKeys(payload, ["limit"], "list-recoverable-general-work-checkpoints request");
       assertBoundedLimit(payload.limit, 100, "list-recoverable-general-work-checkpoints limit");
       return;
+    case "list-aionui-general-work-links":
+      assertRecord(payload, "list-aionui-general-work-links request");
+      assertExactKeys(
+        payload,
+        ["conversationHash", "limit"],
+        "list-aionui-general-work-links request",
+      );
+      if (
+        typeof payload.conversationHash !== "string" ||
+        !/^[a-f0-9]{64}$/u.test(payload.conversationHash)
+      ) {
+        throw new PersistenceUtilityProtocolError(
+          "list-aionui-general-work-links conversationHash is invalid",
+        );
+      }
+      assertBoundedLimit(
+        payload.limit,
+        AIONUI_GENERAL_WORK_MAX_JOURNEYS_PER_CONVERSATION,
+        "list-aionui-general-work-links limit",
+      );
+      return;
+    case "list-prepared-aionui-general-work-links":
+      assertRecord(payload, "list-prepared-aionui-general-work-links request");
+      assertExactKeys(payload, ["limit"], "list-prepared-aionui-general-work-links request");
+      assertBoundedLimit(
+        payload.limit,
+        AIONUI_GENERAL_WORK_MAX_JOURNEYS_PER_CONVERSATION,
+        "list-prepared-aionui-general-work-links limit",
+      );
+      return;
+    case "register-aionui-general-work":
+      assertRecord(payload, "register-aionui-general-work request");
+      assertExactKeys(payload, ["registration"], "register-aionui-general-work request");
+      assertAionUiGeneralWorkRegistration(payload.registration);
+      return;
     default:
       assertNeverOperation(request);
   }
@@ -852,6 +924,31 @@ function assertSuccessResult(operation: PersistenceUtilityOperation, result: unk
         );
       }
       result.forEach(assertGeneralWorkCheckpoint);
+      return;
+    case "list-aionui-general-work-links":
+      if (
+        !Array.isArray(result) ||
+        result.length > AIONUI_GENERAL_WORK_MAX_JOURNEYS_PER_CONVERSATION
+      ) {
+        throw new PersistenceUtilityProtocolError(
+          "list-aionui-general-work-links result is invalid",
+        );
+      }
+      result.forEach(assertAionUiGeneralWorkLink);
+      return;
+    case "list-prepared-aionui-general-work-links":
+      if (
+        !Array.isArray(result) ||
+        result.length > AIONUI_GENERAL_WORK_MAX_JOURNEYS_PER_CONVERSATION
+      ) {
+        throw new PersistenceUtilityProtocolError(
+          "list-prepared-aionui-general-work-links result is invalid",
+        );
+      }
+      result.forEach(assertAionUiGeneralWorkLink);
+      return;
+    case "register-aionui-general-work":
+      assertAionUiGeneralWorkRegistrationResult(result);
       return;
     default:
       assertNeverOperation(operation);

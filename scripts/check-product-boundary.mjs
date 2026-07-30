@@ -23,12 +23,17 @@ const forbiddenProductPatterns = [
 
 const aionUiCompatibilityIdentityFiles = new Set([
   "apps/desktop/src/compatibility/aionui/approvalAuthority.ts",
+  "apps/desktop/src/compatibility/aionui/generalWorkBridge.ts",
+  "apps/desktop/src/compatibility/aionui/generalWorkJourney.ts",
   "apps/desktop/src/compatibility/aionui/nativeObservations.ts",
   "apps/desktop/src/compatibility/aionui/shadowProjection.ts",
   "apps/desktop/src/core/productPersistence.ts",
   "apps/desktop/src/main/compatibility/aionuiApprovalAuthorityService.ts",
   "apps/desktop/src/main/compatibility/aionuiApprovalPolicyGate.ts",
   "apps/desktop/src/main/compatibility/aionuiApprovalReconciliationPolicyGate.ts",
+  "apps/desktop/src/main/compatibility/aionuiGeneralWorkBridgeService.ts",
+  "apps/desktop/src/main/compatibility/aionuiGeneralWorkJourneyService.ts",
+  "apps/desktop/src/main/compatibility/aionuiGeneralWorkNativeContext.ts",
   "apps/desktop/src/main/compatibility/aionuiShadowProjectionService.ts",
   "apps/desktop/src/main/persistence/persistenceUtilityClient.ts",
   "apps/desktop/src/shared/persistenceUtilityProtocol.ts",

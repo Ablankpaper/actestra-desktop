@@ -114,11 +114,11 @@ function main() {
 
   if (
     overlay.schemaVersion !== 1 ||
-    overlay.phase !== "GW-P4.5" ||
+    overlay.phase !== "GW-P4.6" ||
     overlay.uiContract.layoutChangesAllowed !== false ||
     overlay.uiContract.featureEntryRemovalAllowed !== false
   ) {
-    throw new Error("Invalid GW-P4.5 downstream overlay policy");
+    throw new Error("Invalid GW-P4.6 downstream overlay policy");
   }
 
   for (const patch of overlay.patches) {
@@ -287,6 +287,10 @@ function main() {
       "[Actestra native tools] Ready tools=",
       "GeneralWorkCoordinator",
       "ACTESTRA_GENERAL_WORK_RECOVERY_READY",
+      "ACTESTRA_GENERAL_WORK_SUBMIT_CHANNEL",
+      "ACTESTRA_GENERAL_WORK_PREVIEW_CHANNEL",
+      "runActestraGeneralWorkSmoke",
+      "ACTESTRA_AIONUI_GENERAL_WORK_SMOKE_READY",
       "[Actestra general work] Recovery unavailable at startup",
       "nativeFallback",
       "recoverPending",
@@ -296,6 +300,45 @@ function main() {
     path.join(outputRoot, "packages/desktop/src/process/services/actestraShadowBridge.ts"),
     ["openSqliteCorePersistence", "node:sqlite", "DatabaseSync"],
   );
+  requireText(
+    path.join(outputRoot, "packages/desktop/src/renderer/components/chat/SendBox/index.tsx"),
+    ["useActestraGeneralWork", "extractActestraGeneralWorkPrompt", "effectiveLoading"],
+  );
+  requireText(
+    path.join(
+      outputRoot,
+      "packages/desktop/src/renderer/pages/conversation/Preview/context/PreviewContext.tsx",
+    ),
+    ["persist?: boolean", "tab.metadata?.persist !== false", "persistActiveTab"],
+  );
+  requireText(
+    path.join(outputRoot, "packages/desktop/src/process/services/actestraGeneralWorkSmoke.ts"),
+    ["prepare-restart", "recover-restart", "denial", "cancellation", "ACTESTRA_E2E_TEST"],
+  );
+  requireText(path.join(outputRoot, "packages/desktop/src/process/utils/utils.ts"), [
+    "shouldBypassActestraCliSafeSymlink",
+    "environment.ACTESTRA_E2E_TEST === '1'",
+    "environment.ACTESTRA_USER_DATA_DIR?.trim()",
+  ]);
+  requireText(path.join(outputRoot, "packages/desktop/src/process/utils/configureConsoleLog.ts"), [
+    "preserveActestraE2EConsoleEvidence",
+    "process.env.ACTESTRA_E2E_TEST === '1'",
+  ]);
+  requireText(path.join(repositoryRoot, "scripts/smoke-aionui-general-work.mjs"), [
+    "Contents",
+    "Resources",
+    "app.asar",
+    "MacOS",
+    "Actestra",
+    "Packaged exact AionCore runtime",
+    "[Actestra] Main window created",
+    "[AionUi] Renderer did-finish-load",
+  ]);
+  rejectText(path.join(repositoryRoot, "scripts/smoke-aionui-general-work.mjs"), [
+    "Electron.app",
+    "[applicationPath]",
+    'spawnSync("which", ["aioncore"]',
+  ]);
   requireText(path.join(outputRoot, "packages/desktop/electron.vite.config.ts"), [
     "'actestra-persistence-utility'",
     "persistenceUtilityEntry.ts",
@@ -442,7 +485,7 @@ function main() {
   requireText(
     path.join(outputRoot, "packages/desktop/src/actestra/utility/persistence/sqliteMigrations.ts"),
     [
-      "CURRENT_CORE_SCHEMA_VERSION = 7",
+      "CURRENT_CORE_SCHEMA_VERSION = 8",
       "aionui_shadow_evidence",
       "aionui_approval_decisions",
       "pending-delivery",
@@ -643,16 +686,17 @@ function main() {
     "assertGeneralWorkCheckpointTransition",
   ]);
   requireText(path.join(outputRoot, "tests/unit/actestra/persistenceUtilityClient.test.ts"), [
-    "schema v7 utility IPC",
-    "expect(client.schemaVersion).toBe(7)",
+    "schema v8 utility IPC",
+    "expect(client.schemaVersion).toBe(8)",
   ]);
 
   console.log(
-    `Verified Actestra GW-P4.5 downstream overlay: ${changedFiles.size} declared files, ` +
+    `Verified Actestra GW-P4.6 downstream overlay: ${changedFiles.size} declared files, ` +
       `${overlay.invariantFiles.length} R0 invariant files, ${overlay.sourceCopies.length} ` +
       "reviewed source copies, preserved AionUI surfaces, utility-owned persistence, shadow and " +
       "approval authority, workspace grants, bounded content references, AgentAdapter v2, and " +
-      "the supervised General Worker, scoped native text tools, and deterministic recovery present.",
+      "the supervised General Worker, scoped native text tools, deterministic recovery, and " +
+      "the preserved AionUI General Work journey present.",
   );
 }
 

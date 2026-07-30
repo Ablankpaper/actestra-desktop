@@ -1,8 +1,8 @@
 # System Overview
 
-Status: P3, F0 through F3.3, and GW-P4.4 accepted on `main`; GW-P4.5 durable
-coordination and recovery implemented on
-`feat/aionui-p4-coordination-recovery`; CrewAI accepted as the first P6
+Status: P3, F0 through F3.3, and GW-P4.5 accepted on `main`; GW-P4.6 preserved
+AionUI General Work journey implemented locally on
+`feat/aionui-p4-preserved-journey`; CrewAI accepted as the first P6
 planner-sidecar candidate but not implemented or packaged
 
 ## Context
@@ -19,6 +19,7 @@ flowchart TD
     COMPAT["AionUi Compatibility Layer\nbridge shapes and availability"]
     MAIN["Desktop Main Process\nwindow and process lifecycle"]
     CORE["Actestra App Core"]
+    JOURNEY["AionUI General Work Journey\nschema 8 links and projections"]
     RECOVERY["General Work Coordinator\nschema 7 recovery journal"]
     ROUTER["Task Router and Team Orchestrator"]
     PLANNER["CrewAI Planner Sidecar\nP6 candidate, non-authoritative"]
@@ -27,7 +28,7 @@ flowchart TD
     ARTIFACTS["Workspace and Artifact Service"]
     CREDS["Credential Broker"]
     TOOLS["MCP and Tool Gateway"]
-    PERSIST["Persistence Utility\nschema 7 checkpoints and content references"]
+    PERSIST["Persistence Utility\nschema 8 links, checkpoints, and content"]
     ADAPTERS["Agent Adapter Boundary"]
     GENERAL["General Worker Process"]
     GOOSE["Goose Worker Process"]
@@ -37,6 +38,10 @@ flowchart TD
     RENDERER --> COMPAT
     COMPAT --> MAIN
     MAIN --> CORE
+    MAIN --> JOURNEY
+    JOURNEY --> CORE
+    JOURNEY --> RECOVERY
+    JOURNEY --> PERSIST
     CORE --> RECOVERY
     CORE --> ROUTER
     CORE --> POLICY
@@ -98,8 +103,10 @@ native-tool transport, process transport, or real worker adapter. GW-P4.2 adds
 the content-reference store and persistence process; GW-P4.3 adds the first
 real deterministic worker process; accepted GW-P4.4 admits exactly two
 main-owned native text capabilities without granting filesystem authority to
-that process. The current GW-P4.5 branch adds the durable coordination and
-restart-recovery sequence around those capabilities.
+that process. Accepted GW-P4.5 adds the durable coordination and
+restart-recovery sequence around those capabilities. The current GW-P4.6
+branch maps that sequence into the preserved AionUI SendBox, message, cancel,
+and Preview surfaces.
 
 P4.2 adds the separate compatibility boundary accepted in
 [ADR-0011](decisions/0011-aionui-shadow-projection.md). Successful native HTTP
@@ -211,6 +218,26 @@ the preserved AionUI window opens. Active attempts become explicit restart
 failure or cancellation evidence and require fresh worker identity. No
 renderer or route changes, and no Goose, CrewAI, or Eigent runtime enters this
 slice.
+
+GW-P4.6, governed by
+[ADR-0020](decisions/0020-preserved-aionui-general-work-journey.md), adds one
+strict `/actestra` intent to the preserved SendBox while ordinary native sends
+remain unchanged. Main resolves the selected native conversation through one
+bounded loopback read, validates and canonicalizes its workspace, and
+atomically registers the Actestra Workspace, grant, Task, Session, Worker,
+prompt, output input, and schema-version-8 journey link. Only a SHA-256 hash of
+the raw native conversation identity is durable.
+
+One real supervised General Worker utility process requests the existing
+create-only task-output capability with an exact main-owned ToolRequest ID.
+Status, incident, cancellation, and Artifact projections are rebuilt from
+Actestra state. Preview requires the linked Task, finalized checkpoint
+binding, exact Artifact, and exact-owner content reference; only bounded UTF-8
+content crosses the preload bridge and the native Preview marks it
+non-persistable. Prepared linked Tasks with no attempt resume from their
+already persisted prompt and grant after native backend/window readiness,
+without re-reading or rebinding native workspace state. This slice adds no
+route, second UI, Goose, CrewAI, or Eigent runtime.
 
 ## Foundation integration boundary
 
@@ -436,6 +463,7 @@ Initial event types:
 | Workspace grants                                                                                               | Actestra persistence utility, schema 6              |
 | Bounded content references                                                                                     | Actestra persistence utility, schema 6              |
 | General Work attempt, tool, artifact-binding, and recovery checkpoints                                         | Actestra persistence utility, schema 7              |
+| Preserved-AionUI journey links and authoritative initial General Work registration                             | Actestra persistence utility, schema 8              |
 | Tasks and dependency graph                                                                                     | Actestra                                            |
 | P3 protected-operation approval evidence for the underlying native tool                                        | Actestra target contract; not activated by F3.2     |
 | Event and audit history                                                                                        | Actestra                                            |
@@ -479,7 +507,9 @@ semantics. P3.6 persists terminal incident codes and projects bounded,
 metadata-only attempt state through trusted main-frame IPC. GW-P4.5 persists
 the pre-execution, pre-acknowledgement, terminal-pending, and finalized
 barriers, retains ambiguous effects, and deterministically converts
-application-interrupted attempts into recoverable terminal evidence.
+application-interrupted attempts into recoverable terminal evidence. GW-P4.6
+adds atomic pre-attempt registration and separately restarts prepared linked
+Tasks only from that already durable authority.
 
 ## Deferred choices
 
@@ -496,9 +526,11 @@ general-work persistence utility, schema 6 grants, and bounded content
 references. ADR-0017 selects Adapter v2 and the real General Worker protocol.
 ADR-0018 selects the two scoped native text tools and their production policy.
 ADR-0019 selects the durable general-work coordination, tool-result retention,
-artifact binding, and startup-recovery sequence. Later P4 work still must map
-that completed non-UI path into the preserved-AionUi journey. Credential
-storage and OS sandbox mechanisms remain
+artifact binding, and startup-recovery sequence. ADR-0020 selects the first
+preserved-AionUI General Work intent, atomic schema-8 journey authority,
+redacted projection, non-persisted native Preview, and prepared-task recovery
+sequence. Broader representative General Work fixtures, credential storage,
+and OS sandbox mechanisms remain
 later security work. Signing, notarization, update delivery, and cross-platform
 candidate packaging remain P8 work.
 

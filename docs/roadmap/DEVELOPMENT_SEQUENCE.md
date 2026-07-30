@@ -30,22 +30,22 @@ features are implemented.
 | P8    | Cross-platform internal beta                             | P7                |
 
 Current execution state on 2026-07-30: native-fusion slices F0 through F3.3
-and general-work through GW-P4.4 are accepted on `main`. Pull request 12
-reached exact head `34f2d2201581c19b3dc67c5a7936f8a411bff9e1`, passed
-pull-request CI run 30486392525, and squash merged as
-`7ec009c6384a93c17f24e4276469e98cb5f2b71d`; exact main CI run 30486544268
-passes. GW-P4.5 is implemented on
-`feat/aionui-p4-coordination-recovery`: schema version 7 checkpoints now
-coordinate tool ambiguity, exact-owner artifacts, normalized events, terminal
-evidence, cleanup, bounded/serialized recovery, and deterministic
-application-restart recovery before the preserved AionUI window opens.
-Directed and complete root/native checks, both production builds, the unsigned
-compatibility package, and real AionUI desktop smoke pass locally. The complete
-manual/static review covers the initial 43-file change plus the two
-smoke-contract files added by gate remediation; the CodeRabbit follow-up is
-incomplete, not a zero-finding result. Push, PR CI, merge, merged-main CI,
-candidate, and release remain separate. P5 Goose and P6 CrewAI/Team work have
-not started.
+and general-work through GW-P4.5 are accepted on `main`. Pull request 13
+reached exact head `f160d9a3a00f317f12b7579bc3a48849c1cf32d2`, passed
+pull-request CI run 30495112290, and squash merged as
+`1dacbc0bee8ebae26d688e6e719c8f0f5750db5f`; exact main CI run 30495301140
+passes. GW-P4.6 is implemented locally on
+`feat/aionui-p4-preserved-journey`: schema version 8 atomically registers one
+preserved-AionUI General Work journey, resolves its native workspace in main,
+executes a real supervised Worker output, projects redacted status/cancel and
+owned Artifact Preview, and restarts prepared tasks from persisted authority.
+Complete manual/static review, root/native regressions, production build,
+strictly signed local arm64 packaging, and target-app restart, denial, and
+cancellation smoke pass. Secret/diff audit, push, PR CI, merge, and merged-main
+CI remain pending. The prior GW-P4.5 CodeRabbit follow-up is incomplete, not a
+zero-finding result, and was not rerun on the unchanged earlier diff. The local
+package is not notarized and is not a release. P5 Goose and P6 CrewAI/Team work
+have not started.
 
 ## P0 — Project Foundation
 
@@ -180,7 +180,12 @@ slice previously described as P4.3/F3.1.
 - **GW-P4.6 — preserved-AionUi journey:** map the completed general-work flow into
   original AionUi conversation, workspace, permission, preview, artifact, and
   status surfaces through bounded intents and projections; extend target-app
-  packaged smoke through restart, denial, and cancellation.
+  packaged smoke through restart, denial, and cancellation. The first vertical
+  slice uses one explicit bounded text intent, schema-version-8 atomic
+  journey/grant/content registration, a real supervised General Worker,
+  redacted status and Artifact projections, non-persisted native Preview, and
+  prepared-task startup recovery. It does not satisfy the phase exit gate until
+  the complete target-app gates and representative failure smokes pass.
 - Support scoped workspace reads and task-output writes through the preserved
   file, workspace, conversation, preview, and artifact surfaces.
 - Add representative file, research, writing, office-document, schedule,

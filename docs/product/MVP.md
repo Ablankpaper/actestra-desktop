@@ -65,6 +65,10 @@ aggregations without receiving direct tool or product authority.
 - Durable General Work checkpoints that persist tool ambiguity, artifact
   ownership, normalized events, cleanup, and terminal evidence before
   acknowledgement or release, then recover deterministically after restart.
+- A preserved-AionUI General Work entry whose native workspace selection is
+  resolved in main, atomically registered as Actestra authority, executed by a
+  supervised Worker, and projected back as redacted status, cancellation, and
+  non-persisted native artifact Preview.
 - Risk-based approvals for filesystem, shell, network, message, publish, and Git
   actions.
 - Diff, command, test, and artifact previews.

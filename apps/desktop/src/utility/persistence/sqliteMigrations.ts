@@ -3,7 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { PersistenceError } from "../../core";
 
 export const ACTESTRA_SQLITE_APPLICATION_ID = 1_095_980_114;
-export const CURRENT_CORE_SCHEMA_VERSION = 7;
+export const CURRENT_CORE_SCHEMA_VERSION = 8;
 
 export interface SqliteMigration {
   readonly version: number;
@@ -324,6 +324,25 @@ export const CORE_SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
       CREATE INDEX general_work_recoverable_idx
         ON general_work_checkpoints(phase, updated_at, session_id)
         WHERE phase != 'finalized';
+    `,
+  },
+  {
+    version: 8,
+    name: "aionui-general-work-journeys",
+    sql: `
+      CREATE TABLE aionui_general_work_journeys (
+        task_id TEXT PRIMARY KEY
+          REFERENCES tasks(id) DEFERRABLE INITIALLY DEFERRED,
+        contract_version INTEGER NOT NULL CHECK (contract_version = 1),
+        conversation_hash TEXT NOT NULL CHECK (
+          length(conversation_hash) = 64 AND
+          conversation_hash NOT GLOB '*[^0-9a-f]*'
+        ),
+        created_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE INDEX aionui_general_work_conversation_idx
+        ON aionui_general_work_journeys(conversation_hash, created_at, task_id);
     `,
   },
 ] as const;
