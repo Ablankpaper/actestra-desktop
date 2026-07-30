@@ -2,8 +2,8 @@
 
 Status: GW-P4.2 through GW-P4.6 and the representative workspace-file journey
 are accepted on `main`; the bounded local-research journey is implemented
-locally on `feat/p4-representative-knowledge-work`; complete local gates and
-review pass while commit and remote closure remain pending
+and pushed on Ready pull request 17; complete local gates, review, and initial
+exact-head PR CI pass while final evidence-head and merge closure remain pending
 
 Date: 2026-07-31
 
@@ -450,9 +450,13 @@ Complete local evidence:
 - complete manual review covers all 24 runtime, migration, downstream, smoke,
   test, and evidence-document changes without another in-scope defect.
 
-Commit, push, PR-head CI, merge, merged-main CI, notarization, candidate,
-release, distribution, and user acceptance remain separate pending gates for
-this branch.
+Implementation `e7f3212f5978d69eb0afeaa140ddf9dcedf2414f` is pushed on
+Ready pull request 17 and exact-head CI run 30577349875 passes. The remote
+CodeRabbit run selected all 24 files but was rate-limited before review; its
+successful status is not a completed review. This evidence update creates a
+new head that must pass its own CI. Final PR-head CI, merge, merged-main CI,
+notarization, candidate, release, distribution, and user acceptance remain
+separate pending gates.
 
 Exit: the complete general-work journey is understandable and recoverable in
 the retained AionUi UI with Actestra as the declared system of record.
@@ -478,7 +482,7 @@ P4 is complete only after:
 
 - GW-P4.2 through GW-P4.6 and the representative-file extension are accepted
   on `main`; the local-research extension is not accepted on `main` until
-  commit, push, PR-head CI, required review, merge, and merged-main CI complete.
+  final PR-head CI, required review, merge, and merged-main CI complete.
 - The two native tools are connected to a user-submitted preserved-AionUI task,
   but the file path remains the one main-owned `actestra-input.txt`; this is not
   a renderer-selected generic filesystem API.

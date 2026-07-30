@@ -47,8 +47,12 @@ smoke-harness tests pass locally. Complete root regression passes 50 files and
 313 tests; complete native regression passes 341 files and 2,637 tests. Root
 and native production builds, the signed but unnotarized local arm64 package,
 real target-app restart/research/denial/cancellation smoke, and complete
-24-file review pass. Commit, push, PR-head CI, merge, and merged-main CI remain
-pending for this branch. P5 Goose and P6 CrewAI/Team work have not started.
+24-file review pass. Implementation `e7f3212f5978d69eb0afeaa140ddf9dcedf2414f`
+is pushed on Ready pull request 17 and exact-head CI run 30577349875 passes.
+The remote CodeRabbit run selected all files but was rate-limited before
+review, so it is not remote review evidence. The status-evidence update, final
+PR-head CI, merge, and merged-main CI remain pending. P5 Goose and P6
+CrewAI/Team work have not started.
 
 ## P0 — Project Foundation
 
