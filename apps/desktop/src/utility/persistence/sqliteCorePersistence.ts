@@ -1803,7 +1803,11 @@ class SqliteCorePersistence implements ActestraPersistencePort {
       });
     }
     const initialInputReference =
-      "toolInputReference" in stable ? stable.toolInputReference : stable.readInputReference;
+      "toolInputReference" in stable
+        ? stable.toolInputReference
+        : "readInputReference" in stable
+          ? stable.readInputReference
+          : undefined;
 
     database.exec("BEGIN IMMEDIATE");
     try {
@@ -1842,13 +1846,16 @@ class SqliteCorePersistence implements ActestraPersistencePort {
              WHERE reference = ?`,
           )
           .get(stable.promptReference.reference) as SqliteRow | undefined;
-        const initialInputRow = database
-          .prepare(
-            `SELECT ${CONTENT_REFERENCE_COLUMNS}
-             FROM content_references
-             WHERE reference = ?`,
-          )
-          .get(initialInputReference.reference) as SqliteRow | undefined;
+        const initialInputRow =
+          initialInputReference === undefined
+            ? undefined
+            : (database
+                .prepare(
+                  `SELECT ${CONTENT_REFERENCE_COLUMNS}
+                   FROM content_references
+                   WHERE reference = ?`,
+                )
+                .get(initialInputReference.reference) as SqliteRow | undefined);
         const grant = grantRow === undefined ? undefined : parseStoredWorkspaceGrant(grantRow);
         const recordsMatch =
           isDeepStrictEqual(existing, stable.link) &&
@@ -1876,7 +1883,8 @@ class SqliteCorePersistence implements ActestraPersistencePort {
           grant.displayName === stable.workspaceGrant.displayName &&
           grant.createdAt === stable.workspaceGrant.createdAt &&
           storedContentMatches(promptRow, stable.promptReference) &&
-          storedContentMatches(initialInputRow, initialInputReference);
+          (initialInputReference === undefined ||
+            storedContentMatches(initialInputRow, initialInputReference));
         if (!recordsMatch) {
           throw new PersistenceError(
             "general-work-journey-conflict",
@@ -1909,9 +1917,10 @@ class SqliteCorePersistence implements ActestraPersistencePort {
         database
           .prepare("SELECT reference FROM content_references WHERE reference = ?")
           .get(stable.promptReference.reference) !== undefined ||
-        database
-          .prepare("SELECT reference FROM content_references WHERE reference = ?")
-          .get(initialInputReference.reference) !== undefined
+        (initialInputReference !== undefined &&
+          database
+            .prepare("SELECT reference FROM content_references WHERE reference = ?")
+            .get(initialInputReference.reference) !== undefined)
       ) {
         throw new PersistenceError(
           "general-work-journey-conflict",
@@ -1996,7 +2005,9 @@ class SqliteCorePersistence implements ActestraPersistencePort {
         .prepare("UPDATE tasks SET active_session_id = ? WHERE id = ?")
         .run(stable.session.id, stable.task.id);
       insertContentReference(database, stable.promptReference);
-      insertContentReference(database, initialInputReference);
+      if (initialInputReference !== undefined) {
+        insertContentReference(database, initialInputReference);
+      }
       database
         .prepare(
           `INSERT INTO aionui_general_work_journeys (

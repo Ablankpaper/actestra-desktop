@@ -3,7 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { PersistenceError } from "../../core";
 
 export const ACTESTRA_SQLITE_APPLICATION_ID = 1_095_980_114;
-export const CURRENT_CORE_SCHEMA_VERSION = 10;
+export const CURRENT_CORE_SCHEMA_VERSION = 11;
 
 export interface SqliteMigration {
   readonly version: number;
@@ -396,6 +396,54 @@ export const CORE_SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
 
       DROP TABLE aionui_general_work_journeys;
       ALTER TABLE aionui_general_work_journeys_v10
+        RENAME TO aionui_general_work_journeys;
+
+      CREATE INDEX aionui_general_work_conversation_idx
+        ON aionui_general_work_journeys(conversation_hash, created_at, task_id);
+    `,
+  },
+  {
+    version: 11,
+    name: "aionui-writing-kind",
+    sql: `
+      CREATE TABLE aionui_general_work_journeys_v11 (
+        task_id TEXT PRIMARY KEY
+          REFERENCES tasks(id) DEFERRABLE INITIALLY DEFERRED,
+        contract_version INTEGER NOT NULL CHECK (contract_version = 1),
+        conversation_hash TEXT NOT NULL CHECK (
+          length(conversation_hash) = 64 AND
+          conversation_hash NOT GLOB '*[^0-9a-f]*'
+        ),
+        created_at TEXT NOT NULL,
+        journey_kind TEXT NOT NULL
+          DEFAULT 'prompt-artifact'
+          CHECK (
+            journey_kind IN (
+              'prompt-artifact',
+              'workspace-file-artifact',
+              'local-research-artifact',
+              'writing-artifact'
+            )
+          )
+      ) STRICT;
+
+      INSERT INTO aionui_general_work_journeys_v11 (
+        task_id,
+        contract_version,
+        conversation_hash,
+        created_at,
+        journey_kind
+      )
+      SELECT
+        task_id,
+        contract_version,
+        conversation_hash,
+        created_at,
+        journey_kind
+      FROM aionui_general_work_journeys;
+
+      DROP TABLE aionui_general_work_journeys;
+      ALTER TABLE aionui_general_work_journeys_v11
         RENAME TO aionui_general_work_journeys;
 
       CREATE INDEX aionui_general_work_conversation_idx

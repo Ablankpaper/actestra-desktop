@@ -18,7 +18,7 @@ const expectedAionCoreVersion =
   typeof materializedPackage.aioncoreVersion === "string"
     ? materializedPackage.aioncoreVersion.replace(/^v/u, "")
     : "";
-const smokeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-aionui-p4.6-smoke-"));
+const smokeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-aionui-p4-writing-smoke-"));
 const markerPrefix = "ACTESTRA_AIONUI_GENERAL_WORK_SMOKE_READY ";
 const failureMarker = "ACTESTRA_AIONUI_GENERAL_WORK_SMOKE_FAILED ";
 const windowReadyMarker = "[Actestra] Main window created";
@@ -203,7 +203,7 @@ function databaseValue(database, sql) {
   return row === undefined ? undefined : Object.values(row)[0];
 }
 
-function verifyPreparedProfile(profilePath) {
+function verifyPreparedProfile(profilePath, expected) {
   const database = new DatabaseSync(path.join(profilePath, "state", "actestra.sqlite3"), {
     readOnly: true,
     allowExtension: false,
@@ -211,17 +211,19 @@ function verifyPreparedProfile(profilePath) {
     enableForeignKeyConstraints: true,
   });
   try {
-    if (databaseValue(database, "PRAGMA user_version") !== 10) {
-      fail("prepare-restart did not create schema version 10");
+    if (databaseValue(database, "PRAGMA user_version") !== 11) {
+      fail("prepare-restart did not create schema version 11");
     }
     if (
       databaseValue(database, "SELECT COUNT(*) FROM aionui_general_work_journeys") !== 1 ||
       databaseValue(
         database,
-        "SELECT COUNT(*) FROM aionui_general_work_journeys WHERE journey_kind = 'workspace-file-artifact'",
+        `SELECT COUNT(*) FROM aionui_general_work_journeys WHERE journey_kind = '${expected.journeyKind}'`,
       ) !== 1 ||
       databaseValue(database, "SELECT COUNT(*) FROM tasks WHERE state = 'ready'") !== 1 ||
-      databaseValue(database, "SELECT COUNT(*) FROM general_work_checkpoints") !== 0
+      databaseValue(database, "SELECT COUNT(*) FROM general_work_checkpoints") !== 0 ||
+      databaseValue(database, "SELECT COUNT(*) FROM content_references") !==
+        expected.contentReferenceCount
     ) {
       fail("prepare-restart did not leave exactly one authoritative prepared task");
     }
@@ -243,7 +245,7 @@ function verifyTerminalProfile(profilePath, expected) {
       `SELECT COUNT(*) FROM core_events WHERE type = '${expected.eventType}'`,
     );
     if (
-      databaseValue(database, "PRAGMA user_version") !== 10 ||
+      databaseValue(database, "PRAGMA user_version") !== 11 ||
       databaseValue(database, "SELECT COUNT(*) FROM aionui_general_work_journeys") !== 1 ||
       databaseValue(
         database,
@@ -269,6 +271,14 @@ function verifyTerminalProfile(profilePath, expected) {
           database,
           `SELECT COUNT(*) FROM artifacts WHERE label = '${expected.artifactLabel}'`,
         ) !== 1) ||
+      (expected.artifactKind !== undefined &&
+        databaseValue(
+          database,
+          `SELECT COUNT(*) FROM artifacts WHERE kind = '${expected.artifactKind}'`,
+        ) !== 1) ||
+      (expected.contentReferenceCount !== undefined &&
+        databaseValue(database, "SELECT COUNT(*) FROM content_references") !==
+          expected.contentReferenceCount) ||
       eventCount !== 1 ||
       database.prepare("PRAGMA foreign_key_check").all().length !== 0
     ) {
@@ -286,7 +296,7 @@ function verifyTerminalProfile(profilePath, expected) {
 
 try {
   if (process.platform !== "darwin") {
-    fail("GW-P4.6 target-app smoke currently requires the macOS internal-test lane");
+    fail("P4 writing target-app smoke currently requires the macOS internal-test lane");
   }
   requireFile(builtMain, "Materialized production main entry");
   const packagedApp = findPackagedApp();
@@ -308,7 +318,10 @@ try {
   if (prepared.status !== "prepared") {
     fail("prepare-restart returned the wrong status");
   }
-  verifyPreparedProfile(restartProfile);
+  verifyPreparedProfile(restartProfile, {
+    journeyKind: "workspace-file-artifact",
+    contentReferenceCount: 2,
+  });
   const recovered = await runScenario(
     "recover-restart",
     restartProfile,
@@ -334,6 +347,87 @@ try {
   requireFile(recoveredOutput, "Recovered representative file artifact");
   if (!fs.readFileSync(recoveredOutput, "utf8").includes(restartSourceText)) {
     fail("Recovered representative file artifact does not contain the owned source");
+  }
+
+  const writingProfile = path.join(smokeRoot, "writing-restart-profile");
+  const writingWorkspace = path.join(smokeRoot, "writing-restart-workspace");
+  const writingPrepared = await runScenario(
+    "prepare-writing-restart",
+    writingProfile,
+    writingWorkspace,
+    packagedExecutable,
+  );
+  if (writingPrepared.status !== "prepared") {
+    fail("prepare-writing-restart returned the wrong status");
+  }
+  verifyPreparedProfile(writingProfile, {
+    journeyKind: "writing-artifact",
+    contentReferenceCount: 1,
+  });
+  const writingRecovered = await runScenario(
+    "recover-writing-restart",
+    writingProfile,
+    writingWorkspace,
+    packagedExecutable,
+  );
+  if (writingRecovered.status !== "completed" || writingRecovered.artifactCount !== 1) {
+    fail("recover-writing-restart returned the wrong terminal evidence");
+  }
+  const writingTaskId = verifyTerminalProfile(writingProfile, {
+    state: "completed",
+    eventType: "task.completed",
+    artifactCount: 1,
+    artifactLabel: "Actestra writing draft",
+    artifactKind: "document",
+    contentReferenceCount: 3,
+    journeyKind: "writing-artifact",
+  });
+  const writingOutput = path.join(
+    writingWorkspace,
+    ".actestra",
+    "task-output",
+    writingTaskId,
+    "draft.md",
+  );
+  requireFile(writingOutput, "Recovered writing draft");
+  const writingContents = fs.readFileSync(writingOutput, "utf8");
+  const expectedWritingFragments = [
+    "# Packaged restart-safe launch note",
+    "Audience: Product leadership",
+    "Explain the verified packaged release sequence.",
+    "Start with the approved customer outcome.",
+    "Close with the bounded next step.",
+  ];
+  if (expectedWritingFragments.some((fragment) => !writingContents.includes(fragment))) {
+    fail("Recovered writing draft does not contain the structured brief");
+  }
+  const writingDatabase = new DatabaseSync(path.join(writingProfile, "state", "actestra.sqlite3"), {
+    readOnly: true,
+    allowExtension: false,
+    enableDoubleQuotedStringLiterals: false,
+    enableForeignKeyConstraints: true,
+  });
+  try {
+    const privateWritingFragments = ["draft.md", "# Packaged restart-safe launch note"];
+    const leakedCoreEventCount = writingDatabase
+      .prepare(
+        `SELECT COUNT(*) AS count
+         FROM core_events
+         WHERE instr(envelope_json, ?) > 0 OR instr(envelope_json, ?) > 0`,
+      )
+      .get(...privateWritingFragments).count;
+    const leakedAuditCount = writingDatabase
+      .prepare(
+        `SELECT COUNT(*) AS count
+         FROM privileged_audit_records
+         WHERE instr(record_json, ?) > 0 OR instr(record_json, ?) > 0`,
+      )
+      .get(...privateWritingFragments).count;
+    if (leakedCoreEventCount !== 0 || leakedAuditCount !== 0) {
+      fail("Private writing input leaked into normalized Core events or metadata audit");
+    }
+  } finally {
+    writingDatabase.close();
   }
 
   const researchProfile = path.join(smokeRoot, "local-research-profile");
@@ -427,11 +521,11 @@ try {
 
   succeeded = true;
   console.info(
-    "Packaged target-app GW-P4.6 smoke passed: representative workspace-file restart recovery, local research and owned Preview, workspace-grant denial, cancellation, finalized checkpoints, events, artifacts, and terminal evidence are exact.",
+    "Packaged target-app P4 writing smoke passed: representative workspace-file and writing restart recovery, local research and owned Preview, workspace-grant denial, cancellation, finalized checkpoints, events, artifacts, and terminal evidence are exact.",
   );
 } catch (error) {
   console.error(
-    `Target-app GW-P4.6 smoke failed: ${error instanceof Error ? error.message : String(error)}`,
+    `Target-app P4 writing smoke failed: ${error instanceof Error ? error.message : String(error)}`,
   );
   console.error(`Isolated smoke root retained for inspection: ${smokeRoot}`);
   process.exitCode = 1;

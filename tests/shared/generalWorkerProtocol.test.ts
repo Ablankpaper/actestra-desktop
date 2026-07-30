@@ -97,6 +97,24 @@ describe("General Worker process protocol", () => {
     ).toThrow(/bounded string/);
   });
 
+  it("admits the closed writing-artifact execution mode", () => {
+    expect(() =>
+      assertGeneralWorkerRequest({
+        ...startRequest(),
+        payload: {
+          ...startRequest().payload,
+          prompt: [
+            "Title: Quarterly launch note",
+            "Audience: Product leadership",
+            "Purpose: Explain the approved launch sequence.",
+            "Point: Start with the verified customer outcome.",
+          ].join("\n"),
+          executionMode: "writing-artifact-fixture",
+        },
+      }),
+    ).not.toThrow();
+  });
+
   it("validates typed tool results with opaque output references only", () => {
     expect(() =>
       assertGeneralWorkerRequest({

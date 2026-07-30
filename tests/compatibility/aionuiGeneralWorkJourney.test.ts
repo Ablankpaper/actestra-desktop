@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   createAionUiGeneralWorkRegistration,
   createAionUiLocalResearchRegistration,
+  createAionUiWritingRegistration,
   createAionUiWorkspaceFileRegistration,
 } from "../fixtures/aionuiGeneralWork";
 
@@ -54,6 +55,21 @@ describe("AionUI general-work intent", () => {
       prompt: "",
       journeyKind: "local-research-artifact",
     });
+    const writingBrief = [
+      "Title: Quarterly launch note",
+      "Audience: Product leadership",
+      "Purpose: Explain the approved launch sequence.",
+      "Point: Start with the verified customer outcome.",
+      "Point: Close with the bounded next step.",
+    ].join("\n");
+    expect(parseCommand(`/actestra write ${writingBrief}`)).toEqual({
+      prompt: writingBrief,
+      journeyKind: "writing-artifact",
+    });
+    expect(parseCommand("/actestra write")).toEqual({
+      prompt: "",
+      journeyKind: "writing-artifact",
+    });
     expect(parseCommand("ordinary native AionUI message")).toBeNull();
   });
 
@@ -90,6 +106,118 @@ describe("AionUI general-work intent", () => {
         journeyKind: "local-research-artifact",
       }),
     ).not.toThrow();
+  });
+
+  it("accepts only the exact bounded writing brief contract", async () => {
+    const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
+      string,
+      unknown
+    >;
+    const assertIntent = compatibility.assertAionUiGeneralWorkIntent as (value: unknown) => void;
+    const intent = {
+      contractVersion: 1,
+      nativeConversationId: "conversation-native-1",
+      submissionId: "submission-native-writing-1",
+      journeyKind: "writing-artifact",
+      prompt: [
+        "Title: Quarterly launch note",
+        "Audience: Product leadership",
+        "Purpose: Explain the approved launch sequence.",
+        "Point: Start with the verified customer outcome.",
+        "Point: Close with the bounded next step.",
+      ].join("\n"),
+    };
+
+    expect(() => assertIntent(intent)).not.toThrow();
+
+    for (const prompt of [
+      [
+        "Title: Quarterly launch note",
+        "Audience: Product leadership",
+        "Purpose: Explain the approved launch sequence.",
+      ].join("\n"),
+      [
+        "Audience: Product leadership",
+        "Title: Quarterly launch note",
+        "Purpose: Explain the approved launch sequence.",
+        "Point: Start with the verified customer outcome.",
+      ].join("\n"),
+      [
+        "Title: Quarterly launch note",
+        "Audience: Product leadership",
+        "Purpose: Explain the approved launch sequence.",
+        "Source: Unapproved field",
+        "Point: Start with the verified customer outcome.",
+      ].join("\n"),
+      [
+        "Title: Quarterly launch note",
+        "Audience: Product leadership",
+        "Purpose: ",
+        "Point: Start with the verified customer outcome.",
+      ].join("\n"),
+      [
+        "Title: Quarterly launch note",
+        "Audience: Product leadership",
+        "Purpose: Explain the approved launch sequence.",
+        ...Array.from({ length: 9 }, (_, index) => `Point: Draft point ${index + 1}.`),
+      ].join("\n"),
+      [
+        `Title: ${"t".repeat(257)}`,
+        "Audience: Product leadership",
+        "Purpose: Explain the approved launch sequence.",
+        "Point: Start with the verified customer outcome.",
+      ].join("\n"),
+      [
+        "Title: Quarterly launch note",
+        "Audience: Product leadership",
+        "Purpose: Explain the approved launch sequence.",
+        `Point: ${"p".repeat(2_049)}`,
+      ].join("\n"),
+      [
+        "Title: Quarterly\u2028launch note",
+        "Audience: Product leadership",
+        "Purpose: Explain the approved launch sequence.",
+        "Point: Start with the verified customer outcome.",
+      ].join("\n"),
+      [
+        "Title: Quarterly launch note",
+        "Audience: Product leadership",
+        "Purpose: Explain the approved launch sequence.",
+        "Point: Start\u2029with the verified customer outcome.",
+      ].join("\n"),
+    ]) {
+      expect(() => assertIntent({ ...intent, prompt })).toThrowError(
+        expect.objectContaining({ code: "invalid-intent" }),
+      );
+    }
+  });
+
+  it("preserves a forbidden Unicode separator at the writing-command boundary", async () => {
+    const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
+      string,
+      unknown
+    >;
+    const parseCommand = compatibility.parseAionUiGeneralWorkCommand as (
+      value: string,
+    ) => { readonly prompt: string; readonly journeyKind: string } | null;
+    const assertIntent = compatibility.assertAionUiGeneralWorkIntent as (value: unknown) => void;
+    const brief = [
+      "Title: Quarterly launch note",
+      "Audience: Product leadership",
+      "Purpose: Explain the approved launch sequence.",
+      "Point: Start with the verified customer outcome.",
+    ].join("\n");
+    const parsed = parseCommand(`/actestra write ${brief}\u2028`);
+
+    expect(parsed).toMatchObject({ journeyKind: "writing-artifact" });
+    expect(() =>
+      assertIntent({
+        contractVersion: 1,
+        nativeConversationId: "conversation-native-1",
+        submissionId: "submission-native-writing-separator",
+        ...parsed,
+      }),
+    ).toThrowError(expect.objectContaining({ code: "invalid-intent" }));
   });
 
   it("rejects undeclared authority fields and unbounded text", async () => {
@@ -149,6 +277,47 @@ describe("AionUI general-work authoritative registration", () => {
     expect(() => assertRegistration(prompt)).not.toThrow();
     expect(() => assertRegistration(file)).not.toThrow();
     expect(() => assertRegistration(research)).not.toThrow();
+  });
+
+  it("accepts writing registration without placeholder tool authority", async () => {
+    const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
+      string,
+      unknown
+    >;
+    const assertRegistration = compatibility.assertAionUiGeneralWorkRegistration as (
+      value: unknown,
+    ) => void;
+    const writing = createAionUiWritingRegistration("writing-kind");
+    const prompt = createAionUiGeneralWorkRegistration("writing-placeholder");
+
+    expect(() => assertRegistration(writing)).not.toThrow();
+    expect(() =>
+      assertRegistration({
+        ...writing,
+        toolInputReference: prompt.toolInputReference,
+      }),
+    ).toThrowError(expect.objectContaining({ code: "invalid-registration" }));
+  });
+
+  it("rejects a writing registration whose persisted prompt is not a writing brief", async () => {
+    const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
+      string,
+      unknown
+    >;
+    const assertRegistration = compatibility.assertAionUiGeneralWorkRegistration as (
+      value: unknown,
+    ) => void;
+    const writing = createAionUiWritingRegistration("invalid-writing-brief");
+
+    expect(() =>
+      assertRegistration({
+        ...writing,
+        promptReference: {
+          ...writing.promptReference,
+          content: "Draft an unstructured document.",
+        },
+      }),
+    ).toThrowError(expect.objectContaining({ code: "invalid-registration" }));
   });
 
   it("rejects mismatched, ambiguous, or missing initial input fields", async () => {

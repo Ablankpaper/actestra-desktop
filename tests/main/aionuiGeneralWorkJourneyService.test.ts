@@ -491,6 +491,178 @@ describe("AionUiGeneralWorkJourneyService", () => {
     }
   });
 
+  it("prepares writing from the persisted brief without placeholder tool input authority", async () => {
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "actestra-aionui-journey-service-test-"),
+    );
+    testDirectories.push(directory);
+    const persistence = (await openTestPersistenceUtility(directory)).client;
+    persistenceClients.push(persistence);
+    const workspaceRoot = path.join(directory, "workspace");
+    fs.mkdirSync(workspaceRoot);
+    const clock = new DeterministicAgentClock(instant("2026-07-30T06:48:30.000Z"));
+    const nativeTools = createScopedNativeToolPlatform({ persistence, clock });
+    const intent = {
+      contractVersion: 1,
+      nativeConversationId: "conversation-native-writing-prepared-1",
+      submissionId: "submission-native-writing-prepared-1",
+      journeyKind: "writing-artifact",
+      prompt: [
+        "Title: Quarterly launch note",
+        "Audience: Product leadership",
+        "Purpose: Explain the approved launch sequence.",
+        "Point: Start with the verified customer outcome.",
+        "Point: Close with the bounded next step.",
+      ].join("\n"),
+    } as const;
+    const service = new AionUiGeneralWorkJourneyService({
+      persistence,
+      nativeTools,
+      clock,
+      nativeContext: {
+        resolve: async () => ({
+          rootPath: fs.realpathSync(workspaceRoot),
+          displayName: "AionUI writing workspace",
+        }),
+      },
+      launchWorker: async ({ journeyKind }) => {
+        expect(journeyKind).toBe("writing-artifact");
+        throw new Error("fixture restart before writing Worker launch");
+      },
+    });
+
+    await expect(service.submit(intent)).rejects.toThrow(/fixture restart/u);
+    await expect(persistence.listPreparedAionUiGeneralWorkJourneyLinks(10)).resolves.toEqual([
+      expect.objectContaining({
+        journeyKind: "writing-artifact",
+      }),
+    ]);
+    const graph = await persistence.loadDomainGraph();
+    expect(graph).toMatchObject({
+      tasks: [{ state: "ready" }],
+      sessions: [{ state: "created" }],
+      workers: [{ state: "created" }],
+      artifacts: [],
+    });
+  });
+
+  it("persists the Worker-authored draft before creating a document Artifact and Preview", async () => {
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "actestra-aionui-journey-service-test-"),
+    );
+    testDirectories.push(directory);
+    const persistence = (await openTestPersistenceUtility(directory)).client;
+    persistenceClients.push(persistence);
+    const workspaceRoot = path.join(directory, "workspace");
+    fs.mkdirSync(workspaceRoot);
+    const clock = new DeterministicAgentClock(instant("2026-07-30T06:48:40.000Z"));
+    const nativeTools = createScopedNativeToolPlatform({ persistence, clock });
+    let workerEventSequence = 0;
+    const service = new AionUiGeneralWorkJourneyService({
+      persistence,
+      nativeTools,
+      clock,
+      nativeContext: {
+        resolve: async () => ({
+          rootPath: fs.realpathSync(workspaceRoot),
+          displayName: "AionUI writing workspace",
+        }),
+      },
+      launchWorker: async ({ journeyKind, requestId }) => {
+        expect(journeyKind).toBe("writing-artifact");
+        return (
+          await openTestGeneralWorker(clock, {
+            executionMode: "writing-artifact-fixture",
+            newAttemptToken: () => "attempt-aionui-writing-1",
+            newToolRequestId: () => requestId,
+            newEventId: () => eventId(`event-aionui-writing-${String(++workerEventSequence)}`),
+          })
+        ).adapter;
+      },
+    });
+    const intent = {
+      contractVersion: 1,
+      nativeConversationId: "conversation-native-writing-1",
+      submissionId: "submission-native-writing-1",
+      journeyKind: "writing-artifact",
+      prompt: [
+        "Title: Quarterly launch note",
+        "Audience: Product leadership",
+        "Purpose: Explain the approved launch sequence.",
+        "Point: Start with the verified customer outcome.",
+        "Point: Close with the bounded next step.",
+      ].join("\n"),
+    } as const;
+
+    await expect(service.submit(intent)).resolves.toMatchObject({
+      status: "blocked",
+      title: "Quarterly launch note",
+      canCancel: true,
+    });
+    await service.waitForIdle();
+
+    const [completed] = await service.list(intent.nativeConversationId);
+    expect(completed).toMatchObject({
+      status: "completed",
+      canCancel: false,
+      artifacts: [
+        expect.objectContaining({
+          kind: "document",
+          label: "Actestra writing draft",
+          state: "available",
+        }),
+      ],
+    });
+    if (completed === undefined || completed.artifacts[0] === undefined) {
+      throw new Error("Expected the completed writing journey");
+    }
+    const expectedDraft =
+      "# Quarterly launch note\n\n" +
+      "Audience: Product leadership\n\n" +
+      "Explain the approved launch sequence.\n\n" +
+      "Start with the verified customer outcome.\n\n" +
+      "Close with the bounded next step.\n";
+    expect(
+      fs.readFileSync(
+        path.join(workspaceRoot, ".actestra", "task-output", completed.taskId, "draft.md"),
+        "utf8",
+      ),
+    ).toBe(expectedDraft);
+    await expect(
+      service.preview(
+        intent.nativeConversationId,
+        completed.taskId,
+        completed.artifacts[0].artifactId,
+      ),
+    ).resolves.toEqual({
+      contractVersion: 1,
+      taskId: completed.taskId,
+      artifactId: completed.artifacts[0].artifactId,
+      label: "Actestra writing draft",
+      mediaType: "text/markdown; charset=utf-8",
+      content: expectedDraft,
+    });
+    const graph = await persistence.loadDomainGraph();
+    const checkpoint = await persistence.getGeneralWorkCheckpoint(graph.sessions[0]!.id);
+    expect(checkpoint).toMatchObject({
+      phase: "finalized",
+      attempt: {
+        state: "completed",
+        taskState: "completed",
+        disposed: true,
+      },
+      artifactBinding: {
+        artifact: {
+          kind: "document",
+          label: "Actestra writing draft",
+        },
+      },
+    });
+    expect(checkpoint?.events.filter(({ type }) => type === "tool.requested")).toHaveLength(1);
+    expect(JSON.stringify(checkpoint?.events)).not.toContain("draft.md");
+    expect(JSON.stringify(checkpoint?.events)).not.toContain("# Quarterly launch note");
+  });
+
   it("fails an oversized representative file before Worker transport without leaking content", async () => {
     const directory = fs.mkdtempSync(
       path.join(os.tmpdir(), "actestra-aionui-journey-service-test-"),
@@ -1089,6 +1261,115 @@ describe("AionUiGeneralWorkJourneyService", () => {
     for (const sourceLine of sourceText.split(/\r?\n/u).filter((line) => line.length > 0)) {
       expect(serializedEvents).not.toContain(sourceLine);
     }
+  });
+
+  it("reopens persistence and recovers a prepared writing journey from its owned brief", async () => {
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "actestra-aionui-journey-service-test-"),
+    );
+    testDirectories.push(directory);
+    const workspaceRoot = path.join(directory, "workspace");
+    fs.mkdirSync(workspaceRoot);
+    const firstPersistence = (await openTestPersistenceUtility(directory)).client;
+    persistenceClients.push(firstPersistence);
+    const clock = new DeterministicAgentClock(instant("2026-07-30T06:58:30.000Z"));
+    const firstNativeTools = createScopedNativeToolPlatform({
+      persistence: firstPersistence,
+      clock,
+    });
+    const intent = {
+      contractVersion: 1,
+      nativeConversationId: "conversation-native-writing-restart-1",
+      submissionId: "submission-native-writing-restart-1",
+      journeyKind: "writing-artifact",
+      prompt: [
+        "Title: Restart-safe launch note",
+        "Audience: Product leadership",
+        "Purpose: Explain the verified release sequence.",
+        "Point: Preserve the approved opening.",
+        "Point: End with the bounded next step.",
+      ].join("\n"),
+    } as const;
+    const interrupted = new AionUiGeneralWorkJourneyService({
+      persistence: firstPersistence,
+      nativeTools: firstNativeTools,
+      clock,
+      nativeContext: {
+        resolve: async () => ({
+          rootPath: fs.realpathSync(workspaceRoot),
+          displayName: "AionUI writing restart workspace",
+        }),
+      },
+      launchWorker: async () => {
+        throw new Error("fixture restart before writing Worker launch");
+      },
+    });
+
+    await expect(interrupted.submit(intent)).rejects.toThrow(/fixture restart/u);
+    await expect(firstPersistence.listPreparedAionUiGeneralWorkJourneyLinks(10)).resolves.toEqual([
+      expect.objectContaining({ journeyKind: "writing-artifact" }),
+    ]);
+    await firstPersistence.close();
+    persistenceClients.splice(persistenceClients.indexOf(firstPersistence), 1);
+
+    const reopenedPersistence = (await openTestPersistenceUtility(directory)).client;
+    persistenceClients.push(reopenedPersistence);
+    const reopenedNativeTools = createScopedNativeToolPlatform({
+      persistence: reopenedPersistence,
+      clock,
+    });
+    let nativeContextReplayCount = 0;
+    let workerEventSequence = 0;
+    const recovered = new AionUiGeneralWorkJourneyService({
+      persistence: reopenedPersistence,
+      nativeTools: reopenedNativeTools,
+      clock,
+      nativeContext: {
+        resolve: async () => {
+          nativeContextReplayCount += 1;
+          throw new Error("writing recovery must not replay native workspace context");
+        },
+      },
+      launchWorker: async ({ journeyKind, requestId }) => {
+        expect(journeyKind).toBe("writing-artifact");
+        return (
+          await openTestGeneralWorker(clock, {
+            executionMode: "writing-artifact-fixture",
+            newAttemptToken: () => "attempt-aionui-writing-restart-1",
+            newToolRequestId: () => requestId,
+            newEventId: () =>
+              eventId(`event-aionui-writing-restart-${String(++workerEventSequence)}`),
+          })
+        ).adapter;
+      },
+    });
+
+    await expect(recovered.recoverPrepared()).resolves.toEqual({
+      attempted: 1,
+      started: 1,
+      failed: 0,
+    });
+    await recovered.waitForIdle();
+    expect(nativeContextReplayCount).toBe(0);
+    const [completed] = await recovered.list(intent.nativeConversationId);
+    expect(completed).toMatchObject({
+      status: "completed",
+      artifacts: [
+        expect.objectContaining({
+          kind: "document",
+          label: "Actestra writing draft",
+        }),
+      ],
+    });
+    if (completed === undefined) {
+      throw new Error("Expected the recovered writing journey");
+    }
+    expect(
+      fs.readFileSync(
+        path.join(workspaceRoot, ".actestra", "task-output", completed.taskId, "draft.md"),
+        "utf8",
+      ),
+    ).toContain("# Restart-safe launch note");
   });
 
   it("surfaces grant denial and create-only conflicts as terminal evidence", async () => {

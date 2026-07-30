@@ -294,10 +294,14 @@ export class GeneralWorkCoordinator {
         "Task-output writes require exactly one authoritative artifact intent",
       );
     }
-    if (request.artifact !== undefined && request.artifact.kind !== "file") {
+    if (
+      request.artifact !== undefined &&
+      request.artifact.kind !== "file" &&
+      request.artifact.kind !== "document"
+    ) {
       throw new GeneralWorkRecoveryError(
         "artifact-mismatch",
-        "The task-output text tool can create only file artifacts",
+        "The task-output text tool can create only file or document artifacts",
       );
     }
     const existing = await this.config.persistence.getGeneralWorkCheckpoint(

@@ -4,7 +4,7 @@ Last updated: 2026-07-31
 
 ## Current phase
 
-### Local research passes initial PR-head CI; final remote closure is pending
+### Local research is accepted on main; writing passes complete local gates
 
 Pull request 8 reached exact final head
 `3f85e13072f5fb13fb43c9dae94f992bb0b7fb9c` and squash merged F3.3 as
@@ -417,26 +417,85 @@ Complete local evidence for the branch:
   migration, Worker mode, downstream patch, smoke/check scripts, tests, and
   evidence documents. It found no additional in-scope defect.
 
-Implementation commit `e7f3212f5978d69eb0afeaa140ddf9dcedf2414f` is
-pushed on the Ready
+Implementation commit `e7f3212f5978d69eb0afeaa140ddf9dcedf2414f` and
+evidence head `5694865462f7209ad413b2cd1dbe2eef0fe955bc` reached Ready
 [pull request 17](https://github.com/bignormal/actestra-desktop/pull/17).
-That exact initial head passes
-[PR CI run 30577349875](https://github.com/bignormal/actestra-desktop/actions/runs/30577349875),
-including source, tests, boundaries, documentation, materialized AionUI type
-checking, identity/isolation, production build, unsigned local bundle,
-packaged boundary, and clean-profile smoke. The remote CodeRabbit run selected
-all 24 files but was rate-limited before review with a 16-minute wait; its
-successful status is limit-handling evidence, not a remote review or zero-issue
-result. There are no submitted reviews or inline comments. GitHub reports no
-branch-protection rule or repository ruleset for `main`; explicit owner-gated
-PR discipline remains in effect.
+The initial and final exact heads pass PR CI runs
+[30577349875](https://github.com/bignormal/actestra-desktop/actions/runs/30577349875)
+and
+[30577647392](https://github.com/bignormal/actestra-desktop/actions/runs/30577647392).
+The pull request squash merged as
+`779880f28106aa8423ba042de5a6a3264bc0452e`; exact merged-main
+[CI run 30577886631](https://github.com/bignormal/actestra-desktop/actions/runs/30577886631)
+passes. The remote CodeRabbit run selected all 24 files but was rate-limited
+before review, so its successful status is limit handling rather than remote
+review evidence. There are no submitted reviews or inline comments. GitHub
+reported no branch-protection rule or repository ruleset for `main`; the merge
+followed explicit owner-gated PR discipline.
 
-This evidence update becomes a new PR head and therefore requires its own
-exact-head CI before merge. Merge, merged-main CI, notarization, candidate,
-release, distribution, and user acceptance remain pending. Writing,
-office-document, schedule, representative tool-failure, and Worker-crash
-fixtures still block the full P4 exit gate. No Goose, CrewAI, or Eigent runtime
-is claimed.
+[ADR-0021](architecture/decisions/0021-bounded-writing-artifact-journey.md)
+accepts the next independent writing slice on
+`feat/p4-writing-journey` from exact verified main
+`779880f28106aa8423ba042de5a6a3264bc0452e`. It adds one closed
+`/actestra write` intent, schema 11 `writing-artifact`, a structured prompt
+brief, a Worker-authored private create-only input, `document` Artifact, and
+owned non-persisted `draft.md` Preview. Writing registration persists only the
+prompt reference; main persists the real Worker-authored write input under its
+exact owner before invoking the accepted create-only tool. Prepared restart
+recovery uses the durable brief and does not re-read native workspace state.
+
+Complete local evidence for writing implementation commit
+`3e9d57407207ee8718fea2ed127a85dbab4daad8`:
+
+- the post-review affected root set passes 7 files and 74 tests; complete `bun
+  run check` passes formatting, zero-warning lint, strict TypeScript, Electron
+  SQLite, 50 files and 325 tests, the smoke harness, the 68-source product
+  boundary, all 1,766 frozen foundation files, the 157-file/50-source-copy
+  downstream contract with 4 R0 invariants, and the three-entry production
+  build;
+- materialized native strict TypeScript, the focused 4-file/9-test set, and the
+  complete native suite pass. The complete suite reports 341 files and 2,639
+  tests passed, with 1 file and 5 tests skipped by retained upstream
+  configuration. The production build transforms 600 main, 21 preload, and
+  10,181 renderer modules;
+- the local macOS arm64 package at
+  `/tmp/actestra-p4-writing-reviewed.8JgbPo/out/mac-arm64/Actestra.app` passes 11
+  bundled-resource checks, exact `aioncore 0.1.52`, 13 manifest-size and
+  ZIP-structure-checked Hub fallback archives, 17 valid symbolic links, arm64
+  identity, and strict recursive code-sign verification. The reviewed package
+  explicitly uses the local ad-hoc path after an earlier Apple Development
+  attempt could not reach the external timestamp service; Gatekeeper rejects
+  it with status 3 as expected. It is not notarized, a candidate, or a release;
+  and
+- actual packaged target-app smoke exits zero through schema-11 writing
+  prepare/recover, prompt-only prepared authority, exact `document` Artifact,
+  `draft.md`, owned non-persisted Preview, private draft/event/audit privacy,
+  representative-file restart, local research, denial, cancellation, terminal
+  evidence, and process cleanup. No smoke process, temporary smoke root, or
+  smoke-specific global Actestra profile/config link remains.
+
+The complete manual review covers all 33 current files and fixed the
+writing-command Unicode-separator trim boundary plus one stale schema-10 status
+statement. The initial complete CodeRabbit pass covered tracked and untracked
+files, raised two valid contract/documentation issues and one invalid request
+to change the Asia/Shanghai date, and led to the schema-11 recovery and
+U+2028/U+2029 validation fixes. The final 31-tracked-file CodeRabbit
+confirmation raised one valid Worker-attempt poisoning issue; a red-green
+regression now proves that an invalid writing brief cannot consume the process.
+That final run did not list the two untracked files, and no redundant post-fix
+zero-issue run was performed, so it is not represented as a complete
+zero-finding review.
+
+Documentation links pass across 54 Markdown files, Markdown lint reports zero
+issues across 48 files, and `git diff --check` passes on this evidence update.
+The implementation commit exists locally; push, a Ready pull request, exact
+PR-head CI, merge, and merged-main CI remain pending. This local package and
+smoke do not claim notarization, candidate, release, distribution, or user
+acceptance.
+
+Office-document, schedule, representative tool-failure, and Worker-crash
+fixtures still block the full P4 exit gate. No Goose, CrewAI, Eigent runtime,
+candidate, release, distribution, or user acceptance is claimed.
 
 F0 implementation commit
 `13270ca0abd7353710541afca9ddf46c47670be3` first established the preserved
@@ -1037,16 +1096,17 @@ Review closure validation at
 | GW-P4.5 durable coordination and recovery          | Accepted on `main` through PR 13                                | Final head `f160d9a3a00f317f12b7579bc3a48849c1cf32d2`; PR CI 30495112290; squash merge `1dacbc0bee8ebae26d688e6e719c8f0f5750db5f`; main CI 30495301140; ADR-0019; schema 7 recovery journal; full root/native regression, production builds, unsigned smoke, isolated AionUI recovery launch, and process cleanup pass                                                                        |
 | GW-P4.6 preserved-AionUI General Work journey      | Accepted on `main` through PR 14                                | Final head `4a07eb9db1907ae8fab2613b4cf11a7d2a8cbee4`; PR CI 30553454459; squash merge `784191bfc59d71a128ed5d3251db3535f1349e45`; main CI 30554447144; ADR-0020; schema 8 atomic journey authority; complete root check passes 50 files/292 tests; native passes 341 files/2,634 tests; production builds, signed local arm64 package, and target-app restart/denial/cancellation smoke pass |
 | P4 representative workspace-file journey           | Accepted on `main` through PR 16                                | Final head `f19b7dd006cf091aa9c7f1559dd484fdad35f200`; PR CI 30567484733; squash merge `2aed0f705bf6f9b3734742c0905c94ac562f501e`; exact main CI 30569476160; schema 9 closed kinds; 50/308 root and 341/2,635 native tests; signed local package and target-app smoke; no submitted reviews or inline comments; Free-plan summary is not line-level review evidence |
-| P4 bounded local-research journey                   | Initial exact-head PR CI passes; final remote closure pending    | Implementation `e7f3212f5978d69eb0afeaa140ddf9dcedf2414f`; Ready PR 17; CI 30577349875 passes; schema 10 exact local-research kind; 50/313 root and 341/2,637 native tests; root/native production builds; signed but unnotarized local arm64 package; target-app restart/research/denial/cancellation smoke; local CodeRabbit/manual reviews complete; remote CodeRabbit rate-limited before review                                                     |
+| P4 bounded local-research journey                   | Accepted on `main` through PR 17                                | Final head `5694865462f7209ad413b2cd1dbe2eef0fe955bc`; PR CI 30577647392; squash merge `779880f28106aa8423ba042de5a6a3264bc0452e`; merged-main CI 30577886631; schema 10; 50/313 root and 341/2,637 native tests; builds, signed unnotarized local package, target-app smoke, local review closure; remote CodeRabbit rate-limited before review                                                                                      |
+| P4 bounded writing journey                          | Committed locally; remote delivery pending                       | Branch `feat/p4-writing-journey` from `779880f28106aa8423ba042de5a6a3264bc0452e`; implementation commit `3e9d57407207ee8718fea2ed127a85dbab4daad8`; ADR-0021; schema 11; 50/325 root and 341/2,639 native tests; root/native builds; ad-hoc-signed unnotarized local arm64 package; schema-11 writing/file/research/denial/cancellation target-app smoke; complete manual review plus documented CodeRabbit coverage; no push, PR, PR CI, merge, or merged-main CI yet                                                                                     |
 | P6 orchestration boundary                          | Accepted architecture direction only                            | ADR-0015; CrewAI `1.15.8` at `e9caf1e1b89343bb833b5da6660faa91804a9dce` verified as the first supervised sidecar candidate; Eigent `v1.0.2` at `e478094a9ff433132b3cf1928e4143338ddaab20` retained as a reference; neither is imported, bundled, or implemented                                                                                                                               |
 | Native AionUi source                               | Exact local desktop snapshot                                    | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot                                                                                                                                                                                                                                                                            |
 | Native preservation contract                       | Local pass                                                      | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified                                                                                                                                                                                                                                                                 |
 | Native AionUi build and launch                     | Local pass                                                      | Frozen install, production build, isolated native Electron launch, and actual Guide screenshot pass                                                                                                                                                                                                                                                                                           |
-| Native AionUi tests                                | Latest local pass                                               | 341 files passed, 1 skipped; 2,637 tests passed, 5 skipped; 0 failures                                                                                                                                                                                                                                                                                                                        |
+| Native AionUi tests                                | Latest local pass                                               | 341 files passed, 1 skipped; 2,639 tests passed, 5 skipped; 0 failures                                                                                                                                                                                                                                                                                                                        |
 | Legacy product shell                               | P3 harness only                                                 | Original Actestra Electron/React shell remains for platform-contract and packaging regression; it is not the target product UI                                                                                                                                                                                                                                                                |
 | Renderer boundary                                  | CI-backed through P3.6                                          | Context isolation, sandbox, Node and packaged DevTools disabled, production CSP denies connections, exact frozen preload allowlist, trusted-frame zero-argument IPC, and direct-client source checks                                                                                                                                                                                          |
 | Automated tests                                    | Exact merged-main CI pass                                       | Main run 30378191752 passes 24 Vitest files with 130 tests, the exact Electron SQLite probe, process-failure harness, 34-source boundary check, build, package identity, and clean-profile smoke                                                                                                                                                                                              |
-| Desktop package                                    | Latest local signed evidence; not notarized                     | macOS arm64 target bundle passes 11 resource checks, exact AionCore and Hub integrity, strict recursive signing verification, and restart/local-research/denial/cancellation smoke; not a candidate or release                                                                                                                                                                                |
+| Desktop package                                    | Latest local ad-hoc-signed evidence; not notarized              | `/tmp/actestra-p4-writing-reviewed.8JgbPo/out/mac-arm64/Actestra.app` passes 11 resource checks, exact AionCore and Hub integrity, 17 valid symbolic links, arm64 identity, strict recursive signing verification, and writing/file/research/denial/cancellation smoke; Gatekeeper status 3 rejection is expected, and it is not a candidate or release                                                                                    |
 | P3 domain contracts                                | Implemented and CI-backed                                       | Typed IDs and timestamps; workspace, task, session, worker, approval, and artifact records; transition and graph invariants; exact commit and run above                                                                                                                                                                                                                                       |
 | P3 event contract                                  | Implemented and CI-backed                                       | Schema version 1; per-attempt gapless order, exact-id idempotency, verified replay cursors, terminal enforcement, and diagnostic redaction; exact commit and run above                                                                                                                                                                                                                        |
 | P3 persistence and migrations                      | Implemented and CI-backed                                       | ADR-0005 schemas 1 and 2 plus ADR-0008 schema 3 for privileged audit and terminal-attempt evidence; exact runs above                                                                                                                                                                                                                                                                          |
@@ -1117,13 +1177,11 @@ The ordered implementation index and P3 non-claims are in
 
 ## Next gate
 
-1. Push this evidence update to pull request 17 and require its new exact head
-   to pass CI; do not represent the rate-limited remote CodeRabbit status as
-   review evidence.
-2. Recheck mergeability, review and protection state, then squash merge and
-   verify exact merged-main CI before adding writing,
-   office-document, and schedule journeys while retaining the preserved AionUI
-   surface and Actestra-owned authority.
+1. Push the exact reviewed and committed writing scope, open a Ready pull request,
+   require exact-head CI and repository review/protection gates, squash merge,
+   and verify exact merged-main CI.
+2. Start the independent Office-document journey only from updated verified
+   `main` after writing is accepted there.
 3. Complete representative tool-failure and Worker-crash evidence in addition
    to the accepted denial, cancellation, persistence, restart, and
    Artifact-conflict paths.
@@ -1162,7 +1220,7 @@ The ordered implementation index and P3 non-claims are in
   rate-limited before reviewing the final four-document status range. Its
   successful status is limit-handling evidence; exact final-head CI run
   30376696055 passed.
-- The current branch runs schemas 1 through 10 in the dedicated
+- The current branch runs schemas 1 through 11 in the dedicated
   persistence utility. The downstream main accepts one fixed
   shadow-observation operation and one fixed desktop confirmation response
   operation. F3.2 gates only that response's native delivery, while F3.3
@@ -1177,9 +1235,11 @@ The ordered implementation index and P3 non-claims are in
   native tools. Accepted GW-P4.5 coordinates their durable non-UI journey.
   Accepted GW-P4.6 adds the first user-submitted preserved-AionUI task and its
   target-app restart, denial, and cancellation smoke. The accepted
-  representative-file journey and local bounded research implementation reuse
-  that authority without adding renderer-selected paths or network research.
-  Full representative P4 acceptance remains pending.
+  representative-file, local bounded research, and locally validated writing
+  implementations reuse that authority without adding renderer-selected paths
+  or network research. Writing is not accepted on `main` until its exact
+  review, PR-head, merge, and merged-main gates close. Full representative P4
+  acceptance remains pending.
 - P3.6 makes metadata-only audit and terminal-attempt evidence durable.
   Approval, credential-lease, and policy state remains in memory and contains no
   secret value. F3.1 separately makes the bounded native confirmation response
@@ -1199,9 +1259,13 @@ The ordered implementation index and P3 non-claims are in
   tools are accepted through GW-P4.4. Task/artifact coordination and recovery
   are accepted through GW-P4.5. Preserved-AionUI journey mapping and the
   representative-file extension are accepted through GW-P4.6 plus PR 16. The
-  bounded local-research extension remains unmerged until its final PR-head
-  and merged-main gates close. Full representative P4 acceptance remains pending, and
-  specialized Goose work remains a later gate.
+  bounded local-research extension is accepted through PR 17 and exact
+  merged-main CI. Writing passes local implementation/package/target-app gates
+  and is committed locally at
+  `3e9d57407207ee8718fea2ed127a85dbab4daad8`, but remains unpushed and
+  unaccepted on `main`; Office-document, schedule, tool-failure, and
+  Worker-crash gates also remain. Full representative P4 acceptance is pending,
+  and specialized Goose work remains a later gate.
 - F0 alone proves only that the original AionUi application can be preserved
   and run. F1, F2, F3.1, F3.2, and merged F3.3 add their separately recorded
   identity, shadow, narrow decision-authority, fixed-delivery audit, and

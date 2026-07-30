@@ -156,12 +156,17 @@ Startup retains two ordered recovery steps:
 1. after schema and scoped-tool readiness, GW-P4.5 reconciles interrupted
    schema-7 attempts before the native window is created; and
 2. after the native backend and preserved window are ready, GW-P4.6 lists
-   schema-10 linked Tasks that are still `ready` and have no durable attempt,
-   then starts them from their persisted prompt, grant, journey kind, and
+   schema-11 linked Tasks that are still `ready` and have no durable attempt,
+   then starts them from their persisted prompt, grant, journey kind, and any
    kind-selected initial input. File and local-research journeys resume from
    their respective persisted read input; after the Worker processes that
    owned content, main persists the new private write input before invoking
-   create-only output.
+   create-only output. Writing has no initial tool input or workspace read: it
+   resumes from the persisted structured brief, deterministically regenerates
+   private `draft.md` content in the Worker, and requires main to persist that
+   input under the exact write-request owner before create-only output. The
+   finalized checkpoint must bind the resulting `document` Artifact and exact
+   draft content reference before recovery can report success.
 
 Prepared recovery never re-reads the native conversation or silently changes
 the stored workspace authority. A failed recovery is counted and reported; it
@@ -181,13 +186,15 @@ from AionCore.
 
 The external target-app smoke launches the packaged macOS `Actestra.app`
 produced from the production-built materialized desktop, using only the exact
-AionCore version bundled under the frozen AionUI manifest pin. It verifies
-restart, bounded local research, denial, and cancellation through schema-10
+AionCore version bundled under the frozen AionUI manifest pin. As clarified by
+[ADR-0021](0021-bounded-writing-artifact-journey.md), it now verifies restart,
+bounded local research, writing, denial, and cancellation through schema-11
 journey rows, finalized checkpoints, normalized events, Artifact counts,
 terminal attempt evidence, foreign keys, renderer readiness, and process
-cleanup. The local-research scenario also resolves its exact owned,
-non-persisted Markdown Preview and verifies that source evidence is absent from
-normalized Core events.
+cleanup. Research resolves its exact owned non-persisted Markdown Preview and
+keeps source evidence out of normalized Core events. Writing proves prompt-only
+prepared authority, exact `document`/`draft.md` ownership and Preview, and
+keeps private draft input out of normalized events and metadata audit.
 
 ## Consequences
 
@@ -200,6 +207,8 @@ normalized Core events.
 - The local-research journey reads only one different reserved filename,
   creates a reviewable Markdown brief, and reuses the same bounded Worker,
   policy, audit, Artifact, Preview, and recovery authority.
+- The writing journey performs no workspace read, persists its Worker-authored
+  input before create-only output, and binds a distinct document Artifact.
 - Actestra remains the sole authority for the Task, grant, attempt, event,
   Artifact, audit, terminal evidence, and recovery state.
 - A renderer cannot choose a filesystem path or invoke a Worker/tool directly.
@@ -212,15 +221,15 @@ normalized Core events.
 
 - The first entry is an explicit `/actestra` command rather than a replacement
   for every native provider flow.
-- All three current paths create one deterministic Markdown artifact.
+- All four current paths create one deterministic bounded artifact.
 - The representative file path accepts at most 64 KiB of source text even
   though the general workspace-read tool supports up to 1 MiB.
 - The loopback native-context read remains a compatibility dependency and must
   fail closed when AionCore is unavailable or incompatible.
-- Schema versions 8 through 10 are forward-only.
-- General or network research, writing, office, schedule, representative
-  tool-failure and Worker crash, and broader permission journeys remain later
-  P4 acceptance work.
+- Schema versions 8 through 11 are forward-only.
+- General or network research, office, schedule, representative tool-failure
+  and Worker crash, and broader permission journeys remain later P4 acceptance
+  work. Writing remains unaccepted until its review and remote gates close.
 
 ## Rejected alternatives
 

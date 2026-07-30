@@ -114,11 +114,11 @@ function main() {
 
   if (
     overlay.schemaVersion !== 1 ||
-    overlay.phase !== "GW-P4.6" ||
+    overlay.phase !== "P4-writing" ||
     overlay.uiContract.layoutChangesAllowed !== false ||
     overlay.uiContract.featureEntryRemovalAllowed !== false
   ) {
-    throw new Error("Invalid GW-P4.6 downstream overlay policy");
+    throw new Error("Invalid P4 writing downstream overlay policy");
   }
 
   for (const patch of overlay.patches) {
@@ -292,6 +292,7 @@ function main() {
       "runActestraGeneralWorkSmoke",
       "ACTESTRA_AIONUI_GENERAL_WORK_SMOKE_READY",
       "local-research-artifact-fixture",
+      "writing-artifact-fixture",
       "[Actestra general work] Recovery unavailable at startup",
       "nativeFallback",
       "recoverPending",
@@ -319,6 +320,8 @@ function main() {
       '"actestra-research.txt"',
       '"workspace-file-artifact"',
       '"local-research-artifact"',
+      '"writing-artifact"',
+      'kind: "document"',
       "invokeScopedToolStep",
       "activeToolInput",
       "MAX_GENERAL_WORKER_SEND_CONTENT_BYTES",
@@ -341,6 +344,10 @@ function main() {
       "local-research",
       "local-research-artifact",
       "Actestra local research brief",
+      "prepare-writing-restart",
+      "recover-writing-restart",
+      "writing-artifact",
+      "Actestra writing draft",
       "service.preview(",
       "ACTESTRA_E2E_TEST",
     ],
@@ -368,7 +375,9 @@ function main() {
     '"actestra-research.txt"',
     '"research.md"',
     "local-research-artifact",
-    "schema version 10",
+    '"draft.md"',
+    "writing-artifact",
+    "schema version 11",
   ]);
   rejectText(path.join(repositoryRoot, "scripts/smoke-aionui-general-work.mjs"), [
     "Electron.app",
@@ -521,7 +530,7 @@ function main() {
   requireText(
     path.join(outputRoot, "packages/desktop/src/actestra/utility/persistence/sqliteMigrations.ts"),
     [
-      "CURRENT_CORE_SCHEMA_VERSION = 10",
+      "CURRENT_CORE_SCHEMA_VERSION = 11",
       "aionui_shadow_evidence",
       "aionui_approval_decisions",
       "pending-delivery",
@@ -530,6 +539,7 @@ function main() {
       "general_work_checkpoints",
       "journey_kind",
       "local-research-artifact",
+      "writing-artifact",
     ],
   );
   rejectText(
@@ -688,6 +698,8 @@ function main() {
       '"workspace-read-text-fixture"',
       '"workspace-read-then-task-output-write-fixture"',
       '"local-research-artifact-fixture"',
+      '"writing-artifact-fixture"',
+      '"draft.md"',
       '"task-output-write-text-fixture"',
       '"cancelled"',
     ],
@@ -726,12 +738,18 @@ function main() {
     "assertGeneralWorkCheckpointTransition",
   ]);
   requireText(path.join(outputRoot, "tests/unit/actestra/persistenceUtilityClient.test.ts"), [
-    "schema v10 utility IPC",
-    "expect(client.schemaVersion).toBe(10)",
+    "schema v11 utility IPC",
+    "expect(client.schemaVersion).toBe(11)",
+  ]);
+  requireText(path.join(outputRoot, "tests/unit/actestra/generalWorkSmoke.test.ts"), [
+    "prepare-writing-restart",
+    "recover-writing-restart",
+    "Actestra writing draft",
+    "kind: 'document'",
   ]);
 
   console.log(
-    `Verified Actestra GW-P4.6 downstream overlay: ${changedFiles.size} declared files, ` +
+    `Verified Actestra P4 writing downstream overlay: ${changedFiles.size} declared files, ` +
       `${overlay.invariantFiles.length} R0 invariant files, ${overlay.sourceCopies.length} ` +
       "reviewed source copies, preserved AionUI surfaces, utility-owned persistence, shadow and " +
       "approval authority, workspace grants, bounded content references, AgentAdapter v2, and " +

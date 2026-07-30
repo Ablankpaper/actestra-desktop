@@ -8,6 +8,7 @@ import {
   type GeneralWorkerRequest,
   type GeneralWorkerResponse,
 } from "../../shared/generalWorkerProtocol";
+import { parseWritingArtifactBrief } from "../../core/writingArtifact";
 
 type GeneralWorkerAttemptState =
   | "running"
@@ -56,6 +57,21 @@ function localResearchArtifact(
       `Instruction: ${prompt.trim()}\n\n` +
       "## Evidence notes\n\n" +
       `${evidence}\n`,
+  });
+}
+
+function writingArtifact(prompt: string): {
+  readonly pointCount: number;
+  readonly content: string;
+} {
+  const brief = parseWritingArtifactBrief(prompt);
+  return Object.freeze({
+    pointCount: brief.points.length,
+    content:
+      `# ${brief.title}\n\n` +
+      `Audience: ${brief.audience}\n\n` +
+      `${brief.purpose}\n\n` +
+      `${brief.points.join("\n\n")}\n`,
   });
 }
 
@@ -185,6 +201,10 @@ export class GeneralWorkerService {
         "General Worker already owns an active attempt",
       );
     }
+    const writingDraft =
+      request.payload.executionMode === "writing-artifact-fixture"
+        ? writingArtifact(request.payload.prompt)
+        : null;
 
     const attempt: GeneralWorkerAttempt = {
       token: request.payload.attemptToken,
@@ -248,6 +268,36 @@ export class GeneralWorkerService {
           }),
         );
         break;
+      case "writing-artifact-fixture": {
+        if (writingDraft === null) {
+          throw new GeneralWorkerServiceError(
+            "invalid-state",
+            "General Worker writing draft preparation is unavailable",
+          );
+        }
+        attempt.state = "blocked";
+        attempt.pendingCallId = "general-worker-task-output-write-text-call";
+        events.push(
+          this.event(attempt, {
+            type: "message",
+            role: "assistant",
+            content: `Prepared a writing draft from ${String(writingDraft.pointCount)} ordered points.`,
+          }),
+          this.event(attempt, {
+            type: "tool-requested",
+            callId: attempt.pendingCallId,
+            toolName: "actestra.task-output.write-text",
+            summary: "Create the bounded writing draft.",
+            input: Object.freeze({
+              contractVersion: 1,
+              relativePath: "draft.md",
+              mediaType: "text/markdown; charset=utf-8",
+              content: writingDraft.content,
+            }),
+          }),
+        );
+        break;
+      }
       case "task-output-write-text-fixture":
         attempt.state = "blocked";
         attempt.pendingCallId = "general-worker-task-output-write-text-call";

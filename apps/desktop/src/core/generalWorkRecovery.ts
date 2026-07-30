@@ -730,12 +730,13 @@ export function assertGeneralWorkCheckpoint(
   const tool = value.tool as GeneralWorkToolCheckpoint | undefined;
   if (
     (intent !== undefined &&
-      (intent.kind !== "file" || tool?.toolId !== TASK_OUTPUT_WRITE_TEXT_TOOL_ID)) ||
+      ((intent.kind !== "file" && intent.kind !== "document") ||
+        tool?.toolId !== TASK_OUTPUT_WRITE_TEXT_TOOL_ID)) ||
     (tool?.toolId === TASK_OUTPUT_WRITE_TEXT_TOOL_ID && intent === undefined)
   ) {
     throw new GeneralWorkRecoveryError(
       "artifact-mismatch",
-      "General-work task-output tool and file artifact intent must be checkpointed together",
+      "General-work task-output tool and text artifact intent must be checkpointed together",
     );
   }
   if (intent !== undefined && tool?.state === "succeeded" && value.artifactBinding === undefined) {

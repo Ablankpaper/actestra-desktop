@@ -13,6 +13,7 @@ import { openSqliteCorePersistence } from "../../apps/desktop/src/utility/persis
 import {
   createAionUiGeneralWorkRegistration,
   createAionUiLocalResearchRegistration,
+  createAionUiWritingRegistration,
   createAionUiWorkspaceFileRegistration,
 } from "../fixtures/aionuiGeneralWork";
 
@@ -179,6 +180,63 @@ describe("SQLite AionUI general-work journey persistence", () => {
       metadata: {
         owner: expected.readInputReference.owner,
       },
+    });
+    await reopened.close();
+  });
+
+  it("atomically stores and deduplicates writing authority without an initial tool input", async () => {
+    const userDataPath = createTestDirectory();
+    const expected = createAionUiWritingRegistration("writing-store");
+    const first = openSqliteCorePersistence(userDataPath);
+    const journey = first as unknown as JourneyPersistence;
+
+    await expect(journey.registerAionUiGeneralWorkJourney(expected)).resolves.toEqual({
+      status: "stored",
+      link: expected.link,
+    });
+    await expect(journey.registerAionUiGeneralWorkJourney(expected)).resolves.toEqual({
+      status: "duplicate",
+      link: expected.link,
+    });
+    await expect(
+      journey.registerAionUiGeneralWorkJourney({
+        ...expected,
+        promptReference: {
+          ...expected.promptReference,
+          content: expected.promptReference.content.replace(
+            "Explain the approved launch sequence.",
+            "Explain the verified release sequence.",
+          ),
+        },
+      }),
+    ).rejects.toMatchObject({ code: "general-work-journey-conflict" });
+    await first.close();
+
+    const reopened = openSqliteCorePersistence(userDataPath);
+    const reopenedJourney = reopened as unknown as JourneyPersistence;
+    await expect(
+      reopenedJourney.listAionUiGeneralWorkJourneyLinks(expected.link.conversationHash, 10),
+    ).resolves.toEqual([expected.link]);
+    await expect(
+      reopened.resolveContentReference({
+        contractVersion: WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
+        reference: expected.promptReference.reference,
+        kind: "tool-input",
+        owner: expected.promptReference.owner,
+        resolvedAt: expected.link.createdAt,
+        consume: false,
+      }),
+    ).resolves.toMatchObject({
+      content: expected.promptReference.content,
+      metadata: {
+        owner: expected.promptReference.owner,
+      },
+    });
+    await expect(reopened.loadDomainGraph()).resolves.toMatchObject({
+      workspaces: [{ id: expected.workspace.id }],
+      tasks: [{ id: expected.task.id, state: "ready" }],
+      sessions: [{ id: expected.session.id, state: "created" }],
+      workers: [{ id: expected.worker.id, state: "created" }],
     });
     await reopened.close();
   });

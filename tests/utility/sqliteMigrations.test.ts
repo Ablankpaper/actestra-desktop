@@ -60,7 +60,7 @@ describe("Actestra SQLite migrations", () => {
     expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
       fromVersion: 0,
       toVersion: CURRENT_CORE_SCHEMA_VERSION,
-      appliedVersions: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      appliedVersions: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
     });
     expect(pragmaNumber(database, "application_id")).toBe(ACTESTRA_SQLITE_APPLICATION_ID);
     expect(pragmaNumber(database, "user_version")).toBe(CURRENT_CORE_SCHEMA_VERSION);
@@ -108,6 +108,10 @@ describe("Actestra SQLite migrations", () => {
       {
         version: 10,
         name: "aionui-local-research-kind",
+      },
+      {
+        version: 11,
+        name: "aionui-writing-kind",
       },
     ]);
   });
@@ -311,14 +315,14 @@ describe("Actestra SQLite migrations", () => {
     });
   });
 
-  it("performs a real 6 -> 10 migration without changing content ownership", () => {
+  it("performs a real 6 -> 11 migration without changing content ownership", () => {
     const database = createDatabase();
     migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 6), APPLIED_AT);
 
     expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
       fromVersion: 6,
-      toVersion: 10,
-      appliedVersions: [7, 8, 9, 10],
+      toVersion: 11,
+      appliedVersions: [7, 8, 9, 10, 11],
     });
     expect(
       database
@@ -438,7 +442,9 @@ describe("Actestra SQLite migrations", () => {
       )
       .run("task-existing-file-kind", 1, "b".repeat(64), "workspace-file-artifact", APPLIED_AT);
 
-    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
+    expect(
+      migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 10), APPLIED_AT),
+    ).toEqual({
       fromVersion: 9,
       toVersion: 10,
       appliedVersions: [10],
@@ -494,6 +500,89 @@ describe("Actestra SQLite migrations", () => {
           "network-research-artifact",
           APPLIED_AT,
         ),
+    ).toThrow();
+  });
+
+  it("expands schema 10 with only the declared writing journey kind", () => {
+    const database = createDatabase();
+    migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 10), APPLIED_AT);
+    database
+      .prepare(
+        `INSERT INTO workspaces (id, name, state, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run("workspace-writing-migration", "Writing workspace", "active", APPLIED_AT, APPLIED_AT);
+    const insertTask = database.prepare(
+      `INSERT INTO tasks (
+         id, workspace_id, title, state, active_session_id, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, NULL, ?, ?)`,
+    );
+    insertTask.run(
+      "task-existing-research-kind",
+      "workspace-writing-migration",
+      "Existing research journey",
+      "ready",
+      APPLIED_AT,
+      APPLIED_AT,
+    );
+    database
+      .prepare(
+        `INSERT INTO aionui_general_work_journeys (
+           task_id, contract_version, conversation_hash, journey_kind, created_at
+         ) VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run("task-existing-research-kind", 1, "e".repeat(64), "local-research-artifact", APPLIED_AT);
+
+    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
+      fromVersion: 10,
+      toVersion: 11,
+      appliedVersions: [11],
+    });
+    expect(
+      database
+        .prepare(
+          `SELECT task_id, journey_kind
+           FROM aionui_general_work_journeys`,
+        )
+        .all(),
+    ).toEqual([
+      {
+        task_id: "task-existing-research-kind",
+        journey_kind: "local-research-artifact",
+      },
+    ]);
+
+    insertTask.run(
+      "task-writing-kind",
+      "workspace-writing-migration",
+      "Writing journey",
+      "ready",
+      APPLIED_AT,
+      APPLIED_AT,
+    );
+    database
+      .prepare(
+        `INSERT INTO aionui_general_work_journeys (
+           task_id, contract_version, conversation_hash, journey_kind, created_at
+         ) VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run("task-writing-kind", 1, "f".repeat(64), "writing-artifact", APPLIED_AT);
+    insertTask.run(
+      "task-invalid-writing-kind",
+      "workspace-writing-migration",
+      "Invalid writing journey",
+      "ready",
+      APPLIED_AT,
+      APPLIED_AT,
+    );
+    expect(() =>
+      database
+        .prepare(
+          `INSERT INTO aionui_general_work_journeys (
+             task_id, contract_version, conversation_hash, journey_kind, created_at
+           ) VALUES (?, ?, ?, ?, ?)`,
+        )
+        .run("task-invalid-writing-kind", 1, "0".repeat(64), "office-artifact", APPLIED_AT),
     ).toThrow();
   });
 

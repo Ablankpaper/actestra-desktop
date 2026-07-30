@@ -1,8 +1,9 @@
 # System Overview
 
 Status: P3, F0 through F3.3, GW-P4.2 through GW-P4.6, and the representative
-workspace-file journey are accepted on `main`; the bounded local-research
-journey is implemented locally on `feat/p4-representative-knowledge-work`;
+workspace-file and bounded local-research journeys are accepted on `main`;
+the bounded writing journey passes local implementation, package, and
+target-app gates on `feat/p4-writing-journey` but is not accepted on `main`;
 CrewAI is accepted as the first P6 planner-sidecar candidate but is not
 implemented or packaged
 
@@ -20,7 +21,7 @@ flowchart TD
     COMPAT["AionUi Compatibility Layer\nbridge shapes and availability"]
     MAIN["Desktop Main Process\nwindow and process lifecycle"]
     CORE["Actestra App Core"]
-    JOURNEY["AionUI General Work Journey\nschema 10 kinds, links, and projections"]
+    JOURNEY["AionUI General Work Journey\nschema 11 kinds, links, and projections"]
     RECOVERY["General Work Coordinator\nschema 7 recovery journal"]
     ROUTER["Task Router and Team Orchestrator"]
     PLANNER["CrewAI Planner Sidecar\nP6 candidate, non-authoritative"]
@@ -29,7 +30,7 @@ flowchart TD
     ARTIFACTS["Workspace and Artifact Service"]
     CREDS["Credential Broker"]
     TOOLS["MCP and Tool Gateway"]
-    PERSIST["Persistence Utility\nschema 10 links, checkpoints, and content"]
+    PERSIST["Persistence Utility\nschema 11 links, checkpoints, and content"]
     ADAPTERS["Agent Adapter Boundary"]
     GENERAL["General Worker Process"]
     GOOSE["Goose Worker Process"]
@@ -263,6 +264,17 @@ Artifact labeled `Actestra local research brief`. Source content stays out of
 normalized Core events and renderer projections. This is a deterministic
 offline local-corpus fixture, not general or network research authority.
 
+The writing extension adds schema version 11's exact `writing-artifact` kind
+and `/actestra write` command. Its ordered Title, Audience, Purpose, and one to
+eight Point fields are validated before prompt-only atomic registration. It
+performs no workspace read. The isolated Worker derives a private `draft.md`
+create-only input; main persists that exact-owner input before the existing
+text tool creates a `document` Artifact labeled `Actestra writing draft`.
+Prepared recovery regenerates from the durable brief without replaying native
+workspace context. Private draft input and its content reference stay out of
+normalized Core events, metadata audit, and renderer projections; only the
+owned non-persisted Preview returns bounded content.
+
 ## Foundation integration boundary
 
 ADR-0010 and the
@@ -487,7 +499,7 @@ Initial event types:
 | Workspace grants                                                                                               | Actestra persistence utility, schema 6              |
 | Bounded content references                                                                                     | Actestra persistence utility, schema 6              |
 | General Work attempt, tool, artifact-binding, and recovery checkpoints                                         | Actestra persistence utility, schema 7              |
-| Preserved-AionUI journey links, kinds, and authoritative initial General Work registration                     | Actestra persistence utility, schema 10             |
+| Preserved-AionUI journey links, kinds, and authoritative initial General Work registration                     | Actestra persistence utility, schema 11             |
 | Tasks and dependency graph                                                                                     | Actestra                                            |
 | P3 protected-operation approval evidence for the underlying native tool                                        | Actestra target contract; not activated by F3.2     |
 | Event and audit history                                                                                        | Actestra                                            |
@@ -554,8 +566,11 @@ artifact binding, and startup-recovery sequence. ADR-0020 selects the
 preserved-AionUI General Work intents, atomic schema-8 journey authority,
 schema-9 file journey, schema-10 bounded local-research journey, redacted
 projection, non-persisted native Preview, and prepared-task recovery sequence.
-General or network research, writing, office, schedule, failure, and crash
-fixtures, credential storage, and OS sandbox mechanisms remain later work.
+ADR-0021 adds schema-11 prompt-derived writing, private Worker-authored draft
+input, document Artifact, and prepared recovery without workspace reread.
+General or network research, office, schedule, failure, and crash fixtures,
+credential storage, and OS sandbox mechanisms remain later work. Writing still
+requires review and exact remote acceptance evidence.
 Signing, notarization, update delivery, and cross-platform candidate packaging
 remain P8 work.
 
