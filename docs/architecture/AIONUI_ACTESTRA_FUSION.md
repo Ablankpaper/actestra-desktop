@@ -200,11 +200,16 @@ and
 [ADR-0014](decisions/0014-aionui-approval-reconciliation-policy-gate.md).
 
 Current General Work fusion slice: GW-P4.6 keeps the original SendBox,
-conversation message, cancellation, and Preview surfaces while one strict
-text intent is handled by Actestra Core. Main resolves the native workspace,
-schema version 8 atomically registers the authoritative journey, a supervised
-General Worker requests the accepted scoped output tool, and only redacted
-status or exact-owner bounded Preview content returns to the renderer. See
+conversation message, cancellation, and Preview surfaces while strict
+prompt-artifact and workspace-file-artifact intents are handled by Actestra
+Core. Main resolves the native workspace, schema version 8 atomically
+registers the authoritative journey, and schema version 9 persists its closed
+kind. The representative file path composes the accepted scoped read and
+create-only write tools around the same supervised Worker. Its main-owned read
+input lowers the general 1 MiB tool ceiling to the Worker's 64 KiB send bound,
+so an oversized file becomes stable terminal failure evidence before
+transport; only redacted status or exact-owner bounded Preview content returns
+to the renderer. See
 [ADR-0020](decisions/0020-preserved-aionui-general-work-journey.md).
 
 ### F4 — Goose inside the preserved agent experience

@@ -302,7 +302,20 @@ function main() {
   );
   requireText(
     path.join(outputRoot, "packages/desktop/src/renderer/components/chat/SendBox/index.tsx"),
-    ["useActestraGeneralWork", "extractActestraGeneralWorkPrompt", "effectiveLoading"],
+    ["useActestraGeneralWork", "extractActestraGeneralWorkIntent", "effectiveLoading"],
+  );
+  requireText(
+    path.join(
+      outputRoot,
+      "packages/desktop/src/actestra/main/compatibility/aionuiGeneralWorkJourneyService.ts",
+    ),
+    [
+      '"actestra-input.txt"',
+      '"workspace-file-artifact"',
+      "invokeScopedToolStep",
+      "activeToolInput",
+      "MAX_GENERAL_WORKER_SEND_CONTENT_BYTES",
+    ],
   );
   requireText(
     path.join(
@@ -333,6 +346,8 @@ function main() {
     "Packaged exact AionCore runtime",
     "[Actestra] Main window created",
     "[AionUi] Renderer did-finish-load",
+    '"actestra-input.txt"',
+    "workspace-file-artifact",
   ]);
   rejectText(path.join(repositoryRoot, "scripts/smoke-aionui-general-work.mjs"), [
     "Electron.app",
@@ -485,13 +500,14 @@ function main() {
   requireText(
     path.join(outputRoot, "packages/desktop/src/actestra/utility/persistence/sqliteMigrations.ts"),
     [
-      "CURRENT_CORE_SCHEMA_VERSION = 8",
+      "CURRENT_CORE_SCHEMA_VERSION = 9",
       "aionui_shadow_evidence",
       "aionui_approval_decisions",
       "pending-delivery",
       "workspace_grants",
       "content_references",
       "general_work_checkpoints",
+      "journey_kind",
     ],
   );
   rejectText(
@@ -648,6 +664,7 @@ function main() {
       '"no-tool-complete"',
       '"tool-fixture"',
       '"workspace-read-text-fixture"',
+      '"workspace-read-then-task-output-write-fixture"',
       '"task-output-write-text-fixture"',
       '"cancelled"',
     ],
@@ -686,8 +703,8 @@ function main() {
     "assertGeneralWorkCheckpointTransition",
   ]);
   requireText(path.join(outputRoot, "tests/unit/actestra/persistenceUtilityClient.test.ts"), [
-    "schema v8 utility IPC",
-    "expect(client.schemaVersion).toBe(8)",
+    "schema v9 utility IPC",
+    "expect(client.schemaVersion).toBe(9)",
   ]);
 
   console.log(

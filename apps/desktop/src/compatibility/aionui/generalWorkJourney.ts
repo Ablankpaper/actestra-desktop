@@ -22,11 +22,23 @@ import {
 export const AIONUI_GENERAL_WORK_CONTRACT_VERSION = 1 as const;
 export const AIONUI_GENERAL_WORK_MAX_PROMPT_BYTES = 16 * 1024;
 export const AIONUI_GENERAL_WORK_MAX_JOURNEYS_PER_CONVERSATION = 100;
+export const AIONUI_GENERAL_WORK_JOURNEY_KINDS = [
+  "prompt-artifact",
+  "workspace-file-artifact",
+] as const;
 
 const MAX_NATIVE_CONVERSATION_ID_LENGTH = 256;
 const MAX_SUBMISSION_ID_LENGTH = 128;
-const INTENT_KEYS = ["contractVersion", "nativeConversationId", "submissionId", "prompt"] as const;
-const REGISTRATION_KEYS = [
+const AIONUI_GENERAL_WORK_COMMAND_RE = /^\/actestra(?:\s+([\s\S]*))?$/iu;
+const AIONUI_GENERAL_WORK_FILE_COMMAND_RE = /^file(?:\s+([\s\S]*))?$/iu;
+const INTENT_KEYS = [
+  "contractVersion",
+  "nativeConversationId",
+  "submissionId",
+  "prompt",
+  "journeyKind",
+] as const;
+const REGISTRATION_COMMON_KEYS = [
   "link",
   "workspace",
   "task",
@@ -34,9 +46,14 @@ const REGISTRATION_KEYS = [
   "worker",
   "workspaceGrant",
   "promptReference",
-  "toolInputReference",
 ] as const;
-const LINK_KEYS = ["contractVersion", "conversationHash", "taskId", "createdAt"] as const;
+const LINK_KEYS = [
+  "contractVersion",
+  "conversationHash",
+  "taskId",
+  "journeyKind",
+  "createdAt",
+] as const;
 const PROJECTION_KEYS = [
   "contractVersion",
   "taskId",
@@ -69,21 +86,49 @@ const ARTIFACT_KINDS: readonly ArtifactKind[] = [
 const ARTIFACT_STATES: readonly ArtifactState[] = ["available", "superseded"];
 const CANCELLABLE_TASK_STATES: readonly TaskState[] = ["running", "blocked"];
 
+export type AionUiGeneralWorkJourneyKind = (typeof AIONUI_GENERAL_WORK_JOURNEY_KINDS)[number];
+
+export interface AionUiGeneralWorkCommand {
+  readonly prompt: string;
+  readonly journeyKind: AionUiGeneralWorkJourneyKind;
+}
+
 export interface AionUiGeneralWorkIntent {
   readonly contractVersion: typeof AIONUI_GENERAL_WORK_CONTRACT_VERSION;
   readonly nativeConversationId: string;
   readonly submissionId: string;
   readonly prompt: string;
+  readonly journeyKind?: AionUiGeneralWorkJourneyKind;
+}
+
+export function parseAionUiGeneralWorkCommand(value: string): AionUiGeneralWorkCommand | null {
+  const command = value.trim().match(AIONUI_GENERAL_WORK_COMMAND_RE);
+  if (command === null) {
+    return null;
+  }
+  const body = (command[1] ?? "").trim();
+  const fileCommand = body.match(AIONUI_GENERAL_WORK_FILE_COMMAND_RE);
+  if (fileCommand !== null) {
+    return Object.freeze({
+      prompt: (fileCommand[1] ?? "").trim(),
+      journeyKind: "workspace-file-artifact",
+    });
+  }
+  return Object.freeze({
+    prompt: body,
+    journeyKind: "prompt-artifact",
+  });
 }
 
 export interface AionUiGeneralWorkLink {
   readonly contractVersion: typeof AIONUI_GENERAL_WORK_CONTRACT_VERSION;
   readonly conversationHash: string;
   readonly taskId: TaskId;
+  readonly journeyKind: AionUiGeneralWorkJourneyKind;
   readonly createdAt: ReturnType<typeof instant>;
 }
 
-export interface AionUiGeneralWorkRegistration {
+interface AionUiGeneralWorkRegistrationBase {
   readonly link: AionUiGeneralWorkLink;
   readonly workspace: Workspace;
   readonly task: Task;
@@ -91,8 +136,25 @@ export interface AionUiGeneralWorkRegistration {
   readonly worker: Worker;
   readonly workspaceGrant: WorkspaceGrant;
   readonly promptReference: StoreContentReferenceInput;
+}
+
+export interface AionUiPromptArtifactRegistration extends AionUiGeneralWorkRegistrationBase {
+  readonly link: AionUiGeneralWorkLink & {
+    readonly journeyKind: "prompt-artifact";
+  };
   readonly toolInputReference: StoreContentReferenceInput;
 }
+
+export interface AionUiWorkspaceFileArtifactRegistration extends AionUiGeneralWorkRegistrationBase {
+  readonly link: AionUiGeneralWorkLink & {
+    readonly journeyKind: "workspace-file-artifact";
+  };
+  readonly readInputReference: StoreContentReferenceInput;
+}
+
+export type AionUiGeneralWorkRegistration =
+  | AionUiPromptArtifactRegistration
+  | AionUiWorkspaceFileArtifactRegistration;
 
 export interface AionUiGeneralWorkArtifactProjection {
   readonly artifactId: ArtifactId;
@@ -225,6 +287,15 @@ export function assertAionUiGeneralWorkIntent(
   assertAionUiNativeConversationId(value.nativeConversationId);
   boundedIdentifier(value.submissionId, "AionUI submission identity", MAX_SUBMISSION_ID_LENGTH);
   boundedPrompt(value.prompt);
+  if (
+    value.journeyKind !== undefined &&
+    !AIONUI_GENERAL_WORK_JOURNEY_KINDS.includes(value.journeyKind as AionUiGeneralWorkJourneyKind)
+  ) {
+    throw new AionUiGeneralWorkJourneyError(
+      "invalid-intent",
+      "AionUI general-work journey kind is invalid",
+    );
+  }
 }
 
 export function assertAionUiGeneralWorkRegistration(
@@ -236,12 +307,6 @@ export function assertAionUiGeneralWorkRegistration(
       "AionUI general-work registration must be an object",
     );
   }
-  assertExactKeys(
-    value,
-    REGISTRATION_KEYS,
-    "AionUI general-work registration",
-    "invalid-registration",
-  );
   const link = value.link;
   assertExactKeys(link, LINK_KEYS, "AionUI general-work link", "invalid-registration");
   if (
@@ -249,6 +314,8 @@ export function assertAionUiGeneralWorkRegistration(
     typeof link.conversationHash !== "string" ||
     !/^[a-f0-9]{64}$/u.test(link.conversationHash) ||
     typeof link.taskId !== "string" ||
+    typeof link.journeyKind !== "string" ||
+    !AIONUI_GENERAL_WORK_JOURNEY_KINDS.includes(link.journeyKind as AionUiGeneralWorkJourneyKind) ||
     typeof link.createdAt !== "string"
   ) {
     throw new AionUiGeneralWorkJourneyError(
@@ -256,12 +323,21 @@ export function assertAionUiGeneralWorkRegistration(
       "AionUI general-work link is invalid",
     );
   }
+  const initialInputField =
+    link.journeyKind === "prompt-artifact" ? "toolInputReference" : "readInputReference";
+  assertExactKeys(
+    value,
+    [...REGISTRATION_COMMON_KEYS, initialInputField],
+    "AionUI general-work registration",
+    "invalid-registration",
+  );
+  const initialInputReference = value[initialInputField];
   try {
     taskId(link.taskId);
     instant(link.createdAt);
     assertWorkspaceGrant(value.workspaceGrant);
     assertStoreContentReferenceInput(value.promptReference);
-    assertStoreContentReferenceInput(value.toolInputReference);
+    assertStoreContentReferenceInput(initialInputReference);
     assertDomainGraph({
       workspaces: [value.workspace as Workspace],
       tasks: [value.task as Task],
@@ -289,7 +365,7 @@ export function assertAionUiGeneralWorkRegistration(
   const worker = value.worker as Worker;
   const grant = value.workspaceGrant as WorkspaceGrant;
   const promptReference = value.promptReference as StoreContentReferenceInput;
-  const toolInputReference = value.toolInputReference as StoreContentReferenceInput;
+  const initialReference = initialInputReference as StoreContentReferenceInput;
   if (
     workspace.state !== "active" ||
     task.state !== "ready" ||
@@ -315,21 +391,21 @@ export function assertAionUiGeneralWorkRegistration(
     promptReference.owner.grantId !== grant.grantId ||
     promptReference.owner.requestId !== undefined ||
     promptReference.createdAt !== link.createdAt ||
-    toolInputReference.reference === promptReference.reference ||
-    toolInputReference.kind !== "tool-input" ||
-    toolInputReference.classification !== "task-content" ||
-    toolInputReference.mediaType !== "text/plain; charset=utf-8" ||
-    toolInputReference.owner.workspaceId !== workspace.id ||
-    toolInputReference.owner.taskId !== task.id ||
-    toolInputReference.owner.sessionId !== session.id ||
-    toolInputReference.owner.workerId !== worker.id ||
-    toolInputReference.owner.grantId !== grant.grantId ||
-    toolInputReference.owner.requestId === undefined ||
-    toolInputReference.createdAt !== link.createdAt
+    initialReference.reference === promptReference.reference ||
+    initialReference.kind !== "tool-input" ||
+    initialReference.classification !== "task-content" ||
+    initialReference.mediaType !== "text/plain; charset=utf-8" ||
+    initialReference.owner.workspaceId !== workspace.id ||
+    initialReference.owner.taskId !== task.id ||
+    initialReference.owner.sessionId !== session.id ||
+    initialReference.owner.workerId !== worker.id ||
+    initialReference.owner.grantId !== grant.grantId ||
+    initialReference.owner.requestId === undefined ||
+    initialReference.createdAt !== link.createdAt
   ) {
     throw new AionUiGeneralWorkJourneyError(
       "invalid-registration",
-      "AionUI general-work registration must atomically own its grant and prompt",
+      "AionUI general-work registration must atomically own its grant, prompt, and initial input",
     );
   }
 }
@@ -349,6 +425,10 @@ export function assertAionUiGeneralWorkLink(
     typeof value.conversationHash !== "string" ||
     !/^[a-f0-9]{64}$/u.test(value.conversationHash) ||
     typeof value.taskId !== "string" ||
+    typeof value.journeyKind !== "string" ||
+    !AIONUI_GENERAL_WORK_JOURNEY_KINDS.includes(
+      value.journeyKind as AionUiGeneralWorkJourneyKind,
+    ) ||
     typeof value.createdAt !== "string"
   ) {
     throw new AionUiGeneralWorkJourneyError(

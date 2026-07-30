@@ -1,9 +1,9 @@
 # System Overview
 
-Status: P3, F0 through F3.3, and GW-P4.5 accepted on `main`; GW-P4.6 preserved
-AionUI General Work journey implemented locally on
-`feat/aionui-p4-preserved-journey`; CrewAI accepted as the first P6
-planner-sidecar candidate but not implemented or packaged
+Status: P3, F0 through F3.3, and GW-P4.2 through GW-P4.6 accepted on `main`;
+the first representative workspace-file journey is implemented locally on
+`feat/p4-representative-file-journey`; CrewAI is accepted as the first P6
+planner-sidecar candidate but is not implemented or packaged
 
 ## Context
 
@@ -19,7 +19,7 @@ flowchart TD
     COMPAT["AionUi Compatibility Layer\nbridge shapes and availability"]
     MAIN["Desktop Main Process\nwindow and process lifecycle"]
     CORE["Actestra App Core"]
-    JOURNEY["AionUI General Work Journey\nschema 8 links and projections"]
+    JOURNEY["AionUI General Work Journey\nschema 9 kinds, links, and projections"]
     RECOVERY["General Work Coordinator\nschema 7 recovery journal"]
     ROUTER["Task Router and Team Orchestrator"]
     PLANNER["CrewAI Planner Sidecar\nP6 candidate, non-authoritative"]
@@ -28,7 +28,7 @@ flowchart TD
     ARTIFACTS["Workspace and Artifact Service"]
     CREDS["Credential Broker"]
     TOOLS["MCP and Tool Gateway"]
-    PERSIST["Persistence Utility\nschema 8 links, checkpoints, and content"]
+    PERSIST["Persistence Utility\nschema 9 links, checkpoints, and content"]
     ADAPTERS["Agent Adapter Boundary"]
     GENERAL["General Worker Process"]
     GOOSE["Goose Worker Process"]
@@ -104,9 +104,10 @@ the content-reference store and persistence process; GW-P4.3 adds the first
 real deterministic worker process; accepted GW-P4.4 admits exactly two
 main-owned native text capabilities without granting filesystem authority to
 that process. Accepted GW-P4.5 adds the durable coordination and
-restart-recovery sequence around those capabilities. The current GW-P4.6
-branch maps that sequence into the preserved AionUI SendBox, message, cancel,
-and Preview surfaces.
+restart-recovery sequence around those capabilities. Accepted GW-P4.6 maps
+that sequence into the preserved AionUI SendBox, message, cancel, and Preview
+surfaces. The current representative-file branch composes the existing read
+and create-only write capabilities inside that same journey.
 
 P4.2 adds the separate compatibility boundary accepted in
 [ADR-0011](decisions/0011-aionui-shadow-projection.md). Successful native HTTP
@@ -230,14 +231,25 @@ the raw native conversation identity is durable.
 
 One real supervised General Worker utility process requests the existing
 create-only task-output capability with an exact main-owned ToolRequest ID.
+The representative-file extension adds schema version 9's closed journey kind.
+Its `/actestra file` intent cannot select a path: main supplies only
+`actestra-input.txt` with a 64 KiB per-invocation read maximum aligned to Worker
+transport, invokes the bounded workspace read, resolves its exact owned output,
+and sends that content to the same Worker. Oversized source fails as
+`content-too-large` before transport. The Worker returns a strict private
+`result.md` write input to its adapter; main persists it under a second request
+owner before invoking the create-only tool. Source text and the private write
+input do not enter Core events or renderer projections.
+
 Status, incident, cancellation, and Artifact projections are rebuilt from
 Actestra state. Preview requires the linked Task, finalized checkpoint
 binding, exact Artifact, and exact-owner content reference; only bounded UTF-8
 content crosses the preload bridge and the native Preview marks it
 non-persistable. Prepared linked Tasks with no attempt resume from their
-already persisted prompt and grant after native backend/window readiness,
-without re-reading or rebinding native workspace state. This slice adds no
-route, second UI, Goose, CrewAI, or Eigent runtime.
+already persisted prompt, journey kind, grant, and initial tool input after
+native backend/window readiness, without re-reading or rebinding native
+workspace state. This slice adds no route, second UI, Goose, CrewAI, or Eigent
+runtime.
 
 ## Foundation integration boundary
 
@@ -463,7 +475,7 @@ Initial event types:
 | Workspace grants                                                                                               | Actestra persistence utility, schema 6              |
 | Bounded content references                                                                                     | Actestra persistence utility, schema 6              |
 | General Work attempt, tool, artifact-binding, and recovery checkpoints                                         | Actestra persistence utility, schema 7              |
-| Preserved-AionUI journey links and authoritative initial General Work registration                             | Actestra persistence utility, schema 8              |
+| Preserved-AionUI journey links, kinds, and authoritative initial General Work registration                     | Actestra persistence utility, schema 9              |
 | Tasks and dependency graph                                                                                     | Actestra                                            |
 | P3 protected-operation approval evidence for the underlying native tool                                        | Actestra target contract; not activated by F3.2     |
 | Event and audit history                                                                                        | Actestra                                            |
@@ -526,13 +538,14 @@ general-work persistence utility, schema 6 grants, and bounded content
 references. ADR-0017 selects Adapter v2 and the real General Worker protocol.
 ADR-0018 selects the two scoped native text tools and their production policy.
 ADR-0019 selects the durable general-work coordination, tool-result retention,
-artifact binding, and startup-recovery sequence. ADR-0020 selects the first
-preserved-AionUI General Work intent, atomic schema-8 journey authority,
-redacted projection, non-persisted native Preview, and prepared-task recovery
-sequence. Broader representative General Work fixtures, credential storage,
-and OS sandbox mechanisms remain
-later security work. Signing, notarization, update delivery, and cross-platform
-candidate packaging remain P8 work.
+artifact binding, and startup-recovery sequence. ADR-0020 selects the
+preserved-AionUI General Work intents, atomic schema-8 journey authority,
+schema-9 closed journey kinds, fixed representative-file composition, redacted
+projection, non-persisted native Preview, and prepared-task recovery sequence.
+Broader representative research, writing, office, schedule, failure, and crash
+fixtures, credential storage, and OS sandbox mechanisms remain later security
+work. Signing, notarization, update delivery, and cross-platform candidate
+packaging remain P8 work.
 
 This document fixes authority and lifecycle boundaries; a pinned shell
 dependency does not pre-decide worker or persistence architecture.

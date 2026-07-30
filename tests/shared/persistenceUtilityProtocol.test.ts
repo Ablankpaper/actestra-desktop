@@ -78,6 +78,7 @@ describe("persistence utility protocol", () => {
       contractVersion: 1,
       conversationHash,
       taskId: "task-journey-protocol-1",
+      journeyKind: "prompt-artifact",
       createdAt: "2026-07-30T06:30:00.000Z",
     };
     expect(() =>

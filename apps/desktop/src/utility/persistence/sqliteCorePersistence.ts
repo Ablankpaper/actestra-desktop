@@ -130,7 +130,7 @@ const GENERAL_WORK_CHECKPOINT_COLUMNS = `
   worker_id, stream_id, created_at, updated_at, checkpoint_json
 `;
 const AIONUI_GENERAL_WORK_JOURNEY_COLUMNS = `
-  task_id, contract_version, conversation_hash, created_at
+  task_id, contract_version, conversation_hash, journey_kind, created_at
 `;
 
 type SqliteRow = Record<string, unknown>;
@@ -421,6 +421,7 @@ function parseStoredAionUiGeneralWorkLink(row: SqliteRow): AionUiGeneralWorkLink
     contractVersion: requiredNumber(row, "contract_version"),
     conversationHash: requiredString(row, "conversation_hash"),
     taskId: requiredString(row, "task_id"),
+    journeyKind: requiredString(row, "journey_kind"),
     createdAt: requiredString(row, "created_at"),
   };
   try {
@@ -1801,6 +1802,8 @@ class SqliteCorePersistence implements ActestraPersistencePort {
         cause: error,
       });
     }
+    const initialInputReference =
+      "toolInputReference" in stable ? stable.toolInputReference : stable.readInputReference;
 
     database.exec("BEGIN IMMEDIATE");
     try {
@@ -1839,13 +1842,13 @@ class SqliteCorePersistence implements ActestraPersistencePort {
              WHERE reference = ?`,
           )
           .get(stable.promptReference.reference) as SqliteRow | undefined;
-        const toolInputRow = database
+        const initialInputRow = database
           .prepare(
             `SELECT ${CONTENT_REFERENCE_COLUMNS}
              FROM content_references
              WHERE reference = ?`,
           )
-          .get(stable.toolInputReference.reference) as SqliteRow | undefined;
+          .get(initialInputReference.reference) as SqliteRow | undefined;
         const grant = grantRow === undefined ? undefined : parseStoredWorkspaceGrant(grantRow);
         const recordsMatch =
           isDeepStrictEqual(existing, stable.link) &&
@@ -1873,7 +1876,7 @@ class SqliteCorePersistence implements ActestraPersistencePort {
           grant.displayName === stable.workspaceGrant.displayName &&
           grant.createdAt === stable.workspaceGrant.createdAt &&
           storedContentMatches(promptRow, stable.promptReference) &&
-          storedContentMatches(toolInputRow, stable.toolInputReference);
+          storedContentMatches(initialInputRow, initialInputReference);
         if (!recordsMatch) {
           throw new PersistenceError(
             "general-work-journey-conflict",
@@ -1908,7 +1911,7 @@ class SqliteCorePersistence implements ActestraPersistencePort {
           .get(stable.promptReference.reference) !== undefined ||
         database
           .prepare("SELECT reference FROM content_references WHERE reference = ?")
-          .get(stable.toolInputReference.reference) !== undefined
+          .get(initialInputReference.reference) !== undefined
       ) {
         throw new PersistenceError(
           "general-work-journey-conflict",
@@ -1993,17 +1996,18 @@ class SqliteCorePersistence implements ActestraPersistencePort {
         .prepare("UPDATE tasks SET active_session_id = ? WHERE id = ?")
         .run(stable.session.id, stable.task.id);
       insertContentReference(database, stable.promptReference);
-      insertContentReference(database, stable.toolInputReference);
+      insertContentReference(database, initialInputReference);
       database
         .prepare(
           `INSERT INTO aionui_general_work_journeys (
-             task_id, contract_version, conversation_hash, created_at
-           ) VALUES (?, ?, ?, ?)`,
+             task_id, contract_version, conversation_hash, journey_kind, created_at
+           ) VALUES (?, ?, ?, ?, ?)`,
         )
         .run(
           stable.link.taskId,
           stable.link.contractVersion,
           stable.link.conversationHash,
+          stable.link.journeyKind,
           stable.link.createdAt,
         );
       verifyNoForeignKeyViolations(database);
@@ -2073,6 +2077,7 @@ class SqliteCorePersistence implements ActestraPersistencePort {
              journeys.task_id,
              journeys.contract_version,
              journeys.conversation_hash,
+             journeys.journey_kind,
              journeys.created_at
            FROM aionui_general_work_journeys AS journeys
            JOIN tasks ON tasks.id = journeys.task_id

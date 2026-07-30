@@ -3,7 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { PersistenceError } from "../../core";
 
 export const ACTESTRA_SQLITE_APPLICATION_ID = 1_095_980_114;
-export const CURRENT_CORE_SCHEMA_VERSION = 8;
+export const CURRENT_CORE_SCHEMA_VERSION = 9;
 
 export interface SqliteMigration {
   readonly version: number;
@@ -343,6 +343,16 @@ export const CORE_SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
 
       CREATE INDEX aionui_general_work_conversation_idx
         ON aionui_general_work_journeys(conversation_hash, created_at, task_id);
+    `,
+  },
+  {
+    version: 9,
+    name: "aionui-general-work-kinds",
+    sql: `
+      ALTER TABLE aionui_general_work_journeys
+        ADD COLUMN journey_kind TEXT NOT NULL
+        DEFAULT 'prompt-artifact'
+        CHECK (journey_kind IN ('prompt-artifact', 'workspace-file-artifact'));
     `,
   },
 ] as const;

@@ -33,6 +33,7 @@ export interface ScopedNativeToolDefinition {
 export interface WorkspaceReadTextInput {
   readonly contractVersion: typeof SCOPED_NATIVE_TOOL_INPUT_CONTRACT_VERSION;
   readonly relativePath: string;
+  readonly maximumBytes?: number;
 }
 
 export interface TaskOutputWriteTextInput {
@@ -176,7 +177,15 @@ export function parseScopedNativeToolInput(
   }
 
   if (definition.toolId === WORKSPACE_READ_TEXT_TOOL_ID) {
-    assertExactKeys(value, ["contractVersion", "relativePath"], "Workspace read input");
+    assertExactKeys(
+      value,
+      [
+        "contractVersion",
+        "relativePath",
+        ...(value.maximumBytes === undefined ? [] : ["maximumBytes"]),
+      ],
+      "Workspace read input",
+    );
     if (value.contractVersion !== SCOPED_NATIVE_TOOL_INPUT_CONTRACT_VERSION) {
       throw new ScopedNativeToolContractError(
         "invalid-input",
@@ -184,9 +193,21 @@ export function parseScopedNativeToolInput(
       );
     }
     assertPortableRelativePath(value.relativePath);
+    if (
+      value.maximumBytes !== undefined &&
+      (!Number.isSafeInteger(value.maximumBytes) ||
+        (value.maximumBytes as number) < 1 ||
+        (value.maximumBytes as number) > MAX_WORKLOAD_CONTENT_BYTES)
+    ) {
+      throw new ScopedNativeToolContractError(
+        "invalid-input",
+        `Workspace read input.maximumBytes must be an integer from 1 to ${MAX_WORKLOAD_CONTENT_BYTES}`,
+      );
+    }
     return Object.freeze({
       contractVersion: SCOPED_NATIVE_TOOL_INPUT_CONTRACT_VERSION,
       relativePath: value.relativePath,
+      ...(value.maximumBytes === undefined ? {} : { maximumBytes: value.maximumBytes as number }),
     });
   }
 

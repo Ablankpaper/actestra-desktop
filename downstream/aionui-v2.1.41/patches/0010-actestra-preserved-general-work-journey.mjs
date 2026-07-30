@@ -668,7 +668,7 @@ replaceOnce(
               };
             },
           },
-    launchWorker: async ({ requestId }) => {
+    launchWorker: async ({ journeyKind, readRequestId, requestId }) => {
       if (generalWorkSmokeConfig?.scenario === 'prepare-restart') {
         throw new Error(
           'Actestra target-app smoke interrupted before Worker launch',
@@ -694,6 +694,11 @@ replaceOnce(
           updatedAt: platform.clock.now(),
         });
       }
+      const requestIds =
+        journeyKind === 'workspace-file-artifact'
+          ? [readRequestId, requestId]
+          : [requestId];
+      let requestIndex = 0;
       return launchElectronGeneralWorker({
         modulePath: path.join(__dirname, 'actestra-general-worker.js'),
         workingDirectory: process.resourcesPath,
@@ -701,8 +706,19 @@ replaceOnce(
           executionMode:
             generalWorkSmokeConfig?.scenario === 'cancellation'
               ? 'hold'
-              : 'task-output-write-text-fixture',
-          newToolRequestId: () => requestId,
+              : journeyKind === 'workspace-file-artifact'
+                ? 'workspace-read-then-task-output-write-fixture'
+                : 'task-output-write-text-fixture',
+          newToolRequestId: () => {
+            const nextRequestId = requestIds[requestIndex];
+            requestIndex += 1;
+            if (nextRequestId === undefined) {
+              throw new Error(
+                'Actestra General Worker requested an undeclared tool identity',
+              );
+            }
+            return nextRequestId;
+          },
         },
         clock: platform.clock,
       });
@@ -903,13 +919,13 @@ contextBridge.exposeInMainWorld('electronAPI', {`,
 replaceOnce(
   "tests/unit/actestra/persistenceUtilityClient.test.ts",
   `keeps AionUI shadow, approval, and recovery authority behind schema v7 utility IPC`,
-  `keeps AionUI shadow, approval, recovery, and journey authority behind schema v8 utility IPC`,
+  `keeps AionUI shadow, approval, recovery, and journey authority behind schema v9 utility IPC`,
 );
 
 replaceOnce(
   "tests/unit/actestra/persistenceUtilityClient.test.ts",
   `expect(client.schemaVersion).toBe(7);`,
-  `expect(client.schemaVersion).toBe(8);`,
+  `expect(client.schemaVersion).toBe(9);`,
 );
 
 writeNew(
@@ -1104,11 +1120,17 @@ export async function runActestraGeneralWorkSmoke(
   recovery: Promise<AionUiPreparedGeneralWorkRecoverySummary>,
 ): Promise<ActestraGeneralWorkSmokeSummary> {
   const recoverySummary = await recovery;
+  const restartJourney =
+    config.scenario === 'prepare-restart' ||
+    config.scenario === 'recover-restart';
   const intent = {
     contractVersion: 1,
     nativeConversationId: config.nativeConversationId,
     submissionId: submissionId(config.scenario),
     prompt: prompt(config.scenario),
+    ...(restartJourney
+      ? { journeyKind: 'workspace-file-artifact' as const }
+      : {}),
   } as const;
 
   if (config.scenario === 'prepare-restart') {
@@ -1284,12 +1306,12 @@ export function previewActestraGeneralWork(
 
 writeNew(
   "packages/desktop/src/renderer/hooks/chat/actestraGeneralWorkProjection.ts",
-  `import type {
-  AionUiGeneralWorkProjection,
+  `import {
+  parseAionUiGeneralWorkCommand,
+  type AionUiGeneralWorkCommand,
+  type AionUiGeneralWorkProjection,
 } from '@/actestra/compatibility/aionui/generalWorkJourney';
 import type { TMessage } from '@/common/chat/chatLib';
-
-const ACTESTRA_COMMAND_RE = /^\\/actestra(?:\\s+([\\s\\S]*))?$/iu;
 
 function statusTipType(
   status: AionUiGeneralWorkProjection['status'],
@@ -1300,9 +1322,14 @@ function statusTipType(
   return 'info';
 }
 
+export function extractActestraGeneralWorkIntent(
+  value: string,
+): AionUiGeneralWorkCommand | null {
+  return parseAionUiGeneralWorkCommand(value);
+}
+
 export function extractActestraGeneralWorkPrompt(value: string): string | null {
-  const match = value.trim().match(ACTESTRA_COMMAND_RE);
-  return match === null ? null : (match[1] ?? '').trim();
+  return extractActestraGeneralWorkIntent(value)?.prompt ?? null;
 }
 
 export function projectActestraGeneralWorkMessage(
@@ -1349,6 +1376,7 @@ export function projectActestraGeneralWorkMessage(
 writeNew(
   "packages/desktop/src/renderer/hooks/chat/useActestraGeneralWork.ts",
   `import type {
+  AionUiGeneralWorkJourneyKind,
   AionUiGeneralWorkProjection,
 } from '@/actestra/compatibility/aionui/generalWorkJourney';
 import {
@@ -1361,7 +1389,10 @@ import { projectActestraGeneralWorkMessage } from './actestraGeneralWorkProjecti
 import { Message } from '@arco-design/web-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-export { extractActestraGeneralWorkPrompt } from './actestraGeneralWorkProjection';
+export {
+  extractActestraGeneralWorkIntent,
+  extractActestraGeneralWorkPrompt,
+} from './actestraGeneralWorkProjection';
 
 const POLL_INTERVAL_MS = 250;
 let fallbackSubmissionSequence = 0;
@@ -1531,7 +1562,10 @@ export function useActestraGeneralWork(conversationId: string | undefined) {
   );
 
   const run = useCallback(
-    async (prompt: string): Promise<void> => {
+    async (
+      prompt: string,
+      journeyKind: AionUiGeneralWorkJourneyKind = 'prompt-artifact',
+    ): Promise<void> => {
       if (!conversationId) return;
       const targetConversationId = conversationId;
       if (activeTaskIdRef.current !== null || submitPendingRef.current) {
@@ -1545,6 +1579,9 @@ export function useActestraGeneralWork(conversationId: string | undefined) {
         nativeConversationId: targetConversationId,
         submissionId: submissionId(),
         prompt,
+        ...(journeyKind === 'workspace-file-artifact'
+          ? { journeyKind }
+          : {}),
       });
       if (
         !mountedRef.current ||
@@ -1832,7 +1869,7 @@ replaceOnce(
   `import { useInputFocusRing } from '@/renderer/hooks/chat/useInputFocusRing';`,
   `import { useInputFocusRing } from '@/renderer/hooks/chat/useInputFocusRing';
 import {
-  extractActestraGeneralWorkPrompt,
+  extractActestraGeneralWorkIntent,
   useActestraGeneralWork,
 } from '@/renderer/hooks/chat/useActestraGeneralWork';`,
 );
@@ -1875,9 +1912,9 @@ replaceOnce(
       return;
     }
 
-    const generalWorkPrompt = extractActestraGeneralWorkPrompt(input);
-    if (generalWorkPrompt !== null) {
-      if (!generalWorkPrompt) {
+    const generalWorkIntent = extractActestraGeneralWorkIntent(input);
+    if (generalWorkIntent !== null) {
+      if (!generalWorkIntent.prompt) {
         message.warning('Add a bounded task after /actestra.');
         return;
       }
@@ -1889,9 +1926,11 @@ replaceOnce(
       setHistoryNavigationIndex(null);
       setInput('');
       setIsLoading(true);
-      void generalWork.run(generalWorkPrompt).finally(() => {
-        setIsLoading(false);
-      });
+      void generalWork
+        .run(generalWorkIntent.prompt, generalWorkIntent.journeyKind)
+        .finally(() => {
+          setIsLoading(false);
+        });
       return;
     }
 
@@ -2069,6 +2108,11 @@ describe('Actestra target-app General Work smoke contract', () => {
       scenario: 'prepare-restart',
       status: 'prepared',
     });
+    expect(prepared.submit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        journeyKind: 'workspace-file-artifact',
+      }),
+    );
 
     const recovered = {
       waitForIdle: vi.fn(async () => undefined),
@@ -2176,6 +2220,39 @@ afterEach(() => {
 });
 
 describe('Actestra preserved AionUI general-work hook', () => {
+  it('submits the reserved-file command as a workspace-file journey', async () => {
+    mocks.list.mockResolvedValue({ status: 'ok', projections: [] });
+    mocks.submit.mockResolvedValue({
+      status: 'ok',
+      projection: {
+        ...projection,
+        status: 'completed',
+        canCancel: false,
+      },
+    });
+    const hook = renderHook(() =>
+      useActestraGeneralWork('conversation-file-journey'),
+    );
+    await waitFor(() => {
+      expect(mocks.list).toHaveBeenCalled();
+    });
+
+    await act(async () => {
+      await hook.result.current.run(
+        'Review the reserved workspace text',
+        'workspace-file-artifact',
+      );
+    });
+
+    expect(mocks.submit).toHaveBeenCalledExactlyOnceWith({
+      contractVersion: 1,
+      nativeConversationId: 'conversation-file-journey',
+      submissionId: expect.stringMatching(/^submission-aionui-/u),
+      prompt: 'Review the reserved workspace text',
+      journeyKind: 'workspace-file-artifact',
+    });
+  });
+
   it('updates one stable native task tip instead of appending every poll', async () => {
     mocks.list.mockResolvedValue({
       status: 'ok',
@@ -2573,6 +2650,7 @@ import {
   submitActestraGeneralWork,
 } from '@/common/adapter/actestraGeneralWorkClient';
 import {
+  extractActestraGeneralWorkIntent,
   extractActestraGeneralWorkPrompt,
   projectActestraGeneralWorkMessage,
 } from '@/renderer/hooks/chat/actestraGeneralWorkProjection';
@@ -2679,6 +2757,14 @@ describe('Actestra preserved AionUI general-work client', () => {
     expect(extractActestraGeneralWorkPrompt('/actestra inspect the bounded task')).toBe(
       'inspect the bounded task',
     );
+    expect(
+      extractActestraGeneralWorkIntent(
+        '/actestra file review the reserved workspace text',
+      ),
+    ).toEqual({
+      prompt: 'review the reserved workspace text',
+      journeyKind: 'workspace-file-artifact',
+    });
     expect(extractActestraGeneralWorkPrompt('ordinary native AionUI message')).toBeNull();
   });
 

@@ -76,8 +76,11 @@ separate structured-clone wire protocol at exact version 1 with:
 - events for start, heartbeat, message, tool request, accepted tool result,
   resume, completion, failure, and cancellation.
 
-Messages are at most 256 KiB and prompts are at most 64 KiB. Validators reject
-unknown fields and undeclared operations before dispatch.
+Messages are at most 256 KiB; start prompts and later `send` content are each
+at most 64 KiB. A Worker-produced private task-output input is separately
+limited to 128 KiB after JSON serialization so it cannot consume the complete
+message envelope. Validators reject unknown fields, oversized private inputs,
+and undeclared operations before dispatch.
 
 Electron main creates the opaque attempt token, tool-request ID, event IDs,
 session/worker association, stream sequence, timestamps, and normalized Core

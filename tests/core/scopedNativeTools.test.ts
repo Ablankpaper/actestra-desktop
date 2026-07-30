@@ -97,6 +97,33 @@ describe("GW-P4.4 scoped native tool contracts", () => {
     );
   });
 
+  it("accepts only a bounded per-invocation workspace read limit", () => {
+    const boundedRead = {
+      contractVersion: 1,
+      relativePath: "notes/input.txt",
+      maximumBytes: 64 * 1024,
+    } as const;
+
+    expect(
+      parseScopedNativeToolInput(
+        WORKSPACE_READ_TEXT_TOOL_ID,
+        serializeScopedNativeToolInput(WORKSPACE_READ_TEXT_TOOL_ID, boundedRead),
+      ),
+    ).toEqual(boundedRead);
+    for (const maximumBytes of [0, 1.5, MAX_WORKLOAD_CONTENT_BYTES + 1]) {
+      expect(() =>
+        parseScopedNativeToolInput(
+          WORKSPACE_READ_TEXT_TOOL_ID,
+          JSON.stringify({
+            contractVersion: 1,
+            relativePath: "notes/input.txt",
+            maximumBytes,
+          }),
+        ),
+      ).toThrowError(/maximumBytes must be an integer from 1/u);
+    }
+  });
+
   it("rejects non-round-trippable and oversized write content", () => {
     expect(() =>
       serializeScopedNativeToolInput(TASK_OUTPUT_WRITE_TEXT_TOOL_ID, {

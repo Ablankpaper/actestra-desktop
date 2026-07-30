@@ -10,7 +10,10 @@ import type {
 } from "../../apps/desktop/src/compatibility/aionui";
 import { WORKLOAD_PERSISTENCE_CONTRACT_VERSION, instant } from "../../apps/desktop/src/core";
 import { openSqliteCorePersistence } from "../../apps/desktop/src/utility/persistence/sqliteCorePersistence";
-import { createAionUiGeneralWorkRegistration } from "../fixtures/aionuiGeneralWork";
+import {
+  createAionUiGeneralWorkRegistration,
+  createAionUiWorkspaceFileRegistration,
+} from "../fixtures/aionuiGeneralWork";
 
 const testDirectories: string[] = [];
 
@@ -88,6 +91,53 @@ describe("SQLite AionUI general-work journey persistence", () => {
       content: expected.promptReference.content,
       metadata: {
         owner: expected.promptReference.owner,
+      },
+    });
+    await reopened.close();
+  });
+
+  it("deduplicates and restores a workspace-file read input after reopen", async () => {
+    const userDataPath = createTestDirectory();
+    const expected = createAionUiWorkspaceFileRegistration("file-store");
+    const first = openSqliteCorePersistence(userDataPath);
+    const journey = first as unknown as JourneyPersistence;
+
+    await expect(
+      journey.registerAionUiGeneralWorkJourney(
+        expected as unknown as AionUiGeneralWorkRegistration,
+      ),
+    ).resolves.toEqual({
+      status: "stored",
+      link: expected.link,
+    });
+    await expect(
+      journey.registerAionUiGeneralWorkJourney(
+        expected as unknown as AionUiGeneralWorkRegistration,
+      ),
+    ).resolves.toEqual({
+      status: "duplicate",
+      link: expected.link,
+    });
+    await first.close();
+
+    const reopened = openSqliteCorePersistence(userDataPath);
+    const reopenedJourney = reopened as unknown as JourneyPersistence;
+    await expect(
+      reopenedJourney.listAionUiGeneralWorkJourneyLinks(expected.link.conversationHash, 10),
+    ).resolves.toEqual([expected.link]);
+    await expect(
+      reopened.resolveContentReference({
+        contractVersion: WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
+        reference: expected.readInputReference.reference,
+        kind: "tool-input",
+        owner: expected.readInputReference.owner,
+        resolvedAt: expected.link.createdAt,
+        consume: false,
+      }),
+    ).resolves.toMatchObject({
+      content: expected.readInputReference.content,
+      metadata: {
+        owner: expected.readInputReference.owner,
       },
     });
     await reopened.close();

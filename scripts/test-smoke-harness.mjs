@@ -41,9 +41,15 @@ function assert(condition, message) {
 }
 
 try {
+  const generalWorkSmokeSource = fs.readFileSync(generalWorkSmokeScript, "utf8");
   assert(
-    fs.readFileSync(generalWorkSmokeScript, "utf8").includes("const startupTimeoutMs = 60_000;"),
+    generalWorkSmokeSource.includes("const startupTimeoutMs = 60_000;"),
     "General Work target-app smoke must keep a bounded one-minute startup deadline",
+  );
+  assert(
+    generalWorkSmokeSource.includes('"actestra-input.txt"') &&
+      generalWorkSmokeSource.includes("workspace-file-artifact"),
+    "General Work target-app restart smoke must exercise the representative workspace-file journey",
   );
 
   const earlyExit = runSmoke(createAppBundle("early-exit", "#!/bin/sh\nexit 7\n"));
@@ -75,7 +81,7 @@ const database = new DatabaseSync(path.join(stateDirectory, "actestra.sqlite3"))
 database.exec(\`
   CREATE TABLE workspace_grants (id TEXT PRIMARY KEY) STRICT;
   CREATE TABLE content_references (id TEXT PRIMARY KEY) STRICT;
-  PRAGMA user_version = 8;
+  PRAGMA user_version = 9;
 \`);
 database.close();
 console.log("ACTESTRA_PERSISTENCE_UTILITY_READY");

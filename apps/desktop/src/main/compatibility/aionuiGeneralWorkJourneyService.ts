@@ -11,16 +11,20 @@ import {
   hashAionUiGeneralWorkConversation,
   type AionUiGeneralWorkIntent,
   type AionUiGeneralWorkArtifactPreview,
+  type AionUiGeneralWorkJourneyKind,
   type AionUiGeneralWorkProjection,
   type AionUiGeneralWorkRegistration,
 } from "../../compatibility/aionui";
 import {
+  TASK_OUTPUT_WRITE_TEXT_TOOL_ID,
+  WORKSPACE_READ_TEXT_TOOL_ID,
   WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
   artifactId,
   compareInstants,
   correlationId,
   eventStreamId,
   sessionId,
+  serializeScopedNativeToolInput,
   taskId,
   toolInputReference,
   toolRequestId,
@@ -48,6 +52,7 @@ import type {
   AionUiGeneralWorkNativeContext,
   AionUiGeneralWorkNativeContextPort,
 } from "./aionuiGeneralWorkNativeContext";
+import { MAX_GENERAL_WORKER_SEND_CONTENT_BYTES } from "../../shared/generalWorkerProtocol";
 
 const MAX_TITLE_BYTES = 512;
 const MAX_SUMMARY_BYTES = 16 * 1024;
@@ -63,7 +68,9 @@ interface JourneyIdentities {
   readonly correlationId: ReturnType<typeof correlationId>;
   readonly messageId: ReturnType<typeof correlationId>;
   readonly promptRef: ReturnType<typeof toolInputReference>;
+  readonly readInputRef: ReturnType<typeof toolInputReference>;
   readonly toolInputRef: ReturnType<typeof toolInputReference>;
+  readonly readRequestId: ReturnType<typeof toolRequestId>;
   readonly requestId: ReturnType<typeof toolRequestId>;
   readonly artifactId: ReturnType<typeof artifactId>;
   readonly grantId: ReturnType<typeof workspaceGrantId>;
@@ -83,6 +90,8 @@ export interface AionUiGeneralWorkJourneyServiceConfig {
   readonly clock: AgentClock;
   readonly nativeContext: AionUiGeneralWorkNativeContextPort;
   readonly launchWorker: (input: {
+    readonly journeyKind: AionUiGeneralWorkJourneyKind;
+    readonly readRequestId: ToolRequestId;
     readonly requestId: ToolRequestId;
   }) => Promise<GeneralWorkerProcessAdapter>;
 }
@@ -132,7 +141,9 @@ function identitiesForDigest(digest: string): JourneyIdentities {
     correlationId: correlationId(`correlation-aionui-${digest}`),
     messageId: correlationId(`message-aionui-${digest}`),
     promptRef: toolInputReference(`input-aionui-prompt-${digest}`),
+    readInputRef: toolInputReference(`input-aionui-file-read-${digest}`),
     toolInputRef: toolInputReference(`input-aionui-output-${digest}`),
+    readRequestId: toolRequestId(`request-aionui-file-read-${digest}`),
     requestId: toolRequestId(`request-aionui-output-${digest}`),
     artifactId: artifactId(`artifact-aionui-${digest}`),
     grantId: workspaceGrantId(`grant-aionui-${digest}`),
@@ -208,14 +219,30 @@ function registrationFor(
   nativeContext: AionUiGeneralWorkNativeContext,
 ): AionUiGeneralWorkRegistration {
   const title = boundedPresentationText(intent.prompt, MAX_TITLE_BYTES);
+  const journeyKind = intent.journeyKind ?? "prompt-artifact";
   const outputContent = `# Actestra result\n\n${intent.prompt.trim()}\n`;
-  return Object.freeze({
-    link: Object.freeze({
-      contractVersion: AIONUI_GENERAL_WORK_CONTRACT_VERSION,
-      conversationHash,
-      taskId: identities.taskId,
-      createdAt,
-    }),
+  const initialToolInput =
+    journeyKind === "workspace-file-artifact"
+      ? {
+          reference: identities.readInputRef,
+          requestId: identities.readRequestId,
+          content: serializeScopedNativeToolInput(WORKSPACE_READ_TEXT_TOOL_ID, {
+            contractVersion: 1,
+            relativePath: "actestra-input.txt",
+            maximumBytes: MAX_GENERAL_WORKER_SEND_CONTENT_BYTES,
+          }),
+        }
+      : {
+          reference: identities.toolInputRef,
+          requestId: identities.requestId,
+          content: serializeScopedNativeToolInput(TASK_OUTPUT_WRITE_TEXT_TOOL_ID, {
+            contractVersion: 1,
+            relativePath: "result.md",
+            mediaType: "text/markdown; charset=utf-8",
+            content: outputContent,
+          }),
+        };
+  const common = {
     workspace: Object.freeze({
       id: identities.workspaceId,
       name: nativeContext.displayName,
@@ -275,28 +302,47 @@ function registrationFor(
       content: intent.prompt,
       createdAt,
     }),
-    toolInputReference: Object.freeze({
-      contractVersion: WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
-      reference: identities.toolInputRef,
-      kind: "tool-input",
-      owner: Object.freeze({
-        workspaceId: identities.workspaceId,
+  } as const;
+  const initialInputReference = Object.freeze({
+    contractVersion: WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
+    reference: initialToolInput.reference,
+    kind: "tool-input",
+    owner: Object.freeze({
+      workspaceId: identities.workspaceId,
+      taskId: identities.taskId,
+      sessionId: identities.sessionId,
+      workerId: identities.workerId,
+      requestId: initialToolInput.requestId,
+      grantId: identities.grantId,
+    }),
+    classification: "task-content",
+    mediaType: "text/plain; charset=utf-8",
+    content: initialToolInput.content,
+    createdAt,
+  });
+  if (journeyKind === "workspace-file-artifact") {
+    return Object.freeze({
+      ...common,
+      link: Object.freeze({
+        contractVersion: AIONUI_GENERAL_WORK_CONTRACT_VERSION,
+        conversationHash,
         taskId: identities.taskId,
-        sessionId: identities.sessionId,
-        workerId: identities.workerId,
-        requestId: identities.requestId,
-        grantId: identities.grantId,
+        journeyKind: "workspace-file-artifact",
+        createdAt,
       }),
-      classification: "task-content",
-      mediaType: "text/plain; charset=utf-8",
-      content: JSON.stringify({
-        contractVersion: 1,
-        relativePath: "result.md",
-        mediaType: "text/markdown; charset=utf-8",
-        content: outputContent,
-      }),
+      readInputReference: initialInputReference,
+    });
+  }
+  return Object.freeze({
+    ...common,
+    link: Object.freeze({
+      contractVersion: AIONUI_GENERAL_WORK_CONTRACT_VERSION,
+      conversationHash,
+      taskId: identities.taskId,
+      journeyKind: "prompt-artifact",
       createdAt,
     }),
+    toolInputReference: initialInputReference,
   });
 }
 
@@ -567,7 +613,7 @@ export class AionUiGeneralWorkJourneyService {
         const identities = identitiesForTask(task);
         assertPreparedJourneyGraph(task, graph, identities);
         const prompt = await this.resolvePrompt(identities);
-        await this.startPreparedJourney(task, graph, identities, prompt);
+        await this.startPreparedJourney(task, graph, identities, prompt, link.journeyKind);
         started += 1;
       } catch {
         failed += 1;
@@ -610,6 +656,7 @@ export class AionUiGeneralWorkJourneyService {
     let graph = await this.config.persistence.loadDomainGraph();
     let task = graph.tasks.find((candidate) => candidate.id === identities.taskId);
     const link = links.find((candidate) => candidate.taskId === identities.taskId);
+    const journeyKind = intent.journeyKind ?? "prompt-artifact";
 
     if (link === undefined) {
       if (links.length >= AIONUI_GENERAL_WORK_MAX_JOURNEYS_PER_CONVERSATION) {
@@ -632,6 +679,12 @@ export class AionUiGeneralWorkJourneyService {
     if (task === undefined) {
       throw new Error("AionUI general-work task registration is incomplete");
     }
+    if (link !== undefined && link.journeyKind !== journeyKind) {
+      throw new AionUiGeneralWorkJourneyServiceError(
+        "task-conflict",
+        "AionUI submission identity conflicts with its durable journey kind",
+      );
+    }
 
     assertPreparedJourneyGraph(task, graph, identities);
 
@@ -651,7 +704,7 @@ export class AionUiGeneralWorkJourneyService {
         "AionUI submission identity conflicts with its durable prompt",
       );
     }
-    return this.startPreparedJourney(task, graph, identities, prompt);
+    return this.startPreparedJourney(task, graph, identities, prompt, journeyKind);
   }
 
   private async resolvePrompt(identities: JourneyIdentities): Promise<string> {
@@ -683,6 +736,7 @@ export class AionUiGeneralWorkJourneyService {
     graph: DomainGraph,
     identities: JourneyIdentities,
     prompt: string,
+    journeyKind: AionUiGeneralWorkJourneyKind,
   ): Promise<AionUiGeneralWorkProjection> {
     if (this.activeJourneys.has(task.id)) {
       throw new AionUiGeneralWorkJourneyServiceError(
@@ -690,7 +744,11 @@ export class AionUiGeneralWorkJourneyService {
         "AionUI general-work task already has an active supervised Worker",
       );
     }
-    const adapter = await this.config.launchWorker({ requestId: identities.requestId });
+    const adapter = await this.config.launchWorker({
+      journeyKind,
+      readRequestId: identities.readRequestId,
+      requestId: identities.requestId,
+    });
     const supervisor = new AgentAdapterSupervisor(adapter, this.config.clock, {
       expectedAdapterKind: GENERAL_WORKER_ADAPTER_KIND,
       requiredCapabilities: ["messages", "cancellation", "heartbeats", "tool-results"],
@@ -725,7 +783,11 @@ export class AionUiGeneralWorkJourneyService {
           try {
             const activeRequest = supervisor.activeToolRequest(identities.sessionId);
             if (activeRequest !== undefined) {
-              if (activeRequest !== identities.requestId) {
+              const expectedRequest =
+                journeyKind === "workspace-file-artifact"
+                  ? identities.readRequestId
+                  : identities.requestId;
+              if (activeRequest !== expectedRequest) {
                 throw new Error("General Worker requested an unexpected tool identity");
               }
               const grant = await this.config.persistence.getActiveWorkspaceGrant(
@@ -733,8 +795,8 @@ export class AionUiGeneralWorkJourneyService {
               );
               if (grant === null || grant.grantId !== identities.grantId) {
                 const now = this.config.clock.now();
-                await supervisor.resolveTool(identities.requestId, {
-                  requestId: identities.requestId,
+                await supervisor.resolveTool(activeRequest, {
+                  requestId: activeRequest,
                   status: "failed",
                   startedAt: now,
                   completedAt: now,
@@ -744,6 +806,87 @@ export class AionUiGeneralWorkJourneyService {
                 });
                 await supervisor.awaitTerminal(identities.sessionId);
                 await coordinator.finalizeAttempt(identities.sessionId);
+                return;
+              }
+              if (journeyKind === "workspace-file-artifact") {
+                const read = await coordinator.invokeScopedToolStep({
+                  invocation: {
+                    sessionId: identities.sessionId,
+                    requestId: identities.readRequestId,
+                    inputRef: identities.readInputRef,
+                  },
+                });
+                if (read.result.status !== "succeeded") {
+                  await supervisor.awaitTerminal(identities.sessionId);
+                  await coordinator.finalizeAttempt(identities.sessionId);
+                  return;
+                }
+                if (read.result.outputRef === undefined) {
+                  throw new Error("Workspace text read completed without owned content");
+                }
+                const source = await this.config.persistence.resolveContentReference({
+                  contractVersion: WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
+                  reference: read.result.outputRef,
+                  kind: "tool-output",
+                  owner: {
+                    workspaceId: identities.workspaceId,
+                    taskId: identities.taskId,
+                    sessionId: identities.sessionId,
+                    workerId: identities.workerId,
+                    requestId: identities.readRequestId,
+                    grantId: identities.grantId,
+                  },
+                  resolvedAt: this.config.clock.now(),
+                  consume: false,
+                });
+                if (
+                  source.metadata.classification !== "workspace-content" ||
+                  source.metadata.mediaType !== "text/plain; charset=utf-8"
+                ) {
+                  throw new Error("Workspace text read returned unsupported content authority");
+                }
+                await supervisor.send(identities.sessionId, {
+                  messageId: identities.messageId,
+                  content: source.content,
+                  sentAt: this.config.clock.now(),
+                });
+                const writeInput = adapter.activeToolInput(identities.requestId);
+                if (writeInput === undefined) {
+                  throw new Error("General Worker did not provide its private task-output input");
+                }
+                const serializedWriteInput = serializeScopedNativeToolInput(
+                  TASK_OUTPUT_WRITE_TEXT_TOOL_ID,
+                  writeInput,
+                );
+                await this.config.persistence.storeContentReference({
+                  contractVersion: WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
+                  reference: identities.toolInputRef,
+                  kind: "tool-input",
+                  owner: {
+                    workspaceId: identities.workspaceId,
+                    taskId: identities.taskId,
+                    sessionId: identities.sessionId,
+                    workerId: identities.workerId,
+                    requestId: identities.requestId,
+                    grantId: identities.grantId,
+                  },
+                  classification: "task-content",
+                  mediaType: "text/plain; charset=utf-8",
+                  content: serializedWriteInput,
+                  createdAt: this.config.clock.now(),
+                });
+                await coordinator.invokeScopedTool({
+                  invocation: {
+                    sessionId: identities.sessionId,
+                    requestId: identities.requestId,
+                    inputRef: identities.toolInputRef,
+                  },
+                  artifact: {
+                    artifactId: identities.artifactId,
+                    kind: "file",
+                    label: "Actestra file result",
+                  },
+                });
                 return;
               }
               await coordinator.invokeScopedTool({

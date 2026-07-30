@@ -1,7 +1,10 @@
 // @vitest-environment node
 
 import { describe, expect, it } from "vitest";
-import { createAionUiGeneralWorkRegistration } from "../fixtures/aionuiGeneralWork";
+import {
+  createAionUiGeneralWorkRegistration,
+  createAionUiWorkspaceFileRegistration,
+} from "../fixtures/aionuiGeneralWork";
 
 describe("AionUI general-work journey identity", () => {
   it("derives a stable metadata-only conversation hash", async () => {
@@ -22,6 +25,29 @@ describe("AionUI general-work journey identity", () => {
 });
 
 describe("AionUI general-work intent", () => {
+  it("maps the preserved commands to prompt and workspace-file journeys", async () => {
+    const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
+      string,
+      unknown
+    >;
+
+    expect(compatibility.parseAionUiGeneralWorkCommand).toBeTypeOf("function");
+    const parseCommand = compatibility.parseAionUiGeneralWorkCommand as (value: string) => unknown;
+    expect(parseCommand("/actestra summarize this task")).toEqual({
+      prompt: "summarize this task",
+      journeyKind: "prompt-artifact",
+    });
+    expect(parseCommand("/actestra file review the reserved input")).toEqual({
+      prompt: "review the reserved input",
+      journeyKind: "workspace-file-artifact",
+    });
+    expect(parseCommand("/actestra file")).toEqual({
+      prompt: "",
+      journeyKind: "workspace-file-artifact",
+    });
+    expect(parseCommand("ordinary native AionUI message")).toBeNull();
+  });
+
   it("accepts one bounded typed submission", async () => {
     const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
       string,
@@ -35,6 +61,15 @@ describe("AionUI general-work intent", () => {
         nativeConversationId: "conversation-native-1",
         submissionId: "submission-native-1",
         prompt: "Summarize the approved workspace file.",
+      }),
+    ).not.toThrow();
+    expect(() =>
+      (compatibility.assertAionUiGeneralWorkIntent as (value: unknown) => void)({
+        contractVersion: 1,
+        nativeConversationId: "conversation-native-1",
+        submissionId: "submission-native-file-1",
+        prompt: "Process the reserved workspace text.",
+        journeyKind: "workspace-file-artifact",
       }),
     ).not.toThrow();
   });
@@ -58,6 +93,7 @@ describe("AionUI general-work intent", () => {
       { ...valid, submissionId: "s".repeat(129) },
       { ...valid, prompt: "p".repeat(16_385) },
       { ...valid, prompt: "unsafe\u0000prompt" },
+      { ...valid, journeyKind: "arbitrary-shell" },
     ]) {
       expect(() => assertIntent(invalid)).toThrowError(
         expect.objectContaining({ code: "invalid-intent" }),
@@ -78,6 +114,56 @@ describe("AionUI general-work authoritative registration", () => {
     expect(() =>
       (compatibility.assertAionUiGeneralWorkRegistration as (value: unknown) => void)(registration),
     ).not.toThrow();
+  });
+
+  it("accepts only the initial input field selected by the journey kind", async () => {
+    const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
+      string,
+      unknown
+    >;
+    const assertRegistration = compatibility.assertAionUiGeneralWorkRegistration as (
+      value: unknown,
+    ) => void;
+    const prompt = createAionUiGeneralWorkRegistration("prompt-kind");
+    const file = createAionUiWorkspaceFileRegistration("file-kind");
+
+    expect(() => assertRegistration(prompt)).not.toThrow();
+    expect(() => assertRegistration(file)).not.toThrow();
+  });
+
+  it("rejects mismatched, ambiguous, or missing initial input fields", async () => {
+    const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
+      string,
+      unknown
+    >;
+    const assertRegistration = compatibility.assertAionUiGeneralWorkRegistration as (
+      value: unknown,
+    ) => void;
+    const prompt = createAionUiGeneralWorkRegistration("invalid-prompt-kind");
+    const file = createAionUiWorkspaceFileRegistration("invalid-file-kind");
+    const { readInputReference, ...fileWithoutInput } = file;
+    const { toolInputReference: _toolInputReference, ...promptWithoutInput } = prompt;
+
+    for (const invalid of [
+      {
+        ...prompt,
+        link: { ...prompt.link, journeyKind: "workspace-file-artifact" },
+      },
+      {
+        ...file,
+        link: { ...file.link, journeyKind: "prompt-artifact" },
+      },
+      {
+        ...prompt,
+        readInputReference,
+      },
+      fileWithoutInput,
+      promptWithoutInput,
+    ]) {
+      expect(() => assertRegistration(invalid)).toThrowError(
+        expect.objectContaining({ code: "invalid-registration" }),
+      );
+    }
   });
 
   it("rejects raw native identity and non-initial domain state", async () => {

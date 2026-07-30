@@ -1,5 +1,10 @@
 import { assertAgentToolResult, type AgentToolResult } from "../core/agentAdapter";
 import { correlationId } from "../core/domain";
+import {
+  TASK_OUTPUT_WRITE_TEXT_TOOL_ID,
+  parseScopedNativeToolInput,
+  type TaskOutputWriteTextInput,
+} from "../core/scopedNativeTools";
 
 export const GENERAL_WORKER_PROTOCOL_VERSION = 1 as const;
 export const GENERAL_WORKER_IMPLEMENTATION_VERSION = "0.1.0" as const;
@@ -16,9 +21,12 @@ export const GENERAL_WORKER_EXECUTION_MODES = [
   "tool-fixture",
   "workspace-read-text-fixture",
   "task-output-write-text-fixture",
+  "workspace-read-then-task-output-write-fixture",
 ] as const;
 export const MAX_GENERAL_WORKER_MESSAGE_BYTES = 256 * 1024;
 export const MAX_GENERAL_WORKER_PROMPT_BYTES = 64 * 1024;
+export const MAX_GENERAL_WORKER_SEND_CONTENT_BYTES = 64 * 1024;
+export const MAX_GENERAL_WORKER_PRIVATE_TOOL_INPUT_BYTES = 128 * 1024;
 
 export type GeneralWorkerCapability = (typeof GENERAL_WORKER_CAPABILITIES)[number];
 export type GeneralWorkerExecutionMode = (typeof GENERAL_WORKER_EXECUTION_MODES)[number];
@@ -107,6 +115,7 @@ export type GeneralWorkerEventPayload =
       readonly callId: string;
       readonly toolName: string;
       readonly summary: string;
+      readonly input?: TaskOutputWriteTextInput;
     }
   | {
       readonly type: "tool-result-accepted";
@@ -327,7 +336,7 @@ export function assertGeneralWorkerRequest(value: unknown): asserts value is Gen
       assertIdentifier(value.payload.attemptToken, "General Worker send.attemptToken");
       assertString(value.payload.content, "General Worker send.content", {
         allowEmpty: true,
-        maximumBytes: MAX_GENERAL_WORKER_PROMPT_BYTES,
+        maximumBytes: MAX_GENERAL_WORKER_SEND_CONTENT_BYTES,
       });
       return;
     case "resolve-tool":
@@ -389,7 +398,7 @@ function assertEventPayload(value: unknown): asserts value is GeneralWorkerEvent
     case "tool-requested":
       assertExactKeys(
         value,
-        ["type", "callId", "toolName", "summary"],
+        ["type", "callId", "toolName", "summary", "input"],
         "General Worker tool-requested event",
       );
       assertIdentifier(value.callId, "General Worker tool-requested.callId");
@@ -399,6 +408,22 @@ function assertEventPayload(value: unknown): asserts value is GeneralWorkerEvent
       assertString(value.summary, "General Worker tool-requested.summary", {
         maximumBytes: 4 * 1024,
       });
+      if (value.input !== undefined) {
+        if (value.toolName !== TASK_OUTPUT_WRITE_TEXT_TOOL_ID) {
+          throw new Error("General Worker private tool input is allowed only for write-text");
+        }
+        const serializedInput = JSON.stringify(value.input);
+        if (
+          typeof serializedInput !== "string" ||
+          new TextEncoder().encode(serializedInput).byteLength >
+            MAX_GENERAL_WORKER_PRIVATE_TOOL_INPUT_BYTES
+        ) {
+          throw new Error(
+            `General Worker private tool input exceeds ${MAX_GENERAL_WORKER_PRIVATE_TOOL_INPUT_BYTES} bytes`,
+          );
+        }
+        parseScopedNativeToolInput(value.toolName, serializedInput);
+      }
       return;
     case "tool-result-accepted":
       assertExactKeys(

@@ -211,11 +211,15 @@ function verifyPreparedProfile(profilePath) {
     enableForeignKeyConstraints: true,
   });
   try {
-    if (databaseValue(database, "PRAGMA user_version") !== 8) {
-      fail("prepare-restart did not create schema version 8");
+    if (databaseValue(database, "PRAGMA user_version") !== 9) {
+      fail("prepare-restart did not create schema version 9");
     }
     if (
       databaseValue(database, "SELECT COUNT(*) FROM aionui_general_work_journeys") !== 1 ||
+      databaseValue(
+        database,
+        "SELECT COUNT(*) FROM aionui_general_work_journeys WHERE journey_kind = 'workspace-file-artifact'",
+      ) !== 1 ||
       databaseValue(database, "SELECT COUNT(*) FROM tasks WHERE state = 'ready'") !== 1 ||
       databaseValue(database, "SELECT COUNT(*) FROM general_work_checkpoints") !== 0
     ) {
@@ -239,8 +243,12 @@ function verifyTerminalProfile(profilePath, expected) {
       `SELECT COUNT(*) FROM core_events WHERE type = '${expected.eventType}'`,
     );
     if (
-      databaseValue(database, "PRAGMA user_version") !== 8 ||
+      databaseValue(database, "PRAGMA user_version") !== 9 ||
       databaseValue(database, "SELECT COUNT(*) FROM aionui_general_work_journeys") !== 1 ||
+      databaseValue(
+        database,
+        `SELECT COUNT(*) FROM aionui_general_work_journeys WHERE journey_kind = '${expected.journeyKind}'`,
+      ) !== 1 ||
       databaseValue(database, `SELECT COUNT(*) FROM tasks WHERE state = '${expected.state}'`) !==
         1 ||
       databaseValue(
@@ -261,6 +269,11 @@ function verifyTerminalProfile(profilePath, expected) {
     ) {
       fail(`terminal profile does not contain exact ${expected.state} authority evidence`);
     }
+    const taskId = databaseValue(database, "SELECT task_id FROM aionui_general_work_journeys");
+    if (typeof taskId !== "string" || taskId.length === 0) {
+      fail("terminal profile has no exact General Work task identity");
+    }
+    return taskId;
   } finally {
     database.close();
   }
@@ -278,6 +291,9 @@ try {
 
   const restartProfile = path.join(smokeRoot, "restart-profile");
   const restartWorkspace = path.join(smokeRoot, "restart-workspace");
+  const restartSourceText = "Packaged representative workspace-file source.\n";
+  fs.mkdirSync(restartWorkspace, { recursive: true });
+  fs.writeFileSync(path.join(restartWorkspace, "actestra-input.txt"), restartSourceText, "utf8");
   const prepared = await runScenario(
     "prepare-restart",
     restartProfile,
@@ -297,11 +313,23 @@ try {
   if (recovered.status !== "completed" || recovered.artifactCount !== 1) {
     fail("recover-restart returned the wrong terminal evidence");
   }
-  verifyTerminalProfile(restartProfile, {
+  const recoveredTaskId = verifyTerminalProfile(restartProfile, {
     state: "completed",
     eventType: "task.completed",
     artifactCount: 1,
+    journeyKind: "workspace-file-artifact",
   });
+  const recoveredOutput = path.join(
+    restartWorkspace,
+    ".actestra",
+    "task-output",
+    recoveredTaskId,
+    "result.md",
+  );
+  requireFile(recoveredOutput, "Recovered representative file artifact");
+  if (!fs.readFileSync(recoveredOutput, "utf8").includes(restartSourceText)) {
+    fail("Recovered representative file artifact does not contain the owned source");
+  }
 
   for (const scenario of ["denial", "cancellation"]) {
     const profilePath = path.join(smokeRoot, `${scenario}-profile`);
@@ -309,8 +337,18 @@ try {
     const summary = await runScenario(scenario, profilePath, workspacePath, packagedExecutable);
     const expected =
       scenario === "denial"
-        ? { state: "failed", eventType: "task.failed", artifactCount: 0 }
-        : { state: "cancelled", eventType: "task.cancelled", artifactCount: 0 };
+        ? {
+            state: "failed",
+            eventType: "task.failed",
+            artifactCount: 0,
+            journeyKind: "prompt-artifact",
+          }
+        : {
+            state: "cancelled",
+            eventType: "task.cancelled",
+            artifactCount: 0,
+            journeyKind: "prompt-artifact",
+          };
     if (summary.status !== expected.state) {
       fail(`${scenario} returned the wrong terminal status`);
     }
@@ -319,7 +357,7 @@ try {
 
   succeeded = true;
   console.info(
-    "Packaged target-app GW-P4.6 smoke passed: prepared restart recovery, workspace-grant denial, cancellation, finalized checkpoints, events, artifacts, and terminal evidence are exact.",
+    "Packaged target-app GW-P4.6 smoke passed: representative workspace-file restart recovery, workspace-grant denial, cancellation, finalized checkpoints, events, artifacts, and terminal evidence are exact.",
   );
 } catch (error) {
   console.error(
