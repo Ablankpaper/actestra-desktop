@@ -25,12 +25,14 @@ export const AIONUI_GENERAL_WORK_MAX_JOURNEYS_PER_CONVERSATION = 100;
 export const AIONUI_GENERAL_WORK_JOURNEY_KINDS = [
   "prompt-artifact",
   "workspace-file-artifact",
+  "local-research-artifact",
 ] as const;
 
 const MAX_NATIVE_CONVERSATION_ID_LENGTH = 256;
 const MAX_SUBMISSION_ID_LENGTH = 128;
 const AIONUI_GENERAL_WORK_COMMAND_RE = /^\/actestra(?:\s+([\s\S]*))?$/iu;
 const AIONUI_GENERAL_WORK_FILE_COMMAND_RE = /^file(?:\s+([\s\S]*))?$/iu;
+const AIONUI_GENERAL_WORK_RESEARCH_COMMAND_RE = /^research(?:\s+([\s\S]*))?$/iu;
 const INTENT_KEYS = [
   "contractVersion",
   "nativeConversationId",
@@ -114,6 +116,13 @@ export function parseAionUiGeneralWorkCommand(value: string): AionUiGeneralWorkC
       journeyKind: "workspace-file-artifact",
     });
   }
+  const researchCommand = body.match(AIONUI_GENERAL_WORK_RESEARCH_COMMAND_RE);
+  if (researchCommand !== null) {
+    return Object.freeze({
+      prompt: (researchCommand[1] ?? "").trim(),
+      journeyKind: "local-research-artifact",
+    });
+  }
   return Object.freeze({
     prompt: body,
     journeyKind: "prompt-artifact",
@@ -152,9 +161,17 @@ export interface AionUiWorkspaceFileArtifactRegistration extends AionUiGeneralWo
   readonly readInputReference: StoreContentReferenceInput;
 }
 
+export interface AionUiLocalResearchArtifactRegistration extends AionUiGeneralWorkRegistrationBase {
+  readonly link: AionUiGeneralWorkLink & {
+    readonly journeyKind: "local-research-artifact";
+  };
+  readonly readInputReference: StoreContentReferenceInput;
+}
+
 export type AionUiGeneralWorkRegistration =
   | AionUiPromptArtifactRegistration
-  | AionUiWorkspaceFileArtifactRegistration;
+  | AionUiWorkspaceFileArtifactRegistration
+  | AionUiLocalResearchArtifactRegistration;
 
 export interface AionUiGeneralWorkArtifactProjection {
   readonly artifactId: ArtifactId;

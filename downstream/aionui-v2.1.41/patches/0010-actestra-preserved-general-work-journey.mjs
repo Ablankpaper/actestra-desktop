@@ -695,7 +695,7 @@ replaceOnce(
         });
       }
       const requestIds =
-        journeyKind === 'workspace-file-artifact'
+        journeyKind !== 'prompt-artifact'
           ? [readRequestId, requestId]
           : [requestId];
       let requestIndex = 0;
@@ -706,9 +706,11 @@ replaceOnce(
           executionMode:
             generalWorkSmokeConfig?.scenario === 'cancellation'
               ? 'hold'
-              : journeyKind === 'workspace-file-artifact'
-                ? 'workspace-read-then-task-output-write-fixture'
-                : 'task-output-write-text-fixture',
+              : journeyKind === 'local-research-artifact'
+                ? 'local-research-artifact-fixture'
+                : journeyKind === 'workspace-file-artifact'
+                  ? 'workspace-read-then-task-output-write-fixture'
+                  : 'task-output-write-text-fixture',
           newToolRequestId: () => {
             const nextRequestId = requestIds[requestIndex];
             requestIndex += 1;
@@ -919,13 +921,13 @@ contextBridge.exposeInMainWorld('electronAPI', {`,
 replaceOnce(
   "tests/unit/actestra/persistenceUtilityClient.test.ts",
   `keeps AionUI shadow, approval, and recovery authority behind schema v7 utility IPC`,
-  `keeps AionUI shadow, approval, recovery, and journey authority behind schema v9 utility IPC`,
+  `keeps AionUI shadow, approval, recovery, and journey authority behind schema v10 utility IPC`,
 );
 
 replaceOnce(
   "tests/unit/actestra/persistenceUtilityClient.test.ts",
   `expect(client.schemaVersion).toBe(7);`,
-  `expect(client.schemaVersion).toBe(9);`,
+  `expect(client.schemaVersion).toBe(10);`,
 );
 
 writeNew(
@@ -1034,6 +1036,7 @@ const SMOKE_SCENARIOS = [
   'recover-restart',
   'denial',
   'cancellation',
+  'local-research',
 ] as const;
 
 export type ActestraGeneralWorkSmokeScenario =
@@ -1100,6 +1103,9 @@ function prompt(scenario: ActestraGeneralWorkSmokeScenario): string {
   if (scenario === 'denial') {
     return 'Exercise the bounded Actestra workspace grant denial.';
   }
+  if (scenario === 'local-research') {
+    return 'Compare the approved local source notes.';
+  }
   return 'Create the restart-safe Actestra smoke artifact.';
 }
 
@@ -1130,6 +1136,8 @@ export async function runActestraGeneralWorkSmoke(
     prompt: prompt(config.scenario),
     ...(restartJourney
       ? { journeyKind: 'workspace-file-artifact' as const }
+      : config.scenario === 'local-research'
+        ? { journeyKind: 'local-research-artifact' as const }
       : {}),
   } as const;
 
@@ -1223,6 +1231,43 @@ export async function runActestraGeneralWorkSmoke(
   const projection = oneProjection(
     await service.list(config.nativeConversationId),
   );
+  if (config.scenario === 'local-research') {
+    const artifact = projection.artifacts[0];
+    if (
+      projection.status !== 'completed' ||
+      projection.canCancel ||
+      projection.artifacts.length !== 1 ||
+      artifact === undefined ||
+      artifact.kind !== 'file' ||
+      artifact.label !== 'Actestra local research brief' ||
+      artifact.state !== 'available'
+    ) {
+      throw new Error(
+        'The local-research smoke did not persist one completed file artifact',
+      );
+    }
+    const preview = await service.preview(
+      config.nativeConversationId,
+      projection.taskId,
+      artifact.artifactId,
+    );
+    if (
+      preview.label !== 'Actestra local research brief' ||
+      preview.mediaType !== 'text/markdown; charset=utf-8' ||
+      !preview.content.includes('# Actestra local research brief') ||
+      !preview.content.includes(\`Instruction: \${prompt(config.scenario)}\`)
+    ) {
+      throw new Error(
+        'The local-research smoke did not resolve the exact owned Markdown Preview',
+      );
+    }
+    return Object.freeze({
+      scenario: config.scenario,
+      status: 'completed',
+      taskCount: 1,
+      artifactCount: 1,
+    });
+  }
   if (
     projection.status !== 'failed' ||
     projection.canCancel ||
@@ -1579,7 +1624,7 @@ export function useActestraGeneralWork(conversationId: string | undefined) {
         nativeConversationId: targetConversationId,
         submissionId: submissionId(),
         prompt,
-        ...(journeyKind === 'workspace-file-artifact'
+        ...(journeyKind !== 'prompt-artifact'
           ? { journeyKind }
           : {}),
       });
@@ -2022,7 +2067,14 @@ const zeroRecovery = Promise.resolve({
   failed: 0,
 });
 
-function config(scenario: 'prepare-restart' | 'recover-restart' | 'denial' | 'cancellation') {
+function config(
+  scenario:
+    | 'prepare-restart'
+    | 'recover-restart'
+    | 'denial'
+    | 'cancellation'
+    | 'local-research',
+) {
   return {
     scenario,
     workspaceRoot: path.resolve('smoke-workspace'),
@@ -2135,6 +2187,61 @@ describe('Actestra target-app General Work smoke contract', () => {
       status: 'completed',
       artifactCount: 1,
     });
+  });
+
+  it('requires one completed local-research artifact and validates its owned Preview', async () => {
+    const service = {
+      submit: vi.fn(async () => ({
+        taskId: 'task-local-research-smoke',
+        canCancel: true,
+      })),
+      waitForIdle: vi.fn(async () => undefined),
+      list: vi.fn(async () => [
+        {
+          taskId: 'task-local-research-smoke',
+          status: 'completed',
+          canCancel: false,
+          artifacts: [
+            {
+              artifactId: 'artifact-local-research-smoke',
+              kind: 'file',
+              label: 'Actestra local research brief',
+              state: 'available',
+            },
+          ],
+        },
+      ]),
+      preview: vi.fn(async () => ({
+        label: 'Actestra local research brief',
+        mediaType: 'text/markdown; charset=utf-8',
+        content:
+          '# Actestra local research brief\\n\\n' +
+          'Instruction: Compare the approved local source notes.\\n',
+      })),
+    } as unknown as AionUiGeneralWorkJourneyService;
+
+    await expect(
+      runActestraGeneralWorkSmoke(
+        config('local-research'),
+        service,
+        zeroRecovery,
+      ),
+    ).resolves.toEqual({
+      scenario: 'local-research',
+      status: 'completed',
+      taskCount: 1,
+      artifactCount: 1,
+    });
+    expect(service.submit).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        journeyKind: 'local-research-artifact',
+      }),
+    );
+    expect(service.preview).toHaveBeenCalledExactlyOnceWith(
+      'conversation-aionui-smoke',
+      'task-local-research-smoke',
+      'artifact-local-research-smoke',
+    );
   });
 });
 `,
@@ -2250,6 +2357,39 @@ describe('Actestra preserved AionUI general-work hook', () => {
       submissionId: expect.stringMatching(/^submission-aionui-/u),
       prompt: 'Review the reserved workspace text',
       journeyKind: 'workspace-file-artifact',
+    });
+  });
+
+  it('submits the local-research command as a closed local-research journey', async () => {
+    mocks.list.mockResolvedValue({ status: 'ok', projections: [] });
+    mocks.submit.mockResolvedValue({
+      status: 'ok',
+      projection: {
+        ...projection,
+        status: 'completed',
+        canCancel: false,
+      },
+    });
+    const hook = renderHook(() =>
+      useActestraGeneralWork('conversation-local-research-journey'),
+    );
+    await waitFor(() => {
+      expect(mocks.list).toHaveBeenCalled();
+    });
+
+    await act(async () => {
+      await hook.result.current.run(
+        'Compare the approved local source notes',
+        'local-research-artifact',
+      );
+    });
+
+    expect(mocks.submit).toHaveBeenCalledExactlyOnceWith({
+      contractVersion: 1,
+      nativeConversationId: 'conversation-local-research-journey',
+      submissionId: expect.stringMatching(/^submission-aionui-/u),
+      prompt: 'Compare the approved local source notes',
+      journeyKind: 'local-research-artifact',
     });
   });
 
@@ -2764,6 +2904,14 @@ describe('Actestra preserved AionUI general-work client', () => {
     ).toEqual({
       prompt: 'review the reserved workspace text',
       journeyKind: 'workspace-file-artifact',
+    });
+    expect(
+      extractActestraGeneralWorkIntent(
+        '/actestra research compare the approved local source notes',
+      ),
+    ).toEqual({
+      prompt: 'compare the approved local source notes',
+      journeyKind: 'local-research-artifact',
     });
     expect(extractActestraGeneralWorkPrompt('ordinary native AionUI message')).toBeNull();
   });

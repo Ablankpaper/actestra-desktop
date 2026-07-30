@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-07-30
+- Amended: 2026-07-31
 - Clarifies:
   [ADR-0002](0002-single-source-of-truth.md),
   [ADR-0005](0005-sqlite-persistence-and-migrations.md),
@@ -32,13 +33,14 @@ native Preview surface, but must not become an unbounded renderer or
 ### Preserve the native entry and ordinary sends
 
 Downstream patch `0010-actestra-preserved-general-work-journey.mjs` adds
-versioned `/actestra <bounded text>` and
-`/actestra file <bounded instruction>` intents to the existing AionUI SendBox.
-The first selects the prompt-artifact journey. The second selects the
-workspace-file-artifact journey; it does not carry a path. Ordinary AionUI
-messages, attachments, quotes, routes, history, Agents, Assistants, Skills,
-MCP, scheduled tasks, Team, settings, and other retained flows remain
-unchanged.
+versioned `/actestra <bounded text>`,
+`/actestra file <bounded instruction>`, and
+`/actestra research <bounded instruction>` intents to the existing AionUI
+SendBox. They select the prompt-artifact, workspace-file-artifact, and
+local-research-artifact journeys respectively. Neither read-based intent
+carries a path. Ordinary AionUI messages, attachments, quotes, routes,
+history, Agents, Assistants, Skills, MCP, scheduled tasks, Team, settings, and
+other retained flows remain unchanged.
 
 The intent accepts text only and crosses a context-isolated preload bridge with
 strict submit, list, cancel, and preview operations. Electron main accepts
@@ -65,10 +67,12 @@ SQLite schema version 8 adds an AionUI journey-link table keyed by:
 
 The raw native identifier and raw AionCore response are not persisted.
 
-SQLite schema version 9 adds a required closed set of journey kinds:
-`prompt-artifact` or `workspace-file-artifact`. Existing schema-8 rows migrate
-to `prompt-artifact`; arbitrary kinds fail at both the compatibility contract
-and SQLite constraint.
+SQLite schema version 9 adds the required
+`prompt-artifact` and `workspace-file-artifact` journey kinds. Existing
+schema-8 rows migrate to `prompt-artifact`. Schema version 10 expands that
+exact closed set only with `local-research-artifact`; existing schema-9 values
+remain unchanged. Arbitrary kinds fail at both the compatibility contract and
+SQLite constraint.
 
 One `BEGIN IMMEDIATE` transaction registers the authoritative Workspace,
 active WorkspaceGrant, Task, Session, Worker, prompt content reference, initial
@@ -76,9 +80,11 @@ tool-input reference, and journey link. The prompt journey stores its
 create-only output input. The file journey stores only the fixed
 `actestra-input.txt` read input with a main-owned 64 KiB maximum aligned to the
 General Worker `send` bound; its later write input does not exist until the
-Worker processes the owned read result. Partial registration is forbidden.
-Exact duplicates are idempotent; changed kind, ownership, content, grant, or
-graph identity conflicts fail closed.
+Worker processes the owned read result. The local-research journey uses the
+same read-input authority but fixes its source to `actestra-research.txt`
+under the same maximum. Partial registration is forbidden. Exact duplicates
+are idempotent; changed kind, ownership, content, grant, or graph identity
+conflicts fail closed.
 
 ### Keep execution and artifacts Actestra-authoritative
 
@@ -107,10 +113,23 @@ intent and binding. A reserved file above 64 KiB fails at the read tool with
 stable `content-too-large` terminal evidence before source content crosses the
 Worker protocol.
 
-The first slice creates one bounded `result.md` task output. It is a
-deterministic General Worker fixture proving the complete product path, not a
-Goose integration, general shell, arbitrary filesystem API, or claim that all
-general-work fixtures are complete.
+The local-research journey reuses that exact two-tool sequence with a distinct
+closed Worker mode:
+
+1. main reads only `actestra-research.txt` through the existing bounded
+   workspace-read tool;
+2. the same isolated Worker converts at most 32 non-empty local evidence lines
+   into a deterministic Markdown brief;
+3. main persists the private create-only input under the exact write request;
+   and
+4. the accepted task-output tool creates `research.md` with Artifact kind
+   `file` and label `Actestra local research brief`.
+
+The current slices create bounded `result.md` or `research.md` task outputs.
+The research path is one offline, main-owned local corpus fixture. It is not
+network research, generic retrieval, a model-quality claim, a Goose
+integration, general shell, arbitrary filesystem API, or evidence that every
+general-work fixture is complete.
 
 List and status projections are rebuilt from the Actestra domain graph,
 checkpoint, event, incident, and Artifact records. Cancellation targets only
@@ -137,11 +156,12 @@ Startup retains two ordered recovery steps:
 1. after schema and scoped-tool readiness, GW-P4.5 reconciles interrupted
    schema-7 attempts before the native window is created; and
 2. after the native backend and preserved window are ready, GW-P4.6 lists
-   schema-9 linked Tasks that are still `ready` and have no durable attempt,
+   schema-10 linked Tasks that are still `ready` and have no durable attempt,
    then starts them from their persisted prompt, grant, journey kind, and
-   kind-selected initial input. A file journey resumes from its persisted read
-   input; after the Worker processes that owned content, main persists the new
-   private write input before invoking create-only output.
+   kind-selected initial input. File and local-research journeys resume from
+   their respective persisted read input; after the Worker processes that
+   owned content, main persists the new private write input before invoking
+   create-only output.
 
 Prepared recovery never re-reads the native conversation or silently changes
 the stored workspace authority. A failed recovery is counted and reported; it
@@ -150,7 +170,7 @@ state.
 
 ### Keep target-app smoke explicit and non-production
 
-The materialized desktop admits four fixed smoke scenarios only when both
+The materialized desktop admits five fixed smoke scenarios only when both
 `ACTESTRA_E2E_TEST=1` and a recognized
 `ACTESTRA_GENERAL_WORK_SMOKE_SCENARIO` are present. The smoke workspace must be
 an explicit absolute test path. The driver can prepare and recover one task,
@@ -162,10 +182,12 @@ from AionCore.
 The external target-app smoke launches the packaged macOS `Actestra.app`
 produced from the production-built materialized desktop, using only the exact
 AionCore version bundled under the frozen AionUI manifest pin. It verifies
-restart, denial, and cancellation through schema-9
+restart, bounded local research, denial, and cancellation through schema-10
 journey rows, finalized checkpoints, normalized events, Artifact counts,
 terminal attempt evidence, foreign keys, renderer readiness, and process
-cleanup.
+cleanup. The local-research scenario also resolves its exact owned,
+non-persisted Markdown Preview and verifies that source evidence is absent from
+normalized Core events.
 
 ## Consequences
 
@@ -175,6 +197,9 @@ cleanup.
   preserved AionUI application.
 - The representative file journey reads only one reserved filename and keeps
   its source out of the renderer and normalized events.
+- The local-research journey reads only one different reserved filename,
+  creates a reviewable Markdown brief, and reuses the same bounded Worker,
+  policy, audit, Artifact, Preview, and recovery authority.
 - Actestra remains the sole authority for the Task, grant, attempt, event,
   Artifact, audit, terminal evidence, and recovery state.
 - A renderer cannot choose a filesystem path or invoke a Worker/tool directly.
@@ -187,21 +212,23 @@ cleanup.
 
 - The first entry is an explicit `/actestra` command rather than a replacement
   for every native provider flow.
-- Both current paths create one deterministic Markdown artifact.
+- All three current paths create one deterministic Markdown artifact.
 - The representative file path accepts at most 64 KiB of source text even
   though the general workspace-read tool supports up to 1 MiB.
 - The loopback native-context read remains a compatibility dependency and must
   fail closed when AionCore is unavailable or incompatible.
-- Schema versions 8 and 9 are forward-only.
-- Research, writing, office, schedule, representative tool-failure and Worker
-  crash, and broader permission journeys remain later P4 acceptance work.
+- Schema versions 8 through 10 are forward-only.
+- General or network research, writing, office, schedule, representative
+  tool-failure and Worker crash, and broader permission journeys remain later
+  P4 acceptance work.
 
 ## Rejected alternatives
 
 ### Trust a workspace path submitted by the renderer
 
 Rejected because the renderer has no filesystem or authorization authority.
-The file journey uses one main-owned reserved filename instead.
+The file and local-research journeys each use one main-owned reserved filename
+instead.
 
 ### Persist the raw native conversation identifier
 

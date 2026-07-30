@@ -377,6 +377,120 @@ describe("AionUiGeneralWorkJourneyService", () => {
     }
   });
 
+  it("creates a local research brief from one main-owned source", async () => {
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "actestra-aionui-journey-service-test-"),
+    );
+    testDirectories.push(directory);
+    const persistence = (await openTestPersistenceUtility(directory)).client;
+    persistenceClients.push(persistence);
+    const workspaceRoot = path.join(directory, "workspace");
+    fs.mkdirSync(workspaceRoot);
+    const sourceText = "Alpha evidence\nBeta evidence\n";
+    fs.writeFileSync(path.join(workspaceRoot, "actestra-research.txt"), sourceText);
+    const clock = new DeterministicAgentClock(instant("2026-07-30T06:47:30.000Z"));
+    const nativeTools = createScopedNativeToolPlatform({ persistence, clock });
+    let workerEventSequence = 0;
+    const service = new AionUiGeneralWorkJourneyService({
+      persistence,
+      nativeTools,
+      clock,
+      nativeContext: {
+        resolve: async () => ({
+          rootPath: fs.realpathSync(workspaceRoot),
+          displayName: "AionUI local research workspace",
+        }),
+      },
+      launchWorker: async ({ journeyKind, requestId, readRequestId }) => {
+        expect(journeyKind).toBe("local-research-artifact");
+        const requestIds = [readRequestId, requestId];
+        let requestIndex = 0;
+        return (
+          await openTestGeneralWorker(clock, {
+            executionMode: "local-research-artifact-fixture",
+            newAttemptToken: () => "attempt-aionui-local-research-1",
+            newToolRequestId: () => requestIds[requestIndex++]!,
+            newEventId: () =>
+              eventId(`event-aionui-local-research-${String(++workerEventSequence)}`),
+          })
+        ).adapter;
+      },
+    });
+    const intent = {
+      contractVersion: 1,
+      nativeConversationId: "conversation-native-local-research-1",
+      submissionId: "submission-native-local-research-1",
+      prompt: "Compare the approved local source notes.",
+      journeyKind: "local-research-artifact",
+    } as const;
+
+    await expect(service.submit(intent)).resolves.toMatchObject({
+      status: "blocked",
+      canCancel: true,
+      artifacts: [],
+    });
+    await service.waitForIdle();
+
+    const [completed] = await service.list(intent.nativeConversationId);
+    expect(completed).toMatchObject({
+      status: "completed",
+      canCancel: false,
+      artifacts: [
+        {
+          kind: "file",
+          label: "Actestra local research brief",
+          state: "available",
+        },
+      ],
+    });
+    if (completed === undefined || completed.artifacts[0] === undefined) {
+      throw new Error("Expected the local research journey artifact");
+    }
+    const outputPath = path.join(
+      workspaceRoot,
+      ".actestra",
+      "task-output",
+      completed.taskId,
+      "research.md",
+    );
+    expect(fs.readFileSync(outputPath, "utf8")).toBe(
+      "# Actestra local research brief\n\n" +
+        "Instruction: Compare the approved local source notes.\n\n" +
+        "## Evidence notes\n\n" +
+        "- Alpha evidence\n" +
+        "- Beta evidence\n",
+    );
+    await expect(
+      service.preview(
+        intent.nativeConversationId,
+        completed.taskId,
+        completed.artifacts[0].artifactId,
+      ),
+    ).resolves.toMatchObject({
+      label: "Actestra local research brief",
+      mediaType: "text/markdown; charset=utf-8",
+      content: expect.stringContaining("## Evidence notes"),
+    });
+
+    const links = await persistence.listAionUiGeneralWorkJourneyLinks(
+      hashAionUiGeneralWorkConversation(intent.nativeConversationId),
+      10,
+    );
+    expect(links).toEqual([
+      expect.objectContaining({
+        taskId: completed.taskId,
+        journeyKind: "local-research-artifact",
+      }),
+    ]);
+    const graph = await persistence.loadDomainGraph();
+    const checkpoint = await persistence.getGeneralWorkCheckpoint(graph.sessions[0]!.id);
+    expect(checkpoint?.events.filter(({ type }) => type === "tool.requested")).toHaveLength(2);
+    const serializedEvents = JSON.stringify(checkpoint?.events);
+    for (const sourceLine of sourceText.split(/\r?\n/u).filter((line) => line.length > 0)) {
+      expect(serializedEvents).not.toContain(sourceLine);
+    }
+  });
+
   it("fails an oversized representative file before Worker transport without leaking content", async () => {
     const directory = fs.mkdtempSync(
       path.join(os.tmpdir(), "actestra-aionui-journey-service-test-"),
@@ -838,6 +952,143 @@ describe("AionUiGeneralWorkJourneyService", () => {
     const graph = await persistence.loadDomainGraph();
     const checkpoint = await persistence.getGeneralWorkCheckpoint(graph.sessions[0]!.id);
     expect(checkpoint?.events.filter(({ type }) => type === "tool.requested")).toHaveLength(2);
+  });
+
+  it("reopens persistence and recovers a prepared local-research journey without native replay", async () => {
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "actestra-aionui-journey-service-test-"),
+    );
+    testDirectories.push(directory);
+    const workspaceRoot = path.join(directory, "workspace");
+    fs.mkdirSync(workspaceRoot);
+    const sourceText = "Restart alpha evidence\nRestart beta evidence\n";
+    fs.writeFileSync(path.join(workspaceRoot, "actestra-research.txt"), sourceText);
+    const firstPersistence = (await openTestPersistenceUtility(directory)).client;
+    persistenceClients.push(firstPersistence);
+    const clock = new DeterministicAgentClock(instant("2026-07-30T06:58:00.000Z"));
+    const firstNativeTools = createScopedNativeToolPlatform({
+      persistence: firstPersistence,
+      clock,
+    });
+    const intent = {
+      contractVersion: 1,
+      nativeConversationId: "conversation-native-local-research-restart-1",
+      submissionId: "submission-native-local-research-restart-1",
+      prompt: "Recover the approved local source notes into a research brief.",
+      journeyKind: "local-research-artifact",
+    } as const;
+    const interrupted = new AionUiGeneralWorkJourneyService({
+      persistence: firstPersistence,
+      nativeTools: firstNativeTools,
+      clock,
+      nativeContext: {
+        resolve: async () => ({
+          rootPath: fs.realpathSync(workspaceRoot),
+          displayName: "AionUI local research restart workspace",
+        }),
+      },
+      launchWorker: async () => {
+        throw new Error("fixture restart before local research Worker launch");
+      },
+    });
+
+    await expect(interrupted.submit(intent)).rejects.toThrow(/fixture restart/u);
+    await expect(firstPersistence.listPreparedAionUiGeneralWorkJourneyLinks(10)).resolves.toEqual([
+      expect.objectContaining({
+        journeyKind: "local-research-artifact",
+      }),
+    ]);
+    await firstPersistence.close();
+    persistenceClients.splice(persistenceClients.indexOf(firstPersistence), 1);
+
+    const reopenedPersistence = (await openTestPersistenceUtility(directory)).client;
+    persistenceClients.push(reopenedPersistence);
+    const reopenedNativeTools = createScopedNativeToolPlatform({
+      persistence: reopenedPersistence,
+      clock,
+    });
+    let nativeContextReplayCount = 0;
+    let workerEventSequence = 0;
+    const recovered = new AionUiGeneralWorkJourneyService({
+      persistence: reopenedPersistence,
+      nativeTools: reopenedNativeTools,
+      clock,
+      nativeContext: {
+        resolve: async () => {
+          nativeContextReplayCount += 1;
+          throw new Error("local research recovery must not replay native workspace context");
+        },
+      },
+      launchWorker: async ({ journeyKind, requestId, readRequestId }) => {
+        expect(journeyKind).toBe("local-research-artifact");
+        const requestIds = [readRequestId, requestId];
+        let requestIndex = 0;
+        return (
+          await openTestGeneralWorker(clock, {
+            executionMode: "local-research-artifact-fixture",
+            newAttemptToken: () => "attempt-aionui-local-research-restart-1",
+            newToolRequestId: () => requestIds[requestIndex++]!,
+            newEventId: () =>
+              eventId(`event-aionui-local-research-restart-${String(++workerEventSequence)}`),
+          })
+        ).adapter;
+      },
+    });
+
+    await expect(recovered.recoverPrepared()).resolves.toEqual({
+      attempted: 1,
+      started: 1,
+      failed: 0,
+    });
+    await recovered.waitForIdle();
+    expect(nativeContextReplayCount).toBe(0);
+    const [completed] = await recovered.list(intent.nativeConversationId);
+    expect(completed).toMatchObject({
+      status: "completed",
+      canCancel: false,
+      artifacts: [
+        expect.objectContaining({
+          kind: "file",
+          label: "Actestra local research brief",
+          state: "available",
+        }),
+      ],
+    });
+    if (completed === undefined || completed.artifacts[0] === undefined) {
+      throw new Error("Expected the recovered local research journey");
+    }
+    const outputPath = path.join(
+      workspaceRoot,
+      ".actestra",
+      "task-output",
+      completed.taskId,
+      "research.md",
+    );
+    expect(fs.readFileSync(outputPath, "utf8")).toContain("- Restart alpha evidence");
+    await expect(
+      recovered.preview(
+        intent.nativeConversationId,
+        completed.taskId,
+        completed.artifacts[0].artifactId,
+      ),
+    ).resolves.toMatchObject({
+      label: "Actestra local research brief",
+      content: expect.stringContaining("- Restart beta evidence"),
+    });
+    const graph = await reopenedPersistence.loadDomainGraph();
+    const checkpoint = await reopenedPersistence.getGeneralWorkCheckpoint(graph.sessions[0]!.id);
+    expect(checkpoint).toMatchObject({
+      phase: "finalized",
+      attempt: {
+        state: "completed",
+        disposed: true,
+      },
+    });
+    expect(checkpoint?.events.filter(({ type }) => type === "tool.requested")).toHaveLength(2);
+    const serializedEvents = JSON.stringify(checkpoint?.events);
+    for (const sourceLine of sourceText.split(/\r?\n/u).filter((line) => line.length > 0)) {
+      expect(serializedEvents).not.toContain(sourceLine);
+    }
   });
 
   it("surfaces grant denial and create-only conflicts as terminal evidence", async () => {

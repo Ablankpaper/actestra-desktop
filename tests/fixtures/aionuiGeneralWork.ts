@@ -9,7 +9,10 @@ import {
   workspaceGrantId,
   workspaceId,
 } from "../../apps/desktop/src/core";
-import type { AionUiPromptArtifactRegistration } from "../../apps/desktop/src/compatibility/aionui";
+import type {
+  AionUiLocalResearchArtifactRegistration,
+  AionUiPromptArtifactRegistration,
+} from "../../apps/desktop/src/compatibility/aionui";
 import { GENERAL_WORKER_ADAPTER_KIND } from "../../apps/desktop/src/main/workers/generalWorkerProcessAdapter";
 
 export const AIONUI_GENERAL_WORK_FIXTURE_CONVERSATION_HASH =
@@ -139,4 +142,26 @@ export function createAionUiWorkspaceFileRegistration(
       }),
     },
   } as const;
+}
+
+export function createAionUiLocalResearchRegistration(
+  suffix = "1",
+  rootPath = fs.realpathSync(process.cwd()),
+): AionUiLocalResearchArtifactRegistration {
+  const registration = createAionUiWorkspaceFileRegistration(suffix, rootPath);
+  return {
+    ...registration,
+    link: {
+      ...registration.link,
+      journeyKind: "local-research-artifact",
+    },
+    readInputReference: {
+      ...registration.readInputReference,
+      content: JSON.stringify({
+        contractVersion: 1,
+        relativePath: "actestra-research.txt",
+        maximumBytes: 64 * 1024,
+      }),
+    },
+  };
 }

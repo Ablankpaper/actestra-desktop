@@ -4,7 +4,7 @@ Last updated: 2026-07-31
 
 ## Current phase
 
-### GW-P4.6 is accepted on main; the P4 exit gate remains pending
+### Local research passes its complete local gate; remote closure is pending
 
 Pull request 8 reached exact final head
 `3f85e13072f5fb13fb43c9dae94f992bb0b7fb9c` and squash merged F3.3 as
@@ -284,8 +284,8 @@ an accepted implementation slice. The broader representative P4 exit gate
 remains pending. No Goose, CrewAI, Eigent runtime, notarized candidate, release,
 deployment, distribution, or user acceptance is claimed.
 
-The first representative-file extension is implemented and locally validated on
-`feat/p4-representative-file-journey` from verified `main`
+The first representative-file extension is accepted on `main` through pull
+request 16. Its implementation branch started from verified `main`
 `d32fd6712ea10295af40a4a45833088a9e9b1f95`:
 
 - `/actestra file <bounded instruction>` selects the closed
@@ -348,12 +348,80 @@ Complete local evidence for the feature branch:
   redundant post-fix confirmation was rate-limited before review with a
   21-minute wait and is not represented as zero-issue evidence.
 
-This local evidence does not establish PR-head CI, remote review, merge, or
-merged-main CI; those remain separate remote gates.
-Research, writing, office-document, schedule, representative tool-failure, and
-Worker-crash fixtures still block the full P4 exit gate. No
-Goose, CrewAI, Eigent runtime, candidate, release, deployment, distribution, or
-user acceptance is claimed.
+Pull request 16 reached exact final head
+`f19b7dd006cf091aa9c7f1559dd484fdad35f200`, passed
+[PR CI run 30567484733](https://github.com/bignormal/actestra-desktop/actions/runs/30567484733),
+and squash merged as `2aed0f705bf6f9b3734742c0905c94ac562f501e`.
+[Merged-main CI run 30569476160](https://github.com/bignormal/actestra-desktop/actions/runs/30569476160)
+passes on that exact merge. The pull request has no submitted reviews or
+inline review comments. Its successful Free-plan CodeRabbit result contains a
+summary and walkthrough, so it is not represented as line-level review
+evidence. GitHub reports no branch-protection rule or matching repository
+ruleset for `main`; the merge used the repository's explicit owner-gated PR
+discipline and did not bypass a required protection.
+
+The bounded local-research extension is now implemented locally on
+`feat/p4-representative-knowledge-work` from exact verified `main`
+`2aed0f705bf6f9b3734742c0905c94ac562f501e`:
+
+- `/actestra research <bounded instruction>` selects only
+  `local-research-artifact`;
+- schema version 10 adds that one exact kind while preserving schema-9 prompt
+  and file rows and rejecting arbitrary values;
+- main owns a 64 KiB-bounded `actestra-research.txt` read input and the two
+  exact request identities;
+- the same isolated General Worker turns at most 32 non-empty local evidence
+  lines into a private, create-only `research.md` input;
+- main persists that input under its exact owner before creating a `file`
+  Artifact labeled `Actestra local research brief`;
+- normalized Core events and renderer projections exclude source text, while
+  the existing exact-owner, non-persisted native Preview exposes only the final
+  bounded Markdown;
+- duplicate registration, SQLite reopen, and a real persistence-utility reopen
+  plus prepared-task recovery retain the research kind and input without
+  replaying native workspace context; and
+- the target-app smoke contract adds a fixed local-research scenario with
+  schema 10, exact output, owned Preview validation, Core-event privacy, and
+  process cleanup.
+
+Complete local evidence for the branch:
+
+- complete root `bun run check` exits zero after formatting, zero-warning lint,
+  strict TypeScript, the Electron SQLite probe, 50 files and 313 tests, the
+  smoke harness, the 67-source product boundary, all 1,766 frozen foundation
+  files, the 156-file/49-source-copy downstream contract, and the
+  main/persistence/Worker production build;
+- materialized native strict TypeScript passes. The complete native suite
+  passes 341 files and 2,637 tests, with 1 file and 5 tests skipped by retained
+  upstream configuration. Its production build transforms 599 main, 20
+  preload, and 10,180 renderer modules;
+- the local macOS arm64 package at
+  `/tmp/actestra-p4-research.fXes59/out/mac-arm64/Actestra.app` passes 11
+  afterPack resource checks, exact `aioncore 0.1.52`, the integrity-checked
+  13-extension Hub fallback, all 17 symbolic links without a broken target,
+  arm64 identity, and strict recursive code-sign verification. An available
+  Apple Development identity signs this local package; notarization is absent
+  and Gatekeeper rejection is expected, so it is not a candidate or release;
+- packaged target-app smoke exits zero through prepared-task restart and
+  recovery, exact `research.md`, exact-owner non-persisted Preview, schema 10,
+  normalized-event source privacy, workspace-grant denial, cancellation,
+  finalized checkpoints, Artifact and terminal-attempt evidence, and process
+  cleanup. The smoke-specific Actestra CLI profile/config links remain absent;
+- the complete 24-file CodeRabbit review raised four issues. Two valid test
+  issues were fixed: multiline source privacy is now checked per non-empty
+  source line, and the invalid-kind migration test uses an independent Task
+  identity. Requests to change the Asia/Shanghai work date and to mark the
+  already completed packaged smoke pending were rejected as invalid. The two
+  affected test files pass 24 tests after remediation; and
+- the complete manual review covers the runtime contracts, schema-10
+  migration, Worker mode, downstream patch, smoke/check scripts, tests, and
+  evidence documents. It found no additional in-scope defect.
+
+This local evidence does not establish commit, push, PR-head CI, merge,
+merged-main CI, notarization, candidate, release, distribution, or user
+acceptance. Writing, office-document, schedule, representative tool-failure,
+and Worker-crash fixtures still block the full P4 exit gate. No Goose, CrewAI,
+or Eigent runtime is claimed.
 
 F0 implementation commit
 `13270ca0abd7353710541afca9ddf46c47670be3` first established the preserved
@@ -953,16 +1021,17 @@ Review closure validation at
 | GW-P4.4 scoped native tools and policy             | Accepted on `main` through PR 12                                | Final head `34f2d2201581c19b3dc67c5a7936f8a411bff9e1`; PR CI 30486392525; squash merge `7ec009c6384a93c17f24e4276469e98cb5f2b71d`; main CI 30486544268; ADR-0018; two scoped text tools; 42/232 root and 335/2,612 native tests; root/native build, unsigned harness package, scoped registration, and isolated AionUi/AionCore launch pass                                                   |
 | GW-P4.5 durable coordination and recovery          | Accepted on `main` through PR 13                                | Final head `f160d9a3a00f317f12b7579bc3a48849c1cf32d2`; PR CI 30495112290; squash merge `1dacbc0bee8ebae26d688e6e719c8f0f5750db5f`; main CI 30495301140; ADR-0019; schema 7 recovery journal; full root/native regression, production builds, unsigned smoke, isolated AionUI recovery launch, and process cleanup pass                                                                        |
 | GW-P4.6 preserved-AionUI General Work journey      | Accepted on `main` through PR 14                                | Final head `4a07eb9db1907ae8fab2613b4cf11a7d2a8cbee4`; PR CI 30553454459; squash merge `784191bfc59d71a128ed5d3251db3535f1349e45`; main CI 30554447144; ADR-0020; schema 8 atomic journey authority; complete root check passes 50 files/292 tests; native passes 341 files/2,634 tests; production builds, signed local arm64 package, and target-app restart/denial/cancellation smoke pass |
-| P4 representative workspace-file journey           | Local gates and full-diff remediation pass; remote closure pending | Branch `feat/p4-representative-file-journey` from `d32fd6712ea10295af40a4a45833088a9e9b1f95`; schema 9 closed journey kinds and discriminated initial-input authority; fixed 64 KiB-bounded `actestra-input.txt` read; 128 KiB private write-input limit; stable oversized failure; 50/308 root and 341/2,635 native tests; production builds, signed local arm64 package, target-app smoke, one zero-issue complete review, and a later one-minor review with remediation pass |
+| P4 representative workspace-file journey           | Accepted on `main` through PR 16                                | Final head `f19b7dd006cf091aa9c7f1559dd484fdad35f200`; PR CI 30567484733; squash merge `2aed0f705bf6f9b3734742c0905c94ac562f501e`; exact main CI 30569476160; schema 9 closed kinds; 50/308 root and 341/2,635 native tests; signed local package and target-app smoke; no submitted reviews or inline comments; Free-plan summary is not line-level review evidence |
+| P4 bounded local-research journey                   | Complete local gates and review pass; remote closure pending     | Branch `feat/p4-representative-knowledge-work` from `2aed0f705bf6f9b3734742c0905c94ac562f501e`; schema 10 exact local-research kind; 50/313 root and 341/2,637 native tests; root/native production builds; signed but unnotarized local arm64 package; target-app restart/research/denial/cancellation smoke; 24-file CodeRabbit and manual reviews complete                                                                                               |
 | P6 orchestration boundary                          | Accepted architecture direction only                            | ADR-0015; CrewAI `1.15.8` at `e9caf1e1b89343bb833b5da6660faa91804a9dce` verified as the first supervised sidecar candidate; Eigent `v1.0.2` at `e478094a9ff433132b3cf1928e4143338ddaab20` retained as a reference; neither is imported, bundled, or implemented                                                                                                                               |
 | Native AionUi source                               | Exact local desktop snapshot                                    | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot                                                                                                                                                                                                                                                                            |
 | Native preservation contract                       | Local pass                                                      | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified                                                                                                                                                                                                                                                                 |
 | Native AionUi build and launch                     | Local pass                                                      | Frozen install, production build, isolated native Electron launch, and actual Guide screenshot pass                                                                                                                                                                                                                                                                                           |
-| Native AionUi tests                                | Latest local pass                                               | 341 files passed, 1 skipped; 2,635 tests passed, 5 skipped; 0 failures                                                                                                                                                                                                                                                                                                                        |
+| Native AionUi tests                                | Latest local pass                                               | 341 files passed, 1 skipped; 2,637 tests passed, 5 skipped; 0 failures                                                                                                                                                                                                                                                                                                                        |
 | Legacy product shell                               | P3 harness only                                                 | Original Actestra Electron/React shell remains for platform-contract and packaging regression; it is not the target product UI                                                                                                                                                                                                                                                                |
 | Renderer boundary                                  | CI-backed through P3.6                                          | Context isolation, sandbox, Node and packaged DevTools disabled, production CSP denies connections, exact frozen preload allowlist, trusted-frame zero-argument IPC, and direct-client source checks                                                                                                                                                                                          |
 | Automated tests                                    | Exact merged-main CI pass                                       | Main run 30378191752 passes 24 Vitest files with 130 tests, the exact Electron SQLite probe, process-failure harness, 34-source boundary check, build, package identity, and clean-profile smoke                                                                                                                                                                                              |
-| Desktop package                                    | Latest local signed evidence; not notarized                     | macOS arm64 target bundle passes 11 resource checks, exact AionCore and Hub integrity, strict recursive signing verification, and restart/denial/cancellation smoke; not a candidate or release                                                                                                                                                                                               |
+| Desktop package                                    | Latest local signed evidence; not notarized                     | macOS arm64 target bundle passes 11 resource checks, exact AionCore and Hub integrity, strict recursive signing verification, and restart/local-research/denial/cancellation smoke; not a candidate or release                                                                                                                                                                                |
 | P3 domain contracts                                | Implemented and CI-backed                                       | Typed IDs and timestamps; workspace, task, session, worker, approval, and artifact records; transition and graph invariants; exact commit and run above                                                                                                                                                                                                                                       |
 | P3 event contract                                  | Implemented and CI-backed                                       | Schema version 1; per-attempt gapless order, exact-id idempotency, verified replay cursors, terminal enforcement, and diagnostic redaction; exact commit and run above                                                                                                                                                                                                                        |
 | P3 persistence and migrations                      | Implemented and CI-backed                                       | ADR-0005 schemas 1 and 2 plus ADR-0008 schema 3 for privileged audit and terminal-attempt evidence; exact runs above                                                                                                                                                                                                                                                                          |
@@ -1033,10 +1102,10 @@ The ordered implementation index and P3 non-claims are in
 
 ## Next gate
 
-1. Re-evaluate the exact P4 exit gate from verified main
-   `784191bfc59d71a128ed5d3251db3535f1349e45`.
-2. Commit and complete remote closure for the locally gated
-   representative-file journey, then add local research, writing,
+1. Commit and push the locally gated bounded local-research branch from
+   verified main `2aed0f705bf6f9b3734742c0905c94ac562f501e`, then create its
+   Ready pull request.
+2. Complete exact-head PR CI, required review, merge, and merged-main CI, then add writing,
    office-document, and schedule journeys while retaining the preserved AionUI
    surface and Actestra-owned authority.
 3. Complete representative tool-failure and Worker-crash evidence in addition
@@ -1077,7 +1146,7 @@ The ordered implementation index and P3 non-claims are in
   rate-limited before reviewing the final four-document status range. Its
   successful status is limit-handling evidence; exact final-head CI run
   30376696055 passed.
-- The current branch runs schemas 1 through 9 in the dedicated
+- The current branch runs schemas 1 through 10 in the dedicated
   persistence utility. The downstream main accepts one fixed
   shadow-observation operation and one fixed desktop confirmation response
   operation. F3.2 gates only that response's native delivery, while F3.3
@@ -1091,8 +1160,10 @@ The ordered implementation index and P3 non-claims are in
   Accepted GW-P4.4 connects its blocked fixture to exactly two main-owned
   native tools. Accepted GW-P4.5 coordinates their durable non-UI journey.
   Accepted GW-P4.6 adds the first user-submitted preserved-AionUI task and its
-  target-app restart, denial, and cancellation smoke. Full representative P4
-  acceptance remains pending.
+  target-app restart, denial, and cancellation smoke. The accepted
+  representative-file journey and local bounded research implementation reuse
+  that authority without adding renderer-selected paths or network research.
+  Full representative P4 acceptance remains pending.
 - P3.6 makes metadata-only audit and terminal-attempt evidence durable.
   Approval, credential-lease, and policy state remains in memory and contains no
   secret value. F3.1 separately makes the bounded native confirmation response
@@ -1110,8 +1181,10 @@ The ordered implementation index and P3 non-claims are in
 - The P3 contracts and fake-worker gate have passed. The bounded deterministic
   General Worker is accepted through GW-P4.3. Exactly two scoped native text
   tools are accepted through GW-P4.4. Task/artifact coordination and recovery
-  are accepted through GW-P4.5. Preserved-AionUI journey mapping is accepted
-  through GW-P4.6. Full representative P4 acceptance remains pending, and
+  are accepted through GW-P4.5. Preserved-AionUI journey mapping and the
+  representative-file extension are accepted through GW-P4.6 plus PR 16. The
+  bounded local-research extension remains local until its commit and remote
+  gates close. Full representative P4 acceptance remains pending, and
   specialized Goose work remains a later gate.
 - F0 alone proves only that the original AionUi application can be preserved
   and run. F1, F2, F3.1, F3.2, and merged F3.3 add their separately recorded

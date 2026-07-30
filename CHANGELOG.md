@@ -96,6 +96,10 @@ releases begin.
 - Preserved-AionUi downstream worker materialization, native unit coverage,
   exact build-entry and authority-graph checks, and clean-profile startup
   probes that leave the renderer and original routes unchanged.
+- Preserved-AionUI General Work commands for bounded prompt, reserved
+  workspace-file, and local-research artifacts, with schema-versioned closed
+  journey kinds, main-owned inputs, supervised Worker processing,
+  create-only Markdown outputs, owned Preview, and prepared-task recovery.
 
 ### Changed
 

@@ -29,26 +29,26 @@ features are implemented.
 | P7    | Security and reliability hardening                       | P4-P6             |
 | P8    | Cross-platform internal beta                             | P7                |
 
-Current execution state on 2026-07-31: native-fusion slices F0 through F3.3
-and general-work through GW-P4.6 are accepted on `main`. GW-P4.6 pull request
-14 squash merged as `784191bfc59d71a128ed5d3251db3535f1349e45`; exact main
-CI run 30554447144 passes. Its status closure then merged through pull request
-15 as `d32fd6712ea10295af40a4a45833088a9e9b1f95`; exact main CI run
-30555498924 passes.
+Current execution state on 2026-07-31: native-fusion slices F0 through F3.3,
+general-work through GW-P4.6, and the representative workspace-file extension
+are accepted on `main`. Pull request 16 reached exact head
+`f19b7dd006cf091aa9c7f1559dd484fdad35f200`, passed PR CI run 30567484733,
+and squash merged as `2aed0f705bf6f9b3734742c0905c94ac562f501e`; exact
+merged-main CI run 30569476160 passes.
 
-The first representative workspace-file extension is implemented and locally
-validated on
-`feat/p4-representative-file-journey`: `/actestra file <instruction>` maps to a
-schema-version-9 journey kind, reads only main-owned `actestra-input.txt`,
-applies the Worker's 64 KiB send bound at the read step, passes owned text
-privately to the same supervised Worker, creates a create-only Markdown
-Artifact, and keeps source text out of Core events and renderer projections.
-Oversized source closes as stable `content-too-large` evidence before
-transport. Complete root and native regression, strict TypeScript, downstream
-contract, production builds, signed local arm64 package, target-app smoke, and
-the final 37-file full-diff review pass. This local evidence does not establish
-PR-head CI, remote review, merge, or merged-main CI. P5 Goose and P6
-CrewAI/Team work have not started.
+The bounded local-research extension is implemented locally on
+`feat/p4-representative-knowledge-work` from that exact main commit.
+`/actestra research <instruction>` maps to schema version 10's exact
+`local-research-artifact` kind, reads only main-owned
+`actestra-research.txt`, processes at most 64 KiB privately in the same
+supervised Worker, and creates a create-only `research.md` file Artifact.
+Directed root, native hook/smoke, persistence-reopen, downstream-contract, and
+smoke-harness tests pass locally. Complete root regression passes 50 files and
+313 tests; complete native regression passes 341 files and 2,637 tests. Root
+and native production builds, the signed but unnotarized local arm64 package,
+real target-app restart/research/denial/cancellation smoke, and complete
+24-file review pass. Commit, push, PR-head CI, merge, and merged-main CI remain
+pending for this branch. P5 Goose and P6 CrewAI/Team work have not started.
 
 ## P0 — Project Foundation
 
@@ -191,8 +191,13 @@ slice previously described as P4.3/F3.1.
   closed `/actestra file` intent, schema-version-9 kind persistence, a fixed
   main-owned `actestra-input.txt` read bounded to the Worker's 64 KiB transport,
   private same-Worker processing, stable oversized-input failure, and one
-  create-only Artifact. It does not satisfy the phase exit gate until the
-  remaining representative journeys and failure smokes pass.
+  create-only Artifact. The local-research extension adds one closed
+  `/actestra research` intent, schema-version-10 kind persistence, the fixed
+  main-owned `actestra-research.txt` source, private deterministic
+  same-Worker evidence processing, and one create-only `research.md` file
+  Artifact. Neither extension adds generic local or network research,
+  renderer-selected paths, or another UI. The phase exit gate remains pending
+  until the remaining representative journeys and failure smokes pass.
 - Support scoped workspace reads and task-output writes through the preserved
   file, workspace, conversation, preview, and artifact surfaces.
 - Add representative file, research, writing, office-document, schedule,
