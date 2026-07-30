@@ -87,6 +87,119 @@ describe("General Worker utility service", () => {
     ]);
   });
 
+  it("reads workspace text, processes it privately, then requests one create-only artifact", async () => {
+    const service = new GeneralWorkerService();
+    const started = await service.handle(
+      request("start", {
+        attemptToken: "attempt-file-journey",
+        prompt: "Turn the reserved workspace text into a reviewable Markdown artifact.",
+        entryState: "ready",
+        executionMode: "workspace-read-then-task-output-write-fixture",
+      }),
+    );
+    expect(started).toMatchObject([
+      { type: "event", sequence: 1, event: { type: "started" } },
+      {
+        type: "event",
+        sequence: 2,
+        event: {
+          type: "tool-requested",
+          callId: "general-worker-workspace-read-text-call",
+          toolName: "actestra.workspace.read-text",
+        },
+      },
+      { type: "response", operation: "start", ok: true },
+    ]);
+
+    const readResolved = await service.handle(
+      request("resolve-tool", {
+        attemptToken: "attempt-file-journey",
+        callId: "general-worker-workspace-read-text-call",
+        result: {
+          requestId: toolRequestId("tool-request-file-read"),
+          status: "succeeded",
+          startedAt: instant("2026-07-30T01:00:00.000Z"),
+          completedAt: instant("2026-07-30T01:00:01.000Z"),
+          outputRef: toolOutputReference("tool-output-file-read"),
+        },
+      }),
+    );
+    expect(readResolved).toMatchObject([
+      {
+        type: "event",
+        sequence: 3,
+        event: { type: "tool-result-accepted", status: "succeeded" },
+      },
+      { type: "event", sequence: 4, event: { type: "resumed" } },
+      { type: "response", operation: "resolve-tool", ok: true },
+    ]);
+    expect(readResolved).not.toEqual(
+      expect.arrayContaining([{ type: "event", event: { type: "completed" } }]),
+    );
+
+    const processed = await service.handle(
+      request("send", {
+        attemptToken: "attempt-file-journey",
+        content: "Alpha\nBeta\n",
+      }),
+    );
+    expect(processed).toMatchObject([
+      { type: "event", sequence: 5, event: { type: "heartbeat" } },
+      {
+        type: "event",
+        sequence: 6,
+        event: {
+          type: "message",
+          role: "assistant",
+          content: "Processed 11 bytes from the reserved workspace text.",
+        },
+      },
+      {
+        type: "event",
+        sequence: 7,
+        event: {
+          type: "tool-requested",
+          callId: "general-worker-task-output-write-text-call",
+          toolName: "actestra.task-output.write-text",
+          input: {
+            contractVersion: 1,
+            relativePath: "result.md",
+            mediaType: "text/markdown; charset=utf-8",
+            content:
+              "# Actestra file result\n\n" +
+              "Instruction: Turn the reserved workspace text into a reviewable Markdown artifact.\n\n" +
+              "Source text:\n\nAlpha\nBeta\n",
+          },
+        },
+      },
+      { type: "response", operation: "send", ok: true },
+    ]);
+
+    const written = await service.handle(
+      request("resolve-tool", {
+        attemptToken: "attempt-file-journey",
+        callId: "general-worker-task-output-write-text-call",
+        result: {
+          requestId: toolRequestId("tool-request-file-write"),
+          status: "succeeded",
+          startedAt: instant("2026-07-30T01:00:02.000Z"),
+          completedAt: instant("2026-07-30T01:00:03.000Z"),
+          outputRef: toolOutputReference("tool-output-file-write"),
+        },
+      }),
+    );
+    expect(written).toMatchObject([
+      {
+        type: "event",
+        sequence: 8,
+        event: { type: "tool-result-accepted", status: "succeeded" },
+      },
+      { type: "event", sequence: 9, event: { type: "resumed" } },
+      { type: "event", sequence: 10, event: { type: "completed" } },
+      { type: "response", operation: "resolve-tool", ok: true },
+    ]);
+  });
+
   it("acknowledges cancellation and rejects stale attempt tokens", async () => {
     const service = new GeneralWorkerService();
     await service.handle(

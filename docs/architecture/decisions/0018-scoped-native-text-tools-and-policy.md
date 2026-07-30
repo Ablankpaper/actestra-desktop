@@ -74,7 +74,10 @@ not enter the worker result or renderer.
 ### Portable input contract and workspace reads
 
 Both tools consume strict version 1 JSON stored inside a 1 MiB-bounded
-`task-content` input reference. Unknown fields or versions fail closed.
+`task-content` input reference. A workspace-read input may carry a main-owned
+`maximumBytes` integer from 1 byte through 1 MiB; omission retains the 1 MiB
+tool maximum, and the field can only reduce that limit for a specific
+invocation. Unknown fields, invalid limits, or versions fail closed.
 
 Paths use normalized, forward-slash relative segments. Actestra rejects:
 
@@ -88,7 +91,8 @@ that its root is an accessible canonical directory rather than a symbolic link
 or filesystem root. It checks every requested component with `lstat`, requires
 the final canonical path to stay exact and contained, opens without following
 the final symbolic link where the platform supports it, and requires a regular
-file. Files larger than 1 MiB or invalid UTF-8 are rejected.
+file. Files larger than the invocation limit, or 1 MiB when no smaller limit is
+present, and invalid UTF-8 are rejected.
 
 These checks reduce accidental scope escape and common link attacks. They are
 not an OS sandbox or a claim of containment against a hostile process racing

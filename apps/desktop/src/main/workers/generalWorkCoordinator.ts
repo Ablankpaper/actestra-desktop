@@ -7,6 +7,7 @@ import {
   PLATFORM_EVIDENCE_CONTRACT_VERSION,
   REQUIRED_REDACTION_BY_EVENT_TYPE,
   TASK_OUTPUT_WRITE_TEXT_TOOL_ID,
+  WORKSPACE_READ_TEXT_TOOL_ID,
   WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
   AgentAdapterError,
   GeneralWorkRecoveryError,
@@ -259,6 +260,17 @@ export class GeneralWorkCoordinator {
     readonly result: AgentToolResult;
     readonly finalization: GeneralWorkFinalization;
   }> {
+    const { result } = await this.invokeScopedToolStep(request);
+    const supervisor = this.requireSupervisor();
+    await supervisor.awaitCleanup(request.invocation.sessionId);
+    const finalization = await this.finalizeAttempt(request.invocation.sessionId);
+    return Object.freeze({ result, finalization });
+  }
+
+  async invokeScopedToolStep(request: GeneralWorkToolInvocation): Promise<{
+    readonly result: AgentToolResult;
+    readonly checkpoint: GeneralWorkCheckpoint;
+  }> {
     const supervisor = this.requireSupervisor();
     const scopedTools = this.requireScopedTools();
     const snapshot = supervisor.snapshot(request.invocation.sessionId);
@@ -321,6 +333,34 @@ export class GeneralWorkCoordinator {
         tool,
         artifactIntent,
       );
+    } else if (
+      existing.phase === "active" &&
+      existing.tool.state === "succeeded" &&
+      existing.tool.toolId === WORKSPACE_READ_TEXT_TOOL_ID &&
+      tool.toolId === TASK_OUTPUT_WRITE_TEXT_TOOL_ID &&
+      existing.artifactIntent === undefined &&
+      existing.artifactBinding === undefined &&
+      artifactIntent !== undefined
+    ) {
+      const currentEvents = supervisor.coreEvents(request.invocation.sessionId);
+      const readCompleted = currentEvents.find(
+        (event) =>
+          event.type === "tool.completed" && event.payload.requestId === existing.tool?.requestId,
+      );
+      const writeRequested = currentEvents.find(
+        (event) => event.type === "tool.requested" && event.payload.requestId === tool.requestId,
+      );
+      if (
+        readCompleted === undefined ||
+        writeRequested === undefined ||
+        readCompleted.sequence >= writeRequested.sequence
+      ) {
+        throw new GeneralWorkRecoveryError(
+          "event-mismatch",
+          "Sequential file output requires a completed workspace read before its write request",
+        );
+      }
+      await this.persistActive(snapshot, currentEvents, tool, artifactIntent);
     } else {
       if (
         existing.phase !== "active" ||
@@ -343,9 +383,8 @@ export class GeneralWorkCoordinator {
     }
 
     const result = await scopedTools.invoke(request.invocation);
-    await supervisor.awaitCleanup(request.invocation.sessionId);
-    const finalization = await this.finalizeAttempt(request.invocation.sessionId);
-    return Object.freeze({ result, finalization });
+    const checkpoint = await this.requireCheckpoint(request.invocation.sessionId);
+    return Object.freeze({ result, checkpoint });
   }
 
   cancelTool(request: ToolRequestId, reason?: string): boolean {

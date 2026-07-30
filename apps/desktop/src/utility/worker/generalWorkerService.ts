@@ -19,6 +19,7 @@ type GeneralWorkerAttemptState =
 
 interface GeneralWorkerAttempt {
   readonly token: string;
+  readonly prompt: string;
   readonly executionMode: Extract<
     GeneralWorkerRequest,
     { operation: "start" }
@@ -26,6 +27,7 @@ interface GeneralWorkerAttempt {
   state: GeneralWorkerAttemptState;
   sequence: number;
   pendingCallId?: string;
+  awaitingWorkspaceContent?: boolean;
 }
 
 class GeneralWorkerServiceError extends Error {
@@ -157,6 +159,7 @@ export class GeneralWorkerService {
 
     const attempt: GeneralWorkerAttempt = {
       token: request.payload.attemptToken,
+      prompt: request.payload.prompt,
       executionMode: request.payload.executionMode,
       state: "running",
       sequence: 0,
@@ -192,6 +195,7 @@ export class GeneralWorkerService {
         );
         break;
       case "workspace-read-text-fixture":
+      case "workspace-read-then-task-output-write-fixture":
         attempt.state = "blocked";
         attempt.pendingCallId = "general-worker-workspace-read-text-call";
         events.push(
@@ -230,6 +234,42 @@ export class GeneralWorkerService {
         "General Worker cannot receive input outside a running attempt",
       );
     }
+    if (
+      attempt.executionMode === "workspace-read-then-task-output-write-fixture" &&
+      attempt.awaitingWorkspaceContent
+    ) {
+      attempt.awaitingWorkspaceContent = false;
+      attempt.state = "blocked";
+      attempt.pendingCallId = "general-worker-task-output-write-text-call";
+      const byteLength = new TextEncoder().encode(request.payload.content).byteLength;
+      const source = request.payload.content.endsWith("\n")
+        ? request.payload.content
+        : `${request.payload.content}\n`;
+      const outputContent =
+        "# Actestra file result\n\n" +
+        `Instruction: ${attempt.prompt.trim()}\n\n` +
+        `Source text:\n\n${source}`;
+      return [
+        this.event(attempt, { type: "heartbeat" }),
+        this.event(attempt, {
+          type: "message",
+          role: "assistant",
+          content: `Processed ${String(byteLength)} bytes from the reserved workspace text.`,
+        }),
+        this.event(attempt, {
+          type: "tool-requested",
+          callId: attempt.pendingCallId,
+          toolName: "actestra.task-output.write-text",
+          summary: "Create the processed workspace-file artifact.",
+          input: Object.freeze({
+            contractVersion: 1,
+            relativePath: "result.md",
+            mediaType: "text/markdown; charset=utf-8",
+            content: outputContent,
+          }),
+        }),
+      ];
+    }
     return [
       this.event(attempt, { type: "heartbeat" }),
       this.event(attempt, {
@@ -256,6 +296,9 @@ export class GeneralWorkerService {
     }
 
     const result = request.payload.result;
+    const completedWorkspaceRead =
+      attempt.executionMode === "workspace-read-then-task-output-write-fixture" &&
+      request.payload.callId === "general-worker-workspace-read-text-call";
     attempt.pendingCallId = undefined;
     const events: GeneralWorkerEventMessage[] = [
       this.event(attempt, {
@@ -267,6 +310,10 @@ export class GeneralWorkerService {
     if (result.status === "succeeded") {
       attempt.state = "running";
       events.push(this.event(attempt, { type: "resumed" }));
+      if (completedWorkspaceRead) {
+        attempt.awaitingWorkspaceContent = true;
+        return events;
+      }
       attempt.state = "completed";
       events.push(this.event(attempt, { type: "completed" }));
       return events;

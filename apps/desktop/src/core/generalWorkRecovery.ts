@@ -38,7 +38,7 @@ import {
   type ToolInputReference,
   type ToolOutputReference,
 } from "./privilegedServices";
-import { TASK_OUTPUT_WRITE_TEXT_TOOL_ID } from "./scopedNativeTools";
+import { TASK_OUTPUT_WRITE_TEXT_TOOL_ID, WORKSPACE_READ_TEXT_TOOL_ID } from "./scopedNativeTools";
 import {
   assertContentReferenceOwner,
   workspaceGrantId,
@@ -927,9 +927,11 @@ function assertMonotonicAttempt(
 }
 
 function assertMonotonicTool(
-  previous: GeneralWorkToolCheckpoint | undefined,
-  next: GeneralWorkToolCheckpoint | undefined,
+  previousCheckpoint: GeneralWorkCheckpoint,
+  nextCheckpoint: GeneralWorkCheckpoint,
 ): void {
+  const previous = previousCheckpoint.tool;
+  const next = nextCheckpoint.tool;
   if (previous === undefined) {
     return;
   }
@@ -944,6 +946,29 @@ function assertMonotonicTool(
     previous.toolId !== next.toolId ||
     previous.inputRef !== next.inputRef
   ) {
+    const readCompleted = nextCheckpoint.events.find(
+      (event) => event.type === "tool.completed" && event.payload.requestId === previous.requestId,
+    );
+    const writeRequested = nextCheckpoint.events.find(
+      (event) => event.type === "tool.requested" && event.payload.requestId === next.requestId,
+    );
+    if (
+      previousCheckpoint.phase === "active" &&
+      nextCheckpoint.phase === "active" &&
+      previous.state === "succeeded" &&
+      previous.toolId === WORKSPACE_READ_TEXT_TOOL_ID &&
+      next.state === "in-flight" &&
+      next.toolId === TASK_OUTPUT_WRITE_TEXT_TOOL_ID &&
+      previousCheckpoint.artifactIntent === undefined &&
+      previousCheckpoint.artifactBinding === undefined &&
+      nextCheckpoint.artifactIntent?.kind === "file" &&
+      nextCheckpoint.artifactBinding === undefined &&
+      readCompleted !== undefined &&
+      writeRequested !== undefined &&
+      readCompleted.sequence < writeRequested.sequence
+    ) {
+      return;
+    }
     throw new GeneralWorkRecoveryError(
       "identity-mismatch",
       "A general-work checkpoint cannot rewrite tool identity",
@@ -1006,7 +1031,7 @@ export function assertGeneralWorkCheckpointTransition(
   }
   assertAppendOnlyEvents(previous, next);
   assertMonotonicAttempt(previous.attempt, next.attempt);
-  assertMonotonicTool(previous.tool, next.tool);
+  assertMonotonicTool(previous, next);
   if (previous.artifactIntent !== undefined) {
     assertUnchanged(previous.artifactIntent, next.artifactIntent, "General-work artifact intent");
   }

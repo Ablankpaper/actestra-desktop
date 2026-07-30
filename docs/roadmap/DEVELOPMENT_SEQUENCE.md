@@ -29,23 +29,26 @@ features are implemented.
 | P7    | Security and reliability hardening                       | P4-P6             |
 | P8    | Cross-platform internal beta                             | P7                |
 
-Current execution state on 2026-07-30: native-fusion slices F0 through F3.3
-and general-work through GW-P4.5 are accepted on `main`. Pull request 13
-reached exact head `f160d9a3a00f317f12b7579bc3a48849c1cf32d2`, passed
-pull-request CI run 30495112290, and squash merged as
-`1dacbc0bee8ebae26d688e6e719c8f0f5750db5f`; exact main CI run 30495301140
-passes. GW-P4.6 is implemented locally on
-`feat/aionui-p4-preserved-journey`: schema version 8 atomically registers one
-preserved-AionUI General Work journey, resolves its native workspace in main,
-executes a real supervised Worker output, projects redacted status/cancel and
-owned Artifact Preview, and restarts prepared tasks from persisted authority.
-Complete manual/static review, root/native regressions, production build,
-strictly signed local arm64 packaging, and target-app restart, denial, and
-cancellation smoke pass. Secret/diff audit, push, PR CI, merge, and merged-main
-CI remain pending. The prior GW-P4.5 CodeRabbit follow-up is incomplete, not a
-zero-finding result, and was not rerun on the unchanged earlier diff. The local
-package is not notarized and is not a release. P5 Goose and P6 CrewAI/Team work
-have not started.
+Current execution state on 2026-07-31: native-fusion slices F0 through F3.3
+and general-work through GW-P4.6 are accepted on `main`. GW-P4.6 pull request
+14 squash merged as `784191bfc59d71a128ed5d3251db3535f1349e45`; exact main
+CI run 30554447144 passes. Its status closure then merged through pull request
+15 as `d32fd6712ea10295af40a4a45833088a9e9b1f95`; exact main CI run
+30555498924 passes.
+
+The first representative workspace-file extension is implemented and locally
+validated on
+`feat/p4-representative-file-journey`: `/actestra file <instruction>` maps to a
+schema-version-9 journey kind, reads only main-owned `actestra-input.txt`,
+applies the Worker's 64 KiB send bound at the read step, passes owned text
+privately to the same supervised Worker, creates a create-only Markdown
+Artifact, and keeps source text out of Core events and renderer projections.
+Oversized source closes as stable `content-too-large` evidence before
+transport. Complete root and native regression, strict TypeScript, downstream
+contract, production builds, signed local arm64 package, target-app smoke, and
+the final 37-file full-diff review pass. This local evidence does not establish
+PR-head CI, remote review, merge, or merged-main CI. P5 Goose and P6
+CrewAI/Team work have not started.
 
 ## P0 — Project Foundation
 
@@ -184,8 +187,12 @@ slice previously described as P4.3/F3.1.
   slice uses one explicit bounded text intent, schema-version-8 atomic
   journey/grant/content registration, a real supervised General Worker,
   redacted status and Artifact projections, non-persisted native Preview, and
-  prepared-task startup recovery. It does not satisfy the phase exit gate until
-  the complete target-app gates and representative failure smokes pass.
+  prepared-task startup recovery. The representative-file extension adds one
+  closed `/actestra file` intent, schema-version-9 kind persistence, a fixed
+  main-owned `actestra-input.txt` read bounded to the Worker's 64 KiB transport,
+  private same-Worker processing, stable oversized-input failure, and one
+  create-only Artifact. It does not satisfy the phase exit gate until the
+  remaining representative journeys and failure smokes pass.
 - Support scoped workspace reads and task-output writes through the preserved
   file, workspace, conversation, preview, and artifact surfaces.
 - Add representative file, research, writing, office-document, schedule,

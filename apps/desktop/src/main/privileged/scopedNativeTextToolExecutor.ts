@@ -231,6 +231,7 @@ async function readBoundedUtf8(
   input: WorkspaceReadTextInput,
   signal: AbortSignal,
 ): Promise<string> {
+  const maximumBytes = input.maximumBytes ?? MAX_WORKLOAD_CONTENT_BYTES;
   const candidate = targetPath(root, input.relativePath);
   const verified = await requireNoSymlinkComponents(root, input.relativePath, signal);
   if (verified !== candidate) {
@@ -246,13 +247,10 @@ async function readBoundedUtf8(
     if (!stat.isFile()) {
       throw executionError("path-type-denied", "Workspace text read requires a regular file");
     }
-    if (stat.size > MAX_WORKLOAD_CONTENT_BYTES) {
-      throw executionError(
-        "content-too-large",
-        `Workspace text exceeds ${MAX_WORKLOAD_CONTENT_BYTES} bytes`,
-      );
+    if (stat.size > maximumBytes) {
+      throw executionError("content-too-large", `Workspace text exceeds ${maximumBytes} bytes`);
     }
-    const bytes = Buffer.allocUnsafe(MAX_WORKLOAD_CONTENT_BYTES + 1);
+    const bytes = Buffer.allocUnsafe(maximumBytes + 1);
     let bytesRead = 0;
     while (bytesRead < bytes.byteLength) {
       throwIfCancelled(signal);
@@ -263,11 +261,8 @@ async function readBoundedUtf8(
       bytesRead += read.bytesRead;
     }
     throwIfCancelled(signal);
-    if (bytesRead > MAX_WORKLOAD_CONTENT_BYTES) {
-      throw executionError(
-        "content-too-large",
-        `Workspace text exceeds ${MAX_WORKLOAD_CONTENT_BYTES} bytes`,
-      );
+    if (bytesRead > maximumBytes) {
+      throw executionError("content-too-large", `Workspace text exceeds ${maximumBytes} bytes`);
     }
     try {
       return new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(0, bytesRead));

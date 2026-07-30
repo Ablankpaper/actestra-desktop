@@ -1,19 +1,20 @@
 # P4 General-Work Vertical Slice
 
-Status: GW-P4.4 accepted on `main`; GW-P4.5 durable coordination and recovery
-implemented on `feat/aionui-p4-coordination-recovery`, with directed local
-validation and review remediation in progress
+Status: GW-P4.2 through GW-P4.6 accepted on `main`; the first representative
+workspace-file journey is implemented and locally validated on
+`feat/p4-representative-file-journey`; local complete gates and full-diff
+review pass, while remote closure remains pending
 
-Date: 2026-07-30
+Date: 2026-07-31
 
 Exact base:
-`7ec009c6384a93c17f24e4276469e98cb5f2b71d`
+`d32fd6712ea10295af40a4a45833088a9e9b1f95`
 
 ## Entry evidence
 
-The branch starts from the exact `main` squash merge for
-[pull request 12](https://github.com/bignormal/actestra-desktop/pull/12).
-[Main CI run 30486544268](https://github.com/bignormal/actestra-desktop/actions/runs/30486544268)
+The branch starts from the exact verified `main` status-closure merge for
+[pull request 15](https://github.com/bignormal/actestra-desktop/pull/15).
+[Main CI run 30555498924](https://github.com/bignormal/actestra-desktop/actions/runs/30555498924)
 passes on that commit.
 
 [ADR-0016](../architecture/decisions/0016-p4-general-work-process-and-content-boundaries.md),
@@ -243,7 +244,7 @@ passes.
 
 ### GW-P4.5 — Coordination and recovery
 
-Implemented on the current branch:
+Accepted on `main` through pull request 13:
 
 - [ADR-0019](../architecture/decisions/0019-general-work-durable-coordination-and-recovery.md)
   adds a schema version 7 recovery journal with immutable attempt identity,
@@ -315,18 +316,77 @@ Current directed evidence:
   tables are present with no pending checkpoint, and shutdown leaves no
   Electron, Utility, Worker, or AionCore process.
 
-Exit criterion: all non-UI fixtures and recovery paths must pass locally and
-in exact-head CI. Exact-head GW-P4.5 CI remains pending until the branch is
-pushed.
+The exact GW-P4.5 head
+`f160d9a3a00f317f12b7579bc3a48849c1cf32d2` passed pull-request CI run 30495112290. It squash merged as
+`1dacbc0bee8ebae26d688e6e719c8f0f5750db5f`; exact merged-main CI run
+30495301140 passes.
 
 ### GW-P4.6 — Preserved-AionUi journey
 
-- map only bounded task intents and projections into the original AionUi
-  conversation, workspace, permission, preview, artifact, and status surfaces;
-- keep roots, content, references, protected-operation fields, and generic IPC
+Accepted on `main` through pull request 14:
+
+- one bounded `/actestra` prompt-artifact intent maps into the original AionUi
+  conversation, workspace, status, cancellation, artifact, and Preview
+  surfaces;
+- schema version 8 atomically registers the authoritative journey while roots,
+  content references, protected-operation fields, and generic IPC remain
   outside the renderer; and
-- extend packaged clean-profile smoke through restart, denial, and
-  cancellation.
+- packaged target-app smoke covers restart, denial, cancellation, finalized
+  evidence, renderer readiness, and process cleanup.
+
+The exact GW-P4.6 head
+`4a07eb9db1907ae8fab2613b4cf11a7d2a8cbee4` passed pull-request CI run 30553454459. It squash merged as
+`784191bfc59d71a128ed5d3251db3535f1349e45`; exact merged-main CI run
+30554447144 passes.
+
+Current representative-file extension:
+
+- `/actestra file <instruction>` selects a closed
+  `workspace-file-artifact` journey; ordinary `/actestra` remains
+  `prompt-artifact`;
+- schema version 9 persists that closed kind and migrates schema-8 rows to
+  `prompt-artifact`;
+- main owns the fixed `actestra-input.txt` read input, lowers that invocation to
+  the Worker's 64 KiB send bound, and owns both request IDs;
+- source above 64 KiB terminates as `content-too-large` at the read step before
+  entering Worker transport;
+- the same isolated Worker receives the owned source, creates a private
+  create-only `result.md` input capped at 128 KiB after JSON serialization, and
+  exposes that input only to its main-owned adapter;
+- main persists the write input under its exact owner before invoking the
+  existing create-only tool;
+- atomic registration uses kind-discriminated `toolInputReference` and
+  `readInputReference` authority, including duplicate and reopen persistence;
+  and
+- normalized Core events and renderer projections contain neither source text
+  nor the private write input.
+
+Complete local evidence for the feature branch:
+
+- complete root `bun run check` passes 50 files and 308 tests together with
+  formatting, zero-warning lint, strict TypeScript, Electron SQLite, smoke,
+  boundary, frozen-foundation, downstream, and production-build gates;
+- the downstream contract passes 156 declared files, 4 R0 invariants, and 49
+  reviewed source copies;
+- materialized native strict TypeScript passes, the dedicated target-app smoke
+  contract passes 3 tests, and the complete native suite passes 341 files and
+  2,635 tests, with 1 file and 5 tests skipped by retained upstream
+  configuration;
+- the native production build transforms 599 main, 20 preload, and 10,180
+  renderer modules; and
+- the local arm64 package passes 11 AionCore resource checks, exact
+  `aioncore 0.1.52`, 13 Hub fallback extensions, no broken symbolic links, strict
+  recursive signing verification, and target-app workspace-file restart
+  recovery, denial, cancellation, artifact-content, durable-state, and process
+  cleanup smoke. Notarization remains unverified; and
+- an initial complete 36-file CodeRabbit review raised five issues. Four valid
+  issues were remediated, one Worker timing issue was rejected against the
+  ordered response barrier, and the first complete post-remediation 37-file
+  review raised zero issues. A later complete 37-file review after evidence
+  updates raised one valid minor ADR closed-set wording issue, which was fixed.
+  Documentation checks pass; a redundant post-fix confirmation was
+  rate-limited before review with a 21-minute wait and is not zero-issue
+  evidence.
 
 Exit: the complete general-work journey is understandable and recoverable in
 the retained AionUi UI with Actestra as the declared system of record.
@@ -349,23 +409,20 @@ P4 is complete only after:
 
 ## Current non-claims
 
-- The General Worker is a real deterministic process used by the isolated
-  probe; it is not yet connected to a user-submitted AionUI task.
-- GW-P4.4 is accepted on `main` through pull request 12 and exact merged-main
-  CI 30486544268.
-- The two native tools are main-process capabilities for the deterministic
-  attempt fixture. GW-P4.5 now coordinates their Task, Attempt, event,
-  artifact, audit, cleanup, and restart state, but it is not yet a
-  user-submitted preserved-AionUI journey or a renderer-selected generic
-  filesystem API.
+- GW-P4.2 through GW-P4.6 are accepted on `main`; the representative-file
+  extension is not accepted on `main` until PR-head CI, review, merge, and
+  merged-main CI complete.
+- The two native tools are connected to a user-submitted preserved-AionUI task,
+  but the file path remains the one main-owned `actestra-input.txt`; this is not
+  a renderer-selected generic filesystem API.
 - No shell, network, credential, MCP, publish, Git, arbitrary workspace
   mutation, model, Goose adapter, CrewAI sidecar, or Team orchestration is
   active.
 - Utility-process separation is not OS sandbox evidence.
-- Schema 7 is forward-only; development rollback uses a fresh profile rather
-  than deleting or downgrading user state.
-- The successful native launch uses the exact local AionCore binary. The frozen
-  repository still does not contain an approved distributable AionCore bundle;
-  target packaging remains GW-P4.6/P8 work.
-- The produced applications are unsigned local builds, not candidates,
-  releases, deployments, distributions, or user acceptance.
+- Schemas 7 through 9 are forward-only; development rollback uses a fresh
+  profile rather than deleting or downgrading user state.
+- The accepted target package contains the exact pinned AionCore binary, but
+  its license clarification, notarized candidate, distribution, and fresh-user
+  acceptance remain unresolved.
+- No new package, candidate, release, deployment, distribution, or user
+  acceptance is claimed for the representative-file branch.

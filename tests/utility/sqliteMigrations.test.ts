@@ -60,7 +60,7 @@ describe("Actestra SQLite migrations", () => {
     expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
       fromVersion: 0,
       toVersion: CURRENT_CORE_SCHEMA_VERSION,
-      appliedVersions: [1, 2, 3, 4, 5, 6, 7, 8],
+      appliedVersions: [1, 2, 3, 4, 5, 6, 7, 8, 9],
     });
     expect(pragmaNumber(database, "application_id")).toBe(ACTESTRA_SQLITE_APPLICATION_ID);
     expect(pragmaNumber(database, "user_version")).toBe(CURRENT_CORE_SCHEMA_VERSION);
@@ -100,6 +100,10 @@ describe("Actestra SQLite migrations", () => {
       {
         version: 8,
         name: "aionui-general-work-journeys",
+      },
+      {
+        version: 9,
+        name: "aionui-general-work-kinds",
       },
     ]);
   });
@@ -303,14 +307,14 @@ describe("Actestra SQLite migrations", () => {
     });
   });
 
-  it("performs a real 6 -> 8 migration without changing content ownership", () => {
+  it("performs a real 6 -> 9 migration without changing content ownership", () => {
     const database = createDatabase();
     migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 6), APPLIED_AT);
 
     expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
       fromVersion: 6,
-      toVersion: 8,
-      appliedVersions: [7, 8],
+      toVersion: 9,
+      appliedVersions: [7, 8, 9],
     });
     expect(
       database
@@ -331,6 +335,70 @@ describe("Actestra SQLite migrations", () => {
       { name: "content_references" },
       { name: "general_work_checkpoints" },
       { name: "workspace_grants" },
+    ]);
+  });
+
+  it("migrates schema 8 journeys to the prompt-artifact kind", () => {
+    const database = createDatabase();
+    migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 8), APPLIED_AT);
+    database
+      .prepare(
+        `INSERT INTO workspaces (id, name, state, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run("workspace-kind-migration", "Migration workspace", "active", APPLIED_AT, APPLIED_AT);
+    database
+      .prepare(
+        `INSERT INTO workers (id, workspace_id, adapter_kind, state, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        "worker-kind-migration",
+        "workspace-kind-migration",
+        "actestra.general-worker",
+        "created",
+        APPLIED_AT,
+        APPLIED_AT,
+      );
+    database
+      .prepare(
+        `INSERT INTO tasks (
+           id, workspace_id, title, state, active_session_id, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, NULL, ?, ?)`,
+      )
+      .run(
+        "task-kind-migration",
+        "workspace-kind-migration",
+        "Preserved prompt journey",
+        "ready",
+        APPLIED_AT,
+        APPLIED_AT,
+      );
+    database
+      .prepare(
+        `INSERT INTO aionui_general_work_journeys (
+           task_id, contract_version, conversation_hash, created_at
+         ) VALUES (?, ?, ?, ?)`,
+      )
+      .run("task-kind-migration", 1, "a".repeat(64), APPLIED_AT);
+
+    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
+      fromVersion: 8,
+      toVersion: 9,
+      appliedVersions: [9],
+    });
+    expect(
+      database
+        .prepare(
+          `SELECT task_id, journey_kind
+           FROM aionui_general_work_journeys`,
+        )
+        .all(),
+    ).toEqual([
+      {
+        task_id: "task-kind-migration",
+        journey_kind: "prompt-artifact",
+      },
     ]);
   });
 

@@ -9,7 +9,7 @@ import {
   workspaceGrantId,
   workspaceId,
 } from "../../apps/desktop/src/core";
-import type { AionUiGeneralWorkRegistration } from "../../apps/desktop/src/compatibility/aionui";
+import type { AionUiPromptArtifactRegistration } from "../../apps/desktop/src/compatibility/aionui";
 import { GENERAL_WORKER_ADAPTER_KIND } from "../../apps/desktop/src/main/workers/generalWorkerProcessAdapter";
 
 export const AIONUI_GENERAL_WORK_FIXTURE_CONVERSATION_HASH =
@@ -18,7 +18,7 @@ export const AIONUI_GENERAL_WORK_FIXTURE_CONVERSATION_HASH =
 export function createAionUiGeneralWorkRegistration(
   suffix = "1",
   rootPath = fs.realpathSync(process.cwd()),
-): AionUiGeneralWorkRegistration {
+): AionUiPromptArtifactRegistration {
   const createdAt = instant("2026-07-30T06:30:00.000Z");
   const workspace = workspaceId(`workspace-journey-${suffix}`);
   const task = taskId(`task-journey-${suffix}`);
@@ -31,6 +31,7 @@ export function createAionUiGeneralWorkRegistration(
       contractVersion: 1,
       conversationHash: AIONUI_GENERAL_WORK_FIXTURE_CONVERSATION_HASH,
       taskId: task,
+      journeyKind: "prompt-artifact",
       createdAt,
     },
     workspace: {
@@ -115,4 +116,27 @@ export function createAionUiGeneralWorkRegistration(
       createdAt,
     },
   };
+}
+
+export function createAionUiWorkspaceFileRegistration(
+  suffix = "1",
+  rootPath = fs.realpathSync(process.cwd()),
+) {
+  const registration = createAionUiGeneralWorkRegistration(suffix, rootPath);
+  const { toolInputReference: readInputReference, ...base } = registration;
+  return {
+    ...base,
+    link: {
+      ...base.link,
+      journeyKind: "workspace-file-artifact",
+    },
+    readInputReference: {
+      ...readInputReference,
+      content: JSON.stringify({
+        contractVersion: 1,
+        relativePath: "actestra-input.txt",
+        maximumBytes: 64 * 1024,
+      }),
+    },
+  } as const;
 }

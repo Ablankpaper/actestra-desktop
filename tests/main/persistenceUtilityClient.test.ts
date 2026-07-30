@@ -107,7 +107,7 @@ describe("persistence utility client", () => {
     const workspaceRoot = path.join(userDataPath, "fixture-workspace");
     fs.mkdirSync(workspaceRoot);
     const { client, transport } = await openTestPersistenceUtility(userDataPath);
-    expect(client.schemaVersion).toBe(8);
+    expect(client.schemaVersion).toBe(9);
     const graph = createDomainGraph();
     await client.replaceDomainGraph(graph);
     await expect(client.loadDomainGraph()).resolves.toEqual(graph);

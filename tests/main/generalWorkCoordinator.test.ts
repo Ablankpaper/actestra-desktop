@@ -223,6 +223,177 @@ afterEach(async () => {
 });
 
 describe("GeneralWorkCoordinator", () => {
+  it("checkpoints a workspace read before the same Worker creates its file artifact", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-general-work-test-"));
+    testDirectories.push(directory);
+    const workspaceRoot = path.join(directory, "workspace");
+    fs.mkdirSync(workspaceRoot);
+    fs.writeFileSync(path.join(workspaceRoot, "actestra-input.txt"), "Private workspace source\n");
+    const clock = new DeterministicAgentClock(STARTED_AT);
+    const request: AgentStartRequest = {
+      workspaceId: workspaceId("workspace-sequential-file"),
+      taskId: taskId("task-sequential-file"),
+      sessionId: sessionId("session-sequential-file"),
+      workerId: workerId("worker-sequential-file"),
+      streamId: eventStreamId("stream-sequential-file"),
+      correlationId: correlationId("correlation-sequential-file"),
+      taskState: "ready",
+      startedAt: clock.now(),
+      initialPrompt: "Process the reserved workspace text.",
+    };
+    const readRequestId = toolRequestId("request-sequential-file-read");
+    const writeRequestId = toolRequestId("request-sequential-file-write");
+    const readInputRef = toolInputReference("input-sequential-file-read");
+    const writeInputRef = toolInputReference("input-sequential-file-write");
+    const persistence = (await openTestPersistenceUtility(directory)).client;
+    await persistence.replaceDomainGraph(domainGraph(request));
+    const grant = {
+      contractVersion: WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
+      grantId: workspaceGrantId("grant-sequential-file"),
+      workspaceId: request.workspaceId,
+      rootPath: fs.realpathSync(workspaceRoot),
+      displayName: "Sequential file fixture",
+      state: "active",
+      createdAt: clock.now(),
+      updatedAt: clock.now(),
+    } as const;
+    await persistence.persistWorkspaceGrant(grant);
+    await persistence.storeContentReference({
+      contractVersion: WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
+      reference: readInputRef,
+      kind: "tool-input",
+      owner: {
+        workspaceId: request.workspaceId,
+        taskId: request.taskId,
+        sessionId: request.sessionId,
+        workerId: request.workerId,
+        requestId: readRequestId,
+        grantId: grant.grantId,
+      },
+      classification: "task-content",
+      mediaType: "text/plain; charset=utf-8",
+      content: JSON.stringify({
+        contractVersion: 1,
+        relativePath: "actestra-input.txt",
+      }),
+      createdAt: clock.now(),
+    });
+    const toolRequestIds = [readRequestId, writeRequestId];
+    let toolRequestIndex = 0;
+    let workerEventSequence = 0;
+    const { adapter } = await openTestGeneralWorker(clock, {
+      executionMode: "workspace-read-then-task-output-write-fixture",
+      newAttemptToken: () => "attempt-sequential-file",
+      newToolRequestId: () => toolRequestIds[toolRequestIndex++]!,
+      newEventId: () => eventId(`event-sequential-file-${String(++workerEventSequence)}`),
+    });
+    const supervisor = new AgentAdapterSupervisor(adapter, clock, {
+      expectedAdapterKind: GENERAL_WORKER_ADAPTER_KIND,
+      requiredCapabilities: ["messages", "cancellation", "heartbeats", "tool-results"],
+      startupTimeoutMs: 2_000,
+      heartbeatTimeoutMs: 3_000,
+      cancellationTimeoutMs: 1_000,
+      maxRestarts: 1,
+    });
+    const coordinator = new GeneralWorkCoordinator({
+      persistence,
+      clock,
+      supervisor,
+      nativeTools: createScopedNativeToolPlatform({ persistence, clock }),
+    });
+    await supervisor.start(request);
+    await coordinator.checkpointAttempt(request.sessionId);
+
+    const read = await coordinator.invokeScopedToolStep({
+      invocation: {
+        sessionId: request.sessionId,
+        requestId: readRequestId,
+        inputRef: readInputRef,
+      },
+    });
+    expect(read.result).toMatchObject({
+      requestId: readRequestId,
+      status: "succeeded",
+    });
+    expect(supervisor.snapshot(request.sessionId).state).toBe("running");
+    if (read.result.status !== "succeeded" || read.result.outputRef === undefined) {
+      throw new Error("Expected the sequential workspace read to return an output reference");
+    }
+    const source = await persistence.resolveContentReference({
+      contractVersion: WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
+      reference: read.result.outputRef,
+      kind: "tool-output",
+      owner: {
+        workspaceId: request.workspaceId,
+        taskId: request.taskId,
+        sessionId: request.sessionId,
+        workerId: request.workerId,
+        requestId: readRequestId,
+        grantId: grant.grantId,
+      },
+      resolvedAt: clock.now(),
+      consume: false,
+    });
+    await supervisor.send(request.sessionId, {
+      messageId: correlationId("message-sequential-file-source"),
+      content: source.content,
+      sentAt: clock.now(),
+    });
+    const privateWriteInput = adapter.activeToolInput(writeRequestId);
+    expect(privateWriteInput?.content).toContain("Private workspace source");
+    expect(JSON.stringify(supervisor.coreEvents(request.sessionId))).not.toContain(
+      "Private workspace source",
+    );
+    await persistence.storeContentReference({
+      contractVersion: WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
+      reference: writeInputRef,
+      kind: "tool-input",
+      owner: {
+        workspaceId: request.workspaceId,
+        taskId: request.taskId,
+        sessionId: request.sessionId,
+        workerId: request.workerId,
+        requestId: writeRequestId,
+        grantId: grant.grantId,
+      },
+      classification: "task-content",
+      mediaType: "text/plain; charset=utf-8",
+      content: JSON.stringify(privateWriteInput),
+      createdAt: clock.now(),
+    });
+
+    const written = await coordinator.invokeScopedTool({
+      invocation: {
+        sessionId: request.sessionId,
+        requestId: writeRequestId,
+        inputRef: writeInputRef,
+      },
+      artifact: {
+        artifactId: artifactId("artifact-sequential-file"),
+        kind: "file",
+        label: "Actestra file result",
+      },
+    });
+    expect(written.finalization.checkpoint).toMatchObject({
+      phase: "finalized",
+      attempt: { state: "completed", taskState: "completed" },
+      tool: {
+        requestId: writeRequestId,
+        state: "succeeded",
+      },
+      artifactBinding: {
+        artifact: {
+          id: artifactId("artifact-sequential-file"),
+        },
+      },
+    });
+    expect(
+      written.finalization.checkpoint.events.filter((event) => event.type === "tool.requested"),
+    ).toHaveLength(2);
+    await adapter.close();
+    await persistence.close();
+  });
+
   it("persists an evicted event prefix before advancing the recovery window", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-general-work-test-"));
     testDirectories.push(directory);

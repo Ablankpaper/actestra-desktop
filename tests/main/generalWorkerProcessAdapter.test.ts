@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  correlationId,
   eventId,
   instant,
   toolOutputReference,
@@ -128,6 +129,58 @@ describe("General Worker process AgentAdapter v2", () => {
       "task.updated",
       "task.completed",
     ]);
+  });
+
+  it("keeps Worker-produced task-output input private across a two-tool file journey", async () => {
+    const agentClock = clock();
+    const requestIds = [
+      toolRequestId("general-worker-file-read-request"),
+      toolRequestId("general-worker-file-write-request"),
+    ] as const;
+    let requestIndex = 0;
+    const { adapter } = await openTestGeneralWorker(agentClock, {
+      executionMode: "workspace-read-then-task-output-write-fixture",
+      newAttemptToken: () => "general-worker-file-attempt",
+      newToolRequestId: () => requestIds[requestIndex++]!,
+      newEventId: deterministicEventIds(),
+    });
+    const supervisor = new AgentAdapterSupervisor(adapter, agentClock, SUPERVISOR_CONFIG);
+    await supervisor.start(
+      createAgentStartRequest({
+        startedAt: agentClock.now(),
+        initialPrompt: "Process the reserved workspace text.",
+      }),
+    );
+    expect(supervisor.activeToolRequest(FIXTURE_AGENT_SESSION_ID)).toBe(requestIds[0]);
+    expect(adapter.activeToolInput(requestIds[0])).toBeUndefined();
+
+    agentClock.advance(10);
+    await supervisor.resolveTool(requestIds[0], {
+      requestId: requestIds[0],
+      status: "succeeded",
+      startedAt: agentClock.now(),
+      completedAt: agentClock.now(),
+      outputRef: toolOutputReference("general-worker-file-read-output"),
+    });
+    await supervisor.send(FIXTURE_AGENT_SESSION_ID, {
+      messageId: correlationId("general-worker-file-content"),
+      content: "Private source text",
+      sentAt: agentClock.now(),
+    });
+
+    expect(supervisor.activeToolRequest(FIXTURE_AGENT_SESSION_ID)).toBe(requestIds[1]);
+    expect(adapter.activeToolInput(requestIds[1])).toEqual({
+      contractVersion: 1,
+      relativePath: "result.md",
+      mediaType: "text/markdown; charset=utf-8",
+      content:
+        "# Actestra file result\n\n" +
+        "Instruction: Process the reserved workspace text.\n\n" +
+        "Source text:\n\nPrivate source text\n",
+    });
+    expect(JSON.stringify(supervisor.coreEvents(FIXTURE_AGENT_SESSION_ID))).not.toContain(
+      "Private source text",
+    );
   });
 
   it("acknowledges cancellation through the real process protocol", async () => {

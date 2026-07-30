@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { instant, toolOutputReference, toolRequestId } from "../../apps/desktop/src/core";
 import {
   GENERAL_WORKER_PROTOCOL_VERSION,
+  MAX_GENERAL_WORKER_MESSAGE_BYTES,
+  MAX_GENERAL_WORKER_PRIVATE_TOOL_INPUT_BYTES,
   MAX_GENERAL_WORKER_PROMPT_BYTES,
   assertGeneralWorkerMessage,
   assertGeneralWorkerRequest,
@@ -19,6 +21,39 @@ function startRequest() {
       prompt: "Complete the deterministic no-tool fixture.",
       entryState: "ready",
       executionMode: "no-tool-complete",
+    },
+  } as const;
+}
+
+function privateWriteInputWithSerializedBytes(targetBytes: number) {
+  const input = {
+    contractVersion: 1,
+    relativePath: "result.md",
+    mediaType: "text/markdown; charset=utf-8",
+    content: "",
+  } as const;
+  const fixedBytes = new TextEncoder().encode(JSON.stringify(input)).byteLength;
+  if (targetBytes < fixedBytes) {
+    throw new Error("Private Worker input target is smaller than its fixed envelope");
+  }
+  return {
+    ...input,
+    content: "x".repeat(targetBytes - fixedBytes),
+  };
+}
+
+function privateWriteEvent(input: ReturnType<typeof privateWriteInputWithSerializedBytes>) {
+  return {
+    protocolVersion: GENERAL_WORKER_PROTOCOL_VERSION,
+    type: "event",
+    attemptToken: "attempt-file-journey",
+    sequence: 7,
+    event: {
+      type: "tool-requested",
+      callId: "call-file-write",
+      toolName: "actestra.task-output.write-text",
+      summary: "Create the processed workspace-file artifact.",
+      input,
     },
   } as const;
 }
@@ -130,5 +165,77 @@ describe("General Worker process protocol", () => {
         },
       }),
     ).toThrow(/unsupported/);
+  });
+
+  it("admits only a bounded private task-output input on the matching Worker tool event", () => {
+    const event = {
+      protocolVersion: GENERAL_WORKER_PROTOCOL_VERSION,
+      type: "event",
+      attemptToken: "attempt-file-journey",
+      sequence: 7,
+      event: {
+        type: "tool-requested",
+        callId: "call-file-write",
+        toolName: "actestra.task-output.write-text",
+        summary: "Create the processed workspace-file artifact.",
+        input: {
+          contractVersion: 1,
+          relativePath: "result.md",
+          mediaType: "text/markdown; charset=utf-8",
+          content: "# Actestra file result\n\nbounded output\n",
+        },
+      },
+    } as const;
+
+    expect(() => assertGeneralWorkerMessage(event)).not.toThrow();
+    expect(() =>
+      assertGeneralWorkerMessage({
+        ...event,
+        event: {
+          ...event.event,
+          toolName: "actestra.workspace.read-text",
+        },
+      }),
+    ).toThrow(/input|write-text/u);
+    expect(() =>
+      assertGeneralWorkerMessage({
+        ...event,
+        event: {
+          ...event.event,
+          input: {
+            ...event.event.input,
+            relativePath: "../outside.md",
+          },
+        },
+      }),
+    ).toThrow(/path|input/u);
+  });
+
+  it("accepts a 128 KiB private tool input while retaining overall message headroom", () => {
+    const input = privateWriteInputWithSerializedBytes(MAX_GENERAL_WORKER_PRIVATE_TOOL_INPUT_BYTES);
+    const event = privateWriteEvent(input);
+
+    expect(new TextEncoder().encode(JSON.stringify(input))).toHaveLength(
+      MAX_GENERAL_WORKER_PRIVATE_TOOL_INPUT_BYTES,
+    );
+    expect(new TextEncoder().encode(JSON.stringify(event)).byteLength).toBeLessThan(
+      MAX_GENERAL_WORKER_MESSAGE_BYTES,
+    );
+    expect(() => assertGeneralWorkerMessage(event)).not.toThrow();
+  });
+
+  it("rejects a private tool input one byte above 128 KiB before the message limit", () => {
+    const input = privateWriteInputWithSerializedBytes(
+      MAX_GENERAL_WORKER_PRIVATE_TOOL_INPUT_BYTES + 1,
+    );
+    const event = privateWriteEvent(input);
+
+    expect(new TextEncoder().encode(JSON.stringify(input))).toHaveLength(
+      MAX_GENERAL_WORKER_PRIVATE_TOOL_INPUT_BYTES + 1,
+    );
+    expect(new TextEncoder().encode(JSON.stringify(event)).byteLength).toBeLessThan(
+      MAX_GENERAL_WORKER_MESSAGE_BYTES,
+    );
+    expect(() => assertGeneralWorkerMessage(event)).toThrow(/private tool input|131072/u);
   });
 });

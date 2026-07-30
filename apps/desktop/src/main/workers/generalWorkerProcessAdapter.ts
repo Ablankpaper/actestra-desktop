@@ -42,6 +42,7 @@ import {
   type GeneralWorkerOperation,
   type GeneralWorkerRequest,
   type GeneralWorkerResponse,
+  type GeneralWorkerEventPayload,
 } from "../../shared/generalWorkerProtocol";
 
 export type GeneralWorkerProcessErrorCode =
@@ -88,6 +89,7 @@ interface PendingRequest {
 interface PendingToolCall {
   readonly callId: string;
   readonly requestId: ToolRequestId;
+  readonly input?: Extract<GeneralWorkerEventPayload, { type: "tool-requested" }>["input"];
   resolution?: AgentToolResult;
 }
 
@@ -374,6 +376,16 @@ export class GeneralWorkerProcessAdapter implements AgentAdapter {
     }
   }
 
+  activeToolInput(
+    requestIdValue: ToolRequestId,
+  ): Extract<GeneralWorkerEventPayload, { type: "tool-requested" }>["input"] {
+    toolRequestId(requestIdValue);
+    const attempt = [...this.attempts.values()].find(
+      (candidate) => candidate.pendingTool?.requestId === requestIdValue,
+    );
+    return attempt?.pendingTool?.input;
+  }
+
   async cancel(session: SessionId, reason?: string): Promise<void> {
     this.assertAvailable();
     if (reason !== undefined && typeof reason !== "string") {
@@ -652,6 +664,7 @@ export class GeneralWorkerProcessAdapter implements AgentAdapter {
         attempt.pendingTool = {
           callId: event.callId,
           requestId: requestIdValue,
+          ...(event.input === undefined ? {} : { input: Object.freeze({ ...event.input }) }),
         };
         this.emitCoreEvent(attempt, "tool.requested", {
           requestId: requestIdValue,
