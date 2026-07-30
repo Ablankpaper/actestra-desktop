@@ -13,6 +13,7 @@ import { instant, toolInputReference, workspaceGrantId } from "../../apps/deskto
 import { PersistenceUtilityError } from "../../apps/desktop/src/main/persistence/persistenceUtilityClient";
 import { createDomainGraph, FIXTURE_WORKSPACE_ID } from "../fixtures/core";
 import { createGeneralWorkCheckpoint } from "../fixtures/generalWorkRecovery";
+import { createAionUiGeneralWorkRegistration } from "../fixtures/aionuiGeneralWork";
 import { openTestPersistenceUtility } from "../fixtures/persistenceUtility";
 
 const testDirectories: string[] = [];
@@ -106,7 +107,7 @@ describe("persistence utility client", () => {
     const workspaceRoot = path.join(userDataPath, "fixture-workspace");
     fs.mkdirSync(workspaceRoot);
     const { client, transport } = await openTestPersistenceUtility(userDataPath);
-    expect(client.schemaVersion).toBe(7);
+    expect(client.schemaVersion).toBe(8);
     const graph = createDomainGraph();
     await client.replaceDomainGraph(graph);
     await expect(client.loadDomainGraph()).resolves.toEqual(graph);
@@ -193,6 +194,30 @@ describe("persistence utility client", () => {
     await expect(client.loadDomainGraph()).rejects.toMatchObject({
       code: "unavailable",
     });
+    await client.close();
+  });
+
+  it("round-trips AionUI general-work links through the utility process", async () => {
+    const { client } = await openTestPersistenceUtility(createTestDirectory());
+    const registration = createAionUiGeneralWorkRegistration("utility-journey");
+
+    expect(client.registerAionUiGeneralWorkJourney).toBeTypeOf("function");
+    expect(client.listAionUiGeneralWorkJourneyLinks).toBeTypeOf("function");
+    expect(client.listPreparedAionUiGeneralWorkJourneyLinks).toBeTypeOf("function");
+    await expect(client.registerAionUiGeneralWorkJourney(registration)).resolves.toEqual({
+      status: "stored",
+      link: registration.link,
+    });
+    await expect(client.registerAionUiGeneralWorkJourney(registration)).resolves.toEqual({
+      status: "duplicate",
+      link: registration.link,
+    });
+    await expect(
+      client.listAionUiGeneralWorkJourneyLinks(registration.link.conversationHash, 10),
+    ).resolves.toEqual([registration.link]);
+    await expect(client.listPreparedAionUiGeneralWorkJourneyLinks(10)).resolves.toEqual([
+      registration.link,
+    ]);
     await client.close();
   });
 

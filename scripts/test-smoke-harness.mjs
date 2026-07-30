@@ -7,6 +7,11 @@ import { fileURLToPath } from "node:url";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const smokeScript = path.join(repositoryRoot, "scripts", "smoke-packaged-app.mjs");
+const generalWorkSmokeScript = path.join(
+  repositoryRoot,
+  "scripts",
+  "smoke-aionui-general-work.mjs",
+);
 const harnessRoot = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-smoke-harness-"));
 
 function createAppBundle(name, executableSource, mode = 0o700) {
@@ -36,6 +41,11 @@ function assert(condition, message) {
 }
 
 try {
+  assert(
+    fs.readFileSync(generalWorkSmokeScript, "utf8").includes("const startupTimeoutMs = 60_000;"),
+    "General Work target-app smoke must keep a bounded one-minute startup deadline",
+  );
+
   const earlyExit = runSmoke(createAppBundle("early-exit", "#!/bin/sh\nexit 7\n"));
   assert(earlyExit.status === 1, "early exit must fail the smoke check");
   assert(
@@ -65,7 +75,7 @@ const database = new DatabaseSync(path.join(stateDirectory, "actestra.sqlite3"))
 database.exec(\`
   CREATE TABLE workspace_grants (id TEXT PRIMARY KEY) STRICT;
   CREATE TABLE content_references (id TEXT PRIMARY KEY) STRICT;
-  PRAGMA user_version = 7;
+  PRAGMA user_version = 8;
 \`);
 database.close();
 console.log("ACTESTRA_PERSISTENCE_UTILITY_READY");

@@ -55,6 +55,17 @@ Actestra development commands materialize a generated working tree under
   the preserved AionUI window is created. Recovery checkpoints, tool ambiguity,
   artifact ownership, terminal events, domain state, and attempt evidence stay
   under Actestra Core authority; no renderer route or feature entry changes.
+- GW-P4.6 adds one strict text intent to the preserved SendBox. Main resolves
+  native workspace context, schema v8 atomically registers the journey
+  authority, and a real supervised Worker produces one task-owned output.
+  Status, cancellation, and exact-owner content project through native message
+  and Preview surfaces; Preview content is transient and not cached in
+  renderer `localStorage`. Ordinary native sends and all other retained
+  features remain unchanged.
+- An explicit E2E-only target-app driver covers prepared restart recovery,
+  fixture grant denial, and cancellation against the exact pinned AionCore.
+  It is disabled unless both the existing E2E guard and one closed smoke
+  scenario are set; it adds no production renderer entry or general tool mode.
 - Actestra-owned source files are copied into the generated tree through the
   declared `sourceCopies` contract and must remain byte-identical to their
   reviewed root sources.
@@ -69,6 +80,8 @@ bun run downstream:aionui:materialize
 bun run downstream:aionui:check
 bun run downstream:aionui:test
 bun run downstream:aionui:package
+bun run downstream:aionui:dist:dir
+bun run smoke:aionui-general-work
 bun run downstream:aionui:dev
 ```
 

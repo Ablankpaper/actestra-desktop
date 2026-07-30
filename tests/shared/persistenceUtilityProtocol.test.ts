@@ -7,6 +7,7 @@ import {
   createPersistenceUtilityReadyMessage,
 } from "../../apps/desktop/src/shared/persistenceUtilityProtocol";
 import { createGeneralWorkCheckpoint } from "../fixtures/generalWorkRecovery";
+import { createAionUiGeneralWorkRegistration } from "../fixtures/aionuiGeneralWork";
 
 describe("persistence utility protocol", () => {
   it("accepts exact ready, request, and operation-specific response envelopes", () => {
@@ -67,6 +68,97 @@ describe("persistence utility protocol", () => {
         operation: "get-aionui-approval-decision",
         status: "ok",
         result: null,
+      }),
+    ).not.toThrow();
+  });
+
+  it("accepts only hashed AionUI general-work link lookups", () => {
+    const conversationHash = "8d67d46a10371f76a7a3cfbf44cfdc87d14c3f8b62328e48ac8e7aca70153961";
+    const link = {
+      contractVersion: 1,
+      conversationHash,
+      taskId: "task-journey-protocol-1",
+      createdAt: "2026-07-30T06:30:00.000Z",
+    };
+    expect(() =>
+      assertPersistenceUtilityRequest({
+        protocolVersion: 1,
+        type: "request",
+        requestId: "persistence-request-general-work-list",
+        operation: "list-aionui-general-work-links",
+        payload: {
+          conversationHash,
+          limit: 10,
+        },
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertPersistenceUtilityMessage({
+        protocolVersion: 1,
+        type: "response",
+        requestId: "persistence-request-general-work-list",
+        operation: "list-aionui-general-work-links",
+        status: "ok",
+        result: [link],
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertPersistenceUtilityRequest({
+        protocolVersion: 1,
+        type: "request",
+        requestId: "persistence-request-general-work-prepared",
+        operation: "list-prepared-aionui-general-work-links",
+        payload: {
+          limit: 10,
+        },
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertPersistenceUtilityMessage({
+        protocolVersion: 1,
+        type: "response",
+        requestId: "persistence-request-general-work-prepared",
+        operation: "list-prepared-aionui-general-work-links",
+        status: "ok",
+        result: [link],
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertPersistenceUtilityRequest({
+        protocolVersion: 1,
+        type: "request",
+        requestId: "persistence-request-general-work-raw",
+        operation: "list-aionui-general-work-links",
+        payload: {
+          conversationHash: "conversation-native-1",
+          limit: 10,
+        },
+      }),
+    ).toThrow(PersistenceUtilityProtocolError);
+  });
+
+  it("accepts one exact AionUI general-work atomic registration", () => {
+    const registration = createAionUiGeneralWorkRegistration("protocol-1");
+    expect(() =>
+      assertPersistenceUtilityRequest({
+        protocolVersion: 1,
+        type: "request",
+        requestId: "persistence-request-general-work-register",
+        operation: "register-aionui-general-work",
+        payload: { registration },
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertPersistenceUtilityMessage({
+        protocolVersion: 1,
+        type: "response",
+        requestId: "persistence-request-general-work-register",
+        operation: "register-aionui-general-work",
+        status: "ok",
+        result: {
+          status: "stored",
+          link: registration.link,
+        },
       }),
     ).not.toThrow();
   });

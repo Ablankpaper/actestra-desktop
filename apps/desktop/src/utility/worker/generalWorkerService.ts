@@ -86,7 +86,11 @@ export class GeneralWorkerService {
 
     try {
       const events = this.dispatch(request);
-      return Object.freeze([success(request), ...events]);
+      // A successful response is the delivery barrier for the operation's
+      // complete event batch. Electron parent-port messages arrive on separate
+      // turns, so acknowledging first can race durable coordination ahead of
+      // task.started, tool completion, or terminal evidence.
+      return Object.freeze([...events, success(request)]);
     } catch (error) {
       return Object.freeze([failure(request, serviceError(error))]);
     }

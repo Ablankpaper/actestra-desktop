@@ -1,5 +1,6 @@
 import type {
   AionUiApprovalAuthorityPersistencePort,
+  AionUiGeneralWorkJourneyPersistencePort,
   AionUiShadowPersistencePort,
 } from "../compatibility/aionui";
 import type { CorePersistencePort } from "./persistence";
@@ -13,5 +14,6 @@ export interface ActestraPersistencePort
     PlatformEvidencePersistencePort,
     AionUiShadowPersistencePort,
     AionUiApprovalAuthorityPersistencePort,
+    AionUiGeneralWorkJourneyPersistencePort,
     GeneralWorkRecoveryPersistencePort,
     WorkloadPersistencePort {}

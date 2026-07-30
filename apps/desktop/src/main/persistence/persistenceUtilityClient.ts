@@ -2,11 +2,14 @@ import { createHash, randomUUID } from "node:crypto";
 import type {
   AionUiApprovalAuthoritySummary,
   AionUiApprovalDecisionRecord,
+  AionUiGeneralWorkLink,
+  AionUiGeneralWorkRegistration,
   AionUiShadowEvidence,
   AionUiShadowEvidenceSummary,
   AppendAionUiShadowEvidenceResult,
   NormalizedAionUiApprovalDecision,
   ReserveAionUiApprovalDecisionResult,
+  RegisterAionUiGeneralWorkJourneyResult,
   StoredAionUiShadowEvidence,
 } from "../../compatibility/aionui";
 import {
@@ -322,6 +325,25 @@ export class PersistenceUtilityClient implements ActestraPersistencePort {
     limit: number,
   ): Promise<readonly GeneralWorkCheckpoint[]> {
     return this.invoke("list-recoverable-general-work-checkpoints", { limit });
+  }
+
+  async registerAionUiGeneralWorkJourney(
+    registration: AionUiGeneralWorkRegistration,
+  ): Promise<RegisterAionUiGeneralWorkJourneyResult> {
+    return this.invoke("register-aionui-general-work", { registration });
+  }
+
+  async listAionUiGeneralWorkJourneyLinks(
+    conversationHash: string,
+    limit: number,
+  ): Promise<readonly AionUiGeneralWorkLink[]> {
+    return this.invoke("list-aionui-general-work-links", { conversationHash, limit });
+  }
+
+  async listPreparedAionUiGeneralWorkJourneyLinks(
+    limit: number,
+  ): Promise<readonly AionUiGeneralWorkLink[]> {
+    return this.invoke("list-prepared-aionui-general-work-links", { limit });
   }
 
   async close(): Promise<void> {

@@ -179,6 +179,15 @@ export class PersistenceUtilityService {
         return persistence.getGeneralWorkCheckpoint(request.payload.sessionId);
       case "list-recoverable-general-work-checkpoints":
         return persistence.listRecoverableGeneralWorkCheckpoints(request.payload.limit);
+      case "register-aionui-general-work":
+        return persistence.registerAionUiGeneralWorkJourney(request.payload.registration);
+      case "list-aionui-general-work-links":
+        return persistence.listAionUiGeneralWorkJourneyLinks(
+          request.payload.conversationHash,
+          request.payload.limit,
+        );
+      case "list-prepared-aionui-general-work-links":
+        return persistence.listPreparedAionUiGeneralWorkJourneyLinks(request.payload.limit);
       case "close":
         await this.shutdown();
         return null;

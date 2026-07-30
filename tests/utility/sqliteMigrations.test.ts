@@ -60,7 +60,7 @@ describe("Actestra SQLite migrations", () => {
     expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
       fromVersion: 0,
       toVersion: CURRENT_CORE_SCHEMA_VERSION,
-      appliedVersions: [1, 2, 3, 4, 5, 6, 7],
+      appliedVersions: [1, 2, 3, 4, 5, 6, 7, 8],
     });
     expect(pragmaNumber(database, "application_id")).toBe(ACTESTRA_SQLITE_APPLICATION_ID);
     expect(pragmaNumber(database, "user_version")).toBe(CURRENT_CORE_SCHEMA_VERSION);
@@ -96,6 +96,10 @@ describe("Actestra SQLite migrations", () => {
       {
         version: 7,
         name: "general-work-recovery-checkpoints",
+      },
+      {
+        version: 8,
+        name: "aionui-general-work-journeys",
       },
     ]);
   });
@@ -299,14 +303,14 @@ describe("Actestra SQLite migrations", () => {
     });
   });
 
-  it("performs a real 6 -> 7 migration without changing content ownership", () => {
+  it("performs a real 6 -> 8 migration without changing content ownership", () => {
     const database = createDatabase();
     migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 6), APPLIED_AT);
 
     expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
       fromVersion: 6,
-      toVersion: 7,
-      appliedVersions: [7],
+      toVersion: 8,
+      appliedVersions: [7, 8],
     });
     expect(
       database
@@ -316,12 +320,14 @@ describe("Actestra SQLite migrations", () => {
            WHERE type = 'table' AND name IN (
              'workspace_grants',
              'content_references',
-             'general_work_checkpoints'
+             'general_work_checkpoints',
+             'aionui_general_work_journeys'
            )
            ORDER BY name`,
         )
         .all(),
     ).toEqual([
+      { name: "aionui_general_work_journeys" },
       { name: "content_references" },
       { name: "general_work_checkpoints" },
       { name: "workspace_grants" },

@@ -123,6 +123,8 @@ interface SupervisedAttempt {
   forcedCancellation: boolean;
   disposed: boolean;
   cleanupPromise?: Promise<void>;
+  readonly terminalPromise: Promise<void>;
+  readonly resolveTerminal: () => void;
   incident?: AgentSupervisorIncident;
   crashRetryable?: boolean;
   unsubscribe?: UnsubscribeAgentSignals;
@@ -406,6 +408,14 @@ export class AgentAdapterSupervisor {
     return this.snapshot(session);
   }
 
+  async awaitTerminal(session: SessionId): Promise<AgentAttemptSnapshot> {
+    const attempt = this.requireAttempt(session);
+    if (!TERMINAL_ATTEMPT_STATES.includes(attempt.state)) {
+      await attempt.terminalPromise;
+    }
+    return this.snapshot(session);
+  }
+
   async checkHealth(): Promise<void> {
     const now = this.now();
     const cleanup: Promise<void>[] = [];
@@ -549,6 +559,10 @@ export class AgentAdapterSupervisor {
     }
 
     const observedAt = this.now();
+    let resolveTerminal!: () => void;
+    const terminalPromise = new Promise<void>((resolve) => {
+      resolveTerminal = resolve;
+    });
     const attempt: SupervisedAttempt = {
       request: Object.freeze({ ...request }),
       state: "starting",
@@ -562,6 +576,8 @@ export class AgentAdapterSupervisor {
       ...(restartedFromSessionId === undefined ? {} : { restartedFromSessionId }),
       forcedCancellation: false,
       disposed: false,
+      terminalPromise,
+      resolveTerminal,
     };
     this.attempts.set(request.sessionId, attempt);
 
@@ -1036,6 +1052,7 @@ export class AgentAdapterSupervisor {
       return attempt.cleanupPromise;
     }
 
+    attempt.resolveTerminal();
     attempt.pendingApproval = undefined;
     attempt.pendingTool = undefined;
     try {
