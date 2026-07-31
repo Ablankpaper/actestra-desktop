@@ -248,10 +248,11 @@ slice previously described as P4.3/F3.1.
   now has final-local RED-to-GREEN, 56/425 root, 345/2,662 native, production
   build, complete 15-file manual review, a pinned signed-unnotarized arm64
   package, strict resource/signature, and real schema-13 target-app first-run
-  plus restart evidence. It remains uncommitted, unpushed, without PR-head or
-  merged-main CI, and therefore is not accepted. The phase exit gate remains
-  pending until that delivery closes and the separate Worker-crash/recovery
-  smoke passes.
+  plus restart evidence. Exact local implementation commit
+  `fd5524c7f0485923b2aa765df95b5ef0b14187e7` is not yet pushed and has no
+  PR-head or merged-main CI, so the slice is not accepted. The phase exit gate
+  remains pending until that delivery closes and the separate
+  Worker-crash/recovery smoke passes.
 - Support scoped workspace reads and task-output writes through the preserved
   file, workspace, conversation, preview, and artifact surfaces.
 - Add representative file, research, writing, office-document, schedule,
