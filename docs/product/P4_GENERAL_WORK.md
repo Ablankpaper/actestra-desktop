@@ -1,22 +1,22 @@
 # P4 General-Work Vertical Slice
 
 Status: GW-P4.2 through GW-P4.6 plus the representative workspace-file,
-bounded local-research, and writing journeys are accepted on `main`; ADR-0022
-accepts the bounded Office-document journey, whose implementation, focused
-native validation, production build, local package, and target-app smoke pass
-on `feat/p4-office-document-journey`; commit and remote delivery remain pending
+bounded local-research, writing, and Office-document journeys are accepted on
+`main`; ADR-0023 accepts the bounded schedule design, whose schema-13 provider,
+timers, recovery, native compatibility, and target-app smoke remain
+unimplemented
 
 Date: 2026-07-31
 
 Exact base:
-`d5dbc68bb4b3076448dc0bfb9ffc164ffd1c40d2`
+`505afb2f3916e75c7abb07cdf461bda29a602b9b`
 
 ## Entry evidence
 
-The branch starts from the exact verified writing squash merge for
-[pull request 18](https://github.com/bignormal/actestra-desktop/pull/18).
-[Main CI run 30586015008](https://github.com/bignormal/actestra-desktop/actions/runs/30586015008)
-passes on that exact commit.
+The schedule branch starts from the exact verified Office squash merge for
+[pull request 19](https://github.com/bignormal/actestra-desktop/pull/19).
+[Main CI run 30602821085](https://github.com/bignormal/actestra-desktop/actions/runs/30602821085)
+passes on exact commit `505afb2f3916e75c7abb07cdf461bda29a602b9b`.
 
 [ADR-0016](../architecture/decisions/0016-p4-general-work-process-and-content-boundaries.md),
 [ADR-0017](../architecture/decisions/0017-general-worker-process-and-agent-adapter-v2.md),
@@ -390,8 +390,7 @@ Complete local evidence for the feature branch:
   evidence.
 
 The exact representative-file head
-`f19b7dd006cf091aa9c7f1559dd484fdad35f200` passed pull-request CI run
-30567484733. Pull request 16 has no submitted reviews or inline review
+`f19b7dd006cf091aa9c7f1559dd484fdad35f200` passed pull-request CI run 30567484733. Pull request 16 has no submitted reviews or inline review
 comments; its successful Free-plan CodeRabbit result is summary/walkthrough
 evidence, not line-level review evidence. It squash merged as
 `2aed0f705bf6f9b3734742c0905c94ac562f501e`; exact merged-main CI run
@@ -482,7 +481,7 @@ The writing implementation is locally complete on
 Complete local evidence:
 
 - the post-review affected root set passes 7 files/74 tests and complete `bun
-  run check` passes 50 files/325 tests together with formatting, zero-warning lint,
+run check` passes 50 files/325 tests together with formatting, zero-warning lint,
   strict TypeScript, Electron SQLite, smoke, boundary, frozen-foundation,
   downstream, and production-build gates;
 - materialized native strict TypeScript, 4 focused files/9 tests, the complete
@@ -575,10 +574,28 @@ about prompt-only Office registration ownership and the persisted canonical
 model versus detached non-persisted renderer projection. Both were fixed in
 the system overview and ADR-0022; the complete post-remediation 43-file review
 raised zero issues. The complete manual review found and closed the text-writer
-media-type defect. Only evidence text recording these results changed after
-that review; final documentation/range audits remain pending. No Office
-commit, push, pull request, PR-head CI, merge, merged-main CI, candidate,
-release, distribution, or user acceptance exists yet.
+media-type defect. Final documentation, link, range, secret, binary,
+generated-output, and staged-scope audits passed. Implementation commit
+`7df1c17db31c0ab76c2ecf33d0f4c87cfd3c7d5f`, schema-smoke fix
+`0b8b40a68bad68d6a9d06f202eeb85cb019afbfa`, and final evidence head
+`091f786d57c6b4569cdaac17ea969a0b9070ea02` reached Ready pull request 19.
+Final PR CI run 30602624426 passes. PR 19 squash merged as
+`505afb2f3916e75c7abb07cdf461bda29a602b9b`; exact merged-main CI run
+30602821085 passes. The remote CodeRabbit Free status is summary/walkthrough
+evidence only, with no submitted review or inline comment.
+
+ADR-0023 defines the next schedule slice beneath the retained AionUI
+`/scheduled` routes, `CreateTaskDialog`, detail/history/status surfaces, and
+`ipcBridge.cron` DTOs. It admits only an existing native conversation plus a
+bounded `/actestra` prompt. Schema 13 will own jobs, canonical schedule grants,
+next-run state, atomic run claims, and missed/interrupted outcomes. Electron
+main will own timers and invoke the existing General Work journey from the
+stored grant; renderer-selected paths, runtime, model, credentials, Worker,
+tool, queue, retry, and new-conversation authority remain rejected. The native
+conversation action will open the existing dialog with its current
+conversation binding so the admitted path is usable without a replacement UI.
+This is accepted design only: no schedule implementation, focused test,
+complete gate, package, smoke, commit, push, PR, or CI evidence exists yet.
 
 Exit: the complete general-work journey is understandable and recoverable in
 the retained AionUi UI with Actestra as the declared system of record.
@@ -602,10 +619,9 @@ P4 is complete only after:
 
 ## Current non-claims
 
-- GW-P4.2 through GW-P4.6 plus the representative-file, local-research, and
-  writing extensions are accepted on `main`; Office passes the recorded local
-  build, package, and target-app evidence but is not accepted until its exact
-  review, PR-head, merge, and merged-main gates pass.
+- GW-P4.2 through GW-P4.6 plus the representative-file, local-research,
+  writing, and Office extensions are accepted on `main`. Schedule has accepted
+  ADR-0023 direction only and remains unimplemented.
 - Three scoped native tools are connected to user-submitted preserved-AionUI
   tasks. The two text tools retain their accepted fixed or bounded paths; the
   Office tool accepts only fixed `brief.docx`. None is a renderer-selected

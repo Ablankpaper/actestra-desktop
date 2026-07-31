@@ -1,12 +1,12 @@
 # System Overview
 
 Status: P3, F0 through F3.3, GW-P4.2 through GW-P4.6, and the representative
-workspace-file, bounded local-research, and writing journeys are accepted on
-`main`; the bounded Office-document journey passes implementation, focused
-native validation, production build, local package, and target-app smoke on
-`feat/p4-office-document-journey` but has no commit or remote evidence; CrewAI
-is accepted as the first P6 planner-sidecar candidate but is not implemented
-or packaged
+workspace-file, bounded local-research, writing, and Office-document journeys
+are accepted on `main` through exact merge
+`505afb2f3916e75c7abb07cdf461bda29a602b9b` and merged-main CI run
+30602821085; ADR-0023 accepts the next Actestra-owned schedule boundary but
+schema 13 and the schedule provider are not implemented; CrewAI is accepted as
+the first P6 planner-sidecar candidate but is not implemented or packaged
 
 ## Context
 
@@ -23,6 +23,7 @@ flowchart TD
     MAIN["Desktop Main Process\nwindow and process lifecycle"]
     CORE["Actestra App Core"]
     JOURNEY["AionUI General Work Journey\nschema 12 kinds, links, and projections"]
+    SCHEDULE["Actestra Schedule Service\nschema 13 jobs, timers, and claims"]
     RECOVERY["General Work Coordinator\nschema 7 recovery journal"]
     ROUTER["Task Router and Team Orchestrator"]
     PLANNER["CrewAI Planner Sidecar\nP6 candidate, non-authoritative"]
@@ -31,7 +32,7 @@ flowchart TD
     ARTIFACTS["Workspace and Artifact Service"]
     CREDS["Credential Broker"]
     TOOLS["MCP and Tool Gateway"]
-    PERSIST["Persistence Utility\nschema 12 links, checkpoints, and content"]
+    PERSIST["Persistence Utility\nschema 13 schedule authority and existing state"]
     ADAPTERS["Agent Adapter Boundary"]
     GENERAL["General Worker Process"]
     GOOSE["Goose Worker Process"]
@@ -42,9 +43,12 @@ flowchart TD
     COMPAT --> MAIN
     MAIN --> CORE
     MAIN --> JOURNEY
+    MAIN --> SCHEDULE
     JOURNEY --> CORE
     JOURNEY --> RECOVERY
     JOURNEY --> PERSIST
+    SCHEDULE --> JOURNEY
+    SCHEDULE --> PERSIST
     CORE --> RECOVERY
     CORE --> ROUTER
     CORE --> POLICY
@@ -109,9 +113,11 @@ main-owned native text capabilities without granting filesystem authority to
 that process. Accepted GW-P4.5 adds the durable coordination and
 restart-recovery sequence around those capabilities. Accepted GW-P4.6 maps
 that sequence into the preserved AionUI SendBox, message, cancel, and Preview
-surfaces. The representative-file path accepted through pull request 16 and
-the current local-research branch compose the existing read and create-only
-write capabilities inside that same journey.
+surfaces. The representative-file, bounded local-research, writing, and
+Office-document paths accepted through pull requests 16 through 19 compose the
+scoped capabilities inside that same journey. ADR-0023 accepts the next
+main-owned schedule-provider design; schema 13, timers, claims, and native cron
+routing are not yet implemented.
 
 P4.2 adds the separate compatibility boundary accepted in
 [ADR-0011](decisions/0011-aionui-shadow-projection.md). Successful native HTTP
@@ -292,6 +298,15 @@ caching that projection; it does not make the canonical Actestra model
 non-durable. DOCX bytes, output paths, roots, and content references do not
 cross into the renderer or metadata-only evidence.
 
+ADR-0023 accepts a schema-13 schedule authority beneath the retained
+`/scheduled` routes and `ipcBridge.cron` DTOs. One main-owned service will hold
+bounded existing-conversation jobs, canonical schedule grants, next-run
+calculation, timers, atomic run claims, missed/interrupted state, and native
+event projection. A claimed run may enter the existing General Work journey
+only from that stored grant and never gives the scheduler direct Worker or tool
+authority. This paragraph records accepted architecture only; the schema,
+provider, timer service, and target-app proof are not yet implemented.
+
 ## Foundation integration boundary
 
 ADR-0010 and the
@@ -441,7 +456,10 @@ interface AgentAdapter {
     event: CoreEvent<"artifact.created" | "artifact.updated">,
   ): Promise<void>;
   send(sessionId: SessionId, input: AgentInput): Promise<void>;
-  approve(requestId: ToolRequestId, decision: AgentApprovalDecision): Promise<void>;
+  approve(
+    requestId: ToolRequestId,
+    decision: AgentApprovalDecision,
+  ): Promise<void>;
   resolveTool(requestId: ToolRequestId, result: AgentToolResult): Promise<void>;
   cancel(sessionId: SessionId, reason?: string): Promise<void>;
   subscribe(sessionId: SessionId, handler: AgentSignalHandler): Unsubscribe;
@@ -519,6 +537,7 @@ Initial event types:
 | Bounded content references                                                                                     | Actestra persistence utility, schema 6              |
 | General Work attempt, tool, artifact-binding, and recovery checkpoints                                         | Actestra persistence utility, schema 7              |
 | Preserved-AionUI journey links, kinds, and authoritative registration including prompt-only writing and Office | Actestra persistence utility, schema 12             |
+| Scheduled General Work jobs, grants, timers, and run claims (accepted design; not implemented)                 | Actestra persistence utility, schema 13             |
 | Tasks and dependency graph                                                                                     | Actestra                                            |
 | P3 protected-operation approval evidence for the underlying native tool                                        | Actestra target contract; not activated by F3.2     |
 | Event and audit history                                                                                        | Actestra                                            |
@@ -589,11 +608,13 @@ ADR-0021 adds schema-11 prompt-derived writing, private Worker-authored draft
 input, document Artifact, and prepared recovery without workspace reread.
 ADR-0022 adds schema-12 Office registration, a private Worker-authored document
 model, one main-owned create-only DOCX tool, and the bounded retained Word
-Preview provider. General or network research, schedule, representative tool
-failure, Worker crash, credential storage, and OS sandbox mechanisms remain
-later work. Office local stable-input review is closed, but exact remote
-acceptance evidence is still required; its local implementation, test,
-package, and target-app gates pass independently.
+Preview provider. ADR-0023 accepts schema-13 schedule ownership, main-owned
+timers and claims, retained cron DTOs/events, skipped missed occurrences, and
+existing-conversation General Work execution; implementation evidence remains
+pending. General or network research, representative tool failure, Worker
+crash, credential storage, and OS sandbox mechanisms remain later work. Office
+is accepted through exact pull-request and merged-main CI; its local package
+remains unnotarized and is not a candidate or release.
 Signing, notarization, update delivery, and cross-platform candidate packaging
 remain P8 work.
 

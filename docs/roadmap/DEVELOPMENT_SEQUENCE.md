@@ -31,34 +31,26 @@ features are implemented.
 
 Current execution state on 2026-07-31: native-fusion slices F0 through F3.3,
 general-work through GW-P4.6, and the representative workspace-file and
-bounded local-research, and writing extensions are accepted on `main`. Writing
-reached exact PR head `2febf25e80868fac51fb7b37fffb746d10f8edde`, passed PR CI
-run 30585829619, squash merged as
-`d5dbc68bb4b3076448dc0bfb9ffc164ffd1c40d2`, and passed exact merged-main CI
-run 30586015008. The Ready PR's Free-plan CodeRabbit output contains only a
-summary and walkthrough, with no submitted review or inline comment, so it is
-not represented as line-level review evidence.
+bounded local-research, writing, and Office-document extensions are accepted
+on `main`. Office reached exact final PR head
+`091f786d57c6b4569cdaac17ea969a0b9070ea02`, passed PR CI run 30602624426,
+squash merged as `505afb2f3916e75c7abb07cdf461bda29a602b9b`, and passed
+exact merged-main CI run 30602821085. Its 50-file/338-test root gate,
+343-file/2,644-test native gate, final production build, Apple
+Development-signed unnotarized local arm64 package, and schema-12 target-app
+Office/file/research/writing/denial/cancellation smoke remain separate local
+evidence. The Ready PR's Free-plan CodeRabbit output contains only a summary
+and walkthrough, with no submitted review or inline comment, so it is not
+represented as line-level review evidence.
 
-ADR-0022 accepts the independent Office-document slice now implemented on
-`feat/p4-office-document-journey` from exact verified main
-`d5dbc68bb4b3076448dc0bfb9ffc164ffd1c40d2`. It adds one closed structured
-Office brief, schema 12 `office-document-artifact`, a Worker-authored private
-document model, one exact main-owned create-only DOCX tool, a `document`
-Artifact, and the retained Word Preview provider. Downstream materialization
-and install, strict native TypeScript, 6 focused files/16 tests, native
-production build, 50 files/338 root tests, 343 files/2,644 native tests, and a
-rebuilt Apple Development-signed unnotarized local arm64 package pass. The
-final package contains both Electron notices, exact AionCore `0.1.52`, and
-13/13 integrity-matching Hub fallbacks pinned locally to
-`63952fa23897184e03e67a97664f9a901ab2266b`; actual schema-12 packaged
-target-app Office/file/research/writing/denial/cancellation smoke passes. A
-manual 43-file review found and closed a text-writer media-type widening defect
-with a focused red/green regression. The final stable-input CodeRabbit review
-raised two valid canonical-model/registration wording issues; after their
-documentation fix, the complete 43-file follow-up raised zero issues. Commit,
-push, Ready PR, exact PR-head CI, merge, merged-main CI, notarization,
-candidate, release, distribution, and user acceptance do not yet exist. P5
-Goose and P6 CrewAI/Team work have not started.
+ADR-0023 accepts the next independent schedule slice from exact verified main
+`505afb2f3916e75c7abb07cdf461bda29a602b9b`. It retains the native
+`/scheduled` routes, dialog, detail/history, status, CRUD, pause, run-now, and
+event surfaces while moving bounded existing-conversation jobs, schema-13
+grants and claims, timing, missed/interrupted recovery, and General Work
+execution into Actestra main/Core. This is design evidence only; no schema,
+provider, overlay, timer, test, package, smoke, commit, push, PR, or CI evidence
+exists yet. P5 Goose and P6 CrewAI/Team work have not started.
 
 ## P0 — Project Foundation
 
@@ -214,9 +206,13 @@ slice previously described as P4.3/F3.1.
   exact create-only Office tool that generates fixed `brief.docx`, and an
   owned `document` Artifact rendered through the retained Word Preview without
   exposing paths or package bytes. These extensions add no generic local or
-  network research, renderer-selected paths, or another UI. The phase exit
-  gate remains pending until Office reaches merged-main evidence and schedule,
-  representative tool-failure, and Worker-crash smokes pass.
+  network research, renderer-selected paths, or another UI. Office has exact
+  merged-main evidence. ADR-0023 next retains the native cron surface while
+  adding schema-13 Actestra schedule authority, main-owned timers and atomic
+  claims, skipped missed runs, interrupted-run recovery, and bounded
+  existing-conversation General Work execution. The phase exit gate remains
+  pending until schedule, representative tool-failure, and Worker-crash smokes
+  pass.
 - Support scoped workspace reads and task-output writes through the preserved
   file, workspace, conversation, preview, and artifact surfaces.
 - Add representative file, research, writing, office-document, schedule,
