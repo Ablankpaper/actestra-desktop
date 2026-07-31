@@ -33,6 +33,8 @@ const scheduleMissedName = "Schedule smoke missed";
 const scheduleInterruptedName = "Schedule smoke interrupted";
 const scheduleInterruptedClaim = "schedule-smoke-interrupted-claim";
 const scheduleNativeConversationId = "conversation-aionui-smoke";
+const maximumRepresentativeFileBytes = 64 * 1_024;
+const toolFailurePrivateMarker = "Packaged private oversized tool-failure source";
 let succeeded = false;
 
 function fail(message) {
@@ -153,6 +155,7 @@ function processStillOwnsProfile(profilePath) {
 async function runScenario(scenario, profilePath, workspacePath, packagedExecutable) {
   fs.mkdirSync(profilePath, { recursive: true });
   fs.mkdirSync(workspacePath, { recursive: true });
+  const canonicalWorkspacePath = fs.realpathSync(workspacePath);
   let output = "";
   const child = spawn(packagedExecutable, [], {
     cwd: materializedRoot,
@@ -224,6 +227,14 @@ async function runScenario(scenario, profilePath, workspacePath, packagedExecuta
   await delay(500);
   if (processStillOwnsProfile(profilePath)) {
     fail(`${scenario} left a process that still owns its isolated profile`);
+  }
+  if (
+    (scenario === "prepare-tool-failure" || scenario === "recover-tool-failure") &&
+    (output.includes(toolFailurePrivateMarker) ||
+      output.includes(canonicalWorkspacePath) ||
+      output.includes(workspacePath))
+  ) {
+    fail(`${scenario} leaked private workspace data into target-app output`);
   }
   return summary;
 }
@@ -319,6 +330,265 @@ function verifyTerminalProfile(profilePath, expected) {
       fail("terminal profile has no exact General Work task identity");
     }
     return taskId;
+  } finally {
+    database.close();
+  }
+}
+
+function verifyToolFailureProfile(profilePath, workspacePath) {
+  const canonicalWorkspacePath = fs.realpathSync(workspacePath);
+  const database = new DatabaseSync(path.join(profilePath, "state", "actestra.sqlite3"), {
+    readOnly: true,
+    allowExtension: false,
+    enableDoubleQuotedStringLiterals: false,
+    enableForeignKeyConstraints: true,
+  });
+  try {
+    const journeys = database
+      .prepare(
+        `SELECT task_id, contract_version, conversation_hash, journey_kind, created_at
+         FROM aionui_general_work_journeys
+         ORDER BY task_id`,
+      )
+      .all();
+    const workspaces = database
+      .prepare(
+        `SELECT id, name, state, created_at, updated_at
+         FROM workspaces
+         ORDER BY id`,
+      )
+      .all();
+    const tasks = database
+      .prepare(
+        `SELECT id, workspace_id, title, state, active_session_id, created_at, updated_at
+         FROM tasks
+         ORDER BY id`,
+      )
+      .all();
+    const sessions = database
+      .prepare(
+        `SELECT id, workspace_id, task_id, worker_id, state, created_at, updated_at
+         FROM sessions
+         ORDER BY id`,
+      )
+      .all();
+    const workers = database
+      .prepare(
+        `SELECT id, workspace_id, adapter_kind, state, created_at, updated_at
+         FROM workers
+         ORDER BY id`,
+      )
+      .all();
+    const attempts = database
+      .prepare(
+        `SELECT session_id, workspace_id, task_id, worker_id, stream_id, state,
+                last_core_event_sequence, incident_code, redaction, evidence_json
+         FROM agent_attempt_evidence
+         ORDER BY session_id`,
+      )
+      .all();
+    const checkpoints = database
+      .prepare(
+        `SELECT session_id, contract_version, phase, revision, workspace_id,
+                task_id, worker_id, stream_id, created_at, updated_at, checkpoint_json
+         FROM general_work_checkpoints
+         ORDER BY session_id`,
+      )
+      .all();
+    const events = database
+      .prepare(
+        `SELECT event_id, stream_id, sequence, occurred_at, workspace_id, task_id,
+                session_id, worker_id, type, redaction, envelope_json
+         FROM core_events
+         ORDER BY stream_id, sequence`,
+      )
+      .all();
+    const audits = database
+      .prepare(
+        `SELECT sequence, record_id, occurred_at, request_id, workspace_id, task_id,
+                session_id, worker_id, tool_id, action, resource_kind, event_type,
+                redaction, record_json
+         FROM privileged_audit_records
+         ORDER BY sequence`,
+      )
+      .all();
+    const references = database
+      .prepare(
+        `SELECT reference, contract_version, kind, workspace_id, task_id, session_id,
+                worker_id, request_id, grant_id, classification, media_type, byte_length,
+                sha256, created_at, expires_at, consumed_at, metadata_json
+         FROM content_references
+         ORDER BY reference`,
+      )
+      .all();
+    const grants = database
+      .prepare(
+        `SELECT grant_id, contract_version, workspace_id, root_path, display_name, state,
+                created_at, updated_at, grant_json
+         FROM workspace_grants
+         ORDER BY grant_id`,
+      )
+      .all();
+    const approvals = database.prepare("SELECT * FROM approvals ORDER BY id").all();
+    const artifacts = database.prepare("SELECT * FROM artifacts ORDER BY id").all();
+
+    if (
+      databaseValue(database, "PRAGMA user_version") !== 13 ||
+      journeys.length !== 1 ||
+      journeys[0]?.journey_kind !== "workspace-file-artifact" ||
+      workspaces.length !== 1 ||
+      workspaces[0]?.state !== "active" ||
+      tasks.length !== 1 ||
+      tasks[0]?.state !== "failed" ||
+      sessions.length !== 1 ||
+      sessions[0]?.state !== "failed" ||
+      workers.length !== 1 ||
+      workers[0]?.state !== "stopped" ||
+      attempts.length !== 1 ||
+      attempts[0]?.state !== "failed" ||
+      attempts[0]?.incident_code !== "content-too-large" ||
+      checkpoints.length !== 1 ||
+      checkpoints[0]?.phase !== "finalized" ||
+      grants.length !== 1 ||
+      grants[0]?.state !== "active" ||
+      grants[0]?.root_path !== canonicalWorkspacePath ||
+      references.length !== 2 ||
+      approvals.length !== 0 ||
+      artifacts.length !== 0 ||
+      journeys[0]?.task_id !== tasks[0]?.id ||
+      tasks[0]?.workspace_id !== workspaces[0]?.id ||
+      sessions[0]?.workspace_id !== workspaces[0]?.id ||
+      sessions[0]?.task_id !== tasks[0]?.id ||
+      sessions[0]?.worker_id !== workers[0]?.id ||
+      workers[0]?.workspace_id !== workspaces[0]?.id ||
+      attempts[0]?.workspace_id !== workspaces[0]?.id ||
+      attempts[0]?.task_id !== tasks[0]?.id ||
+      attempts[0]?.session_id !== sessions[0]?.id ||
+      attempts[0]?.worker_id !== workers[0]?.id ||
+      checkpoints[0]?.workspace_id !== workspaces[0]?.id ||
+      checkpoints[0]?.task_id !== tasks[0]?.id ||
+      checkpoints[0]?.session_id !== sessions[0]?.id ||
+      checkpoints[0]?.worker_id !== workers[0]?.id ||
+      checkpoints[0]?.stream_id !== attempts[0]?.stream_id ||
+      grants[0]?.workspace_id !== workspaces[0]?.id ||
+      events.some(
+        (event) =>
+          event.workspace_id !== workspaces[0]?.id ||
+          event.task_id !== tasks[0]?.id ||
+          event.session_id !== sessions[0]?.id ||
+          event.worker_id !== workers[0]?.id ||
+          event.stream_id !== attempts[0]?.stream_id,
+      ) ||
+      audits.some(
+        (audit) =>
+          audit.workspace_id !== workspaces[0]?.id ||
+          audit.task_id !== tasks[0]?.id ||
+          audit.session_id !== sessions[0]?.id ||
+          audit.worker_id !== workers[0]?.id,
+      ) ||
+      references.some(
+        (reference) =>
+          reference.workspace_id !== workspaces[0]?.id ||
+          reference.task_id !== tasks[0]?.id ||
+          reference.session_id !== sessions[0]?.id ||
+          reference.worker_id !== workers[0]?.id ||
+          reference.grant_id !== grants[0]?.grant_id,
+      ) ||
+      database.prepare("PRAGMA foreign_key_check").all().length !== 0
+    ) {
+      fail("tool-failure profile does not contain exact Core-owned terminal authority");
+    }
+
+    const checkpoint = JSON.parse(checkpoints[0].checkpoint_json);
+    if (
+      checkpoint.phase !== "finalized" ||
+      checkpoint.tool?.state !== "failed" ||
+      checkpoint.tool?.errorCode !== "content-too-large" ||
+      checkpoint.tool?.mayHaveExecuted !== false ||
+      checkpoint.attempt?.state !== "failed" ||
+      checkpoint.attempt?.taskState !== "failed" ||
+      checkpoint.attempt?.incident?.code !== "content-too-large" ||
+      checkpoint.attempt?.disposed !== true
+    ) {
+      fail("tool-failure checkpoint lost the exact fail-closed terminal result");
+    }
+
+    const toolFailureEvents = events.filter(({ type }) => type === "tool.failed");
+    const taskFailureEvents = events.filter(({ type }) => type === "task.failed");
+    const toolFailureEvent =
+      toolFailureEvents.length === 1 ? JSON.parse(toolFailureEvents[0].envelope_json) : undefined;
+    const taskFailureEvent =
+      taskFailureEvents.length === 1 ? JSON.parse(taskFailureEvents[0].envelope_json) : undefined;
+    if (
+      toolFailureEvent?.payload?.errorCode !== "content-too-large" ||
+      toolFailureEvent?.payload?.mayHaveExecuted !== false ||
+      taskFailureEvent?.payload?.errorCode !== "content-too-large" ||
+      events.some(({ type }) =>
+        ["tool.completed", "task.completed", "task.cancelled", "artifact.created"].includes(type),
+      )
+    ) {
+      fail("tool-failure normalized Core events are not exact");
+    }
+
+    const expectedAuditTypes = ["policy.evaluated", "tool.started", "tool.failed"];
+    const auditEvents = audits.map(({ record_json: recordJson }) => JSON.parse(recordJson).event);
+    const policyAudit = auditEvents.find(({ type }) => type === "policy.evaluated");
+    const toolFailureAudit = auditEvents.find(({ type }) => type === "tool.failed");
+    if (
+      JSON.stringify(audits.map(({ event_type: eventType }) => eventType)) !==
+        JSON.stringify(expectedAuditTypes) ||
+      policyAudit?.decision !== "allow" ||
+      !policyAudit?.matchedRuleIds?.includes("rule-gw-p4-4-workspace-read-text") ||
+      toolFailureAudit?.errorCode !== "content-too-large" ||
+      toolFailureAudit?.mayHaveExecuted !== false
+    ) {
+      fail("tool-failure policy and metadata audit evidence are not exact");
+    }
+
+    const normalizedEvidence = `${events.map(({ envelope_json: value }) => value).join("\n")}\n${audits
+      .map(({ record_json: value }) => value)
+      .join("\n")}`;
+    for (const fragment of [
+      canonicalWorkspacePath,
+      workspacePath,
+      "actestra-input.txt",
+      toolFailurePrivateMarker,
+      ...references.map(({ reference }) => reference),
+    ]) {
+      if (normalizedEvidence.includes(fragment)) {
+        fail("tool-failure private workspace data leaked into events or metadata audit");
+      }
+    }
+
+    const taskId = journeys[0].task_id;
+    if (
+      typeof taskId !== "string" ||
+      taskId.length === 0 ||
+      fs.statSync(path.join(workspacePath, ".actestra", "task-output", taskId, "result.md"), {
+        throwIfNoEntry: false,
+      }) !== undefined
+    ) {
+      fail("tool-failure journey created an unexpected task output");
+    }
+
+    return Object.freeze({
+      taskId,
+      authoritySnapshot: JSON.stringify({
+        journeys,
+        workspaces,
+        tasks,
+        sessions,
+        workers,
+        attempts,
+        checkpoints,
+        events,
+        audits,
+        references,
+        grants,
+        approvals,
+        artifacts,
+      }),
+    });
   } finally {
     database.close();
   }
@@ -562,6 +832,61 @@ try {
   requireFile(recoveredOutput, "Recovered representative file artifact");
   if (!fs.readFileSync(recoveredOutput, "utf8").includes(restartSourceText)) {
     fail("Recovered representative file artifact does not contain the owned source");
+  }
+
+  const toolFailureProfile = path.join(smokeRoot, "tool-failure-profile");
+  const toolFailureWorkspace = path.join(smokeRoot, "tool-failure-workspace");
+  const toolFailureSource = `${toolFailurePrivateMarker}\n${"x".repeat(
+    maximumRepresentativeFileBytes,
+  )}`;
+  if (Buffer.byteLength(toolFailureSource, "utf8") <= maximumRepresentativeFileBytes) {
+    fail("tool-failure fixture did not exceed the representative file transport bound");
+  }
+  fs.mkdirSync(toolFailureWorkspace, { recursive: true });
+  fs.writeFileSync(
+    path.join(toolFailureWorkspace, "actestra-input.txt"),
+    toolFailureSource,
+    "utf8",
+  );
+  const toolFailure = await runScenario(
+    "prepare-tool-failure",
+    toolFailureProfile,
+    toolFailureWorkspace,
+    packagedExecutable,
+  );
+  if (
+    toolFailure.status !== "failed" ||
+    toolFailure.taskCount !== 1 ||
+    toolFailure.artifactCount !== 0
+  ) {
+    fail("prepare-tool-failure returned the wrong terminal evidence");
+  }
+  const toolFailureBeforeRestart = verifyToolFailureProfile(
+    toolFailureProfile,
+    toolFailureWorkspace,
+  );
+  const recoveredToolFailure = await runScenario(
+    "recover-tool-failure",
+    toolFailureProfile,
+    toolFailureWorkspace,
+    packagedExecutable,
+  );
+  if (
+    recoveredToolFailure.status !== "failed" ||
+    recoveredToolFailure.taskCount !== 1 ||
+    recoveredToolFailure.artifactCount !== 0
+  ) {
+    fail("recover-tool-failure returned the wrong persisted terminal evidence");
+  }
+  const toolFailureAfterRestart = verifyToolFailureProfile(
+    toolFailureProfile,
+    toolFailureWorkspace,
+  );
+  if (
+    toolFailureAfterRestart.taskId !== toolFailureBeforeRestart.taskId ||
+    toolFailureAfterRestart.authoritySnapshot !== toolFailureBeforeRestart.authoritySnapshot
+  ) {
+    fail("recover-tool-failure changed terminal authority or re-executed the Worker");
   }
 
   const writingProfile = path.join(smokeRoot, "writing-restart-profile");
@@ -815,11 +1140,11 @@ try {
 
   succeeded = true;
   console.info(
-    "Packaged target-app P4 schedule smoke passed: schema-13 run-now, missed and interrupted recovery, representative workspace-file, writing and Office restart recovery, real DOCX and owned Word Preview, local research, workspace-grant denial, cancellation, finalized checkpoints, events, artifacts, privacy, and terminal evidence are exact.",
+    "Packaged target-app P4 tool-failure smoke passed: schema-13 run-now, missed and interrupted recovery, representative workspace-file, exact content-too-large failure and stable restart projection, writing and Office restart recovery, real DOCX and owned Word Preview, local research, workspace-grant denial, cancellation, finalized checkpoints, events, artifacts, privacy, and terminal evidence are exact.",
   );
 } catch (error) {
   console.error(
-    `Target-app P4 schedule smoke failed: ${error instanceof Error ? error.message : String(error)}`,
+    `Target-app P4 tool-failure smoke failed: ${error instanceof Error ? error.message : String(error)}`,
   );
   console.error(`Isolated smoke root retained for inspection: ${smokeRoot}`);
   process.exitCode = 1;

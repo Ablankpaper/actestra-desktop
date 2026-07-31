@@ -1079,6 +1079,8 @@ const SMOKE_SCENARIOS = [
   'recover-writing-restart',
   'prepare-office-restart',
   'recover-office-restart',
+  'prepare-tool-failure',
+  'recover-tool-failure',
   'denial',
   'cancellation',
   'local-research',
@@ -1214,7 +1216,8 @@ export async function runActestraGeneralWorkSmoke(
   const recoverySummary = await recovery;
   const fileRestartJourney =
     config.scenario === 'prepare-restart' ||
-    config.scenario === 'recover-restart';
+    config.scenario === 'recover-restart' ||
+    config.scenario === 'prepare-tool-failure';
   const writingRestartJourney =
     config.scenario === 'prepare-writing-restart' ||
     config.scenario === 'recover-writing-restart';
@@ -1379,6 +1382,37 @@ export async function runActestraGeneralWorkSmoke(
     });
   }
 
+  if (config.scenario === 'recover-tool-failure') {
+    if (
+      recoverySummary.attempted !== 0 ||
+      recoverySummary.started !== 0 ||
+      recoverySummary.failed !== 0
+    ) {
+      throw new Error(
+        'The recovered tool-failure smoke attempted to restart terminal work',
+      );
+    }
+    const projection = oneProjection(
+      await service.list(config.nativeConversationId),
+    );
+    if (
+      projection.status !== 'failed' ||
+      projection.canCancel ||
+      projection.incidentCode !== 'content-too-large' ||
+      projection.artifacts.length !== 0
+    ) {
+      throw new Error(
+        'The recovered tool-failure smoke lost exact content-too-large evidence',
+      );
+    }
+    return Object.freeze({
+      scenario: config.scenario,
+      status: 'failed',
+      taskCount: 1,
+      artifactCount: 0,
+    });
+  }
+
   if (
     recoverySummary.attempted !== 0 ||
     recoverySummary.started !== 0 ||
@@ -1446,6 +1480,24 @@ export async function runActestraGeneralWorkSmoke(
       status: 'completed',
       taskCount: 1,
       artifactCount: 1,
+    });
+  }
+  if (config.scenario === 'prepare-tool-failure') {
+    if (
+      projection.status !== 'failed' ||
+      projection.canCancel ||
+      projection.incidentCode !== 'content-too-large' ||
+      projection.artifacts.length !== 0
+    ) {
+      throw new Error(
+        'The tool-failure smoke did not persist exact content-too-large evidence',
+      );
+    }
+    return Object.freeze({
+      scenario: config.scenario,
+      status: 'failed',
+      taskCount: 1,
+      artifactCount: 0,
     });
   }
   if (
@@ -2393,6 +2445,8 @@ function config(
     | 'recover-writing-restart'
     | 'prepare-office-restart'
     | 'recover-office-restart'
+    | 'prepare-tool-failure'
+    | 'recover-tool-failure'
     | 'denial'
     | 'cancellation'
     | 'local-research',
@@ -2427,6 +2481,20 @@ describe('Actestra target-app General Work smoke contract', () => {
         ACTESTRA_GENERAL_WORK_SMOKE_WORKSPACE: path.resolve('smoke-workspace'),
       }),
     ).toEqual(config('cancellation'));
+    expect(
+      resolveActestraGeneralWorkSmokeConfig({
+        ACTESTRA_E2E_TEST: '1',
+        ACTESTRA_GENERAL_WORK_SMOKE_SCENARIO: 'prepare-tool-failure',
+        ACTESTRA_GENERAL_WORK_SMOKE_WORKSPACE: path.resolve('smoke-workspace'),
+      }),
+    ).toEqual(config('prepare-tool-failure'));
+    expect(
+      resolveActestraGeneralWorkSmokeConfig({
+        ACTESTRA_E2E_TEST: '1',
+        ACTESTRA_GENERAL_WORK_SMOKE_SCENARIO: 'recover-tool-failure',
+        ACTESTRA_GENERAL_WORK_SMOKE_WORKSPACE: path.resolve('smoke-workspace'),
+      }),
+    ).toEqual(config('recover-tool-failure'));
   });
 
   it('requires terminal cancellation evidence from the target service', async () => {
@@ -2458,6 +2526,129 @@ describe('Actestra target-app General Work smoke contract', () => {
       'task-smoke',
       'Actestra target-app smoke requested cancellation.',
     );
+  });
+
+  it('submits the representative tool failure through the real workspace-file journey', async () => {
+    const service = {
+      submit: vi.fn(async () => ({
+        taskId: 'task-tool-failure-smoke',
+        canCancel: true,
+      })),
+      waitForIdle: vi.fn(async () => undefined),
+      list: vi.fn(async () => [
+        {
+          taskId: 'task-tool-failure-smoke',
+          status: 'failed',
+          canCancel: false,
+          incidentCode: 'content-too-large',
+          artifacts: [],
+        },
+      ]),
+    } as unknown as AionUiGeneralWorkJourneyService;
+
+    await expect(
+      runActestraGeneralWorkSmoke(
+        config('prepare-tool-failure'),
+        service,
+        zeroRecovery,
+      ),
+    ).resolves.toEqual({
+      scenario: 'prepare-tool-failure',
+      status: 'failed',
+      taskCount: 1,
+      artifactCount: 0,
+    });
+    expect(service.submit).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        journeyKind: 'workspace-file-artifact',
+      }),
+    );
+  });
+
+  it('rejects a tool-failure smoke result without the exact content-too-large incident', async () => {
+    const service = {
+      submit: vi.fn(async () => ({
+        taskId: 'task-wrong-tool-failure-smoke',
+        canCancel: true,
+      })),
+      waitForIdle: vi.fn(async () => undefined),
+      list: vi.fn(async () => [
+        {
+          taskId: 'task-wrong-tool-failure-smoke',
+          status: 'failed',
+          canCancel: false,
+          incidentCode: 'workspace-grant-unavailable',
+          artifacts: [],
+        },
+      ]),
+    } as unknown as AionUiGeneralWorkJourneyService;
+
+    await expect(
+      runActestraGeneralWorkSmoke(
+        config('prepare-tool-failure'),
+        service,
+        zeroRecovery,
+      ),
+    ).rejects.toThrow(/content-too-large/u);
+  });
+
+  it('projects a persisted tool failure after restart without submitting another task', async () => {
+    const service = {
+      submit: vi.fn(async () => {
+        throw new Error('recover-tool-failure must not submit');
+      }),
+      waitForIdle: vi.fn(async () => undefined),
+      list: vi.fn(async () => [
+        {
+          taskId: 'task-tool-failure-smoke',
+          status: 'failed',
+          canCancel: false,
+          incidentCode: 'content-too-large',
+          artifacts: [],
+        },
+      ]),
+    } as unknown as AionUiGeneralWorkJourneyService;
+
+    await expect(
+      runActestraGeneralWorkSmoke(
+        config('recover-tool-failure'),
+        service,
+        zeroRecovery,
+      ),
+    ).resolves.toEqual({
+      scenario: 'recover-tool-failure',
+      status: 'failed',
+      taskCount: 1,
+      artifactCount: 0,
+    });
+    expect(service.submit).not.toHaveBeenCalled();
+    expect(service.waitForIdle).not.toHaveBeenCalled();
+    expect(service.list).toHaveBeenCalledExactlyOnceWith(
+      'conversation-aionui-smoke',
+    );
+  });
+
+  it('rejects a recovered tool failure when startup attempted terminal work', async () => {
+    const service = {
+      list: vi.fn(async () => [
+        {
+          taskId: 'task-tool-failure-smoke',
+          status: 'failed',
+          canCancel: false,
+          incidentCode: 'content-too-large',
+          artifacts: [],
+        },
+      ]),
+    } as unknown as AionUiGeneralWorkJourneyService;
+
+    await expect(
+      runActestraGeneralWorkSmoke(
+        config('recover-tool-failure'),
+        service,
+        Promise.resolve({ attempted: 1, started: 1, failed: 0 }),
+      ),
+    ).rejects.toThrow(/terminal work/u);
+    expect(service.list).not.toHaveBeenCalled();
   });
 
   it('distinguishes prepared and recovered restart evidence', async () => {

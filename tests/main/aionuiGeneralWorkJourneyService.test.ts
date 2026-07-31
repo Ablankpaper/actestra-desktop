@@ -1211,8 +1211,20 @@ describe("AionUiGeneralWorkJourneyService", () => {
       attempt: {
         state: "failed",
         taskState: "failed",
+        incident: {
+          code: "content-too-large",
+        },
       },
     });
+    await expect(persistence.listRecentAgentAttemptEvidence(1)).resolves.toMatchObject([
+      {
+        state: "failed",
+        taskState: "failed",
+        incident: {
+          code: "content-too-large",
+        },
+      },
+    ]);
     expect(checkpoint?.events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

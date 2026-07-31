@@ -157,6 +157,38 @@ function immutableAttempt(snapshot: AgentAttemptSnapshot): GeneralWorkAttemptRec
   });
 }
 
+function terminalAttemptWithToolIncident(
+  snapshot: AgentAttemptSnapshot,
+  checkpoint: GeneralWorkCheckpoint,
+  events: readonly CoreEvent[],
+): GeneralWorkAttemptRecord {
+  const attempt = immutableAttempt(snapshot);
+  if (attempt.state !== "failed" || checkpoint.tool?.state !== "failed") {
+    return attempt;
+  }
+
+  const terminalEvent = events.at(-1);
+  if (
+    terminalEvent?.type !== "task.failed" ||
+    terminalEvent.payload.errorCode !== checkpoint.tool.errorCode
+  ) {
+    throw new GeneralWorkRecoveryError(
+      "event-mismatch",
+      "A failed General Work tool requires matching terminal Task evidence",
+    );
+  }
+  if (attempt.incident !== undefined) {
+    return attempt;
+  }
+  return Object.freeze({
+    ...attempt,
+    incident: Object.freeze({
+      code: checkpoint.tool.errorCode,
+      occurredAt: terminalEvent.occurredAt,
+    }),
+  });
+}
+
 function maximumInstant(...values: readonly Instant[]): Instant {
   return values.reduce((latest, value) => (compareInstants(value, latest) > 0 ? value : latest));
 }
@@ -429,10 +461,11 @@ export class GeneralWorkCoordinator {
           : { artifactId: existing.artifactBinding.artifact.id }),
       });
     }
+    const events = supervisor.coreEvents(session);
     const pending = await this.persistTerminal(
       existing,
-      immutableAttempt(snapshot),
-      supervisor.coreEvents(session),
+      terminalAttemptWithToolIncident(snapshot, existing, events),
+      events,
     );
     return this.settle(pending, supervisor);
   }

@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-07-30
-- Amended: 2026-07-31
+- Amended: 2026-08-01
 - Clarifies:
   [ADR-0002](0002-single-source-of-truth.md),
   [ADR-0005](0005-sqlite-persistence-and-migrations.md),
@@ -197,7 +197,8 @@ state.
 
 ### Keep target-app smoke explicit and non-production
 
-The materialized desktop admits nine fixed smoke scenarios only when both
+The final schema-13 materialized desktop admits thirteen fixed smoke scenarios
+across this journey and ADR-0023's schedule provider only when both
 `ACTESTRA_E2E_TEST=1` and a recognized
 `ACTESTRA_GENERAL_WORK_SMOKE_SCENARIO` are present. The smoke workspace must be
 an explicit absolute test path. The driver can prepare and recover one task,
@@ -209,10 +210,11 @@ from AionCore.
 The external target-app smoke launches the packaged macOS `Actestra.app`
 produced from the production-built materialized desktop, using only the exact
 AionCore version bundled under the frozen AionUI manifest pin. As clarified by
-ADR-0021 and
-[ADR-0022](0022-bounded-office-document-artifact-journey.md), it now verifies
-restart, bounded local research, writing, Office-document creation, denial,
-and cancellation through schema-12
+ADR-0021, [ADR-0022](0022-bounded-office-document-artifact-journey.md), and
+[ADR-0023](0023-actestra-owned-scheduled-general-work.md), it now verifies
+restart, bounded local research, writing, Office-document creation, scheduling,
+representative `content-too-large` tool failure, denial, and cancellation
+through schema-13
 journey rows, finalized checkpoints, normalized events, Artifact counts,
 terminal attempt evidence, foreign keys, renderer readiness, and process
 cleanup. Research resolves its exact owned non-persisted Markdown Preview and
@@ -222,6 +224,10 @@ keeps private draft input out of normalized events and metadata audit.
 Office proves a real `brief.docx` ZIP/OOXML package, prompt-only recovery, an
 exact `document` Artifact, bounded owned Word Preview, and absence of the
 private model and output path from normalized events and metadata audit.
+Representative tool failure proves one failed file journey, exact matching
+tool/Task/Attempt incident evidence, no output Artifact, no restart execution,
+and absence of its root, source marker, filename, and opaque references from
+normalized events, metadata audit, and renderer-facing output.
 
 ## Consequences
 
@@ -255,10 +261,11 @@ private model and output path from normalized events and metadata audit.
   though the general workspace-read tool supports up to 1 MiB.
 - The loopback native-context read remains a compatibility dependency and must
   fail closed when AionCore is unavailable or incompatible.
-- Schema versions 8 through 12 are forward-only.
-- General or network research, schedule, representative tool-failure and
-  Worker crash, and broader permission journeys remain later P4 acceptance
-  work. Office remains unaccepted until its review and remote gates close.
+- Schema versions 8 through 13 are forward-only.
+- General or network research, Worker crash, and broader permission journeys
+  remain later P4 acceptance work. Schedule is governed by ADR-0023; the
+  representative tool-failure fixture reuses the accepted file journey rather
+  than adding another journey kind.
 
 ## Rejected alternatives
 

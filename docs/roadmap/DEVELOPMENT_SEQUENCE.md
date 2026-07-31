@@ -244,8 +244,17 @@ slice previously described as P4.3/F3.1.
   Ready PR 20's initial CI exposed a wrong-package path; the focused remediation
   reached final head `c06ca5b4bd842fbad098ffc3b9e7bcef1aadbceb`, passed PR CI
   30659567604, squash merged as `5b0748af674165f9e9475be61dc1e02a1b08c8bc`,
-  and passed merged-main CI 30660078199. The phase exit gate remains pending
-  until representative tool-failure and Worker-crash smokes pass.
+  and passed merged-main CI 30660078199. The representative tool-failure slice
+  now has final-local RED-to-GREEN, 56/425 root, 345/2,662 native, production
+  build, complete 15-file manual review, a pinned signed-unnotarized arm64
+  package, strict resource/signature, and real schema-13 target-app first-run
+  plus restart evidence. Exact local implementation commit
+  `fd5524c7f0485923b2aa765df95b5ef0b14187e7` is pushed in Ready pull request
+  22, opened at initial head `3d5bfaeeb5b64c607850965bd94ab22d73247fdb`.
+  Initial PR CI 30673609902 is in progress; exact final PR-head and merged-main
+  CI remain, so the slice is not accepted. The phase exit gate remains pending
+  until that delivery closes and the separate Worker-crash/recovery smoke
+  passes.
 - Support scoped workspace reads and task-output writes through the preserved
   file, workspace, conversation, preview, and artifact surfaces.
 - Add representative file, research, writing, office-document, schedule,
