@@ -16,6 +16,8 @@ import {
   type AionUiScheduleCreateInput,
   type AionUiGeneralWorkIntent,
   type AionUiGeneralWorkProjection,
+  type AionUiScheduleEvent,
+  type AionUiScheduleEventHandler,
   type NativeAionUiCronJob,
 } from "../../compatibility/aionui";
 import {
@@ -130,21 +132,6 @@ export interface AionUiScheduleServiceConfig {
   readonly timers: AionUiScheduleTimerPort;
   readonly newClaimId?: () => string;
 }
-
-export type AionUiScheduleEvent =
-  | Readonly<{ type: "cron.job-created"; payload: NativeAionUiCronJob }>
-  | Readonly<{ type: "cron.job-updated"; payload: NativeAionUiCronJob }>
-  | Readonly<{ type: "cron.job-removed"; payload: Readonly<{ job_id: string }> }>
-  | Readonly<{
-      type: "cron.job-executed";
-      payload: Readonly<{
-        job_id: string;
-        status: "ok" | "error" | "skipped" | "missed";
-        error?: string;
-      }>;
-    }>;
-
-export type AionUiScheduleEventHandler = (event: AionUiScheduleEvent) => void;
 
 export interface NativeAionUiScheduleConversation {
   readonly id: string;
