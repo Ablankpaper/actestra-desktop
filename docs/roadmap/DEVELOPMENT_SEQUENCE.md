@@ -30,8 +30,8 @@ features are implemented.
 | P8    | Cross-platform internal beta                             | P7                |
 
 Current execution state on 2026-08-01: native-fusion slices F0 through F3.3,
-general-work through GW-P4.6, and the representative workspace-file and
-bounded local-research, writing, and Office-document extensions are accepted
+general-work through GW-P4.6, and the representative workspace-file, bounded
+local-research, writing, Office-document, and schedule extensions are accepted
 on `main`. Office reached exact final PR head
 `091f786d57c6b4569cdaac17ea969a0b9070ea02`, passed PR CI run 30602624426,
 squash merged as `505afb2f3916e75c7abb07cdf461bda29a602b9b`, and passed
@@ -68,12 +68,15 @@ Final-byte validation now passes 56 root files/424 tests, 345 native files/2,658
 tests, strict native TypeScript, the 607/24/10,184-module native production
 build, a newly built Apple Development-signed unnotarized arm64 package, exact
 package/ASAR/resource checks, and actual schema-13 target-app smoke. Ready PR 20
-reached initial exact head `70b11992f4de015e0952d482a126cd1270208aa8`; CI run
-30657973409 passes through the native build and bundle steps but then exposes
-that CI packages the legacy root output rather than the target native app. A
-focused workflow TDD remediation passes the complete root gate locally;
-replacement PR-head CI, merge, and merged-main CI remain. P5 Goose and P6
-CrewAI/Team work have not started.
+reached initial head `70b11992f4de015e0952d482a126cd1270208aa8`; CI run
+30657973409 exposed that CI packaged the legacy root output rather than the
+target native app. Focused workflow TDD produced exact final head
+`c06ca5b4bd842fbad098ffc3b9e7bcef1aadbceb`; PR CI 30659567604 passes the full
+native package and clean-profile smoke path. PR 20 squash merged as
+`5b0748af674165f9e9475be61dc1e02a1b08c8bc`, and exact merged-main CI
+30660078199 passes. Its remote CodeRabbit output is a rate-limited summary, not
+line-level review evidence. Representative tool-failure and Worker-crash gates
+remain; P5 Goose and P6 CrewAI/Team work have not started.
 
 ## P0 — Project Foundation
 
@@ -230,7 +233,7 @@ slice previously described as P4.3/F3.1.
   owned `document` Artifact rendered through the retained Word Preview without
   exposing paths or package bytes. These extensions add no generic local or
   network research, renderer-selected paths, or another UI. Office has exact
-  merged-main evidence. ADR-0023 next retains the native cron surface while
+  merged-main evidence. ADR-0023 retains the native cron surface while
   adding schema-13 Actestra schedule authority, main-owned timers and atomic
   claims, skipped missed runs, interrupted-run recovery, and bounded
   existing-conversation General Work execution. Its pre-review local
@@ -238,11 +241,11 @@ slice previously described as P4.3/F3.1.
   raised 12 issues and the valid concerns now pass focused remediation tests,
   lint, and strict TypeScript. Complete final-byte root/native gates, package,
   package audits, target-app smoke, and manual review closure now pass locally.
-  Ready PR 20's initial CI exposed a wrong-package path and the focused native-
-  package remediation passes locally; replacement remote acceptance remains.
-  The phase exit gate remains pending until schedule
-  is accepted on main and representative tool-failure and Worker-crash smokes
-  pass.
+  Ready PR 20's initial CI exposed a wrong-package path; the focused remediation
+  reached final head `c06ca5b4bd842fbad098ffc3b9e7bcef1aadbceb`, passed PR CI
+  30659567604, squash merged as `5b0748af674165f9e9475be61dc1e02a1b08c8bc`,
+  and passed merged-main CI 30660078199. The phase exit gate remains pending
+  until representative tool-failure and Worker-crash smokes pass.
 - Support scoped workspace reads and task-output writes through the preserved
   file, workspace, conversation, preview, and artifact surfaces.
 - Add representative file, research, writing, office-document, schedule,

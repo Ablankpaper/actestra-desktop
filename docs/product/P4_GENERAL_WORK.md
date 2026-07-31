@@ -1,12 +1,11 @@
 # P4 General-Work Vertical Slice
 
 Status: GW-P4.2 through GW-P4.6 plus the representative workspace-file,
-bounded local-research, writing, and Office-document journeys are accepted on
-`main`; ADR-0023's schema-13 schedule provider, main-owned timers and recovery,
-and native compatibility are implemented locally. Final-byte root/native
-validation, production build, a new Apple Development-signed unnotarized local
-arm64 package, package audits, and target-app smoke pass; commit, PR-head,
-merge, and merged-main gates remain pending
+bounded local-research, writing, Office-document, and schedule journeys are
+accepted on `main`. Schedule reached exact final head
+`c06ca5b4bd842fbad098ffc3b9e7bcef1aadbceb`, PR CI 30659567604, squash merge
+`5b0748af674165f9e9475be61dc1e02a1b08c8bc`, and merged-main CI 30660078199.
+Representative tool-failure and Worker-crash evidence still blocks the P4 gate
 
 Date: 2026-08-01
 
@@ -651,17 +650,20 @@ the present input:
   journey, privacy, terminal-evidence, temporary-root, and process-cleanup
   smoke.
 
-The final implementation was committed and pushed as
-`70b11992f4de015e0952d482a126cd1270208aa8` to Ready pull request 20. Initial
-exact-head CI run 30657973409 passes through the native production build and
-bundle creation, then fails strict package verification because the workflow
-packages the legacy root `out/` instead of the materialized native output. A
-focused RED-to-GREEN workflow contract now packages inside the materialized
-tree, verifies that exact native app, and runs the schema-13 target-app smoke;
-the complete root 56-file/424-test gate passes after this remediation. Its
-replacement exact PR-head CI, squash merge, and merged-main CI remain pending.
-The local Apple Development signature is not notarization, a candidate,
-release, distribution, or user acceptance.
+The implementation first reached Ready pull request 20 as
+`70b11992f4de015e0952d482a126cd1270208aa8`. Initial exact-head CI run
+30657973409 passes through the native production build and bundle creation,
+then fails strict package verification because the workflow packages the legacy
+root `out/` instead of the materialized native output. A focused RED-to-GREEN
+workflow contract packages inside the materialized tree, verifies that exact
+native app, and runs the schema-13 target-app smoke. The remediation reached
+exact final head `c06ca5b4bd842fbad098ffc3b9e7bcef1aadbceb`; PR CI run
+30659567604 passes the complete job. PR 20 has no submitted review or review
+thread; its CodeRabbit Free output is a rate-limited summary/walkthrough, not a
+line-level review. The PR squash merged as
+`5b0748af674165f9e9475be61dc1e02a1b08c8bc`, and merged-main CI run
+30660078199 passes. The local Apple Development signature is not notarization,
+a candidate, release, distribution, or user acceptance.
 
 Exit: the complete general-work journey is understandable and recoverable in
 the retained AionUi UI with Actestra as the declared system of record.
@@ -686,11 +688,11 @@ P4 is complete only after:
 ## Current non-claims
 
 - GW-P4.2 through GW-P4.6 plus the representative-file, local-research,
-  writing, and Office extensions are accepted on `main`. Four complete schedule
-  CodeRabbit passes are dispositioned and the manual review is closed; two
-  follow-ups were rate-limited before analysis. Its final-byte root/native,
-  package, package-audit, and target-app gates pass; commit, PR-head, merge,
-  and merged-main gates remain.
+  writing, Office, and schedule extensions are accepted on `main`. Four complete
+  schedule CodeRabbit passes are dispositioned and the manual review is closed;
+  two CLI follow-ups and the final remote request were rate-limited before
+  analysis. Its final-byte local gates, exact PR-head CI, squash merge, and
+  merged-main CI pass.
 - Three scoped native tools are connected to user-submitted preserved-AionUI
   tasks. The two text tools retain their accepted fixed or bounded paths; the
   Office tool accepts only fixed `brief.docx`. None is a renderer-selected
