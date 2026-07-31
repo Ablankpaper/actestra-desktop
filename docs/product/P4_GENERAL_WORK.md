@@ -718,11 +718,12 @@ CodeRabbit was not retried after the known rate limit. The exact scope,
 high-confidence secret, binary/generated-output, tracked-document,
 frozen-foundation, user-copy, and process-cleanup audits pass. Exact local
 implementation commit `fd5524c7f0485923b2aa765df95b5ef0b14187e7` contains the
-15 reviewed files. Push, exact PR-head CI, merge, and merged-main CI remain
-before acceptance. The Apple Development-signed package is not notarized, a
-candidate, release, deployment, distribution, or user acceptance. Worker
-crash/recovery remains the next separate P4 slice after this one is accepted on
-`main`.
+15 reviewed files. Ready pull request 22 opened at initial head
+`3d5bfaeeb5b64c607850965bd94ab22d73247fdb`; initial PR CI 30673609902 is in
+progress. Exact final PR-head CI, merge, and merged-main CI remain before
+acceptance. The Apple Development-signed package is not notarized, a candidate,
+release, deployment, distribution, or user acceptance. Worker crash/recovery
+remains the next separate P4 slice after this one is accepted on `main`.
 
 Exit: the complete general-work journey is understandable and recoverable in
 the retained AionUi UI with Actestra as the declared system of record.
@@ -757,9 +758,9 @@ P4 is complete only after:
   Office tool accepts only fixed `brief.docx`. None is a renderer-selected
   generic filesystem API.
 - Representative tool failure has complete local root, native, package, and
-  target-app evidence and local implementation commit `fd5524c7`, but no push,
-  PR-head CI, merge, or merged-main CI. It does not close the separate
-  Worker-crash/recovery gate or full P4 acceptance.
+  target-app evidence and implementation commit `fd5524c7` in Ready PR 22, but
+  no exact final PR-head CI, merge, or merged-main CI. It does not close the
+  separate Worker-crash/recovery gate or full P4 acceptance.
 - No shell, network, credential, MCP, publish, Git, arbitrary workspace
   mutation, model, Goose adapter, CrewAI sidecar, or Team orchestration is
   active.
