@@ -1,4 +1,9 @@
 import { artifactId, taskId } from "../../core/domain";
+import {
+  OFFICE_DOCUMENT_PREVIEW_MEDIA_TYPE,
+  assertOfficeDocumentModel,
+  type OfficeDocumentModel,
+} from "../../core";
 import { MAX_WORKLOAD_CONTENT_BYTES } from "../../core/workloadContent";
 import {
   AIONUI_GENERAL_WORK_CONTRACT_VERSION,
@@ -29,13 +34,21 @@ const PREVIEW_REQUEST_KEYS = [
   "taskId",
   "artifactId",
 ] as const;
-const PREVIEW_KEYS = [
+const TEXT_PREVIEW_KEYS = [
   "contractVersion",
   "taskId",
   "artifactId",
   "label",
   "mediaType",
   "content",
+] as const;
+const OFFICE_DOCUMENT_PREVIEW_KEYS = [
+  "contractVersion",
+  "taskId",
+  "artifactId",
+  "label",
+  "mediaType",
+  "document",
 ] as const;
 const BRIDGE_REJECTION_CODES = [
   "invalid-request",
@@ -67,14 +80,26 @@ export interface AionUiGeneralWorkPreviewRequest {
   readonly artifactId: string;
 }
 
-export interface AionUiGeneralWorkArtifactPreview {
+interface AionUiGeneralWorkArtifactPreviewBase {
   readonly contractVersion: typeof AIONUI_GENERAL_WORK_CONTRACT_VERSION;
   readonly taskId: string;
   readonly artifactId: string;
   readonly label: string;
+}
+
+export interface AionUiGeneralWorkTextArtifactPreview extends AionUiGeneralWorkArtifactPreviewBase {
   readonly mediaType: "text/plain; charset=utf-8" | "text/markdown; charset=utf-8";
   readonly content: string;
 }
+
+export interface AionUiGeneralWorkOfficeDocumentArtifactPreview extends AionUiGeneralWorkArtifactPreviewBase {
+  readonly mediaType: typeof OFFICE_DOCUMENT_PREVIEW_MEDIA_TYPE;
+  readonly document: OfficeDocumentModel;
+}
+
+export type AionUiGeneralWorkArtifactPreview =
+  | AionUiGeneralWorkTextArtifactPreview
+  | AionUiGeneralWorkOfficeDocumentArtifactPreview;
 
 export type AionUiGeneralWorkBridgeResult =
   | {
@@ -204,7 +229,6 @@ export function assertAionUiGeneralWorkArtifactPreview(
   if (!isRecord(value)) {
     throw new Error("AionUI general-work artifact preview must be an object");
   }
-  assertExactKeys(value, PREVIEW_KEYS, "AionUI general-work artifact preview");
   if (
     value.contractVersion !== AIONUI_GENERAL_WORK_CONTRACT_VERSION ||
     typeof value.taskId !== "string" ||
@@ -212,6 +236,23 @@ export function assertAionUiGeneralWorkArtifactPreview(
     typeof value.label !== "string" ||
     value.label.trim().length === 0 ||
     new TextEncoder().encode(value.label).byteLength > 512 ||
+    typeof value.mediaType !== "string"
+  ) {
+    throw new Error("AionUI general-work artifact preview is invalid");
+  }
+  taskId(value.taskId);
+  artifactId(value.artifactId);
+  if (value.mediaType === OFFICE_DOCUMENT_PREVIEW_MEDIA_TYPE) {
+    assertExactKeys(value, OFFICE_DOCUMENT_PREVIEW_KEYS, "AionUI Office-document artifact preview");
+    try {
+      assertOfficeDocumentModel(value.document);
+    } catch (error) {
+      throw new Error("AionUI Office-document artifact preview is invalid", { cause: error });
+    }
+    return;
+  }
+  assertExactKeys(value, TEXT_PREVIEW_KEYS, "AionUI text artifact preview");
+  if (
     (value.mediaType !== "text/plain; charset=utf-8" &&
       value.mediaType !== "text/markdown; charset=utf-8") ||
     typeof value.content !== "string" ||
@@ -219,8 +260,6 @@ export function assertAionUiGeneralWorkArtifactPreview(
   ) {
     throw new Error("AionUI general-work artifact preview is invalid");
   }
-  taskId(value.taskId);
-  artifactId(value.artifactId);
 }
 
 export function assertAionUiGeneralWorkBridgeResult(

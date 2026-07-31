@@ -48,6 +48,29 @@ function replaceAll(relativePath, before, after, expectedCount) {
 }
 
 replaceOnce(
+  "packages/desktop/electron-builder.yml",
+  `  - package.json
+`,
+  `  - package.json
+  - node_modules/docx/LICENSE
+`,
+);
+
+replaceOnce(
+  "packages/desktop/electron-builder.yml",
+  `extraResources:
+  - from: public
+`,
+  `extraResources:
+  - from: node_modules/electron/dist/LICENSE
+    to: LICENSE.electron.txt
+  - from: node_modules/electron/dist/LICENSES.chromium.html
+    to: LICENSES.chromium.html
+  - from: public
+`,
+);
+
+replaceOnce(
   "tests/unit/actestra/productBoundary.test.ts",
   `import {
   ACTESTRA_PROFILE_MANIFEST,
@@ -504,6 +527,15 @@ replaceOnce(
 
 replaceOnce(
   "packages/desktop/src/process/services/actestraShadowBridge.ts",
+  `  TASK_OUTPUT_WRITE_TEXT_TOOL_ID,
+  WORKSPACE_READ_TEXT_TOOL_ID,`,
+  `  TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID,
+  TASK_OUTPUT_WRITE_TEXT_TOOL_ID,
+  WORKSPACE_READ_TEXT_TOOL_ID,`,
+);
+
+replaceOnce(
+  "packages/desktop/src/process/services/actestraShadowBridge.ts",
   `import { GeneralWorkCoordinator } from '@/actestra/main/workers/generalWorkCoordinator';
 import { ACTESTRA_SHADOW_OBSERVE_CHANNEL } from '@/common/config/actestraShadowContract';`,
   `import { GeneralWorkCoordinator } from '@/actestra/main/workers/generalWorkCoordinator';
@@ -671,7 +703,8 @@ replaceOnce(
     launchWorker: async ({ journeyKind, readRequestId, requestId }) => {
       if (
         generalWorkSmokeConfig?.scenario === 'prepare-restart' ||
-        generalWorkSmokeConfig?.scenario === 'prepare-writing-restart'
+        generalWorkSmokeConfig?.scenario === 'prepare-writing-restart' ||
+        generalWorkSmokeConfig?.scenario === 'prepare-office-restart'
       ) {
         throw new Error(
           'Actestra target-app smoke interrupted before Worker launch',
@@ -710,6 +743,8 @@ replaceOnce(
           executionMode:
             generalWorkSmokeConfig?.scenario === 'cancellation'
               ? 'hold'
+              : journeyKind === 'office-document-artifact'
+                ? 'office-document-artifact-fixture'
               : journeyKind === 'writing-artifact'
                 ? 'writing-artifact-fixture'
               : journeyKind === 'local-research-artifact'
@@ -736,7 +771,7 @@ replaceOnce(
     generalWorkJourneyService,
   );
   console.info(
-    \`[Actestra native tools] Ready tools=\${WORKSPACE_READ_TEXT_TOOL_ID},\${TASK_OUTPUT_WRITE_TEXT_TOOL_ID}\`,
+    \`[Actestra native tools] Ready tools=\${WORKSPACE_READ_TEXT_TOOL_ID},\${TASK_OUTPUT_WRITE_TEXT_TOOL_ID},\${TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID}\`,
   );`,
 );
 
@@ -927,13 +962,13 @@ contextBridge.exposeInMainWorld('electronAPI', {`,
 replaceOnce(
   "tests/unit/actestra/persistenceUtilityClient.test.ts",
   `keeps AionUI shadow, approval, and recovery authority behind schema v7 utility IPC`,
-  `keeps AionUI shadow, approval, recovery, and journey authority behind schema v11 utility IPC`,
+  `keeps AionUI shadow, approval, recovery, and journey authority behind schema v12 utility IPC`,
 );
 
 replaceOnce(
   "tests/unit/actestra/persistenceUtilityClient.test.ts",
   `expect(client.schemaVersion).toBe(7);`,
-  `expect(client.schemaVersion).toBe(11);`,
+  `expect(client.schemaVersion).toBe(12);`,
 );
 
 writeNew(
@@ -1042,6 +1077,8 @@ const SMOKE_SCENARIOS = [
   'recover-restart',
   'prepare-writing-restart',
   'recover-writing-restart',
+  'prepare-office-restart',
+  'recover-office-restart',
   'denial',
   'cancellation',
   'local-research',
@@ -1071,6 +1108,14 @@ const WRITING_SMOKE_BRIEF = [
   'Purpose: Explain the verified packaged release sequence.',
   'Point: Start with the approved customer outcome.',
   'Point: Close with the bounded next step.',
+].join('\\n');
+
+const OFFICE_SMOKE_BRIEF = [
+  'Document: Packaged restart-safe operating brief',
+  'Owner: Product operations',
+  'Summary: Record the exact Office package acceptance boundary.',
+  'Section: Decision | Ship the verified desktop workflow.',
+  'Section: Evidence | Retain exact Core and Preview evidence.',
 ].join('\\n');
 
 export function resolveActestraGeneralWorkSmokeConfig(
@@ -1116,6 +1161,12 @@ function submissionId(
   ) {
     return 'submission-aionui-smoke-writing-restart';
   }
+  if (
+    scenario === 'prepare-office-restart' ||
+    scenario === 'recover-office-restart'
+  ) {
+    return 'submission-aionui-smoke-office-restart';
+  }
   return \`submission-aionui-smoke-\${scenario}\`;
 }
 
@@ -1134,6 +1185,12 @@ function prompt(scenario: ActestraGeneralWorkSmokeScenario): string {
     scenario === 'recover-writing-restart'
   ) {
     return WRITING_SMOKE_BRIEF;
+  }
+  if (
+    scenario === 'prepare-office-restart' ||
+    scenario === 'recover-office-restart'
+  ) {
+    return OFFICE_SMOKE_BRIEF;
   }
   return 'Create the restart-safe Actestra smoke artifact.';
 }
@@ -1161,12 +1218,17 @@ export async function runActestraGeneralWorkSmoke(
   const writingRestartJourney =
     config.scenario === 'prepare-writing-restart' ||
     config.scenario === 'recover-writing-restart';
+  const officeRestartJourney =
+    config.scenario === 'prepare-office-restart' ||
+    config.scenario === 'recover-office-restart';
   const intent = {
     contractVersion: 1,
     nativeConversationId: config.nativeConversationId,
     submissionId: submissionId(config.scenario),
     prompt: prompt(config.scenario),
-    ...(writingRestartJourney
+    ...(officeRestartJourney
+      ? { journeyKind: 'office-document-artifact' as const }
+      : writingRestartJourney
       ? { journeyKind: 'writing-artifact' as const }
       : fileRestartJourney
       ? { journeyKind: 'workspace-file-artifact' as const }
@@ -1177,7 +1239,8 @@ export async function runActestraGeneralWorkSmoke(
 
   if (
     config.scenario === 'prepare-restart' ||
-    config.scenario === 'prepare-writing-restart'
+    config.scenario === 'prepare-writing-restart' ||
+    config.scenario === 'prepare-office-restart'
   ) {
     if (
       recoverySummary.attempted !== 0 ||
@@ -1211,7 +1274,8 @@ export async function runActestraGeneralWorkSmoke(
 
   if (
     config.scenario === 'recover-restart' ||
-    config.scenario === 'recover-writing-restart'
+    config.scenario === 'recover-writing-restart' ||
+    config.scenario === 'recover-office-restart'
   ) {
     if (
       recoverySummary.attempted !== 1 ||
@@ -1260,6 +1324,50 @@ export async function runActestraGeneralWorkSmoke(
       ) {
         throw new Error(
           'The recovered writing smoke did not resolve the exact owned Preview',
+        );
+      }
+    }
+    if (config.scenario === 'recover-office-restart') {
+      const artifact = projection.artifacts[0];
+      if (
+        artifact === undefined ||
+        artifact.kind !== 'document' ||
+        artifact.label !== 'Actestra Office document' ||
+        artifact.state !== 'available'
+      ) {
+        throw new Error(
+          'The recovered Office smoke has no owned document artifact',
+        );
+      }
+      const preview = await service.preview(
+        config.nativeConversationId,
+        projection.taskId,
+        artifact.artifactId,
+      );
+      const expectedDocument = {
+        contractVersion: 1,
+        title: 'Packaged restart-safe operating brief',
+        owner: 'Product operations',
+        summary: 'Record the exact Office package acceptance boundary.',
+        sections: [
+          {
+            heading: 'Decision',
+            body: 'Ship the verified desktop workflow.',
+          },
+          {
+            heading: 'Evidence',
+            body: 'Retain exact Core and Preview evidence.',
+          },
+        ],
+      };
+      if (
+        preview.label !== 'Actestra Office document' ||
+        preview.mediaType !==
+          'application/vnd.actestra.office-document-preview+json' ||
+        JSON.stringify(preview.document) !== JSON.stringify(expectedDocument)
+      ) {
+        throw new Error(
+          'The recovered Office smoke did not resolve the exact bounded Word Preview',
         );
       }
     }
@@ -1849,6 +1957,18 @@ const ActestraGeneralWorkArtifactContent: React.FC<{
         );
         return;
       }
+      if (
+        result.preview.mediaType ===
+        'application/vnd.actestra.office-document-preview+json'
+      ) {
+        openPreview('', 'word', {
+          title: result.preview.label,
+          editable: false,
+          persist: false,
+          actestraDocument: result.preview.document,
+        });
+        return;
+      }
       openPreview(
         result.preview.content,
         result.preview.mediaType === 'text/markdown; charset=utf-8'
@@ -1934,11 +2054,137 @@ replaceOnce(
 
 replaceOnce(
   "packages/desktop/src/renderer/pages/conversation/Preview/context/PreviewContext.tsx",
+  `import type { PreviewContentType } from '@/common/types/office/preview';`,
+  `import type { PreviewContentType } from '@/common/types/office/preview';
+import type { OfficeDocumentModel } from '@/actestra/core';`,
+);
+
+replaceOnce(
+  "tests/unit/actestra/scopedNativeTools.test.ts",
+  `  TASK_OUTPUT_WRITE_TEXT_TOOL_ID,
+  WORKSPACE_READ_TEXT_TOOL_ID,`,
+  `  TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID,
+  TASK_OUTPUT_WRITE_TEXT_TOOL_ID,
+  WORKSPACE_READ_TEXT_TOOL_ID,`,
+);
+
+replaceOnce(
+  "tests/unit/actestra/scopedNativeTools.test.ts",
+  `  it('registers only the two GW-P4.4 capabilities and exact production rules', () => {`,
+  `  it('registers only the three accepted scoped capabilities and exact production rules', () => {`,
+);
+
+replaceOnce(
+  "tests/unit/actestra/scopedNativeTools.test.ts",
+  `    expect(scopedNativeToolDefinition(TASK_OUTPUT_WRITE_TEXT_TOOL_ID)).toMatchObject({
+      action: 'artifact.create',
+      resourceKind: 'task-output',
+    });
+    expect(scopedNativePolicySnapshot().rules).toEqual([`,
+  `    expect(scopedNativeToolDefinition(TASK_OUTPUT_WRITE_TEXT_TOOL_ID)).toMatchObject({
+      action: 'artifact.create',
+      resourceKind: 'task-output',
+    });
+    expect(scopedNativeToolDefinition(TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID)).toMatchObject({
+      action: 'artifact.create',
+      resourceKind: 'task-output',
+    });
+    expect(scopedNativePolicySnapshot().rules).toEqual([`,
+);
+
+replaceOnce(
+  "tests/unit/actestra/scopedNativeTools.test.ts",
+  `      expect.objectContaining({
+        effect: 'allow',
+        actions: ['artifact.create'],
+        resourceKinds: ['task-output'],
+        credentialUse: 'none',
+        toolIds: [TASK_OUTPUT_WRITE_TEXT_TOOL_ID],
+      }),
+    ]);`,
+  `      expect.objectContaining({
+        effect: 'allow',
+        actions: ['artifact.create'],
+        resourceKinds: ['task-output'],
+        credentialUse: 'none',
+        toolIds: [TASK_OUTPUT_WRITE_TEXT_TOOL_ID],
+      }),
+      expect.objectContaining({
+        effect: 'allow',
+        actions: ['artifact.create'],
+        resourceKinds: ['task-output'],
+        credentialUse: 'none',
+        toolIds: [TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID],
+      }),
+    ]);`,
+);
+
+replaceOnce(
+  "packages/desktop/src/renderer/pages/conversation/Preview/context/PreviewContext.tsx",
   `  editable?: boolean; // 是否可编辑 / Whether editable
   truncated?: boolean; // 预览内容是否被截断 / Whether preview content was truncated`,
   `  editable?: boolean; // 是否可编辑 / Whether editable
   persist?: boolean; // Whether this renderer-only preview may be cached in localStorage
+  actestraDocument?: OfficeDocumentModel; // Bounded Actestra-owned Word Preview model
   truncated?: boolean; // 预览内容是否被截断 / Whether preview content was truncated`,
+);
+
+replaceOnce(
+  "packages/desktop/src/renderer/pages/conversation/Preview/components/PreviewPanel/PreviewPanel.tsx",
+  `      return <OfficeDocPreview file_path={metadata?.file_path} content={content} workspace={metadata?.workspace} />;`,
+  `      return (
+        <OfficeDocPreview
+          file_path={metadata?.file_path}
+          content={content}
+          workspace={metadata?.workspace}
+          actestraDocument={metadata?.actestraDocument}
+        />
+      );`,
+);
+
+replaceOnce(
+  "packages/desktop/src/renderer/pages/conversation/Preview/components/viewers/OfficeDocViewer.tsx",
+  `import React from 'react';
+import OfficeWatchViewer from './OfficeWatchViewer';
+
+interface OfficeDocPreviewProps {
+  file_path?: string;
+  content?: string;
+  workspace?: string;
+}
+
+const OfficeDocPreview: React.FC<OfficeDocPreviewProps> = (props) => <OfficeWatchViewer docType='word' {...props} />;`,
+  `import type { OfficeDocumentModel } from '@/actestra/core';
+import React from 'react';
+import OfficeWatchViewer from './OfficeWatchViewer';
+
+interface OfficeDocPreviewProps {
+  file_path?: string;
+  content?: string;
+  workspace?: string;
+  actestraDocument?: OfficeDocumentModel;
+}
+
+const OfficeDocPreview: React.FC<OfficeDocPreviewProps> = ({ actestraDocument, ...props }) => {
+  if (actestraDocument === undefined) {
+    return <OfficeWatchViewer docType='word' {...props} />;
+  }
+  return (
+    <article className='mx-auto flex max-w-800px flex-col gap-20px p-32px text-t-primary'>
+      <header className='flex flex-col gap-8px border-b border-border-2 pb-20px'>
+        <h1 className='m-0 text-28px font-600'>{actestraDocument.title}</h1>
+        <p className='m-0 text-13px text-t-secondary'>{actestraDocument.owner}</p>
+        <p className='m-0 whitespace-pre-wrap text-15px'>{actestraDocument.summary}</p>
+      </header>
+      {actestraDocument.sections.map((section, index) => (
+        <section key={index} className='flex flex-col gap-8px'>
+          <h2 className='m-0 text-20px font-600'>{section.heading}</h2>
+          <p className='m-0 whitespace-pre-wrap text-15px leading-24px'>{section.body}</p>
+        </section>
+      ))}
+    </article>
+  );
+};`,
 );
 
 replaceOnce(
@@ -2145,6 +2391,8 @@ function config(
     | 'recover-restart'
     | 'prepare-writing-restart'
     | 'recover-writing-restart'
+    | 'prepare-office-restart'
+    | 'recover-office-restart'
     | 'denial'
     | 'cancellation'
     | 'local-research',
@@ -2390,6 +2638,95 @@ describe('Actestra target-app General Work smoke contract', () => {
       'conversation-aionui-smoke',
       'task-writing-smoke',
       'artifact-writing-smoke',
+    );
+  });
+
+  it('requires a recovered Office document and validates its bounded Word Preview model', async () => {
+    const prepared = {
+      submit: vi.fn(async () => {
+        throw new Error('interrupted before Office launch');
+      }),
+      list: vi.fn(async () => [
+        {
+          status: 'ready',
+          canCancel: false,
+        },
+      ]),
+    } as unknown as AionUiGeneralWorkJourneyService;
+    await expect(
+      runActestraGeneralWorkSmoke(
+        config('prepare-office-restart'),
+        prepared,
+        zeroRecovery,
+      ),
+    ).resolves.toMatchObject({
+      scenario: 'prepare-office-restart',
+      status: 'prepared',
+    });
+    expect(prepared.submit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        journeyKind: 'office-document-artifact',
+        prompt: expect.stringContaining(
+          'Document: Packaged restart-safe operating brief',
+        ),
+      }),
+    );
+
+    const document = {
+      contractVersion: 1,
+      title: 'Packaged restart-safe operating brief',
+      owner: 'Product operations',
+      summary: 'Record the exact Office package acceptance boundary.',
+      sections: [
+        {
+          heading: 'Decision',
+          body: 'Ship the verified desktop workflow.',
+        },
+        {
+          heading: 'Evidence',
+          body: 'Retain exact Core and Preview evidence.',
+        },
+      ],
+    } as const;
+    const recovered = {
+      waitForIdle: vi.fn(async () => undefined),
+      list: vi.fn(async () => [
+        {
+          taskId: 'task-office-smoke',
+          status: 'completed',
+          canCancel: false,
+          artifacts: [
+            {
+              artifactId: 'artifact-office-smoke',
+              kind: 'document',
+              label: 'Actestra Office document',
+              state: 'available',
+            },
+          ],
+        },
+      ]),
+      preview: vi.fn(async () => ({
+        label: 'Actestra Office document',
+        mediaType: 'application/vnd.actestra.office-document-preview+json',
+        document,
+      })),
+    } as unknown as AionUiGeneralWorkJourneyService;
+    await expect(
+      runActestraGeneralWorkSmoke(
+        config('recover-office-restart'),
+        recovered,
+        Promise.resolve({ attempted: 1, started: 1, failed: 0 }),
+      ),
+    ).resolves.toEqual({
+      scenario: 'recover-office-restart',
+      status: 'completed',
+      taskCount: 1,
+      artifactCount: 1,
+    });
+    expect(recovered.preview).toHaveBeenCalledExactlyOnceWith(
+      'conversation-aionui-smoke',
+      'task-office-smoke',
+      'artifact-office-smoke',
     );
   });
 });
@@ -2934,6 +3271,45 @@ describe('Actestra artifact actions in preserved AionUI messages', () => {
     );
   });
 
+  it('opens an owned Office model in the retained Word Preview without a path or DOCX bytes', async () => {
+    const document = {
+      contractVersion: 1,
+      title: 'Quarterly operating brief',
+      owner: 'Product operations',
+      summary: 'Record the approved launch decision.',
+      sections: [
+        { heading: 'Decision', body: 'Ship the verified desktop workflow.' },
+        { heading: 'Evidence', body: 'Include the exact acceptance boundary.' },
+      ],
+    } as const;
+    mocks.preview.mockResolvedValue({
+      status: 'ok',
+      preview: {
+        contractVersion: 1,
+        taskId: 'task-native',
+        artifactId: 'artifact-native',
+        label: 'Actestra Office document',
+        mediaType: 'application/vnd.actestra.office-document-preview+json',
+        document,
+      },
+    });
+    render(<ActestraGeneralWorkArtifactActions message={message} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Preview Actestra result' }));
+
+    await waitFor(() => {
+      expect(mocks.openPreview).toHaveBeenCalledExactlyOnceWith('', 'word', {
+        title: 'Actestra Office document',
+        editable: false,
+        persist: false,
+        actestraDocument: document,
+      });
+    });
+    expect(JSON.stringify(mocks.openPreview.mock.calls[0])).not.toMatch(
+      /file_path|workspace|contentRef|outputRef|brief[.]docx|UEsDB/u,
+    );
+  });
+
   it('renders no action for an unavailable or untyped artifact', () => {
     render(
       <ActestraGeneralWorkArtifactActions
@@ -2959,6 +3335,101 @@ describe('Actestra artifact actions in preserved AionUI messages', () => {
       />,
     );
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+});
+`,
+);
+
+writeNew(
+  "tests/unit/actestra/officeDocumentPreview.dom.test.tsx",
+  `import React from 'react';
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+const mocks = vi.hoisted(() => ({
+  officeWatch: vi.fn(),
+}));
+
+vi.mock('@/renderer/pages/conversation/Preview/components/viewers/OfficeWatchViewer', () => ({
+  default: (props: Record<string, unknown>) => {
+    mocks.officeWatch(props);
+    return <div data-testid='office-watch-viewer' />;
+  },
+}));
+
+import OfficeDocPreview from '@/renderer/pages/conversation/Preview/components/viewers/OfficeDocViewer';
+
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
+
+describe('Actestra provider in the retained AionUI Word Preview', () => {
+  it('renders the bounded document model as safe React text nodes', () => {
+    const { container } = render(
+      <OfficeDocPreview
+        actestraDocument={{
+          contractVersion: 1,
+          title: 'Quarterly operating brief',
+          owner: 'Product operations',
+          summary: 'Record the approved launch decision.',
+          sections: [
+            {
+              heading: 'Decision',
+              body: '<img src=x onerror=alert(1)> Ship the verified workflow.',
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Quarterly operating brief' })).toBeInTheDocument();
+    expect(screen.getByText('Product operations')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Decision' })).toBeInTheDocument();
+    expect(container.textContent).toContain(
+      '<img src=x onerror=alert(1)> Ship the verified workflow.',
+    );
+    expect(container.querySelector('img')).toBeNull();
+    expect(mocks.officeWatch).not.toHaveBeenCalled();
+  });
+
+  it('preserves the ordinary OfficeCLI Word Preview provider and its error states', () => {
+    render(<OfficeDocPreview file_path='/workspace/ordinary.docx' workspace='/workspace' />);
+
+    expect(mocks.officeWatch).toHaveBeenCalledExactlyOnceWith({
+      docType: 'word',
+      file_path: '/workspace/ordinary.docx',
+      workspace: '/workspace',
+    });
+    expect(screen.getByTestId('office-watch-viewer')).toBeInTheDocument();
+  });
+});
+`,
+);
+
+writeNew(
+  "tests/unit/actestra/officeDocumentNativeWiring.test.ts",
+  `// @vitest-environment node
+
+import fs from 'node:fs';
+import path from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+describe('Actestra Office document native wiring', () => {
+  it('maps the closed Office journey to its Worker mode and logs the third registered tool', () => {
+    const source = fs.readFileSync(
+      path.join(
+        process.cwd(),
+        'packages/desktop/src/process/services/actestraShadowBridge.ts',
+      ),
+      'utf8',
+    );
+
+    expect(source).toContain("journeyKind === 'office-document-artifact'");
+    expect(source).toContain("? 'office-document-artifact-fixture'");
+    expect(
+      source.split('TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID'),
+    ).toHaveLength(3);
   });
 });
 `,
@@ -3109,6 +3580,18 @@ describe('Actestra preserved AionUI general-work client', () => {
     ).toEqual({
       prompt: writingBrief,
       journeyKind: 'writing-artifact',
+    });
+    const officeBrief = [
+      'Document: Quarterly operating brief',
+      'Owner: Product operations',
+      'Summary: Record the approved launch decision.',
+      'Section: Decision | Ship the verified desktop workflow.',
+    ].join('\\n');
+    expect(
+      extractActestraGeneralWorkIntent(\`/actestra office \${officeBrief}\`),
+    ).toEqual({
+      prompt: officeBrief,
+      journeyKind: 'office-document-artifact',
     });
     expect(extractActestraGeneralWorkPrompt('ordinary native AionUI message')).toBeNull();
   });

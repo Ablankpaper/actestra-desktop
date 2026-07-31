@@ -4,10 +4,12 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {
   MAX_WORKLOAD_CONTENT_BYTES,
+  OFFICE_DOCUMENT_PREVIEW_MEDIA_TYPE,
   PersistenceError,
   PRIVILEGED_CONTRACT_VERSION,
   ProtectedToolExecutionError,
   SCOPED_NATIVE_TOOL_IDS,
+  TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID,
   TASK_OUTPUT_WRITE_TEXT_TOOL_ID,
   WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
   WORKSPACE_READ_TEXT_TOOL_ID,
@@ -23,16 +25,19 @@ import {
   type PrivilegedClock,
   type ProtectedToolExecutor,
   type ScopedNativeToolDefinition,
+  type TaskOutputWriteOfficeDocumentInput,
   type TaskOutputWriteTextInput,
   type ToolCapabilityManifest,
   type ToolExecutionRequest,
   type ToolExecutionResult,
   type ToolId,
   type ToolOutputReference,
+  type WorkloadContentMediaType,
   type WorkloadPersistencePort,
   type WorkspaceGrant,
   type WorkspaceReadTextInput,
 } from "../../core";
+import { createOfficeDocumentPackage } from "./officeDocumentWriter";
 
 const OUTPUT_ROOT_SEGMENTS = [".actestra", "task-output"] as const;
 
@@ -358,11 +363,12 @@ async function requireMissingOutput(candidate: string): Promise<void> {
 async function createTaskOutput(
   grantRoot: string,
   task: string,
-  input: TaskOutputWriteTextInput,
+  relativePath: string,
+  content: string | Uint8Array,
   signal: AbortSignal,
 ): Promise<void> {
   const outputRoot = await taskOutputRoot(grantRoot, task, signal);
-  const segments = input.relativePath.split("/");
+  const segments = relativePath.split("/");
   const fileName = segments.pop();
   if (fileName === undefined) {
     throw executionError("invalid-input", "Task output path is missing a file name");
@@ -382,7 +388,7 @@ async function createTaskOutput(
     throw executionError("path-scope-denied", "Task output parent escapes the task output root");
   }
 
-  const candidate = targetPath(outputRoot, input.relativePath);
+  const candidate = targetPath(outputRoot, relativePath);
   await requireMissingOutput(candidate);
   throwIfCancelled(signal);
 
@@ -395,10 +401,8 @@ async function createTaskOutput(
       fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY,
       0o600,
     );
-    await handle.writeFile(input.content, {
-      encoding: "utf8",
-      signal,
-    });
+    const bytes = typeof content === "string" ? new TextEncoder().encode(content) : content;
+    await handle.writeFile(bytes, { signal });
     await handle.sync();
     await handle.close();
     handle = undefined;
@@ -453,10 +457,7 @@ export class ScopedNativeTextToolExecutor implements ProtectedToolExecutor {
     toolId(tool);
     const manifest = this.manifests.get(tool);
     if (manifest === undefined) {
-      throw executionError(
-        "unsupported-tool",
-        "Only the two GW-P4.4 scoped native tools are registered",
-      );
+      throw executionError("unsupported-tool", "Only declared scoped native tools are registered");
     }
     return manifest;
   }
@@ -545,7 +546,7 @@ export class ScopedNativeTextToolExecutor implements ProtectedToolExecutor {
       }
 
       let outputContent: string;
-      let outputMediaType: "text/plain; charset=utf-8" | "text/markdown; charset=utf-8";
+      let outputMediaType: WorkloadContentMediaType;
       let outputClassification: "workspace-content" | "task-content";
       let mayHaveExecuted = false;
       if (request.operation.toolId === WORKSPACE_READ_TEXT_TOOL_ID) {
@@ -558,10 +559,31 @@ export class ScopedNativeTextToolExecutor implements ProtectedToolExecutor {
         outputClassification = "workspace-content";
       } else if (request.operation.toolId === TASK_OUTPUT_WRITE_TEXT_TOOL_ID) {
         const writeInput = input as TaskOutputWriteTextInput;
-        await createTaskOutput(root, request.operation.taskId, writeInput, cancellation.signal);
+        await createTaskOutput(
+          root,
+          request.operation.taskId,
+          writeInput.relativePath,
+          writeInput.content,
+          cancellation.signal,
+        );
         mayHaveExecuted = true;
         outputContent = writeInput.content;
         outputMediaType = writeInput.mediaType;
+        outputClassification = "task-content";
+      } else if (request.operation.toolId === TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID) {
+        const officeInput = input as TaskOutputWriteOfficeDocumentInput;
+        const packageBytes = await createOfficeDocumentPackage(officeInput.document);
+        throwIfCancelled(cancellation.signal);
+        await createTaskOutput(
+          root,
+          request.operation.taskId,
+          officeInput.relativePath,
+          packageBytes,
+          cancellation.signal,
+        );
+        mayHaveExecuted = true;
+        outputContent = JSON.stringify(officeInput.document);
+        outputMediaType = OFFICE_DOCUMENT_PREVIEW_MEDIA_TYPE;
         outputClassification = "task-content";
       } else {
         throw executionError("unsupported-tool", "Scoped native tool is not registered");

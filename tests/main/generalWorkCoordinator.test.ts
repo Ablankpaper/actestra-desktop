@@ -340,7 +340,10 @@ describe("GeneralWorkCoordinator", () => {
       sentAt: clock.now(),
     });
     const privateWriteInput = adapter.activeToolInput(writeRequestId);
-    expect(privateWriteInput?.content).toContain("Private workspace source");
+    if (privateWriteInput === undefined || !("content" in privateWriteInput)) {
+      throw new Error("Expected the General Worker to provide a private text write input");
+    }
+    expect(privateWriteInput.content).toContain("Private workspace source");
     expect(JSON.stringify(supervisor.coreEvents(request.sessionId))).not.toContain(
       "Private workspace source",
     );

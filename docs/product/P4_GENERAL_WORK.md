@@ -1,21 +1,21 @@
 # P4 General-Work Vertical Slice
 
-Status: GW-P4.2 through GW-P4.6 plus the representative workspace-file and
-bounded local-research journeys are accepted on `main`; ADR-0021 accepts the
-next bounded writing journey, whose implementation, complete local regression,
-package, and target-app smoke pass on `feat/p4-writing-journey`; review and
-remote delivery remain pending
+Status: GW-P4.2 through GW-P4.6 plus the representative workspace-file,
+bounded local-research, and writing journeys are accepted on `main`; ADR-0022
+accepts the bounded Office-document journey, whose implementation, focused
+native validation, production build, local package, and target-app smoke pass
+on `feat/p4-office-document-journey`; commit and remote delivery remain pending
 
 Date: 2026-07-31
 
 Exact base:
-`2aed0f705bf6f9b3734742c0905c94ac562f501e`
+`d5dbc68bb4b3076448dc0bfb9ffc164ffd1c40d2`
 
 ## Entry evidence
 
-The branch starts from the exact verified representative-file squash merge for
-[pull request 16](https://github.com/bignormal/actestra-desktop/pull/16).
-[Main CI run 30569476160](https://github.com/bignormal/actestra-desktop/actions/runs/30569476160)
+The branch starts from the exact verified writing squash merge for
+[pull request 18](https://github.com/bignormal/actestra-desktop/pull/18).
+[Main CI run 30586015008](https://github.com/bignormal/actestra-desktop/actions/runs/30586015008)
 passes on that exact commit.
 
 [ADR-0016](../architecture/decisions/0016-p4-general-work-process-and-content-boundaries.md),
@@ -511,9 +511,74 @@ zero-finding review.
 
 Documentation links pass across 54 Markdown files, Markdown lint reports zero
 issues across 48 files, and `git diff --check` passes. Implementation commit
-`3e9d57407207ee8718fea2ed127a85dbab4daad8` exists locally; push, a Ready pull
-request, exact PR-head CI, merge, merged-main CI, notarization, candidate,
-release, distribution, and user acceptance remain pending.
+`3e9d57407207ee8718fea2ed127a85dbab4daad8` was followed by exact Ready PR head
+`2febf25e80868fac51fb7b37fffb746d10f8edde`. PR CI run 30585829619 passes; PR
+18 squash merged as `d5dbc68bb4b3076448dc0bfb9ffc164ffd1c40d2`; exact
+merged-main CI run 30586015008 passes. The Ready PR's CodeRabbit Free result is
+only a summary and walkthrough with no submitted review or inline comment; it
+is not represented as complete line-level review evidence. Notarization,
+candidate, release, distribution, and user acceptance remain pending.
+
+ADR-0022 defines the independent Office-document slice as a real binary
+document journey, not a renamed Markdown fixture. The implementation on
+`feat/p4-office-document-journey` starts from exact verified main
+`d5dbc68bb4b3076448dc0bfb9ffc164ffd1c40d2`:
+
+- `/actestra office` validates the exact ordered Document, Owner, Summary, and
+  one-through-six Section brief before schema-12 prompt-only registration;
+- the isolated Worker returns a private bounded document model without a
+  workspace read, and main persists it under the exact request owner before
+  invoking `actestra.task-output.write-office-document`;
+- the create-only main process tool fixes `brief.docx`, generates a real
+  ZIP/OOXML package through pinned `docx@9.6.1`, publishes atomically, and
+  binds one `document` Artifact labeled `Actestra Office document`;
+- the retained AionUI Word Preview receives only the exact-owner bounded model
+  with `persist: false`; DOCX bytes, roots, paths, references, process handles,
+  and document-generation authority remain outside the renderer; and
+- prepared recovery starts from the durable brief and kind, without replaying
+  native workspace context.
+
+Current Office local evidence:
+
+- `bun run downstream:aionui:check` passes 163 declared files, 4 R0
+  invariants, and 52 reviewed source copies; exact downstream install completes
+  with 3,177 packages;
+- the final complete root gate passes 50 files/338 tests and the complete
+  native suite passes 343 files/2,644 tests. Manual review found that the
+  shared output-media union let the text writer accept the new Office Preview
+  type. A focused red run failed 1 of 8 assertions; after narrowing the text
+  writer to plain text and Markdown, the green run passes 8/8 and strict root
+  TypeScript passes. Final native strict TypeScript, the complete native suite,
+  and the native production build pass from those bytes after transforming
+  602 main, 22 preload, and 10,182 renderer modules;
+- `/tmp/actestra-p4-office-stable-final.Symazz/out/mac-arm64/Actestra.app` is
+  rebuilt from the final production output and passes 11 resource checks, both
+  required Electron notices, exact `aioncore 0.1.52`, 13/13 Hub ZIP integrity
+  and archive checks pinned locally to
+  `63952fa23897184e03e67a97664f9a901ab2266b`, 17 valid symbolic links, arm64
+  identity, exact production-entry hashes, strict recursive Apple Development
+  signing with Team ID `7H3BA9HTRK`, and the packaged `docx@9.6.1` MIT-license
+  check; and
+- actual packaged target-app smoke passes schema-12 Office prepare/recover, a
+  real `brief.docx` with required OOXML entries, exact `document` Artifact,
+  bounded owned Word Preview, Core-event and metadata-audit privacy, the
+  accepted file/writing/research/denial/cancellation evidence, and full smoke
+  root, CLI-link, and process cleanup.
+
+The Office package is local disposable evidence: it has no notarization and is
+not a candidate or release. One intermediate signed package was rejected
+before smoke because a moving-tag mixed-mirror Hub download matched only 9/13
+index integrity values; the final package uses the verified 13/13 local set.
+The earlier complete 42-file CodeRabbit review raised only an invalid UTC-date
+request. The final stable-input 43-file review raised two valid wording issues
+about prompt-only Office registration ownership and the persisted canonical
+model versus detached non-persisted renderer projection. Both were fixed in
+the system overview and ADR-0022; the complete post-remediation 43-file review
+raised zero issues. The complete manual review found and closed the text-writer
+media-type defect. Only evidence text recording these results changed after
+that review; final documentation/range audits remain pending. No Office
+commit, push, pull request, PR-head CI, merge, merged-main CI, candidate,
+release, distribution, or user acceptance exists yet.
 
 Exit: the complete general-work journey is understandable and recoverable in
 the retained AionUi UI with Actestra as the declared system of record.
@@ -537,21 +602,22 @@ P4 is complete only after:
 
 ## Current non-claims
 
-- GW-P4.2 through GW-P4.6 plus the representative-file and local-research
-  extensions are accepted on `main`; writing passes local implementation,
-  validation, and review but is not accepted until exact PR-head, merge, and
-  merged-main gates pass.
-- The two native tools are connected to a user-submitted preserved-AionUI task,
-  but the file path remains the one main-owned `actestra-input.txt`; this is not
-  a renderer-selected generic filesystem API.
+- GW-P4.2 through GW-P4.6 plus the representative-file, local-research, and
+  writing extensions are accepted on `main`; Office passes the recorded local
+  build, package, and target-app evidence but is not accepted until its exact
+  review, PR-head, merge, and merged-main gates pass.
+- Three scoped native tools are connected to user-submitted preserved-AionUI
+  tasks. The two text tools retain their accepted fixed or bounded paths; the
+  Office tool accepts only fixed `brief.docx`. None is a renderer-selected
+  generic filesystem API.
 - No shell, network, credential, MCP, publish, Git, arbitrary workspace
   mutation, model, Goose adapter, CrewAI sidecar, or Team orchestration is
   active.
 - Utility-process separation is not OS sandbox evidence.
-- Schemas 7 through 11 are forward-only; development rollback uses a fresh
+- Schemas 7 through 12 are forward-only; development rollback uses a fresh
   profile rather than deleting or downgrading user state.
 - The local target package contains the exact pinned AionCore binary, but
   its license clarification, notarized candidate, distribution, and fresh-user
   acceptance remain unresolved.
-- The writing package is disposable local evidence only; no candidate,
+- The Office package is disposable local evidence only; no candidate,
   release, deployment, distribution, or user acceptance is claimed.

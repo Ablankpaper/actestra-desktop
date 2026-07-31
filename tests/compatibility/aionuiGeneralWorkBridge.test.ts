@@ -38,6 +38,20 @@ describe("AionUI general-work bridge contract", () => {
       mediaType: "text/markdown; charset=utf-8",
       content: "# Actestra result",
     };
+    const officePreview = {
+      contractVersion: 1,
+      taskId: projection.taskId,
+      artifactId: "artifact-aionui-office-preview-1",
+      label: "Actestra Office document",
+      mediaType: "application/vnd.actestra.office-document-preview+json",
+      document: {
+        contractVersion: 1,
+        title: "Quarterly operating brief",
+        owner: "Product operations",
+        summary: "Record the approved launch decision.",
+        sections: [{ heading: "Decision", body: "Ship the verified workflow." }],
+      },
+    };
 
     expect(compatibility.ACTESTRA_GENERAL_WORK_SUBMIT_CHANNEL).toBe("actestra:general-work:submit");
     expect(compatibility.ACTESTRA_GENERAL_WORK_LIST_CHANNEL).toBe("actestra:general-work:list");
@@ -71,6 +85,7 @@ describe("AionUI general-work bridge contract", () => {
     expect(() => assertResult({ status: "ok", projection })).not.toThrow();
     expect(() => assertResult({ status: "ok", projections: [projection] })).not.toThrow();
     expect(() => assertResult({ status: "ok", preview })).not.toThrow();
+    expect(() => assertResult({ status: "ok", preview: officePreview })).not.toThrow();
     expect(() =>
       assertResult({ status: "rejected", code: "persistence-unavailable" }),
     ).not.toThrow();
@@ -145,6 +160,26 @@ describe("AionUI general-work bridge contract", () => {
           mediaType: "text/markdown; charset=utf-8",
           content: "# Result",
           outputRef: "tool-output-private-1",
+        },
+      }),
+    ).toThrow();
+    expect(() =>
+      assertResult({
+        status: "ok",
+        preview: {
+          contractVersion: 1,
+          taskId: "task-aionui-bridge-1",
+          artifactId: "artifact-aionui-office-preview-1",
+          label: "Actestra Office document",
+          mediaType: "application/vnd.actestra.office-document-preview+json",
+          document: {
+            contractVersion: 1,
+            title: "Quarterly operating brief",
+            owner: "Product operations",
+            summary: "Record the approved launch decision.",
+            sections: [{ heading: "Decision", body: "Ship the verified workflow." }],
+          },
+          contentRef: "tool-output-private-1",
         },
       }),
     ).toThrow();

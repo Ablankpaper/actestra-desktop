@@ -1,11 +1,12 @@
 # System Overview
 
 Status: P3, F0 through F3.3, GW-P4.2 through GW-P4.6, and the representative
-workspace-file and bounded local-research journeys are accepted on `main`;
-the bounded writing journey passes local implementation, package, and
-target-app gates on `feat/p4-writing-journey` but is not accepted on `main`;
-CrewAI is accepted as the first P6 planner-sidecar candidate but is not
-implemented or packaged
+workspace-file, bounded local-research, and writing journeys are accepted on
+`main`; the bounded Office-document journey passes implementation, focused
+native validation, production build, local package, and target-app smoke on
+`feat/p4-office-document-journey` but has no commit or remote evidence; CrewAI
+is accepted as the first P6 planner-sidecar candidate but is not implemented
+or packaged
 
 ## Context
 
@@ -21,7 +22,7 @@ flowchart TD
     COMPAT["AionUi Compatibility Layer\nbridge shapes and availability"]
     MAIN["Desktop Main Process\nwindow and process lifecycle"]
     CORE["Actestra App Core"]
-    JOURNEY["AionUI General Work Journey\nschema 11 kinds, links, and projections"]
+    JOURNEY["AionUI General Work Journey\nschema 12 kinds, links, and projections"]
     RECOVERY["General Work Coordinator\nschema 7 recovery journal"]
     ROUTER["Task Router and Team Orchestrator"]
     PLANNER["CrewAI Planner Sidecar\nP6 candidate, non-authoritative"]
@@ -30,7 +31,7 @@ flowchart TD
     ARTIFACTS["Workspace and Artifact Service"]
     CREDS["Credential Broker"]
     TOOLS["MCP and Tool Gateway"]
-    PERSIST["Persistence Utility\nschema 11 links, checkpoints, and content"]
+    PERSIST["Persistence Utility\nschema 12 links, checkpoints, and content"]
     ADAPTERS["Agent Adapter Boundary"]
     GENERAL["General Worker Process"]
     GOOSE["Goose Worker Process"]
@@ -275,6 +276,22 @@ workspace context. Private draft input and its content reference stay out of
 normalized Core events, metadata audit, and renderer projections; only the
 owned non-persisted Preview returns bounded content.
 
+The Office extension adds schema version 12's exact
+`office-document-artifact` kind and `/actestra office` command. Its ordered
+Document, Owner, Summary, and one through six Section fields are validated
+before prompt-only atomic registration. The isolated Worker derives a private
+bounded document model without reading the workspace. Main persists the
+versioned model inside the exact-owner tool input before the third closed
+scoped capability, `actestra.task-output.write-office-document`, generates and
+atomically publishes the fixed `brief.docx` package. After publication, the
+executor persists the same validated model as the canonical exact-owner tool
+output bound to the `document` Artifact. The retained Word Preview resolves
+that finalized binding and receives only a detached, bounded renderer
+projection through safe React text nodes. `persist: false` prevents AionUI from
+caching that projection; it does not make the canonical Actestra model
+non-durable. DOCX bytes, output paths, roots, and content references do not
+cross into the renderer or metadata-only evidence.
+
 ## Foundation integration boundary
 
 ADR-0010 and the
@@ -391,8 +408,10 @@ denied, and conflicting rules resolve in `deny`, then `require-approval`, then
 `allow` precedence.
 
 The accepted P3 baseline executor is test-only. Accepted GW-P4.4 adds a
-production executor only for the two exact ADR-0018 capabilities and still
-receives an opaque input reference rather than raw arguments. The current
+production executor for the two exact ADR-0018 text capabilities; ADR-0022
+adds one exact create-only Office-document capability under the same
+main-owned gateway. Each still receives an opaque input reference rather than
+raw renderer arguments. The current
 credential broker has no secret store. Approval permits one attempt but does
 not prove execution or success. Executor failures carry stable codes and
 explicit `mayHaveExecuted` evidence; an ambiguous post-effect failure must not
@@ -499,7 +518,7 @@ Initial event types:
 | Workspace grants                                                                                               | Actestra persistence utility, schema 6              |
 | Bounded content references                                                                                     | Actestra persistence utility, schema 6              |
 | General Work attempt, tool, artifact-binding, and recovery checkpoints                                         | Actestra persistence utility, schema 7              |
-| Preserved-AionUI journey links, kinds, and authoritative initial General Work registration                     | Actestra persistence utility, schema 11             |
+| Preserved-AionUI journey links, kinds, and authoritative registration including prompt-only writing and Office | Actestra persistence utility, schema 12             |
 | Tasks and dependency graph                                                                                     | Actestra                                            |
 | P3 protected-operation approval evidence for the underlying native tool                                        | Actestra target contract; not activated by F3.2     |
 | Event and audit history                                                                                        | Actestra                                            |
@@ -568,9 +587,13 @@ schema-9 file journey, schema-10 bounded local-research journey, redacted
 projection, non-persisted native Preview, and prepared-task recovery sequence.
 ADR-0021 adds schema-11 prompt-derived writing, private Worker-authored draft
 input, document Artifact, and prepared recovery without workspace reread.
-General or network research, office, schedule, failure, and crash fixtures,
-credential storage, and OS sandbox mechanisms remain later work. Writing still
-requires review and exact remote acceptance evidence.
+ADR-0022 adds schema-12 Office registration, a private Worker-authored document
+model, one main-owned create-only DOCX tool, and the bounded retained Word
+Preview provider. General or network research, schedule, representative tool
+failure, Worker crash, credential storage, and OS sandbox mechanisms remain
+later work. Office local stable-input review is closed, but exact remote
+acceptance evidence is still required; its local implementation, test,
+package, and target-app gates pass independently.
 Signing, notarization, update delivery, and cross-platform candidate packaging
 remain P8 work.
 

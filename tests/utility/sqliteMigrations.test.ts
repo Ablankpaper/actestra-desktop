@@ -60,7 +60,7 @@ describe("Actestra SQLite migrations", () => {
     expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
       fromVersion: 0,
       toVersion: CURRENT_CORE_SCHEMA_VERSION,
-      appliedVersions: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+      appliedVersions: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
     });
     expect(pragmaNumber(database, "application_id")).toBe(ACTESTRA_SQLITE_APPLICATION_ID);
     expect(pragmaNumber(database, "user_version")).toBe(CURRENT_CORE_SCHEMA_VERSION);
@@ -112,6 +112,10 @@ describe("Actestra SQLite migrations", () => {
       {
         version: 11,
         name: "aionui-writing-kind",
+      },
+      {
+        version: 12,
+        name: "aionui-office-document-kind",
       },
     ]);
   });
@@ -315,14 +319,41 @@ describe("Actestra SQLite migrations", () => {
     });
   });
 
-  it("performs a real 6 -> 11 migration without changing content ownership", () => {
+  it("performs a real 6 -> 12 migration without changing content ownership", () => {
     const database = createDatabase();
     migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 6), APPLIED_AT);
+    database
+      .prepare(
+        `INSERT INTO content_references (
+           reference, contract_version, kind, workspace_id, task_id, session_id,
+           worker_id, request_id, grant_id, classification, media_type,
+           byte_length, sha256, created_at, expires_at, consumed_at,
+           metadata_json, content_blob
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
+      )
+      .run(
+        "preserved-content-reference",
+        1,
+        "tool-output",
+        "workspace-preserved-content",
+        "task-preserved-content",
+        "session-preserved-content",
+        "worker-preserved-content",
+        "request-preserved-content",
+        "grant-preserved-content",
+        "task-content",
+        "text/plain; charset=utf-8",
+        3,
+        "a".repeat(64),
+        APPLIED_AT,
+        "{}",
+        Buffer.from("old"),
+      );
 
     expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
       fromVersion: 6,
-      toVersion: 11,
-      appliedVersions: [7, 8, 9, 10, 11],
+      toVersion: 12,
+      appliedVersions: [7, 8, 9, 10, 11, 12],
     });
     expect(
       database
@@ -344,6 +375,50 @@ describe("Actestra SQLite migrations", () => {
       { name: "general_work_checkpoints" },
       { name: "workspace_grants" },
     ]);
+    expect(
+      database
+        .prepare(
+          `SELECT reference, media_type, hex(content_blob) AS content_hex
+           FROM content_references
+           WHERE reference = ?`,
+        )
+        .get("preserved-content-reference"),
+    ).toEqual({
+      reference: "preserved-content-reference",
+      media_type: "text/plain; charset=utf-8",
+      content_hex: "6F6C64",
+    });
+
+    const preview = Buffer.from('{"contractVersion":1}');
+    expect(() =>
+      database
+        .prepare(
+          `INSERT INTO content_references (
+             reference, contract_version, kind, workspace_id, task_id, session_id,
+             worker_id, request_id, grant_id, classification, media_type,
+             byte_length, sha256, created_at, expires_at, consumed_at,
+             metadata_json, content_blob
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
+        )
+        .run(
+          "office-preview-reference",
+          1,
+          "tool-output",
+          "workspace-office-preview",
+          "task-office-preview",
+          "session-office-preview",
+          "worker-office-preview",
+          "request-office-preview",
+          "grant-office-preview",
+          "task-content",
+          "application/vnd.actestra.office-document-preview+json",
+          preview.byteLength,
+          "b".repeat(64),
+          APPLIED_AT,
+          "{}",
+          preview,
+        ),
+    ).not.toThrow();
   });
 
   it("migrates schema 8 journeys to the prompt-artifact kind", () => {
@@ -533,7 +608,9 @@ describe("Actestra SQLite migrations", () => {
       )
       .run("task-existing-research-kind", 1, "e".repeat(64), "local-research-artifact", APPLIED_AT);
 
-    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
+    expect(
+      migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 11), APPLIED_AT),
+    ).toEqual({
       fromVersion: 10,
       toVersion: 11,
       appliedVersions: [11],
@@ -583,6 +660,89 @@ describe("Actestra SQLite migrations", () => {
            ) VALUES (?, ?, ?, ?, ?)`,
         )
         .run("task-invalid-writing-kind", 1, "0".repeat(64), "office-artifact", APPLIED_AT),
+    ).toThrow();
+  });
+
+  it("expands schema 11 with only the declared Office-document journey kind", () => {
+    const database = createDatabase();
+    migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 11), APPLIED_AT);
+    database
+      .prepare(
+        `INSERT INTO workspaces (id, name, state, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run("workspace-office-migration", "Office workspace", "active", APPLIED_AT, APPLIED_AT);
+    const insertTask = database.prepare(
+      `INSERT INTO tasks (
+         id, workspace_id, title, state, active_session_id, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, NULL, ?, ?)`,
+    );
+    insertTask.run(
+      "task-existing-writing-kind",
+      "workspace-office-migration",
+      "Existing writing journey",
+      "ready",
+      APPLIED_AT,
+      APPLIED_AT,
+    );
+    database
+      .prepare(
+        `INSERT INTO aionui_general_work_journeys (
+           task_id, contract_version, conversation_hash, journey_kind, created_at
+         ) VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run("task-existing-writing-kind", 1, "1".repeat(64), "writing-artifact", APPLIED_AT);
+
+    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
+      fromVersion: 11,
+      toVersion: 12,
+      appliedVersions: [12],
+    });
+    expect(
+      database
+        .prepare(
+          `SELECT task_id, journey_kind
+           FROM aionui_general_work_journeys`,
+        )
+        .all(),
+    ).toEqual([
+      {
+        task_id: "task-existing-writing-kind",
+        journey_kind: "writing-artifact",
+      },
+    ]);
+
+    insertTask.run(
+      "task-office-document-kind",
+      "workspace-office-migration",
+      "Office-document journey",
+      "ready",
+      APPLIED_AT,
+      APPLIED_AT,
+    );
+    database
+      .prepare(
+        `INSERT INTO aionui_general_work_journeys (
+           task_id, contract_version, conversation_hash, journey_kind, created_at
+         ) VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run("task-office-document-kind", 1, "2".repeat(64), "office-document-artifact", APPLIED_AT);
+    insertTask.run(
+      "task-invalid-office-kind",
+      "workspace-office-migration",
+      "Invalid Office journey",
+      "ready",
+      APPLIED_AT,
+      APPLIED_AT,
+    );
+    expect(() =>
+      database
+        .prepare(
+          `INSERT INTO aionui_general_work_journeys (
+             task_id, contract_version, conversation_hash, journey_kind, created_at
+           ) VALUES (?, ?, ?, ?, ?)`,
+        )
+        .run("task-invalid-office-kind", 1, "3".repeat(64), "presentation-artifact", APPLIED_AT),
     ).toThrow();
   });
 

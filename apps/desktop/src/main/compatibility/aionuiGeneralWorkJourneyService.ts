@@ -16,6 +16,8 @@ import {
   type AionUiGeneralWorkRegistration,
 } from "../../compatibility/aionui";
 import {
+  OFFICE_DOCUMENT_PREVIEW_MEDIA_TYPE,
+  TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID,
   TASK_OUTPUT_WRITE_TEXT_TOOL_ID,
   WORKSPACE_READ_TEXT_TOOL_ID,
   WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
@@ -23,6 +25,8 @@ import {
   compareInstants,
   correlationId,
   eventStreamId,
+  assertOfficeDocumentModel,
+  parseOfficeDocumentBrief,
   parseWritingArtifactBrief,
   sessionId,
   serializeScopedNativeToolInput,
@@ -223,7 +227,9 @@ function registrationFor(
   const title = boundedPresentationText(
     journeyKind === "writing-artifact"
       ? parseWritingArtifactBrief(intent.prompt).title
-      : intent.prompt,
+      : journeyKind === "office-document-artifact"
+        ? parseOfficeDocumentBrief(intent.prompt).title
+        : intent.prompt,
     MAX_TITLE_BYTES,
   );
   const outputContent = `# Actestra result\n\n${intent.prompt.trim()}\n`;
@@ -296,6 +302,18 @@ function registrationFor(
         conversationHash,
         taskId: identities.taskId,
         journeyKind: "writing-artifact",
+        createdAt,
+      }),
+    });
+  }
+  if (journeyKind === "office-document-artifact") {
+    return Object.freeze({
+      ...common,
+      link: Object.freeze({
+        contractVersion: AIONUI_GENERAL_WORK_CONTRACT_VERSION,
+        conversationHash,
+        taskId: identities.taskId,
+        journeyKind: "office-document-artifact",
         createdAt,
       }),
     });
@@ -609,24 +627,56 @@ export class AionUiGeneralWorkJourneyService {
       resolvedAt: this.config.clock.now(),
       consume: false,
     });
-    if (
-      resolved.metadata.classification !== "task-content" ||
-      (resolved.metadata.mediaType !== "text/plain; charset=utf-8" &&
-        resolved.metadata.mediaType !== "text/markdown; charset=utf-8")
-    ) {
+    if (resolved.metadata.classification !== "task-content") {
       throw new AionUiGeneralWorkJourneyServiceError(
         "task-conflict",
         "AionUI artifact content has an unsupported authority class",
       );
     }
-    const preview = Object.freeze({
+    const common = {
       contractVersion: AIONUI_GENERAL_WORK_CONTRACT_VERSION,
       taskId: task.id,
       artifactId: artifact.id,
       label: artifact.label,
-      mediaType: resolved.metadata.mediaType,
-      content: resolved.content,
-    }) satisfies AionUiGeneralWorkArtifactPreview;
+    } as const;
+    let preview: AionUiGeneralWorkArtifactPreview;
+    if (resolved.metadata.mediaType === OFFICE_DOCUMENT_PREVIEW_MEDIA_TYPE) {
+      let document: unknown;
+      try {
+        document = JSON.parse(resolved.content);
+        assertOfficeDocumentModel(document);
+      } catch (error) {
+        throw new AionUiGeneralWorkJourneyServiceError(
+          "task-conflict",
+          "AionUI Office-document preview model is invalid",
+          { cause: error },
+        );
+      }
+      preview = Object.freeze({
+        ...common,
+        mediaType: OFFICE_DOCUMENT_PREVIEW_MEDIA_TYPE,
+        document: Object.freeze({
+          ...document,
+          sections: Object.freeze(
+            document.sections.map((section) => Object.freeze({ ...section })),
+          ),
+        }),
+      });
+    } else if (
+      resolved.metadata.mediaType === "text/plain; charset=utf-8" ||
+      resolved.metadata.mediaType === "text/markdown; charset=utf-8"
+    ) {
+      preview = Object.freeze({
+        ...common,
+        mediaType: resolved.metadata.mediaType,
+        content: resolved.content,
+      });
+    } else {
+      throw new AionUiGeneralWorkJourneyServiceError(
+        "task-conflict",
+        "AionUI artifact content has an unsupported authority class",
+      );
+    }
     assertAionUiGeneralWorkArtifactPreview(preview);
     return preview;
   }
@@ -846,7 +896,7 @@ export class AionUiGeneralWorkJourneyService {
               }
               if (journeyKind === "writing-artifact") {
                 const writeInput = adapter.activeToolInput(identities.requestId);
-                if (writeInput === undefined) {
+                if (writeInput === undefined || !("content" in writeInput)) {
                   throw new Error("General Worker did not provide its private writing input");
                 }
                 const serializedWriteInput = serializeScopedNativeToolInput(
@@ -880,6 +930,46 @@ export class AionUiGeneralWorkJourneyService {
                     artifactId: identities.artifactId,
                     kind: "document",
                     label: "Actestra writing draft",
+                  },
+                });
+                return;
+              }
+              if (journeyKind === "office-document-artifact") {
+                const officeInput = adapter.activeToolInput(identities.requestId);
+                if (officeInput === undefined || !("document" in officeInput)) {
+                  throw new Error("General Worker did not provide its private Office input");
+                }
+                const serializedOfficeInput = serializeScopedNativeToolInput(
+                  TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID,
+                  officeInput,
+                );
+                await this.config.persistence.storeContentReference({
+                  contractVersion: WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
+                  reference: identities.toolInputRef,
+                  kind: "tool-input",
+                  owner: {
+                    workspaceId: identities.workspaceId,
+                    taskId: identities.taskId,
+                    sessionId: identities.sessionId,
+                    workerId: identities.workerId,
+                    requestId: identities.requestId,
+                    grantId: identities.grantId,
+                  },
+                  classification: "task-content",
+                  mediaType: "text/plain; charset=utf-8",
+                  content: serializedOfficeInput,
+                  createdAt: this.config.clock.now(),
+                });
+                await coordinator.invokeScopedTool({
+                  invocation: {
+                    sessionId: identities.sessionId,
+                    requestId: identities.requestId,
+                    inputRef: identities.toolInputRef,
+                  },
+                  artifact: {
+                    artifactId: identities.artifactId,
+                    kind: "document",
+                    label: "Actestra Office document",
                   },
                 });
                 return;
@@ -927,7 +1017,7 @@ export class AionUiGeneralWorkJourneyService {
                   sentAt: this.config.clock.now(),
                 });
                 const writeInput = adapter.activeToolInput(identities.requestId);
-                if (writeInput === undefined) {
+                if (writeInput === undefined || !("content" in writeInput)) {
                   throw new Error("General Worker did not provide its private task-output input");
                 }
                 const serializedWriteInput = serializeScopedNativeToolInput(

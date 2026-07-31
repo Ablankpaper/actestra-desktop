@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MAX_WORKLOAD_CONTENT_BYTES,
   PRIVILEGED_CONTRACT_VERSION,
+  TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID,
   TASK_OUTPUT_WRITE_TEXT_TOOL_ID,
   WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
   WORKSPACE_READ_TEXT_TOOL_ID,
@@ -140,6 +141,30 @@ function domainGraph(request: AgentStartRequest): DomainGraph {
   };
 }
 
+function zipEntryNames(bytes: Buffer): readonly string[] {
+  let end = bytes.length - 22;
+  while (end >= 0 && bytes.readUInt32LE(end) !== 0x06054b50) {
+    end -= 1;
+  }
+  if (end < 0) {
+    throw new Error("DOCX output has no ZIP end-of-central-directory record");
+  }
+  const entries = bytes.readUInt16LE(end + 10);
+  let offset = bytes.readUInt32LE(end + 16);
+  const names: string[] = [];
+  for (let index = 0; index < entries; index += 1) {
+    if (bytes.readUInt32LE(offset) !== 0x02014b50) {
+      throw new Error("DOCX output has an invalid ZIP central directory");
+    }
+    const nameLength = bytes.readUInt16LE(offset + 28);
+    const extraLength = bytes.readUInt16LE(offset + 30);
+    const commentLength = bytes.readUInt16LE(offset + 32);
+    names.push(bytes.subarray(offset + 46, offset + 46 + nameLength).toString("utf8"));
+    offset += 46 + nameLength + extraLength + commentLength;
+  }
+  return names;
+}
+
 async function openHarness(
   suffix: string,
   executionMode: GeneralWorkerExecutionMode,
@@ -161,7 +186,16 @@ async function openHarness(
       correlationId: correlationId(`correlation-native-${suffix}`),
       taskState: "ready",
       startedAt: clock.now(),
-      initialPrompt: "Exercise one scoped native text tool.",
+      initialPrompt:
+        executionMode === "office-document-artifact-fixture"
+          ? [
+              "Document: Quarterly operating brief",
+              "Owner: Product operations",
+              "Summary: Record the approved launch decision in a portable Word document.",
+              "Section: Decision | Ship the verified desktop workflow.",
+              "Section: Evidence | Include the exact acceptance boundary.",
+            ].join("\n")
+          : "Exercise one scoped native text tool.",
     };
     const requestId = toolRequestId(`request-native-${suffix}`);
     ({ client: persistence } = await openTestPersistenceUtility(directory));
@@ -243,7 +277,10 @@ async function openHarness(
 
 async function storeInput(
   harness: NativeToolHarness,
-  tool: typeof WORKSPACE_READ_TEXT_TOOL_ID | typeof TASK_OUTPUT_WRITE_TEXT_TOOL_ID,
+  tool:
+    | typeof WORKSPACE_READ_TEXT_TOOL_ID
+    | typeof TASK_OUTPUT_WRITE_TEXT_TOOL_ID
+    | typeof TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID,
   input: Parameters<typeof serializeScopedNativeToolInput>[1],
   suffix: string,
   requestIdValue = harness.requestId,
@@ -290,6 +327,85 @@ afterEach(async () => {
 });
 
 describe("GW-P4.4 scoped native tool execution", () => {
+  it("creates one valid task-scoped DOCX and persists only its bounded preview model", async () => {
+    const harness = await openHarness("office-document", "office-document-artifact-fixture");
+    const document = {
+      contractVersion: 1,
+      title: "Quarterly operating brief",
+      owner: "Product operations",
+      summary: "Record the approved launch decision in a portable Word document.",
+      sections: [
+        {
+          heading: "Decision",
+          body: "Ship the verified desktop workflow.",
+        },
+        {
+          heading: "Evidence",
+          body: "Include the exact acceptance boundary.",
+        },
+      ],
+    } as const;
+    const inputRef = await storeInput(
+      harness,
+      TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID,
+      {
+        contractVersion: 1,
+        relativePath: "brief.docx",
+        document,
+      },
+      "office-document",
+    );
+
+    const result = await harness.coordinator.invoke({
+      sessionId: harness.request.sessionId,
+      requestId: harness.requestId,
+      inputRef,
+    });
+    expect(result).toMatchObject({
+      status: "succeeded",
+      outputRef: toolOutputReference("output-native-office-document-1"),
+    });
+    if (result.status !== "succeeded" || result.outputRef === undefined) {
+      throw new Error("Expected an Office-document output reference");
+    }
+    const outputPath = path.join(
+      harness.workspaceRoot,
+      ".actestra",
+      "task-output",
+      harness.request.taskId,
+      "brief.docx",
+    );
+    const bytes = fs.readFileSync(outputPath);
+    expect(bytes.subarray(0, 2).toString("ascii")).toBe("PK");
+    expect(zipEntryNames(bytes)).toEqual(
+      expect.arrayContaining(["[Content_Types].xml", "_rels/.rels", "word/document.xml"]),
+    );
+    await expect(
+      harness.persistence.resolveContentReference({
+        contractVersion: WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
+        reference: result.outputRef,
+        kind: "tool-output",
+        owner: {
+          workspaceId: harness.request.workspaceId,
+          taskId: harness.request.taskId,
+          sessionId: harness.request.sessionId,
+          workerId: harness.request.workerId,
+          requestId: harness.requestId,
+          grantId: harness.grant.grantId,
+        },
+        resolvedAt: harness.clock.now(),
+        consume: false,
+      }),
+    ).resolves.toMatchObject({
+      content: JSON.stringify(document),
+      metadata: {
+        classification: "task-content",
+        mediaType: "application/vnd.actestra.office-document-preview+json",
+      },
+    });
+    await expectTerminal(harness, "completed");
+  });
+
   it("reads bounded UTF-8 through an active attempt and returns only an opaque output reference", async () => {
     const harness = await openHarness("read-success", "workspace-read-text-fixture");
     fs.mkdirSync(path.join(harness.workspaceRoot, "notes"));

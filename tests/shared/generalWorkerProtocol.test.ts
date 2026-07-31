@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { instant, toolOutputReference, toolRequestId } from "../../apps/desktop/src/core";
+import {
+  TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID,
+  instant,
+  toolOutputReference,
+  toolRequestId,
+} from "../../apps/desktop/src/core";
 import {
   GENERAL_WORKER_PROTOCOL_VERSION,
   MAX_GENERAL_WORKER_MESSAGE_BYTES,
@@ -110,6 +115,24 @@ describe("General Worker process protocol", () => {
             "Point: Start with the verified customer outcome.",
           ].join("\n"),
           executionMode: "writing-artifact-fixture",
+        },
+      }),
+    ).not.toThrow();
+  });
+
+  it("admits the closed Office-document execution mode", () => {
+    expect(() =>
+      assertGeneralWorkerRequest({
+        ...startRequest(),
+        payload: {
+          ...startRequest().payload,
+          prompt: [
+            "Document: Quarterly operating brief",
+            "Owner: Product operations",
+            "Summary: Record the approved launch decision in a portable Word document.",
+            "Section: Decision | Ship the verified desktop workflow.",
+          ].join("\n"),
+          executionMode: "office-document-artifact-fixture",
         },
       }),
     ).not.toThrow();
@@ -227,6 +250,39 @@ describe("General Worker process protocol", () => {
         },
       }),
     ).toThrow(/path|input/u);
+  });
+
+  it("admits one bounded private Office-document model on its matching Worker tool event", () => {
+    const event = {
+      protocolVersion: GENERAL_WORKER_PROTOCOL_VERSION,
+      type: "event",
+      attemptToken: "attempt-office-journey",
+      sequence: 3,
+      event: {
+        type: "tool-requested",
+        callId: "call-office-write",
+        toolName: TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID,
+        summary: "Create the bounded Word document.",
+        input: {
+          contractVersion: 1,
+          relativePath: "brief.docx",
+          document: {
+            contractVersion: 1,
+            title: "Quarterly operating brief",
+            owner: "Product operations",
+            summary: "Record the approved launch decision in a portable Word document.",
+            sections: [
+              {
+                heading: "Decision",
+                body: "Ship the verified desktop workflow.",
+              },
+            ],
+          },
+        },
+      },
+    } as const;
+
+    expect(() => assertGeneralWorkerMessage(event)).not.toThrow();
   });
 
   it("accepts a 128 KiB private tool input while retaining overall message headroom", () => {

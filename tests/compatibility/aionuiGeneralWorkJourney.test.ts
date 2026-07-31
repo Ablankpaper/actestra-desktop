@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   createAionUiGeneralWorkRegistration,
   createAionUiLocalResearchRegistration,
+  createAionUiOfficeDocumentRegistration,
   createAionUiWritingRegistration,
   createAionUiWorkspaceFileRegistration,
 } from "../fixtures/aionuiGeneralWork";
@@ -27,6 +28,30 @@ describe("AionUI general-work journey identity", () => {
 });
 
 describe("AionUI general-work intent", () => {
+  it("maps the reserved Office command to a distinct Office-document journey", async () => {
+    const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
+      string,
+      unknown
+    >;
+    const parseCommand = compatibility.parseAionUiGeneralWorkCommand as (value: string) => unknown;
+    const officeBrief = [
+      "Document: Quarterly operating brief",
+      "Owner: Product operations",
+      "Summary: Record the approved launch decision in a portable Word document.",
+      "Section: Decision | Ship the verified desktop workflow.",
+      "Section: Evidence | Include the exact acceptance boundary.",
+    ].join("\n");
+
+    expect(parseCommand(`/actestra office ${officeBrief}`)).toEqual({
+      prompt: officeBrief,
+      journeyKind: "office-document-artifact",
+    });
+    expect(parseCommand("/actestra office")).toEqual({
+      prompt: "",
+      journeyKind: "office-document-artifact",
+    });
+  });
+
   it("maps preserved commands to the closed prompt, file, and local-research journeys", async () => {
     const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
       string,
@@ -192,6 +217,64 @@ describe("AionUI general-work intent", () => {
     }
   });
 
+  it("accepts only the exact bounded Office-document brief contract", async () => {
+    const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
+      string,
+      unknown
+    >;
+    const assertIntent = compatibility.assertAionUiGeneralWorkIntent as (value: unknown) => void;
+    const intent = {
+      contractVersion: 1,
+      nativeConversationId: "conversation-native-1",
+      submissionId: "submission-native-office-1",
+      journeyKind: "office-document-artifact",
+      prompt: [
+        "Document: Quarterly operating brief",
+        "Owner: Product operations",
+        "Summary: Record the approved launch decision in a portable Word document.",
+        "Section: Decision | Ship the verified desktop workflow.",
+        "Section: Evidence | Include the exact acceptance boundary.",
+      ].join("\n"),
+    };
+
+    expect(() => assertIntent(intent)).not.toThrow();
+
+    for (const prompt of [
+      "Create a Word document without a structured brief.",
+      [
+        "Owner: Product operations",
+        "Document: Quarterly operating brief",
+        "Summary: Record the approved launch decision.",
+        "Section: Decision | Ship the verified desktop workflow.",
+      ].join("\n"),
+      [
+        "Document: Quarterly operating brief",
+        "Owner: Product operations",
+        "Summary: Record the approved launch decision.",
+        "Section: Decision",
+      ].join("\n"),
+      [
+        "Document: Quarterly operating brief",
+        "Owner: Product operations",
+        "Summary: Record the approved launch decision.",
+        ...Array.from(
+          { length: 7 },
+          (_, index) => `Section: Part ${index + 1} | Body ${index + 1}.`,
+        ),
+      ].join("\n"),
+      [
+        "Document: Quarterly operating brief",
+        "Owner: Product operations",
+        "Summary: Record the approved launch decision.",
+        "Section: Decision | Unsafe\u2028body.",
+      ].join("\n"),
+    ]) {
+      expect(() => assertIntent({ ...intent, prompt })).toThrowError(
+        expect.objectContaining({ code: "invalid-intent" }),
+      );
+    }
+  });
+
   it("preserves a forbidden Unicode separator at the writing-command boundary", async () => {
     const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
       string,
@@ -294,6 +377,26 @@ describe("AionUI general-work authoritative registration", () => {
     expect(() =>
       assertRegistration({
         ...writing,
+        toolInputReference: prompt.toolInputReference,
+      }),
+    ).toThrowError(expect.objectContaining({ code: "invalid-registration" }));
+  });
+
+  it("accepts Office-document registration without placeholder tool authority", async () => {
+    const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
+      string,
+      unknown
+    >;
+    const assertRegistration = compatibility.assertAionUiGeneralWorkRegistration as (
+      value: unknown,
+    ) => void;
+    const office = createAionUiOfficeDocumentRegistration("office-kind");
+    const prompt = createAionUiGeneralWorkRegistration("office-placeholder");
+
+    expect(() => assertRegistration(office)).not.toThrow();
+    expect(() =>
+      assertRegistration({
+        ...office,
         toolInputReference: prompt.toolInputReference,
       }),
     ).toThrowError(expect.objectContaining({ code: "invalid-registration" }));

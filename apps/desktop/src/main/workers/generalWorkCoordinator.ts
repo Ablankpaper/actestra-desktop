@@ -6,6 +6,7 @@ import {
   MAX_RECOVERABLE_GENERAL_WORK_CHECKPOINTS,
   PLATFORM_EVIDENCE_CONTRACT_VERSION,
   REQUIRED_REDACTION_BY_EVENT_TYPE,
+  TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID,
   TASK_OUTPUT_WRITE_TEXT_TOOL_ID,
   WORKSPACE_READ_TEXT_TOOL_ID,
   WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
@@ -89,6 +90,12 @@ export interface GeneralWorkCoordinatorConfig {
 
 const persistenceReleaseBarriers = new WeakMap<ActestraPersistencePort, Promise<void>>();
 const ignorePriorReleaseFailure = (): void => undefined;
+
+function createsTaskOutputArtifact(tool: ReturnType<typeof toolId>): boolean {
+  return (
+    tool === TASK_OUTPUT_WRITE_TEXT_TOOL_ID || tool === TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID
+  );
+}
 
 async function withPersistenceReleaseBarrier<Result>(
   persistence: ActestraPersistencePort,
@@ -288,7 +295,7 @@ export class GeneralWorkCoordinator {
       );
     }
     const requestedTool = toolId(requested[0].payload.toolName);
-    if ((requestedTool === TASK_OUTPUT_WRITE_TEXT_TOOL_ID) !== (request.artifact !== undefined)) {
+    if (createsTaskOutputArtifact(requestedTool) !== (request.artifact !== undefined)) {
       throw new GeneralWorkRecoveryError(
         "artifact-mismatch",
         "Task-output writes require exactly one authoritative artifact intent",
@@ -296,12 +303,23 @@ export class GeneralWorkCoordinator {
     }
     if (
       request.artifact !== undefined &&
+      requestedTool === TASK_OUTPUT_WRITE_TEXT_TOOL_ID &&
       request.artifact.kind !== "file" &&
       request.artifact.kind !== "document"
     ) {
       throw new GeneralWorkRecoveryError(
         "artifact-mismatch",
         "The task-output text tool can create only file or document artifacts",
+      );
+    }
+    if (
+      request.artifact !== undefined &&
+      requestedTool === TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID &&
+      request.artifact.kind !== "document"
+    ) {
+      throw new GeneralWorkRecoveryError(
+        "artifact-mismatch",
+        "The Office-document tool can create only document artifacts",
       );
     }
     const existing = await this.config.persistence.getGeneralWorkCheckpoint(
@@ -318,7 +336,7 @@ export class GeneralWorkCoordinator {
       toolId: requestedTool,
       inputRef: request.invocation.inputRef,
       startedAt,
-      mayHaveExecuted: requestedTool === TASK_OUTPUT_WRITE_TEXT_TOOL_ID,
+      mayHaveExecuted: createsTaskOutputArtifact(requestedTool),
       state: "in-flight",
     }) satisfies GeneralWorkToolCheckpoint;
     const artifactIntent =

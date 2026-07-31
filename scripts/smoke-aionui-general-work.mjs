@@ -18,7 +18,7 @@ const expectedAionCoreVersion =
   typeof materializedPackage.aioncoreVersion === "string"
     ? materializedPackage.aioncoreVersion.replace(/^v/u, "")
     : "";
-const smokeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-aionui-p4-writing-smoke-"));
+const smokeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-aionui-p4-office-smoke-"));
 const markerPrefix = "ACTESTRA_AIONUI_GENERAL_WORK_SMOKE_READY ";
 const failureMarker = "ACTESTRA_AIONUI_GENERAL_WORK_SMOKE_FAILED ";
 const windowReadyMarker = "[Actestra] Main window created";
@@ -34,6 +34,27 @@ function fail(message) {
 function requireFile(filePath, label) {
   if (!fs.statSync(filePath, { throwIfNoEntry: false })?.isFile()) {
     fail(`${label} is missing at ${filePath}`);
+  }
+}
+
+function verifyDocxPackage(filePath) {
+  const signature = fs.readFileSync(filePath).subarray(0, 2).toString("ascii");
+  if (signature !== "PK") {
+    fail("Recovered Office artifact is not a ZIP/OOXML package");
+  }
+  const listing = spawnSync("unzip", ["-Z1", filePath], {
+    encoding: "utf8",
+    timeout: 5_000,
+    maxBuffer: 1_024 * 1_024,
+  });
+  if (listing.status !== 0) {
+    fail("Recovered Office artifact could not be inspected as ZIP/OOXML");
+  }
+  const entries = new Set(listing.stdout.split(/\r?\n/u).filter(Boolean));
+  for (const entry of ["[Content_Types].xml", "_rels/.rels", "word/document.xml"]) {
+    if (!entries.has(entry)) {
+      fail(`Recovered Office artifact is missing ${entry}`);
+    }
   }
 }
 
@@ -211,8 +232,8 @@ function verifyPreparedProfile(profilePath, expected) {
     enableForeignKeyConstraints: true,
   });
   try {
-    if (databaseValue(database, "PRAGMA user_version") !== 11) {
-      fail("prepare-restart did not create schema version 11");
+    if (databaseValue(database, "PRAGMA user_version") !== 12) {
+      fail("prepare-restart did not create schema version 12");
     }
     if (
       databaseValue(database, "SELECT COUNT(*) FROM aionui_general_work_journeys") !== 1 ||
@@ -245,7 +266,7 @@ function verifyTerminalProfile(profilePath, expected) {
       `SELECT COUNT(*) FROM core_events WHERE type = '${expected.eventType}'`,
     );
     if (
-      databaseValue(database, "PRAGMA user_version") !== 11 ||
+      databaseValue(database, "PRAGMA user_version") !== 12 ||
       databaseValue(database, "SELECT COUNT(*) FROM aionui_general_work_journeys") !== 1 ||
       databaseValue(
         database,
@@ -296,7 +317,7 @@ function verifyTerminalProfile(profilePath, expected) {
 
 try {
   if (process.platform !== "darwin") {
-    fail("P4 writing target-app smoke currently requires the macOS internal-test lane");
+    fail("P4 Office target-app smoke currently requires the macOS internal-test lane");
   }
   requireFile(builtMain, "Materialized production main entry");
   const packagedApp = findPackagedApp();
@@ -430,6 +451,85 @@ try {
     writingDatabase.close();
   }
 
+  const officeProfile = path.join(smokeRoot, "office-restart-profile");
+  const officeWorkspace = path.join(smokeRoot, "office-restart-workspace");
+  const officePrepared = await runScenario(
+    "prepare-office-restart",
+    officeProfile,
+    officeWorkspace,
+    packagedExecutable,
+  );
+  if (officePrepared.status !== "prepared") {
+    fail("prepare-office-restart returned the wrong status");
+  }
+  verifyPreparedProfile(officeProfile, {
+    journeyKind: "office-document-artifact",
+    contentReferenceCount: 1,
+  });
+  const officeRecovered = await runScenario(
+    "recover-office-restart",
+    officeProfile,
+    officeWorkspace,
+    packagedExecutable,
+  );
+  if (officeRecovered.status !== "completed" || officeRecovered.artifactCount !== 1) {
+    fail("recover-office-restart returned the wrong terminal evidence");
+  }
+  const officeTaskId = verifyTerminalProfile(officeProfile, {
+    state: "completed",
+    eventType: "task.completed",
+    artifactCount: 1,
+    artifactLabel: "Actestra Office document",
+    artifactKind: "document",
+    contentReferenceCount: 3,
+    journeyKind: "office-document-artifact",
+  });
+  const officeOutput = path.join(
+    officeWorkspace,
+    ".actestra",
+    "task-output",
+    officeTaskId,
+    "brief.docx",
+  );
+  requireFile(officeOutput, "Recovered Office document");
+  verifyDocxPackage(officeOutput);
+  const officeDatabase = new DatabaseSync(path.join(officeProfile, "state", "actestra.sqlite3"), {
+    readOnly: true,
+    allowExtension: false,
+    enableDoubleQuotedStringLiterals: false,
+    enableForeignKeyConstraints: true,
+  });
+  try {
+    const privateOfficeFragments = [
+      "Product operations",
+      "Record the exact Office package acceptance boundary.",
+      "Ship the verified desktop workflow.",
+      "Retain exact Core and Preview evidence.",
+      "brief.docx",
+    ];
+    for (const fragment of privateOfficeFragments) {
+      const leakedCoreEventCount = officeDatabase
+        .prepare(
+          `SELECT COUNT(*) AS count
+           FROM core_events
+           WHERE instr(envelope_json, ?) > 0`,
+        )
+        .get(fragment).count;
+      const leakedAuditCount = officeDatabase
+        .prepare(
+          `SELECT COUNT(*) AS count
+           FROM privileged_audit_records
+           WHERE instr(record_json, ?) > 0`,
+        )
+        .get(fragment).count;
+      if (leakedCoreEventCount !== 0 || leakedAuditCount !== 0) {
+        fail("Private Office model or output path leaked into Core events or metadata audit");
+      }
+    }
+  } finally {
+    officeDatabase.close();
+  }
+
   const researchProfile = path.join(smokeRoot, "local-research-profile");
   const researchWorkspace = path.join(smokeRoot, "local-research-workspace");
   const researchSourceLines = ["Packaged alpha evidence", "Packaged beta evidence"];
@@ -521,11 +621,11 @@ try {
 
   succeeded = true;
   console.info(
-    "Packaged target-app P4 writing smoke passed: representative workspace-file and writing restart recovery, local research and owned Preview, workspace-grant denial, cancellation, finalized checkpoints, events, artifacts, and terminal evidence are exact.",
+    "Packaged target-app P4 Office smoke passed: representative workspace-file, writing, and Office restart recovery, real DOCX and owned Word Preview, local research, workspace-grant denial, cancellation, finalized checkpoints, events, artifacts, and terminal evidence are exact.",
   );
 } catch (error) {
   console.error(
-    `Target-app P4 writing smoke failed: ${error instanceof Error ? error.message : String(error)}`,
+    `Target-app P4 Office smoke failed: ${error instanceof Error ? error.message : String(error)}`,
   );
   console.error(`Isolated smoke root retained for inspection: ${smokeRoot}`);
   process.exitCode = 1;

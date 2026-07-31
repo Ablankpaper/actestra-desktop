@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   PRIVILEGED_CONTRACT_VERSION,
+  TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID,
   TASK_OUTPUT_WRITE_TEXT_TOOL_ID,
   WORKSPACE_READ_TEXT_TOOL_ID,
   approvalId,
@@ -41,7 +42,7 @@ const APPROVAL_TTL_MS = 5 * 60 * 1_000;
 const CREDENTIAL_LEASE_TTL_MS = 30 * 1_000;
 const CREDENTIAL_HISTORY_RETENTION_MS = 5 * 60 * 1_000;
 
-export const SCOPED_NATIVE_POLICY_REVISION = policyRevision("policy-gw-p4-4-scoped-native-text-v1");
+export const SCOPED_NATIVE_POLICY_REVISION = policyRevision("policy-p4-scoped-native-tools-v2");
 
 export interface ScopedNativeToolPlatformIdSources {
   readonly newAuditRecordId: () => AuditRecordId;
@@ -96,6 +97,14 @@ export function scopedNativePolicySnapshot(): PolicySnapshot {
       resourceKinds: Object.freeze(["task-output"]),
       credentialUse: "none",
       toolIds: Object.freeze([TASK_OUTPUT_WRITE_TEXT_TOOL_ID]),
+    } satisfies PolicyRule),
+    Object.freeze({
+      id: policyRuleId("rule-p4-office-document-output"),
+      effect: "allow",
+      actions: Object.freeze(["artifact.create"]),
+      resourceKinds: Object.freeze(["task-output"]),
+      credentialUse: "none",
+      toolIds: Object.freeze([TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID]),
     } satisfies PolicyRule),
   ]);
   return Object.freeze({

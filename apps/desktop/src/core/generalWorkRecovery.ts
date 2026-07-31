@@ -38,7 +38,11 @@ import {
   type ToolInputReference,
   type ToolOutputReference,
 } from "./privilegedServices";
-import { TASK_OUTPUT_WRITE_TEXT_TOOL_ID, WORKSPACE_READ_TEXT_TOOL_ID } from "./scopedNativeTools";
+import {
+  TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID,
+  TASK_OUTPUT_WRITE_TEXT_TOOL_ID,
+  WORKSPACE_READ_TEXT_TOOL_ID,
+} from "./scopedNativeTools";
 import {
   assertContentReferenceOwner,
   workspaceGrantId,
@@ -49,6 +53,12 @@ import {
 export const GENERAL_WORK_RECOVERY_CONTRACT_VERSION = 1 as const;
 export const MAX_GENERAL_WORK_CHECKPOINT_EVENTS = 128;
 export const MAX_RECOVERABLE_GENERAL_WORK_CHECKPOINTS = 100;
+
+function createsTaskOutputArtifact(tool: ToolId | undefined): boolean {
+  return (
+    tool === TASK_OUTPUT_WRITE_TEXT_TOOL_ID || tool === TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID
+  );
+}
 
 export const GENERAL_WORK_CHECKPOINT_PHASES = ["active", "terminal-pending", "finalized"] as const;
 export type GeneralWorkCheckpointPhase = (typeof GENERAL_WORK_CHECKPOINT_PHASES)[number];
@@ -728,15 +738,19 @@ export function assertGeneralWorkCheckpoint(
   }
   const intent = value.artifactIntent as GeneralWorkArtifactIntent | undefined;
   const tool = value.tool as GeneralWorkToolCheckpoint | undefined;
+  const validArtifactKind =
+    tool?.toolId === TASK_OUTPUT_WRITE_TEXT_TOOL_ID
+      ? intent?.kind === "file" || intent?.kind === "document"
+      : tool?.toolId === TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID
+        ? intent?.kind === "document"
+        : false;
   if (
-    (intent !== undefined &&
-      ((intent.kind !== "file" && intent.kind !== "document") ||
-        tool?.toolId !== TASK_OUTPUT_WRITE_TEXT_TOOL_ID)) ||
-    (tool?.toolId === TASK_OUTPUT_WRITE_TEXT_TOOL_ID && intent === undefined)
+    (intent !== undefined && !validArtifactKind) ||
+    (createsTaskOutputArtifact(tool?.toolId) && intent === undefined)
   ) {
     throw new GeneralWorkRecoveryError(
       "artifact-mismatch",
-      "General-work task-output tool and text artifact intent must be checkpointed together",
+      "General-work task-output tool and compatible artifact intent must be checkpointed together",
     );
   }
   if (intent !== undefined && tool?.state === "succeeded" && value.artifactBinding === undefined) {

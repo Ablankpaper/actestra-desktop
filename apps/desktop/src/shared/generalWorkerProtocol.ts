@@ -1,8 +1,10 @@
 import { assertAgentToolResult, type AgentToolResult } from "../core/agentAdapter";
 import { correlationId } from "../core/domain";
 import {
+  TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID,
   TASK_OUTPUT_WRITE_TEXT_TOOL_ID,
   parseScopedNativeToolInput,
+  type TaskOutputWriteOfficeDocumentInput,
   type TaskOutputWriteTextInput,
 } from "../core/scopedNativeTools";
 
@@ -24,6 +26,7 @@ export const GENERAL_WORKER_EXECUTION_MODES = [
   "workspace-read-then-task-output-write-fixture",
   "local-research-artifact-fixture",
   "writing-artifact-fixture",
+  "office-document-artifact-fixture",
 ] as const;
 export const MAX_GENERAL_WORKER_MESSAGE_BYTES = 256 * 1024;
 export const MAX_GENERAL_WORKER_PROMPT_BYTES = 64 * 1024;
@@ -117,7 +120,7 @@ export type GeneralWorkerEventPayload =
       readonly callId: string;
       readonly toolName: string;
       readonly summary: string;
-      readonly input?: TaskOutputWriteTextInput;
+      readonly input?: TaskOutputWriteTextInput | TaskOutputWriteOfficeDocumentInput;
     }
   | {
       readonly type: "tool-result-accepted";
@@ -411,8 +414,11 @@ function assertEventPayload(value: unknown): asserts value is GeneralWorkerEvent
         maximumBytes: 4 * 1024,
       });
       if (value.input !== undefined) {
-        if (value.toolName !== TASK_OUTPUT_WRITE_TEXT_TOOL_ID) {
-          throw new Error("General Worker private tool input is allowed only for write-text");
+        if (
+          value.toolName !== TASK_OUTPUT_WRITE_TEXT_TOOL_ID &&
+          value.toolName !== TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID
+        ) {
+          throw new Error("General Worker private tool input requires a declared create-only tool");
         }
         const serializedInput = JSON.stringify(value.input);
         if (

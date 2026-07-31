@@ -5,6 +5,7 @@ import {
   artifactId,
   compareInstants,
   instant,
+  parseOfficeDocumentBrief,
   parseWritingArtifactBrief,
   taskId,
   type Session,
@@ -28,6 +29,7 @@ export const AIONUI_GENERAL_WORK_JOURNEY_KINDS = [
   "workspace-file-artifact",
   "local-research-artifact",
   "writing-artifact",
+  "office-document-artifact",
 ] as const;
 
 const MAX_NATIVE_CONVERSATION_ID_LENGTH = 256;
@@ -36,6 +38,7 @@ const AIONUI_GENERAL_WORK_COMMAND_RE = /^\/actestra(?:\s+([\s\S]*))?$/iu;
 const AIONUI_GENERAL_WORK_FILE_COMMAND_RE = /^file(?:\s+([\s\S]*))?$/iu;
 const AIONUI_GENERAL_WORK_RESEARCH_COMMAND_RE = /^research(?:\s+([\s\S]*))?$/iu;
 const AIONUI_GENERAL_WORK_WRITE_COMMAND_RE = /^write(?:\s+([\s\S]*))?$/iu;
+const AIONUI_GENERAL_WORK_OFFICE_COMMAND_RE = /^office(?:\s+([\s\S]*))?$/iu;
 const AIONUI_GENERAL_WORK_COMMAND_PADDING_RE = /^(?:[^\S\u2028\u2029])+|(?:[^\S\u2028\u2029])+$/gu;
 const INTENT_KEYS = [
   "contractVersion",
@@ -138,6 +141,13 @@ export function parseAionUiGeneralWorkCommand(value: string): AionUiGeneralWorkC
       journeyKind: "writing-artifact",
     });
   }
+  const officeCommand = body.match(AIONUI_GENERAL_WORK_OFFICE_COMMAND_RE);
+  if (officeCommand !== null) {
+    return Object.freeze({
+      prompt: trimAionUiGeneralWorkCommandPadding(officeCommand[1] ?? ""),
+      journeyKind: "office-document-artifact",
+    });
+  }
   return Object.freeze({
     prompt: body,
     journeyKind: "prompt-artifact",
@@ -189,11 +199,18 @@ export interface AionUiWritingArtifactRegistration extends AionUiGeneralWorkRegi
   };
 }
 
+export interface AionUiOfficeDocumentArtifactRegistration extends AionUiGeneralWorkRegistrationBase {
+  readonly link: AionUiGeneralWorkLink & {
+    readonly journeyKind: "office-document-artifact";
+  };
+}
+
 export type AionUiGeneralWorkRegistration =
   | AionUiPromptArtifactRegistration
   | AionUiWorkspaceFileArtifactRegistration
   | AionUiLocalResearchArtifactRegistration
-  | AionUiWritingArtifactRegistration;
+  | AionUiWritingArtifactRegistration
+  | AionUiOfficeDocumentArtifactRegistration;
 
 export interface AionUiGeneralWorkArtifactProjection {
   readonly artifactId: ArtifactId;
@@ -337,6 +354,17 @@ export function assertAionUiGeneralWorkIntent(
       );
     }
   }
+  if (value.journeyKind === "office-document-artifact") {
+    try {
+      parseOfficeDocumentBrief(value.prompt);
+    } catch (error) {
+      throw new AionUiGeneralWorkJourneyError(
+        "invalid-intent",
+        "AionUI Office brief violates the closed Office-document contract",
+        { cause: error },
+      );
+    }
+  }
   if (
     value.journeyKind !== undefined &&
     !AIONUI_GENERAL_WORK_JOURNEY_KINDS.includes(value.journeyKind as AionUiGeneralWorkJourneyKind)
@@ -374,7 +402,7 @@ export function assertAionUiGeneralWorkRegistration(
     );
   }
   const initialInputField =
-    link.journeyKind === "writing-artifact"
+    link.journeyKind === "writing-artifact" || link.journeyKind === "office-document-artifact"
       ? undefined
       : link.journeyKind === "prompt-artifact"
         ? "toolInputReference"
@@ -396,6 +424,9 @@ export function assertAionUiGeneralWorkRegistration(
     assertStoreContentReferenceInput(value.promptReference);
     if (link.journeyKind === "writing-artifact") {
       parseWritingArtifactBrief((value.promptReference as StoreContentReferenceInput).content);
+    }
+    if (link.journeyKind === "office-document-artifact") {
+      parseOfficeDocumentBrief((value.promptReference as StoreContentReferenceInput).content);
     }
     if (initialInputField !== undefined) {
       assertStoreContentReferenceInput(initialInputReference);

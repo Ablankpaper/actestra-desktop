@@ -35,12 +35,15 @@ native Preview surface, but must not become an unbounded renderer or
 Downstream patch `0010-actestra-preserved-general-work-journey.mjs` adds
 versioned `/actestra <bounded text>`,
 `/actestra file <bounded instruction>`, and
-`/actestra research <bounded instruction>` intents to the existing AionUI
-SendBox. They select the prompt-artifact, workspace-file-artifact, and
-local-research-artifact journeys respectively. Neither read-based intent
-carries a path. Ordinary AionUI messages, attachments, quotes, routes,
-history, Agents, Assistants, Skills, MCP, scheduled tasks, Team, settings, and
-other retained flows remain unchanged.
+`/actestra research <bounded instruction>`,
+`/actestra write <bounded writing brief>`, and
+`/actestra office <bounded document brief>` intents to the existing AionUI
+SendBox. They select the prompt-artifact, workspace-file-artifact,
+local-research-artifact, writing-artifact, and office-document-artifact
+journeys respectively. Neither read-based intent carries a path. Ordinary
+AionUI messages, attachments, quotes, routes, history, Agents, Assistants,
+Skills, MCP, scheduled tasks, Team, settings, and other retained flows remain
+unchanged.
 
 The intent accepts text only and crosses a context-isolated preload bridge with
 strict submit, list, cancel, and preview operations. Electron main accepts
@@ -70,8 +73,10 @@ The raw native identifier and raw AionCore response are not persisted.
 SQLite schema version 9 adds the required
 `prompt-artifact` and `workspace-file-artifact` journey kinds. Existing
 schema-8 rows migrate to `prompt-artifact`. Schema version 10 expands that
-exact closed set only with `local-research-artifact`; existing schema-9 values
-remain unchanged. Arbitrary kinds fail at both the compatibility contract and
+exact closed set only with `local-research-artifact`; schema version 11 adds
+only `writing-artifact`; and schema version 12 adds only
+`office-document-artifact`. Existing values remain unchanged at each
+forward-only step. Arbitrary kinds fail at both the compatibility contract and
 SQLite constraint.
 
 One `BEGIN IMMEDIATE` transaction registers the authoritative Workspace,
@@ -131,6 +136,17 @@ network research, generic retrieval, a model-quality claim, a Goose
 integration, general shell, arbitrary filesystem API, or evidence that every
 general-work fixture is complete.
 
+The writing and Office journeys perform no workspace read and register no
+placeholder tool input. Their isolated Worker modes derive a private output
+from the already persisted structured brief. Main persists that exact-owner
+input before invoking a create-only tool. Writing uses the accepted text tool
+for `draft.md`; Office uses only
+`actestra.task-output.write-office-document`, whose input fixes `brief.docx`
+and whose Electron-main implementation generates a bounded DOCX package. The
+Office output reference contains only the validated document model for native
+Word Preview, never DOCX bytes or a path. ADR-0021 and ADR-0022 define the
+closed brief, model, Artifact, Preview, packaging, and recovery contracts.
+
 List and status projections are rebuilt from the Actestra domain graph,
 checkpoint, event, incident, and Artifact records. Cancellation targets only
 the active `running` or `blocked` supervised attempt owned by the requesting
@@ -143,11 +159,14 @@ Artifact preview requires all of the following:
 2. the available Artifact belongs to that Task;
 3. the finalized checkpoint binds the same Artifact and output reference;
 4. the content reference resolves under the exact stored owner; and
-5. the media type is bounded UTF-8 plain text or Markdown.
+5. the media type is bounded UTF-8 plain text, Markdown, or the exact bounded
+   Office-document Preview model type.
 
-Only the label, media type, and bounded content cross to the renderer. AionUI's
-native Preview receives the content with `persist: false`; it may display the
-content transiently but must not cache it in renderer `localStorage`.
+Only the label, media type, and bounded text or validated Office document model
+cross to the renderer. AionUI's native Preview receives the projection with
+`persist: false`; it may display it transiently but must not cache it in
+renderer `localStorage`. DOCX bytes, paths, roots, and content references never
+cross this boundary.
 
 ### Recover in authoritative order
 
@@ -156,7 +175,7 @@ Startup retains two ordered recovery steps:
 1. after schema and scoped-tool readiness, GW-P4.5 reconciles interrupted
    schema-7 attempts before the native window is created; and
 2. after the native backend and preserved window are ready, GW-P4.6 lists
-   schema-11 linked Tasks that are still `ready` and have no durable attempt,
+   schema-12 linked Tasks that are still `ready` and have no durable attempt,
    then starts them from their persisted prompt, grant, journey kind, and any
    kind-selected initial input. File and local-research journeys resume from
    their respective persisted read input; after the Worker processes that
@@ -166,7 +185,10 @@ Startup retains two ordered recovery steps:
    private `draft.md` content in the Worker, and requires main to persist that
    input under the exact write-request owner before create-only output. The
    finalized checkpoint must bind the resulting `document` Artifact and exact
-   draft content reference before recovery can report success.
+   draft content reference before recovery can report success. Office follows
+   the same prompt-only recovery boundary, but the Worker regenerates only its
+   bounded document model and Electron main creates the fixed DOCX after that
+   model is persisted.
 
 Prepared recovery never re-reads the native conversation or silently changes
 the stored workspace authority. A failed recovery is counted and reported; it
@@ -175,7 +197,7 @@ state.
 
 ### Keep target-app smoke explicit and non-production
 
-The materialized desktop admits five fixed smoke scenarios only when both
+The materialized desktop admits nine fixed smoke scenarios only when both
 `ACTESTRA_E2E_TEST=1` and a recognized
 `ACTESTRA_GENERAL_WORK_SMOKE_SCENARIO` are present. The smoke workspace must be
 an explicit absolute test path. The driver can prepare and recover one task,
@@ -187,14 +209,19 @@ from AionCore.
 The external target-app smoke launches the packaged macOS `Actestra.app`
 produced from the production-built materialized desktop, using only the exact
 AionCore version bundled under the frozen AionUI manifest pin. As clarified by
-[ADR-0021](0021-bounded-writing-artifact-journey.md), it now verifies restart,
-bounded local research, writing, denial, and cancellation through schema-11
+ADR-0021 and
+[ADR-0022](0022-bounded-office-document-artifact-journey.md), it now verifies
+restart, bounded local research, writing, Office-document creation, denial,
+and cancellation through schema-12
 journey rows, finalized checkpoints, normalized events, Artifact counts,
 terminal attempt evidence, foreign keys, renderer readiness, and process
 cleanup. Research resolves its exact owned non-persisted Markdown Preview and
 keeps source evidence out of normalized Core events. Writing proves prompt-only
 prepared authority, exact `document`/`draft.md` ownership and Preview, and
 keeps private draft input out of normalized events and metadata audit.
+Office proves a real `brief.docx` ZIP/OOXML package, prompt-only recovery, an
+exact `document` Artifact, bounded owned Word Preview, and absence of the
+private model and output path from normalized events and metadata audit.
 
 ## Consequences
 
@@ -209,6 +236,8 @@ keeps private draft input out of normalized events and metadata audit.
   policy, audit, Artifact, Preview, and recovery authority.
 - The writing journey performs no workspace read, persists its Worker-authored
   input before create-only output, and binds a distinct document Artifact.
+- The Office journey creates a real DOCX through a separate main-owned tool and
+  projects only an exact-owner bounded model through the retained Word Preview.
 - Actestra remains the sole authority for the Task, grant, attempt, event,
   Artifact, audit, terminal evidence, and recovery state.
 - A renderer cannot choose a filesystem path or invoke a Worker/tool directly.
@@ -221,15 +250,15 @@ keeps private draft input out of normalized events and metadata audit.
 
 - The first entry is an explicit `/actestra` command rather than a replacement
   for every native provider flow.
-- All four current paths create one deterministic bounded artifact.
+- All five current paths create one deterministic bounded artifact.
 - The representative file path accepts at most 64 KiB of source text even
   though the general workspace-read tool supports up to 1 MiB.
 - The loopback native-context read remains a compatibility dependency and must
   fail closed when AionCore is unavailable or incompatible.
-- Schema versions 8 through 11 are forward-only.
-- General or network research, office, schedule, representative tool-failure
-  and Worker crash, and broader permission journeys remain later P4 acceptance
-  work. Writing remains unaccepted until its review and remote gates close.
+- Schema versions 8 through 12 are forward-only.
+- General or network research, schedule, representative tool-failure and
+  Worker crash, and broader permission journeys remain later P4 acceptance
+  work. Office remains unaccepted until its review and remote gates close.
 
 ## Rejected alternatives
 

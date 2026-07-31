@@ -663,6 +663,131 @@ describe("AionUiGeneralWorkJourneyService", () => {
     expect(JSON.stringify(checkpoint?.events)).not.toContain("# Quarterly launch note");
   });
 
+  it("persists the Worker-authored Office model before creating a DOCX and bounded Preview", async () => {
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "actestra-aionui-journey-service-test-"),
+    );
+    testDirectories.push(directory);
+    const persistence = (await openTestPersistenceUtility(directory)).client;
+    persistenceClients.push(persistence);
+    const workspaceRoot = path.join(directory, "workspace");
+    fs.mkdirSync(workspaceRoot);
+    const clock = new DeterministicAgentClock(instant("2026-07-30T06:48:50.000Z"));
+    const nativeTools = createScopedNativeToolPlatform({ persistence, clock });
+    let workerEventSequence = 0;
+    const service = new AionUiGeneralWorkJourneyService({
+      persistence,
+      nativeTools,
+      clock,
+      nativeContext: {
+        resolve: async () => ({
+          rootPath: fs.realpathSync(workspaceRoot),
+          displayName: "AionUI Office document workspace",
+        }),
+      },
+      launchWorker: async ({ journeyKind, requestId }) => {
+        expect(journeyKind).toBe("office-document-artifact");
+        return (
+          await openTestGeneralWorker(clock, {
+            executionMode: "office-document-artifact-fixture",
+            newAttemptToken: () => "attempt-aionui-office-document-1",
+            newToolRequestId: () => requestId,
+            newEventId: () =>
+              eventId(`event-aionui-office-document-${String(++workerEventSequence)}`),
+          })
+        ).adapter;
+      },
+    });
+    const document = {
+      contractVersion: 1,
+      title: "Quarterly operating brief",
+      owner: "Product operations",
+      summary: "Record the approved launch decision in a portable Word document.",
+      sections: [
+        { heading: "Decision", body: "Ship the verified desktop workflow." },
+        { heading: "Evidence", body: "Include the exact acceptance boundary." },
+      ],
+    } as const;
+    const intent = {
+      contractVersion: 1,
+      nativeConversationId: "conversation-native-office-document-1",
+      submissionId: "submission-native-office-document-1",
+      journeyKind: "office-document-artifact",
+      prompt: [
+        `Document: ${document.title}`,
+        `Owner: ${document.owner}`,
+        `Summary: ${document.summary}`,
+        ...document.sections.map(({ heading, body }) => `Section: ${heading} | ${body}`),
+      ].join("\n"),
+    } as const;
+
+    await expect(service.submit(intent)).resolves.toMatchObject({
+      status: "blocked",
+      title: document.title,
+      canCancel: true,
+    });
+    await service.waitForIdle();
+
+    const [completed] = await service.list(intent.nativeConversationId);
+    expect(completed).toMatchObject({
+      status: "completed",
+      canCancel: false,
+      artifacts: [
+        expect.objectContaining({
+          kind: "document",
+          label: "Actestra Office document",
+          state: "available",
+        }),
+      ],
+    });
+    if (completed === undefined || completed.artifacts[0] === undefined) {
+      throw new Error("Expected the completed Office-document journey");
+    }
+    const output = fs.readFileSync(
+      path.join(workspaceRoot, ".actestra", "task-output", completed.taskId, "brief.docx"),
+    );
+    expect(output.subarray(0, 2).toString("ascii")).toBe("PK");
+    await expect(
+      service.preview(
+        intent.nativeConversationId,
+        completed.taskId,
+        completed.artifacts[0].artifactId,
+      ),
+    ).resolves.toEqual({
+      contractVersion: 1,
+      taskId: completed.taskId,
+      artifactId: completed.artifacts[0].artifactId,
+      label: "Actestra Office document",
+      mediaType: "application/vnd.actestra.office-document-preview+json",
+      document,
+    });
+    const graph = await persistence.loadDomainGraph();
+    const checkpoint = await persistence.getGeneralWorkCheckpoint(graph.sessions[0]!.id);
+    expect(checkpoint).toMatchObject({
+      phase: "finalized",
+      attempt: {
+        state: "completed",
+        taskState: "completed",
+        disposed: true,
+      },
+      artifactBinding: {
+        artifact: {
+          kind: "document",
+          label: "Actestra Office document",
+        },
+      },
+    });
+    expect(checkpoint?.events.filter(({ type }) => type === "tool.requested")).toHaveLength(1);
+    const serializedEvents = JSON.stringify(checkpoint?.events);
+    for (const privateValue of [
+      document.owner,
+      document.summary,
+      ...document.sections.flatMap(({ heading, body }) => [heading, body]),
+    ]) {
+      expect(serializedEvents).not.toContain(privateValue);
+    }
+  });
+
   it("fails an oversized representative file before Worker transport without leaking content", async () => {
     const directory = fs.mkdtempSync(
       path.join(os.tmpdir(), "actestra-aionui-journey-service-test-"),
@@ -1370,6 +1495,133 @@ describe("AionUiGeneralWorkJourneyService", () => {
         "utf8",
       ),
     ).toContain("# Restart-safe launch note");
+  });
+
+  it("reopens persistence and recovers a prepared Office-document journey from its owned brief", async () => {
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "actestra-aionui-journey-service-test-"),
+    );
+    testDirectories.push(directory);
+    const workspaceRoot = path.join(directory, "workspace");
+    fs.mkdirSync(workspaceRoot);
+    const firstPersistence = (await openTestPersistenceUtility(directory)).client;
+    persistenceClients.push(firstPersistence);
+    const clock = new DeterministicAgentClock(instant("2026-07-30T06:59:00.000Z"));
+    const firstNativeTools = createScopedNativeToolPlatform({
+      persistence: firstPersistence,
+      clock,
+    });
+    const document = {
+      contractVersion: 1,
+      title: "Restart-safe operating brief",
+      owner: "Product operations",
+      summary: "Record the verified Office recovery sequence.",
+      sections: [
+        { heading: "Recovery", body: "Resume from the persisted brief." },
+        { heading: "Boundary", body: "Keep document authority in Actestra Core." },
+      ],
+    } as const;
+    const intent = {
+      contractVersion: 1,
+      nativeConversationId: "conversation-native-office-restart-1",
+      submissionId: "submission-native-office-restart-1",
+      journeyKind: "office-document-artifact",
+      prompt: [
+        `Document: ${document.title}`,
+        `Owner: ${document.owner}`,
+        `Summary: ${document.summary}`,
+        ...document.sections.map(({ heading, body }) => `Section: ${heading} | ${body}`),
+      ].join("\n"),
+    } as const;
+    const interrupted = new AionUiGeneralWorkJourneyService({
+      persistence: firstPersistence,
+      nativeTools: firstNativeTools,
+      clock,
+      nativeContext: {
+        resolve: async () => ({
+          rootPath: fs.realpathSync(workspaceRoot),
+          displayName: "AionUI Office restart workspace",
+        }),
+      },
+      launchWorker: async () => {
+        throw new Error("fixture restart before Office Worker launch");
+      },
+    });
+
+    await expect(interrupted.submit(intent)).rejects.toThrow(/fixture restart/u);
+    await expect(firstPersistence.listPreparedAionUiGeneralWorkJourneyLinks(10)).resolves.toEqual([
+      expect.objectContaining({ journeyKind: "office-document-artifact" }),
+    ]);
+    await firstPersistence.close();
+    persistenceClients.splice(persistenceClients.indexOf(firstPersistence), 1);
+
+    const reopenedPersistence = (await openTestPersistenceUtility(directory)).client;
+    persistenceClients.push(reopenedPersistence);
+    const reopenedNativeTools = createScopedNativeToolPlatform({
+      persistence: reopenedPersistence,
+      clock,
+    });
+    let nativeContextReplayCount = 0;
+    let workerEventSequence = 0;
+    const recovered = new AionUiGeneralWorkJourneyService({
+      persistence: reopenedPersistence,
+      nativeTools: reopenedNativeTools,
+      clock,
+      nativeContext: {
+        resolve: async () => {
+          nativeContextReplayCount += 1;
+          throw new Error("Office recovery must not replay native workspace context");
+        },
+      },
+      launchWorker: async ({ journeyKind, requestId }) => {
+        expect(journeyKind).toBe("office-document-artifact");
+        return (
+          await openTestGeneralWorker(clock, {
+            executionMode: "office-document-artifact-fixture",
+            newAttemptToken: () => "attempt-aionui-office-restart-1",
+            newToolRequestId: () => requestId,
+            newEventId: () =>
+              eventId(`event-aionui-office-restart-${String(++workerEventSequence)}`),
+          })
+        ).adapter;
+      },
+    });
+
+    await expect(recovered.recoverPrepared()).resolves.toEqual({
+      attempted: 1,
+      started: 1,
+      failed: 0,
+    });
+    await recovered.waitForIdle();
+    expect(nativeContextReplayCount).toBe(0);
+    const [completed] = await recovered.list(intent.nativeConversationId);
+    expect(completed).toMatchObject({
+      status: "completed",
+      artifacts: [
+        expect.objectContaining({
+          kind: "document",
+          label: "Actestra Office document",
+        }),
+      ],
+    });
+    if (completed === undefined || completed.artifacts[0] === undefined) {
+      throw new Error("Expected the recovered Office-document journey");
+    }
+    const packageBytes = fs.readFileSync(
+      path.join(workspaceRoot, ".actestra", "task-output", completed.taskId, "brief.docx"),
+    );
+    expect(packageBytes.subarray(0, 2).toString("ascii")).toBe("PK");
+    await expect(
+      recovered.preview(
+        intent.nativeConversationId,
+        completed.taskId,
+        completed.artifacts[0].artifactId,
+      ),
+    ).resolves.toMatchObject({
+      label: "Actestra Office document",
+      mediaType: "application/vnd.actestra.office-document-preview+json",
+      document,
+    });
   });
 
   it("surfaces grant denial and create-only conflicts as terminal evidence", async () => {
