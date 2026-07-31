@@ -75,6 +75,159 @@ describe("AionUiGeneralWorkJourneyService", () => {
     });
   });
 
+  it("runs a scheduled prompt from a persisted grant without rereading native context", async () => {
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "actestra-aionui-journey-service-test-"),
+    );
+    testDirectories.push(directory);
+    const persistence = (await openTestPersistenceUtility(directory)).client;
+    persistenceClients.push(persistence);
+    const workspaceRoot = path.join(directory, "workspace");
+    const workspaceAlias = path.join(directory, "persisted-workspace");
+    fs.mkdirSync(workspaceRoot);
+    fs.symlinkSync(workspaceRoot, workspaceAlias, "dir");
+    const clock = new DeterministicAgentClock(instant("2026-07-31T08:00:00.000Z"));
+    const nativeTools = createScopedNativeToolPlatform({ persistence, clock });
+    const nativeResolve = vi.fn(async () => {
+      throw new Error("A persisted schedule grant must not reread native context");
+    });
+    let workerEventSequence = 0;
+    const service = new AionUiGeneralWorkJourneyService({
+      persistence,
+      nativeTools,
+      clock,
+      nativeContext: { resolve: nativeResolve },
+      launchWorker: async ({ requestId }) =>
+        (
+          await openTestGeneralWorker(clock, {
+            executionMode: "task-output-write-text-fixture",
+            newAttemptToken: () => "attempt-aionui-scheduled-journey-1",
+            newToolRequestId: () => requestId,
+            newEventId: () =>
+              eventId(`event-aionui-scheduled-journey-${String(++workerEventSequence)}`),
+          })
+        ).adapter,
+    });
+    const intent = {
+      contractVersion: 1,
+      nativeConversationId: "conversation-native-scheduled-journey-1",
+      submissionId: "schedule-job-1-run-1",
+      prompt: "Create the bounded scheduled Actestra artifact.",
+    } as const;
+
+    const [scheduled, duplicateNative] = await Promise.all([
+      service.submitFromTrustedContext(intent, {
+        rootPath: workspaceAlias,
+        displayName: "Persisted schedule workspace",
+      }),
+      service.submit(intent),
+    ]);
+    expect(scheduled).toMatchObject({
+      status: "blocked",
+      canCancel: true,
+      artifacts: [],
+    });
+    expect(duplicateNative).toEqual(scheduled);
+    expect(nativeResolve).not.toHaveBeenCalled();
+
+    await service.waitForIdle();
+    const [completed] = await service.list(intent.nativeConversationId);
+    expect(completed).toMatchObject({
+      status: "completed",
+      canCancel: false,
+      artifacts: [
+        expect.objectContaining({
+          kind: "file",
+          label: "Actestra result",
+          state: "available",
+        }),
+      ],
+    });
+    const graph = await persistence.loadDomainGraph();
+    await expect(persistence.getActiveWorkspaceGrant(graph.workspaces[0]!.id)).resolves.toEqual(
+      expect.objectContaining({
+        rootPath: fs.realpathSync(workspaceRoot),
+        displayName: "Persisted schedule workspace",
+      }),
+    );
+    expect(graph.tasks).toEqual([expect.objectContaining({ state: "completed" })]);
+    expect(graph.sessions).toEqual([expect.objectContaining({ state: "completed" })]);
+    expect(graph.workers).toEqual([expect.objectContaining({ state: "stopped" })]);
+    expect(graph.artifacts).toHaveLength(1);
+    const checkpoint = await persistence.getGeneralWorkCheckpoint(graph.sessions[0]!.id);
+    expect(checkpoint).toMatchObject({
+      phase: "finalized",
+      attempt: {
+        state: "completed",
+        disposed: true,
+      },
+      artifactBinding: {
+        artifact: {
+          id: graph.artifacts[0]!.id,
+        },
+      },
+    });
+    expect(checkpoint?.events.map(({ type }) => type)).toEqual(
+      expect.arrayContaining([
+        "task.started",
+        "tool.requested",
+        "tool.started",
+        "tool.completed",
+        "artifact.created",
+        "task.completed",
+      ]),
+    );
+  });
+
+  it("rejects a filesystem root from a persisted grant without rereading native context", async () => {
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "actestra-aionui-journey-service-test-"),
+    );
+    testDirectories.push(directory);
+    const persistence = (await openTestPersistenceUtility(directory)).client;
+    persistenceClients.push(persistence);
+    const clock = new DeterministicAgentClock(instant("2026-07-31T08:01:00.000Z"));
+    const nativeTools = createScopedNativeToolPlatform({ persistence, clock });
+    const nativeResolve = vi.fn(async () => {
+      throw new Error("A persisted schedule grant must not reread native context");
+    });
+    const launchWorker = vi.fn(async () => {
+      throw new Error("A filesystem-root persisted grant must not launch a Worker");
+    });
+    const service = new AionUiGeneralWorkJourneyService({
+      persistence,
+      nativeTools,
+      clock,
+      nativeContext: { resolve: nativeResolve },
+      launchWorker,
+    });
+
+    await expect(
+      service.submitFromTrustedContext(
+        {
+          contractVersion: 1,
+          nativeConversationId: "conversation-native-scheduled-root-1",
+          submissionId: "schedule-job-root-1-run-1",
+          prompt: "Reject the unsafe scheduled workspace.",
+        },
+        {
+          rootPath: path.parse(process.cwd()).root,
+          displayName: "Unsafe persisted schedule workspace",
+        },
+      ),
+    ).rejects.toThrow(/workspace root/u);
+    expect(nativeResolve).not.toHaveBeenCalled();
+    expect(launchWorker).not.toHaveBeenCalled();
+    await expect(persistence.loadDomainGraph()).resolves.toEqual({
+      workspaces: [],
+      tasks: [],
+      sessions: [],
+      workers: [],
+      approvals: [],
+      artifacts: [],
+    });
+  });
+
   it("persists one real Worker attempt and deduplicates the native submission", async () => {
     const directory = fs.mkdtempSync(
       path.join(os.tmpdir(), "actestra-aionui-journey-service-test-"),

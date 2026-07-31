@@ -89,6 +89,10 @@ interface ActiveJourney {
   readonly completion: Promise<void>;
 }
 
+type AionUiGeneralWorkNativeContextResolver = (
+  intent: AionUiGeneralWorkIntent,
+) => Promise<AionUiGeneralWorkNativeContext>;
+
 export interface AionUiGeneralWorkJourneyServiceConfig {
   readonly persistence: ActestraPersistencePort;
   readonly nativeTools: ScopedNativeToolPlatform;
@@ -479,6 +483,23 @@ export class AionUiGeneralWorkJourneyService {
   constructor(private readonly config: AionUiGeneralWorkJourneyServiceConfig) {}
 
   submit(value: unknown): Promise<AionUiGeneralWorkProjection> {
+    return this.submitWithContextResolver(value, (intent) =>
+      this.config.nativeContext.resolve(intent.nativeConversationId),
+    );
+  }
+
+  submitFromTrustedContext(
+    value: unknown,
+    nativeContext: AionUiGeneralWorkNativeContext,
+  ): Promise<AionUiGeneralWorkProjection> {
+    const trustedContext = Object.freeze({ ...nativeContext });
+    return this.submitWithContextResolver(value, async () => trustedContext);
+  }
+
+  private submitWithContextResolver(
+    value: unknown,
+    resolveNativeContext: AionUiGeneralWorkNativeContextResolver,
+  ): Promise<AionUiGeneralWorkProjection> {
     assertAionUiGeneralWorkIntent(value);
     const intent = Object.freeze({ ...value });
     const conversationHash = hashAionUiGeneralWorkConversation(intent.nativeConversationId);
@@ -487,7 +508,12 @@ export class AionUiGeneralWorkJourneyService {
     if (existing !== undefined) {
       return existing;
     }
-    const operation = this.submitOnce(intent, conversationHash, identities).finally(() => {
+    const operation = this.submitOnce(
+      intent,
+      conversationHash,
+      identities,
+      resolveNativeContext,
+    ).finally(() => {
       if (this.submissions.get(identities.taskId) === operation) {
         this.submissions.delete(identities.taskId);
       }
@@ -732,6 +758,7 @@ export class AionUiGeneralWorkJourneyService {
     intent: AionUiGeneralWorkIntent,
     conversationHash: string,
     identities: JourneyIdentities,
+    resolveNativeContext: AionUiGeneralWorkNativeContextResolver,
   ): Promise<AionUiGeneralWorkProjection> {
     const links = await this.config.persistence.listAionUiGeneralWorkJourneyLinks(
       conversationHash,
@@ -746,9 +773,7 @@ export class AionUiGeneralWorkJourneyService {
       if (links.length >= AIONUI_GENERAL_WORK_MAX_JOURNEYS_PER_CONVERSATION) {
         throw new Error("AionUI general-work conversation reached its bounded journey limit");
       }
-      const nativeContext = await canonicalNativeContext(
-        await this.config.nativeContext.resolve(intent.nativeConversationId),
-      );
+      const nativeContext = await canonicalNativeContext(await resolveNativeContext(intent));
       const registration = registrationFor(
         intent,
         conversationHash,
