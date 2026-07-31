@@ -32,12 +32,15 @@ export type ContentReference = ToolInputReference | ToolOutputReference;
 
 export const WORKLOAD_PERSISTENCE_CONTRACT_VERSION = 1 as const;
 export const MAX_WORKLOAD_CONTENT_BYTES = 1024 * 1024;
+export const OFFICE_DOCUMENT_PREVIEW_MEDIA_TYPE =
+  "application/vnd.actestra.office-document-preview+json" as const;
 export const WORKSPACE_GRANT_STATES = ["active", "revoked"] as const;
 export const CONTENT_REFERENCE_KINDS = ["tool-input", "tool-output"] as const;
 export const WORKLOAD_CONTENT_CLASSIFICATIONS = ["workspace-content", "task-content"] as const;
 export const WORKLOAD_CONTENT_MEDIA_TYPES = [
   "text/plain; charset=utf-8",
   "text/markdown; charset=utf-8",
+  OFFICE_DOCUMENT_PREVIEW_MEDIA_TYPE,
 ] as const;
 
 export type WorkspaceGrantState = (typeof WORKSPACE_GRANT_STATES)[number];

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_WORKLOAD_CONTENT_BYTES,
   ScopedNativeToolContractError,
+  TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID,
   TASK_OUTPUT_WRITE_TEXT_TOOL_ID,
   WORKSPACE_READ_TEXT_TOOL_ID,
   assertPortableRelativePath,
@@ -11,6 +12,19 @@ import {
 } from "../../apps/desktop/src/core";
 
 describe("GW-P4.4 scoped native tool contracts", () => {
+  it("registers one closed create-only Office-document tool", async () => {
+    const core = (await import("../../apps/desktop/src/core")) as Record<string, unknown>;
+    const officeTool = core.TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID;
+
+    expect(officeTool).toBe("actestra.task-output.write-office-document");
+    expect(scopedNativeToolDefinition(officeTool as string)).toEqual({
+      toolId: officeTool,
+      action: "artifact.create",
+      resourceKind: "task-output",
+      timeoutMs: 5_000,
+    });
+  });
+
   it("registers exactly the workspace-read and task-output-write definitions", () => {
     expect(scopedNativeToolDefinition(WORKSPACE_READ_TEXT_TOOL_ID)).toEqual({
       toolId: WORKSPACE_READ_TEXT_TOOL_ID,
@@ -95,6 +109,71 @@ describe("GW-P4.4 scoped native tool contracts", () => {
         code: "invalid-input",
       }),
     );
+  });
+
+  it("round-trips only a bounded structured Word-document payload", () => {
+    const office = {
+      contractVersion: 1,
+      relativePath: "brief.docx",
+      document: {
+        contractVersion: 1,
+        title: "Quarterly operating brief",
+        owner: "Product operations",
+        summary: "Record the approved launch decision in a portable Word document.",
+        sections: [
+          {
+            heading: "Decision",
+            body: "Ship the verified desktop workflow.",
+          },
+          {
+            heading: "Evidence",
+            body: "Include the exact acceptance boundary.",
+          },
+        ],
+      },
+    } as const;
+
+    expect(
+      parseScopedNativeToolInput(
+        TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID,
+        serializeScopedNativeToolInput(TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID, office),
+      ),
+    ).toEqual(office);
+    for (const invalid of [
+      { ...office, relativePath: "brief.md" },
+      { ...office, overwrite: true },
+      {
+        ...office,
+        document: {
+          ...office.document,
+          sections: Array.from({ length: 7 }, (_, index) => ({
+            heading: `Part ${index + 1}`,
+            body: `Body ${index + 1}`,
+          })),
+        },
+      },
+    ]) {
+      expect(() =>
+        parseScopedNativeToolInput(
+          TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID,
+          JSON.stringify(invalid),
+        ),
+      ).toThrowError(expect.objectContaining({ code: "invalid-input" }));
+    }
+  });
+
+  it("rejects the Office Preview media type for the text-output tool", () => {
+    expect(() =>
+      parseScopedNativeToolInput(
+        TASK_OUTPUT_WRITE_TEXT_TOOL_ID,
+        JSON.stringify({
+          contractVersion: 1,
+          relativePath: "brief.json",
+          mediaType: "application/vnd.actestra.office-document-preview+json",
+          content: "{}",
+        }),
+      ),
+    ).toThrowError(expect.objectContaining({ code: "invalid-input" }));
   });
 
   it("accepts only a bounded per-invocation workspace read limit", () => {

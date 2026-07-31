@@ -8,6 +8,12 @@ import {
   type GeneralWorkerRequest,
   type GeneralWorkerResponse,
 } from "../../shared/generalWorkerProtocol";
+import {
+  OFFICE_DOCUMENT_OUTPUT_RELATIVE_PATH,
+  officeDocumentModelFromBrief,
+  parseOfficeDocumentBrief,
+} from "../../core/officeDocumentArtifact";
+import { TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID } from "../../core/scopedNativeTools";
 import { parseWritingArtifactBrief } from "../../core/writingArtifact";
 
 type GeneralWorkerAttemptState =
@@ -205,6 +211,10 @@ export class GeneralWorkerService {
       request.payload.executionMode === "writing-artifact-fixture"
         ? writingArtifact(request.payload.prompt)
         : null;
+    const officeDocument =
+      request.payload.executionMode === "office-document-artifact-fixture"
+        ? officeDocumentModelFromBrief(parseOfficeDocumentBrief(request.payload.prompt))
+        : null;
 
     const attempt: GeneralWorkerAttempt = {
       token: request.payload.attemptToken,
@@ -293,6 +303,35 @@ export class GeneralWorkerService {
               relativePath: "draft.md",
               mediaType: "text/markdown; charset=utf-8",
               content: writingDraft.content,
+            }),
+          }),
+        );
+        break;
+      }
+      case "office-document-artifact-fixture": {
+        if (officeDocument === null) {
+          throw new GeneralWorkerServiceError(
+            "invalid-state",
+            "General Worker Office-document preparation is unavailable",
+          );
+        }
+        attempt.state = "blocked";
+        attempt.pendingCallId = "general-worker-task-output-write-office-document-call";
+        events.push(
+          this.event(attempt, {
+            type: "message",
+            role: "assistant",
+            content: `Prepared a Word document with ${String(officeDocument.sections.length)} structured sections.`,
+          }),
+          this.event(attempt, {
+            type: "tool-requested",
+            callId: attempt.pendingCallId,
+            toolName: TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID,
+            summary: "Create the bounded Word document.",
+            input: Object.freeze({
+              contractVersion: 1,
+              relativePath: OFFICE_DOCUMENT_OUTPUT_RELATIVE_PATH,
+              document: officeDocument,
             }),
           }),
         );

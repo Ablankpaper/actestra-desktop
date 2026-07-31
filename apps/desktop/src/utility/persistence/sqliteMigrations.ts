@@ -3,7 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { PersistenceError } from "../../core";
 
 export const ACTESTRA_SQLITE_APPLICATION_ID = 1_095_980_114;
-export const CURRENT_CORE_SCHEMA_VERSION = 11;
+export const CURRENT_CORE_SCHEMA_VERSION = 12;
 
 export interface SqliteMigration {
   readonly version: number;
@@ -448,6 +448,143 @@ export const CORE_SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
 
       CREATE INDEX aionui_general_work_conversation_idx
         ON aionui_general_work_journeys(conversation_hash, created_at, task_id);
+    `,
+  },
+  {
+    version: 12,
+    name: "aionui-office-document-kind",
+    sql: `
+      CREATE TABLE aionui_general_work_journeys_v12 (
+        task_id TEXT PRIMARY KEY
+          REFERENCES tasks(id) DEFERRABLE INITIALLY DEFERRED,
+        contract_version INTEGER NOT NULL CHECK (contract_version = 1),
+        conversation_hash TEXT NOT NULL CHECK (
+          length(conversation_hash) = 64 AND
+          conversation_hash NOT GLOB '*[^0-9a-f]*'
+        ),
+        created_at TEXT NOT NULL,
+        journey_kind TEXT NOT NULL
+          DEFAULT 'prompt-artifact'
+          CHECK (
+            journey_kind IN (
+              'prompt-artifact',
+              'workspace-file-artifact',
+              'local-research-artifact',
+              'writing-artifact',
+              'office-document-artifact'
+            )
+          )
+      ) STRICT;
+
+      INSERT INTO aionui_general_work_journeys_v12 (
+        task_id,
+        contract_version,
+        conversation_hash,
+        created_at,
+        journey_kind
+      )
+      SELECT
+        task_id,
+        contract_version,
+        conversation_hash,
+        created_at,
+        journey_kind
+      FROM aionui_general_work_journeys;
+
+      DROP TABLE aionui_general_work_journeys;
+      ALTER TABLE aionui_general_work_journeys_v12
+        RENAME TO aionui_general_work_journeys;
+
+      CREATE INDEX aionui_general_work_conversation_idx
+        ON aionui_general_work_journeys(conversation_hash, created_at, task_id);
+
+      CREATE TABLE content_references_v12 (
+        reference TEXT PRIMARY KEY,
+        contract_version INTEGER NOT NULL CHECK (contract_version = 1),
+        kind TEXT NOT NULL CHECK (kind IN ('tool-input', 'tool-output')),
+        workspace_id TEXT NOT NULL,
+        task_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        worker_id TEXT NOT NULL,
+        request_id TEXT,
+        grant_id TEXT,
+        classification TEXT NOT NULL CHECK (
+          classification IN ('workspace-content', 'task-content')
+        ),
+        media_type TEXT NOT NULL CHECK (
+          media_type IN (
+            'text/plain; charset=utf-8',
+            'text/markdown; charset=utf-8',
+            'application/vnd.actestra.office-document-preview+json'
+          )
+        ),
+        byte_length INTEGER NOT NULL CHECK (
+          byte_length >= 0 AND byte_length <= 1048576
+        ),
+        sha256 TEXT NOT NULL CHECK (
+          length(sha256) = 64 AND sha256 NOT GLOB '*[^0-9a-f]*'
+        ),
+        created_at TEXT NOT NULL,
+        expires_at TEXT CHECK (expires_at IS NULL OR expires_at > created_at),
+        consumed_at TEXT CHECK (
+          consumed_at IS NULL OR (
+            consumed_at >= created_at AND
+            (expires_at IS NULL OR consumed_at < expires_at)
+          )
+        ),
+        metadata_json TEXT NOT NULL,
+        content_blob BLOB NOT NULL CHECK (length(content_blob) = byte_length)
+      ) STRICT;
+
+      INSERT INTO content_references_v12 (
+        reference,
+        contract_version,
+        kind,
+        workspace_id,
+        task_id,
+        session_id,
+        worker_id,
+        request_id,
+        grant_id,
+        classification,
+        media_type,
+        byte_length,
+        sha256,
+        created_at,
+        expires_at,
+        consumed_at,
+        metadata_json,
+        content_blob
+      )
+      SELECT
+        reference,
+        contract_version,
+        kind,
+        workspace_id,
+        task_id,
+        session_id,
+        worker_id,
+        request_id,
+        grant_id,
+        classification,
+        media_type,
+        byte_length,
+        sha256,
+        created_at,
+        expires_at,
+        consumed_at,
+        metadata_json,
+        content_blob
+      FROM content_references;
+
+      DROP TABLE content_references;
+      ALTER TABLE content_references_v12 RENAME TO content_references;
+
+      CREATE INDEX content_references_owner_idx
+        ON content_references(workspace_id, task_id, session_id, worker_id);
+      CREATE INDEX content_references_request_idx
+        ON content_references(request_id)
+        WHERE request_id IS NOT NULL;
     `,
   },
 ] as const;

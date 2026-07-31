@@ -41,6 +41,12 @@ function assert(condition, message) {
 }
 
 try {
+  const packagedSmokeSource = fs.readFileSync(smokeScript, "utf8");
+  assert(
+    packagedSmokeSource.includes("const expectedPersistenceSchemaVersion = 12;"),
+    "Packaged shell smoke must validate the current schema 12 database",
+  );
+
   const generalWorkSmokeSource = fs.readFileSync(generalWorkSmokeScript, "utf8");
   assert(
     generalWorkSmokeSource.includes("const startupTimeoutMs = 60_000;"),
@@ -55,8 +61,8 @@ try {
     generalWorkSmokeSource.includes('"actestra-research.txt"') &&
       generalWorkSmokeSource.includes("local-research-artifact") &&
       generalWorkSmokeSource.includes('"research.md"') &&
-      generalWorkSmokeSource.includes("schema version 11"),
-    "General Work target-app smoke must exercise the bounded local-research journey on schema 11",
+      generalWorkSmokeSource.includes("schema version 12"),
+    "General Work target-app smoke must exercise the bounded local-research journey on schema 12",
   );
   assert(
     generalWorkSmokeSource.includes('"prepare-writing-restart"') &&
@@ -65,6 +71,15 @@ try {
       generalWorkSmokeSource.includes('"draft.md"') &&
       generalWorkSmokeSource.includes('artifactKind: "document"'),
     "General Work target-app smoke must recover the bounded writing journey as a document",
+  );
+  assert(
+    generalWorkSmokeSource.includes('"prepare-office-restart"') &&
+      generalWorkSmokeSource.includes('"recover-office-restart"') &&
+      generalWorkSmokeSource.includes("office-document-artifact") &&
+      generalWorkSmokeSource.includes('"brief.docx"') &&
+      generalWorkSmokeSource.includes('"[Content_Types].xml"') &&
+      generalWorkSmokeSource.includes('artifactLabel: "Actestra Office document"'),
+    "General Work target-app smoke must recover a real bounded Office document",
   );
 
   const earlyExit = runSmoke(createAppBundle("early-exit", "#!/bin/sh\nexit 7\n"));
@@ -96,7 +111,7 @@ const database = new DatabaseSync(path.join(stateDirectory, "actestra.sqlite3"))
 database.exec(\`
   CREATE TABLE workspace_grants (id TEXT PRIMARY KEY) STRICT;
   CREATE TABLE content_references (id TEXT PRIMARY KEY) STRICT;
-  PRAGMA user_version = 11;
+  PRAGMA user_version = 12;
 \`);
 database.close();
 console.log("ACTESTRA_PERSISTENCE_UTILITY_READY");

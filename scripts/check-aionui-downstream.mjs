@@ -114,11 +114,11 @@ function main() {
 
   if (
     overlay.schemaVersion !== 1 ||
-    overlay.phase !== "P4-writing" ||
+    overlay.phase !== "P4-office-document" ||
     overlay.uiContract.layoutChangesAllowed !== false ||
     overlay.uiContract.featureEntryRemovalAllowed !== false
   ) {
-    throw new Error("Invalid P4 writing downstream overlay policy");
+    throw new Error("Invalid P4 Office-document downstream overlay policy");
   }
 
   for (const patch of overlay.patches) {
@@ -243,6 +243,11 @@ function main() {
     "executableName: Actestra",
     "Portions Copyright © 2024 AionUi contributors.",
     "- actestra",
+    "- node_modules/docx/LICENSE",
+    "from: node_modules/electron/dist/LICENSE",
+    "to: LICENSE.electron.txt",
+    "from: node_modules/electron/dist/LICENSES.chromium.html",
+    "to: LICENSES.chromium.html",
   ]);
   requireText(path.join(outputRoot, "packages/desktop/src/common/config/actestraProduct.ts"), [
     "name: 'Actestra'",
@@ -293,6 +298,8 @@ function main() {
       "ACTESTRA_AIONUI_GENERAL_WORK_SMOKE_READY",
       "local-research-artifact-fixture",
       "writing-artifact-fixture",
+      "office-document-artifact-fixture",
+      "TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID",
       "[Actestra general work] Recovery unavailable at startup",
       "nativeFallback",
       "recoverPending",
@@ -321,6 +328,7 @@ function main() {
       '"workspace-file-artifact"',
       '"local-research-artifact"',
       '"writing-artifact"',
+      '"office-document-artifact"',
       'kind: "document"',
       "invokeScopedToolStep",
       "activeToolInput",
@@ -332,7 +340,12 @@ function main() {
       outputRoot,
       "packages/desktop/src/renderer/pages/conversation/Preview/context/PreviewContext.tsx",
     ),
-    ["persist?: boolean", "tab.metadata?.persist !== false", "persistActiveTab"],
+    [
+      "persist?: boolean",
+      "actestraDocument?: OfficeDocumentModel",
+      "tab.metadata?.persist !== false",
+      "persistActiveTab",
+    ],
   );
   requireText(
     path.join(outputRoot, "packages/desktop/src/process/services/actestraGeneralWorkSmoke.ts"),
@@ -348,6 +361,10 @@ function main() {
       "recover-writing-restart",
       "writing-artifact",
       "Actestra writing draft",
+      "prepare-office-restart",
+      "recover-office-restart",
+      "office-document-artifact",
+      "Actestra Office document",
       "service.preview(",
       "ACTESTRA_E2E_TEST",
     ],
@@ -377,7 +394,9 @@ function main() {
     "local-research-artifact",
     '"draft.md"',
     "writing-artifact",
-    "schema version 11",
+    '"brief.docx"',
+    "office-document-artifact",
+    "schema version 12",
   ]);
   rejectText(path.join(repositoryRoot, "scripts/smoke-aionui-general-work.mjs"), [
     "Electron.app",
@@ -530,7 +549,7 @@ function main() {
   requireText(
     path.join(outputRoot, "packages/desktop/src/actestra/utility/persistence/sqliteMigrations.ts"),
     [
-      "CURRENT_CORE_SCHEMA_VERSION = 11",
+      "CURRENT_CORE_SCHEMA_VERSION = 12",
       "aionui_shadow_evidence",
       "aionui_approval_decisions",
       "pending-delivery",
@@ -540,6 +559,7 @@ function main() {
       "journey_kind",
       "local-research-artifact",
       "writing-artifact",
+      "office-document-artifact",
     ],
   );
   rejectText(
@@ -580,10 +600,12 @@ function main() {
   requireText(path.join(outputRoot, "packages/desktop/src/actestra/core/scopedNativeTools.ts"), [
     "WORKSPACE_READ_TEXT_TOOL_ID",
     "TASK_OUTPUT_WRITE_TEXT_TOOL_ID",
+    "TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID",
     "actestra.workspace.read-text",
     "actestra.task-output.write-text",
+    "actestra.task-output.write-office-document",
     "assertPortableRelativePath",
-    "Only the two GW-P4.4 scoped native tools are registered",
+    "SCOPED_NATIVE_TOOL_IDS",
   ]);
   requireText(
     path.join(
@@ -605,9 +627,10 @@ function main() {
       "packages/desktop/src/actestra/main/privileged/scopedNativeToolPlatform.ts",
     ),
     [
-      "policy-gw-p4-4-scoped-native-text-v1",
+      "policy-p4-scoped-native-tools-v2",
       "rule-gw-p4-4-workspace-read-text",
       "rule-gw-p4-4-task-output-write-text",
+      "rule-p4-office-document-output",
       'credentialUse: "none"',
     ],
   );
@@ -700,6 +723,9 @@ function main() {
       '"local-research-artifact-fixture"',
       '"writing-artifact-fixture"',
       '"draft.md"',
+      '"office-document-artifact-fixture"',
+      "OFFICE_DOCUMENT_OUTPUT_RELATIVE_PATH",
+      "TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID",
       '"task-output-write-text-fixture"',
       '"cancelled"',
     ],
@@ -727,7 +753,7 @@ function main() {
     "'task.started', 'agent.message', 'task.completed'",
   ]);
   requireText(path.join(outputRoot, "tests/unit/actestra/scopedNativeTools.test.ts"), [
-    "registers only the two GW-P4.4 capabilities",
+    "registers only the three accepted scoped capabilities",
     "fails closed for traversal and unknown fields",
     "actestra.shell.execute",
   ]);
@@ -738,18 +764,21 @@ function main() {
     "assertGeneralWorkCheckpointTransition",
   ]);
   requireText(path.join(outputRoot, "tests/unit/actestra/persistenceUtilityClient.test.ts"), [
-    "schema v11 utility IPC",
-    "expect(client.schemaVersion).toBe(11)",
+    "schema v12 utility IPC",
+    "expect(client.schemaVersion).toBe(12)",
   ]);
   requireText(path.join(outputRoot, "tests/unit/actestra/generalWorkSmoke.test.ts"), [
     "prepare-writing-restart",
     "recover-writing-restart",
     "Actestra writing draft",
+    "prepare-office-restart",
+    "recover-office-restart",
+    "Actestra Office document",
     "kind: 'document'",
   ]);
 
   console.log(
-    `Verified Actestra P4 writing downstream overlay: ${changedFiles.size} declared files, ` +
+    `Verified Actestra P4 Office-document downstream overlay: ${changedFiles.size} declared files, ` +
       `${overlay.invariantFiles.length} R0 invariant files, ${overlay.sourceCopies.length} ` +
       "reviewed source copies, preserved AionUI surfaces, utility-owned persistence, shadow and " +
       "approval authority, workspace grants, bounded content references, AgentAdapter v2, and " +

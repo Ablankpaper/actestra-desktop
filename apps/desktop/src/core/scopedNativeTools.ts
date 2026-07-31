@@ -1,24 +1,33 @@
-import {
-  MAX_WORKLOAD_CONTENT_BYTES,
-  WORKLOAD_CONTENT_MEDIA_TYPES,
-  type WorkloadContentMediaType,
-} from "./workloadContent";
+import { MAX_WORKLOAD_CONTENT_BYTES } from "./workloadContent";
 import {
   toolId,
   type ProtectedAction,
   type ProtectedResourceKind,
   type ToolId,
 } from "./privilegedServices";
+import {
+  OFFICE_DOCUMENT_OUTPUT_RELATIVE_PATH,
+  assertOfficeDocumentModel,
+  type OfficeDocumentModel,
+} from "./officeDocumentArtifact";
 
 export const SCOPED_NATIVE_TOOL_INPUT_CONTRACT_VERSION = 1 as const;
 export const MAX_SCOPED_NATIVE_RELATIVE_PATH_BYTES = 1_024;
+const TASK_OUTPUT_TEXT_MEDIA_TYPES = [
+  "text/plain; charset=utf-8",
+  "text/markdown; charset=utf-8",
+] as const;
 
 export const WORKSPACE_READ_TEXT_TOOL_ID = toolId("actestra.workspace.read-text");
 export const TASK_OUTPUT_WRITE_TEXT_TOOL_ID = toolId("actestra.task-output.write-text");
+export const TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID = toolId(
+  "actestra.task-output.write-office-document",
+);
 
 export const SCOPED_NATIVE_TOOL_IDS = Object.freeze([
   WORKSPACE_READ_TEXT_TOOL_ID,
   TASK_OUTPUT_WRITE_TEXT_TOOL_ID,
+  TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID,
 ] as const);
 
 export type ScopedNativeToolId = (typeof SCOPED_NATIVE_TOOL_IDS)[number];
@@ -39,11 +48,20 @@ export interface WorkspaceReadTextInput {
 export interface TaskOutputWriteTextInput {
   readonly contractVersion: typeof SCOPED_NATIVE_TOOL_INPUT_CONTRACT_VERSION;
   readonly relativePath: string;
-  readonly mediaType: WorkloadContentMediaType;
+  readonly mediaType: (typeof TASK_OUTPUT_TEXT_MEDIA_TYPES)[number];
   readonly content: string;
 }
 
-export type ScopedNativeToolInput = WorkspaceReadTextInput | TaskOutputWriteTextInput;
+export interface TaskOutputWriteOfficeDocumentInput {
+  readonly contractVersion: typeof SCOPED_NATIVE_TOOL_INPUT_CONTRACT_VERSION;
+  readonly relativePath: typeof OFFICE_DOCUMENT_OUTPUT_RELATIVE_PATH;
+  readonly document: OfficeDocumentModel;
+}
+
+export type ScopedNativeToolInput =
+  | WorkspaceReadTextInput
+  | TaskOutputWriteTextInput
+  | TaskOutputWriteOfficeDocumentInput;
 
 export type ScopedNativeToolContractErrorCode =
   | "invalid-input"
@@ -71,6 +89,12 @@ const DEFINITIONS = Object.freeze({
   }),
   [TASK_OUTPUT_WRITE_TEXT_TOOL_ID]: Object.freeze({
     toolId: TASK_OUTPUT_WRITE_TEXT_TOOL_ID,
+    action: "artifact.create",
+    resourceKind: "task-output",
+    timeoutMs: 5_000,
+  }),
+  [TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID]: Object.freeze({
+    toolId: TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID,
     action: "artifact.create",
     resourceKind: "task-output",
     timeoutMs: 5_000,
@@ -151,12 +175,28 @@ export function scopedNativeToolDefinition(value: string | ToolId): ScopedNative
   if (definition === undefined) {
     throw new ScopedNativeToolContractError(
       "unsupported-tool",
-      "Only the two GW-P4.4 scoped native tools are registered",
+      "Only declared scoped native tools are registered",
     );
   }
   return definition;
 }
 
+export function parseScopedNativeToolInput(
+  tool: typeof WORKSPACE_READ_TEXT_TOOL_ID,
+  serialized: string,
+): WorkspaceReadTextInput;
+export function parseScopedNativeToolInput(
+  tool: typeof TASK_OUTPUT_WRITE_TEXT_TOOL_ID,
+  serialized: string,
+): TaskOutputWriteTextInput;
+export function parseScopedNativeToolInput(
+  tool: typeof TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID,
+  serialized: string,
+): TaskOutputWriteOfficeDocumentInput;
+export function parseScopedNativeToolInput(
+  tool: string | ToolId,
+  serialized: string,
+): ScopedNativeToolInput;
 export function parseScopedNativeToolInput(
   tool: string | ToolId,
   serialized: string,
@@ -211,6 +251,42 @@ export function parseScopedNativeToolInput(
     });
   }
 
+  if (definition.toolId === TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID) {
+    assertExactKeys(
+      value,
+      ["contractVersion", "relativePath", "document"],
+      "Task output Office-document input",
+    );
+    if (
+      value.contractVersion !== SCOPED_NATIVE_TOOL_INPUT_CONTRACT_VERSION ||
+      value.relativePath !== OFFICE_DOCUMENT_OUTPUT_RELATIVE_PATH
+    ) {
+      throw new ScopedNativeToolContractError(
+        "invalid-input",
+        `Office-document input requires ${OFFICE_DOCUMENT_OUTPUT_RELATIVE_PATH}`,
+      );
+    }
+    try {
+      assertOfficeDocumentModel(value.document);
+    } catch (error) {
+      throw new ScopedNativeToolContractError(
+        "invalid-input",
+        "Office-document input model is invalid",
+        { cause: error },
+      );
+    }
+    return Object.freeze({
+      contractVersion: SCOPED_NATIVE_TOOL_INPUT_CONTRACT_VERSION,
+      relativePath: OFFICE_DOCUMENT_OUTPUT_RELATIVE_PATH,
+      document: Object.freeze({
+        ...value.document,
+        sections: Object.freeze(
+          value.document.sections.map((section) => Object.freeze({ ...section })),
+        ),
+      }),
+    });
+  }
+
   assertExactKeys(
     value,
     ["contractVersion", "relativePath", "mediaType", "content"],
@@ -225,7 +301,9 @@ export function parseScopedNativeToolInput(
   assertPortableRelativePath(value.relativePath);
   if (
     typeof value.mediaType !== "string" ||
-    !WORKLOAD_CONTENT_MEDIA_TYPES.includes(value.mediaType as WorkloadContentMediaType)
+    !TASK_OUTPUT_TEXT_MEDIA_TYPES.includes(
+      value.mediaType as (typeof TASK_OUTPUT_TEXT_MEDIA_TYPES)[number],
+    )
   ) {
     throw new ScopedNativeToolContractError(
       "invalid-input",
@@ -248,7 +326,7 @@ export function parseScopedNativeToolInput(
   return Object.freeze({
     contractVersion: SCOPED_NATIVE_TOOL_INPUT_CONTRACT_VERSION,
     relativePath: value.relativePath,
-    mediaType: value.mediaType as WorkloadContentMediaType,
+    mediaType: value.mediaType as (typeof TASK_OUTPUT_TEXT_MEDIA_TYPES)[number],
     content: value.content,
   });
 }

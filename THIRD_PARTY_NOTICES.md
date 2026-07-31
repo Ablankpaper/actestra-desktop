@@ -13,10 +13,15 @@ CrewAI, Eigent, Aera, or AgentEra source or asset.
 | React | `19.2.4` | MIT | `app.asar/node_modules/react/LICENSE` | <https://react.dev/> |
 | React DOM | `19.2.4` | MIT | `app.asar/node_modules/react-dom/LICENSE` | <https://react.dev/> |
 | Scheduler | `0.27.0` | MIT | `app.asar/node_modules/scheduler/LICENSE` | <https://www.npmjs.com/package/scheduler> |
+| docx | `9.6.1` | MIT | `app.asar/node_modules/docx/LICENSE` | <https://github.com/dolanmiu/docx> |
 
 The package verifier fails if the Electron and Chromium notices are absent.
 The React packages are also bundled into renderer output, while their package
 directories and license texts are retained in ASAR by the current packager.
+Actestra uses `docx` only in Electron main to construct the bounded Office Open
+XML package. Its retained MIT license states `Copyright (c) 2016 Dolan`; the
+package check must confirm that license text remains in ASAR before candidate
+status can be considered.
 
 ## Imported application source
 

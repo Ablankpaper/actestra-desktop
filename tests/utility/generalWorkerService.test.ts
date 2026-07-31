@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { instant, toolOutputReference, toolRequestId } from "../../apps/desktop/src/core";
+import {
+  TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID,
+  instant,
+  toolOutputReference,
+  toolRequestId,
+} from "../../apps/desktop/src/core";
 import {
   GENERAL_WORKER_PROTOCOL_VERSION,
   type GeneralWorkerRequest,
@@ -408,6 +413,101 @@ describe("General Worker utility service", () => {
           startedAt: instant("2026-07-30T01:00:02.000Z"),
           completedAt: instant("2026-07-30T01:00:03.000Z"),
           outputRef: toolOutputReference("tool-output-writing-write"),
+        },
+      }),
+    );
+    expect(written).toMatchObject([
+      {
+        type: "event",
+        sequence: 4,
+        event: { type: "tool-result-accepted", status: "succeeded" },
+      },
+      { type: "event", sequence: 5, event: { type: "resumed" } },
+      { type: "event", sequence: 6, event: { type: "completed" } },
+      { type: "response", operation: "resolve-tool", ok: true },
+    ]);
+  });
+
+  it("turns the persisted Office brief into one private Word-document model without a workspace read", async () => {
+    const service = new GeneralWorkerService();
+    const attemptToken = "attempt-office-document-artifact";
+    const prompt = [
+      "Document: Quarterly operating brief",
+      "Owner: Product operations",
+      "Summary: Record the approved launch decision in a portable Word document.",
+      "Section: Decision | Ship the verified desktop workflow.",
+      "Section: Evidence | Include the exact acceptance boundary.",
+    ].join("\n");
+    const started = await service.handle(
+      request("start", {
+        attemptToken,
+        prompt,
+        entryState: "ready",
+        executionMode: "office-document-artifact-fixture",
+      }),
+    );
+
+    expect(started).toMatchObject([
+      { type: "event", sequence: 1, event: { type: "started" } },
+      {
+        type: "event",
+        sequence: 2,
+        event: {
+          type: "message",
+          role: "assistant",
+          content: "Prepared a Word document with 2 structured sections.",
+        },
+      },
+      {
+        type: "event",
+        sequence: 3,
+        event: {
+          type: "tool-requested",
+          callId: "general-worker-task-output-write-office-document-call",
+          toolName: TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID,
+          summary: "Create the bounded Word document.",
+          input: {
+            contractVersion: 1,
+            relativePath: "brief.docx",
+            document: {
+              contractVersion: 1,
+              title: "Quarterly operating brief",
+              owner: "Product operations",
+              summary: "Record the approved launch decision in a portable Word document.",
+              sections: [
+                {
+                  heading: "Decision",
+                  body: "Ship the verified desktop workflow.",
+                },
+                {
+                  heading: "Evidence",
+                  body: "Include the exact acceptance boundary.",
+                },
+              ],
+            },
+          },
+        },
+      },
+      { type: "response", operation: "start", ok: true },
+    ]);
+    expect(started).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: expect.objectContaining({ toolName: "actestra.workspace.read-text" }),
+        }),
+      ]),
+    );
+
+    const written = await service.handle(
+      request("resolve-tool", {
+        attemptToken,
+        callId: "general-worker-task-output-write-office-document-call",
+        result: {
+          requestId: toolRequestId("tool-request-office-write"),
+          status: "succeeded",
+          startedAt: instant("2026-07-30T01:00:02.000Z"),
+          completedAt: instant("2026-07-30T01:00:03.000Z"),
+          outputRef: toolOutputReference("tool-output-office-write"),
         },
       }),
     );

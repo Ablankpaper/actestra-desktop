@@ -190,3 +190,28 @@ export function createAionUiWritingRegistration(
     },
   } as const;
 }
+
+export function createAionUiOfficeDocumentRegistration(
+  suffix = "1",
+  rootPath = fs.realpathSync(process.cwd()),
+) {
+  const registration = createAionUiGeneralWorkRegistration(suffix, rootPath);
+  const { toolInputReference: _toolInputReference, ...base } = registration;
+  return {
+    ...base,
+    link: {
+      ...base.link,
+      journeyKind: "office-document-artifact",
+    },
+    promptReference: {
+      ...base.promptReference,
+      content: [
+        "Document: Quarterly operating brief",
+        "Owner: Product operations",
+        "Summary: Record the approved launch decision in a portable Word document.",
+        "Section: Decision | Ship the verified desktop workflow.",
+        "Section: Evidence | Include the exact acceptance boundary.",
+      ].join("\n"),
+    },
+  } as const;
+}

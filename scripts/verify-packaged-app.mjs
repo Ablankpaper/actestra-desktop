@@ -83,6 +83,11 @@ function extractArchiveText(archiveRelativePath) {
   }
 }
 
+const docxLicense = extractArchiveText("node_modules/docx/LICENSE");
+if (!docxLicense.includes("The MIT License") || !docxLicense.includes("Copyright (c) 2016 Dolan")) {
+  fail("packaged docx 9.6.1 MIT notice is incomplete");
+}
+
 function localModuleSpecifiers(source) {
   return extractStaticModuleSpecifiers(source).filter((specifier) => specifier.startsWith("."));
 }
