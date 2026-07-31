@@ -4,7 +4,7 @@ Last updated: 2026-07-31
 
 ## Current phase
 
-### Writing is accepted on main; Office passes package and target-app gates locally
+### Writing is accepted on main; Office Ready PR needs refreshed exact-head CI
 
 Pull request 8 reached exact final head
 `3f85e13072f5fb13fb43c9dae94f992bb0b7fb9c` and squash merged F3.3 as
@@ -502,9 +502,9 @@ package and smoke do not claim notarization, candidate, release, distribution,
 or user acceptance.
 
 [ADR-0022](architecture/decisions/0022-bounded-office-document-artifact-journey.md)
-accepts the next independent Office-document slice, now implemented locally on
-`feat/p4-office-document-journey` from exact verified main
-`d5dbc68bb4b3076448dc0bfb9ffc164ffd1c40d2`:
+accepts the next independent Office-document slice, now implemented on Ready
+[pull request 19](https://github.com/bignormal/actestra-desktop/pull/19) from
+exact verified main `d5dbc68bb4b3076448dc0bfb9ffc164ffd1c40d2`:
 
 - `/actestra office` selects only `office-document-artifact` and validates one
   exact ordered Document, Owner, Summary, and one-through-six Section brief;
@@ -562,12 +562,30 @@ registration, and persisted canonical document authority was not clearly
 distinguished from the non-persisted renderer projection. Both were fixed in
 the system overview and ADR-0022; the complete post-remediation 43-file
 CodeRabbit review raised zero issues. The complete manual review found and
-closed the text-writer media-type defect described above. Only evidence text
-recording these results changed after that review; final documentation and
-range audits remain pending.
-There is no Office commit, push, pull request, PR-head CI, merge, merged-main
-CI, notarization, candidate, release, distribution, or user acceptance. The
-Apple Development-signed local package is not a candidate or release.
+closed the text-writer media-type defect described above. Final documentation,
+link, range, secret, binary, generated-output, and staged-scope audits then
+passed. The exact 43-file implementation commit
+`7df1c17db31c0ab76c2ecf33d0f4c87cfd3c7d5f` was pushed to Ready PR 19. Its
+successful CodeRabbit Free status contains only a summary and walkthrough,
+with no submitted review or inline comment, so it is not represented as
+line-level review evidence.
+
+Initial exact-head
+[PR CI run 30601752177](https://github.com/bignormal/actestra-desktop/actions/runs/30601752177)
+passes source, root tests, documentation, native install and strict TypeScript,
+identity and isolation tests, native production build, unsigned bundle, and
+package verification, then fails only the legacy clean-profile packaged smoke.
+The packaged application reports persistence schema 12 while
+`scripts/smoke-packaged-app.mjs` still expects schema 11. A focused red-green
+follow-up makes the smoke harness require schema 12, updates only that stale
+expectation, and passes the two-file format and zero-warning lint checks. A
+fresh root production build, unsigned directory bundle, and local legacy
+clean-profile smoke then pass with SQLite schema 12. A refreshed exact PR head
+and its CI remain pending.
+
+There is no successful post-remediation PR-head CI, merge, merged-main CI,
+notarization, candidate, release, distribution, or user acceptance. The Apple
+Development-signed local package is not a candidate or release.
 
 Office-document remote acceptance, schedule, representative tool-failure, and
 Worker-crash fixtures still block the full P4 exit gate. No Goose, CrewAI,
@@ -1175,7 +1193,7 @@ Review closure validation at
 | P4 representative workspace-file journey           | Accepted on `main` through PR 16                                | Final head `f19b7dd006cf091aa9c7f1559dd484fdad35f200`; PR CI 30567484733; squash merge `2aed0f705bf6f9b3734742c0905c94ac562f501e`; exact main CI 30569476160; schema 9 closed kinds; 50/308 root and 341/2,635 native tests; signed local package and target-app smoke; no submitted reviews or inline comments; Free-plan summary is not line-level review evidence |
 | P4 bounded local-research journey                   | Accepted on `main` through PR 17                                | Final head `5694865462f7209ad413b2cd1dbe2eef0fe955bc`; PR CI 30577647392; squash merge `779880f28106aa8423ba042de5a6a3264bc0452e`; merged-main CI 30577886631; schema 10; 50/313 root and 341/2,637 native tests; builds, signed unnotarized local package, target-app smoke, local review closure; remote CodeRabbit rate-limited before review                                                                                      |
 | P4 bounded writing journey                          | Accepted on `main` through PR 18                                | Final head `2febf25e80868fac51fb7b37fffb746d10f8edde`; PR CI 30585829619; squash merge `d5dbc68bb4b3076448dc0bfb9ffc164ffd1c40d2`; merged-main CI 30586015008; ADR-0021; schema 11; 50/325 root and 341/2,639 native tests; root/native builds; ad-hoc-signed unnotarized local arm64 package and target-app smoke; Free-plan remote summary is not line-level review evidence                                                                                     |
-| P4 bounded Office-document journey                  | Local package and target-app smoke pass; delivery pending        | Branch `feat/p4-office-document-journey` from `d5dbc68bb4b3076448dc0bfb9ffc164ffd1c40d2`; ADR-0022; schema 12; 50/338 root and 343/2,644 native tests; final 43-file CodeRabbit review raised zero issues; 163-file/52-copy downstream contract; native build; Electron notices; exact 13-ZIP Hub fallback; Apple Development-signed, unnotarized arm64 package with real DOCX, owned Word Preview, privacy, and cleanup smoke; no commit, push, PR, PR CI, merge, or merged-main CI                                                                        |
+| P4 bounded Office-document journey                  | Ready PR 19; initial CI smoke mismatch remediated locally         | Initial head `7df1c17db31c0ab76c2ecf33d0f4c87cfd3c7d5f`; CI 30601752177 passes through package verification then finds only the stale schema-11 legacy-smoke expectation; focused schema-12 harness red-green and fresh local legacy smoke pass; ADR-0022; 50/338 root and 343/2,644 native tests; final 43-file local CodeRabbit review raised zero issues; signed unnotarized arm64 package and real Office target-app smoke pass; refreshed exact-head CI, merge, and merged-main CI pending                                                                                   |
 | P6 orchestration boundary                          | Accepted architecture direction only                            | ADR-0015; CrewAI `1.15.8` at `e9caf1e1b89343bb833b5da6660faa91804a9dce` verified as the first supervised sidecar candidate; Eigent `v1.0.2` at `e478094a9ff433132b3cf1928e4143338ddaab20` retained as a reference; neither is imported, bundled, or implemented                                                                                                                               |
 | Native AionUi source                               | Exact local desktop snapshot                                    | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot                                                                                                                                                                                                                                                                            |
 | Native preservation contract                       | Local pass                                                      | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified                                                                                                                                                                                                                                                                 |
@@ -1255,15 +1273,12 @@ The ordered implementation index and P3 non-claims are in
 
 ## Next gate
 
-1. Complete the Office final evidence-only documentation gates, then audit the
-   exact intended scope, secrets, generated output, and packaged material
-   before staging. The final 43-file CodeRabbit review, root/native suites,
-   production build, rebuilt package, and target-app smoke already pass from
-   the current implementation input and are not repeated without a relevant
-   input change.
-2. Commit and push the exact reviewed Office scope, open a Ready pull request,
-   require exact-head CI and repository review/protection gates, squash merge,
-   and verify exact merged-main CI.
+1. Commit and push the focused Office legacy-smoke schema-12 regression fix and
+   this exact status update, then require CI on the resulting exact PR 19 head.
+   Do not repeat the unchanged root/native suites or Office target-app package
+   journey locally.
+2. After a passing final exact-head CI and repository review/protection check,
+   record that evidence, squash merge PR 19, and verify exact merged-main CI.
 3. Start the independent schedule journey only from updated verified `main`
    after Office is accepted there, then complete representative tool-failure
    and Worker-crash evidence in addition
@@ -1316,7 +1331,7 @@ The ordered implementation index and P3 non-claims are in
 - The P3.4 deterministic fake remains test infrastructure. Accepted GW-P4.3
   adds a real deterministic utility process and packaged-process probe.
   Accepted GW-P4.4 connects its blocked fixture to exactly two main-owned text
-  tools. The local ADR-0022 Office slice adds a third closed create-only tool
+  tools. PR 19's ADR-0022 Office slice adds a third closed create-only tool
   under the same gateway. Accepted GW-P4.5 coordinates durable non-UI journeys.
   Accepted GW-P4.6 adds the first user-submitted preserved-AionUI task and its
   target-app restart, denial, and cancellation smoke. The accepted
@@ -1348,10 +1363,12 @@ The ordered implementation index and P3 non-claims are in
   representative-file extension are accepted through GW-P4.6 plus PR 16. The
   bounded local-research extension is accepted through PR 17 and exact
   merged-main CI. Writing is accepted through PR 18 and exact merged-main CI.
-  Office passes the recorded local package and target-app gates but remains
-  uncommitted and unaccepted on `main`; schedule, tool-failure, and Worker-crash
-  gates also remain. Full representative P4 acceptance is pending, and
-  specialized Goose work remains a later gate.
+  Office passes the recorded local package and target-app gates and is pushed
+  on Ready PR 19; its initial CI found a stale schema-11 legacy-smoke
+  expectation that now has a focused local schema-12 regression fix, but no
+  refreshed passing PR-head CI or main acceptance yet. Schedule, tool-failure,
+  and Worker-crash gates also remain. Full representative P4 acceptance is
+  pending, and specialized Goose work remains a later gate.
 - F0 alone proves only that the original AionUi application can be preserved
   and run. F1, F2, F3.1, F3.2, and merged F3.3 add their separately recorded
   identity, shadow, narrow decision-authority, fixed-delivery audit, and
