@@ -67,6 +67,27 @@ try {
     "General Work target-app restart smoke must exercise the representative workspace-file journey",
   );
   assert(
+    generalWorkSmokeSource.includes('"prepare-tool-failure"') &&
+      generalWorkSmokeSource.includes('"recover-tool-failure"') &&
+      generalWorkSmokeSource.includes('"content-too-large"') &&
+      generalWorkSmokeSource.includes('"tool.failed"') &&
+      generalWorkSmokeSource.includes('"task.failed"') &&
+      generalWorkSmokeSource.includes("general_work_checkpoints") &&
+      generalWorkSmokeSource.includes("privileged_audit_records") &&
+      generalWorkSmokeSource.includes("mayHaveExecuted") &&
+      generalWorkSmokeSource.includes("toolFailurePrivateMarker"),
+    "General Work target-app smoke must prove a private representative tool failure and stable restart projection",
+  );
+  assert(
+    generalWorkSmokeSource.includes(
+      "const canonicalWorkspacePath = fs.realpathSync(workspacePath);",
+    ) &&
+      generalWorkSmokeSource.includes("grants[0]?.root_path !== canonicalWorkspacePath") &&
+      generalWorkSmokeSource.includes("output.includes(canonicalWorkspacePath)") &&
+      generalWorkSmokeSource.includes("canonicalWorkspacePath,\n      workspacePath,"),
+    "General Work tool-failure smoke must compare and redact the canonical workspace path",
+  );
+  assert(
     generalWorkSmokeSource.includes('"actestra-research.txt"') &&
       generalWorkSmokeSource.includes("local-research-artifact") &&
       generalWorkSmokeSource.includes('"research.md"') &&

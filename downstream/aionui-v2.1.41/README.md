@@ -63,9 +63,11 @@ Actestra development commands materialize a generated working tree under
   renderer `localStorage`. Ordinary native sends and all other retained
   features remain unchanged.
 - An explicit E2E-only target-app driver covers prepared restart recovery,
-  fixture grant denial, and cancellation against the exact pinned AionCore.
-  It is disabled unless both the existing E2E guard and one closed smoke
-  scenario are set; it adds no production renderer entry or general tool mode.
+  representative `content-too-large` tool failure, stable terminal projection
+  after restart, fixture grant denial, and cancellation against the exact
+  pinned AionCore. It is disabled unless both the existing E2E guard and one
+  closed smoke scenario are set; it adds no production renderer entry or
+  general tool mode.
 - Schema v13 replaces only the retained cron provider beneath AionUI's native
   Scheduled Tasks routes, dialog, detail/history, status, CRUD, pause/resume,
   Run Now, and event surfaces. Existing-conversation `/actestra` schedules use

@@ -20,6 +20,7 @@ import {
   workspaceGrantId,
   workspaceId,
   type AgentStartRequest,
+  type ActestraPersistencePort,
   type CoreEvent,
   type DomainGraph,
   type GeneralWorkAttemptRecord,
@@ -744,6 +745,54 @@ describe("GeneralWorkCoordinator", () => {
     });
     await expect(persistence.replayEvents(active.attempt.streamId)).resolves.toEqual([]);
     await persistence.close();
+  });
+
+  it("rejects mismatched failed-tool terminal evidence even when cleanup preserved a supervisor incident", async () => {
+    const checkpoint = createGeneralWorkCheckpoint();
+    const terminalEvent = createEvent(5, "task.failed", {
+      from: "blocked",
+      to: "failed",
+      errorCode: "workspace-grant-unavailable",
+      message: "The workspace grant was unavailable.",
+    });
+    const failedCheckpoint = {
+      ...checkpoint,
+      tool: {
+        ...checkpoint.tool!,
+        state: "failed",
+        completedAt: instant("2026-07-28T06:00:05.000Z"),
+        errorCode: "content-too-large",
+        message: "The representative file exceeded its bounded read limit.",
+        mayHaveExecuted: false,
+      },
+    } as GeneralWorkCheckpoint;
+    const persistence = {
+      getGeneralWorkCheckpoint: vi.fn(async () => failedCheckpoint),
+    } as unknown as ActestraPersistencePort;
+    const supervisor = {
+      awaitCleanup: vi.fn(async () => ({
+        ...checkpoint.attempt,
+        state: "failed" as const,
+        taskState: "failed" as const,
+        lastCoreEventSequence: 5,
+        disposed: true,
+        incident: {
+          code: "adapter-operation-failed",
+          occurredAt: instant("2026-07-28T06:00:06.000Z"),
+        },
+      })),
+      coreEvents: vi.fn(() => [...checkpoint.events, terminalEvent]),
+    } as unknown as AgentAdapterSupervisor;
+    const config = {
+      persistence,
+      clock: new DeterministicAgentClock(instant("2026-07-28T06:00:07.000Z")),
+    };
+    const coordinator = new GeneralWorkCoordinator(config);
+    (config as typeof config & { supervisor: AgentAdapterSupervisor }).supervisor = supervisor;
+
+    await expect(coordinator.finalizeAttempt(checkpoint.attempt.sessionId)).rejects.toMatchObject({
+      code: "event-mismatch",
+    });
   });
 
   it("durably cancels before mutation without creating an artifact", async () => {

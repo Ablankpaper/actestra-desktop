@@ -1,14 +1,13 @@
 # System Overview
 
-Status: P3, F0 through F3.3, GW-P4.2 through GW-P4.6, and the representative
-workspace-file, bounded local-research, writing, and Office-document journeys
-are accepted on `main` through exact merge
-`505afb2f3916e75c7abb07cdf461bda29a602b9b` and merged-main CI run
-30602821085; ADR-0023's schema-13 schedule boundary, retained provider, and
-main-owned timers/recovery are implemented locally with final-byte root/native,
-package, package-audit, and target-app proof; commit, PR-head, merge, and
-merged-main gates remain pending; CrewAI is accepted as the first P6
-planner-sidecar candidate but is not implemented or packaged
+Status: P3, F0 through F3.3, GW-P4.2 through GW-P4.6, the representative
+workspace-file, bounded local-research, writing, Office-document, and
+schema-13 schedule journeys are accepted on `main` through exact current head
+`3d8d697a6416176d90183f671da28347bb194553` and merged-main CI run
+30661178474; representative tool failure has final-local root, native, package,
+package-audit, and target-app evidence but no Git or remote acceptance yet;
+Worker-crash/recovery remains before the P4 exit gate; CrewAI is accepted as
+the first P6 planner-sidecar candidate but is not implemented or packaged
 
 ## Context
 
@@ -117,11 +116,12 @@ restart-recovery sequence around those capabilities. Accepted GW-P4.6 maps
 that sequence into the preserved AionUI SendBox, message, cancel, and Preview
 surfaces. The representative-file, bounded local-research, writing, and
 Office-document paths accepted through pull requests 16 through 19 compose the
-scoped capabilities inside that same journey. ADR-0023 accepts the next
-main-owned schedule-provider boundary; schema 13, timers, claims, and native
-cron routing are implemented locally. Final-byte root/native validation, a new
-signed unnotarized arm64 package, package audits, target-app proof, and manual
-review closure pass locally; push and acceptance on `main` remain pending.
+scoped capabilities inside that same journey. ADR-0023's main-owned
+schedule-provider boundary, schema 13, timers, claims, and native cron routing
+are accepted through pull requests 20 and 21 with exact merged-main CI.
+Representative tool failure reuses the existing file journey and scoped-read
+policy path; its local evidence remains distinct from commit, PR, merge, or
+release evidence.
 
 P4.2 adds the separate compatibility boundary accepted in
 [ADR-0011](decisions/0011-aionui-shadow-projection.md). Successful native HTTP
@@ -309,10 +309,11 @@ calculation, timers, atomic run claims, missed/interrupted state, and native
 event projection. A claimed run may enter the existing General Work journey
 only from that stored grant and never gives the scheduler direct Worker or tool
 authority. Contract, migration, persistence, main-service, bridge, and native
-compatibility have local evidence. Current final bytes pass complete root/native
-gates, strict TypeScript, production build, a new signed local package, exact
-package/ASAR/resource checks, and target-app smoke; commit, PR, and exact remote
-CI evidence remain pending.
+compatibility are accepted on `main` through pull request 20, exact final head
+`c06ca5b4bd842fbad098ffc3b9e7bcef1aadbceb`, PR CI 30659567604, squash merge
+`5b0748af674165f9e9475be61dc1e02a1b08c8bc`, and merged-main CI 30660078199.
+Pull request 21 records that acceptance on current `main`; its merged-main CI
+30661178474 passes.
 
 ## Foundation integration boundary
 
@@ -463,10 +464,7 @@ interface AgentAdapter {
     event: CoreEvent<"artifact.created" | "artifact.updated">,
   ): Promise<void>;
   send(sessionId: SessionId, input: AgentInput): Promise<void>;
-  approve(
-    requestId: ToolRequestId,
-    decision: AgentApprovalDecision,
-  ): Promise<void>;
+  approve(requestId: ToolRequestId, decision: AgentApprovalDecision): Promise<void>;
   resolveTool(requestId: ToolRequestId, result: AgentToolResult): Promise<void>;
   cancel(sessionId: SessionId, reason?: string): Promise<void>;
   subscribe(sessionId: SessionId, handler: AgentSignalHandler): Unsubscribe;
@@ -617,23 +615,18 @@ ADR-0022 adds schema-12 Office registration, a private Worker-authored document
 model, one main-owned create-only DOCX tool, and the bounded retained Word
 Preview provider. ADR-0023 accepts schema-13 schedule ownership, main-owned
 timers and claims, retained cron DTOs/events, skipped missed occurrences, and
-existing-conversation General Work execution. Its pre-review implementation,
-complete root/native regressions, production build, signed local package, and
-target-app smoke passed locally. Review remediation now passes focused tests,
-lint, and strict TypeScript; four complete 50-file review passes have explicit
-fixes or accepted-decision dispositions. Two follow-up confirmations were
-rate-limited before analysis and are not zero-issue evidence; the final manual
-51-file review includes the Node-free schedule contract split and corrected
-downstream-owner assertion and found no additional confirmed defect. Current
-bytes pass 56-file/424-test root and 345-file/2,658-test native gates, the
-607/24/10,184-module native production build, a new signed unnotarized arm64
-package, exact package/ASAR/resource checks, and schema-13 target-app smoke;
-remote acceptance remains pending. General
-or network research, representative tool failure, Worker crash, credential
-storage, and OS sandbox mechanisms remain later work. Office is accepted
-through exact pull-request and merged-main CI; the new local schedule package
-remains unnotarized and is not a candidate, release, distribution, or user
-acceptance artifact.
+existing-conversation General Work execution. Four complete 50-file review
+passes have explicit fixes or accepted-decision dispositions; two follow-up
+confirmations were rate-limited before analysis and are not zero-issue
+evidence. Final local gates, exact PR-head CI, squash merge, and merged-main CI
+are recorded above. The representative tool-failure slice adds no new renderer
+or tool capability: it forces the existing 64 KiB file-read boundary, retains
+matching tool/Task/Attempt incident evidence, creates no Artifact, and proves
+stable restart projection locally. Its Git delivery remains pending. General
+or network research, Worker crash, credential storage, and OS sandbox
+mechanisms remain later work. Local Apple Development-signed packages remain
+unnotarized and are not candidates, releases, distributions, or user-acceptance
+artifacts.
 Signing, notarization, update delivery, and cross-platform candidate packaging
 remain P8 work.
 

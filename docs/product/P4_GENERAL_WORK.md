@@ -665,6 +665,63 @@ line-level review. The PR squash merged as
 30660078199 passes. The local Apple Development signature is not notarization,
 a candidate, release, distribution, or user acceptance.
 
+### Representative tool-failure final-local evidence
+
+The next independent slice reuses the accepted workspace-file journey and
+forces the main-owned `actestra.workspace.read-text` capability above its 64 KiB
+per-invocation bound. The user still submits through the retained AionUI
+conversation; the renderer receives no path, content, tool, Worker, credential,
+or scheduling authority. Actestra owns the one Task, Session, Worker, Attempt,
+policy decision, metadata audit sequence, normalized Core events, finalized
+checkpoint, terminal projection, and restart result.
+
+Focused RED-to-GREEN coverage proves that a failed scoped tool contributes its
+stable incident code to terminal Attempt evidence only when the final
+`task.failed` code matches. Existing Supervisor incidents retain precedence;
+mismatched terminal evidence fails closed. A real target-app run additionally
+found that the external smoke compared a canonical persisted workspace root to
+its non-canonical macOS test alias. A separate RED-to-GREEN harness correction
+now compares the canonical root and checks both aliases for privacy leakage;
+the packaged app itself did not change for that correction.
+
+Final-local evidence on `feat/p4-representative-tool-failure` from exact base
+`3d8d697a6416176d90183f671da28347bb194553`:
+
+- final root `bun run check` passes 56 files/425 tests, all source, smoke,
+  renderer-authority, foundation, downstream, and 56/3/28-module build gates;
+- strict native TypeScript, the focused 10-test native smoke file, and the full
+  native suite pass 345 files/2,662 tests with the retained one-file/five-test
+  upstream skips; the native production build transforms 607 main, 24 preload,
+  and 10,184 renderer modules;
+- `/private/tmp/actestra-p4-tool-failure-pinned-local-electron.IUrN6a/out/mac-arm64/Actestra.app`
+  passes independent package verification, 4/4 production-entry ASAR parity,
+  4/4 Electron/docx/Croner notice checks, AionCore `0.1.52`, 14/14 exact Hub
+  Git blobs and 13/13 valid ZIPs at pin
+  `63952fa23897184e03e67a97664f9a901ab2266b`, 25/25 actual arm64 Mach-O
+  signatures, and 17/17 contained symbolic links; and
+- the same package passes schema-13 target-app smoke through the retained
+  schedule and prior journeys plus exact first-run and post-restart
+  `content-too-large` evidence, one unchanged Task/Session/Worker/Attempt, no
+  Artifact, metadata privacy, and complete process cleanup.
+
+The first post-review package was rejected because the moving `dist-latest`
+Hub input contained only seven extensions. The final package uses the already
+verified static 13-file fallback from the exact pin above, local Electron
+37.10.3 arm64, and the unchanged final production output. Its fresh target-app
+wrapper is
+`/private/tmp/actestra-p4-tool-failure-smoke-wrapper-pinned.WZdkNW`.
+
+The complete manual review covers all 15 tracked files and closed terminal
+Attempt fail-closed validation, stale schedule truth, and target-app identity
+chain issues without another confirmed defect. This remains local evidence.
+CodeRabbit was not retried after the known rate limit. The exact scope,
+high-confidence secret, binary/generated-output, tracked-document,
+frozen-foundation, user-copy, and process-cleanup audits pass. Commit, push,
+exact PR-head CI, merge, and merged-main CI remain before acceptance. The Apple
+Development-signed package is not notarized, a candidate, release, deployment,
+distribution, or user acceptance. Worker crash/recovery remains the next
+separate P4 slice after this one is accepted on `main`.
+
 Exit: the complete general-work journey is understandable and recoverable in
 the retained AionUi UI with Actestra as the declared system of record.
 
@@ -697,6 +754,9 @@ P4 is complete only after:
   tasks. The two text tools retain their accepted fixed or bounded paths; the
   Office tool accepts only fixed `brief.docx`. None is a renderer-selected
   generic filesystem API.
+- Representative tool failure has complete local root, native, package, and
+  target-app evidence, but no commit, PR-head CI, merge, or merged-main CI. It
+  does not close the separate Worker-crash/recovery gate or full P4 acceptance.
 - No shell, network, credential, MCP, publish, Git, arbitrary workspace
   mutation, model, Goose adapter, CrewAI sidecar, or Team orchestration is
   active.
@@ -706,5 +766,5 @@ P4 is complete only after:
 - The local target package contains the exact pinned AionCore binary, but
   its license clarification, notarized candidate, distribution, and fresh-user
   acceptance remain unresolved.
-- The schedule package is disposable local evidence only; no candidate,
+- The schedule and tool-failure packages are disposable local evidence only; no candidate,
   release, deployment, distribution, or user acceptance is claimed.

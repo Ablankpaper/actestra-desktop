@@ -144,6 +144,7 @@
         "structured writing brief and private Worker-authored draft input",
         "structured Office brief, private Worker-authored document model, and main-owned DOCX creation",
         "document Artifact and owned non-persisted Markdown and Word Preview providers",
+        "packaged representative content-too-large failure and restart projection",
         "redacted task and artifact projection",
         "user cancellation and projection restoration"
       ],
