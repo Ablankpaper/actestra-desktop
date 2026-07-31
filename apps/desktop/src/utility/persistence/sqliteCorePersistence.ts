@@ -9,7 +9,30 @@ import {
   AIONUI_GENERAL_WORK_MAX_JOURNEYS_PER_CONVERSATION,
   assertAionUiGeneralWorkLink,
   assertAionUiGeneralWorkRegistration,
+  AIONUI_SCHEDULE_MAX_JOBS,
+  AionUiScheduledGeneralWorkError,
+  assertAionUiScheduleClaimInput,
+  assertAionUiScheduleCompletionInput,
+  assertAionUiScheduleDeleteInput,
+  assertAionUiScheduleJob,
+  assertAionUiScheduleJobId,
+  assertAionUiScheduleListInput,
+  assertAionUiSchedulePersistenceUpdateInput,
+  assertAionUiScheduleRecoveryInput,
+  assertAionUiScheduleRegistration,
   assertAionUiShadowEvidence,
+  type AionUiScheduleClaimInput,
+  type AionUiScheduleClaimResult,
+  type AionUiScheduleCompletionInput,
+  type AionUiScheduleCompletionResult,
+  type AionUiScheduleDeleteInput,
+  type AionUiScheduleJob,
+  type AionUiScheduleListInput,
+  type AionUiScheduleMutationResult,
+  type AionUiSchedulePersistenceUpdateInput,
+  type AionUiScheduleRecoveryInput,
+  type AionUiScheduleRegistration,
+  type AionUiScheduleRegistrationResult,
   type AionUiGeneralWorkLink,
   type AionUiGeneralWorkRegistration,
   type AionUiApprovalAuthoritySummary,
@@ -132,6 +155,15 @@ const GENERAL_WORK_CHECKPOINT_COLUMNS = `
 const AIONUI_GENERAL_WORK_JOURNEY_COLUMNS = `
   task_id, contract_version, conversation_hash, journey_kind, created_at
 `;
+const AIONUI_SCHEDULE_JOB_COLUMNS = `
+  job_id, contract_version, conversation_hash, native_conversation_id,
+  native_conversation_title, workspace_id, workspace_grant_id, name,
+  description, prompt, schedule_kind, schedule_value, schedule_time_zone,
+  schedule_description, enabled, next_run_at_ms, last_run_at_ms, last_status,
+  last_incident_code, active_claim, active_claimed_at_ms, run_sequence,
+  run_count, retry_count, max_retries, queue_enabled, created_at_ms,
+  updated_at_ms, deleted_at_ms, job_json
+`;
 
 type SqliteRow = Record<string, unknown>;
 
@@ -169,6 +201,14 @@ function requiredNumber(row: SqliteRow, field: string): number {
   }
 
   return value;
+}
+
+function optionalNumber(row: SqliteRow, field: string): number | undefined {
+  const value = row[field];
+  if (value === null) {
+    return undefined;
+  }
+  return requiredNumber(row, field);
 }
 
 function requiredBlob(row: SqliteRow, field: string): Uint8Array {
@@ -872,6 +912,205 @@ function storedContentMatches(
       immutableContentMetadata(expected.metadata),
     ) && decodeStoredContent(row, actual) === input.content
   );
+}
+
+function normalizeScheduleContractError(error: unknown, label: string): PersistenceError {
+  if (error instanceof PersistenceError) {
+    return error;
+  }
+  if (error instanceof AionUiScheduledGeneralWorkError) {
+    return new PersistenceError("invalid-record", `${label} is invalid`, { cause: error });
+  }
+  return new PersistenceError("invalid-record", `${label} is invalid`, { cause: error });
+}
+
+function normalizedScheduleJob(value: unknown): AionUiScheduleJob {
+  const normalized: unknown = JSON.parse(JSON.stringify(value));
+  assertAionUiScheduleJob(normalized);
+  return deepFreeze(normalized);
+}
+
+function scheduleValue(job: AionUiScheduleJob): string {
+  if (job.schedule.kind === "at") {
+    return String(job.schedule.atMs);
+  }
+  if (job.schedule.kind === "every") {
+    return String(job.schedule.everyMs);
+  }
+  return job.schedule.expr;
+}
+
+function scheduleTimeZone(job: AionUiScheduleJob): string | undefined {
+  return job.schedule.kind === "cron" ? job.schedule.tz : undefined;
+}
+
+function parseStoredAionUiScheduleJob(row: SqliteRow): AionUiScheduleJob {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(requiredString(row, "job_json"));
+    assertAionUiScheduleJob(parsed);
+  } catch (error) {
+    throw new PersistenceError("corrupt-database", "Persisted AionUI schedule job is invalid", {
+      cause: error,
+    });
+  }
+
+  const job = parsed;
+  const materializedMatches =
+    requiredString(row, "job_id") === job.id &&
+    requiredNumber(row, "contract_version") === job.contractVersion &&
+    requiredString(row, "conversation_hash") === job.conversationHash &&
+    requiredString(row, "native_conversation_id") === job.nativeConversationId &&
+    optionalString(row, "native_conversation_title") === job.nativeConversationTitle &&
+    requiredString(row, "workspace_id") === job.workspaceId &&
+    requiredString(row, "workspace_grant_id") === job.workspaceGrantId &&
+    requiredString(row, "name") === job.name &&
+    optionalString(row, "description") === job.description &&
+    requiredString(row, "prompt") === job.prompt &&
+    requiredString(row, "schedule_kind") === job.schedule.kind &&
+    requiredString(row, "schedule_value") === scheduleValue(job) &&
+    optionalString(row, "schedule_time_zone") === scheduleTimeZone(job) &&
+    requiredString(row, "schedule_description") === job.schedule.description &&
+    requiredNumber(row, "enabled") === Number(job.enabled) &&
+    optionalNumber(row, "next_run_at_ms") === job.nextRunAtMs &&
+    optionalNumber(row, "last_run_at_ms") === job.lastRunAtMs &&
+    optionalString(row, "last_status") === job.lastStatus &&
+    optionalString(row, "last_incident_code") === job.lastIncidentCode &&
+    optionalString(row, "active_claim") === job.activeClaim &&
+    optionalNumber(row, "active_claimed_at_ms") === job.activeClaimedAtMs &&
+    requiredNumber(row, "run_sequence") === job.runSequence &&
+    requiredNumber(row, "run_count") === job.runCount &&
+    requiredNumber(row, "retry_count") === job.retryCount &&
+    requiredNumber(row, "max_retries") === job.maxRetries &&
+    requiredNumber(row, "queue_enabled") === Number(job.queueEnabled) &&
+    requiredNumber(row, "created_at_ms") === job.createdAtMs &&
+    requiredNumber(row, "updated_at_ms") === job.updatedAtMs &&
+    optionalNumber(row, "deleted_at_ms") === job.deletedAtMs;
+  if (!materializedMatches) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted AionUI schedule columns disagree with the authoritative job",
+    );
+  }
+  return deepFreeze(job);
+}
+
+function insertAionUiScheduleJob(database: DatabaseSync, job: AionUiScheduleJob): void {
+  database
+    .prepare(
+      `INSERT INTO aionui_schedule_jobs (
+         ${AIONUI_SCHEDULE_JOB_COLUMNS}
+       ) VALUES (
+         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+       )`,
+    )
+    .run(
+      job.id,
+      job.contractVersion,
+      job.conversationHash,
+      job.nativeConversationId,
+      job.nativeConversationTitle ?? null,
+      job.workspaceId,
+      job.workspaceGrantId,
+      job.name,
+      job.description ?? null,
+      job.prompt,
+      job.schedule.kind,
+      scheduleValue(job),
+      scheduleTimeZone(job) ?? null,
+      job.schedule.description,
+      Number(job.enabled),
+      job.nextRunAtMs ?? null,
+      job.lastRunAtMs ?? null,
+      job.lastStatus ?? null,
+      job.lastIncidentCode ?? null,
+      job.activeClaim ?? null,
+      job.activeClaimedAtMs ?? null,
+      job.runSequence,
+      job.runCount,
+      job.retryCount,
+      job.maxRetries,
+      Number(job.queueEnabled),
+      job.createdAtMs,
+      job.updatedAtMs,
+      job.deletedAtMs ?? null,
+      JSON.stringify(job),
+    );
+}
+
+function updateAionUiScheduleJob(
+  database: DatabaseSync,
+  job: AionUiScheduleJob,
+  predicate = "",
+  predicateValues: readonly (string | number | null)[] = [],
+): number {
+  const values: (string | number | null)[] = [
+    job.nativeConversationTitle ?? null,
+    job.name,
+    job.description ?? null,
+    job.prompt,
+    job.schedule.kind,
+    scheduleValue(job),
+    scheduleTimeZone(job) ?? null,
+    job.schedule.description,
+    Number(job.enabled),
+    job.nextRunAtMs ?? null,
+    job.lastRunAtMs ?? null,
+    job.lastStatus ?? null,
+    job.lastIncidentCode ?? null,
+    job.activeClaim ?? null,
+    job.activeClaimedAtMs ?? null,
+    job.runSequence,
+    job.runCount,
+    job.retryCount,
+    job.maxRetries,
+    Number(job.queueEnabled),
+    job.createdAtMs,
+    job.updatedAtMs,
+    job.deletedAtMs ?? null,
+    JSON.stringify(job),
+    job.id,
+    ...predicateValues,
+  ];
+  const result = database
+    .prepare(
+      `UPDATE aionui_schedule_jobs
+       SET native_conversation_title = ?, name = ?, description = ?, prompt = ?,
+           schedule_kind = ?, schedule_value = ?, schedule_time_zone = ?,
+           schedule_description = ?, enabled = ?, next_run_at_ms = ?,
+           last_run_at_ms = ?, last_status = ?, last_incident_code = ?,
+           active_claim = ?, active_claimed_at_ms = ?, run_sequence = ?,
+           run_count = ?, retry_count = ?, max_retries = ?, queue_enabled = ?,
+           created_at_ms = ?, updated_at_ms = ?, deleted_at_ms = ?, job_json = ?
+       WHERE job_id = ? ${predicate}`,
+    )
+    .run(...values);
+  return Number(result.changes);
+}
+
+function loadAionUiScheduleJob(
+  database: DatabaseSync,
+  jobIdValue: string,
+  includeDeleted = false,
+): AionUiScheduleJob | undefined {
+  const row = database
+    .prepare(
+      `SELECT ${AIONUI_SCHEDULE_JOB_COLUMNS}
+       FROM aionui_schedule_jobs
+       WHERE job_id = ? ${includeDeleted ? "" : "AND deleted_at_ms IS NULL"}`,
+    )
+    .get(jobIdValue) as SqliteRow | undefined;
+  return row === undefined ? undefined : parseStoredAionUiScheduleJob(row);
+}
+
+function assertScheduleMutationTime(
+  mutationTime: number,
+  existing: AionUiScheduleJob,
+  label: string,
+): void {
+  if (mutationTime < existing.updatedAtMs) {
+    throw new PersistenceError("invalid-record", `${label} cannot predate schedule state`);
+  }
 }
 
 function insertWorkspaceGrant(database: DatabaseSync, grant: WorkspaceGrant): void {
@@ -2104,6 +2343,497 @@ class SqliteCorePersistence implements ActestraPersistencePort {
         .all(limit),
     );
     return Object.freeze(rows.map(parseStoredAionUiGeneralWorkLink));
+  }
+
+  async registerAionUiSchedule(
+    registration: AionUiScheduleRegistration,
+  ): Promise<AionUiScheduleRegistrationResult> {
+    const database = this.requireDatabase();
+    let stable: AionUiScheduleRegistration;
+    try {
+      assertAionUiScheduleRegistration(registration);
+      const normalized: unknown = JSON.parse(JSON.stringify(registration));
+      assertAionUiScheduleRegistration(normalized);
+      stable = deepFreeze(normalized);
+      assertCanonicalWorkspaceRoot(stable.workspaceGrant.rootPath);
+    } catch (error) {
+      throw normalizeScheduleContractError(error, "AionUI schedule registration");
+    }
+
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const existing = loadAionUiScheduleJob(database, stable.job.id, true);
+      if (existing !== undefined) {
+        const workspaceRow = database
+          .prepare(
+            `SELECT id, name, state, created_at, updated_at
+             FROM workspaces
+             WHERE id = ?`,
+          )
+          .get(stable.workspace.id) as SqliteRow | undefined;
+        const grantRow = database
+          .prepare(`SELECT ${WORKSPACE_GRANT_COLUMNS} FROM workspace_grants WHERE grant_id = ?`)
+          .get(stable.workspaceGrant.grantId) as SqliteRow | undefined;
+        const grant = grantRow === undefined ? undefined : parseStoredWorkspaceGrant(grantRow);
+        const recordsMatch =
+          isDeepStrictEqual(existing, stable.job) &&
+          workspaceRow !== undefined &&
+          requiredString(workspaceRow, "id") === stable.workspace.id &&
+          requiredString(workspaceRow, "name") === stable.workspace.name &&
+          requiredString(workspaceRow, "state") === stable.workspace.state &&
+          requiredString(workspaceRow, "created_at") === stable.workspace.createdAt &&
+          requiredString(workspaceRow, "updated_at") === stable.workspace.updatedAt &&
+          grant !== undefined &&
+          isDeepStrictEqual(grant, stable.workspaceGrant);
+        if (!recordsMatch) {
+          throw new PersistenceError(
+            "schedule-conflict",
+            "AionUI schedule identity conflicts with durable authority",
+          );
+        }
+        database.exec("COMMIT");
+        return deepFreeze({ status: "duplicate", job: existing });
+      }
+
+      const countRow = database
+        .prepare(
+          `SELECT COUNT(*) AS schedule_count
+           FROM aionui_schedule_jobs
+           WHERE deleted_at_ms IS NULL`,
+        )
+        .get() as SqliteRow;
+      if (requiredNumber(countRow, "schedule_count") >= AIONUI_SCHEDULE_MAX_JOBS) {
+        throw new PersistenceError(
+          "schedule-limit",
+          "Actestra reached the bounded non-deleted schedule limit",
+        );
+      }
+
+      const workspaceCollision = database
+        .prepare("SELECT id FROM workspaces WHERE id = ?")
+        .get(stable.workspace.id);
+      const grantCollision = database
+        .prepare("SELECT grant_id FROM workspace_grants WHERE grant_id = ?")
+        .get(stable.workspaceGrant.grantId);
+      if (workspaceCollision !== undefined || grantCollision !== undefined) {
+        throw new PersistenceError(
+          "schedule-conflict",
+          "AionUI schedule registration reuses Workspace or grant authority",
+        );
+      }
+
+      database
+        .prepare(
+          `INSERT INTO workspaces (id, name, state, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?)`,
+        )
+        .run(
+          stable.workspace.id,
+          stable.workspace.name,
+          stable.workspace.state,
+          stable.workspace.createdAt,
+          stable.workspace.updatedAt,
+        );
+      insertWorkspaceGrant(database, stable.workspaceGrant);
+      insertAionUiScheduleJob(database, stable.job);
+      verifyNoForeignKeyViolations(database);
+      database.exec("COMMIT");
+      return deepFreeze({ status: "stored", job: stable.job });
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) {
+        throw error;
+      }
+      throw new PersistenceError(
+        "corrupt-database",
+        "Actestra could not register the AionUI schedule",
+        { cause: error },
+      );
+    }
+  }
+
+  async listAionUiSchedules(input: AionUiScheduleListInput): Promise<readonly AionUiScheduleJob[]> {
+    const database = this.requireDatabase();
+    let stable: AionUiScheduleListInput;
+    try {
+      const normalized: unknown = JSON.parse(JSON.stringify(input));
+      assertAionUiScheduleListInput(normalized);
+      stable = normalized;
+    } catch (error) {
+      throw normalizeScheduleContractError(error, "AionUI schedule list input");
+    }
+    const rows = asRows(
+      stable.conversationHash === undefined
+        ? database
+            .prepare(
+              `SELECT ${AIONUI_SCHEDULE_JOB_COLUMNS}
+               FROM aionui_schedule_jobs
+               WHERE deleted_at_ms IS NULL
+               ORDER BY created_at_ms, job_id
+               LIMIT ?`,
+            )
+            .all(stable.limit)
+        : database
+            .prepare(
+              `SELECT ${AIONUI_SCHEDULE_JOB_COLUMNS}
+               FROM aionui_schedule_jobs
+               WHERE deleted_at_ms IS NULL AND conversation_hash = ?
+               ORDER BY created_at_ms, job_id
+               LIMIT ?`,
+            )
+            .all(stable.conversationHash, stable.limit),
+    );
+    return Object.freeze(rows.map(parseStoredAionUiScheduleJob));
+  }
+
+  async getAionUiSchedule(jobIdValue: string): Promise<AionUiScheduleJob | null> {
+    const database = this.requireDatabase();
+    try {
+      assertAionUiScheduleJobId(jobIdValue);
+    } catch (error) {
+      throw normalizeScheduleContractError(error, "AionUI schedule lookup");
+    }
+    return loadAionUiScheduleJob(database, jobIdValue) ?? null;
+  }
+
+  async updateAionUiSchedule(
+    input: AionUiSchedulePersistenceUpdateInput,
+  ): Promise<AionUiScheduleMutationResult> {
+    const database = this.requireDatabase();
+    let stable: AionUiSchedulePersistenceUpdateInput;
+    try {
+      const normalized: unknown = JSON.parse(JSON.stringify(input));
+      assertAionUiSchedulePersistenceUpdateInput(normalized);
+      stable = normalized;
+    } catch (error) {
+      throw normalizeScheduleContractError(error, "AionUI schedule update");
+    }
+
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const existing = loadAionUiScheduleJob(database, stable.jobId);
+      if (existing === undefined) {
+        database.exec("COMMIT");
+        return Object.freeze({ status: "not-found" });
+      }
+      assertScheduleMutationTime(stable.updatedAtMs, existing, "Schedule update");
+      const updated = normalizedScheduleJob({
+        ...existing,
+        nativeConversationTitle: Object.hasOwn(stable, "nativeConversationTitle")
+          ? (stable.nativeConversationTitle ?? undefined)
+          : existing.nativeConversationTitle,
+        name: stable.name ?? existing.name,
+        description: Object.hasOwn(stable, "description")
+          ? (stable.description ?? undefined)
+          : existing.description,
+        prompt: stable.prompt ?? existing.prompt,
+        schedule: stable.schedule ?? existing.schedule,
+        enabled: stable.enabled ?? existing.enabled,
+        nextRunAtMs: Object.hasOwn(stable, "nextRunAtMs")
+          ? (stable.nextRunAtMs ?? undefined)
+          : existing.nextRunAtMs,
+        lastRunAtMs: Object.hasOwn(stable, "lastRunAtMs")
+          ? (stable.lastRunAtMs ?? undefined)
+          : existing.lastRunAtMs,
+        lastStatus: Object.hasOwn(stable, "lastStatus")
+          ? (stable.lastStatus ?? undefined)
+          : existing.lastStatus,
+        lastIncidentCode: Object.hasOwn(stable, "lastIncidentCode")
+          ? (stable.lastIncidentCode ?? undefined)
+          : existing.lastIncidentCode,
+        updatedAtMs: stable.updatedAtMs,
+      });
+      if (
+        updateAionUiScheduleJob(
+          database,
+          updated,
+          "AND deleted_at_ms IS NULL AND updated_at_ms = ?",
+          [existing.updatedAtMs],
+        ) !== 1
+      ) {
+        throw new PersistenceError("schedule-conflict", "AionUI schedule update lost its state");
+      }
+      database.exec("COMMIT");
+      return deepFreeze({ status: "updated", job: updated });
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) {
+        throw error;
+      }
+      throw normalizeScheduleContractError(error, "AionUI schedule update");
+    }
+  }
+
+  async deleteAionUiSchedule(
+    input: AionUiScheduleDeleteInput,
+  ): Promise<AionUiScheduleMutationResult> {
+    const database = this.requireDatabase();
+    let stable: AionUiScheduleDeleteInput;
+    try {
+      const normalized: unknown = JSON.parse(JSON.stringify(input));
+      assertAionUiScheduleDeleteInput(normalized);
+      stable = normalized;
+    } catch (error) {
+      throw normalizeScheduleContractError(error, "AionUI schedule deletion");
+    }
+
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const existing = loadAionUiScheduleJob(database, stable.jobId);
+      if (existing === undefined) {
+        database.exec("COMMIT");
+        return Object.freeze({ status: "not-found" });
+      }
+      if (existing.activeClaim !== undefined) {
+        database.exec("COMMIT");
+        return deepFreeze({ status: "active-claim", job: existing });
+      }
+      assertScheduleMutationTime(stable.deletedAtMs, existing, "Schedule deletion");
+      const deleted = normalizedScheduleJob({
+        ...existing,
+        enabled: false,
+        nextRunAtMs: undefined,
+        updatedAtMs: stable.deletedAtMs,
+        deletedAtMs: stable.deletedAtMs,
+      });
+      if (
+        updateAionUiScheduleJob(
+          database,
+          deleted,
+          "AND deleted_at_ms IS NULL AND active_claim IS NULL AND updated_at_ms = ?",
+          [existing.updatedAtMs],
+        ) !== 1
+      ) {
+        throw new PersistenceError("schedule-conflict", "AionUI schedule deletion lost its state");
+      }
+      database.exec("COMMIT");
+      return deepFreeze({ status: "deleted", job: deleted });
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) {
+        throw error;
+      }
+      throw normalizeScheduleContractError(error, "AionUI schedule deletion");
+    }
+  }
+
+  async claimAionUiScheduleRun(
+    input: AionUiScheduleClaimInput,
+  ): Promise<AionUiScheduleClaimResult> {
+    const database = this.requireDatabase();
+    let stable: AionUiScheduleClaimInput;
+    try {
+      const normalized: unknown = JSON.parse(JSON.stringify(input));
+      assertAionUiScheduleClaimInput(normalized);
+      stable = normalized;
+    } catch (error) {
+      throw normalizeScheduleContractError(error, "AionUI schedule claim");
+    }
+
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const existing = loadAionUiScheduleJob(database, stable.jobId);
+      if (existing === undefined) {
+        database.exec("COMMIT");
+        return Object.freeze({ status: "not-found" });
+      }
+      if (existing.activeClaim !== undefined) {
+        database.exec("COMMIT");
+        return deepFreeze({ status: "busy", job: existing });
+      }
+      assertScheduleMutationTime(stable.claimedAtMs, existing, "Schedule claim");
+      const claimed = normalizedScheduleJob({
+        ...existing,
+        nextRunAtMs: undefined,
+        activeClaim: stable.claim,
+        activeClaimedAtMs: stable.claimedAtMs,
+        runSequence: existing.runSequence + 1,
+        updatedAtMs: stable.claimedAtMs,
+      });
+      if (
+        updateAionUiScheduleJob(
+          database,
+          claimed,
+          "AND deleted_at_ms IS NULL AND active_claim IS NULL AND updated_at_ms = ?",
+          [existing.updatedAtMs],
+        ) !== 1
+      ) {
+        throw new PersistenceError("schedule-conflict", "AionUI schedule claim lost its state");
+      }
+      database.exec("COMMIT");
+      return deepFreeze({
+        status: "claimed",
+        job: { ...claimed, nextRunAtMs: undefined },
+      });
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) {
+        throw error;
+      }
+      throw normalizeScheduleContractError(error, "AionUI schedule claim");
+    }
+  }
+
+  async completeAionUiScheduleRun(
+    input: AionUiScheduleCompletionInput,
+  ): Promise<AionUiScheduleCompletionResult> {
+    const database = this.requireDatabase();
+    let stable: AionUiScheduleCompletionInput;
+    try {
+      const normalized: unknown = JSON.parse(JSON.stringify(input));
+      assertAionUiScheduleCompletionInput(normalized);
+      stable = normalized;
+    } catch (error) {
+      throw normalizeScheduleContractError(error, "AionUI schedule completion");
+    }
+
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const existing = loadAionUiScheduleJob(database, stable.jobId);
+      if (existing === undefined) {
+        database.exec("COMMIT");
+        return Object.freeze({ status: "not-found" });
+      }
+      if (existing.activeClaim !== stable.claim || existing.activeClaimedAtMs === undefined) {
+        database.exec("COMMIT");
+        return deepFreeze({ status: "claim-mismatch", job: existing });
+      }
+      assertScheduleMutationTime(stable.completedAtMs, existing, "Schedule completion");
+      if (stable.completedAtMs < existing.activeClaimedAtMs) {
+        throw new PersistenceError(
+          "invalid-record",
+          "Schedule completion cannot predate its active claim",
+        );
+      }
+      const completed = normalizedScheduleJob({
+        ...existing,
+        enabled: stable.enabled ?? existing.enabled,
+        nextRunAtMs: stable.nextRunAtMs,
+        lastRunAtMs: stable.completedAtMs,
+        lastStatus: stable.status,
+        lastIncidentCode: stable.lastIncidentCode,
+        activeClaim: undefined,
+        activeClaimedAtMs: undefined,
+        runCount: existing.runCount + 1,
+        updatedAtMs: stable.completedAtMs,
+      });
+      if (
+        updateAionUiScheduleJob(
+          database,
+          completed,
+          `AND deleted_at_ms IS NULL AND active_claim = ?
+           AND active_claimed_at_ms = ? AND updated_at_ms = ?`,
+          [existing.activeClaim, existing.activeClaimedAtMs, existing.updatedAtMs],
+        ) !== 1
+      ) {
+        throw new PersistenceError(
+          "schedule-conflict",
+          "AionUI schedule completion lost its active claim",
+        );
+      }
+      database.exec("COMMIT");
+      return deepFreeze({
+        status: "completed",
+        job: {
+          ...completed,
+          activeClaim: undefined,
+          activeClaimedAtMs: undefined,
+          lastIncidentCode: completed.lastIncidentCode,
+        },
+      });
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) {
+        throw error;
+      }
+      throw normalizeScheduleContractError(error, "AionUI schedule completion");
+    }
+  }
+
+  async recoverAionUiScheduleRuns(
+    input: AionUiScheduleRecoveryInput,
+  ): Promise<readonly AionUiScheduleJob[]> {
+    const database = this.requireDatabase();
+    let stable: AionUiScheduleRecoveryInput;
+    try {
+      const normalized: unknown = JSON.parse(JSON.stringify(input));
+      assertAionUiScheduleRecoveryInput(normalized);
+      stable = normalized;
+    } catch (error) {
+      throw normalizeScheduleContractError(error, "AionUI schedule recovery");
+    }
+
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const activeJobs = asRows(
+        database
+          .prepare(
+            `SELECT ${AIONUI_SCHEDULE_JOB_COLUMNS}
+             FROM aionui_schedule_jobs
+             WHERE deleted_at_ms IS NULL AND active_claim IS NOT NULL
+             ORDER BY active_claimed_at_ms, job_id
+             LIMIT ?`,
+          )
+          .all(AIONUI_SCHEDULE_MAX_JOBS),
+      ).map(parseStoredAionUiScheduleJob);
+      for (const existing of activeJobs) {
+        assertScheduleMutationTime(stable.recoveredAtMs, existing, "Schedule recovery");
+        if (
+          existing.activeClaim === undefined ||
+          existing.activeClaimedAtMs === undefined ||
+          stable.recoveredAtMs < existing.activeClaimedAtMs
+        ) {
+          throw new PersistenceError(
+            "corrupt-database",
+            "Recoverable AionUI schedule claim is inconsistent",
+          );
+        }
+      }
+
+      const recovered = activeJobs.map((existing) => {
+        const terminal = normalizedScheduleJob({
+          ...existing,
+          lastRunAtMs: stable.recoveredAtMs,
+          lastStatus: "error",
+          lastIncidentCode: "interrupted",
+          activeClaim: undefined,
+          activeClaimedAtMs: undefined,
+          runCount: existing.runCount + 1,
+          updatedAtMs: stable.recoveredAtMs,
+        });
+        if (
+          updateAionUiScheduleJob(
+            database,
+            terminal,
+            `AND deleted_at_ms IS NULL AND active_claim = ?
+             AND active_claimed_at_ms = ? AND updated_at_ms = ?`,
+            [
+              existing.activeClaim ?? null,
+              existing.activeClaimedAtMs ?? null,
+              existing.updatedAtMs,
+            ],
+          ) !== 1
+        ) {
+          throw new PersistenceError(
+            "schedule-conflict",
+            "AionUI schedule recovery lost its active claim",
+          );
+        }
+        return deepFreeze({
+          ...terminal,
+          activeClaim: undefined,
+          activeClaimedAtMs: undefined,
+        });
+      });
+      database.exec("COMMIT");
+      return Object.freeze(recovered);
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) {
+        throw error;
+      }
+      throw normalizeScheduleContractError(error, "AionUI schedule recovery");
+    }
   }
 
   async appendAionUiShadowEvidence(

@@ -1,6 +1,15 @@
 import { createHash } from "node:crypto";
 import { Cron } from "croner";
-import { workspaceGrantId, workspaceId, type WorkspaceGrantId, type WorkspaceId } from "../../core";
+import {
+  assertDomainGraph,
+  assertWorkspaceGrant,
+  workspaceGrantId,
+  workspaceId,
+  type Workspace,
+  type WorkspaceGrant,
+  type WorkspaceGrantId,
+  type WorkspaceId,
+} from "../../core";
 import {
   AIONUI_GENERAL_WORK_MAX_PROMPT_BYTES,
   assertAionUiNativeConversationId,
@@ -73,6 +82,34 @@ const JOB_KEYS = [
   "updatedAtMs",
   "deletedAtMs",
 ] as const;
+const REGISTRATION_KEYS = ["job", "workspace", "workspaceGrant"] as const;
+const LIST_KEYS = ["limit", "conversationHash"] as const;
+const PERSISTENCE_UPDATE_KEYS = [
+  "jobId",
+  "updatedAtMs",
+  "nativeConversationTitle",
+  "name",
+  "description",
+  "prompt",
+  "schedule",
+  "enabled",
+  "nextRunAtMs",
+  "lastRunAtMs",
+  "lastStatus",
+  "lastIncidentCode",
+] as const;
+const DELETE_KEYS = ["jobId", "deletedAtMs"] as const;
+const CLAIM_KEYS = ["jobId", "claim", "claimedAtMs"] as const;
+const COMPLETION_KEYS = [
+  "jobId",
+  "claim",
+  "completedAtMs",
+  "status",
+  "lastIncidentCode",
+  "nextRunAtMs",
+  "enabled",
+] as const;
+const RECOVERY_KEYS = ["recoveredAtMs"] as const;
 
 export type AionUiSchedule =
   | {
@@ -145,6 +182,108 @@ export interface AionUiScheduleJob {
   readonly createdAtMs: number;
   readonly updatedAtMs: number;
   readonly deletedAtMs?: number;
+}
+
+export interface AionUiScheduleRegistration {
+  readonly job: AionUiScheduleJob;
+  readonly workspace: Workspace;
+  readonly workspaceGrant: WorkspaceGrant;
+}
+
+export interface AionUiScheduleListInput {
+  readonly limit: number;
+  readonly conversationHash?: string;
+}
+
+export interface AionUiSchedulePersistenceUpdateInput {
+  readonly jobId: string;
+  readonly updatedAtMs: number;
+  readonly nativeConversationTitle?: string | null;
+  readonly name?: string;
+  readonly description?: string | null;
+  readonly prompt?: string;
+  readonly schedule?: AionUiSchedule;
+  readonly enabled?: boolean;
+  readonly nextRunAtMs?: number | null;
+  readonly lastRunAtMs?: number | null;
+  readonly lastStatus?: AionUiScheduleLastStatus | null;
+  readonly lastIncidentCode?: string | null;
+}
+
+export interface AionUiScheduleDeleteInput {
+  readonly jobId: string;
+  readonly deletedAtMs: number;
+}
+
+export interface AionUiScheduleClaimInput {
+  readonly jobId: string;
+  readonly claim: string;
+  readonly claimedAtMs: number;
+}
+
+export interface AionUiScheduleCompletionInput {
+  readonly jobId: string;
+  readonly claim: string;
+  readonly completedAtMs: number;
+  readonly status: AionUiScheduleLastStatus;
+  readonly lastIncidentCode?: string;
+  readonly nextRunAtMs?: number;
+  readonly enabled?: boolean;
+}
+
+export interface AionUiScheduleRecoveryInput {
+  readonly recoveredAtMs: number;
+}
+
+export type AionUiScheduleRegistrationResult = Readonly<{
+  status: "stored" | "duplicate";
+  job: AionUiScheduleJob;
+}>;
+
+export type AionUiScheduleMutationResult =
+  | Readonly<{
+      status: "updated" | "deleted" | "active-claim";
+      job: AionUiScheduleJob;
+    }>
+  | Readonly<{
+      status: "not-found";
+    }>;
+
+export type AionUiScheduleClaimResult =
+  | Readonly<{
+      status: "claimed" | "busy";
+      job: AionUiScheduleJob;
+    }>
+  | Readonly<{
+      status: "not-found";
+    }>;
+
+export type AionUiScheduleCompletionResult =
+  | Readonly<{
+      status: "completed" | "claim-mismatch";
+      job: AionUiScheduleJob;
+    }>
+  | Readonly<{
+      status: "not-found";
+    }>;
+
+export interface AionUiScheduledGeneralWorkPersistencePort {
+  registerAionUiSchedule(
+    registration: AionUiScheduleRegistration,
+  ): Promise<AionUiScheduleRegistrationResult>;
+  listAionUiSchedules(input: AionUiScheduleListInput): Promise<readonly AionUiScheduleJob[]>;
+  getAionUiSchedule(jobId: string): Promise<AionUiScheduleJob | null>;
+  updateAionUiSchedule(
+    input: AionUiSchedulePersistenceUpdateInput,
+  ): Promise<AionUiScheduleMutationResult>;
+  deleteAionUiSchedule(input: AionUiScheduleDeleteInput): Promise<AionUiScheduleMutationResult>;
+  claimAionUiScheduleRun(input: AionUiScheduleClaimInput): Promise<AionUiScheduleClaimResult>;
+  completeAionUiScheduleRun(
+    input: AionUiScheduleCompletionInput,
+  ): Promise<AionUiScheduleCompletionResult>;
+  recoverAionUiScheduleRuns(
+    input: AionUiScheduleRecoveryInput,
+  ): Promise<readonly AionUiScheduleJob[]>;
 }
 
 export interface AionUiScheduleIdentity {
@@ -542,21 +681,43 @@ function assertCounter(value: unknown, label: string): asserts value is number {
   }
 }
 
+export function assertAionUiScheduleJobId(value: unknown): asserts value is string {
+  if (typeof value !== "string" || !/^schedule-aionui-[a-f0-9]{64}$/u.test(value)) {
+    fail("invalid-job", "Schedule job identity is invalid");
+  }
+}
+
+function assertConversationHash(value: unknown): asserts value is string {
+  if (typeof value !== "string" || !/^[a-f0-9]{64}$/u.test(value)) {
+    fail("invalid-job", "Schedule conversation hash is invalid");
+  }
+}
+
+function assertLastStatus(
+  value: unknown,
+  allowNull: boolean,
+): asserts value is AionUiScheduleLastStatus | null | undefined {
+  if (value === undefined || (allowNull && value === null)) {
+    return;
+  }
+  if (
+    typeof value !== "string" ||
+    !(ARRAY_FROM_SCHEDULE_LAST_STATUSES as readonly string[]).includes(value)
+  ) {
+    fail("invalid-job", "Schedule last status is unsupported");
+  }
+}
+
+const ARRAY_FROM_SCHEDULE_LAST_STATUSES = ["ok", "error", "skipped", "missed"] as const;
+
 export function assertAionUiScheduleJob(value: unknown): asserts value is AionUiScheduleJob {
   assertRecord(value, "Schedule job", "invalid-job");
   assertExactKeys(value, JOB_KEYS, "Schedule job", "invalid-job");
   if (value.contractVersion !== AIONUI_SCHEDULE_CONTRACT_VERSION) {
     fail("invalid-job", "Schedule job contract version is unsupported");
   }
-  if (typeof value.id !== "string" || !/^schedule-aionui-[a-f0-9]{64}$/u.test(value.id)) {
-    fail("invalid-job", "Schedule job identity is invalid");
-  }
-  if (
-    typeof value.conversationHash !== "string" ||
-    !/^[a-f0-9]{64}$/u.test(value.conversationHash)
-  ) {
-    fail("invalid-job", "Schedule conversation hash is invalid");
-  }
+  assertAionUiScheduleJobId(value.id);
+  assertConversationHash(value.conversationHash);
   try {
     assertAionUiNativeConversationId(value.nativeConversationId);
     workspaceId(value.workspaceId as string);
@@ -602,14 +763,7 @@ export function assertAionUiScheduleJob(value: unknown): asserts value is AionUi
       fail("invalid-job", "Schedule deletedAtMs cannot predate updatedAtMs");
     }
   }
-  if (
-    value.lastStatus !== undefined &&
-    !(["ok", "error", "skipped", "missed"] as const).includes(
-      value.lastStatus as AionUiScheduleLastStatus,
-    )
-  ) {
-    fail("invalid-job", "Schedule last status is unsupported");
-  }
+  assertLastStatus(value.lastStatus, false);
   assertOptionalBoundedText(
     value.lastIncidentCode,
     "Schedule incident code",
@@ -630,6 +784,238 @@ export function assertAionUiScheduleJob(value: unknown): asserts value is AionUi
   if (value.retryCount !== 0 || value.maxRetries !== 0 || value.queueEnabled !== false) {
     fail("invalid-job", "Schedule retry and queue policy is fixed");
   }
+}
+
+export function assertAionUiScheduleRegistration(
+  value: unknown,
+): asserts value is AionUiScheduleRegistration {
+  assertRecord(value, "Schedule registration", "invalid-job");
+  assertExactKeys(value, REGISTRATION_KEYS, "Schedule registration", "invalid-job");
+  assertAionUiScheduleJob(value.job);
+  try {
+    assertDomainGraph({
+      workspaces: [value.workspace as Workspace],
+      tasks: [],
+      sessions: [],
+      workers: [],
+      approvals: [],
+      artifacts: [],
+    });
+    assertWorkspaceGrant(value.workspaceGrant);
+  } catch (error) {
+    fail("invalid-job", "Schedule registration owner authority is invalid", error);
+  }
+
+  const workspace = value.workspace as Workspace;
+  const workspaceGrant = value.workspaceGrant as WorkspaceGrant;
+  if (
+    workspace.state !== "active" ||
+    workspace.id !== value.job.workspaceId ||
+    workspaceGrant.state !== "active" ||
+    workspaceGrant.workspaceId !== workspace.id ||
+    workspaceGrant.grantId !== value.job.workspaceGrantId
+  ) {
+    fail("invalid-job", "Schedule registration owner authority does not match the job");
+  }
+  if (
+    value.job.deletedAtMs !== undefined ||
+    value.job.activeClaim !== undefined ||
+    value.job.activeClaimedAtMs !== undefined ||
+    value.job.runSequence !== 0 ||
+    value.job.runCount !== 0
+  ) {
+    fail("invalid-job", "New schedule registration cannot contain prior run state");
+  }
+}
+
+export function assertAionUiScheduleListInput(
+  value: unknown,
+): asserts value is AionUiScheduleListInput {
+  assertRecord(value, "Schedule list input", "invalid-job");
+  assertExactKeys(value, LIST_KEYS, "Schedule list input", "invalid-job");
+  if (
+    typeof value.limit !== "number" ||
+    !Number.isSafeInteger(value.limit) ||
+    value.limit < 1 ||
+    value.limit > AIONUI_SCHEDULE_MAX_JOBS
+  ) {
+    fail("invalid-job", "Schedule list limit must be between 1 and 100");
+  }
+  if (value.conversationHash !== undefined) {
+    assertConversationHash(value.conversationHash);
+  }
+}
+
+function assertOptionalTimestampOrNull(value: unknown, label: string): void {
+  if (value !== undefined && value !== null) {
+    assertSafeTimestamp(value, label, "invalid-job");
+  }
+}
+
+export function assertAionUiSchedulePersistenceUpdateInput(
+  value: unknown,
+): asserts value is AionUiSchedulePersistenceUpdateInput {
+  assertRecord(value, "Schedule persistence update", "invalid-job");
+  assertExactKeys(value, PERSISTENCE_UPDATE_KEYS, "Schedule persistence update", "invalid-job");
+  assertAionUiScheduleJobId(value.jobId);
+  assertSafeTimestamp(value.updatedAtMs, "Schedule persistence update time", "invalid-job");
+  if (!Object.keys(value).some((key) => key !== "jobId" && key !== "updatedAtMs")) {
+    fail("invalid-job", "Schedule persistence update must change a mutable field");
+  }
+  if (value.nativeConversationTitle !== undefined && value.nativeConversationTitle !== null) {
+    assertBoundedText(
+      value.nativeConversationTitle,
+      "Native conversation title",
+      MAX_CONVERSATION_TITLE_BYTES,
+      "invalid-job",
+    );
+  }
+  if (value.name !== undefined) {
+    assertBoundedText(value.name, "Schedule name", MAX_NAME_BYTES, "invalid-job");
+  }
+  if (value.description !== undefined && value.description !== null) {
+    assertBoundedText(
+      value.description,
+      "Schedule description",
+      MAX_DESCRIPTION_BYTES,
+      "invalid-job",
+    );
+  }
+  if (value.prompt !== undefined) {
+    assertPlainGeneralWorkPrompt(value.prompt, "invalid-job");
+  }
+  if (value.schedule !== undefined) {
+    assertSchedule(value.schedule, value.updatedAtMs, "invalid-job", true);
+  }
+  if (value.enabled !== undefined && typeof value.enabled !== "boolean") {
+    fail("invalid-job", "Schedule persistence enabled state must be boolean");
+  }
+  assertOptionalTimestampOrNull(value.nextRunAtMs, "Schedule persistence next run");
+  assertOptionalTimestampOrNull(value.lastRunAtMs, "Schedule persistence last run");
+  assertLastStatus(value.lastStatus, true);
+  if (value.lastIncidentCode !== undefined && value.lastIncidentCode !== null) {
+    assertBoundedText(
+      value.lastIncidentCode,
+      "Schedule incident code",
+      MAX_INCIDENT_CODE_BYTES,
+      "invalid-job",
+    );
+  }
+}
+
+export function assertAionUiScheduleDeleteInput(
+  value: unknown,
+): asserts value is AionUiScheduleDeleteInput {
+  assertRecord(value, "Schedule delete input", "invalid-job");
+  assertExactKeys(value, DELETE_KEYS, "Schedule delete input", "invalid-job");
+  assertAionUiScheduleJobId(value.jobId);
+  assertSafeTimestamp(value.deletedAtMs, "Schedule deletion time", "invalid-job");
+}
+
+export function assertAionUiScheduleClaimInput(
+  value: unknown,
+): asserts value is AionUiScheduleClaimInput {
+  assertRecord(value, "Schedule claim input", "invalid-job");
+  assertExactKeys(value, CLAIM_KEYS, "Schedule claim input", "invalid-job");
+  assertAionUiScheduleJobId(value.jobId);
+  assertBoundedText(value.claim, "Schedule claim", MAX_CLAIM_BYTES, "invalid-job");
+  assertSafeTimestamp(value.claimedAtMs, "Schedule claim time", "invalid-job");
+}
+
+export function assertAionUiScheduleCompletionInput(
+  value: unknown,
+): asserts value is AionUiScheduleCompletionInput {
+  assertRecord(value, "Schedule completion input", "invalid-job");
+  assertExactKeys(value, COMPLETION_KEYS, "Schedule completion input", "invalid-job");
+  assertAionUiScheduleJobId(value.jobId);
+  assertBoundedText(value.claim, "Schedule claim", MAX_CLAIM_BYTES, "invalid-job");
+  assertSafeTimestamp(value.completedAtMs, "Schedule completion time", "invalid-job");
+  assertLastStatus(value.status, false);
+  if (value.lastIncidentCode !== undefined) {
+    assertBoundedText(
+      value.lastIncidentCode,
+      "Schedule incident code",
+      MAX_INCIDENT_CODE_BYTES,
+      "invalid-job",
+    );
+  }
+  if (value.nextRunAtMs !== undefined) {
+    assertSafeTimestamp(value.nextRunAtMs, "Schedule next run", "invalid-job");
+  }
+  if (value.enabled !== undefined && typeof value.enabled !== "boolean") {
+    fail("invalid-job", "Schedule completion enabled state must be boolean");
+  }
+}
+
+export function assertAionUiScheduleRecoveryInput(
+  value: unknown,
+): asserts value is AionUiScheduleRecoveryInput {
+  assertRecord(value, "Schedule recovery input", "invalid-job");
+  assertExactKeys(value, RECOVERY_KEYS, "Schedule recovery input", "invalid-job");
+  assertSafeTimestamp(value.recoveredAtMs, "Schedule recovery time", "invalid-job");
+}
+
+export function assertAionUiScheduleJobList(
+  value: unknown,
+): asserts value is readonly AionUiScheduleJob[] {
+  if (!Array.isArray(value) || value.length > AIONUI_SCHEDULE_MAX_JOBS) {
+    fail("invalid-job", "Schedule job list is invalid");
+  }
+  for (const job of value) {
+    assertAionUiScheduleJob(job);
+  }
+}
+
+function assertResultJob(
+  value: Record<string, unknown>,
+  statuses: readonly string[],
+  label: string,
+): void {
+  assertExactKeys(value, ["status", "job"], label, "invalid-job");
+  if (typeof value.status !== "string" || !statuses.includes(value.status)) {
+    fail("invalid-job", `${label} status is unsupported`);
+  }
+  assertAionUiScheduleJob(value.job);
+}
+
+export function assertAionUiScheduleRegistrationResult(
+  value: unknown,
+): asserts value is AionUiScheduleRegistrationResult {
+  assertRecord(value, "Schedule registration result", "invalid-job");
+  assertResultJob(value, ["stored", "duplicate"], "Schedule registration result");
+}
+
+export function assertAionUiScheduleMutationResult(
+  value: unknown,
+): asserts value is AionUiScheduleMutationResult {
+  assertRecord(value, "Schedule mutation result", "invalid-job");
+  if (value.status === "not-found") {
+    assertExactKeys(value, ["status"], "Schedule mutation result", "invalid-job");
+    return;
+  }
+  assertResultJob(value, ["updated", "deleted", "active-claim"], "Schedule mutation result");
+}
+
+export function assertAionUiScheduleClaimResult(
+  value: unknown,
+): asserts value is AionUiScheduleClaimResult {
+  assertRecord(value, "Schedule claim result", "invalid-job");
+  if (value.status === "not-found") {
+    assertExactKeys(value, ["status"], "Schedule claim result", "invalid-job");
+    return;
+  }
+  assertResultJob(value, ["claimed", "busy"], "Schedule claim result");
+}
+
+export function assertAionUiScheduleCompletionResult(
+  value: unknown,
+): asserts value is AionUiScheduleCompletionResult {
+  assertRecord(value, "Schedule completion result", "invalid-job");
+  if (value.status === "not-found") {
+    assertExactKeys(value, ["status"], "Schedule completion result", "invalid-job");
+    return;
+  }
+  assertResultJob(value, ["completed", "claim-mismatch"], "Schedule completion result");
 }
 
 export function toNativeCronJob(job: AionUiScheduleJob): NativeAionUiCronJob {

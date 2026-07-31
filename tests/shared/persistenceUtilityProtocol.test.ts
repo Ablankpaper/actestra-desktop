@@ -8,6 +8,7 @@ import {
 } from "../../apps/desktop/src/shared/persistenceUtilityProtocol";
 import { createGeneralWorkCheckpoint } from "../fixtures/generalWorkRecovery";
 import { createAionUiGeneralWorkRegistration } from "../fixtures/aionuiGeneralWork";
+import { createAionUiScheduleRegistration } from "../fixtures/aionuiSchedule";
 
 describe("persistence utility protocol", () => {
   it("accepts exact ready, request, and operation-specific response envelopes", () => {
@@ -162,6 +163,165 @@ describe("persistence utility protocol", () => {
         },
       }),
     ).not.toThrow();
+  });
+
+  it("accepts only the eight closed AionUI schedule persistence operations", () => {
+    const registration = createAionUiScheduleRegistration("protocol");
+    const claimedJob = {
+      ...registration.job,
+      nextRunAtMs: undefined,
+      activeClaim: "claim-protocol-1",
+      activeClaimedAtMs: registration.job.updatedAtMs + 1,
+      runSequence: 1,
+      updatedAtMs: registration.job.updatedAtMs + 1,
+    };
+    const requests = [
+      {
+        operation: "register-aionui-schedule",
+        payload: { registration },
+      },
+      {
+        operation: "list-aionui-schedules",
+        payload: { input: { limit: 100, conversationHash: registration.job.conversationHash } },
+      },
+      {
+        operation: "get-aionui-schedule",
+        payload: { jobId: registration.job.id },
+      },
+      {
+        operation: "update-aionui-schedule",
+        payload: {
+          input: {
+            jobId: registration.job.id,
+            updatedAtMs: registration.job.updatedAtMs + 1,
+            enabled: false,
+          },
+        },
+      },
+      {
+        operation: "delete-aionui-schedule",
+        payload: {
+          input: {
+            jobId: registration.job.id,
+            deletedAtMs: registration.job.updatedAtMs + 1,
+          },
+        },
+      },
+      {
+        operation: "claim-aionui-schedule-run",
+        payload: {
+          input: {
+            jobId: registration.job.id,
+            claim: "claim-protocol-1",
+            claimedAtMs: registration.job.updatedAtMs + 1,
+          },
+        },
+      },
+      {
+        operation: "complete-aionui-schedule-run",
+        payload: {
+          input: {
+            jobId: registration.job.id,
+            claim: "claim-protocol-1",
+            completedAtMs: registration.job.updatedAtMs + 2,
+            status: "ok",
+          },
+        },
+      },
+      {
+        operation: "recover-aionui-schedule-runs",
+        payload: { input: { recoveredAtMs: registration.job.updatedAtMs + 3 } },
+      },
+    ] as const;
+    for (const [index, request] of requests.entries()) {
+      expect(() =>
+        assertPersistenceUtilityRequest({
+          protocolVersion: 1,
+          type: "request",
+          requestId: `persistence-schedule-request-${String(index + 1)}`,
+          ...request,
+        }),
+      ).not.toThrow();
+    }
+
+    const responses = [
+      {
+        operation: "register-aionui-schedule",
+        result: { status: "stored", job: registration.job },
+      },
+      { operation: "list-aionui-schedules", result: [registration.job] },
+      { operation: "get-aionui-schedule", result: registration.job },
+      {
+        operation: "update-aionui-schedule",
+        result: { status: "updated", job: registration.job },
+      },
+      {
+        operation: "delete-aionui-schedule",
+        result: { status: "not-found" },
+      },
+      {
+        operation: "claim-aionui-schedule-run",
+        result: { status: "claimed", job: claimedJob },
+      },
+      {
+        operation: "complete-aionui-schedule-run",
+        result: { status: "claim-mismatch", job: claimedJob },
+      },
+      { operation: "recover-aionui-schedule-runs", result: [registration.job] },
+    ] as const;
+    for (const [index, response] of responses.entries()) {
+      expect(() =>
+        assertPersistenceUtilityMessage({
+          protocolVersion: 1,
+          type: "response",
+          requestId: `persistence-schedule-response-${String(index + 1)}`,
+          status: "ok",
+          ...response,
+        }),
+      ).not.toThrow();
+    }
+  });
+
+  it("rejects schedule authority fields and operation-result substitution", () => {
+    const registration = createAionUiScheduleRegistration("protocol-reject");
+    for (const request of [
+      {
+        operation: "list-aionui-schedules",
+        payload: { input: { limit: 100, rootPath: registration.workspaceGrant.rootPath } },
+      },
+      {
+        operation: "list-aionui-schedules",
+        payload: { input: { limit: 100, credential: "private" } },
+      },
+      {
+        operation: "list-aionui-schedules",
+        payload: { input: { limit: 100, conversationHash: "conversation-native" } },
+      },
+      {
+        operation: "claim-aionui-schedule-run",
+        payload: { input: { jobId: registration.job.id, claim: "claim-without-time" } },
+      },
+    ]) {
+      expect(() =>
+        assertPersistenceUtilityRequest({
+          protocolVersion: 1,
+          type: "request",
+          requestId: "persistence-schedule-rejected",
+          ...request,
+        }),
+      ).toThrow(PersistenceUtilityProtocolError);
+    }
+
+    expect(() =>
+      assertPersistenceUtilityMessage({
+        protocolVersion: 1,
+        type: "response",
+        requestId: "persistence-schedule-result-substitution",
+        operation: "list-aionui-schedules",
+        status: "ok",
+        result: { status: "stored", job: registration.job },
+      }),
+    ).toThrow(PersistenceUtilityProtocolError);
   });
 
   it("rejects extra fields, incompatible versions, and invalid result shapes", () => {

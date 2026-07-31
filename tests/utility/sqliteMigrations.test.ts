@@ -60,7 +60,7 @@ describe("Actestra SQLite migrations", () => {
     expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
       fromVersion: 0,
       toVersion: CURRENT_CORE_SCHEMA_VERSION,
-      appliedVersions: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      appliedVersions: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
     });
     expect(pragmaNumber(database, "application_id")).toBe(ACTESTRA_SQLITE_APPLICATION_ID);
     expect(pragmaNumber(database, "user_version")).toBe(CURRENT_CORE_SCHEMA_VERSION);
@@ -116,6 +116,10 @@ describe("Actestra SQLite migrations", () => {
       {
         version: 12,
         name: "aionui-office-document-kind",
+      },
+      {
+        version: 13,
+        name: "aionui-scheduled-general-work",
       },
     ]);
   });
@@ -350,7 +354,9 @@ describe("Actestra SQLite migrations", () => {
         Buffer.from("old"),
       );
 
-    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
+    expect(
+      migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 12), APPLIED_AT),
+    ).toEqual({
       fromVersion: 6,
       toVersion: 12,
       appliedVersions: [7, 8, 9, 10, 11, 12],
@@ -693,7 +699,9 @@ describe("Actestra SQLite migrations", () => {
       )
       .run("task-existing-writing-kind", 1, "1".repeat(64), "writing-artifact", APPLIED_AT);
 
-    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
+    expect(
+      migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 12), APPLIED_AT),
+    ).toEqual({
       fromVersion: 11,
       toVersion: 12,
       appliedVersions: [12],
@@ -744,6 +752,108 @@ describe("Actestra SQLite migrations", () => {
         )
         .run("task-invalid-office-kind", 1, "3".repeat(64), "presentation-artifact", APPLIED_AT),
     ).toThrow();
+  });
+
+  it("adds schema 13 schedule authority without changing schema 12 Office rows", () => {
+    const database = createDatabase();
+    migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 12), APPLIED_AT);
+    database
+      .prepare(
+        `INSERT INTO workspaces (id, name, state, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run("workspace-schedule-migration", "Schedule workspace", "active", APPLIED_AT, APPLIED_AT);
+    database
+      .prepare(
+        `INSERT INTO tasks (
+           id, workspace_id, title, state, active_session_id, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, NULL, ?, ?)`,
+      )
+      .run(
+        "task-office-before-schedule",
+        "workspace-schedule-migration",
+        "Office before schedule",
+        "ready",
+        APPLIED_AT,
+        APPLIED_AT,
+      );
+    database
+      .prepare(
+        `INSERT INTO aionui_general_work_journeys (
+           task_id, contract_version, conversation_hash, journey_kind, created_at
+         ) VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(
+        "task-office-before-schedule",
+        1,
+        "4".repeat(64),
+        "office-document-artifact",
+        APPLIED_AT,
+      );
+
+    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
+      fromVersion: 12,
+      toVersion: 13,
+      appliedVersions: [13],
+    });
+    expect(
+      database
+        .prepare(
+          `SELECT task_id, journey_kind
+           FROM aionui_general_work_journeys
+           WHERE task_id = ?`,
+        )
+        .get("task-office-before-schedule"),
+    ).toEqual({
+      task_id: "task-office-before-schedule",
+      journey_kind: "office-document-artifact",
+    });
+    expect(
+      database
+        .prepare(
+          `SELECT name
+           FROM sqlite_schema
+           WHERE type = 'table' AND name = 'aionui_schedule_jobs'`,
+        )
+        .get(),
+    ).toEqual({ name: "aionui_schedule_jobs" });
+    expect(
+      database
+        .prepare("SELECT name FROM pragma_table_info('aionui_schedule_jobs') ORDER BY cid")
+        .all()
+        .map((row) => (row as { name: string }).name),
+    ).toEqual([
+      "job_id",
+      "contract_version",
+      "conversation_hash",
+      "native_conversation_id",
+      "native_conversation_title",
+      "workspace_id",
+      "workspace_grant_id",
+      "name",
+      "description",
+      "prompt",
+      "schedule_kind",
+      "schedule_value",
+      "schedule_time_zone",
+      "schedule_description",
+      "enabled",
+      "next_run_at_ms",
+      "last_run_at_ms",
+      "last_status",
+      "last_incident_code",
+      "active_claim",
+      "active_claimed_at_ms",
+      "run_sequence",
+      "run_count",
+      "retry_count",
+      "max_retries",
+      "queue_enabled",
+      "created_at_ms",
+      "updated_at_ms",
+      "deleted_at_ms",
+      "job_json",
+    ]);
   });
 
   it("rejects a future schema without changing its version", () => {

@@ -4,6 +4,18 @@ import type {
   AionUiApprovalDecisionRecord,
   AionUiGeneralWorkLink,
   AionUiGeneralWorkRegistration,
+  AionUiScheduleClaimInput,
+  AionUiScheduleClaimResult,
+  AionUiScheduleCompletionInput,
+  AionUiScheduleCompletionResult,
+  AionUiScheduleDeleteInput,
+  AionUiScheduleJob,
+  AionUiScheduleListInput,
+  AionUiScheduleMutationResult,
+  AionUiSchedulePersistenceUpdateInput,
+  AionUiScheduleRecoveryInput,
+  AionUiScheduleRegistration,
+  AionUiScheduleRegistrationResult,
   AionUiShadowEvidence,
   AionUiShadowEvidenceSummary,
   AppendAionUiShadowEvidenceResult,
@@ -344,6 +356,50 @@ export class PersistenceUtilityClient implements ActestraPersistencePort {
     limit: number,
   ): Promise<readonly AionUiGeneralWorkLink[]> {
     return this.invoke("list-prepared-aionui-general-work-links", { limit });
+  }
+
+  async registerAionUiSchedule(
+    registration: AionUiScheduleRegistration,
+  ): Promise<AionUiScheduleRegistrationResult> {
+    return this.invoke("register-aionui-schedule", { registration });
+  }
+
+  async listAionUiSchedules(input: AionUiScheduleListInput): Promise<readonly AionUiScheduleJob[]> {
+    return this.invoke("list-aionui-schedules", { input });
+  }
+
+  async getAionUiSchedule(jobId: string): Promise<AionUiScheduleJob | null> {
+    return this.invoke("get-aionui-schedule", { jobId });
+  }
+
+  async updateAionUiSchedule(
+    input: AionUiSchedulePersistenceUpdateInput,
+  ): Promise<AionUiScheduleMutationResult> {
+    return this.invoke("update-aionui-schedule", { input });
+  }
+
+  async deleteAionUiSchedule(
+    input: AionUiScheduleDeleteInput,
+  ): Promise<AionUiScheduleMutationResult> {
+    return this.invoke("delete-aionui-schedule", { input });
+  }
+
+  async claimAionUiScheduleRun(
+    input: AionUiScheduleClaimInput,
+  ): Promise<AionUiScheduleClaimResult> {
+    return this.invoke("claim-aionui-schedule-run", { input });
+  }
+
+  async completeAionUiScheduleRun(
+    input: AionUiScheduleCompletionInput,
+  ): Promise<AionUiScheduleCompletionResult> {
+    return this.invoke("complete-aionui-schedule-run", { input });
+  }
+
+  async recoverAionUiScheduleRuns(
+    input: AionUiScheduleRecoveryInput,
+  ): Promise<readonly AionUiScheduleJob[]> {
+    return this.invoke("recover-aionui-schedule-runs", { input });
   }
 
   async close(): Promise<void> {
