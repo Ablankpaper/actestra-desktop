@@ -1370,6 +1370,7 @@ class SqliteCorePersistence implements ActestraPersistencePort {
     const database = this.requireDatabase();
     assertDomainGraph(graph);
     database.exec("BEGIN IMMEDIATE");
+    database.exec("PRAGMA defer_foreign_keys = ON");
 
     try {
       database.exec(`
@@ -2560,7 +2561,11 @@ class SqliteCorePersistence implements ActestraPersistencePort {
       if (error instanceof PersistenceError) {
         throw error;
       }
-      throw normalizeScheduleContractError(error, "AionUI schedule update");
+      throw new PersistenceError(
+        "corrupt-database",
+        "Actestra could not update the AionUI schedule",
+        { cause: error },
+      );
     }
   }
 
@@ -2613,7 +2618,11 @@ class SqliteCorePersistence implements ActestraPersistencePort {
       if (error instanceof PersistenceError) {
         throw error;
       }
-      throw normalizeScheduleContractError(error, "AionUI schedule deletion");
+      throw new PersistenceError(
+        "corrupt-database",
+        "Actestra could not delete the AionUI schedule",
+        { cause: error },
+      );
     }
   }
 
@@ -2663,14 +2672,18 @@ class SqliteCorePersistence implements ActestraPersistencePort {
       database.exec("COMMIT");
       return deepFreeze({
         status: "claimed",
-        job: { ...claimed, nextRunAtMs: undefined },
+        job: claimed,
       });
     } catch (error) {
       rollback(database);
       if (error instanceof PersistenceError) {
         throw error;
       }
-      throw normalizeScheduleContractError(error, "AionUI schedule claim");
+      throw new PersistenceError(
+        "corrupt-database",
+        "Actestra could not claim the AionUI schedule run",
+        { cause: error },
+      );
     }
   }
 
@@ -2708,7 +2721,7 @@ class SqliteCorePersistence implements ActestraPersistencePort {
       const completed = normalizedScheduleJob({
         ...existing,
         enabled: stable.enabled ?? existing.enabled,
-        nextRunAtMs: stable.nextRunAtMs,
+        nextRunAtMs: stable.nextRunAtMs ?? undefined,
         lastRunAtMs: stable.completedAtMs,
         lastStatus: stable.status,
         lastIncidentCode: stable.lastIncidentCode,
@@ -2734,19 +2747,18 @@ class SqliteCorePersistence implements ActestraPersistencePort {
       database.exec("COMMIT");
       return deepFreeze({
         status: "completed",
-        job: {
-          ...completed,
-          activeClaim: undefined,
-          activeClaimedAtMs: undefined,
-          lastIncidentCode: completed.lastIncidentCode,
-        },
+        job: completed,
       });
     } catch (error) {
       rollback(database);
       if (error instanceof PersistenceError) {
         throw error;
       }
-      throw normalizeScheduleContractError(error, "AionUI schedule completion");
+      throw new PersistenceError(
+        "corrupt-database",
+        "Actestra could not complete the AionUI schedule run",
+        { cause: error },
+      );
     }
   }
 
@@ -2819,11 +2831,7 @@ class SqliteCorePersistence implements ActestraPersistencePort {
             "AionUI schedule recovery lost its active claim",
           );
         }
-        return deepFreeze({
-          ...terminal,
-          activeClaim: undefined,
-          activeClaimedAtMs: undefined,
-        });
+        return terminal;
       });
       database.exec("COMMIT");
       return Object.freeze(recovered);
@@ -2832,7 +2840,11 @@ class SqliteCorePersistence implements ActestraPersistencePort {
       if (error instanceof PersistenceError) {
         throw error;
       }
-      throw normalizeScheduleContractError(error, "AionUI schedule recovery");
+      throw new PersistenceError(
+        "corrupt-database",
+        "Actestra could not recover interrupted AionUI schedule runs",
+        { cause: error },
+      );
     }
   }
 

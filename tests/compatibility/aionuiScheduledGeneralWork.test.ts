@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { workspaceId, workspaceGrantId } from "../../apps/desktop/src/core";
+import { ACTESTRA_GENERAL_WORKER_AGENT_TYPE } from "../../apps/desktop/src/compatibility/aionui/scheduleContract";
 import {
-  ACTESTRA_GENERAL_WORKER_AGENT_TYPE,
   AIONUI_SCHEDULE_CONTRACT_VERSION,
   AionUiScheduledGeneralWorkError,
   assertAionUiScheduleCreateInput,
@@ -286,6 +286,7 @@ describe("Actestra-owned scheduled General Work contract", () => {
       createJob({ queueEnabled: true as false }),
       createJob({ lastIncidentCode: "x".repeat(129) }),
       createJob({ updatedAtMs: NOW_MS - 1 }),
+      createJob({ conversationHash: "b".repeat(64) }),
     ]) {
       expect(() => assertAionUiScheduleJob(rejected)).toThrow(AionUiScheduledGeneralWorkError);
     }

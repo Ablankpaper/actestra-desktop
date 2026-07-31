@@ -233,6 +233,10 @@
       "destination": "packages/desktop/src/actestra/compatibility/aionui/generalWorkJourney.ts"
     },
     {
+      "source": "apps/desktop/src/compatibility/aionui/scheduleContract.ts",
+      "destination": "packages/desktop/src/actestra/compatibility/aionui/scheduleContract.ts"
+    },
+    {
       "source": "apps/desktop/src/compatibility/aionui/scheduleBridge.ts",
       "destination": "packages/desktop/src/actestra/compatibility/aionui/scheduleBridge.ts"
     },
@@ -432,6 +436,7 @@
     }
   ],
   "expectedChangedFiles": [
+    "bun.lock",
     "package.json",
     "packages/desktop/electron-builder.yml",
     "packages/desktop/electron.vite.config.ts",
@@ -441,6 +446,7 @@
     "packages/desktop/src/actestra/compatibility/aionui/generalWorkJourney.ts",
     "packages/desktop/src/actestra/compatibility/aionui/index.ts",
     "packages/desktop/src/actestra/compatibility/aionui/nativeObservations.ts",
+    "packages/desktop/src/actestra/compatibility/aionui/scheduleContract.ts",
     "packages/desktop/src/actestra/compatibility/aionui/scheduleBridge.ts",
     "packages/desktop/src/actestra/compatibility/aionui/scheduledGeneralWork.ts",
     "packages/desktop/src/actestra/compatibility/aionui/shadowProjection.ts",
@@ -584,6 +590,7 @@
     "tests/unit/actestra/generalWorkerProcessAdapter.test.ts",
     "tests/unit/actestra/productBoundary.test.ts",
     "tests/unit/actestra/scheduleNativeWiring.test.ts",
+    "tests/unit/actestra/scheduleSmoke.test.ts",
     "tests/unit/previews/PreviewContext.dom.test.tsx",
     "tests/unit/actestra/persistenceUtilityClient.test.ts",
     "tests/unit/actestra/shadowPersistence.test.ts",

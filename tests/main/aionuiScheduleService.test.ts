@@ -8,13 +8,17 @@ import type {
   AionUiGeneralWorkIntent,
   AionUiGeneralWorkProjection,
 } from "../../apps/desktop/src/compatibility/aionui";
+import { parseAionUiGeneralWorkCommand } from "../../apps/desktop/src/compatibility/aionui";
 import { instant, taskId, workspaceGrantId } from "../../apps/desktop/src/core";
+import { AionUiGeneralWorkJourneyService } from "../../apps/desktop/src/main/compatibility/aionuiGeneralWorkJourneyService";
 import {
   AionUiScheduleService,
   SystemAionUiScheduleClock,
   SystemAionUiScheduleTimers,
 } from "../../apps/desktop/src/main/compatibility/aionuiScheduleService";
 import type { AionUiGeneralWorkNativeContext } from "../../apps/desktop/src/main/compatibility/aionuiGeneralWorkNativeContext";
+import { createScopedNativeToolPlatform } from "../../apps/desktop/src/main/privileged/scopedNativeToolPlatform";
+import { DeterministicAgentClock } from "../../apps/desktop/src/main/workers/deterministicFakeAgentAdapter";
 import { openSqliteCorePersistence } from "../../apps/desktop/src/utility/persistence/sqliteCorePersistence";
 import { createAionUiScheduleRegistration } from "../fixtures/aionuiSchedule";
 
@@ -134,6 +138,10 @@ class FakeScheduleJourney {
 
   readonly close = vi.fn(async (): Promise<void> => {});
 
+  readonly interruptPreparedSubmission = vi.fn(
+    async (): Promise<AionUiGeneralWorkProjection | null> => null,
+  );
+
   hold(): () => void {
     this.released = false;
     this.idle = new Promise<void>((resolve) => {
@@ -212,6 +220,7 @@ describe("AionUiScheduleService", () => {
       journey: {
         submitFromTrustedContext: vi.fn(),
         list: vi.fn(),
+        interruptPreparedSubmission: vi.fn(async () => null),
         waitForIdle: vi.fn(),
         close: vi.fn(),
       },
@@ -283,6 +292,111 @@ describe("AionUiScheduleService", () => {
     expect(events).toEqual([{ type: "cron.job-created", payload: created }]);
   });
 
+  it("arms the durable timer when registration resolves an idempotent persistence race", async () => {
+    const directory = createTestDirectory();
+    const persistence = openSqliteCorePersistence(directory);
+    persistences.push(persistence);
+    const registration = createAionUiScheduleRegistration("registration-race", directory);
+    vi.spyOn(persistence, "registerAionUiSchedule").mockResolvedValueOnce({
+      status: "duplicate",
+      job: registration.job,
+    });
+    const timers = new FakeScheduleTimers();
+    const service = new AionUiScheduleService({
+      persistence,
+      clock: new FakeScheduleClock(registration.job.createdAtMs),
+      timers,
+      nativeContext: {
+        resolve: vi.fn(async () => ({
+          rootPath: registration.workspaceGrant.rootPath,
+          displayName: registration.workspaceGrant.displayName,
+        })),
+      },
+      journey: new FakeScheduleJourney(new FakeScheduleClock(registration.job.createdAtMs)),
+    });
+    const events: unknown[] = [];
+    service.subscribe((event) => events.push(event));
+
+    await service.create({
+      name: registration.job.name,
+      description: registration.job.description,
+      schedule: registration.job.schedule,
+      prompt: registration.job.prompt,
+      conversation_id: registration.job.nativeConversationId,
+      conversation_title: registration.job.nativeConversationTitle,
+      created_by: "user",
+      execution_mode: "existing",
+      queue_enabled: false,
+    });
+
+    expect(timers.pending()).toEqual([
+      { jobId: registration.job.id, atMs: registration.job.nextRunAtMs },
+    ]);
+    expect(events).toEqual([]);
+  });
+
+  it("reads the authoritative creation time only after its per-job queue is available", async () => {
+    const directory = createTestDirectory();
+    const persistence = openSqliteCorePersistence(directory);
+    persistences.push(persistence);
+    const workspaceRoot = path.join(directory, "serialized-create-workspace");
+    fs.mkdirSync(workspaceRoot);
+    const startedAtMs = Date.parse("2026-07-31T09:00:00.000Z");
+    const clock = new FakeScheduleClock(startedAtMs);
+    let releaseContext!: () => void;
+    const contextGate = new Promise<void>((resolve) => {
+      releaseContext = resolve;
+    });
+    let markContextEntered!: () => void;
+    const contextEntered = new Promise<void>((resolve) => {
+      markContextEntered = resolve;
+    });
+    const service = new AionUiScheduleService({
+      persistence,
+      clock,
+      timers: new FakeScheduleTimers(),
+      nativeContext: {
+        resolve: async () => {
+          markContextEntered();
+          await contextGate;
+          return { rootPath: workspaceRoot, displayName: "Serialized create workspace" };
+        },
+      },
+      journey: new FakeScheduleJourney(clock),
+    });
+    const input = {
+      name: "Serialized schedule creation",
+      schedule: {
+        kind: "every" as const,
+        everyMs: 60_000,
+        description: "Every minute",
+      },
+      prompt: "/actestra Produce the serialized schedule artifact.",
+      conversation_id: "conversation-native-serialized-schedule-create",
+      created_by: "user" as const,
+      execution_mode: "existing" as const,
+      queue_enabled: false as const,
+    };
+
+    const first = service.create(input);
+    await contextEntered;
+    clock.set(startedAtMs + 30_000);
+    const duplicate = service.create(input);
+    clock.set(startedAtMs + 61_000);
+    releaseContext();
+    await Promise.all([first, duplicate]);
+
+    await expect(persistence.listAionUiSchedules({ limit: 100 })).resolves.toEqual([
+      expect.objectContaining({
+        createdAtMs: startedAtMs,
+        lastRunAtMs: startedAtMs + 61_000,
+        lastStatus: "missed",
+        lastIncidentCode: "missed-occurrence",
+        nextRunAtMs: startedAtMs + 121_000,
+      }),
+    ]);
+  });
+
   it("rejects a native context rooted at the filesystem boundary", async () => {
     const directory = createTestDirectory();
     const persistence = openSqliteCorePersistence(directory);
@@ -302,6 +416,7 @@ describe("AionUiScheduleService", () => {
       journey: {
         submitFromTrustedContext: vi.fn(),
         list: vi.fn(),
+        interruptPreparedSubmission: vi.fn(async () => null),
         waitForIdle: vi.fn(),
         close: vi.fn(),
       },
@@ -345,11 +460,12 @@ describe("AionUiScheduleService", () => {
       journey: {
         submitFromTrustedContext: vi.fn(),
         list: vi.fn(),
+        interruptPreparedSubmission: vi.fn(async () => null),
         waitForIdle: vi.fn(),
         close: vi.fn(),
       },
     });
-    await service.recover();
+    await expect(service.recover()).resolves.toBeUndefined();
 
     expect(timers.pending()).toEqual([
       {
@@ -357,6 +473,210 @@ describe("AionUiScheduleService", () => {
         atMs: registration.job.nextRunAtMs,
       },
     ]);
+  });
+
+  it("terminalizes an interrupted prepared scheduled task before generic recovery", async () => {
+    const directory = createTestDirectory();
+    const persistence = openSqliteCorePersistence(directory);
+    persistences.push(persistence);
+    const registration = createAionUiScheduleRegistration("prepared-recovery", directory);
+    await persistence.registerAionUiSchedule(registration);
+    const claimedAtMs = registration.job.createdAtMs + 1_000;
+    const claimed = await persistence.claimAionUiScheduleRun({
+      jobId: registration.job.id,
+      claim: "schedule-prepared-recovery-claim",
+      claimedAtMs,
+    });
+    if (claimed.status !== "claimed") {
+      throw new Error("Schedule recovery test could not create its active claim");
+    }
+    const parsed = parseAionUiGeneralWorkCommand(registration.job.prompt);
+    if (parsed === null) {
+      throw new Error("Schedule recovery fixture has no General Work prompt");
+    }
+    const journeyClock = new DeterministicAgentClock(instant(new Date(claimedAtMs).toISOString()));
+    const journey = new AionUiGeneralWorkJourneyService({
+      persistence,
+      nativeTools: createScopedNativeToolPlatform({ persistence, clock: journeyClock }),
+      clock: journeyClock,
+      nativeContext: {
+        resolve: async () => {
+          throw new Error("Scheduled recovery must use the persisted grant");
+        },
+      },
+      launchWorker: async () => {
+        throw new Error("Injected crash after scheduled task registration");
+      },
+    });
+    const submissionId = `${registration.job.id}:run:${String(claimed.job.runSequence)}`;
+    await expect(
+      journey.submitFromTrustedContext(
+        {
+          contractVersion: 1,
+          nativeConversationId: registration.job.nativeConversationId,
+          submissionId,
+          prompt: parsed.prompt,
+          journeyKind: "prompt-artifact",
+        },
+        {
+          rootPath: registration.workspaceGrant.rootPath,
+          displayName: registration.workspaceGrant.displayName,
+        },
+      ),
+    ).rejects.toThrow("Injected crash");
+    const clock = new FakeScheduleClock(claimedAtMs + 1_000);
+    vi.spyOn(journey, "interruptPreparedSubmission").mockRejectedValueOnce(
+      new Error("Injected prepared-schedule interruption failure"),
+    );
+    const timers = new FakeScheduleTimers();
+    const service = new AionUiScheduleService({
+      persistence,
+      clock,
+      timers,
+      nativeContext: {
+        resolve: async () => {
+          throw new Error("Schedule recovery must not reread native context");
+        },
+      },
+      journey,
+    });
+
+    await expect(service.recover()).resolves.toBeUndefined();
+
+    const graph = await persistence.loadDomainGraph();
+    expect(graph.tasks).toEqual([expect.objectContaining({ state: "failed" })]);
+    expect(graph.sessions).toEqual([expect.objectContaining({ state: "cancelled" })]);
+    expect(graph.workers).toEqual([expect.objectContaining({ state: "stopped" })]);
+    await expect(journey.recoverPrepared()).resolves.toEqual({
+      attempted: 0,
+      started: 0,
+      failed: 0,
+    });
+    await expect(persistence.getAionUiSchedule(registration.job.id)).resolves.toMatchObject({
+      lastStatus: "error",
+      lastIncidentCode: "interrupted",
+      runSequence: 1,
+      runCount: 1,
+    });
+    expect(timers.pending()).toEqual([
+      {
+        jobId: registration.job.id,
+        atMs: clock.nowMs() + 60_000,
+      },
+    ]);
+  });
+
+  it("isolates a persistent prepared-schedule interruption and never replays it", async () => {
+    const directory = createTestDirectory();
+    const persistence = openSqliteCorePersistence(directory);
+    persistences.push(persistence);
+    const registration = createAionUiScheduleRegistration(
+      "persistent-prepared-recovery",
+      directory,
+    );
+    await persistence.registerAionUiSchedule(registration);
+    const claimedAtMs = registration.job.createdAtMs + 1_000;
+    const claimed = await persistence.claimAionUiScheduleRun({
+      jobId: registration.job.id,
+      claim: "schedule-persistent-recovery-claim",
+      claimedAtMs,
+    });
+    if (claimed.status !== "claimed") {
+      throw new Error("Schedule recovery test could not create its active claim");
+    }
+    const parsed = parseAionUiGeneralWorkCommand(registration.job.prompt);
+    if (parsed === null) {
+      throw new Error("Schedule recovery fixture has no General Work prompt");
+    }
+    const journeyClock = new DeterministicAgentClock(instant(new Date(claimedAtMs).toISOString()));
+    const launchWorker = vi.fn(async () => {
+      throw new Error("Injected crash after scheduled task registration");
+    });
+    const journey = new AionUiGeneralWorkJourneyService({
+      persistence,
+      nativeTools: createScopedNativeToolPlatform({ persistence, clock: journeyClock }),
+      clock: journeyClock,
+      nativeContext: {
+        resolve: async () => {
+          throw new Error("Scheduled recovery must use the persisted grant");
+        },
+      },
+      launchWorker,
+    });
+    const submissionId = `${registration.job.id}:run:${String(claimed.job.runSequence)}`;
+    await expect(
+      journey.submitFromTrustedContext(
+        {
+          contractVersion: 1,
+          nativeConversationId: registration.job.nativeConversationId,
+          submissionId,
+          prompt: parsed.prompt,
+          journeyKind: "prompt-artifact",
+        },
+        {
+          rootPath: registration.workspaceGrant.rootPath,
+          displayName: registration.workspaceGrant.displayName,
+        },
+      ),
+    ).rejects.toThrow("Injected crash");
+    const interrupt = vi
+      .spyOn(journey, "interruptPreparedSubmission")
+      .mockRejectedValue(new Error("Persistent prepared-schedule interruption failure"));
+    const clock = new FakeScheduleClock(claimedAtMs + 1_000);
+    const timers = new FakeScheduleTimers();
+    const service = new AionUiScheduleService({
+      persistence,
+      clock,
+      timers,
+      nativeContext: {
+        resolve: async () => {
+          throw new Error("Schedule recovery must not reread native context");
+        },
+      },
+      journey,
+    });
+
+    await expect(service.recover()).resolves.toBeUndefined();
+
+    expect(interrupt).toHaveBeenCalledTimes(2);
+    const graph = await persistence.loadDomainGraph();
+    expect(graph.tasks).toEqual([expect.objectContaining({ state: "ready" })]);
+    await expect(persistence.getAionUiSchedule(registration.job.id)).resolves.toMatchObject({
+      lastStatus: "error",
+      lastIncidentCode: "interrupted",
+      runSequence: 1,
+      runCount: 1,
+    });
+    expect(timers.pending()).toEqual([]);
+    await expect(service.runNow(registration.job.id)).rejects.toMatchObject({
+      code: "schedule-execution-failed",
+    });
+
+    await expect(journey.recoverPrepared()).resolves.toEqual({
+      attempted: 1,
+      started: 0,
+      failed: 1,
+    });
+    expect(launchWorker).toHaveBeenCalledTimes(1);
+
+    const restartedTimers = new FakeScheduleTimers();
+    const restartedService = new AionUiScheduleService({
+      persistence,
+      clock,
+      timers: restartedTimers,
+      nativeContext: {
+        resolve: async () => {
+          throw new Error("Schedule recovery must not reread native context");
+        },
+      },
+      journey,
+    });
+    await expect(restartedService.recover()).resolves.toBeUndefined();
+    expect(interrupt).toHaveBeenCalledTimes(5);
+    expect(restartedTimers.pending()).toEqual([]);
+    await expect(restartedService.runNow(registration.job.id)).rejects.toMatchObject({
+      code: "schedule-execution-failed",
+    });
   });
 
   it("updates, pauses, resumes, and removes only future schedule state", async () => {
@@ -379,6 +699,7 @@ describe("AionUiScheduleService", () => {
       journey: {
         submitFromTrustedContext: vi.fn(),
         list: vi.fn(),
+        interruptPreparedSubmission: vi.fn(async () => null),
         waitForIdle: vi.fn(),
         close: vi.fn(),
       },
@@ -436,6 +757,152 @@ describe("AionUiScheduleService", () => {
     ]);
   });
 
+  it("reads the authoritative update time only after its per-job queue is available", async () => {
+    const directory = createTestDirectory();
+    const persistence = openSqliteCorePersistence(directory);
+    persistences.push(persistence);
+    const registration = createAionUiScheduleRegistration("serialized-update-clock", directory);
+    await persistence.registerAionUiSchedule(registration);
+    const clock = new FakeScheduleClock(registration.job.createdAtMs + 1_000);
+    const service = new AionUiScheduleService({
+      persistence,
+      clock,
+      timers: new FakeScheduleTimers(),
+      nativeContext: {
+        resolve: async () => {
+          throw new Error("Existing schedule updates must not reread native context");
+        },
+      },
+      journey: new FakeScheduleJourney(clock),
+    });
+    const originalUpdate = persistence.updateAionUiSchedule.bind(persistence);
+    let releaseFirstUpdate!: () => void;
+    const firstUpdateGate = new Promise<void>((resolve) => {
+      releaseFirstUpdate = resolve;
+    });
+    let markFirstUpdateEntered!: () => void;
+    const firstUpdateEntered = new Promise<void>((resolve) => {
+      markFirstUpdateEntered = resolve;
+    });
+    let updateCalls = 0;
+    vi.spyOn(persistence, "updateAionUiSchedule").mockImplementation(async (input) => {
+      updateCalls += 1;
+      if (updateCalls === 1) {
+        markFirstUpdateEntered();
+        await firstUpdateGate;
+      }
+      return originalUpdate(input);
+    });
+
+    const first = service.update(registration.job.id, { name: "First serialized update" });
+    await firstUpdateEntered;
+    clock.set(registration.job.createdAtMs + 2_000);
+    const second = service.update(registration.job.id, { description: "Queued update" });
+    clock.set(registration.job.createdAtMs + 3_000);
+    releaseFirstUpdate();
+    await first;
+    const secondResult = await second;
+
+    expect(secondResult.metadata.updated_at).toBe(registration.job.createdAtMs + 3_000);
+  });
+
+  it("reads the authoritative deletion time only after its per-job queue is available", async () => {
+    const directory = createTestDirectory();
+    const persistence = openSqliteCorePersistence(directory);
+    persistences.push(persistence);
+    const registration = createAionUiScheduleRegistration("serialized-delete-clock", directory);
+    await persistence.registerAionUiSchedule(registration);
+    const clock = new FakeScheduleClock(registration.job.createdAtMs + 1_000);
+    const service = new AionUiScheduleService({
+      persistence,
+      clock,
+      timers: new FakeScheduleTimers(),
+      nativeContext: {
+        resolve: async () => {
+          throw new Error("Existing schedule deletion must not reread native context");
+        },
+      },
+      journey: new FakeScheduleJourney(clock),
+    });
+    const originalUpdate = persistence.updateAionUiSchedule.bind(persistence);
+    let releaseUpdate!: () => void;
+    const updateGate = new Promise<void>((resolve) => {
+      releaseUpdate = resolve;
+    });
+    let markUpdateEntered!: () => void;
+    const updateEntered = new Promise<void>((resolve) => {
+      markUpdateEntered = resolve;
+    });
+    vi.spyOn(persistence, "updateAionUiSchedule").mockImplementation(async (input) => {
+      markUpdateEntered();
+      await updateGate;
+      return originalUpdate(input);
+    });
+    const deleteSchedule = vi.spyOn(persistence, "deleteAionUiSchedule");
+
+    const update = service.update(registration.job.id, { name: "Mutation before deletion" });
+    await updateEntered;
+    clock.set(registration.job.createdAtMs + 2_000);
+    const remove = service.remove(registration.job.id);
+    clock.set(registration.job.createdAtMs + 3_000);
+    releaseUpdate();
+    await Promise.all([update, remove]);
+
+    expect(deleteSchedule).toHaveBeenCalledWith({
+      jobId: registration.job.id,
+      deletedAtMs: registration.job.createdAtMs + 3_000,
+    });
+  });
+
+  it("serializes resume recalculation behind an in-flight job mutation", async () => {
+    const directory = createTestDirectory();
+    const persistence = openSqliteCorePersistence(directory);
+    persistences.push(persistence);
+    const registration = createAionUiScheduleRegistration("serialized-resume", directory);
+    await persistence.registerAionUiSchedule(registration);
+    const clock = new FakeScheduleClock(registration.job.nextRunAtMs! + 1_000);
+    const service = new AionUiScheduleService({
+      persistence,
+      clock,
+      timers: new FakeScheduleTimers(),
+      nativeContext: {
+        resolve: async () => {
+          throw new Error("Schedule resume must not reread native context");
+        },
+      },
+      journey: new FakeScheduleJourney(clock),
+    });
+    const originalUpdate = persistence.updateAionUiSchedule.bind(persistence);
+    let releaseMutation!: () => void;
+    const mutationGate = new Promise<void>((resolve) => {
+      releaseMutation = resolve;
+    });
+    let markMutationEntered!: () => void;
+    const mutationEntered = new Promise<void>((resolve) => {
+      markMutationEntered = resolve;
+    });
+    let updateCalls = 0;
+    const updateSpy = vi
+      .spyOn(persistence, "updateAionUiSchedule")
+      .mockImplementation(async (input) => {
+        updateCalls += 1;
+        if (updateCalls === 1) {
+          markMutationEntered();
+          await mutationGate;
+        }
+        return originalUpdate(input);
+      });
+
+    const mutation = service.update(registration.job.id, { name: "Serialized mutation" });
+    await mutationEntered;
+    const resume = service.resume();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+    releaseMutation();
+    await Promise.all([mutation, resume]);
+  });
+
   it("runs a manual job through its persisted grant and stores the General Work terminal state", async () => {
     const directory = createTestDirectory();
     const persistence = openSqliteCorePersistence(directory);
@@ -489,6 +956,7 @@ describe("AionUiScheduleService", () => {
         displayName: registration.workspaceGrant.displayName,
       },
     );
+    expect(journey.waitForIdle).toHaveBeenCalledWith(taskId("task-schedule-service-1"));
     await expect(persistence.getAionUiSchedule(registration.job.id)).resolves.toMatchObject({
       enabled: true,
       lastRunAtMs: clock.nowMs(),
@@ -515,6 +983,61 @@ describe("AionUiScheduleService", () => {
       },
     ]);
     expect(timers.pending()).toEqual([]);
+  });
+
+  it("keeps repeated runs and restart history on the same durable native conversation", async () => {
+    const directory = createTestDirectory();
+    const firstPersistence = openSqliteCorePersistence(directory);
+    persistences.push(firstPersistence);
+    const registration = createAionUiScheduleRegistration("durable-history", directory);
+    await firstPersistence.registerAionUiSchedule(registration);
+    const clock = new FakeScheduleClock(registration.job.createdAtMs + 1_000);
+    const firstService = new AionUiScheduleService({
+      persistence: firstPersistence,
+      clock,
+      timers: new FakeScheduleTimers(),
+      nativeContext: {
+        resolve: async () => {
+          throw new Error("Schedule history must use its persisted conversation");
+        },
+      },
+      journey: new FakeScheduleJourney(clock),
+    });
+
+    await firstService.runNow(registration.job.id);
+    await firstService.waitForIdle();
+    clock.set(registration.job.createdAtMs + 2_000);
+    await firstService.runNow(registration.job.id);
+    await firstService.waitForIdle();
+    await expect(firstPersistence.getAionUiSchedule(registration.job.id)).resolves.toMatchObject({
+      runSequence: 2,
+      runCount: 2,
+      lastRunAtMs: clock.nowMs(),
+    });
+    await firstPersistence.close();
+
+    const reopened = openSqliteCorePersistence(directory);
+    persistences.push(reopened);
+    const reopenedService = new AionUiScheduleService({
+      persistence: reopened,
+      clock,
+      timers: new FakeScheduleTimers(),
+      nativeContext: {
+        resolve: async () => {
+          throw new Error("Schedule history must not reread native context");
+        },
+      },
+      journey: new FakeScheduleJourney(clock),
+    });
+    await expect(reopenedService.history(registration.job.id)).resolves.toEqual([
+      {
+        id: registration.job.nativeConversationId,
+        name: registration.job.nativeConversationTitle,
+        extra: { cron_job_id: registration.job.id },
+        created_at: registration.job.createdAtMs,
+        updated_at: clock.nowMs(),
+      },
+    ]);
   });
 
   it.each([
@@ -621,6 +1144,63 @@ describe("AionUiScheduleService", () => {
     expect(journey.submitFromTrustedContext).toHaveBeenCalledTimes(1);
   });
 
+  it("serializes terminal completion so a concurrent pause remains authoritative", async () => {
+    const directory = createTestDirectory();
+    const persistence = openSqliteCorePersistence(directory);
+    persistences.push(persistence);
+    const registration = createAionUiScheduleRegistration("completion-pause-race", directory);
+    await persistence.registerAionUiSchedule(registration);
+    const clock = new FakeScheduleClock(registration.job.createdAtMs + 1_000);
+    const journey = new FakeScheduleJourney(clock);
+    const releaseJourney = journey.hold();
+    const service = new AionUiScheduleService({
+      persistence,
+      clock,
+      timers: new FakeScheduleTimers(),
+      nativeContext: {
+        resolve: async () => {
+          throw new Error("Active scheduled runs must use persisted grants");
+        },
+      },
+      journey,
+    });
+    const originalComplete = persistence.completeAionUiScheduleRun.bind(persistence);
+    let markCompletionEntered!: () => void;
+    const completionEntered = new Promise<void>((resolve) => {
+      markCompletionEntered = resolve;
+    });
+    let releaseCompletion!: () => void;
+    const completionGate = new Promise<void>((resolve) => {
+      releaseCompletion = resolve;
+    });
+    vi.spyOn(persistence, "completeAionUiScheduleRun").mockImplementation(async (input) => {
+      markCompletionEntered();
+      await completionGate;
+      return originalComplete(input);
+    });
+
+    await service.runNow(registration.job.id);
+    releaseJourney();
+    await completionEntered;
+    const pause = service.update(registration.job.id, { enabled: false });
+    let pauseSettled = false;
+    const pauseSettlement = pause.finally(() => {
+      pauseSettled = true;
+    });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(pauseSettled).toBe(false);
+    releaseCompletion();
+    await Promise.all([pause, pauseSettlement]);
+    await service.waitForIdle();
+    await expect(persistence.getAionUiSchedule(registration.job.id)).resolves.toMatchObject({
+      enabled: false,
+      lastStatus: "ok",
+      runSequence: 1,
+      runCount: 1,
+    });
+  });
+
   it.each([
     ["revoked", "workspace-grant-unavailable"],
     ["mismatched", "workspace-grant-mismatch"],
@@ -724,6 +1304,7 @@ describe("AionUiScheduleService", () => {
       journey: {
         submitFromTrustedContext: vi.fn(),
         list: vi.fn(),
+        interruptPreparedSubmission: vi.fn(async () => null),
         waitForIdle: vi.fn(),
         close: vi.fn(),
       },
@@ -805,6 +1386,7 @@ describe("AionUiScheduleService", () => {
       },
     };
     await persistence.registerAionUiSchedule(registration);
+    const completeRun = vi.spyOn(persistence, "completeAionUiScheduleRun");
     const clock = new FakeScheduleClock(registration.job.createdAtMs);
     const timers = new FakeScheduleTimers();
     const journey = new FakeScheduleJourney(clock);
@@ -836,6 +1418,12 @@ describe("AionUiScheduleService", () => {
     });
     const completed = await persistence.getAionUiSchedule(registration.job.id);
     expect(completed).not.toHaveProperty("nextRunAtMs");
+    expect(completeRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        nextRunAtMs: null,
+        enabled: false,
+      }),
+    );
     expect(timers.pending()).toEqual([]);
     expect(journey.submitFromTrustedContext).toHaveBeenCalledTimes(1);
     expect(events).toEqual([
@@ -844,6 +1432,116 @@ describe("AionUiScheduleService", () => {
         payload: { job_id: registration.job.id, status: "ok" },
       },
     ]);
+  });
+
+  it("retains an automatic pre-claim failure instead of silently dropping the occurrence", async () => {
+    const directory = createTestDirectory();
+    const persistence = openSqliteCorePersistence(directory);
+    persistences.push(persistence);
+    const registration = createAionUiScheduleRegistration("automatic-claim-failure", directory);
+    await persistence.registerAionUiSchedule(registration);
+    const clock = new FakeScheduleClock(registration.job.createdAtMs);
+    const timers = new FakeScheduleTimers();
+    const journey = new FakeScheduleJourney(clock);
+    const failure = new Error("Injected automatic schedule claim failure");
+    vi.spyOn(persistence, "claimAionUiScheduleRun").mockRejectedValueOnce(failure);
+    const service = new AionUiScheduleService({
+      persistence,
+      clock,
+      timers,
+      nativeContext: {
+        resolve: vi.fn(async () => {
+          throw new Error("Automatic runs must use the persisted schedule grant");
+        }),
+      },
+      journey,
+    });
+    await service.recover();
+    clock.set(registration.job.nextRunAtMs!);
+
+    await timers.fire(registration.job.id);
+
+    await expect(service.waitForIdle()).rejects.toBe(failure);
+    expect(journey.submitFromTrustedContext).not.toHaveBeenCalled();
+    expect(timers.pending()).toEqual([]);
+    await expect(persistence.getAionUiSchedule(registration.job.id)).resolves.toMatchObject({
+      runSequence: 0,
+      runCount: 0,
+    });
+    const stable = await persistence.getAionUiSchedule(registration.job.id);
+    expect(stable).not.toHaveProperty("activeClaim");
+  });
+
+  it("re-arms an automatic occurrence when a stale timer fires before its due instant", async () => {
+    const directory = createTestDirectory();
+    const persistence = openSqliteCorePersistence(directory);
+    persistences.push(persistence);
+    const registration = createAionUiScheduleRegistration("automatic-stale-timer", directory);
+    await persistence.registerAionUiSchedule(registration);
+    const clock = new FakeScheduleClock(registration.job.createdAtMs);
+    const timers = new FakeScheduleTimers();
+    const journey = new FakeScheduleJourney(clock);
+    const claim = vi.spyOn(persistence, "claimAionUiScheduleRun");
+    const service = new AionUiScheduleService({
+      persistence,
+      clock,
+      timers,
+      nativeContext: {
+        resolve: vi.fn(async () => {
+          throw new Error("Automatic runs must use the persisted schedule grant");
+        }),
+      },
+      journey,
+    });
+    await service.recover();
+
+    await timers.fire(registration.job.id);
+    await service.waitForIdle();
+
+    expect(claim).not.toHaveBeenCalled();
+    expect(journey.submitFromTrustedContext).not.toHaveBeenCalled();
+    expect(timers.pending()).toEqual([
+      {
+        jobId: registration.job.id,
+        atMs: registration.job.nextRunAtMs,
+      },
+    ]);
+  });
+
+  it("keeps an occurrence exactly at now runnable during an unrelated mutation", async () => {
+    const directory = createTestDirectory();
+    const persistence = openSqliteCorePersistence(directory);
+    persistences.push(persistence);
+    const registration = createAionUiScheduleRegistration("due-mutation", directory);
+    await persistence.registerAionUiSchedule(registration);
+    const clock = new FakeScheduleClock(registration.job.createdAtMs);
+    const timers = new FakeScheduleTimers();
+    const service = new AionUiScheduleService({
+      persistence,
+      clock,
+      timers,
+      nativeContext: {
+        resolve: vi.fn(async () => {
+          throw new Error("Schedule mutation must use persisted authority");
+        }),
+      },
+      journey: new FakeScheduleJourney(clock),
+    });
+    await service.recover();
+    const dueAtMs = registration.job.nextRunAtMs!;
+    clock.set(dueAtMs);
+
+    await service.update(registration.job.id, { name: "Due schedule mutation" });
+
+    const stable = await persistence.getAionUiSchedule(registration.job.id);
+    expect(stable).toMatchObject({
+      name: "Due schedule mutation",
+      nextRunAtMs: dueAtMs,
+      runSequence: 0,
+      runCount: 0,
+    });
+    expect(stable).not.toHaveProperty("lastStatus");
+    expect(timers.pending()).toEqual([{ jobId: registration.job.id, atMs: dueAtMs }]);
   });
 
   it("does not retry terminal persistence as a second claim completion", async () => {
@@ -872,7 +1570,11 @@ describe("AionUiScheduleService", () => {
     });
 
     await service.runNow(registration.job.id);
-    await service.waitForIdle();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(completeClaim).toHaveBeenCalledTimes(1);
+    await expect(service.waitForIdle()).rejects.toMatchObject({
+      code: "schedule-execution-failed",
+    });
 
     expect(completeClaim).toHaveBeenCalledTimes(1);
     await expect(persistence.getAionUiSchedule(registration.job.id)).resolves.toMatchObject({
@@ -1054,6 +1756,35 @@ describe("AionUiScheduleService", () => {
     release();
     await closing;
     expect(outcome).toBe("rejected");
+  });
+
+  it("prioritizes the journey close failure when the active run also fails", async () => {
+    const directory = createTestDirectory();
+    const persistence = openSqliteCorePersistence(directory);
+    persistences.push(persistence);
+    const registration = createAionUiScheduleRegistration("close-double-failure", directory);
+    await persistence.registerAionUiSchedule(registration);
+    const clock = new FakeScheduleClock(registration.job.createdAtMs + 1_000);
+    const journey = new FakeScheduleJourney(clock);
+    const closeFailure = new Error("journey close failed first");
+    const runFailure = new Error("active schedule run failed during close");
+    journey.close.mockRejectedValueOnce(closeFailure);
+    vi.spyOn(persistence, "getActiveWorkspaceGrant").mockRejectedValueOnce(runFailure);
+    const service = new AionUiScheduleService({
+      persistence,
+      clock,
+      timers: new FakeScheduleTimers(),
+      nativeContext: {
+        resolve: vi.fn(async () => {
+          throw new Error("Closing a schedule must not reread native context");
+        }),
+      },
+      journey,
+    });
+    await service.runNow(registration.job.id);
+
+    await expect(service.close("application-shutdown")).rejects.toBe(closeFailure);
+    expect(journey.close).toHaveBeenCalledExactlyOnceWith("application-shutdown");
   });
 
   it("does not claim an automatic occurrence queued as the service closes", async () => {

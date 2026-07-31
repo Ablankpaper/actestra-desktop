@@ -1,7 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { realpath } from "node:fs/promises";
-import { parse } from "node:path";
 import {
   AIONUI_SCHEDULE_CONTRACT_VERSION,
   AIONUI_SCHEDULE_MAX_JOBS,
@@ -32,6 +30,7 @@ import type {
   AionUiGeneralWorkNativeContext,
   AionUiGeneralWorkNativeContextPort,
 } from "./aionuiGeneralWorkNativeContext";
+import { canonicalizeAionUiGeneralWorkNativeContext } from "./aionuiGeneralWorkNativeContext";
 
 export interface AionUiScheduleClock {
   nowMs(): number;
@@ -120,7 +119,11 @@ export interface AionUiScheduleJourneyPort {
     context: AionUiGeneralWorkNativeContext,
   ): Promise<AionUiGeneralWorkProjection>;
   list(nativeConversationId: string): Promise<readonly AionUiGeneralWorkProjection[]>;
-  waitForIdle(): Promise<void>;
+  interruptPreparedSubmission(
+    nativeConversationId: string,
+    submissionId: string,
+  ): Promise<AionUiGeneralWorkProjection | null>;
+  waitForIdle(taskId?: AionUiGeneralWorkProjection["taskId"]): Promise<void>;
   close(reason?: string): Promise<void>;
 }
 
@@ -158,47 +161,6 @@ export class AionUiScheduleServiceError extends Error {
   }
 }
 
-const MAX_SCHEDULE_WORKSPACE_DISPLAY_NAME_BYTES = 128;
-
-function boundedWorkspaceDisplayName(value: string): string {
-  const normalized = value.trim().replace(/\s+/gu, " ");
-  let result = "";
-  let byteLength = 0;
-  for (const character of normalized) {
-    const characterBytes = new TextEncoder().encode(character).byteLength;
-    if (byteLength + characterBytes > MAX_SCHEDULE_WORKSPACE_DISPLAY_NAME_BYTES) {
-      break;
-    }
-    result += character;
-    byteLength += characterBytes;
-  }
-  if (result.length === 0) {
-    throw new Error("AionUI schedule context has no bounded workspace name");
-  }
-  return result;
-}
-
-async function canonicalScheduleContext(
-  context: AionUiGeneralWorkNativeContext,
-): Promise<AionUiGeneralWorkNativeContext> {
-  if (
-    typeof context.rootPath !== "string" ||
-    context.rootPath.length === 0 ||
-    context.rootPath.trim() !== context.rootPath ||
-    typeof context.displayName !== "string"
-  ) {
-    throw new Error("AionUI schedule context has no bounded workspace authority");
-  }
-  const rootPath = await realpath(context.rootPath);
-  if (rootPath === parse(rootPath).root) {
-    throw new Error("AionUI schedule workspace root must not be the filesystem root");
-  }
-  return Object.freeze({
-    rootPath,
-    displayName: boundedWorkspaceDisplayName(context.displayName),
-  });
-}
-
 function sameCreatePayload(job: AionUiScheduleJob, input: AionUiScheduleCreateInput): boolean {
   return (
     job.conversationHash === hashAionUiGeneralWorkConversation(input.conversation_id) &&
@@ -216,6 +178,8 @@ export class AionUiScheduleService {
   private readonly eventHandlers = new Set<AionUiScheduleEventHandler>();
   private readonly mutations = new Map<string, Promise<unknown>>();
   private readonly activeRuns = new Map<string, Promise<void>>();
+  private readonly recoveryBlockedJobs = new Set<string>();
+  private runFailure: unknown;
   private closed = false;
   private closeOperation: Promise<void> | undefined;
 
@@ -235,11 +199,12 @@ export class AionUiScheduleService {
 
   async create(value: unknown): Promise<NativeAionUiCronJob> {
     this.assertOpen();
-    const nowMs = this.config.clock.nowMs();
-    assertAionUiScheduleCreateInput(value, nowMs);
+    assertAionUiScheduleCreateInput(value, this.config.clock.nowMs());
     const input = Object.freeze({ ...value });
     const identity = deriveAionUiScheduleIdentity(input);
     return this.serialize(identity.id, async () => {
+      const nowMs = this.config.clock.nowMs();
+      assertAionUiScheduleCreateInput(input, nowMs);
       const existing = await this.config.persistence.getAionUiSchedule(identity.id);
       if (existing !== null) {
         if (!sameCreatePayload(existing, input)) {
@@ -249,10 +214,10 @@ export class AionUiScheduleService {
           );
         }
         await this.reconcileTimer(existing, nowMs);
-        return toNativeCronJob((await this.config.persistence.getAionUiSchedule(identity.id))!);
+        return toNativeCronJob(await this.requireJob(identity.id));
       }
 
-      const nativeContext = await canonicalScheduleContext(
+      const nativeContext = await canonicalizeAionUiGeneralWorkNativeContext(
         await this.config.nativeContext.resolve(input.conversation_id),
       );
       const digest = identity.id.slice("schedule-aionui-".length);
@@ -309,6 +274,8 @@ export class AionUiScheduleService {
           this.scheduleTimer(result.job.id, result.job.nextRunAtMs);
         }
         this.emit(Object.freeze({ type: "cron.job-created", payload: projection }));
+      } else {
+        await this.reconcileTimer(result.job, nowMs);
       }
       return projection;
     });
@@ -333,10 +300,11 @@ export class AionUiScheduleService {
 
   async update(jobId: string, value: unknown): Promise<NativeAionUiCronJob> {
     this.assertOpen();
-    const nowMs = this.config.clock.nowMs();
-    assertAionUiScheduleUpdateInput(value, nowMs);
+    assertAionUiScheduleUpdateInput(value, this.config.clock.nowMs());
     const input = Object.freeze({ ...value });
     return this.serialize(jobId, async () => {
+      const nowMs = this.config.clock.nowMs();
+      assertAionUiScheduleUpdateInput(input, nowMs);
       const existing = await this.requireJob(jobId);
       const nextSchedule = input.schedule ?? existing.schedule;
       const nextEnabled = input.enabled ?? existing.enabled;
@@ -387,8 +355,8 @@ export class AionUiScheduleService {
 
   async remove(jobId: string): Promise<void> {
     this.assertOpen();
-    const deletedAtMs = this.config.clock.nowMs();
     await this.serialize(jobId, async () => {
+      const deletedAtMs = this.config.clock.nowMs();
       const result = await this.config.persistence.deleteAionUiSchedule({ jobId, deletedAtMs });
       if (result.status === "not-found") {
         throw new AionUiScheduleServiceError(
@@ -403,6 +371,7 @@ export class AionUiScheduleService {
         );
       }
       this.clearTimer(jobId);
+      this.recoveryBlockedJobs.delete(jobId);
       this.emit(
         Object.freeze({
           type: "cron.job-removed",
@@ -439,6 +408,11 @@ export class AionUiScheduleService {
     while (this.activeRuns.size > 0) {
       await Promise.allSettled(this.activeRuns.values());
     }
+    const failure = this.runFailure;
+    this.runFailure = undefined;
+    if (failure !== undefined) {
+      throw failure;
+    }
   }
 
   async close(reason = "schedule-service-closed"): Promise<void> {
@@ -448,16 +422,20 @@ export class AionUiScheduleService {
     this.closed = true;
     this.clearAllTimers();
     this.closeOperation = (async (): Promise<void> => {
-      let closeError: unknown;
+      let failure: Readonly<{ value: unknown }> | undefined;
       try {
         try {
           await this.config.journey.close(reason);
         } catch (error) {
-          closeError = error;
+          failure = Object.freeze({ value: error });
         }
-        await this.waitForIdle();
-        if (closeError !== undefined) {
-          throw closeError;
+        try {
+          await this.waitForIdle();
+        } catch (error) {
+          failure ??= Object.freeze({ value: error });
+        }
+        if (failure !== undefined) {
+          throw failure.value;
         }
       } finally {
         this.clearAllTimers();
@@ -469,8 +447,35 @@ export class AionUiScheduleService {
 
   async recover(): Promise<void> {
     this.assertOpen();
-    const recoveredAtMs = this.config.clock.nowMs();
     this.clearAllTimers();
+    this.recoveryBlockedJobs.clear();
+    const recoverableJobs = (
+      await this.config.persistence.listAionUiSchedules({ limit: AIONUI_SCHEDULE_MAX_JOBS })
+    ).filter(
+      (job) =>
+        job.activeClaim !== undefined ||
+        (job.lastStatus === "error" && job.lastIncidentCode === "interrupted"),
+    );
+    for (const job of recoverableJobs) {
+      let interrupted = false;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          await this.config.journey.interruptPreparedSubmission(
+            job.nativeConversationId,
+            `${job.id}:run:${String(job.runSequence)}`,
+          );
+          interrupted = true;
+          break;
+        } catch {
+          // A prepared task may be persisted while the journey service is still
+          // recovering. Retry once, then keep this schedule fail-closed below.
+        }
+      }
+      if (!interrupted) {
+        this.recoveryBlockedJobs.add(job.id);
+      }
+    }
+    const recoveredAtMs = this.config.clock.nowMs();
     const interrupted = await this.config.persistence.recoverAionUiScheduleRuns({ recoveredAtMs });
     for (const job of interrupted) {
       this.emit(
@@ -487,38 +492,45 @@ export class AionUiScheduleService {
     const jobs = await this.config.persistence.listAionUiSchedules({
       limit: AIONUI_SCHEDULE_MAX_JOBS,
     });
-    for (const job of jobs) {
-      await this.reconcileTimer(job, recoveredAtMs);
-    }
+    await Promise.all(
+      jobs.map((job) =>
+        this.serialize(job.id, async () => {
+          await this.reconcileTimer(await this.requireJob(job.id), this.config.clock.nowMs());
+        }),
+      ),
+    );
   }
 
   async resume(): Promise<void> {
     this.assertOpen();
-    const resumedAtMs = this.config.clock.nowMs();
     this.clearAllTimers();
     const jobs = await this.config.persistence.listAionUiSchedules({
       limit: AIONUI_SCHEDULE_MAX_JOBS,
     });
-    for (const job of jobs) {
-      await this.reconcileTimer(job, resumedAtMs);
-    }
+    await Promise.all(
+      jobs.map((job) =>
+        this.serialize(job.id, async () => {
+          await this.reconcileTimer(await this.requireJob(job.id), this.config.clock.nowMs());
+        }),
+      ),
+    );
   }
 
   private async reconcileTimer(job: AionUiScheduleJob, nowMs: number): Promise<void> {
     this.clearTimer(job.id);
-    if (!job.enabled || job.activeClaim !== undefined) {
+    if (this.recoveryBlockedJobs.has(job.id) || !job.enabled || job.activeClaim !== undefined) {
       return;
     }
     if (job.schedule.kind === "cron" && job.schedule.expr.length === 0) {
       return;
     }
-    if (job.nextRunAtMs !== undefined && job.nextRunAtMs > nowMs) {
+    if (job.nextRunAtMs !== undefined && job.nextRunAtMs >= nowMs) {
       this.scheduleTimer(job.id, job.nextRunAtMs);
       return;
     }
 
     const nextRunAtMs = calculateAionUiScheduleNextRun(job.schedule, nowMs);
-    const missed = job.nextRunAtMs !== undefined && job.nextRunAtMs <= nowMs;
+    const missed = job.nextRunAtMs !== undefined && job.nextRunAtMs < nowMs;
     const updated = await this.config.persistence.updateAionUiSchedule({
       jobId: job.id,
       updatedAtMs: nowMs,
@@ -564,7 +576,12 @@ export class AionUiScheduleService {
       if (this.scheduledTimers.get(jobId) === handle) {
         this.scheduledTimers.delete(jobId);
       }
-      await this.claimAndStart(jobId, true).catch((): undefined => undefined);
+      await this.claimAndStart(jobId, true).catch((error: unknown): undefined => {
+        if (!(error instanceof AionUiScheduleServiceError)) {
+          this.runFailure ??= error;
+        }
+        return undefined;
+      });
     });
     this.scheduledTimers.set(jobId, handle);
   }
@@ -617,11 +634,20 @@ export class AionUiScheduleService {
     return this.serialize(jobId, async () => {
       this.assertOpen();
       const job = await this.requireJob(jobId);
+      if (this.recoveryBlockedJobs.has(jobId)) {
+        throw new AionUiScheduleServiceError(
+          "schedule-execution-failed",
+          "The scheduled task is blocked until its interrupted run is reconciled",
+        );
+      }
       const claimedAtMs = this.config.clock.nowMs();
       if (
         automatic &&
         (!job.enabled || job.nextRunAtMs === undefined || job.nextRunAtMs > claimedAtMs)
       ) {
+        if (job.enabled && job.nextRunAtMs !== undefined && job.nextRunAtMs > claimedAtMs) {
+          this.scheduleTimer(job.id, job.nextRunAtMs);
+        }
         throw new AionUiScheduleServiceError(
           "schedule-execution-failed",
           "The scheduled occurrence is no longer runnable",
@@ -653,11 +679,16 @@ export class AionUiScheduleService {
 
   private trackRun(job: AionUiScheduleJob, claim: string): void {
     let operation!: Promise<void>;
-    operation = this.executeClaimedRun(job, claim).finally(() => {
-      if (this.activeRuns.get(job.id) === operation) {
-        this.activeRuns.delete(job.id);
-      }
-    });
+    operation = this.executeClaimedRun(job, claim)
+      .catch((error: unknown): never => {
+        this.runFailure ??= error;
+        throw error;
+      })
+      .finally(() => {
+        if (this.activeRuns.get(job.id) === operation) {
+          this.activeRuns.delete(job.id);
+        }
+      });
     this.activeRuns.set(job.id, operation);
     void operation.catch((): undefined => undefined);
   }
@@ -696,7 +727,7 @@ export class AionUiScheduleService {
       );
       let terminal = initial;
       if (!this.isTerminalProjection(terminal)) {
-        await this.config.journey.waitForIdle();
+        await this.config.journey.waitForIdle(initial.taskId);
         const projections = await this.config.journey.list(job.nativeConversationId);
         terminal = projections.find((candidate) => candidate.taskId === initial.taskId) ?? initial;
       }
@@ -730,6 +761,17 @@ export class AionUiScheduleService {
     status: "ok" | "error" | "skipped",
     lastIncidentCode?: string,
   ): Promise<void> {
+    await this.serialize(claimedJob.id, () =>
+      this.completeClaimSerialized(claimedJob, claim, status, lastIncidentCode),
+    );
+  }
+
+  private async completeClaimSerialized(
+    claimedJob: AionUiScheduleJob,
+    claim: string,
+    status: "ok" | "error" | "skipped",
+    lastIncidentCode?: string,
+  ): Promise<void> {
     const completedAtMs = this.config.clock.nowMs();
     const current = await this.requireJob(claimedJob.id);
     const enabled = current.schedule.kind === "at" ? false : current.enabled;
@@ -742,7 +784,7 @@ export class AionUiScheduleService {
       completedAtMs,
       status,
       ...(lastIncidentCode === undefined ? {} : { lastIncidentCode }),
-      ...(nextRunAtMs === undefined ? {} : { nextRunAtMs }),
+      nextRunAtMs: nextRunAtMs ?? null,
       enabled,
     });
     if (result.status !== "completed") {

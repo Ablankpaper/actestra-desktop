@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import type {
   AionUiScheduleClaimResult,
@@ -12,7 +13,10 @@ import type {
   AionUiScheduleRegistrationResult,
   AionUiScheduledGeneralWorkPersistencePort,
 } from "../../apps/desktop/src/compatibility/aionui";
-import { openSqliteCorePersistence } from "../../apps/desktop/src/utility/persistence/sqliteCorePersistence";
+import {
+  openSqliteCorePersistence,
+  resolveCoreDatabasePath,
+} from "../../apps/desktop/src/utility/persistence/sqliteCorePersistence";
 import { createAionUiScheduleRegistration } from "../fixtures/aionuiSchedule";
 
 const testDirectories: string[] = [];
@@ -27,6 +31,23 @@ function schedulePort(
   persistence: ReturnType<typeof openSqliteCorePersistence>,
 ): AionUiScheduledGeneralWorkPersistencePort {
   return persistence as AionUiScheduledGeneralWorkPersistencePort;
+}
+
+function setScheduleUpdateFailure(userDataPath: string, enabled: boolean): void {
+  const database = new DatabaseSync(resolveCoreDatabasePath(userDataPath));
+  try {
+    database.exec(
+      enabled
+        ? `CREATE TRIGGER fail_schedule_update
+           BEFORE UPDATE ON aionui_schedule_jobs
+           BEGIN
+             SELECT RAISE(ABORT, 'injected schedule write failure');
+           END`
+        : "DROP TRIGGER fail_schedule_update",
+    );
+  } finally {
+    database.close();
+  }
 }
 
 afterEach(() => {
@@ -80,9 +101,55 @@ describe("SQLite Actestra-owned schedule persistence", () => {
     await reopened.close();
   });
 
+  it("replaces the domain graph without invalidating schedule-owned authority", async () => {
+    const userDataPath = createTestDirectory();
+    const registration = createAionUiScheduleRegistration("graph-replacement", userDataPath);
+    const persistence = openSqliteCorePersistence(userDataPath);
+    const schedule = schedulePort(persistence);
+    await schedule.registerAionUiSchedule(registration);
+    const graph = await persistence.loadDomainGraph();
+
+    await expect(persistence.replaceDomainGraph(graph)).resolves.toBeUndefined();
+    await expect(schedule.getAionUiSchedule(registration.job.id)).resolves.toEqual(
+      registration.job,
+    );
+    await expect(persistence.getActiveWorkspaceGrant(registration.workspace.id)).resolves.toEqual(
+      registration.workspaceGrant,
+    );
+    await persistence.close();
+  });
+
+  it("rolls back a domain graph replacement that removes schedule-owned authority", async () => {
+    const userDataPath = createTestDirectory();
+    const registration = createAionUiScheduleRegistration("graph-authority-removal", userDataPath);
+    const persistence = openSqliteCorePersistence(userDataPath);
+    const schedule = schedulePort(persistence);
+    await schedule.registerAionUiSchedule(registration);
+    const graph = await persistence.loadDomainGraph();
+
+    await expect(
+      persistence.replaceDomainGraph({
+        ...graph,
+        workspaces: [],
+      }),
+    ).rejects.toMatchObject({ code: "corrupt-database" });
+    await expect(persistence.loadDomainGraph()).resolves.toEqual(graph);
+    await expect(schedule.getAionUiSchedule(registration.job.id)).resolves.toEqual(
+      registration.job,
+    );
+    await expect(persistence.getActiveWorkspaceGrant(registration.workspace.id)).resolves.toEqual(
+      registration.workspaceGrant,
+    );
+    await persistence.close();
+  });
+
   it("rejects changed content under an existing schedule identity", async () => {
     const userDataPath = createTestDirectory();
     const registration = createAionUiScheduleRegistration("conflict", userDataPath);
+    const otherConversation = createAionUiScheduleRegistration(
+      "conflict-other-conversation",
+      userDataPath,
+    );
     const persistence = openSqliteCorePersistence(userDataPath);
     const schedule = schedulePort(persistence);
     await schedule.registerAionUiSchedule(registration);
@@ -93,6 +160,16 @@ describe("SQLite Actestra-owned schedule persistence", () => {
         job: {
           ...registration.job,
           prompt: "/actestra Changed content under the same identity.",
+        },
+      }),
+    ).rejects.toMatchObject({ code: "schedule-conflict" });
+    await expect(
+      schedule.registerAionUiSchedule({
+        ...registration,
+        job: {
+          ...registration.job,
+          conversationHash: otherConversation.job.conversationHash,
+          nativeConversationId: otherConversation.job.nativeConversationId,
         },
       }),
     ).rejects.toMatchObject({ code: "schedule-conflict" });
@@ -185,7 +262,6 @@ describe("SQLite Actestra-owned schedule persistence", () => {
       job: expect.objectContaining({
         activeClaim: "claim-schedule-1",
         activeClaimedAtMs: claimedAtMs,
-        nextRunAtMs: undefined,
         runSequence: 1,
       }),
     } satisfies AionUiScheduleClaimResult);
@@ -222,14 +298,111 @@ describe("SQLite Actestra-owned schedule persistence", () => {
     ).resolves.toEqual({
       status: "completed",
       job: expect.objectContaining({
-        activeClaim: undefined,
-        activeClaimedAtMs: undefined,
         runSequence: 1,
         runCount: 1,
         lastStatus: "ok",
-        lastIncidentCode: undefined,
       }),
     } satisfies AionUiScheduleCompletionResult);
+    await persistence.close();
+  });
+
+  it("omits absent optional schedule fields from claim, completion, and recovery results", async () => {
+    const userDataPath = createTestDirectory();
+    const registration = createAionUiScheduleRegistration("normalized-results", userDataPath);
+    const persistence = openSqliteCorePersistence(userDataPath);
+    const schedule = schedulePort(persistence);
+    await schedule.registerAionUiSchedule(registration);
+    const firstClaimedAtMs = registration.job.updatedAtMs + 1_000;
+    const claimed = await schedule.claimAionUiScheduleRun({
+      jobId: registration.job.id,
+      claim: "claim-normalized-result-1",
+      claimedAtMs: firstClaimedAtMs,
+    });
+    expect(claimed.status).toBe("claimed");
+    if (claimed.status !== "claimed") {
+      throw new Error("Expected the first normalized schedule claim to succeed");
+    }
+    expect(Object.hasOwn(claimed.job, "nextRunAtMs")).toBe(false);
+
+    const completed = await schedule.completeAionUiScheduleRun({
+      jobId: registration.job.id,
+      claim: "claim-normalized-result-1",
+      completedAtMs: firstClaimedAtMs + 1_000,
+      status: "ok",
+      nextRunAtMs: firstClaimedAtMs + 60_000,
+    });
+    expect(completed.status).toBe("completed");
+    if (completed.status !== "completed") {
+      throw new Error("Expected the normalized schedule completion to succeed");
+    }
+    expect(Object.hasOwn(completed.job, "activeClaim")).toBe(false);
+    expect(Object.hasOwn(completed.job, "activeClaimedAtMs")).toBe(false);
+    expect(Object.hasOwn(completed.job, "lastIncidentCode")).toBe(false);
+
+    const secondClaimedAtMs = firstClaimedAtMs + 2_000;
+    await schedule.claimAionUiScheduleRun({
+      jobId: registration.job.id,
+      claim: "claim-normalized-result-2",
+      claimedAtMs: secondClaimedAtMs,
+    });
+    const recovered = await schedule.recoverAionUiScheduleRuns({
+      recoveredAtMs: secondClaimedAtMs + 1_000,
+    });
+    expect(recovered).toHaveLength(1);
+    expect(Object.hasOwn(recovered[0]!, "activeClaim")).toBe(false);
+    expect(Object.hasOwn(recovered[0]!, "activeClaimedAtMs")).toBe(false);
+    await persistence.close();
+  });
+
+  it("classifies transaction failures as corrupt persistence rather than invalid input", async () => {
+    const userDataPath = createTestDirectory();
+    const registration = createAionUiScheduleRegistration("transaction-failure", userDataPath);
+    const persistence = openSqliteCorePersistence(userDataPath);
+    const schedule = schedulePort(persistence);
+    await schedule.registerAionUiSchedule(registration);
+    const firstMutationAtMs = registration.job.updatedAtMs + 1_000;
+    setScheduleUpdateFailure(userDataPath, true);
+
+    await expect(
+      schedule.updateAionUiSchedule({
+        jobId: registration.job.id,
+        updatedAtMs: firstMutationAtMs,
+        name: "Injected update failure",
+      }),
+    ).rejects.toMatchObject({ code: "corrupt-database" });
+    await expect(
+      schedule.deleteAionUiSchedule({
+        jobId: registration.job.id,
+        deletedAtMs: firstMutationAtMs,
+      }),
+    ).rejects.toMatchObject({ code: "corrupt-database" });
+    await expect(
+      schedule.claimAionUiScheduleRun({
+        jobId: registration.job.id,
+        claim: "claim-injected-transaction-failure",
+        claimedAtMs: firstMutationAtMs,
+      }),
+    ).rejects.toMatchObject({ code: "corrupt-database" });
+
+    setScheduleUpdateFailure(userDataPath, false);
+    await schedule.claimAionUiScheduleRun({
+      jobId: registration.job.id,
+      claim: "claim-injected-transaction-failure",
+      claimedAtMs: firstMutationAtMs,
+    });
+    setScheduleUpdateFailure(userDataPath, true);
+    await expect(
+      schedule.completeAionUiScheduleRun({
+        jobId: registration.job.id,
+        claim: "claim-injected-transaction-failure",
+        completedAtMs: firstMutationAtMs + 1_000,
+        status: "ok",
+        nextRunAtMs: firstMutationAtMs + 60_000,
+      }),
+    ).rejects.toMatchObject({ code: "corrupt-database" });
+    await expect(
+      schedule.recoverAionUiScheduleRuns({ recoveredAtMs: firstMutationAtMs + 1_000 }),
+    ).rejects.toMatchObject({ code: "corrupt-database" });
     await persistence.close();
   });
 
@@ -262,8 +435,6 @@ describe("SQLite Actestra-owned schedule persistence", () => {
       reopenedSchedule.recoverAionUiScheduleRuns({ recoveredAtMs: claimedAtMs + 2 }),
     ).resolves.toEqual([
       expect.objectContaining({
-        activeClaim: undefined,
-        activeClaimedAtMs: undefined,
         lastRunAtMs: claimedAtMs + 2,
         lastStatus: "error",
         lastIncidentCode: "interrupted",

@@ -151,6 +151,45 @@ describe("AionUI schedule bridge contract", () => {
     }
   });
 
+  it("accepts the native empty schedule description and normalizes schedule validation errors", () => {
+    expect(() =>
+      assertAionUiScheduleBridgeResponse({
+        contractVersion: 1,
+        status: 200,
+        data: {
+          ...job,
+          schedule: {
+            kind: "cron",
+            expr: "",
+            description: "",
+          },
+        },
+      }),
+    ).not.toThrow();
+
+    let validationError: unknown;
+    try {
+      assertAionUiScheduleBridgeResponse({
+        contractVersion: 1,
+        status: 200,
+        data: {
+          ...job,
+          schedule: {
+            kind: "cron",
+            expr: "not-a-five-field-cron",
+            description: "Invalid cron",
+          },
+        },
+      });
+    } catch (error) {
+      validationError = error;
+    }
+    expect(validationError).toMatchObject({
+      name: "Error",
+      message: "Native AionUI schedule has no calculable occurrence",
+    });
+  });
+
   it("rejects malformed, ambiguous, traversal, authority, and renderer-selected event input", () => {
     const invalidRequests = [
       { contractVersion: 1, method: "PATCH", path: "/api/cron/jobs", body: undefined },

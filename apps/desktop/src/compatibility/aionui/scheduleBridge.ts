@@ -6,11 +6,12 @@ import {
 import {
   ACTESTRA_GENERAL_WORKER_AGENT_TYPE,
   AIONUI_SCHEDULE_MAX_JOBS,
-  assertAionUiScheduleJobId,
-  calculateAionUiScheduleNextRun,
-  type AionUiSchedule,
-  type AionUiScheduleLastStatus,
-  type NativeAionUiCronJob,
+  isAionUiScheduleJobId,
+} from "./scheduleContract";
+import type {
+  AionUiSchedule,
+  AionUiScheduleLastStatus,
+  NativeAionUiCronJob,
 } from "./scheduledGeneralWork";
 
 export const AIONUI_SCHEDULE_BRIDGE_CONTRACT_VERSION = 1 as const;
@@ -27,6 +28,12 @@ const MAX_TIME_ZONE_BYTES = 128;
 const MAX_CONVERSATION_TITLE_BYTES = 256;
 const MAX_INCIDENT_CODE_BYTES = 128;
 const MAX_SKILL_CONTENT_BYTES = 16 * 1024;
+
+function assertBridgeScheduleJobId(value: unknown): asserts value is string {
+  if (!isAionUiScheduleJobId(value)) {
+    throw new Error("AionUI schedule job identity is invalid");
+  }
+}
 
 const REQUEST_KEYS = ["contractVersion", "method", "path", "body"] as const;
 const CREATE_BODY_KEYS = [
@@ -305,7 +312,7 @@ function assertJobPathSegment(rawJobId: string): string {
   if (jobId !== rawJobId) {
     throw new Error("AionUI schedule job identity must use its canonical path form");
   }
-  assertAionUiScheduleJobId(jobId);
+  assertBridgeScheduleJobId(jobId);
   return jobId;
 }
 
@@ -331,6 +338,9 @@ function parseRoute(request: AionUiScheduleBridgeRequest): AionUiScheduleBridgeR
         ["name", "schedule", "prompt", "conversation_id", "created_by", "execution_mode"],
         "AionUI schedule create body",
       );
+      if (request.body.queue_enabled !== undefined && request.body.queue_enabled !== false) {
+        throw new Error("AionUI schedule create queue policy is unsupported");
+      }
       return Object.freeze({ kind: "create" as const, body: request.body });
     }
     throw new Error("AionUI schedule bridge collection method is unsupported");
@@ -348,6 +358,12 @@ function parseRoute(request: AionUiScheduleBridgeRequest): AionUiScheduleBridgeR
       assertExactKeys(request.body, UPDATE_BODY_KEYS, "AionUI schedule update body");
       if (Object.keys(request.body).length === 0) {
         throw new Error("AionUI schedule update body must not be empty");
+      }
+      if (request.body.max_retries !== undefined && request.body.max_retries !== 0) {
+        throw new Error("AionUI schedule update retry policy is unsupported");
+      }
+      if (request.body.queue_enabled !== undefined && request.body.queue_enabled !== false) {
+        throw new Error("AionUI schedule update queue policy is unsupported");
       }
       return Object.freeze({ kind: "update" as const, jobId, body: request.body });
     }
@@ -427,8 +443,28 @@ function assertSchedule(value: unknown): asserts value is AionUiSchedule {
     }
   } else if (value.kind === "cron") {
     assertExactKeys(value, ["kind", "expr", "tz", "description"], "Native AionUI cron schedule");
-    assertBoundedText(value.expr, "Native AionUI cron expression", MAX_CRON_EXPRESSION_BYTES, true);
-    assertOptionalBoundedText(value.tz, "Native AionUI cron time zone", MAX_TIME_ZONE_BYTES);
+    const expression = value.expr;
+    const timeZone = value.tz;
+    assertBoundedText(expression, "Native AionUI cron expression", MAX_CRON_EXPRESSION_BYTES, true);
+    assertOptionalBoundedText(timeZone, "Native AionUI cron time zone", MAX_TIME_ZONE_BYTES);
+    // Semantic Cron parsing and next-run calculation stay in the
+    // Actestra-owned main scheduler. The renderer bridge only admits a
+    // bounded transport shape and a valid time-zone identifier, so this
+    // module remains preload-safe.
+    try {
+      if (expression.length === 0) {
+        if (timeZone !== undefined) {
+          throw new Error("Manual cron schedules cannot specify a time zone");
+        }
+      } else if (expression.split(/\s+/u).length !== 5) {
+        throw new Error("Cron expression must contain exactly five fields");
+      }
+      if (timeZone !== undefined) {
+        new Intl.DateTimeFormat("en-US", { timeZone }).format(0);
+      }
+    } catch (error) {
+      throw new Error("Native AionUI schedule has no calculable occurrence", { cause: error });
+    }
   } else {
     throw new Error("Native AionUI schedule kind is unsupported");
   }
@@ -436,10 +472,7 @@ function assertSchedule(value: unknown): asserts value is AionUiSchedule {
     value.description,
     "Native AionUI schedule description",
     MAX_SCHEDULE_DESCRIPTION_BYTES,
-  );
-  calculateAionUiScheduleNextRun(
-    value as unknown as AionUiSchedule,
-    value.kind === "at" && typeof value.atMs === "number" ? value.atMs : Date.now(),
+    true,
   );
 }
 
@@ -451,7 +484,7 @@ export function assertNativeAionUiCronJob(value: unknown): asserts value is Nati
     ["id", "name", "enabled", "schedule", "target", "metadata", "state"],
     "Native AionUI cron job",
   );
-  assertAionUiScheduleJobId(value.id);
+  assertBridgeScheduleJobId(value.id);
   assertBoundedText(value.name, "Native AionUI cron job name", MAX_NAME_BYTES);
   assertOptionalBoundedText(
     value.description,
@@ -581,7 +614,7 @@ function assertConversation(value: unknown): asserts value is NativeAionUiSchedu
   if (!isRecord(value.extra)) throw new Error("Native AionUI schedule history metadata is invalid");
   assertExactKeys(value.extra, ["cron_job_id"], "Native AionUI schedule history metadata");
   assertRequiredKeys(value.extra, ["cron_job_id"], "Native AionUI schedule history metadata");
-  assertAionUiScheduleJobId(value.extra.cron_job_id);
+  assertBridgeScheduleJobId(value.extra.cron_job_id);
   assertSafeTimestamp(value.created_at, "Native AionUI schedule history created instant");
   assertSafeTimestamp(value.updated_at, "Native AionUI schedule history updated instant");
   if (value.updated_at < value.created_at)
@@ -669,13 +702,13 @@ export function assertAionUiScheduleEvent(value: unknown): asserts value is Aion
   if (value.type === "cron.job-removed") {
     assertExactKeys(value.payload, ["job_id"], "AionUI schedule removed event");
     assertRequiredKeys(value.payload, ["job_id"], "AionUI schedule removed event");
-    assertAionUiScheduleJobId(value.payload.job_id);
+    assertBridgeScheduleJobId(value.payload.job_id);
     return;
   }
   if (value.type === "cron.job-executed") {
     assertExactKeys(value.payload, ["job_id", "status", "error"], "AionUI schedule executed event");
     assertRequiredKeys(value.payload, ["job_id", "status"], "AionUI schedule executed event");
-    assertAionUiScheduleJobId(value.payload.job_id);
+    assertBridgeScheduleJobId(value.payload.job_id);
     if (!["ok", "error", "skipped", "missed"].includes(value.payload.status as string)) {
       throw new Error("AionUI schedule executed status is invalid");
     }

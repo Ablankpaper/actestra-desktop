@@ -1,3 +1,6 @@
+import { spawnSync } from "node:child_process";
+import path from "node:path";
+import process from "node:process";
 import { describe, expect, it } from "vitest";
 import {
   preloadPrivilegePatterns,
@@ -17,6 +20,16 @@ const electronImportRule = rendererPrivilegePatterns.find(
 );
 
 describe("product boundary rules", () => {
+  it("accepts the declared AionUi schedule compatibility source boundary", () => {
+    const repositoryRoot = path.resolve(import.meta.dirname, "../..");
+    const result = spawnSync(process.execPath, ["scripts/check-product-boundary.mjs"], {
+      cwd: repositoryRoot,
+      encoding: "utf8",
+    });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+  });
+
   it("detects bare and node-prefixed builtins across supported import forms", () => {
     expect(nodeImportRule).toBeDefined();
     for (const source of [

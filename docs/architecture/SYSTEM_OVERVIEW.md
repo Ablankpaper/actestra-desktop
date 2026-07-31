@@ -4,9 +4,11 @@ Status: P3, F0 through F3.3, GW-P4.2 through GW-P4.6, and the representative
 workspace-file, bounded local-research, writing, and Office-document journeys
 are accepted on `main` through exact merge
 `505afb2f3916e75c7abb07cdf461bda29a602b9b` and merged-main CI run
-30602821085; ADR-0023 accepts the next Actestra-owned schedule boundary but
-schema 13 and the schedule provider are not implemented; CrewAI is accepted as
-the first P6 planner-sidecar candidate but is not implemented or packaged
+30602821085; ADR-0023's schema-13 schedule boundary, retained provider, and
+main-owned timers/recovery are implemented locally with final-byte root/native,
+package, package-audit, and target-app proof; commit, PR-head, merge, and
+merged-main gates remain pending; CrewAI is accepted as the first P6
+planner-sidecar candidate but is not implemented or packaged
 
 ## Context
 
@@ -116,8 +118,10 @@ that sequence into the preserved AionUI SendBox, message, cancel, and Preview
 surfaces. The representative-file, bounded local-research, writing, and
 Office-document paths accepted through pull requests 16 through 19 compose the
 scoped capabilities inside that same journey. ADR-0023 accepts the next
-main-owned schedule-provider design; schema 13, timers, claims, and native cron
-routing are not yet implemented.
+main-owned schedule-provider boundary; schema 13, timers, claims, and native
+cron routing are implemented locally. Final-byte root/native validation, a new
+signed unnotarized arm64 package, package audits, target-app proof, and manual
+review closure pass locally; push and acceptance on `main` remain pending.
 
 P4.2 adds the separate compatibility boundary accepted in
 [ADR-0011](decisions/0011-aionui-shadow-projection.md). Successful native HTTP
@@ -298,14 +302,17 @@ caching that projection; it does not make the canonical Actestra model
 non-durable. DOCX bytes, output paths, roots, and content references do not
 cross into the renderer or metadata-only evidence.
 
-ADR-0023 accepts a schema-13 schedule authority beneath the retained
-`/scheduled` routes and `ipcBridge.cron` DTOs. One main-owned service will hold
+ADR-0023 implements a schema-13 schedule authority beneath the retained
+`/scheduled` routes and `ipcBridge.cron` DTOs. One main-owned service holds
 bounded existing-conversation jobs, canonical schedule grants, next-run
 calculation, timers, atomic run claims, missed/interrupted state, and native
 event projection. A claimed run may enter the existing General Work journey
 only from that stored grant and never gives the scheduler direct Worker or tool
-authority. This paragraph records accepted architecture only; the schema,
-provider, timer service, and target-app proof are not yet implemented.
+authority. Contract, migration, persistence, main-service, bridge, and native
+compatibility have local evidence. Current final bytes pass complete root/native
+gates, strict TypeScript, production build, a new signed local package, exact
+package/ASAR/resource checks, and target-app smoke; commit, PR, and exact remote
+CI evidence remain pending.
 
 ## Foundation integration boundary
 
@@ -537,7 +544,7 @@ Initial event types:
 | Bounded content references                                                                                     | Actestra persistence utility, schema 6              |
 | General Work attempt, tool, artifact-binding, and recovery checkpoints                                         | Actestra persistence utility, schema 7              |
 | Preserved-AionUI journey links, kinds, and authoritative registration including prompt-only writing and Office | Actestra persistence utility, schema 12             |
-| Scheduled General Work jobs, grants, timers, and run claims (accepted design; not implemented)                 | Actestra persistence utility, schema 13             |
+| Scheduled General Work jobs, grants, timers, and run claims                                                    | Actestra persistence utility, schema 13             |
 | Tasks and dependency graph                                                                                     | Actestra                                            |
 | P3 protected-operation approval evidence for the underlying native tool                                        | Actestra target contract; not activated by F3.2     |
 | Event and audit history                                                                                        | Actestra                                            |
@@ -610,11 +617,23 @@ ADR-0022 adds schema-12 Office registration, a private Worker-authored document
 model, one main-owned create-only DOCX tool, and the bounded retained Word
 Preview provider. ADR-0023 accepts schema-13 schedule ownership, main-owned
 timers and claims, retained cron DTOs/events, skipped missed occurrences, and
-existing-conversation General Work execution; implementation evidence remains
-pending. General or network research, representative tool failure, Worker
-crash, credential storage, and OS sandbox mechanisms remain later work. Office
-is accepted through exact pull-request and merged-main CI; its local package
-remains unnotarized and is not a candidate or release.
+existing-conversation General Work execution. Its pre-review implementation,
+complete root/native regressions, production build, signed local package, and
+target-app smoke passed locally. Review remediation now passes focused tests,
+lint, and strict TypeScript; four complete 50-file review passes have explicit
+fixes or accepted-decision dispositions. Two follow-up confirmations were
+rate-limited before analysis and are not zero-issue evidence; the final manual
+51-file review includes the Node-free schedule contract split and corrected
+downstream-owner assertion and found no additional confirmed defect. Current
+bytes pass 56-file/424-test root and 345-file/2,658-test native gates, the
+607/24/10,184-module native production build, a new signed unnotarized arm64
+package, exact package/ASAR/resource checks, and schema-13 target-app smoke;
+remote acceptance remains pending. General
+or network research, representative tool failure, Worker crash, credential
+storage, and OS sandbox mechanisms remain later work. Office is accepted
+through exact pull-request and merged-main CI; the new local schedule package
+remains unnotarized and is not a candidate, release, distribution, or user
+acceptance artifact.
 Signing, notarization, update delivery, and cross-platform candidate packaging
 remain P8 work.
 

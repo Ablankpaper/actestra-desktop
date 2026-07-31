@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { hashAionUiGeneralWorkConversation } from "../../apps/desktop/src/compatibility/aionui";
-import { eventId, instant } from "../../apps/desktop/src/core";
+import { eventId, instant, taskId } from "../../apps/desktop/src/core";
 import { createScopedNativeToolPlatform } from "../../apps/desktop/src/main/privileged/scopedNativeToolPlatform";
 import { AionUiGeneralWorkJourneyService } from "../../apps/desktop/src/main/compatibility/aionuiGeneralWorkJourneyService";
 import { DeterministicAgentClock } from "../../apps/desktop/src/main/workers/deterministicFakeAgentAdapter";
@@ -64,6 +64,53 @@ describe("AionUiGeneralWorkJourneyService", () => {
         prompt: "Do not grant access to the filesystem root.",
       }),
     ).rejects.toThrow(/workspace root/u);
+    expect(launchWorker).not.toHaveBeenCalled();
+    await expect(persistence.loadDomainGraph()).resolves.toEqual({
+      workspaces: [],
+      tasks: [],
+      sessions: [],
+      workers: [],
+      approvals: [],
+      artifacts: [],
+    });
+  });
+
+  it("reserves scheduled submission identities from renderer-owned General Work", async () => {
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "actestra-aionui-journey-service-test-"),
+    );
+    testDirectories.push(directory);
+    const persistence = (await openTestPersistenceUtility(directory)).client;
+    persistenceClients.push(persistence);
+    const clock = new DeterministicAgentClock(instant("2026-07-31T07:59:00.000Z"));
+    const nativeTools = createScopedNativeToolPlatform({ persistence, clock });
+    const nativeResolve = vi.fn(async () => {
+      throw new Error("Renderer submission reached native-context authority");
+    });
+    const launchWorker = vi.fn(async () => {
+      throw new Error("Renderer submission launched the reserved scheduled Worker");
+    });
+    const service = new AionUiGeneralWorkJourneyService({
+      persistence,
+      nativeTools,
+      clock,
+      nativeContext: { resolve: nativeResolve },
+      launchWorker,
+    });
+
+    let failure: unknown;
+    try {
+      service.submit({
+        contractVersion: 1,
+        nativeConversationId: "conversation-native-schedule-reservation",
+        submissionId: `schedule-aionui-${"a".repeat(64)}:run:1`,
+        prompt: "Do not let renderer input reserve a scheduled task identity.",
+      });
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toMatchObject({ code: "task-conflict" });
+    expect(nativeResolve).not.toHaveBeenCalled();
     expect(launchWorker).not.toHaveBeenCalled();
     await expect(persistence.loadDomainGraph()).resolves.toEqual({
       workspaces: [],
@@ -177,6 +224,155 @@ describe("AionUiGeneralWorkJourneyService", () => {
         "task.completed",
       ]),
     );
+  });
+
+  it("terminalizes a prepared scheduled submission before generic restart recovery can run it", async () => {
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "actestra-aionui-journey-service-test-"),
+    );
+    testDirectories.push(directory);
+    const persistence = (await openTestPersistenceUtility(directory)).client;
+    persistenceClients.push(persistence);
+    const workspaceRoot = path.join(directory, "workspace");
+    fs.mkdirSync(workspaceRoot);
+    const clock = new DeterministicAgentClock(instant("2026-07-31T08:00:15.000Z"));
+    const nativeTools = createScopedNativeToolPlatform({ persistence, clock });
+    const service = new AionUiGeneralWorkJourneyService({
+      persistence,
+      nativeTools,
+      clock,
+      nativeContext: {
+        resolve: async () => {
+          throw new Error("Scheduled restart recovery must use its persisted context");
+        },
+      },
+      launchWorker: async () => {
+        throw new Error("Injected process loss after scheduled task registration");
+      },
+    });
+    const nativeConversationId = "conversation-native-scheduled-prepared-interruption";
+    const submissionId = "schedule-aionui-prepared-interruption-run-1";
+
+    await expect(
+      service.submitFromTrustedContext(
+        {
+          contractVersion: 1,
+          nativeConversationId,
+          submissionId,
+          prompt: "Do not replay this interrupted scheduled submission.",
+          journeyKind: "prompt-artifact",
+        },
+        {
+          rootPath: workspaceRoot,
+          displayName: "Interrupted scheduled workspace",
+        },
+      ),
+    ).rejects.toThrow("Injected process loss");
+    const preparedGraph = await persistence.loadDomainGraph();
+    await persistence.replaceDomainGraph({
+      ...preparedGraph,
+      sessions: preparedGraph.sessions.map((session) => ({
+        ...session,
+        state: "starting" as const,
+      })),
+    });
+    await expect(
+      service.interruptPreparedSubmission(nativeConversationId, submissionId),
+    ).rejects.toMatchObject({ code: "task-conflict" });
+    await persistence.replaceDomainGraph(preparedGraph);
+    await expect(
+      service.interruptPreparedSubmission(nativeConversationId, submissionId),
+    ).resolves.toMatchObject({ status: "failed", canCancel: false });
+    const terminalGraph = await persistence.loadDomainGraph();
+    vi.spyOn(persistence, "loadDomainGraph").mockResolvedValueOnce({
+      ...terminalGraph,
+      workers: terminalGraph.workers.map((worker) => ({
+        ...worker,
+        adapterKind: "corrupt-general-worker-adapter" as typeof worker.adapterKind,
+      })),
+    });
+    await expect(
+      service.interruptPreparedSubmission(nativeConversationId, submissionId),
+    ).rejects.toThrow("identities conflict");
+    await expect(service.recoverPrepared()).resolves.toEqual({
+      attempted: 0,
+      started: 0,
+      failed: 0,
+    });
+
+    const graph = await persistence.loadDomainGraph();
+    expect(graph.tasks).toEqual([expect.objectContaining({ state: "failed" })]);
+    expect(graph.sessions).toEqual([expect.objectContaining({ state: "cancelled" })]);
+    expect(graph.workers).toEqual([expect.objectContaining({ state: "stopped" })]);
+    expect(await persistence.listPreparedAionUiGeneralWorkJourneyLinks(100)).toEqual([]);
+  });
+
+  it("reports terminal finalization failure to the scheduled caller", async () => {
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "actestra-aionui-journey-service-test-"),
+    );
+    testDirectories.push(directory);
+    const persistence = (await openTestPersistenceUtility(directory)).client;
+    persistenceClients.push(persistence);
+    const workspaceRoot = path.join(directory, "workspace");
+    fs.mkdirSync(workspaceRoot);
+    const clock = new DeterministicAgentClock(instant("2026-07-31T08:00:30.000Z"));
+    const nativeTools = createScopedNativeToolPlatform({ persistence, clock });
+    const replaceDomainGraph = vi
+      .spyOn(persistence, "replaceDomainGraph")
+      .mockRejectedValue(new Error("Injected terminal finalization failure"));
+    const service = new AionUiGeneralWorkJourneyService({
+      persistence,
+      nativeTools,
+      clock,
+      nativeContext: {
+        resolve: async () => {
+          throw new Error("A scheduled grant must not reread native context");
+        },
+      },
+      launchWorker: async ({ requestId }) =>
+        (
+          await openTestGeneralWorker(clock, {
+            executionMode: "task-output-write-text-fixture",
+            newAttemptToken: () => "attempt-aionui-scheduled-finalization-failure",
+            newToolRequestId: () => requestId,
+          })
+        ).adapter,
+    });
+
+    const projection = await service.submitFromTrustedContext(
+      {
+        contractVersion: 1,
+        nativeConversationId: "conversation-native-scheduled-finalization-failure",
+        submissionId: "schedule-job-finalization-failure-run-1",
+        prompt: "Expose the failed terminal persistence barrier.",
+      },
+      {
+        rootPath: workspaceRoot,
+        displayName: "Scheduled finalization failure workspace",
+      },
+    );
+    expect(projection).toMatchObject({ status: "blocked" });
+
+    await vi.waitFor(() => {
+      expect(replaceDomainGraph).toHaveBeenCalled();
+    });
+    await expect(
+      service.waitForIdle(taskId(`task-aionui-${"f".repeat(64)}`)),
+    ).resolves.toBeUndefined();
+    await expect(service.waitForIdle(projection.taskId)).rejects.toThrow(
+      "Injected terminal finalization failure",
+    );
+    const graph = await persistence.loadDomainGraph();
+    const checkpoint = await persistence.getGeneralWorkCheckpoint(graph.sessions[0]!.id);
+    expect(graph.tasks).toEqual([expect.objectContaining({ state: "ready" })]);
+    expect(checkpoint).toMatchObject({
+      phase: "terminal-pending",
+      attempt: {
+        state: "completed",
+        taskState: "completed",
+      },
+    });
   });
 
   it("rejects a filesystem root from a persisted grant without rereading native context", async () => {

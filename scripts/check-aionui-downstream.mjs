@@ -212,6 +212,7 @@ function main() {
     }
   }
   for (const requiredScheduleSourceCopy of [
+    "packages/desktop/src/actestra/compatibility/aionui/scheduleContract.ts",
     "packages/desktop/src/actestra/compatibility/aionui/scheduleBridge.ts",
     "packages/desktop/src/actestra/compatibility/aionui/scheduledGeneralWork.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiScheduleBridgeService.ts",
@@ -260,6 +261,7 @@ function main() {
     "Portions Copyright © 2024 AionUi contributors.",
     "- actestra",
     "- node_modules/docx/LICENSE",
+    "- node_modules/croner/LICENSE",
     "from: node_modules/electron/dist/LICENSE",
     "to: LICENSE.electron.txt",
     "from: node_modules/electron/dist/LICENSES.chromium.html",
@@ -283,7 +285,7 @@ function main() {
   requireText(path.join(outputRoot, "packages/desktop/src/common/adapter/httpBridge.ts"), [
     "publishActestraHttpObservation",
     "publishActestraWebSocketObservation",
-    "ACTESTRA_SCHEDULE_PATH_PREFIX = '/api/cron/'",
+    "ACTESTRA_SCHEDULE_PATH = '/api/cron'",
     "requestActestraSchedule",
     "window.actestraSchedule!.onEvent",
     "scheduleUnavailableError",
@@ -429,14 +431,24 @@ function main() {
     ],
   );
   requireText(
+    path.join(outputRoot, "packages/desktop/src/actestra/compatibility/aionui/scheduleContract.ts"),
+    [
+      "AIONUI_SCHEDULE_MAX_JOBS = 100",
+      'ACTESTRA_GENERAL_WORKER_AGENT_TYPE = "actestra-general-worker"',
+      "AIONUI_SCHEDULE_JOB_ID_RE",
+      "isAionUiScheduleJobId",
+    ],
+  );
+  requireText(
     path.join(
       outputRoot,
       "packages/desktop/src/actestra/compatibility/aionui/scheduledGeneralWork.ts",
     ),
     [
       "AIONUI_SCHEDULE_CONTRACT_VERSION = 1",
-      "AIONUI_SCHEDULE_MAX_JOBS = 100",
-      'ACTESTRA_GENERAL_WORKER_AGENT_TYPE = "actestra-general-worker"',
+      "AIONUI_SCHEDULE_MAX_JOBS",
+      "ACTESTRA_GENERAL_WORKER_AGENT_TYPE",
+      'from "./scheduleContract"',
       "new Cron(value.expr",
       "deriveAionUiScheduleIdentity",
       "calculateAionUiScheduleNextRun",
@@ -521,6 +533,13 @@ function main() {
       "recover-office-restart",
       "office-document-artifact",
       "Actestra Office document",
+      "prepare-schedule-restart",
+      "recover-schedule-restart",
+      "Schedule smoke run-now",
+      "Schedule smoke missed",
+      "Schedule smoke interrupted",
+      "schedule-smoke-interrupted-claim",
+      "schedule-skill-unsupported",
       "service.preview(",
       "ACTESTRA_E2E_TEST",
     ],
@@ -552,7 +571,17 @@ function main() {
     "writing-artifact",
     '"brief.docx"',
     "office-document-artifact",
-    "schema version 12",
+    '"prepare-schedule-restart"',
+    '"recover-schedule-restart"',
+    "aionui_schedule_jobs",
+    "Schedule smoke run-now",
+    "next_run_at_ms",
+    "active_claim",
+    "last_incident_code",
+    "missed-occurrence",
+    "schedule-smoke-interrupted-claim",
+    "schedule-skill-unsupported",
+    "schema version 13",
   ]);
   rejectText(path.join(repositoryRoot, "scripts/smoke-aionui-general-work.mjs"), [
     "Electron.app",
@@ -587,6 +616,8 @@ function main() {
       "}).recover();",
       "ACTESTRA_GENERAL_WORK_RECOVERY_READY",
       "await scheduleService.recover();",
+      "scheduleRecovered = true;",
+      "registerRecoveredScheduleBridge();",
       "ACTESTRA_AIONUI_SCHEDULE_RECOVERY_READY",
       "[Actestra persistence] Utility ready schema=",
     ],
@@ -954,6 +985,14 @@ function main() {
     "recover-office-restart",
     "Actestra Office document",
     "kind: 'document'",
+  ]);
+  requireText(path.join(outputRoot, "tests/unit/actestra/scheduleSmoke.test.ts"), [
+    "Actestra target-app schedule smoke contract",
+    "prepare-schedule-restart",
+    "recover-schedule-restart",
+    "Schedule smoke run-now",
+    "missed-occurrence",
+    "interrupted",
   ]);
 
   console.log(

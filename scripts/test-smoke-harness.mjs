@@ -12,6 +12,14 @@ const generalWorkSmokeScript = path.join(
   "scripts",
   "smoke-aionui-general-work.mjs",
 );
+const scheduledGeneralWorkPatch = path.join(
+  repositoryRoot,
+  "downstream",
+  "aionui-v2.1.41",
+  "patches",
+  "0011-actestra-scheduled-general-work.mjs",
+);
+const packagedVerificationScript = path.join(repositoryRoot, "scripts", "verify-packaged-app.mjs");
 const harnessRoot = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-smoke-harness-"));
 
 function createAppBundle(name, executableSource, mode = 0o700) {
@@ -43,8 +51,8 @@ function assert(condition, message) {
 try {
   const packagedSmokeSource = fs.readFileSync(smokeScript, "utf8");
   assert(
-    packagedSmokeSource.includes("const expectedPersistenceSchemaVersion = 12;"),
-    "Packaged shell smoke must validate the current schema 12 database",
+    packagedSmokeSource.includes("const expectedPersistenceSchemaVersion = 13;"),
+    "Packaged shell smoke must validate the current schema 13 database",
   );
 
   const generalWorkSmokeSource = fs.readFileSync(generalWorkSmokeScript, "utf8");
@@ -61,8 +69,8 @@ try {
     generalWorkSmokeSource.includes('"actestra-research.txt"') &&
       generalWorkSmokeSource.includes("local-research-artifact") &&
       generalWorkSmokeSource.includes('"research.md"') &&
-      generalWorkSmokeSource.includes("schema version 12"),
-    "General Work target-app smoke must exercise the bounded local-research journey on schema 12",
+      generalWorkSmokeSource.includes("schema version 13"),
+    "General Work target-app smoke must exercise the bounded local-research journey on schema 13",
   );
   assert(
     generalWorkSmokeSource.includes('"prepare-writing-restart"') &&
@@ -80,6 +88,91 @@ try {
       generalWorkSmokeSource.includes('"[Content_Types].xml"') &&
       generalWorkSmokeSource.includes('artifactLabel: "Actestra Office document"'),
     "General Work target-app smoke must recover a real bounded Office document",
+  );
+  assert(
+    generalWorkSmokeSource.includes('"prepare-schedule-restart"') &&
+      generalWorkSmokeSource.includes('"recover-schedule-restart"') &&
+      generalWorkSmokeSource.includes("aionui_schedule_jobs") &&
+      generalWorkSmokeSource.includes("Schedule smoke run-now") &&
+      generalWorkSmokeSource.includes("next_run_at_ms") &&
+      generalWorkSmokeSource.includes("active_claim") &&
+      generalWorkSmokeSource.includes("last_incident_code") &&
+      generalWorkSmokeSource.includes("missed-occurrence") &&
+      generalWorkSmokeSource.includes("interrupted") &&
+      generalWorkSmokeSource.includes("schedule-smoke-interrupted-claim") &&
+      generalWorkSmokeSource.includes("schedule-skill-unsupported") &&
+      generalWorkSmokeSource.includes("ACTESTRA_RENDERER_PROVIDER_SMOKE_READY") &&
+      generalWorkSmokeSource.includes("schema version 13"),
+    "General Work target-app smoke must prove schema-13 scheduling and one renderer provider request",
+  );
+
+  const scheduledGeneralWorkPatchSource = fs.readFileSync(scheduledGeneralWorkPatch, "utf8");
+  assert(
+    scheduledGeneralWorkPatchSource.includes("const port = window.__backendPort;") &&
+      scheduledGeneralWorkPatchSource.includes(
+        "!Number.isSafeInteger(port) || port < 1 || port > 65_535",
+      ) &&
+      !scheduledGeneralWorkPatchSource.includes("backendPortDeadline") &&
+      !scheduledGeneralWorkPatchSource.includes(
+        "await new Promise((resolve) => setTimeout(resolve, 25));",
+      ),
+    "Schedule target-app provider probe must fail immediately when the sandboxed preload is unavailable",
+  );
+
+  const packagedVerificationSource = fs.readFileSync(packagedVerificationScript, "utf8");
+  assert(
+    packagedVerificationSource.includes("node_modules/croner/LICENSE") &&
+      packagedVerificationSource.includes("actestra:schedule-request-v1") &&
+      packagedVerificationSource.includes("schedule-skill-unsupported") &&
+      packagedVerificationSource.includes("/api/cron/internal/system-resume"),
+    "Packaged verification must prove Croner attribution and the Actestra schedule provider boundary",
+  );
+  assert(
+    packagedVerificationSource.includes('extractArchiveText("out/preload/index.js")') &&
+      packagedVerificationSource.includes('new Set(["electron"])') &&
+      packagedVerificationSource.includes("sandboxed preload imports unsupported module"),
+    "Packaged verification must reject dependencies unavailable to Electron's sandboxed preload",
+  );
+  assert(
+    packagedVerificationSource.includes('"out/main/actestra-persistence-utility.js"') &&
+      packagedVerificationSource.includes('"out/main/actestra-general-worker.js"') &&
+      packagedVerificationSource.includes(
+        "packagedPersistenceGraph.includes(requiredScheduleMarker)",
+      ),
+    "Packaged verification must inspect the emitted isolated utility entry graphs",
+  );
+  assert(
+    packagedVerificationSource.includes("fs.createReadStream(archivePath)") &&
+      !packagedVerificationSource.includes('execFileSync("/usr/bin/strings"'),
+    "Packaged verification must scan large archives without a fixed child-process output buffer",
+  );
+  assert(
+    packagedVerificationSource.includes(
+      "packaged main graph does not prove that telemetry is disabled",
+    ) && !packagedVerificationSource.includes('{ label: "Sentry"'),
+    "Packaged verification must prove disabled telemetry without rejecting retained Sentry source",
+  );
+  assert(
+    packagedVerificationSource.includes(
+      "packaged main graph does not prove that upstream services are isolated",
+    ) &&
+      packagedVerificationSource.includes(
+        "packaged main graph does not prove that updates are isolated",
+      ) &&
+      !packagedVerificationSource.includes('{ label: "iofficeai"') &&
+      !packagedVerificationSource.includes('{ label: "static.aionui.com"') &&
+      !packagedVerificationSource.includes("undeclared AionUi identity appears"),
+    "Packaged verification must prove F1 isolation without rejecting retained compatibility source",
+  );
+  assert(
+    packagedVerificationSource.includes(
+      "packaged renderer script-src permits unsafe inline execution",
+    ) &&
+      packagedVerificationSource.includes("packaged renderer CSP is missing base-uri 'none'") &&
+      packagedVerificationSource.includes('"http://127.0.0.1:*"') &&
+      packagedVerificationSource.includes('"ws://127.0.0.1:*"') &&
+      packagedVerificationSource.includes("unexpected packaged renderer connect-src"),
+    "Packaged verification must retain only the exact loopback renderer connection boundary",
   );
 
   const earlyExit = runSmoke(createAppBundle("early-exit", "#!/bin/sh\nexit 7\n"));
@@ -111,7 +204,7 @@ const database = new DatabaseSync(path.join(stateDirectory, "actestra.sqlite3"))
 database.exec(\`
   CREATE TABLE workspace_grants (id TEXT PRIMARY KEY) STRICT;
   CREATE TABLE content_references (id TEXT PRIMARY KEY) STRICT;
-  PRAGMA user_version = 12;
+  PRAGMA user_version = 13;
 \`);
 database.close();
 console.log("ACTESTRA_PERSISTENCE_UTILITY_READY");

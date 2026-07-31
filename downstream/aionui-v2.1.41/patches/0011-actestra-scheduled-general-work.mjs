@@ -79,6 +79,34 @@ replaceOnce(
       expect(fetchSpy).not.toHaveBeenCalled();
     });
 
+    it('keeps the bare cron root inside the fail-closed Actestra provider boundary', async () => {
+      const fetchSpy = vi.fn();
+      const request = vi.fn().mockResolvedValue({
+        contractVersion: 1,
+        status: 400,
+        code: 'schedule-invalid-request',
+        message: 'The schedule request is invalid',
+      });
+      vi.stubGlobal('fetch', fetchSpy);
+      vi.stubGlobal('window', {
+        __backendPort: 13400,
+        actestraSchedule: { request, onEvent: vi.fn() },
+      });
+
+      await expect(httpGet('/api/cron').invoke()).rejects.toMatchObject({
+        name: 'BackendHttpError',
+        status: 400,
+        code: 'schedule-invalid-request',
+      });
+      expect(request).toHaveBeenCalledWith({
+        contractVersion: 1,
+        method: 'GET',
+        path: '/api/cron',
+        body: undefined,
+      });
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
     it('subscribes fixed cron events without opening WebSocket and drops invalid payloads', () => {
       const fetchSpy = vi.fn();
       const onEvent = vi.fn().mockReturnValue(() => {});
@@ -245,6 +273,28 @@ describe('Actestra schedule native wiring', () => {
 
     expect(bridgeSource).toContain('new AionUiScheduleService({');
     expect(bridgeSource).toContain('await scheduleService.recover()');
+    expect(bridgeSource).toContain('scheduleRecovered = true;');
+    expect(bridgeSource.indexOf('await scheduleService.recover();')).toBeLessThan(
+      bridgeSource.indexOf('scheduleRecovered = true;')
+    );
+    const persistenceInitialization = bridgeSource.slice(
+      bridgeSource.indexOf('export async function initializeActestraPersistenceUtility'),
+      bridgeSource.indexOf('function registerRecoveredScheduleBridge')
+    );
+    expect(persistenceInitialization).not.toContain('startGeneralWorkRecovery();');
+    expect(persistenceInitialization).not.toContain('startGeneralWorkSmoke();');
+    expect(bridgeSource.indexOf('scheduleRecovered = true;')).toBeLessThan(
+      bridgeSource.indexOf('registerRecoveredScheduleBridge();')
+    );
+    expect(bridgeSource).toContain('disposeScheduleBridgeIpc?.();\\n    disposeScheduleBridgeIpc = null;');
+    expect(bridgeSource).toContain(
+      'await scheduleService?.close().catch((): undefined => undefined);\\n    scheduleService = null;'
+    );
+    expect(
+      bridgeSource.indexOf('await scheduleService?.close().catch((): undefined => undefined);')
+    ).toBeLessThan(
+      bridgeSource.indexOf('await launchedPersistence?.close().catch((): undefined => undefined);')
+    );
     expect(bridgeSource).toContain('registerAionUiScheduleBridgeIpc({');
     expect(bridgeSource).toContain('resumeActestraSchedule');
     expect(bridgeSource.indexOf('await activeSchedule?.close')).toBeLessThan(
@@ -278,6 +328,173 @@ describe('Actestra schedule native wiring', () => {
 `,
 );
 
+writeNew(
+  "tests/unit/actestra/scheduleSmoke.test.ts",
+  `// @vitest-environment node
+
+import path from 'node:path';
+import { describe, expect, it, vi } from 'vitest';
+import type { ActestraPersistencePort } from '@/actestra/core';
+import type { AionUiGeneralWorkJourneyService } from '@/actestra/main/compatibility/aionuiGeneralWorkJourneyService';
+import type { AionUiScheduleService } from '@/actestra/main/compatibility/aionuiScheduleService';
+import {
+  resolveActestraGeneralWorkSmokeConfig,
+  runActestraGeneralWorkSmoke,
+} from '@/process/services/actestraGeneralWorkSmoke';
+
+const zeroRecovery = Promise.resolve({ attempted: 0, started: 0, failed: 0 });
+const jobIds = {
+  runNow: 'schedule-aionui-' + '1'.repeat(64),
+  missed: 'schedule-aionui-' + '2'.repeat(64),
+  interrupted: 'schedule-aionui-' + '3'.repeat(64),
+} as const;
+
+function config(scenario: 'prepare-schedule-restart' | 'recover-schedule-restart') {
+  return {
+    scenario,
+    workspaceRoot: path.resolve('schedule-smoke-workspace'),
+    nativeConversationId: 'conversation-aionui-smoke',
+  } as const;
+}
+
+function job(
+  id: string,
+  name: string,
+  state: Readonly<Record<string, unknown>> = {},
+) {
+  return {
+    id,
+    name,
+    state: {
+      run_count: 0,
+      retry_count: 0,
+      max_retries: 0,
+      queue_enabled: false,
+      ...state,
+    },
+  };
+}
+
+describe('Actestra target-app schedule smoke contract', () => {
+  it('admits only the guarded prepare and recover schedule scenarios', () => {
+    expect(
+      resolveActestraGeneralWorkSmokeConfig({
+        ACTESTRA_E2E_TEST: '1',
+        ACTESTRA_GENERAL_WORK_SMOKE_SCENARIO: 'prepare-schedule-restart',
+        ACTESTRA_GENERAL_WORK_SMOKE_WORKSPACE: path.resolve('schedule-smoke-workspace'),
+      }),
+    ).toEqual(config('prepare-schedule-restart'));
+  });
+
+  it('prepares three durable jobs and one interrupted claim without a General Work task', async () => {
+    const schedule = {
+      create: vi
+        .fn()
+        .mockResolvedValueOnce(job(jobIds.runNow, 'Schedule smoke run-now'))
+        .mockResolvedValueOnce(job(jobIds.missed, 'Schedule smoke missed'))
+        .mockResolvedValueOnce(job(jobIds.interrupted, 'Schedule smoke interrupted')),
+    } as unknown as AionUiScheduleService;
+    const persistence = {
+      updateAionUiSchedule: vi.fn(async () => ({ status: 'updated', job: {} })),
+      claimAionUiScheduleRun: vi.fn(async () => ({ status: 'claimed', job: {} })),
+    } as unknown as ActestraPersistencePort;
+
+    await expect(
+      runActestraGeneralWorkSmoke(
+        config('prepare-schedule-restart'),
+        {} as AionUiGeneralWorkJourneyService,
+        zeroRecovery,
+        schedule,
+        persistence,
+      ),
+    ).resolves.toEqual({
+      scenario: 'prepare-schedule-restart',
+      status: 'prepared',
+      taskCount: 0,
+      artifactCount: 0,
+      scheduleCount: 3,
+      missedCount: 0,
+      interruptedCount: 0,
+      skillUnsupported: false,
+    });
+    expect(schedule.create).toHaveBeenCalledTimes(3);
+    const missedUpdate = vi.mocked(persistence.updateAionUiSchedule).mock.calls[0]?.[0];
+    expect(missedUpdate).toEqual(
+      expect.objectContaining({
+        jobId: jobIds.missed,
+        updatedAtMs: expect.any(Number),
+        nextRunAtMs: expect.any(Number),
+      })
+    );
+    if (
+      missedUpdate === undefined ||
+      typeof missedUpdate.nextRunAtMs !== 'number'
+    ) {
+      throw new Error('Schedule smoke did not persist a missed occurrence');
+    }
+    expect(missedUpdate.nextRunAtMs).toBeLessThan(missedUpdate.updatedAtMs);
+    expect(persistence.claimAionUiScheduleRun).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: jobIds.interrupted }),
+    );
+  });
+
+  it('lists recovered states, rejects Skill, runs one job, and observes one artifact', async () => {
+    const runNow = job(jobIds.runNow, 'Schedule smoke run-now');
+    const missed = job(jobIds.missed, 'Schedule smoke missed', {
+      last_status: 'missed',
+      last_error: 'missed-occurrence',
+    });
+    const interrupted = job(jobIds.interrupted, 'Schedule smoke interrupted', {
+      last_status: 'error',
+      last_error: 'interrupted',
+      run_count: 1,
+    });
+    const schedule = {
+      list: vi.fn(async () => [runNow, missed, interrupted]),
+      runNow: vi.fn(async () => ({ conversation_id: 'conversation-aionui-smoke' })),
+      waitForIdle: vi.fn(async () => undefined),
+      get: vi.fn(async () =>
+        job(jobIds.runNow, 'Schedule smoke run-now', {
+          last_status: 'ok',
+          run_count: 1,
+        }),
+      ),
+      history: vi.fn(async () => [{ id: 'conversation-aionui-smoke' }]),
+    } as unknown as AionUiScheduleService;
+    const journey = {
+      list: vi.fn(async () => [
+        {
+          status: 'completed',
+          canCancel: false,
+          artifacts: [{ state: 'available' }],
+        },
+      ]),
+    } as unknown as AionUiGeneralWorkJourneyService;
+
+    await expect(
+      runActestraGeneralWorkSmoke(
+        config('recover-schedule-restart'),
+        journey,
+        zeroRecovery,
+        schedule,
+        {} as ActestraPersistencePort,
+      ),
+    ).resolves.toEqual({
+      scenario: 'recover-schedule-restart',
+      status: 'completed',
+      taskCount: 1,
+      artifactCount: 1,
+      scheduleCount: 3,
+      missedCount: 1,
+      interruptedCount: 1,
+      skillUnsupported: true,
+    });
+    expect(schedule.runNow).toHaveBeenCalledExactlyOnceWith(jobIds.runNow);
+  });
+});
+`,
+);
+
 replaceOnce(
   "packages/desktop/src/common/adapter/httpBridge.ts",
   `import { routeActestraApprovalRequest } from './actestraApprovalAuthorityClient';
@@ -296,10 +513,10 @@ import {
 replaceOnce(
   "packages/desktop/src/common/adapter/httpBridge.ts",
   `export function isBackendHttpError(error: unknown): error is BackendHttpError {`,
-  `const ACTESTRA_SCHEDULE_PATH_PREFIX = '/api/cron/';
+  `const ACTESTRA_SCHEDULE_PATH = '/api/cron';
 
 function isActestraSchedulePath(path: string): boolean {
-  return path.startsWith(ACTESTRA_SCHEDULE_PATH_PREFIX);
+  return path === ACTESTRA_SCHEDULE_PATH || path.startsWith(ACTESTRA_SCHEDULE_PATH + '/');
 }
 
 export function isActestraScheduleProviderActive(): boolean {
@@ -711,7 +928,19 @@ let handlerRegistered = false;`,
 let generalWorkBridgeService: AionUiGeneralWorkBridgeService | null = null;
 let scheduleService: AionUiScheduleService | null = null;
 let disposeScheduleBridgeIpc: (() => void) | null = null;
+let scheduleRecovered = false;
 let handlerRegistered = false;`,
+);
+
+replaceOnce("package.json", `    "croner": "^9.1.0",`, `    "croner": "9.1.0",`);
+
+replaceOnce("bun.lock", `        "croner": "^9.1.0",`, `        "croner": "9.1.0",`);
+
+replaceOnce(
+  "packages/desktop/electron-builder.yml",
+  `  - node_modules/docx/LICENSE`,
+  `  - node_modules/docx/LICENSE
+  - node_modules/croner/LICENSE`,
 );
 
 replaceOnce(
@@ -796,6 +1025,16 @@ replaceOnce(
 
 replaceOnce(
   "packages/desktop/src/process/services/actestraShadowBridge.ts",
+  `  if (generalWorkRecoveryStarted || generalWorkJourneyService === null) {`,
+  `  if (
+    generalWorkRecoveryStarted ||
+    generalWorkJourneyService === null ||
+    !scheduleRecovered
+  ) {`,
+);
+
+replaceOnce(
+  "packages/desktop/src/process/services/actestraShadowBridge.ts",
   `    console.info(
       \`ACTESTRA_GENERAL_WORK_RECOVERY_READY \${JSON.stringify({
         recoveredAttempts: recoveredGeneralWork.length,
@@ -813,10 +1052,22 @@ replaceOnce(
       throw new Error('Actestra schedule service is unavailable for recovery');
     }
     await scheduleService.recover();
+    scheduleRecovered = true;
+    registerRecoveredScheduleBridge();
     console.info('ACTESTRA_AIONUI_SCHEDULE_RECOVERY_READY');
     console.info(
       \`[Actestra persistence] Utility ready schema=\${utility.schemaVersion}\`,
     );`,
+);
+
+replaceOnce(
+  "packages/desktop/src/process/services/actestraShadowBridge.ts",
+  `  } catch {
+    await launchedPersistence?.close().catch((): undefined => undefined);`,
+  `  } catch {
+    await scheduleService?.close().catch((): undefined => undefined);
+    scheduleService = null;
+    await launchedPersistence?.close().catch((): undefined => undefined);`,
 );
 
 replaceOnce(
@@ -826,7 +1077,9 @@ replaceOnce(
     console.warn('[Actestra general work] Recovery unavailable at startup');`,
   `    generalWorkJourneyService = null;
     generalWorkBridgeService = null;
-    scheduleService = null;
+    disposeScheduleBridgeIpc?.();
+    disposeScheduleBridgeIpc = null;
+    scheduleRecovered = false;
     console.warn('[Actestra schedule] Recovery unavailable at startup');
     console.warn('[Actestra general work] Recovery unavailable at startup');`,
 );
@@ -848,19 +1101,42 @@ replaceOnce(
     ipcMain.handle(ACTESTRA_GENERAL_WORK_PREVIEW_CHANNEL, previewGeneralWork);
     generalWorkHandlersRegistered = true;
   }
-  if (disposeScheduleBridgeIpc === null) {
-    disposeScheduleBridgeIpc = registerAionUiScheduleBridgeIpc({
-      ipcMain,
-      trustedWebContents: () => {
-        const activeWindow = currentWindow;
-        return activeWindow === null || activeWindow.isDestroyed()
-          ? null
-          : activeWindow.webContents;
-      },
-      bridge: new AionUiScheduleBridgeService(scheduleService),
-    });
-  }
+  registerRecoveredScheduleBridge();
   // Recovery needs the native backend`,
+);
+
+replaceOnce(
+  "packages/desktop/src/process/services/actestraShadowBridge.ts",
+  `export function registerActestraShadowBridge(
+  window: BrowserWindow,
+): void {`,
+  `function registerRecoveredScheduleBridge(): void {
+  if (
+    !scheduleRecovered ||
+    scheduleService === null ||
+    disposeScheduleBridgeIpc !== null
+  ) {
+    return;
+  }
+  const activeWindow = currentWindow;
+  if (activeWindow === null || activeWindow.isDestroyed()) {
+    return;
+  }
+  disposeScheduleBridgeIpc = registerAionUiScheduleBridgeIpc({
+    ipcMain,
+    trustedWebContents: () => {
+      const trustedWindow = currentWindow;
+      return trustedWindow === null || trustedWindow.isDestroyed()
+        ? null
+        : trustedWindow.webContents;
+    },
+    bridge: new AionUiScheduleBridgeService(scheduleService),
+  });
+}
+
+export function registerActestraShadowBridge(
+  window: BrowserWindow,
+): void {`,
 );
 
 replaceOnce(
@@ -892,6 +1168,7 @@ replaceOnce(
   generalWorkBridgeService = null;
   scheduleService = null;
   disposeScheduleBridgeIpc = null;
+  scheduleRecovered = false;
   approvalRecoveryStarted = false;`,
 );
 
@@ -905,6 +1182,39 @@ replaceOnce(
   disposeScheduleBridge?.();
   await activeSchedule?.close().catch((): undefined => undefined);
   await activeGeneralWork?.close().catch((): undefined => undefined);`,
+);
+
+replaceOnce(
+  "packages/desktop/src/index.ts",
+  `      console.log('[AionUi] Renderer did-finish-load');
+      showWindow();
+      scheduleBackendMigrations();`,
+  `      console.log('[AionUi] Renderer did-finish-load');
+      if (process.env.ACTESTRA_E2E_TEST === '1') {
+        const providerProbe = [
+          '(async () => {',
+          '  const port = window.__backendPort;',
+          "  if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) throw new Error('backend port unavailable');",
+          "  const response = await fetch('http://127.0.0.1:' + String(port) + '/api/providers');",
+          "  if (!response.ok) throw new Error('provider request failed with ' + String(response.status));",
+          '  await response.text();',
+          '  return true;',
+          '})()',
+        ].join('\\n');
+        void mainWindow.webContents
+          .executeJavaScript(providerProbe, true)
+          .then(() => {
+            console.info('ACTESTRA_RENDERER_PROVIDER_SMOKE_READY');
+          })
+          .catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : 'unknown failure';
+            console.error(
+              'ACTESTRA_RENDERER_PROVIDER_SMOKE_FAILED ' + JSON.stringify({ message }),
+            );
+          });
+      }
+      showWindow();
+      scheduleBackendMigrations();`,
 );
 
 replaceOnce(
@@ -1125,4 +1435,317 @@ replaceOnce(
   "tests/unit/actestra/persistenceUtilityClient.test.ts",
   `    expect(client.schemaVersion).toBe(12);`,
   `    expect(client.schemaVersion).toBe(13);`,
+);
+
+replaceOnce(
+  "packages/desktop/src/process/services/actestraGeneralWorkSmoke.ts",
+  `import path from 'node:path';
+import type {
+  AionUiGeneralWorkJourneyService,
+  AionUiPreparedGeneralWorkRecoverySummary,
+} from '@/actestra/main/compatibility/aionuiGeneralWorkJourneyService';`,
+  `import path from 'node:path';
+import type { ActestraPersistencePort } from '@/actestra/core';
+import { AionUiScheduleBridgeService } from '@/actestra/main/compatibility/aionuiScheduleBridgeService';
+import type { AionUiScheduleService } from '@/actestra/main/compatibility/aionuiScheduleService';
+import type {
+  AionUiGeneralWorkJourneyService,
+  AionUiPreparedGeneralWorkRecoverySummary,
+} from '@/actestra/main/compatibility/aionuiGeneralWorkJourneyService';`,
+);
+
+replaceOnce(
+  "packages/desktop/src/process/services/actestraGeneralWorkSmoke.ts",
+  `  'prepare-office-restart',
+  'recover-office-restart',
+  'denial',`,
+  `  'prepare-office-restart',
+  'recover-office-restart',
+  'prepare-schedule-restart',
+  'recover-schedule-restart',
+  'denial',`,
+);
+
+replaceOnce(
+  "packages/desktop/src/process/services/actestraGeneralWorkSmoke.ts",
+  `  readonly taskCount: number;
+  readonly artifactCount: number;
+}`,
+  `  readonly taskCount: number;
+  readonly artifactCount: number;
+  readonly scheduleCount?: number;
+  readonly missedCount?: number;
+  readonly interruptedCount?: number;
+  readonly skillUnsupported?: boolean;
+}`,
+);
+
+replaceOnce(
+  "packages/desktop/src/process/services/actestraGeneralWorkSmoke.ts",
+  `function oneProjection(
+  projections: Awaited<
+    ReturnType<AionUiGeneralWorkJourneyService['list']>
+  >,
+) {
+  if (projections.length !== 1 || projections[0] === undefined) {
+    throw new Error('Actestra General Work smoke expected exactly one task');
+  }
+  return projections[0];
+}
+
+export async function runActestraGeneralWorkSmoke(`,
+  `function oneProjection(
+  projections: Awaited<
+    ReturnType<AionUiGeneralWorkJourneyService['list']>
+  >,
+) {
+  if (projections.length !== 1 || projections[0] === undefined) {
+    throw new Error('Actestra General Work smoke expected exactly one task');
+  }
+  return projections[0];
+}
+
+const SCHEDULE_SMOKE_PROMPT =
+  '/actestra Produce the scheduled Actestra artifact.';
+const SCHEDULE_SMOKE_RUN_NOW_NAME = 'Schedule smoke run-now';
+const SCHEDULE_SMOKE_MISSED_NAME = 'Schedule smoke missed';
+const SCHEDULE_SMOKE_INTERRUPTED_NAME = 'Schedule smoke interrupted';
+const SCHEDULE_SMOKE_INTERRUPTED_CLAIM =
+  'schedule-smoke-interrupted-claim';
+
+type NativeScheduleJobs = Awaited<ReturnType<AionUiScheduleService['list']>>;
+
+function oneScheduleJob(
+  jobs: NativeScheduleJobs,
+  name: string,
+): NativeScheduleJobs[number] {
+  const matches = jobs.filter((job) => job.name === name);
+  if (matches.length !== 1 || matches[0] === undefined) {
+    throw new Error('Actestra schedule smoke expected exactly one ' + name);
+  }
+  return matches[0];
+}
+
+async function runActestraScheduleSmoke(
+  config: ActestraGeneralWorkSmokeConfig,
+  service: AionUiGeneralWorkJourneyService,
+  recoverySummary: AionUiPreparedGeneralWorkRecoverySummary,
+  schedule: AionUiScheduleService | undefined,
+  persistence: ActestraPersistencePort | undefined,
+): Promise<ActestraGeneralWorkSmokeSummary> {
+  if (schedule === undefined || persistence === undefined) {
+    throw new Error('Actestra schedule smoke authority is unavailable');
+  }
+  if (
+    recoverySummary.attempted !== 0 ||
+    recoverySummary.started !== 0 ||
+    recoverySummary.failed !== 0
+  ) {
+    throw new Error('The schedule smoke profile contained a prepared General Work task');
+  }
+
+  if (config.scenario === 'prepare-schedule-restart') {
+    const common = {
+      prompt: SCHEDULE_SMOKE_PROMPT,
+      conversation_id: config.nativeConversationId,
+      conversation_title: 'Actestra schedule smoke conversation',
+      created_by: 'user' as const,
+      execution_mode: 'existing' as const,
+      queue_enabled: false as const,
+    };
+    const runNow = await schedule.create({
+      ...common,
+      name: SCHEDULE_SMOKE_RUN_NOW_NAME,
+      schedule: {
+        kind: 'cron',
+        expr: '',
+        description: 'Manual target-app run-now proof',
+      },
+    });
+    const missed = await schedule.create({
+      ...common,
+      name: SCHEDULE_SMOKE_MISSED_NAME,
+      schedule: {
+        kind: 'at',
+        atMs: Date.now() + 60_000,
+        description: 'One occurrence intentionally missed across restart',
+      },
+    });
+    const missedAtMs = Date.now();
+    const missedUpdate = await persistence.updateAionUiSchedule({
+      jobId: missed.id,
+      updatedAtMs: missedAtMs,
+      nextRunAtMs: missedAtMs - 1,
+    });
+    if (missedUpdate.status !== 'updated') {
+      throw new Error('Actestra schedule smoke could not persist a missed occurrence');
+    }
+    const interrupted = await schedule.create({
+      ...common,
+      name: SCHEDULE_SMOKE_INTERRUPTED_NAME,
+      schedule: {
+        kind: 'cron',
+        expr: '',
+        description: 'Persisted claim interrupted across restart',
+      },
+    });
+    if (
+      runNow.id === missed.id ||
+      runNow.id === interrupted.id ||
+      missed.id === interrupted.id
+    ) {
+      throw new Error('Actestra schedule smoke identities collided');
+    }
+    const claimed = await persistence.claimAionUiScheduleRun({
+      jobId: interrupted.id,
+      claim: SCHEDULE_SMOKE_INTERRUPTED_CLAIM,
+      claimedAtMs: Date.now(),
+    });
+    if (claimed.status !== 'claimed') {
+      throw new Error('Actestra schedule smoke could not persist an interrupted claim');
+    }
+    return Object.freeze({
+      scenario: config.scenario,
+      status: 'prepared',
+      taskCount: 0,
+      artifactCount: 0,
+      scheduleCount: 3,
+      missedCount: 0,
+      interruptedCount: 0,
+      skillUnsupported: false,
+    });
+  }
+
+  if (config.scenario !== 'recover-schedule-restart') {
+    throw new Error('Actestra schedule smoke scenario is invalid');
+  }
+  const jobs = await schedule.list(config.nativeConversationId);
+  if (jobs.length !== 3) {
+    throw new Error('Actestra schedule smoke did not recover exactly three jobs');
+  }
+  const runNow = oneScheduleJob(jobs, SCHEDULE_SMOKE_RUN_NOW_NAME);
+  const missed = oneScheduleJob(jobs, SCHEDULE_SMOKE_MISSED_NAME);
+  const interrupted = oneScheduleJob(jobs, SCHEDULE_SMOKE_INTERRUPTED_NAME);
+  if (
+    missed.state.last_status !== 'missed' ||
+    missed.state.last_error !== 'missed-occurrence'
+  ) {
+    throw new Error('Actestra schedule smoke did not persist one missed occurrence');
+  }
+  if (
+    interrupted.state.last_status !== 'error' ||
+    interrupted.state.last_error !== 'interrupted' ||
+    interrupted.state.run_count !== 1
+  ) {
+    throw new Error('Actestra schedule smoke did not terminalize the interrupted claim');
+  }
+
+  const skill = await new AionUiScheduleBridgeService(schedule).handle({
+    contractVersion: 1,
+    method: 'GET',
+    path: '/api/cron/jobs/' + runNow.id + '/skill',
+    body: undefined,
+  });
+  if (
+    skill.status !== 501 ||
+    !('code' in skill) ||
+    skill.code !== 'schedule-skill-unsupported'
+  ) {
+    throw new Error('Actestra schedule smoke did not retain explicit Skill unavailability');
+  }
+
+  const runResult = await schedule.runNow(runNow.id);
+  if (runResult.conversation_id !== config.nativeConversationId) {
+    throw new Error('Actestra schedule smoke changed the native conversation target');
+  }
+  await schedule.waitForIdle();
+  const terminal = await schedule.get(runNow.id);
+  if (
+    terminal === null ||
+    terminal.state.last_status !== 'ok' ||
+    terminal.state.run_count !== 1 ||
+    terminal.state.retry_count !== 0 ||
+    terminal.state.max_retries !== 0 ||
+    terminal.state.queue_enabled
+  ) {
+    throw new Error('Actestra schedule smoke run-now did not reach exact terminal state');
+  }
+  const history = await schedule.history(runNow.id);
+  if (history.length !== 1 || history[0]?.id !== config.nativeConversationId) {
+    throw new Error('Actestra schedule smoke did not project one native history record');
+  }
+  const projection = oneProjection(await service.list(config.nativeConversationId));
+  if (
+    projection.status !== 'completed' ||
+    projection.canCancel ||
+    projection.artifacts.length !== 1 ||
+    projection.artifacts[0]?.state !== 'available'
+  ) {
+    throw new Error('Actestra schedule smoke has no completed owned artifact');
+  }
+  return Object.freeze({
+    scenario: config.scenario,
+    status: 'completed',
+    taskCount: 1,
+    artifactCount: 1,
+    scheduleCount: 3,
+    missedCount: 1,
+    interruptedCount: 1,
+    skillUnsupported: true,
+  });
+}
+
+export async function runActestraGeneralWorkSmoke(`,
+);
+
+replaceOnce(
+  "packages/desktop/src/process/services/actestraGeneralWorkSmoke.ts",
+  `  service: AionUiGeneralWorkJourneyService,
+  recovery: Promise<AionUiPreparedGeneralWorkRecoverySummary>,
+): Promise<ActestraGeneralWorkSmokeSummary> {
+  const recoverySummary = await recovery;
+  const fileRestartJourney =`,
+  `  service: AionUiGeneralWorkJourneyService,
+  recovery: Promise<AionUiPreparedGeneralWorkRecoverySummary>,
+  schedule?: AionUiScheduleService,
+  persistence?: ActestraPersistencePort,
+): Promise<ActestraGeneralWorkSmokeSummary> {
+  const recoverySummary = await recovery;
+  if (
+    config.scenario === 'prepare-schedule-restart' ||
+    config.scenario === 'recover-schedule-restart'
+  ) {
+    return runActestraScheduleSmoke(
+      config,
+      service,
+      recoverySummary,
+      schedule,
+      persistence,
+    );
+  }
+  const fileRestartJourney =`,
+);
+
+replaceOnce(
+  "packages/desktop/src/process/services/actestraShadowBridge.ts",
+  `    generalWorkSmokeConfig === null ||
+    generalWorkJourneyService === null ||
+    generalWorkRecoveryPromise === null`,
+  `    generalWorkSmokeConfig === null ||
+    generalWorkJourneyService === null ||
+    generalWorkRecoveryPromise === null ||
+    scheduleService === null ||
+    persistence === null`,
+);
+
+replaceOnce(
+  "packages/desktop/src/process/services/actestraShadowBridge.ts",
+  `    generalWorkJourneyService,
+    generalWorkRecoveryPromise,
+  )`,
+  `    generalWorkJourneyService,
+    generalWorkRecoveryPromise,
+    scheduleService,
+    persistence,
+  )`,
 );

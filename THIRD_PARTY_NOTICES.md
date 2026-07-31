@@ -26,8 +26,9 @@ status can be considered.
 
 Actestra uses exact `croner@9.1.0` only in the main-owned schedule contract to
 validate bounded five-field cron expressions and calculate the next occurrence.
-Its unchanged MIT license must remain in ASAR before candidate status can be
-considered; the renderer does not receive Croner or timer authority.
+Its unchanged MIT license states `Copyright (c) 2015-2021 Hexagon` and must
+remain in ASAR before candidate status can be considered; the renderer does
+not receive Croner or timer authority.
 
 ## Imported application source
 

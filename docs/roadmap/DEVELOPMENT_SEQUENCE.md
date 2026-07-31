@@ -29,7 +29,7 @@ features are implemented.
 | P7    | Security and reliability hardening                       | P4-P6             |
 | P8    | Cross-platform internal beta                             | P7                |
 
-Current execution state on 2026-07-31: native-fusion slices F0 through F3.3,
+Current execution state on 2026-08-01: native-fusion slices F0 through F3.3,
 general-work through GW-P4.6, and the representative workspace-file and
 bounded local-research, writing, and Office-document extensions are accepted
 on `main`. Office reached exact final PR head
@@ -43,14 +43,33 @@ evidence. The Ready PR's Free-plan CodeRabbit output contains only a summary
 and walkthrough, with no submitted review or inline comment, so it is not
 represented as line-level review evidence.
 
-ADR-0023 accepts the next independent schedule slice from exact verified main
-`505afb2f3916e75c7abb07cdf461bda29a602b9b`. It retains the native
-`/scheduled` routes, dialog, detail/history, status, CRUD, pause, run-now, and
-event surfaces while moving bounded existing-conversation jobs, schema-13
-grants and claims, timing, missed/interrupted recovery, and General Work
-execution into Actestra main/Core. This is design evidence only; no schema,
-provider, overlay, timer, test, package, smoke, commit, push, PR, or CI evidence
-exists yet. P5 Goose and P6 CrewAI/Team work have not started.
+ADR-0023's independent schedule slice is implemented locally from exact
+verified main `505afb2f3916e75c7abb07cdf461bda29a602b9b`. It retains the
+native `/scheduled` routes, dialog, detail/history, status, CRUD, pause,
+run-now, and event surfaces while moving bounded existing-conversation jobs,
+schema-13 grants and claims, timing, missed/interrupted recovery, and General
+Work execution into Actestra main/Core. The pre-review 56-file/414-test root
+gate, 345-file/2,658-test native gate, production build, Apple Development-
+signed unnotarized arm64 package, and actual schema-13 target-app smoke are
+diagnostic baseline evidence only; review remediation changed production bytes.
+The third 50-file CodeRabbit confirmation raised four issues (three Major, one
+Minor): the two valid documentation corrections are applied, while the empty
+manual cron and explicit unsupported Skill suggestions are rejected by
+ADR-0023. The fourth confirmation raised three issues (one Major, two Minor):
+the valid protocol negative test and status correction are applied; the request
+for a pre-existing Actestra workspace registry or Git worktree allowlist is
+rejected because ADR-0020 makes validated native selection the initial
+authority, ADR-0023 captures it atomically as a canonical grant, and coding
+worktrees remain P5. Two follow-up confirmations were then rate-limited before
+analysis (first with a 3-minute wait, then 31 seconds), so they are not
+zero-issue evidence; the final manual 51-file review includes the later
+Node-free schedule contract split and found no additional confirmed defect.
+Final-byte validation now passes 56 root files/424 tests, 345 native files/2,658
+tests, strict native TypeScript, the 607/24/10,184-module native production
+build, a newly built Apple Development-signed unnotarized arm64 package, exact
+package/ASAR/resource checks, and actual schema-13 target-app smoke. The
+implementation commit, push, PR-head CI, merge, and merged-main CI remain. P5
+Goose and P6 CrewAI/Team work have not started.
 
 ## P0 — Project Foundation
 
@@ -210,8 +229,13 @@ slice previously described as P4.3/F3.1.
   merged-main evidence. ADR-0023 next retains the native cron surface while
   adding schema-13 Actestra schedule authority, main-owned timers and atomic
   claims, skipped missed runs, interrupted-run recovery, and bounded
-  existing-conversation General Work execution. The phase exit gate remains
-  pending until schedule, representative tool-failure, and Worker-crash smokes
+  existing-conversation General Work execution. Its pre-review local
+  implementation and target-app smoke passed; the first formal 50-file review
+  raised 12 issues and the valid concerns now pass focused remediation tests,
+  lint, and strict TypeScript. Complete final-byte root/native gates, package,
+  package audits, target-app smoke, and manual review closure now pass locally;
+  remote acceptance remains. The phase exit gate remains pending until schedule
+  is accepted on main and representative tool-failure and Worker-crash smokes
   pass.
 - Support scoped workspace reads and task-output writes through the preserved
   file, workspace, conversation, preview, and artifact surfaces.

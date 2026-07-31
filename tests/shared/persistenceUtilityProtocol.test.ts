@@ -244,6 +244,16 @@ describe("persistence utility protocol", () => {
       ).not.toThrow();
     }
 
+    expect(() =>
+      assertPersistenceUtilityRequest({
+        protocolVersion: 1,
+        type: "request",
+        requestId: "persistence-schedule-request-unknown",
+        operation: "inspect-aionui-schedule",
+        payload: {},
+      }),
+    ).toThrow(PersistenceUtilityProtocolError);
+
     const responses = [
       {
         operation: "register-aionui-schedule",

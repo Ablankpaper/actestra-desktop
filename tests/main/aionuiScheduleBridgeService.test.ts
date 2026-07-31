@@ -213,6 +213,50 @@ describe("AionUiScheduleBridgeService", () => {
     expect(schedule.create).not.toHaveBeenCalled();
   });
 
+  it("rejects non-default retry and queue authority before invoking the provider", async () => {
+    const schedule = schedulePort();
+    schedule.create.mockResolvedValue(job);
+    schedule.update.mockResolvedValue(job);
+    const bridge = new AionUiScheduleBridgeService(schedule);
+    const requests = [
+      {
+        contractVersion: 1,
+        method: "POST",
+        path: "/api/cron/jobs",
+        body: {
+          name: job.name,
+          schedule: job.schedule,
+          prompt: job.target.payload.text,
+          conversation_id: job.metadata.conversation_id,
+          created_by: "user",
+          execution_mode: "existing",
+          queue_enabled: true,
+        },
+      },
+      {
+        contractVersion: 1,
+        method: "PUT",
+        path: `/api/cron/jobs/${job.id}`,
+        body: { max_retries: 1 },
+      },
+      {
+        contractVersion: 1,
+        method: "PUT",
+        path: `/api/cron/jobs/${job.id}`,
+        body: { queue_enabled: true },
+      },
+    ] as const;
+
+    for (const request of requests) {
+      await expect(bridge.handle(request)).resolves.toMatchObject({
+        status: 400,
+        code: "schedule-invalid-request",
+      });
+    }
+    expect(schedule.create).not.toHaveBeenCalled();
+    expect(schedule.update).not.toHaveBeenCalled();
+  });
+
   it("contains unsupported runtime service error codes in the fixed error contract", async () => {
     const schedule = schedulePort();
     const unsupported = new AionUiScheduleServiceError(

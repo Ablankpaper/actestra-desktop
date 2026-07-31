@@ -71,10 +71,10 @@ record contains only:
   target required by the retained compatibility surface;
 - the identifier of one schedule-owned Workspace grant captured from canonical
   native context at registration;
-- bounded name, optional description, and one bounded `/actestra` General Work
-  prompt;
-- one validated `at`, `every`, or five-field `cron` schedule, including a
-  bounded IANA time zone where applicable;
+- bounded name, optional job description, and one bounded `/actestra` General
+  Work prompt;
+- one validated `at`, `every`, or five-field `cron` schedule, including its
+  separate bounded schedule description and an IANA time zone where applicable;
 - enabled state, next and previous run instants, terminal status and bounded
   incident code;
 - an optional opaque active-run claim, its claim instant, and a monotonic run
@@ -96,8 +96,8 @@ submitted. No workspace root, content-reference identifier, tool input,
 credential, process handle, run claim, or Worker identity enters the schedule
 projection.
 
-Name is limited to 256 UTF-8 bytes, optional description to 2 KiB, schedule
-description to 512 bytes, cron expression to 256 bytes, IANA time zone to 128
+Name is limited to 256 UTF-8 bytes, optional job description to 2 KiB, the
+separate schedule description to 512 bytes, cron expression to 256 bytes, IANA time zone to 128
 bytes, incident code to 128 bytes, and native conversation identity to the
 accepted 256-character bound. The existing 16 KiB General Work prompt ceiling
 remains the outer prompt bound. These strings reject control characters and
@@ -209,6 +209,58 @@ The slice requires:
 - packaged target-app smoke proving schema 13, create, restart, list, run-now,
   terminal Task/Attempt/Artifact evidence, privacy, missed/interrupted state,
   and process cleanup.
+
+## Current implementation evidence
+
+The boundary is implemented locally on `feat/p4-schedule-journey` from exact
+verified Office merge `505afb2f3916e75c7abb07cdf461bda29a602b9b`. Before
+review remediation, complete root validation passed 56 files and 414 tests;
+materialized native strict TypeScript and the complete native suite passed 345
+files and 2,658 tests. That native production build transformed 606 main, 26
+preload, and 10,186 renderer modules.
+
+The pre-review local macOS arm64 package passed the independent resource,
+AionCore, Hub fallback, Croner license, architecture, and strict recursive
+signature checks. Its packaged target-app smoke passed schema-13
+create/restart/list, run-now, missed and interrupted recovery, a terminal
+scheduled General Work Artifact, metadata privacy, retained prior journeys,
+and process cleanup. The package has an Apple Development signature but no
+notarization and is not a candidate or release.
+
+The first formal 50-file CodeRabbit review raised 12 issues: 4 Major and 8
+Minor. Valid status, canonical-path test, bridge policy, Task-correlated
+failure, graph-identity, and exact-due-time concerns were remediated through
+focused RED-to-GREEN cycles. Five affected files pass 81 tests, 8 changed
+code/test files pass zero-warning lint, and strict TypeScript passes. Empty
+manual cron, explicit unsupported Skill route, fail-closed recovery, and
+duplicate recovery-event requests were rejected against this decision and the
+durable interrupted state.
+
+The second confirmation raised 8 issues (5 Major, 3 Minor), the third raised 4
+(3 Major, 1 Minor), and the fourth raised 3 (1 Major, 2 Minor). Valid later
+documentation and closed-protocol coverage items are applied. The fourth-pass
+request for a pre-existing Actestra workspace registry or Git worktree
+allowlist is rejected because ADR-0020 makes validated native workspace
+selection the initial authority, this decision captures that canonical root in
+an atomic grant, and coding worktrees remain P5. Two final-input follow-ups were
+rate-limited before analysis and cannot be reported as zero-issue reviews; the
+final complete manual 51-file review includes the Node-free schedule contract
+split and corrected downstream-owner assertion and found no additional
+confirmed defect.
+
+Final-byte current-input validation passes complete root `bun run check` with
+56 files/424 tests, materialized strict TypeScript, the complete 345-file/
+2,658-test native suite, and native production builds of 607 main, 24 preload,
+and 10,184 renderer modules. A newly built local macOS arm64 package at
+`/private/tmp/actestra-p4-schedule-final-byte.54REpE/out/mac-arm64/Actestra.app`
+passes independent package verification, exact production-entry ASAR hashes,
+AionCore `0.1.52`, 13/13 Hub, Electron/docx/Croner notice, 26-file arm64 Mach-O
+signature, 17-link, and actual schema-13 target-app smoke checks. It has an
+Apple Development signature but no notarization and is not a candidate,
+release, distribution, or user-acceptance artifact.
+
+An implementation commit containing the final working-tree bytes, push, Ready
+PR, exact PR-head CI, squash merge, and merged-main CI remain pending.
 
 ## Consequences
 

@@ -16,10 +16,13 @@ import {
   parseAionUiGeneralWorkCommand,
 } from "./generalWorkJourney";
 import { hashAionUiGeneralWorkConversation } from "./generalWorkIdentity";
+import {
+  ACTESTRA_GENERAL_WORKER_AGENT_TYPE,
+  AIONUI_SCHEDULE_MAX_JOBS,
+  isAionUiScheduleJobId,
+} from "./scheduleContract";
 
 export const AIONUI_SCHEDULE_CONTRACT_VERSION = 1 as const;
-export const AIONUI_SCHEDULE_MAX_JOBS = 100;
-export const ACTESTRA_GENERAL_WORKER_AGENT_TYPE = "actestra-general-worker" as const;
 
 const MAX_NAME_BYTES = 256;
 const MAX_DESCRIPTION_BYTES = 2 * 1024;
@@ -227,7 +230,7 @@ export interface AionUiScheduleCompletionInput {
   readonly completedAtMs: number;
   readonly status: AionUiScheduleLastStatus;
   readonly lastIncidentCode?: string;
-  readonly nextRunAtMs?: number;
+  readonly nextRunAtMs?: number | null;
   readonly enabled?: boolean;
 }
 
@@ -682,7 +685,7 @@ function assertCounter(value: unknown, label: string): asserts value is number {
 }
 
 export function assertAionUiScheduleJobId(value: unknown): asserts value is string {
-  if (typeof value !== "string" || !/^schedule-aionui-[a-f0-9]{64}$/u.test(value)) {
+  if (!isAionUiScheduleJobId(value)) {
     fail("invalid-job", "Schedule job identity is invalid");
   }
 }
@@ -724,6 +727,9 @@ export function assertAionUiScheduleJob(value: unknown): asserts value is AionUi
     workspaceGrantId(value.workspaceGrantId as string);
   } catch (error) {
     fail("invalid-job", "Schedule owner identity is invalid", error);
+  }
+  if (value.conversationHash !== hashAionUiGeneralWorkConversation(value.nativeConversationId)) {
+    fail("invalid-job", "Schedule conversation hash does not match its native identity");
   }
   assertOptionalBoundedText(
     value.nativeConversationTitle,
@@ -939,7 +945,7 @@ export function assertAionUiScheduleCompletionInput(
       "invalid-job",
     );
   }
-  if (value.nextRunAtMs !== undefined) {
+  if (value.nextRunAtMs !== undefined && value.nextRunAtMs !== null) {
     assertSafeTimestamp(value.nextRunAtMs, "Schedule next run", "invalid-job");
   }
   if (value.enabled !== undefined && typeof value.enabled !== "boolean") {
