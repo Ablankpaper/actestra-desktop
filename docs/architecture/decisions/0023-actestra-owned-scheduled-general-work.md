@@ -212,7 +212,7 @@ The slice requires:
 
 ## Current implementation evidence
 
-The boundary is implemented locally on `feat/p4-schedule-journey` from exact
+The boundary is implemented and pushed on `feat/p4-schedule-journey` from exact
 verified Office merge `505afb2f3916e75c7abb07cdf461bda29a602b9b`. Before
 review remediation, complete root validation passed 56 files and 414 tests;
 materialized native strict TypeScript and the complete native suite passed 345
@@ -259,8 +259,14 @@ signature, 17-link, and actual schema-13 target-app smoke checks. It has an
 Apple Development signature but no notarization and is not a candidate,
 release, distribution, or user-acceptance artifact.
 
-An implementation commit containing the final working-tree bytes, push, Ready
-PR, exact PR-head CI, squash merge, and merged-main CI remain pending.
+The final working-tree bytes were committed and pushed as
+`70b11992f4de015e0952d482a126cd1270208aa8` to Ready PR 20. Initial exact-head CI
+run 30657973409 passes source, native test/build, and bundle steps, then proves
+that the workflow packages the legacy root output rather than this target native
+application. A focused RED-to-GREEN workflow contract now packages inside the
+materialized tree, verifies that exact app, and runs its schema-13 target-app
+smoke; the complete root gate passes after remediation. Replacement PR-head CI,
+squash merge, and merged-main CI remain pending.
 
 ## Consequences
 

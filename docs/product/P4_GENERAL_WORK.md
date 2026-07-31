@@ -651,9 +651,17 @@ the present input:
   journey, privacy, terminal-evidence, temporary-root, and process-cleanup
   smoke.
 
-The implementation commit, push, Ready PR, exact PR-head CI, squash merge, and
-merged-main CI do not yet exist. The local Apple Development signature is not
-notarization, a candidate, release, distribution, or user acceptance.
+The final implementation was committed and pushed as
+`70b11992f4de015e0952d482a126cd1270208aa8` to Ready pull request 20. Initial
+exact-head CI run 30657973409 passes through the native production build and
+bundle creation, then fails strict package verification because the workflow
+packages the legacy root `out/` instead of the materialized native output. A
+focused RED-to-GREEN workflow contract now packages inside the materialized
+tree, verifies that exact native app, and runs the schema-13 target-app smoke;
+the complete root 56-file/424-test gate passes after this remediation. Its
+replacement exact PR-head CI, squash merge, and merged-main CI remain pending.
+The local Apple Development signature is not notarization, a candidate,
+release, distribution, or user acceptance.
 
 Exit: the complete general-work journey is understandable and recoverable in
 the retained AionUi UI with Actestra as the declared system of record.

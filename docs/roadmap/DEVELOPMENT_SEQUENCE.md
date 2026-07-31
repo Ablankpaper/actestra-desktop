@@ -43,7 +43,7 @@ evidence. The Ready PR's Free-plan CodeRabbit output contains only a summary
 and walkthrough, with no submitted review or inline comment, so it is not
 represented as line-level review evidence.
 
-ADR-0023's independent schedule slice is implemented locally from exact
+ADR-0023's independent schedule slice is implemented and pushed from exact
 verified main `505afb2f3916e75c7abb07cdf461bda29a602b9b`. It retains the
 native `/scheduled` routes, dialog, detail/history, status, CRUD, pause,
 run-now, and event surfaces while moving bounded existing-conversation jobs,
@@ -67,9 +67,13 @@ Node-free schedule contract split and found no additional confirmed defect.
 Final-byte validation now passes 56 root files/424 tests, 345 native files/2,658
 tests, strict native TypeScript, the 607/24/10,184-module native production
 build, a newly built Apple Development-signed unnotarized arm64 package, exact
-package/ASAR/resource checks, and actual schema-13 target-app smoke. The
-implementation commit, push, PR-head CI, merge, and merged-main CI remain. P5
-Goose and P6 CrewAI/Team work have not started.
+package/ASAR/resource checks, and actual schema-13 target-app smoke. Ready PR 20
+reached initial exact head `70b11992f4de015e0952d482a126cd1270208aa8`; CI run
+30657973409 passes through the native build and bundle steps but then exposes
+that CI packages the legacy root output rather than the target native app. A
+focused workflow TDD remediation passes the complete root gate locally;
+replacement PR-head CI, merge, and merged-main CI remain. P5 Goose and P6
+CrewAI/Team work have not started.
 
 ## P0 — Project Foundation
 
@@ -233,8 +237,10 @@ slice previously described as P4.3/F3.1.
   implementation and target-app smoke passed; the first formal 50-file review
   raised 12 issues and the valid concerns now pass focused remediation tests,
   lint, and strict TypeScript. Complete final-byte root/native gates, package,
-  package audits, target-app smoke, and manual review closure now pass locally;
-  remote acceptance remains. The phase exit gate remains pending until schedule
+  package audits, target-app smoke, and manual review closure now pass locally.
+  Ready PR 20's initial CI exposed a wrong-package path and the focused native-
+  package remediation passes locally; replacement remote acceptance remains.
+  The phase exit gate remains pending until schedule
   is accepted on main and representative tool-failure and Worker-crash smokes
   pass.
 - Support scoped workspace reads and task-output writes through the preserved

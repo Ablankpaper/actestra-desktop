@@ -20,6 +20,7 @@ const scheduledGeneralWorkPatch = path.join(
   "0011-actestra-scheduled-general-work.mjs",
 );
 const packagedVerificationScript = path.join(repositoryRoot, "scripts", "verify-packaged-app.mjs");
+const ciWorkflow = path.join(repositoryRoot, ".github", "workflows", "ci.yml");
 const harnessRoot = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-smoke-harness-"));
 
 function createAppBundle(name, executableSource, mode = 0o700) {
@@ -173,6 +174,20 @@ try {
       packagedVerificationSource.includes('"ws://127.0.0.1:*"') &&
       packagedVerificationSource.includes("unexpected packaged renderer connect-src"),
     "Packaged verification must retain only the exact loopback renderer connection boundary",
+  );
+
+  const ciWorkflowSource = fs.readFileSync(ciWorkflow, "utf8");
+  const materializedPackageStep = `      - name: Build local materialized AionUi app bundle
+        working-directory: .actestra/aionui-v2.1.41
+        run: bun run dist:mac -- --arm64 --dir --skip-vite`;
+  assert(
+    ciWorkflowSource.includes(materializedPackageStep) &&
+      ciWorkflowSource.includes(
+        "bun run verify:package -- .actestra/aionui-v2.1.41/out/mac-arm64/Actestra.app",
+      ) &&
+      ciWorkflowSource.includes("bun run smoke:aionui-general-work") &&
+      !ciWorkflowSource.includes("run: bun run dist:dir"),
+    "CI must package, verify, and smoke the materialized native AionUi application",
   );
 
   const earlyExit = runSmoke(createAppBundle("early-exit", "#!/bin/sh\nexit 7\n"));
