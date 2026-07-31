@@ -114,11 +114,14 @@ function main() {
 
   if (
     overlay.schemaVersion !== 1 ||
-    overlay.phase !== "P4-office-document" ||
+    overlay.phase !== "P4-scheduled-general-work" ||
+    !overlay.migration.strategy.includes("schema v13") ||
+    !overlay.migration.rollback.includes("patch 0011") ||
+    overlay.patches.at(-1)?.path !== "patches/0011-actestra-scheduled-general-work.mjs" ||
     overlay.uiContract.layoutChangesAllowed !== false ||
     overlay.uiContract.featureEntryRemovalAllowed !== false
   ) {
-    throw new Error("Invalid P4 Office-document downstream overlay policy");
+    throw new Error("Invalid P4 scheduled General Work downstream overlay policy");
   }
 
   for (const patch of overlay.patches) {
@@ -208,6 +211,19 @@ function main() {
       );
     }
   }
+  for (const requiredScheduleSourceCopy of [
+    "packages/desktop/src/actestra/compatibility/aionui/scheduleBridge.ts",
+    "packages/desktop/src/actestra/compatibility/aionui/scheduledGeneralWork.ts",
+    "packages/desktop/src/actestra/main/compatibility/aionuiScheduleBridgeService.ts",
+    "packages/desktop/src/actestra/main/compatibility/aionuiScheduleService.ts",
+  ]) {
+    if (!sourceCopyDestinations.has(requiredScheduleSourceCopy)) {
+      throw new Error(`Missing scheduled-work source copy: ${requiredScheduleSourceCopy}`);
+    }
+  }
+  if (!overlay.invariantFiles.includes("packages/desktop/src/common/adapter/ipcBridge.ts")) {
+    throw new Error("The native renderer cron bridge must remain an R0 invariant");
+  }
 
   for (const assetCopy of overlay.assetCopies) {
     const sourcePath = resolveContainedPath(
@@ -267,6 +283,35 @@ function main() {
   requireText(path.join(outputRoot, "packages/desktop/src/common/adapter/httpBridge.ts"), [
     "publishActestraHttpObservation",
     "publishActestraWebSocketObservation",
+    "ACTESTRA_SCHEDULE_PATH_PREFIX = '/api/cron/'",
+    "requestActestraSchedule",
+    "window.actestraSchedule!.onEvent",
+    "scheduleUnavailableError",
+  ]);
+  requireOrderedFragments(
+    path.join(outputRoot, "packages/desktop/src/common/adapter/httpBridge.ts"),
+    [
+      "if (isActestraSchedulePath(path))",
+      "return requestActestraSchedule<T>(method, path, body);",
+      "const approvalRoute = await routeActestraApprovalRequest",
+    ],
+  );
+  requireOrderedFragments(
+    path.join(outputRoot, "packages/desktop/src/common/adapter/httpBridge.ts"),
+    [
+      "if (isActestraScheduleEventName(eventName))",
+      "return scheduleEmitter<Params>(eventName);",
+      "ensureWs();",
+    ],
+  );
+  requireText(path.join(outputRoot, "packages/desktop/src/preload/main.ts"), [
+    "contextBridge.exposeInMainWorld('actestraSchedule'",
+    "ACTESTRA_SCHEDULE_REQUEST_CHANNEL",
+    "ACTESTRA_SCHEDULE_EVENT_CHANNEL",
+    "assertAionUiScheduleEvent(value)",
+    "ipcRenderer.invoke(ACTESTRA_SCHEDULE_REQUEST_CHANNEL, request)",
+    "ipcRenderer.on(ACTESTRA_SCHEDULE_EVENT_CHANNEL, listener)",
+    "ipcRenderer.off(ACTESTRA_SCHEDULE_EVENT_CHANNEL, listener)",
   ]);
   requireText(
     path.join(outputRoot, "packages/desktop/src/common/config/actestraShadowContract.ts"),
@@ -300,6 +345,10 @@ function main() {
       "writing-artifact-fixture",
       "office-document-artifact-fixture",
       "TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID",
+      "AionUiScheduleService",
+      "registerAionUiScheduleBridgeIpc",
+      "ACTESTRA_AIONUI_SCHEDULE_RECOVERY_READY",
+      "[Actestra schedule] Recovery unavailable at startup",
       "[Actestra general work] Recovery unavailable at startup",
       "nativeFallback",
       "recoverPending",
@@ -312,6 +361,50 @@ function main() {
   requireText(
     path.join(outputRoot, "packages/desktop/src/renderer/components/chat/SendBox/index.tsx"),
     ["useActestraGeneralWork", "extractActestraGeneralWorkIntent", "effectiveLoading"],
+  );
+  requireText(path.join(outputRoot, "packages/desktop/src/renderer/components/layout/Router.tsx"), [
+    "path='/scheduled'",
+    "path='/scheduled/:job_id'",
+    "ScheduledTasksPage",
+    "TaskDetailPage",
+  ]);
+  requireText(
+    path.join(
+      outputRoot,
+      "packages/desktop/src/renderer/pages/conversation/GroupedHistory/hooks/useConversationActions.ts",
+    ),
+    [
+      "isActestraScheduleProviderActive()",
+      "void navigate('/scheduled'",
+      "conversation_id: conversation.id",
+      "conversation_title: conversationTitle",
+    ],
+  );
+  requireText(
+    path.join(outputRoot, "packages/desktop/src/renderer/pages/cron/ScheduledTasksPage/index.tsx"),
+    [
+      "resolveScheduledConversationLocation",
+      "scheduledConversation",
+      "handleCreateDialogClose",
+      "conversation_id={scheduledConversation?.conversation_id}",
+      "conversation_title={scheduledConversation?.conversation_title}",
+    ],
+  );
+  requireText(
+    path.join(
+      outputRoot,
+      "packages/desktop/src/renderer/pages/cron/ScheduledTasksPage/CreateTaskDialog.tsx",
+    ),
+    [
+      "scheduleProviderActive = isActestraScheduleProviderActive()",
+      "hasBoundScheduleConversation",
+      "scheduleProviderActive || isTeamOwnedTask ? 'existing'",
+      "scheduleProviderActive ? 0 : editJob!.state.max_retries",
+      "scheduleProviderActive ? false : queueEnabled",
+      "scheduleProviderActive || agent_config === undefined ? {} : { agent_config }",
+      "actestraExistingConversationRequired",
+      "{!scheduleProviderActive && (",
+    ],
   );
   requireText(
     path.join(outputRoot, "packages/desktop/src/renderer/hooks/chat/useActestraGeneralWork.ts"),
@@ -333,6 +426,69 @@ function main() {
       "invokeScopedToolStep",
       "activeToolInput",
       "MAX_GENERAL_WORKER_SEND_CONTENT_BYTES",
+    ],
+  );
+  requireText(
+    path.join(
+      outputRoot,
+      "packages/desktop/src/actestra/compatibility/aionui/scheduledGeneralWork.ts",
+    ),
+    [
+      "AIONUI_SCHEDULE_CONTRACT_VERSION = 1",
+      "AIONUI_SCHEDULE_MAX_JOBS = 100",
+      'ACTESTRA_GENERAL_WORKER_AGENT_TYPE = "actestra-general-worker"',
+      "new Cron(value.expr",
+      "deriveAionUiScheduleIdentity",
+      "calculateAionUiScheduleNextRun",
+      "activeClaim",
+      "toNativeCronJob",
+    ],
+  );
+  requireText(
+    path.join(outputRoot, "packages/desktop/src/actestra/compatibility/aionui/scheduleBridge.ts"),
+    [
+      'ACTESTRA_SCHEDULE_REQUEST_CHANNEL = "actestra:schedule-request-v1"',
+      'ACTESTRA_SCHEDULE_EVENT_CHANNEL = "actestra:schedule-event-v1"',
+      '"schedule-skill-unsupported": 501',
+      'segments[0] !== "api"',
+      'segments[1] !== "cron"',
+      'segments[2] !== "jobs"',
+      'type: "cron.job-created"',
+      'type: "cron.job-updated"',
+      'type: "cron.job-removed"',
+      'type: "cron.job-executed"',
+      "assertAionUiScheduleEvent",
+    ],
+  );
+  requireText(
+    path.join(
+      outputRoot,
+      "packages/desktop/src/actestra/main/compatibility/aionuiScheduleService.ts",
+    ),
+    [
+      "class AionUiScheduleService",
+      "claimAionUiScheduleRun",
+      "completeAionUiScheduleRun",
+      "recoverAionUiScheduleRuns",
+      "submitFromTrustedContext",
+      "async recover()",
+      "async resume()",
+      "async close(",
+      "this.clearAllTimers()",
+    ],
+  );
+  requireText(
+    path.join(
+      outputRoot,
+      "packages/desktop/src/actestra/main/compatibility/aionuiScheduleBridgeService.ts",
+    ),
+    [
+      "class AionUiScheduleBridgeService",
+      'aionUiScheduleBridgeError("schedule-skill-unsupported")',
+      "registerAionUiScheduleBridgeIpc",
+      "event.sender === trusted.webContents",
+      "event.senderFrame === trusted.mainFrame",
+      "trusted.webContents.send(ACTESTRA_SCHEDULE_EVENT_CHANNEL, event)",
     ],
   );
   requireText(
@@ -413,10 +569,15 @@ function main() {
   requireText(path.join(outputRoot, "packages/desktop/src/index.ts"), [
     "await initializeProcess();",
     "await initializeActestraPersistenceUtility(app.getPath('userData'));",
+    "registerActestraScheduleResumeBridge();",
+    "resumeActestraSchedule()",
     "runGeneralWorkerProbe",
     "actestra-general-worker.js",
     "ACTESTRA_GENERAL_WORKER_READY",
     "registerActestraShadowBridge(mainWindow);",
+  ]);
+  rejectText(path.join(outputRoot, "packages/desktop/src/index.ts"), [
+    "/api/cron/internal/system-resume",
   ]);
   requireOrderedFragments(
     path.join(outputRoot, "packages/desktop/src/process/services/actestraShadowBridge.ts"),
@@ -425,7 +586,18 @@ function main() {
       "new GeneralWorkCoordinator({",
       "}).recover();",
       "ACTESTRA_GENERAL_WORK_RECOVERY_READY",
+      "await scheduleService.recover();",
+      "ACTESTRA_AIONUI_SCHEDULE_RECOVERY_READY",
       "[Actestra persistence] Utility ready schema=",
+    ],
+  );
+  requireOrderedFragments(
+    path.join(outputRoot, "packages/desktop/src/process/services/actestraShadowBridge.ts"),
+    [
+      "disposeScheduleBridge?.();",
+      "await activeSchedule?.close()",
+      "await activeGeneralWork?.close()",
+      "await activePersistence.close();",
     ],
   );
   requireOrderedFragments(path.join(outputRoot, "packages/desktop/src/index.ts"), [
@@ -549,7 +721,7 @@ function main() {
   requireText(
     path.join(outputRoot, "packages/desktop/src/actestra/utility/persistence/sqliteMigrations.ts"),
     [
-      "CURRENT_CORE_SCHEMA_VERSION = 12",
+      "CURRENT_CORE_SCHEMA_VERSION = 13",
       "aionui_shadow_evidence",
       "aionui_approval_decisions",
       "pending-delivery",
@@ -560,6 +732,8 @@ function main() {
       "local-research-artifact",
       "writing-artifact",
       "office-document-artifact",
+      "aionui-scheduled-general-work",
+      "aionui_schedule_jobs",
     ],
   );
   rejectText(
@@ -581,6 +755,11 @@ function main() {
       "storeContentReference",
       "persistGeneralWorkCheckpoint",
       "listRecoverableGeneralWorkCheckpoints",
+      "registerAionUiSchedule",
+      "listAionUiSchedules",
+      "claimAionUiScheduleRun",
+      "completeAionUiScheduleRun",
+      "recoverAionUiScheduleRuns",
     ],
   );
   requireText(path.join(outputRoot, "packages/desktop/src/actestra/core/generalWorkRecovery.ts"), [
@@ -764,8 +943,8 @@ function main() {
     "assertGeneralWorkCheckpointTransition",
   ]);
   requireText(path.join(outputRoot, "tests/unit/actestra/persistenceUtilityClient.test.ts"), [
-    "schema v12 utility IPC",
-    "expect(client.schemaVersion).toBe(12)",
+    "schema v13 utility IPC",
+    "expect(client.schemaVersion).toBe(13)",
   ]);
   requireText(path.join(outputRoot, "tests/unit/actestra/generalWorkSmoke.test.ts"), [
     "prepare-writing-restart",
@@ -778,12 +957,12 @@ function main() {
   ]);
 
   console.log(
-    `Verified Actestra P4 Office-document downstream overlay: ${changedFiles.size} declared files, ` +
+    `Verified Actestra P4 scheduled General Work downstream overlay: ${changedFiles.size} declared files, ` +
       `${overlay.invariantFiles.length} R0 invariant files, ${overlay.sourceCopies.length} ` +
       "reviewed source copies, preserved AionUI surfaces, utility-owned persistence, shadow and " +
       "approval authority, workspace grants, bounded content references, AgentAdapter v2, and " +
       "the supervised General Worker, scoped native text tools, deterministic recovery, and " +
-      "the preserved AionUI General Work journey present.",
+      "the preserved AionUI General Work and scheduled-task journeys present.",
   );
 }
 

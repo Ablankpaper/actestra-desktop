@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
-  "phase": "P4-office-document",
+  "phase": "P4-scheduled-general-work",
   "upstream": {
     "tag": "v2.1.41",
     "commit": "2d8925fc67a97a20996fadcd2a0862b778b572ba",
     "manifestSha256": "252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f"
   },
-  "authorityOwner": "Actestra Core through durable AionUI journey links, General Work checkpoints, supervised persistence and Worker processes, and the scoped desktop main-process tool gateway",
+  "authorityOwner": "Actestra Core through durable AionUI journey links, schedule records and claims, General Work checkpoints, supervised persistence and Worker processes, and the scoped desktop main-process tool gateway",
   "classifications": ["R0", "R1", "R2"],
   "migration": {
-    "strategy": "Fresh Actestra profile v1; native AionUi profiles remain untouched. Forward-only schema v12 retains schemas v1-v11 exactly, expands the closed journey-kind set with office-document-artifact, and admits only the bounded Office Preview media type while preserving existing content ownership. Schema v8 supplies the atomic metadata-only AionUI conversation-to-task journey link, and all Actestra SQLite ownership—including existing AionUI shadow evidence, approval authority, workspace grants, bounded content references, terminal evidence, recovery checkpoints, and journey links—remains behind one supervised Electron persistence utility protocol. AgentAdapter v2 runs each General Worker attempt in one separately supervised Electron utility process with exact main-owned identities and events. The preserved AionUI SendBox retains /actestra, /actestra file, /actestra research, and /actestra write and adds /actestra office for one structured brief; the isolated Worker authors a private document model that main persists before the exact create-only Office tool produces brief.docx and a document Artifact. The retained Word Preview renders only the bounded owned model through safe React text nodes; ordinary OfficeCLI behavior and error states remain unchanged. Ordinary AionUI sends remain unchanged; renderer projections contain only bounded task status, summary, incident code, artifact metadata, and the exact owned Preview model. No raw native conversation identity, workspace path, content reference, private tool input, DOCX bytes, Goose, CrewAI, shell, arbitrary network, credential, MCP, second UI, or second state authority is added.",
-    "rollback": "Regenerate without patch 0010 to remove the preserved AionUI General Work journey bridge and /actestra SendBox intents while retaining GW-P4.5 recovery. Existing schema v12 journey links, journey kinds, and task-owned content references remain inert; use a fresh Actestra profile for a true data downgrade. Regenerate without patch 0009 to remove AionUI startup recovery wiring while retaining GW-P4.4 scoped native tools and the General Worker. The frozen AionUi foundation and native AionUi profiles stay byte-identical."
+    "strategy": "Fresh Actestra profile v1; native AionUi profiles remain untouched. Forward-only schema v13 retains schemas v1-v12 exactly and adds the bounded aionui_schedule_jobs authority table, schedule-owned Workspace grants, main-owned timers and claims, missed/interrupted recovery state, and fixed existing-conversation /actestra execution through the accepted General Work journey. The retained /scheduled routes, dialog, detail/history, status, CRUD, pause/resume, Run Now, and four cron events use one fixed preload provider; cron operations never fall back to AionCore, and application resume recalculates Actestra timers without calling the upstream system-resume route. Schema v12 Office-document authority, all earlier journey kinds, shadow evidence, approval authority, workspace grants, bounded content references, terminal evidence, checkpoints, and journey links remain behind the same supervised Electron persistence utility. Renderer projections contain only bounded native-compatible schedule, task, status, incident, and Artifact metadata. No workspace root, content reference, private tool input, prompt audit metadata, timer, run claim, Worker identity, credential, shell, arbitrary network, Goose, CrewAI, second UI, or second state authority is added.",
+    "rollback": "Regenerate without patch 0011 to restore the original AionUI cron provider wiring while retaining the accepted General Work and Office journeys. Existing schema v13 schedule rows and schedule-owned grants remain inert; use a fresh Actestra profile for a true data downgrade. Regenerate without patch 0010 to remove the preserved AionUI General Work journey bridge and /actestra SendBox intents while retaining GW-P4.5 recovery. The frozen AionUi foundation and native AionUi profiles stay byte-identical."
   },
   "uiContract": {
     "layoutChangesAllowed": false,
@@ -149,6 +149,18 @@
       ],
       "authorityOwner": "Actestra Core through the supervised persistence utility, General Work journey service, and real General Worker process",
       "rollback": "Regenerate without this patch. The original AionUI SendBox, ordinary native sends, OfficeCLI flow, routes, features, backend, and profile remain available; schema v12 journey rows remain inert."
+    },
+    {
+      "path": "patches/0011-actestra-scheduled-general-work.mjs",
+      "classification": ["R1"],
+      "domains": [
+        "retained Scheduled Tasks provider",
+        "fixed schedule preload request and event bridge",
+        "existing-conversation schedule creation",
+        "main-owned schedule recovery, timers, claims, and execution"
+      ],
+      "authorityOwner": "Actestra Core through the supervised persistence utility, schedule service, and General Work journey service",
+      "rollback": "Regenerate without this patch. The original AionUI Scheduled Tasks routes, components, DTOs, native backend, and profile remain available; schema v13 schedule rows remain inert."
     }
   ],
   "sourceCopies": [
@@ -221,6 +233,14 @@
       "destination": "packages/desktop/src/actestra/compatibility/aionui/generalWorkJourney.ts"
     },
     {
+      "source": "apps/desktop/src/compatibility/aionui/scheduleBridge.ts",
+      "destination": "packages/desktop/src/actestra/compatibility/aionui/scheduleBridge.ts"
+    },
+    {
+      "source": "apps/desktop/src/compatibility/aionui/scheduledGeneralWork.ts",
+      "destination": "packages/desktop/src/actestra/compatibility/aionui/scheduledGeneralWork.ts"
+    },
+    {
       "source": "apps/desktop/src/compatibility/aionui/approvalAuthority.ts",
       "destination": "packages/desktop/src/actestra/compatibility/aionui/approvalAuthority.ts"
     },
@@ -259,6 +279,14 @@
     {
       "source": "apps/desktop/src/main/compatibility/aionuiGeneralWorkNativeContext.ts",
       "destination": "packages/desktop/src/actestra/main/compatibility/aionuiGeneralWorkNativeContext.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/compatibility/aionuiScheduleBridgeService.ts",
+      "destination": "packages/desktop/src/actestra/main/compatibility/aionuiScheduleBridgeService.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/compatibility/aionuiScheduleService.ts",
+      "destination": "packages/desktop/src/actestra/main/compatibility/aionuiScheduleService.ts"
     },
     {
       "source": "apps/desktop/src/main/persistence/electronPersistenceUtility.ts",
@@ -413,6 +441,8 @@
     "packages/desktop/src/actestra/compatibility/aionui/generalWorkJourney.ts",
     "packages/desktop/src/actestra/compatibility/aionui/index.ts",
     "packages/desktop/src/actestra/compatibility/aionui/nativeObservations.ts",
+    "packages/desktop/src/actestra/compatibility/aionui/scheduleBridge.ts",
+    "packages/desktop/src/actestra/compatibility/aionui/scheduledGeneralWork.ts",
     "packages/desktop/src/actestra/compatibility/aionui/shadowProjection.ts",
     "packages/desktop/src/actestra/core/agentAdapter.ts",
     "packages/desktop/src/actestra/core/domain.ts",
@@ -434,6 +464,8 @@
     "packages/desktop/src/actestra/main/compatibility/aionuiGeneralWorkBridgeService.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiGeneralWorkJourneyService.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiGeneralWorkNativeContext.ts",
+    "packages/desktop/src/actestra/main/compatibility/aionuiScheduleBridgeService.ts",
+    "packages/desktop/src/actestra/main/compatibility/aionuiScheduleService.ts",
     "packages/desktop/src/actestra/main/persistence/electronPersistenceUtility.ts",
     "packages/desktop/src/actestra/main/persistence/persistenceUtilityClient.ts",
     "packages/desktop/src/actestra/main/workers/agentAdapterSupervisor.ts",
@@ -505,9 +537,12 @@
     "packages/desktop/src/renderer/pages/guid/components/QuickActionButtons.tsx",
     "packages/desktop/src/renderer/pages/conversation/Messages/components/ActestraGeneralWorkArtifactActions.tsx",
     "packages/desktop/src/renderer/pages/conversation/Messages/components/MessageTips.tsx",
+    "packages/desktop/src/renderer/pages/conversation/GroupedHistory/hooks/useConversationActions.ts",
     "packages/desktop/src/renderer/pages/conversation/Preview/components/PreviewPanel/PreviewPanel.tsx",
     "packages/desktop/src/renderer/pages/conversation/Preview/components/viewers/OfficeDocViewer.tsx",
     "packages/desktop/src/renderer/pages/conversation/Preview/context/PreviewContext.tsx",
+    "packages/desktop/src/renderer/pages/cron/ScheduledTasksPage/index.tsx",
+    "packages/desktop/src/renderer/pages/cron/ScheduledTasksPage/CreateTaskDialog.tsx",
     "packages/desktop/src/renderer/services/feedback/submitFeedbackReport.ts",
     "packages/desktop/src/renderer/services/i18n/index.ts",
     "packages/desktop/src/renderer/utils/platform.ts",
@@ -548,6 +583,7 @@
     "tests/unit/actestra/generalWorkRecovery.test.ts",
     "tests/unit/actestra/generalWorkerProcessAdapter.test.ts",
     "tests/unit/actestra/productBoundary.test.ts",
+    "tests/unit/actestra/scheduleNativeWiring.test.ts",
     "tests/unit/previews/PreviewContext.dom.test.tsx",
     "tests/unit/actestra/persistenceUtilityClient.test.ts",
     "tests/unit/actestra/shadowPersistence.test.ts",
@@ -562,6 +598,9 @@
     "tests/unit/process/services/autoUpdaterService.test.ts",
     "tests/unit/providers/ClientFactory.test.ts",
     "tests/unit/renderer/conversation/SendBoxCronPrefill.dom.test.tsx",
+    "tests/unit/renderer/conversation/useConversationActionsCron.dom.test.ts",
+    "tests/unit/renderer/cron/CreateTaskDialog.dom.test.tsx",
+    "tests/unit/common-adapter/httpBridge.test.ts",
     "tests/unit/renderer/layout/LayoutSiderBrandHome.dom.test.tsx",
     "tests/unit/renderer/useDesktopTurnNotification.dom.test.tsx",
     "tests/unit/sentry.test.ts",
