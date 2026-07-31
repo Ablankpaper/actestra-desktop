@@ -13,6 +13,7 @@ CrewAI, Eigent, Aera, or AgentEra source or asset.
 | React | `19.2.4` | MIT | `app.asar/node_modules/react/LICENSE` | <https://react.dev/> |
 | React DOM | `19.2.4` | MIT | `app.asar/node_modules/react-dom/LICENSE` | <https://react.dev/> |
 | Scheduler | `0.27.0` | MIT | `app.asar/node_modules/scheduler/LICENSE` | <https://www.npmjs.com/package/scheduler> |
+| Croner | `9.1.0` | MIT | `app.asar/node_modules/croner/LICENSE` | <https://github.com/Hexagon/croner> |
 | docx | `9.6.1` | MIT | `app.asar/node_modules/docx/LICENSE` | <https://github.com/dolanmiu/docx> |
 
 The package verifier fails if the Electron and Chromium notices are absent.
@@ -22,6 +23,11 @@ Actestra uses `docx` only in Electron main to construct the bounded Office Open
 XML package. Its retained MIT license states `Copyright (c) 2016 Dolan`; the
 package check must confirm that license text remains in ASAR before candidate
 status can be considered.
+
+Actestra uses exact `croner@9.1.0` only in the main-owned schedule contract to
+validate bounded five-field cron expressions and calculate the next occurrence.
+Its unchanged MIT license must remain in ASAR before candidate status can be
+considered; the renderer does not receive Croner or timer authority.
 
 ## Imported application source
 

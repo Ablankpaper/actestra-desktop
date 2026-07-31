@@ -123,8 +123,7 @@ export function calculateAionUiScheduleNextRun(
 ): number | undefined {
   if (schedule.kind === "at") return schedule.atMs > afterMs ? schedule.atMs : undefined;
   if (schedule.kind === "every") {
-    const elapsed = Math.floor(afterMs / schedule.everyMs) + 1;
-    return elapsed * schedule.everyMs;
+    return afterMs + schedule.everyMs;
   }
   if (schedule.expr.length === 0) return undefined;
   const next = new Cron(schedule.expr, {
@@ -135,7 +134,7 @@ export function calculateAionUiScheduleNextRun(
 }
 ```
 
-Derive the job ID with SHA-256 over a versioned canonical JSON tuple of conversation hash, name, prompt, and schedule. Make exact duplicates stable and changed-content collisions detectable by persistence.
+After the RED run and before adding this import, add `"croner": "9.1.0"` to root production dependencies, run `bun install`, verify the lock resolves exactly 9.1.0, and add its MIT attribution to `THIRD_PARTY_NOTICES.md`. Derive the job ID with SHA-256 over a versioned canonical JSON tuple of conversation hash, name, prompt, and schedule. Make exact duplicates stable and changed-content collisions detectable by persistence.
 
 - [ ] **Step 4: Run focused tests and verify GREEN**
 
@@ -146,7 +145,7 @@ Expected: PASS for bounds, unknown fields, subcommand rejection, time zones, man
 - [ ] **Step 5: Commit the contract slice**
 
 ```bash
-git add apps/desktop/src/compatibility/aionui/scheduledGeneralWork.ts apps/desktop/src/compatibility/aionui/index.ts tests/compatibility/aionuiScheduledGeneralWork.test.ts
+git add apps/desktop/src/compatibility/aionui/scheduledGeneralWork.ts apps/desktop/src/compatibility/aionui/index.ts tests/compatibility/aionuiScheduledGeneralWork.test.ts package.json bun.lock THIRD_PARTY_NOTICES.md
 git commit -m "feat: define bounded scheduled general work"
 ```
 
@@ -509,7 +508,7 @@ git add downstream/aionui-v2.1.41/patches/0011-actestra-scheduled-general-work.m
 git commit -m "feat: preserve native scheduled task journey"
 ```
 
-## Task 8: Exact dependency pin and third-party attribution
+## Task 8: Reverify the exact dependency pin and third-party attribution
 
 **Files:**
 
@@ -517,23 +516,23 @@ git commit -m "feat: preserve native scheduled task journey"
 - Modify: `bun.lock`
 - Modify: `THIRD_PARTY_NOTICES.md`
 
-- [ ] **Step 1: Add the exact production dependency**
+- [ ] **Step 1: Reverify the exact production dependency**
 
-Add `"croner": "9.1.0"` to root `dependencies`, then run:
+Confirm Task 1 added `"croner": "9.1.0"` to root `dependencies`, then run:
 
 Run: `bun install --frozen-lockfile`
 
-Expected: FAIL because the lock has not been updated yet.
+Expected: PASS because Task 1 already updated the lock from the exact contract input.
 
-- [ ] **Step 2: Update the lock deterministically**
+- [ ] **Step 2: Check the lock deterministically**
 
-Run: `bun install`
+Run: `git diff origin/main -- package.json bun.lock`
 
 Expected: `package.json` and `bun.lock` resolve exactly `croner@9.1.0`; no unrelated package version changes.
 
-- [ ] **Step 3: Record attribution**
+- [ ] **Step 3: Check attribution**
 
-Add Croner 9.1.0, MIT license, repository URL, exact role, and unchanged-license notice to `THIRD_PARTY_NOTICES.md`. Do not copy foundation lock metadata as project evidence.
+Confirm `THIRD_PARTY_NOTICES.md` records Croner 9.1.0, MIT license, repository URL, exact role, and unchanged-license notice. Do not copy foundation lock metadata as project evidence.
 
 - [ ] **Step 4: Verify pin and install**
 
@@ -541,11 +540,10 @@ Run: `bun install --frozen-lockfile && bun pm ls | rg 'croner@9\.1\.0'`
 
 Expected: PASS with exactly one root-resolved Croner version.
 
-- [ ] **Step 5: Commit dependency ownership**
+- [ ] **Step 5: Include any review correction in the next implementation commit**
 
 ```bash
 git add package.json bun.lock THIRD_PARTY_NOTICES.md
-git commit -m "build: pin schedule calculation dependency"
 ```
 
 ## Task 9: Root integration, native build, and target-app smoke

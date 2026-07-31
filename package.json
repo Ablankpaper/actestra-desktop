@@ -45,6 +45,7 @@
     "check": "bun run format:check && bun run lint && bun run typecheck && bun run test:electron-sqlite && bun run test && bun run test:smoke-harness && bun run boundary:check && bun run foundation:aionui:check && bun run downstream:aionui:check && bun run package"
   },
   "dependencies": {
+    "croner": "9.1.0",
     "docx": "9.6.1",
     "react": "19.2.4",
     "react-dom": "19.2.4"
