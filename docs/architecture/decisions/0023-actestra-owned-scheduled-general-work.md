@@ -259,14 +259,19 @@ signature, 17-link, and actual schema-13 target-app smoke checks. It has an
 Apple Development signature but no notarization and is not a candidate,
 release, distribution, or user-acceptance artifact.
 
-The final working-tree bytes were committed and pushed as
-`70b11992f4de015e0952d482a126cd1270208aa8` to Ready PR 20. Initial exact-head CI
-run 30657973409 passes source, native test/build, and bundle steps, then proves
-that the workflow packages the legacy root output rather than this target native
-application. A focused RED-to-GREEN workflow contract now packages inside the
+The final implementation first reached Ready PR 20 as
+`70b11992f4de015e0952d482a126cd1270208aa8`. Initial exact-head CI run
+30657973409 passes source, native test/build, and bundle steps, then proves that
+the workflow packages the legacy root output rather than this target native
+application. A focused RED-to-GREEN workflow contract packages inside the
 materialized tree, verifies that exact app, and runs its schema-13 target-app
-smoke; the complete root gate passes after remediation. Replacement PR-head CI,
-squash merge, and merged-main CI remain pending.
+smoke. The remediation reached exact final head
+`c06ca5b4bd842fbad098ffc3b9e7bcef1aadbceb`; PR CI 30659567604 passes the
+complete job. PR 20 has no submitted review or review thread; its CodeRabbit
+Free output is a rate-limited summary/walkthrough, not line-level review
+evidence. The PR squash merged as
+`5b0748af674165f9e9475be61dc1e02a1b08c8bc`, and exact merged-main CI
+30660078199 passes.
 
 ## Consequences
 
