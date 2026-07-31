@@ -1,10 +1,9 @@
 import { createHash } from "node:crypto";
-import { realpath } from "node:fs/promises";
-import { parse } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
   AIONUI_GENERAL_WORK_CONTRACT_VERSION,
   AIONUI_GENERAL_WORK_MAX_JOURNEYS_PER_CONVERSATION,
+  AIONUI_SCHEDULE_MAX_JOBS,
   assertAionUiGeneralWorkArtifactPreview,
   assertAionUiGeneralWorkIntent,
   assertAionUiGeneralWorkProjection,
@@ -57,12 +56,13 @@ import type {
   AionUiGeneralWorkNativeContext,
   AionUiGeneralWorkNativeContextPort,
 } from "./aionuiGeneralWorkNativeContext";
+import { canonicalizeAionUiGeneralWorkNativeContext } from "./aionuiGeneralWorkNativeContext";
 import { MAX_GENERAL_WORKER_SEND_CONTENT_BYTES } from "../../shared/generalWorkerProtocol";
 
 const MAX_TITLE_BYTES = 512;
 const MAX_SUMMARY_BYTES = 16 * 1024;
-const MAX_WORKSPACE_DISPLAY_NAME_BYTES = 128;
 const CANCELLABLE_TASK_STATES = new Set(["running", "blocked"]);
+const SCHEDULE_SUBMISSION_ID_PREFIX = "schedule-aionui-";
 
 interface JourneyIdentities {
   readonly workspaceId: ReturnType<typeof workspaceId>;
@@ -88,6 +88,10 @@ interface ActiveJourney {
   readonly sessionId: ReturnType<typeof sessionId>;
   readonly completion: Promise<void>;
 }
+
+type AionUiGeneralWorkNativeContextResolver = (
+  intent: AionUiGeneralWorkIntent,
+) => Promise<AionUiGeneralWorkNativeContext>;
 
 export interface AionUiGeneralWorkJourneyServiceConfig {
   readonly persistence: ActestraPersistencePort;
@@ -445,40 +449,38 @@ function projectionArtifacts(task: Task, graph: DomainGraph): readonly Artifact[
     .sort((left, right) => compareInstants(left.createdAt, right.createdAt));
 }
 
-async function canonicalNativeContext(
-  context: AionUiGeneralWorkNativeContext,
-): Promise<AionUiGeneralWorkNativeContext> {
-  if (
-    typeof context.rootPath !== "string" ||
-    context.rootPath.trim() !== context.rootPath ||
-    context.rootPath.length === 0
-  ) {
-    throw new Error("AionUI conversation has no bounded workspace root");
-  }
-  const displayName = boundedPresentationText(
-    context.displayName,
-    MAX_WORKSPACE_DISPLAY_NAME_BYTES,
-  );
-  if (displayName.length === 0) {
-    throw new Error("AionUI conversation has no bounded workspace name");
-  }
-  const rootPath = await realpath(context.rootPath);
-  if (rootPath === parse(rootPath).root) {
-    throw new Error("AionUI conversation workspace root must not be the filesystem root");
-  }
-  return Object.freeze({
-    rootPath,
-    displayName,
-  });
-}
-
 export class AionUiGeneralWorkJourneyService {
   private readonly submissions = new Map<string, Promise<AionUiGeneralWorkProjection>>();
   private readonly activeJourneys = new Map<string, ActiveJourney>();
+  private readonly journeyFailures = new Map<string, unknown>();
 
   constructor(private readonly config: AionUiGeneralWorkJourneyServiceConfig) {}
 
   submit(value: unknown): Promise<AionUiGeneralWorkProjection> {
+    assertAionUiGeneralWorkIntent(value);
+    if (value.submissionId.startsWith(SCHEDULE_SUBMISSION_ID_PREFIX)) {
+      throw new AionUiGeneralWorkJourneyServiceError(
+        "task-conflict",
+        "Scheduled General Work submission identities are reserved for Actestra main",
+      );
+    }
+    return this.submitWithContextResolver(value, (intent) =>
+      this.config.nativeContext.resolve(intent.nativeConversationId),
+    );
+  }
+
+  submitFromTrustedContext(
+    value: unknown,
+    nativeContext: AionUiGeneralWorkNativeContext,
+  ): Promise<AionUiGeneralWorkProjection> {
+    const trustedContext = Object.freeze({ ...nativeContext });
+    return this.submitWithContextResolver(value, async () => trustedContext);
+  }
+
+  private submitWithContextResolver(
+    value: unknown,
+    resolveNativeContext: AionUiGeneralWorkNativeContextResolver,
+  ): Promise<AionUiGeneralWorkProjection> {
     assertAionUiGeneralWorkIntent(value);
     const intent = Object.freeze({ ...value });
     const conversationHash = hashAionUiGeneralWorkConversation(intent.nativeConversationId);
@@ -487,7 +489,12 @@ export class AionUiGeneralWorkJourneyService {
     if (existing !== undefined) {
       return existing;
     }
-    const operation = this.submitOnce(intent, conversationHash, identities).finally(() => {
+    const operation = this.submitOnce(
+      intent,
+      conversationHash,
+      identities,
+      resolveNativeContext,
+    ).finally(() => {
       if (this.submissions.get(identities.taskId) === operation) {
         this.submissions.delete(identities.taskId);
       }
@@ -682,6 +689,27 @@ export class AionUiGeneralWorkJourneyService {
   }
 
   async recoverPrepared(): Promise<AionUiPreparedGeneralWorkRecoverySummary> {
+    const interruptedSchedules = new Map<
+      string,
+      { readonly nativeConversationId: string; readonly submissionId: string }
+    >();
+    for (const schedule of await this.config.persistence.listAionUiSchedules({
+      limit: AIONUI_SCHEDULE_MAX_JOBS,
+    })) {
+      if (
+        schedule.lastStatus !== "error" ||
+        schedule.lastIncidentCode !== "interrupted" ||
+        schedule.runSequence === 0
+      ) {
+        continue;
+      }
+      const submissionId = `${schedule.id}:run:${String(schedule.runSequence)}`;
+      const identities = identitiesFor(schedule.conversationHash, submissionId);
+      interruptedSchedules.set(identities.taskId, {
+        nativeConversationId: schedule.nativeConversationId,
+        submissionId,
+      });
+    }
     const links = await this.config.persistence.listPreparedAionUiGeneralWorkJourneyLinks(
       AIONUI_GENERAL_WORK_MAX_JOURNEYS_PER_CONVERSATION,
     );
@@ -689,6 +717,14 @@ export class AionUiGeneralWorkJourneyService {
     let failed = 0;
     for (const link of links) {
       try {
+        const interruptedSchedule = interruptedSchedules.get(link.taskId);
+        if (interruptedSchedule !== undefined) {
+          await this.interruptPreparedSubmission(
+            interruptedSchedule.nativeConversationId,
+            interruptedSchedule.submissionId,
+          );
+          continue;
+        }
         const graph = await this.config.persistence.loadDomainGraph();
         const task = graph.tasks.find((candidate) => candidate.id === link.taskId);
         if (task === undefined || task.state !== "ready") {
@@ -710,11 +746,101 @@ export class AionUiGeneralWorkJourneyService {
     });
   }
 
-  async waitForIdle(): Promise<void> {
+  async interruptPreparedSubmission(
+    nativeConversationId: string,
+    submissionId: string,
+  ): Promise<AionUiGeneralWorkProjection | null> {
+    const conversationHash = hashAionUiGeneralWorkConversation(nativeConversationId);
+    const identities = identitiesFor(conversationHash, submissionId);
+    const links = await this.config.persistence.listAionUiGeneralWorkJourneyLinks(
+      conversationHash,
+      AIONUI_GENERAL_WORK_MAX_JOURNEYS_PER_CONVERSATION,
+    );
+    if (!links.some((link) => link.taskId === identities.taskId)) {
+      return null;
+    }
+    const graph = await this.config.persistence.loadDomainGraph();
+    const task = graph.tasks.find((candidate) => candidate.id === identities.taskId);
+    if (task === undefined) {
+      throw new Error("Prepared AionUI journey has no authoritative task");
+    }
+    assertPreparedJourneyGraph(task, graph, identities);
+    if (task.state !== "ready") {
+      return this.project(task, graph);
+    }
+    const session = graph.sessions.find((candidate) => candidate.id === identities.sessionId);
+    const worker = graph.workers.find((candidate) => candidate.id === identities.workerId);
+    if (session?.state !== "created" || worker?.state !== "created") {
+      throw new AionUiGeneralWorkJourneyServiceError(
+        "task-conflict",
+        "Prepared AionUI journey lifecycle is no longer interruptible",
+      );
+    }
+    if (this.activeJourneys.has(task.id)) {
+      throw new AionUiGeneralWorkJourneyServiceError(
+        "task-conflict",
+        "Prepared AionUI journey already has an active supervised Worker",
+      );
+    }
+    const checkpoint = await this.config.persistence.getGeneralWorkCheckpoint(identities.sessionId);
+    if (checkpoint !== null) {
+      throw new AionUiGeneralWorkJourneyServiceError(
+        "task-conflict",
+        "Prepared AionUI journey already has durable attempt evidence",
+      );
+    }
+    const interruptedAt = this.config.clock.now();
+    const nextTask = Object.freeze({ ...task, state: "failed" as const, updatedAt: interruptedAt });
+    const nextGraph = Object.freeze({
+      ...graph,
+      tasks: Object.freeze(
+        graph.tasks.map((candidate) => (candidate.id === task.id ? nextTask : candidate)),
+      ),
+      sessions: Object.freeze(
+        graph.sessions.map((candidate) =>
+          candidate.id === identities.sessionId
+            ? Object.freeze({
+                ...candidate,
+                state: "cancelled" as const,
+                updatedAt: interruptedAt,
+              })
+            : candidate,
+        ),
+      ),
+      workers: Object.freeze(
+        graph.workers.map((candidate) =>
+          candidate.id === identities.workerId
+            ? Object.freeze({ ...candidate, state: "stopped" as const, updatedAt: interruptedAt })
+            : candidate,
+        ),
+      ),
+    }) satisfies DomainGraph;
+    await this.config.persistence.replaceDomainGraph(nextGraph);
+    return this.project(nextTask, nextGraph);
+  }
+
+  async waitForIdle(stableTaskId?: ReturnType<typeof taskId>): Promise<void> {
+    if (stableTaskId !== undefined) {
+      while (this.activeJourneys.has(stableTaskId)) {
+        await Promise.allSettled([this.activeJourneys.get(stableTaskId)!.completion]);
+      }
+      if (this.journeyFailures.has(stableTaskId)) {
+        const failure = this.journeyFailures.get(stableTaskId);
+        this.journeyFailures.delete(stableTaskId);
+        throw failure;
+      }
+      return;
+    }
     while (this.activeJourneys.size > 0) {
       await Promise.allSettled(
         [...this.activeJourneys.values()].map(({ completion }) => completion),
       );
+    }
+    const failures = [...this.journeyFailures.values()];
+    this.journeyFailures.clear();
+    if (failures.length > 0) {
+      const failure = failures[0];
+      throw failure;
     }
   }
 
@@ -732,6 +858,7 @@ export class AionUiGeneralWorkJourneyService {
     intent: AionUiGeneralWorkIntent,
     conversationHash: string,
     identities: JourneyIdentities,
+    resolveNativeContext: AionUiGeneralWorkNativeContextResolver,
   ): Promise<AionUiGeneralWorkProjection> {
     const links = await this.config.persistence.listAionUiGeneralWorkJourneyLinks(
       conversationHash,
@@ -746,8 +873,8 @@ export class AionUiGeneralWorkJourneyService {
       if (links.length >= AIONUI_GENERAL_WORK_MAX_JOURNEYS_PER_CONVERSATION) {
         throw new Error("AionUI general-work conversation reached its bounded journey limit");
       }
-      const nativeContext = await canonicalNativeContext(
-        await this.config.nativeContext.resolve(intent.nativeConversationId),
+      const nativeContext = await canonicalizeAionUiGeneralWorkNativeContext(
+        await resolveNativeContext(intent),
       );
       const registration = registrationFor(
         intent,
@@ -1092,6 +1219,12 @@ export class AionUiGeneralWorkJourneyService {
               .catch((): undefined => undefined);
             throw error;
           }
+        })
+        .catch((error: unknown): never => {
+          if (!this.journeyFailures.has(identities.taskId)) {
+            this.journeyFailures.set(identities.taskId, error);
+          }
+          throw error;
         })
         .finally(async () => {
           await adapter.close().catch((): undefined => undefined);

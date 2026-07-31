@@ -21,6 +21,8 @@ export const PERSISTENCE_ERROR_CODES = [
   "content-too-large",
   "general-work-conflict",
   "general-work-journey-conflict",
+  "schedule-conflict",
+  "schedule-limit",
 ] as const;
 
 export type PersistenceErrorCode = (typeof PERSISTENCE_ERROR_CODES)[number];

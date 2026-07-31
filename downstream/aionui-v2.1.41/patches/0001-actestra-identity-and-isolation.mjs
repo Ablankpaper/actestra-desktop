@@ -1340,6 +1340,12 @@ replaceOnce(
         });`,
 );
 
+replaceOnce(
+  "packages/desktop/src/renderer/index.html",
+  '    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />',
+  `    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; form-action 'none'; connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:*; script-src 'self' 'sha256-7Idh1+UXw1EeqjvymdKlZx1+VizEn4fRq9vQ8CnrKbc=' 'sha256-7uv7xuYWXvoNaQH5U7+fTuUyKvspVEOexZFb545Nqo4='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' data: blob:; worker-src 'self' blob:; child-src 'self' blob:; frame-src 'self' data: blob:" />`,
+);
 replaceAll("packages/desktop/src/renderer/index.html", 'content="AionUi"', 'content="Actestra"', 2);
 replaceOnce(
   "packages/desktop/src/renderer/index.html",

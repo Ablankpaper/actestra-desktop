@@ -66,6 +66,14 @@ Actestra development commands materialize a generated working tree under
   fixture grant denial, and cancellation against the exact pinned AionCore.
   It is disabled unless both the existing E2E guard and one closed smoke
   scenario are set; it adds no production renderer entry or general tool mode.
+- Schema v13 replaces only the retained cron provider beneath AionUI's native
+  Scheduled Tasks routes, dialog, detail/history, status, CRUD, pause/resume,
+  Run Now, and event surfaces. Existing-conversation `/actestra` schedules use
+  a fixed preload request/event bridge and main-owned timers, claims, recovery,
+  and General Work execution. Cron operations fail closed when the Actestra
+  provider is unavailable; they never fall back to AionCore, and resume never
+  calls AionCore's cron `system-resume` route. The renderer gains no workspace,
+  timer, claim, Worker, tool, credential, or runtime authority.
 - Actestra-owned source files are copied into the generated tree through the
   declared `sourceCopies` contract and must remain byte-identical to their
   reviewed root sources.

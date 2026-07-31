@@ -1,22 +1,24 @@
 # P4 General-Work Vertical Slice
 
 Status: GW-P4.2 through GW-P4.6 plus the representative workspace-file,
-bounded local-research, and writing journeys are accepted on `main`; ADR-0022
-accepts the bounded Office-document journey, whose implementation, focused
-native validation, production build, local package, and target-app smoke pass
-on `feat/p4-office-document-journey`; commit and remote delivery remain pending
+bounded local-research, writing, and Office-document journeys are accepted on
+`main`; ADR-0023's schema-13 schedule provider, main-owned timers and recovery,
+and native compatibility are implemented locally. Final-byte root/native
+validation, production build, a new Apple Development-signed unnotarized local
+arm64 package, package audits, and target-app smoke pass; commit, PR-head,
+merge, and merged-main gates remain pending
 
-Date: 2026-07-31
+Date: 2026-08-01
 
 Exact base:
-`d5dbc68bb4b3076448dc0bfb9ffc164ffd1c40d2`
+`505afb2f3916e75c7abb07cdf461bda29a602b9b`
 
 ## Entry evidence
 
-The branch starts from the exact verified writing squash merge for
-[pull request 18](https://github.com/bignormal/actestra-desktop/pull/18).
-[Main CI run 30586015008](https://github.com/bignormal/actestra-desktop/actions/runs/30586015008)
-passes on that exact commit.
+The schedule branch starts from the exact verified Office squash merge for
+[pull request 19](https://github.com/bignormal/actestra-desktop/pull/19).
+[Main CI run 30602821085](https://github.com/bignormal/actestra-desktop/actions/runs/30602821085)
+passes on exact commit `505afb2f3916e75c7abb07cdf461bda29a602b9b`.
 
 [ADR-0016](../architecture/decisions/0016-p4-general-work-process-and-content-boundaries.md),
 [ADR-0017](../architecture/decisions/0017-general-worker-process-and-agent-adapter-v2.md),
@@ -390,8 +392,7 @@ Complete local evidence for the feature branch:
   evidence.
 
 The exact representative-file head
-`f19b7dd006cf091aa9c7f1559dd484fdad35f200` passed pull-request CI run
-30567484733. Pull request 16 has no submitted reviews or inline review
+`f19b7dd006cf091aa9c7f1559dd484fdad35f200` passed pull-request CI run 30567484733. Pull request 16 has no submitted reviews or inline review
 comments; its successful Free-plan CodeRabbit result is summary/walkthrough
 evidence, not line-level review evidence. It squash merged as
 `2aed0f705bf6f9b3734742c0905c94ac562f501e`; exact merged-main CI run
@@ -482,7 +483,7 @@ The writing implementation is locally complete on
 Complete local evidence:
 
 - the post-review affected root set passes 7 files/74 tests and complete `bun
-  run check` passes 50 files/325 tests together with formatting, zero-warning lint,
+run check` passes 50 files/325 tests together with formatting, zero-warning lint,
   strict TypeScript, Electron SQLite, smoke, boundary, frozen-foundation,
   downstream, and production-build gates;
 - materialized native strict TypeScript, 4 focused files/9 tests, the complete
@@ -575,10 +576,92 @@ about prompt-only Office registration ownership and the persisted canonical
 model versus detached non-persisted renderer projection. Both were fixed in
 the system overview and ADR-0022; the complete post-remediation 43-file review
 raised zero issues. The complete manual review found and closed the text-writer
-media-type defect. Only evidence text recording these results changed after
-that review; final documentation/range audits remain pending. No Office
-commit, push, pull request, PR-head CI, merge, merged-main CI, candidate,
-release, distribution, or user acceptance exists yet.
+media-type defect. Final documentation, link, range, secret, binary,
+generated-output, and staged-scope audits passed. Implementation commit
+`7df1c17db31c0ab76c2ecf33d0f4c87cfd3c7d5f`, schema-smoke fix
+`0b8b40a68bad68d6a9d06f202eeb85cb019afbfa`, and final evidence head
+`091f786d57c6b4569cdaac17ea969a0b9070ea02` reached Ready pull request 19.
+Final PR CI run 30602624426 passes. PR 19 squash merged as
+`505afb2f3916e75c7abb07cdf461bda29a602b9b`; exact merged-main CI run
+30602821085 passes. The remote CodeRabbit Free status is summary/walkthrough
+evidence only, with no submitted review or inline comment.
+
+ADR-0023 governs the local schedule implementation beneath the retained AionUI
+`/scheduled` routes, `CreateTaskDialog`, detail/history/status surfaces, and
+`ipcBridge.cron` DTOs. It admits only an existing native conversation plus a
+bounded `/actestra` prompt. Schema 13 owns jobs, canonical schedule grants,
+next-run state, atomic run claims, and missed/interrupted outcomes. Electron
+main owns timers and invokes the existing General Work journey from the stored
+grant; renderer-selected paths, runtime, model, credentials, Worker, tool,
+queue, retry, and new-conversation authority remain rejected. The native
+conversation action opens the existing dialog with its current conversation
+binding so the admitted path is usable without a replacement UI.
+
+Pre-review local schedule baseline evidence:
+
+- complete root `bun run check` passed 56 files/414 tests together with format,
+  zero-warning lint, strict types, SQLite, smoke, product-boundary, frozen
+  foundation, downstream, and production-build gates;
+- materialized native strict TypeScript and the complete 345-file/2,658-test
+  native suite passed with only retained upstream skips; the pre-review
+  production build transformed 606 main, 26 preload, and 10,186 renderer
+  modules;
+- the pre-review Apple Development-signed unnotarized arm64 package under
+  `/private/tmp` passed exact AionCore, 13/13 Hub fallback, Electron notice,
+  Croner license, architecture, and strict recursive signature checks; and
+- that package's target-app smoke passed schema-13 create/restart/list,
+  run-now, missed/interrupted outcomes, one scheduled General Work Artifact,
+  privacy, the accepted prior journeys, and process cleanup.
+
+The first formal 50-file CodeRabbit review raised 12 issues, including 4 Major
+and 8 Minor. Valid status, canonical-path test, bridge policy, Task-correlated
+failure, graph-identity, and exact-due-time concerns were remediated through
+focused RED-to-GREEN cycles. The affected 5 files pass 81 tests, the 8 changed
+code/test files pass zero-warning lint, and strict TypeScript passes. The empty
+manual cron, explicit unsupported Skill route, fail-closed recovery, and
+duplicate recovery-event requests were rejected against ADR-0023 and the
+durable interrupted state.
+
+The second confirmation raised 8 issues (5 Major, 3 Minor), the third raised 4
+(3 Major, 1 Minor), and the fourth raised 3 (1 Major, 2 Minor). The later valid
+documentation and closed-protocol coverage items are applied. The fourth-pass
+request to authorize native AionUI workspace selection through a pre-existing
+Actestra registry or Git worktree set is rejected against ADR-0020's initial
+native-selection authority, ADR-0023's atomic canonical grant capture, and the
+P5 coding-worktree boundary. Two final-input follow-ups were rate-limited before
+analysis and cannot be reported as zero-issue reviews; the final complete
+manual 51-file review includes the Node-free schedule contract split and its
+corrected downstream-owner assertion and found no additional confirmed defect.
+
+Current final-byte local evidence supersedes the earlier package as proof of
+the present input:
+
+- `bun run check` passes 56 files/424 tests, all source and authority gates,
+  and a 56/3/28-module root production build;
+- the exact 3,177-package materialization, arm64 Electron 37.10.3
+  `better-sqlite3` source rebuild, strict TypeScript, and complete native suite
+  pass 345 files/2,658 tests with only the retained 1-file/5-test upstream
+  skips; the native production build transforms 607 main, 24 preload, and
+  10,184 renderer modules;
+- `/private/tmp/actestra-p4-schedule-final-byte.54REpE/out/mac-arm64/Actestra.app`
+  passes independent package, exact ASAR-entry, Electron notice, AionCore
+  `0.1.52`, Hub 13/13, docx/Croner notice, 26-file arm64 Mach-O signature, and
+  17-link checks; and
+- the same package passes actual schema-13 target-app schedule, retained prior
+  journey, privacy, terminal-evidence, temporary-root, and process-cleanup
+  smoke.
+
+The final implementation was committed and pushed as
+`70b11992f4de015e0952d482a126cd1270208aa8` to Ready pull request 20. Initial
+exact-head CI run 30657973409 passes through the native production build and
+bundle creation, then fails strict package verification because the workflow
+packages the legacy root `out/` instead of the materialized native output. A
+focused RED-to-GREEN workflow contract now packages inside the materialized
+tree, verifies that exact native app, and runs the schema-13 target-app smoke;
+the complete root 56-file/424-test gate passes after this remediation. Its
+replacement exact PR-head CI, squash merge, and merged-main CI remain pending.
+The local Apple Development signature is not notarization, a candidate,
+release, distribution, or user acceptance.
 
 Exit: the complete general-work journey is understandable and recoverable in
 the retained AionUi UI with Actestra as the declared system of record.
@@ -602,10 +685,12 @@ P4 is complete only after:
 
 ## Current non-claims
 
-- GW-P4.2 through GW-P4.6 plus the representative-file, local-research, and
-  writing extensions are accepted on `main`; Office passes the recorded local
-  build, package, and target-app evidence but is not accepted until its exact
-  review, PR-head, merge, and merged-main gates pass.
+- GW-P4.2 through GW-P4.6 plus the representative-file, local-research,
+  writing, and Office extensions are accepted on `main`. Four complete schedule
+  CodeRabbit passes are dispositioned and the manual review is closed; two
+  follow-ups were rate-limited before analysis. Its final-byte root/native,
+  package, package-audit, and target-app gates pass; commit, PR-head, merge,
+  and merged-main gates remain.
 - Three scoped native tools are connected to user-submitted preserved-AionUI
   tasks. The two text tools retain their accepted fixed or bounded paths; the
   Office tool accepts only fixed `brief.docx`. None is a renderer-selected
@@ -614,10 +699,10 @@ P4 is complete only after:
   mutation, model, Goose adapter, CrewAI sidecar, or Team orchestration is
   active.
 - Utility-process separation is not OS sandbox evidence.
-- Schemas 7 through 12 are forward-only; development rollback uses a fresh
+- Schemas 7 through 13 are forward-only; development rollback uses a fresh
   profile rather than deleting or downgrading user state.
 - The local target package contains the exact pinned AionCore binary, but
   its license clarification, notarized candidate, distribution, and fresh-user
   acceptance remain unresolved.
-- The Office package is disposable local evidence only; no candidate,
+- The schedule package is disposable local evidence only; no candidate,
   release, deployment, distribution, or user acceptance is claimed.

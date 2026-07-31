@@ -66,13 +66,14 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
 
-      - name: Build unsigned local app bundle
-        run: bun run dist:dir
+      - name: Build local materialized AionUi app bundle
+        working-directory: .actestra/aionui-v2.1.41
+        run: bun run dist:mac -- --arm64 --dir --skip-vite
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
       - name: Verify packaged identity and product boundary
-        run: bun run verify:package
+        run: bun run verify:package -- .actestra/aionui-v2.1.41/out/mac-arm64/Actestra.app
 
-      - name: Smoke packaged shell from a clean profile
-        run: bun run smoke:package
+      - name: Smoke materialized AionUi General Work from clean profiles
+        run: bun run smoke:aionui-general-work

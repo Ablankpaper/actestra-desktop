@@ -5,12 +5,38 @@ import {
   assertAionUiApprovalDecisionRecord,
   assertAionUiGeneralWorkLink,
   assertAionUiGeneralWorkRegistration,
+  assertAionUiScheduleClaimInput,
+  assertAionUiScheduleClaimResult,
+  assertAionUiScheduleCompletionInput,
+  assertAionUiScheduleCompletionResult,
+  assertAionUiScheduleDeleteInput,
+  assertAionUiScheduleJob,
+  assertAionUiScheduleJobId,
+  assertAionUiScheduleJobList,
+  assertAionUiScheduleListInput,
+  assertAionUiScheduleMutationResult,
+  assertAionUiSchedulePersistenceUpdateInput,
+  assertAionUiScheduleRecoveryInput,
+  assertAionUiScheduleRegistration,
+  assertAionUiScheduleRegistrationResult,
   assertAionUiShadowEvidence,
   assertNormalizedAionUiApprovalDecision,
   type AionUiApprovalAuthoritySummary,
   type AionUiApprovalDecisionRecord,
   type AionUiGeneralWorkLink,
   type AionUiGeneralWorkRegistration,
+  type AionUiScheduleClaimInput,
+  type AionUiScheduleClaimResult,
+  type AionUiScheduleCompletionInput,
+  type AionUiScheduleCompletionResult,
+  type AionUiScheduleDeleteInput,
+  type AionUiScheduleJob,
+  type AionUiScheduleListInput,
+  type AionUiScheduleMutationResult,
+  type AionUiSchedulePersistenceUpdateInput,
+  type AionUiScheduleRecoveryInput,
+  type AionUiScheduleRegistration,
+  type AionUiScheduleRegistrationResult,
   type RegisterAionUiGeneralWorkJourneyResult,
   type AionUiShadowEvidence,
   type AionUiShadowEvidenceSummary,
@@ -244,6 +270,54 @@ export interface PersistenceUtilityOperationMap {
     };
     readonly result: RegisterAionUiGeneralWorkJourneyResult;
   };
+  readonly "register-aionui-schedule": {
+    readonly request: {
+      readonly registration: AionUiScheduleRegistration;
+    };
+    readonly result: AionUiScheduleRegistrationResult;
+  };
+  readonly "list-aionui-schedules": {
+    readonly request: {
+      readonly input: AionUiScheduleListInput;
+    };
+    readonly result: readonly AionUiScheduleJob[];
+  };
+  readonly "get-aionui-schedule": {
+    readonly request: {
+      readonly jobId: string;
+    };
+    readonly result: AionUiScheduleJob | null;
+  };
+  readonly "update-aionui-schedule": {
+    readonly request: {
+      readonly input: AionUiSchedulePersistenceUpdateInput;
+    };
+    readonly result: AionUiScheduleMutationResult;
+  };
+  readonly "delete-aionui-schedule": {
+    readonly request: {
+      readonly input: AionUiScheduleDeleteInput;
+    };
+    readonly result: AionUiScheduleMutationResult;
+  };
+  readonly "claim-aionui-schedule-run": {
+    readonly request: {
+      readonly input: AionUiScheduleClaimInput;
+    };
+    readonly result: AionUiScheduleClaimResult;
+  };
+  readonly "complete-aionui-schedule-run": {
+    readonly request: {
+      readonly input: AionUiScheduleCompletionInput;
+    };
+    readonly result: AionUiScheduleCompletionResult;
+  };
+  readonly "recover-aionui-schedule-runs": {
+    readonly request: {
+      readonly input: AionUiScheduleRecoveryInput;
+    };
+    readonly result: readonly AionUiScheduleJob[];
+  };
   readonly close: {
     readonly request: Record<string, never>;
     readonly result: null;
@@ -282,6 +356,14 @@ export const PERSISTENCE_UTILITY_OPERATIONS = [
   "list-aionui-general-work-links",
   "list-prepared-aionui-general-work-links",
   "register-aionui-general-work",
+  "register-aionui-schedule",
+  "list-aionui-schedules",
+  "get-aionui-schedule",
+  "update-aionui-schedule",
+  "delete-aionui-schedule",
+  "claim-aionui-schedule-run",
+  "complete-aionui-schedule-run",
+  "recover-aionui-schedule-runs",
   "close",
 ] as const satisfies readonly (keyof PersistenceUtilityOperationMap)[];
 
@@ -361,8 +443,8 @@ export type PersistenceUtilityMessage =
   | PersistenceUtilityFatalMessage;
 
 export class PersistenceUtilityProtocolError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = "PersistenceUtilityProtocolError";
   }
 }
@@ -522,6 +604,14 @@ function assertAionUiGeneralWorkRegistrationResult(value: unknown): void {
     throw new PersistenceUtilityProtocolError("AionUI general-work registration status is invalid");
   }
   assertAionUiGeneralWorkLink(value.link);
+}
+
+function assertScheduleProtocolValue(assertion: () => void, label: string): void {
+  try {
+    assertion();
+  } catch (error) {
+    throw new PersistenceUtilityProtocolError(`${label} is invalid`, { cause: error });
+  }
 }
 
 function assertErrorData(value: unknown): asserts value is PersistenceUtilityErrorData {
@@ -807,6 +897,70 @@ function assertRequestPayload(request: PersistenceUtilityRequest): void {
       assertExactKeys(payload, ["registration"], "register-aionui-general-work request");
       assertAionUiGeneralWorkRegistration(payload.registration);
       return;
+    case "register-aionui-schedule":
+      assertRecord(payload, "register-aionui-schedule request");
+      assertExactKeys(payload, ["registration"], "register-aionui-schedule request");
+      assertScheduleProtocolValue(
+        () => assertAionUiScheduleRegistration(payload.registration),
+        "register-aionui-schedule registration",
+      );
+      return;
+    case "list-aionui-schedules":
+      assertRecord(payload, "list-aionui-schedules request");
+      assertExactKeys(payload, ["input"], "list-aionui-schedules request");
+      assertScheduleProtocolValue(
+        () => assertAionUiScheduleListInput(payload.input),
+        "list-aionui-schedules input",
+      );
+      return;
+    case "get-aionui-schedule":
+      assertRecord(payload, "get-aionui-schedule request");
+      assertExactKeys(payload, ["jobId"], "get-aionui-schedule request");
+      assertScheduleProtocolValue(
+        () => assertAionUiScheduleJobId(payload.jobId),
+        "get-aionui-schedule jobId",
+      );
+      return;
+    case "update-aionui-schedule":
+      assertRecord(payload, "update-aionui-schedule request");
+      assertExactKeys(payload, ["input"], "update-aionui-schedule request");
+      assertScheduleProtocolValue(
+        () => assertAionUiSchedulePersistenceUpdateInput(payload.input),
+        "update-aionui-schedule input",
+      );
+      return;
+    case "delete-aionui-schedule":
+      assertRecord(payload, "delete-aionui-schedule request");
+      assertExactKeys(payload, ["input"], "delete-aionui-schedule request");
+      assertScheduleProtocolValue(
+        () => assertAionUiScheduleDeleteInput(payload.input),
+        "delete-aionui-schedule input",
+      );
+      return;
+    case "claim-aionui-schedule-run":
+      assertRecord(payload, "claim-aionui-schedule-run request");
+      assertExactKeys(payload, ["input"], "claim-aionui-schedule-run request");
+      assertScheduleProtocolValue(
+        () => assertAionUiScheduleClaimInput(payload.input),
+        "claim-aionui-schedule-run input",
+      );
+      return;
+    case "complete-aionui-schedule-run":
+      assertRecord(payload, "complete-aionui-schedule-run request");
+      assertExactKeys(payload, ["input"], "complete-aionui-schedule-run request");
+      assertScheduleProtocolValue(
+        () => assertAionUiScheduleCompletionInput(payload.input),
+        "complete-aionui-schedule-run input",
+      );
+      return;
+    case "recover-aionui-schedule-runs":
+      assertRecord(payload, "recover-aionui-schedule-runs request");
+      assertExactKeys(payload, ["input"], "recover-aionui-schedule-runs request");
+      assertScheduleProtocolValue(
+        () => assertAionUiScheduleRecoveryInput(payload.input),
+        "recover-aionui-schedule-runs input",
+      );
+      return;
     default:
       assertNeverOperation(request);
   }
@@ -949,6 +1103,43 @@ function assertSuccessResult(operation: PersistenceUtilityOperation, result: unk
       return;
     case "register-aionui-general-work":
       assertAionUiGeneralWorkRegistrationResult(result);
+      return;
+    case "register-aionui-schedule":
+      assertScheduleProtocolValue(
+        () => assertAionUiScheduleRegistrationResult(result),
+        "register-aionui-schedule result",
+      );
+      return;
+    case "list-aionui-schedules":
+    case "recover-aionui-schedule-runs":
+      assertScheduleProtocolValue(() => assertAionUiScheduleJobList(result), `${operation} result`);
+      return;
+    case "get-aionui-schedule":
+      if (result !== null) {
+        assertScheduleProtocolValue(
+          () => assertAionUiScheduleJob(result),
+          "get-aionui-schedule result",
+        );
+      }
+      return;
+    case "update-aionui-schedule":
+    case "delete-aionui-schedule":
+      assertScheduleProtocolValue(
+        () => assertAionUiScheduleMutationResult(result),
+        `${operation} result`,
+      );
+      return;
+    case "claim-aionui-schedule-run":
+      assertScheduleProtocolValue(
+        () => assertAionUiScheduleClaimResult(result),
+        "claim-aionui-schedule-run result",
+      );
+      return;
+    case "complete-aionui-schedule-run":
+      assertScheduleProtocolValue(
+        () => assertAionUiScheduleCompletionResult(result),
+        "complete-aionui-schedule-run result",
+      );
       return;
     default:
       assertNeverOperation(operation);

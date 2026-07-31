@@ -188,6 +188,22 @@ export class PersistenceUtilityService {
         );
       case "list-prepared-aionui-general-work-links":
         return persistence.listPreparedAionUiGeneralWorkJourneyLinks(request.payload.limit);
+      case "register-aionui-schedule":
+        return persistence.registerAionUiSchedule(request.payload.registration);
+      case "list-aionui-schedules":
+        return persistence.listAionUiSchedules(request.payload.input);
+      case "get-aionui-schedule":
+        return persistence.getAionUiSchedule(request.payload.jobId);
+      case "update-aionui-schedule":
+        return persistence.updateAionUiSchedule(request.payload.input);
+      case "delete-aionui-schedule":
+        return persistence.deleteAionUiSchedule(request.payload.input);
+      case "claim-aionui-schedule-run":
+        return persistence.claimAionUiScheduleRun(request.payload.input);
+      case "complete-aionui-schedule-run":
+        return persistence.completeAionUiScheduleRun(request.payload.input);
+      case "recover-aionui-schedule-runs":
+        return persistence.recoverAionUiScheduleRuns(request.payload.input);
       case "close":
         await this.shutdown();
         return null;

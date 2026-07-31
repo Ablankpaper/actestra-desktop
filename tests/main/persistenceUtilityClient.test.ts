@@ -14,6 +14,7 @@ import { PersistenceUtilityError } from "../../apps/desktop/src/main/persistence
 import { createDomainGraph, FIXTURE_WORKSPACE_ID } from "../fixtures/core";
 import { createGeneralWorkCheckpoint } from "../fixtures/generalWorkRecovery";
 import { createAionUiGeneralWorkRegistration } from "../fixtures/aionuiGeneralWork";
+import { createAionUiScheduleRegistration } from "../fixtures/aionuiSchedule";
 import { openTestPersistenceUtility } from "../fixtures/persistenceUtility";
 
 const testDirectories: string[] = [];
@@ -107,7 +108,7 @@ describe("persistence utility client", () => {
     const workspaceRoot = path.join(userDataPath, "fixture-workspace");
     fs.mkdirSync(workspaceRoot);
     const { client, transport } = await openTestPersistenceUtility(userDataPath);
-    expect(client.schemaVersion).toBe(12);
+    expect(client.schemaVersion).toBe(13);
     const graph = createDomainGraph();
     await client.replaceDomainGraph(graph);
     await expect(client.loadDomainGraph()).resolves.toEqual(graph);
@@ -218,6 +219,79 @@ describe("persistence utility client", () => {
     await expect(client.listPreparedAionUiGeneralWorkJourneyLinks(10)).resolves.toEqual([
       registration.link,
     ]);
+    await client.close();
+  });
+
+  it("round-trips schedule authority and run claims through the utility process", async () => {
+    const userDataPath = createTestDirectory();
+    const { client } = await openTestPersistenceUtility(userDataPath);
+    const registration = createAionUiScheduleRegistration("utility-schedule", userDataPath);
+    const updatedAtMs = registration.job.updatedAtMs + 1_000;
+
+    await expect(client.registerAionUiSchedule(registration)).resolves.toEqual({
+      status: "stored",
+      job: registration.job,
+    });
+    await expect(client.registerAionUiSchedule(registration)).resolves.toEqual({
+      status: "duplicate",
+      job: registration.job,
+    });
+    await expect(
+      client.listAionUiSchedules({
+        limit: 100,
+        conversationHash: registration.job.conversationHash,
+      }),
+    ).resolves.toEqual([registration.job]);
+    await expect(client.getAionUiSchedule(registration.job.id)).resolves.toEqual(registration.job);
+    await expect(
+      client.updateAionUiSchedule({
+        jobId: registration.job.id,
+        updatedAtMs,
+        name: "Utility schedule updated",
+      }),
+    ).resolves.toMatchObject({
+      status: "updated",
+      job: { name: "Utility schedule updated" },
+    });
+
+    await expect(
+      client.claimAionUiScheduleRun({
+        jobId: registration.job.id,
+        claim: "claim-utility-schedule-1",
+        claimedAtMs: updatedAtMs + 1,
+      }),
+    ).resolves.toMatchObject({ status: "claimed", job: { runSequence: 1 } });
+    await expect(
+      client.completeAionUiScheduleRun({
+        jobId: registration.job.id,
+        claim: "claim-utility-schedule-1",
+        completedAtMs: updatedAtMs + 2,
+        status: "ok",
+        nextRunAtMs: updatedAtMs + 60_000,
+      }),
+    ).resolves.toMatchObject({ status: "completed", job: { runCount: 1 } });
+    await client.claimAionUiScheduleRun({
+      jobId: registration.job.id,
+      claim: "claim-utility-schedule-2",
+      claimedAtMs: updatedAtMs + 3,
+    });
+    await expect(
+      client.recoverAionUiScheduleRuns({ recoveredAtMs: updatedAtMs + 4 }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        lastStatus: "error",
+        lastIncidentCode: "interrupted",
+        runSequence: 2,
+        runCount: 2,
+      }),
+    ]);
+    await expect(
+      client.deleteAionUiSchedule({
+        jobId: registration.job.id,
+        deletedAtMs: updatedAtMs + 5,
+      }),
+    ).resolves.toMatchObject({ status: "deleted" });
+    await expect(client.getAionUiSchedule(registration.job.id)).resolves.toBeNull();
     await client.close();
   });
 

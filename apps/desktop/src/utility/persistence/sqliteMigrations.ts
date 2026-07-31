@@ -3,7 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { PersistenceError } from "../../core";
 
 export const ACTESTRA_SQLITE_APPLICATION_ID = 1_095_980_114;
-export const CURRENT_CORE_SCHEMA_VERSION = 12;
+export const CURRENT_CORE_SCHEMA_VERSION = 13;
 
 export interface SqliteMigration {
   readonly version: number;
@@ -585,6 +585,92 @@ export const CORE_SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
       CREATE INDEX content_references_request_idx
         ON content_references(request_id)
         WHERE request_id IS NOT NULL;
+    `,
+  },
+  {
+    version: 13,
+    name: "aionui-scheduled-general-work",
+    sql: `
+      CREATE TABLE aionui_schedule_jobs (
+        job_id TEXT PRIMARY KEY CHECK (
+          length(job_id) = 80 AND
+          substr(job_id, 1, 16) = 'schedule-aionui-' AND
+          substr(job_id, 17) NOT GLOB '*[^0-9a-f]*'
+        ),
+        contract_version INTEGER NOT NULL CHECK (contract_version = 1),
+        conversation_hash TEXT NOT NULL CHECK (
+          length(conversation_hash) = 64 AND
+          conversation_hash NOT GLOB '*[^0-9a-f]*'
+        ),
+        native_conversation_id TEXT NOT NULL CHECK (
+          length(native_conversation_id) BETWEEN 1 AND 256
+        ),
+        native_conversation_title TEXT CHECK (
+          native_conversation_title IS NULL OR
+          length(native_conversation_title) BETWEEN 1 AND 256
+        ),
+        workspace_id TEXT NOT NULL UNIQUE
+          REFERENCES workspaces(id) ON DELETE RESTRICT,
+        workspace_grant_id TEXT NOT NULL UNIQUE
+          REFERENCES workspace_grants(grant_id) ON DELETE RESTRICT,
+        name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 256),
+        description TEXT CHECK (
+          description IS NULL OR length(description) BETWEEN 1 AND 2048
+        ),
+        prompt TEXT NOT NULL CHECK (length(prompt) BETWEEN 1 AND 16384),
+        schedule_kind TEXT NOT NULL CHECK (schedule_kind IN ('at', 'every', 'cron')),
+        schedule_value TEXT NOT NULL CHECK (length(schedule_value) <= 256),
+        schedule_time_zone TEXT CHECK (
+          schedule_time_zone IS NULL OR length(schedule_time_zone) BETWEEN 1 AND 128
+        ),
+        schedule_description TEXT NOT NULL CHECK (length(schedule_description) <= 512),
+        enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+        next_run_at_ms INTEGER CHECK (next_run_at_ms IS NULL OR next_run_at_ms >= 0),
+        last_run_at_ms INTEGER CHECK (last_run_at_ms IS NULL OR last_run_at_ms >= 0),
+        last_status TEXT CHECK (
+          last_status IS NULL OR last_status IN ('ok', 'error', 'skipped', 'missed')
+        ),
+        last_incident_code TEXT CHECK (
+          last_incident_code IS NULL OR length(last_incident_code) BETWEEN 1 AND 128
+        ),
+        active_claim TEXT CHECK (
+          active_claim IS NULL OR length(active_claim) BETWEEN 1 AND 128
+        ),
+        active_claimed_at_ms INTEGER CHECK (
+          active_claimed_at_ms IS NULL OR active_claimed_at_ms >= 0
+        ),
+        run_sequence INTEGER NOT NULL CHECK (run_sequence >= 0),
+        run_count INTEGER NOT NULL CHECK (run_count >= 0 AND run_count <= run_sequence),
+        retry_count INTEGER NOT NULL CHECK (retry_count = 0),
+        max_retries INTEGER NOT NULL CHECK (max_retries = 0),
+        queue_enabled INTEGER NOT NULL CHECK (queue_enabled = 0),
+        created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+        updated_at_ms INTEGER NOT NULL CHECK (
+          updated_at_ms >= created_at_ms
+        ),
+        deleted_at_ms INTEGER CHECK (
+          deleted_at_ms IS NULL OR deleted_at_ms >= updated_at_ms
+        ),
+        job_json TEXT NOT NULL,
+        CHECK ((active_claim IS NULL) = (active_claimed_at_ms IS NULL)),
+        CHECK (schedule_kind = 'cron' OR schedule_time_zone IS NULL),
+        CHECK (
+          deleted_at_ms IS NULL OR (
+            enabled = 0 AND
+            next_run_at_ms IS NULL AND
+            active_claim IS NULL
+          )
+        )
+      ) STRICT;
+
+      CREATE UNIQUE INDEX aionui_schedule_identity_idx
+        ON aionui_schedule_jobs(conversation_hash, job_id);
+      CREATE INDEX aionui_schedule_next_run_idx
+        ON aionui_schedule_jobs(enabled, next_run_at_ms)
+        WHERE deleted_at_ms IS NULL AND enabled = 1;
+      CREATE INDEX aionui_schedule_active_claim_idx
+        ON aionui_schedule_jobs(active_claim)
+        WHERE active_claim IS NOT NULL;
     `,
   },
 ] as const;

@@ -18,13 +18,21 @@ const expectedAionCoreVersion =
   typeof materializedPackage.aioncoreVersion === "string"
     ? materializedPackage.aioncoreVersion.replace(/^v/u, "")
     : "";
-const smokeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-aionui-p4-office-smoke-"));
+const smokeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-aionui-p4-schedule-smoke-"));
 const markerPrefix = "ACTESTRA_AIONUI_GENERAL_WORK_SMOKE_READY ";
 const failureMarker = "ACTESTRA_AIONUI_GENERAL_WORK_SMOKE_FAILED ";
 const windowReadyMarker = "[Actestra] Main window created";
 const rendererReadyMarker = "[AionUi] Renderer did-finish-load";
+const rendererProviderReadyMarker = "ACTESTRA_RENDERER_PROVIDER_SMOKE_READY";
+const rendererProviderFailureMarker = "ACTESTRA_RENDERER_PROVIDER_SMOKE_FAILED ";
 const maximumOutputBytes = 2 * 1_024 * 1_024;
 const startupTimeoutMs = 60_000;
+const schedulePrompt = "/actestra Produce the scheduled Actestra artifact.";
+const scheduleRunNowName = "Schedule smoke run-now";
+const scheduleMissedName = "Schedule smoke missed";
+const scheduleInterruptedName = "Schedule smoke interrupted";
+const scheduleInterruptedClaim = "schedule-smoke-interrupted-claim";
+const scheduleNativeConversationId = "conversation-aionui-smoke";
 let succeeded = false;
 
 function fail(message) {
@@ -170,7 +178,7 @@ async function runScenario(scenario, profilePath, workspacePath, packagedExecuta
   const startedAt = Date.now();
   let summary;
   while (Date.now() - startedAt < startupTimeoutMs) {
-    if (output.includes(failureMarker)) {
+    if (output.includes(failureMarker) || output.includes(rendererProviderFailureMarker)) {
       await terminate(child, outcomePromise);
       fail(`${scenario} emitted a failure marker\n${output}`);
     }
@@ -178,7 +186,8 @@ async function runScenario(scenario, profilePath, workspacePath, packagedExecuta
     if (
       markerIndex !== -1 &&
       output.includes(windowReadyMarker) &&
-      output.includes(rendererReadyMarker)
+      output.includes(rendererReadyMarker) &&
+      output.includes(rendererProviderReadyMarker)
     ) {
       const markerLine = output.slice(markerIndex + markerPrefix.length).split(/\r?\n/u)[0];
       try {
@@ -232,8 +241,8 @@ function verifyPreparedProfile(profilePath, expected) {
     enableForeignKeyConstraints: true,
   });
   try {
-    if (databaseValue(database, "PRAGMA user_version") !== 12) {
-      fail("prepare-restart did not create schema version 12");
+    if (databaseValue(database, "PRAGMA user_version") !== 13) {
+      fail("prepare-restart did not create schema version 13");
     }
     if (
       databaseValue(database, "SELECT COUNT(*) FROM aionui_general_work_journeys") !== 1 ||
@@ -266,7 +275,7 @@ function verifyTerminalProfile(profilePath, expected) {
       `SELECT COUNT(*) FROM core_events WHERE type = '${expected.eventType}'`,
     );
     if (
-      databaseValue(database, "PRAGMA user_version") !== 12 ||
+      databaseValue(database, "PRAGMA user_version") !== 13 ||
       databaseValue(database, "SELECT COUNT(*) FROM aionui_general_work_journeys") !== 1 ||
       databaseValue(
         database,
@@ -315,15 +324,200 @@ function verifyTerminalProfile(profilePath, expected) {
   }
 }
 
+function verifyPreparedScheduleProfile(profilePath) {
+  const database = new DatabaseSync(path.join(profilePath, "state", "actestra.sqlite3"), {
+    readOnly: true,
+    allowExtension: false,
+    enableDoubleQuotedStringLiterals: false,
+    enableForeignKeyConstraints: true,
+  });
+  try {
+    const claimedRows = database
+      .prepare(
+        `SELECT name, active_claim
+         FROM aionui_schedule_jobs
+         WHERE active_claim IS NOT NULL`,
+      )
+      .all();
+    if (
+      databaseValue(database, "PRAGMA user_version") !== 13 ||
+      databaseValue(database, "SELECT COUNT(*) FROM aionui_schedule_jobs") !== 3 ||
+      databaseValue(database, "SELECT COUNT(*) FROM tasks") !== 0 ||
+      databaseValue(database, "SELECT COUNT(*) FROM aionui_general_work_journeys") !== 0 ||
+      databaseValue(database, "SELECT COUNT(*) FROM general_work_checkpoints") !== 0 ||
+      databaseValue(database, "SELECT COUNT(*) FROM agent_attempt_evidence") !== 0 ||
+      databaseValue(database, "SELECT COUNT(*) FROM artifacts") !== 0 ||
+      claimedRows.length !== 1 ||
+      claimedRows[0]?.name !== scheduleInterruptedName ||
+      claimedRows[0]?.active_claim !== scheduleInterruptedClaim ||
+      database.prepare("PRAGMA foreign_key_check").all().length !== 0
+    ) {
+      fail("prepare-schedule-restart did not leave exact schema version 13 schedule authority");
+    }
+    const missed = database
+      .prepare(
+        `SELECT next_run_at_ms
+         FROM aionui_schedule_jobs
+         WHERE name = ?`,
+      )
+      .get(scheduleMissedName);
+    if (
+      missed === undefined ||
+      typeof missed.next_run_at_ms !== "number" ||
+      !Number.isSafeInteger(missed.next_run_at_ms) ||
+      missed.next_run_at_ms < 0
+    ) {
+      fail("prepare-schedule-restart has no exact missed occurrence deadline");
+    }
+    return missed.next_run_at_ms;
+  } finally {
+    database.close();
+  }
+}
+
+async function waitUntilScheduleOccurrenceIsMissed(nextRunAtMs) {
+  const waitMilliseconds = nextRunAtMs - Date.now() + 250;
+  if (waitMilliseconds > 10_000) {
+    fail("prepare-schedule-restart produced an unexpectedly distant missed occurrence");
+  }
+  if (waitMilliseconds > 0) {
+    await delay(waitMilliseconds);
+  }
+  if (Date.now() <= nextRunAtMs) {
+    await delay(nextRunAtMs - Date.now() + 1);
+  }
+}
+
+function verifyTerminalScheduleProfile(profilePath, workspacePath) {
+  const taskId = verifyTerminalProfile(profilePath, {
+    state: "completed",
+    eventType: "task.completed",
+    artifactCount: 1,
+    journeyKind: "prompt-artifact",
+  });
+  const database = new DatabaseSync(path.join(profilePath, "state", "actestra.sqlite3"), {
+    readOnly: true,
+    allowExtension: false,
+    enableDoubleQuotedStringLiterals: false,
+    enableForeignKeyConstraints: true,
+  });
+  try {
+    const rows = database
+      .prepare(
+        `SELECT name, last_status, last_incident_code, run_count, active_claim
+         FROM aionui_schedule_jobs
+         ORDER BY name`,
+      )
+      .all();
+    const expected = new Map([
+      [scheduleRunNowName, { status: "ok", incidentCode: null, runCount: 1 }],
+      [scheduleMissedName, { status: "missed", incidentCode: "missed-occurrence", runCount: 0 }],
+      [scheduleInterruptedName, { status: "error", incidentCode: "interrupted", runCount: 1 }],
+    ]);
+    if (
+      rows.length !== expected.size ||
+      databaseValue(database, "SELECT COUNT(*) FROM tasks") !== 1 ||
+      databaseValue(database, "SELECT COUNT(*) FROM agent_attempt_evidence") !== 1 ||
+      rows.some((row) => {
+        const state = expected.get(row.name);
+        return (
+          state === undefined ||
+          row.last_status !== state.status ||
+          row.last_incident_code !== state.incidentCode ||
+          row.run_count !== state.runCount ||
+          row.active_claim !== null
+        );
+      })
+    ) {
+      fail("recover-schedule-restart did not persist exact run-now, missed, and interrupted state");
+    }
+
+    for (const fragment of [
+      workspacePath,
+      schedulePrompt,
+      scheduleNativeConversationId,
+      scheduleInterruptedClaim,
+    ]) {
+      const leakedCoreEventCount = database
+        .prepare(
+          `SELECT COUNT(*) AS count
+           FROM core_events
+           WHERE instr(envelope_json, ?) > 0`,
+        )
+        .get(fragment).count;
+      const leakedAuditCount = database
+        .prepare(
+          `SELECT COUNT(*) AS count
+           FROM privileged_audit_records
+           WHERE instr(record_json, ?) > 0`,
+        )
+        .get(fragment).count;
+      if (leakedCoreEventCount !== 0 || leakedAuditCount !== 0) {
+        fail("Scheduled workload authority leaked into Core events or metadata audit");
+      }
+    }
+    return taskId;
+  } finally {
+    database.close();
+  }
+}
+
 try {
   if (process.platform !== "darwin") {
-    fail("P4 Office target-app smoke currently requires the macOS internal-test lane");
+    fail("P4 schedule target-app smoke currently requires the macOS internal-test lane");
   }
   requireFile(builtMain, "Materialized production main entry");
   const packagedApp = findPackagedApp();
   const packagedExecutable = path.join(packagedApp, "Contents", "MacOS", "Actestra");
   requireFile(packagedExecutable, "Packaged Actestra executable");
   findPackagedAionCore(packagedApp);
+
+  const scheduleProfile = path.join(smokeRoot, "schedule-restart-profile");
+  const scheduleWorkspace = path.join(smokeRoot, "schedule-restart-workspace");
+  const schedulePrepared = await runScenario(
+    "prepare-schedule-restart",
+    scheduleProfile,
+    scheduleWorkspace,
+    packagedExecutable,
+  );
+  if (
+    schedulePrepared.status !== "prepared" ||
+    schedulePrepared.taskCount !== 0 ||
+    schedulePrepared.artifactCount !== 0 ||
+    schedulePrepared.scheduleCount !== 3 ||
+    schedulePrepared.missedCount !== 0 ||
+    schedulePrepared.interruptedCount !== 0 ||
+    schedulePrepared.skillUnsupported !== false
+  ) {
+    fail("prepare-schedule-restart returned the wrong durable schedule evidence");
+  }
+  const missedNextRunAtMs = verifyPreparedScheduleProfile(scheduleProfile);
+  await waitUntilScheduleOccurrenceIsMissed(missedNextRunAtMs);
+
+  const scheduleRecovered = await runScenario(
+    "recover-schedule-restart",
+    scheduleProfile,
+    scheduleWorkspace,
+    packagedExecutable,
+  );
+  if (
+    scheduleRecovered.status !== "completed" ||
+    scheduleRecovered.taskCount !== 1 ||
+    scheduleRecovered.artifactCount !== 1 ||
+    scheduleRecovered.scheduleCount !== 3 ||
+    scheduleRecovered.missedCount !== 1 ||
+    scheduleRecovered.interruptedCount !== 1 ||
+    scheduleRecovered.skillUnsupported !== true
+  ) {
+    fail(
+      "recover-schedule-restart returned the wrong terminal schedule or schedule-skill-unsupported evidence",
+    );
+  }
+  const scheduleTaskId = verifyTerminalScheduleProfile(scheduleProfile, scheduleWorkspace);
+  requireFile(
+    path.join(scheduleWorkspace, ".actestra", "task-output", scheduleTaskId, "result.md"),
+    "Recovered scheduled General Work artifact",
+  );
 
   const restartProfile = path.join(smokeRoot, "restart-profile");
   const restartWorkspace = path.join(smokeRoot, "restart-workspace");
@@ -621,11 +815,11 @@ try {
 
   succeeded = true;
   console.info(
-    "Packaged target-app P4 Office smoke passed: representative workspace-file, writing, and Office restart recovery, real DOCX and owned Word Preview, local research, workspace-grant denial, cancellation, finalized checkpoints, events, artifacts, and terminal evidence are exact.",
+    "Packaged target-app P4 schedule smoke passed: schema-13 run-now, missed and interrupted recovery, representative workspace-file, writing and Office restart recovery, real DOCX and owned Word Preview, local research, workspace-grant denial, cancellation, finalized checkpoints, events, artifacts, privacy, and terminal evidence are exact.",
   );
 } catch (error) {
   console.error(
-    `Target-app P4 Office smoke failed: ${error instanceof Error ? error.message : String(error)}`,
+    `Target-app P4 schedule smoke failed: ${error instanceof Error ? error.message : String(error)}`,
   );
   console.error(`Isolated smoke root retained for inspection: ${smokeRoot}`);
   process.exitCode = 1;
