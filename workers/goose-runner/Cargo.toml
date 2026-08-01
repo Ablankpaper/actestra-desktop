@@ -1,0 +1,15 @@
+[package]
+name = "actestra-goose-runner"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.94.1"
+publish = false
+
+[dependencies]
+goose = { git = "https://github.com/aaif-goose/goose", rev = "4dc0420f5704a92806c6628c8f0a3497d7a88759", default-features = false }
+tokio = { version = "1.48", default-features = false, features = ["macros", "rt-multi-thread"] }
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+strip = false

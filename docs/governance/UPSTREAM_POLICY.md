@@ -73,7 +73,10 @@ See the
 
 Goose is admitted only as a separately supervised coding Worker through the
 exact stdio ACP boundary accepted in
-[ADR-0024](../architecture/decisions/0024-minimal-goose-acp-runner.md). Actestra
+[ADR-0024](../architecture/decisions/0024-minimal-goose-acp-runner.md), with
+the sole exact RustSec metadata disposition constrained by
+[ADR-0025](../architecture/decisions/0025-goose-rsa-metadata-only-disposition.md).
+Actestra
 does not import Goose's application UI or bundle the broad upstream CLI.
 
 The runner uses the exact source pin, disables default features, enables no
@@ -86,7 +89,8 @@ configuration, SQLite, session, and cache state is disposable.
 Before a runner artifact is executable outside deterministic protocol tests,
 the implementation must record its exact toolchain, feature set, lock and
 executable digests, dependency audit, SBOM, Apache-2.0 payload, build
-provenance, network policy, and process-cleanup evidence. An upstream release
+provenance, trusted manifest digest from outside the artifact, network policy,
+and process-cleanup evidence. An upstream release
 asset, environment-only telemetry opt-out, or successful ACP handshake does
 not satisfy artifact admission.
 

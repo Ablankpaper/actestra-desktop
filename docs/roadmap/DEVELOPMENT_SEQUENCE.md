@@ -84,12 +84,15 @@ implementation `47ed445eab204c0998e44167455c062600158dd3`, final PR head
 `3593fac8db48a0cb149bb6c736374eeaccebe332`, PR CI 30687199671, squash merge
 `80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`, and merged-main CI 30687433298.
 Its completed local gates, packaged target-app evidence, manual review, and
-exact scope audits close the P4 exit gate. P5 Goose and P6 CrewAI/Team work
-have not entered runtime implementation. ADR-0024 starts the bounded P5.0
-admission slice by selecting Goose `v1.45.0` at exact commit
-`4dc0420f5704a92806c6628c8f0a3497d7a88759`, stdio ACP, and an
-Actestra-built minimal runner. No Goose source or binary is imported or
-executed by that decision; P5.1 remains blocked on an admitted runner artifact.
+exact scope audits close the P4 exit gate. P5.0 is accepted through PR 26,
+exact head `e622f36e697b4e0be1037175267452e24cc180e3`, squash merge
+`b61dd3ea44a4c522ca0c15a84a01d8f76b335e4c`, and merged-main CI
+30691300690. ADR-0024 selects Goose `v1.45.0` at exact commit
+`4dc0420f5704a92806c6628c8f0a3497d7a88759`, stdio ACP, and the
+Actestra-built minimal runner. P5.1 is now the only active slice: build and
+admit the exact runner, apply ADR-0025's sole RSA metadata-only disposition,
+prove strict initialize and deny-network cleanup, and stop before session or
+repository effects. P6 CrewAI/Team runtime work has not started.
 
 ## P0 — Project Foundation
 
@@ -318,7 +321,10 @@ slice previously described as P4.3/F3.1.
    evidence. Exit with no imported or executed Goose runtime.
 2. **P5.1 — minimal runner and handshake:** build and admit one exact runner,
    validate ACP name/version/capabilities and private-root cleanup, and fail
-   unsupported versions before session or repository effects.
+   unsupported versions before session or repository effects. ADR-0025 permits
+   only the exact uncompiled `rsa 0.9.10` audit-metadata disposition when the
+   active graph, all-target inverse queries, compiled artifacts, and normalized
+   audit all supply the required independent proof.
 3. **P5.2 — isolated coding capability:** create one fixture Git worktree and
    route only closed file, terminal, Git, diff, and test capabilities through
    the Actestra gateway, with denial, approval, failure, cancellation, and

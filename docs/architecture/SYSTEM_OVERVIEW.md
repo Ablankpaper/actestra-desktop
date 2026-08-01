@@ -2,13 +2,17 @@
 
 Status: P3 and P4 are accepted on `main`; the exact phase implementation head is
 `80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`, and the phase acceptance record is
-on current `main` `adc9a99d7806f5627041368b4ff932c1fe9a42f0`. Merged-main CI
+`adc9a99d7806f5627041368b4ff932c1fe9a42f0`. Its merged-main CI
 run 30689608454 attempt 2 passes. P4 includes F0 through F3.3, GW-P4.2 through
 GW-P4.6, the representative workspace-file, bounded local-research, writing,
 Office-document, schema-13 schedule, tool-failure, and Worker-crash/recovery
-journeys. ADR-0024 starts P5.0 by selecting the exact Goose source and minimal
-stdio ACP boundary; no Goose runner is imported, built, executed, or packaged
-yet. CrewAI is accepted as the first P6 planner-sidecar candidate but is not
+journeys. P5.0 is accepted through PR 26 and merged-main CI 30691300690.
+ADR-0024 selects the exact Goose source and minimal stdio ACP boundary;
+ADR-0025 admits only the exact uncompiled RSA metadata finding. P5.1 now builds
+and validates the runner locally and adds a gate that must reproduce the same
+evidence in a short-lived CI artifact; that remote gate remains pending. It does
+not package the runner into the desktop product or create a coding session.
+CrewAI is accepted as the first P6 planner-sidecar candidate but is not
 implemented or packaged.
 
 ## Context
@@ -520,11 +524,29 @@ with no builtins and no scheduler.
 The exact source, feature, lock, patch, target, executable, ACP, license, SBOM,
 audit, and provenance manifest must pass before a real session starts.
 
-The adapter checks `agentInfo.name`, exact version, protocol, capabilities, and
-runner digest before session creation. The first handshake has an
-attempt-private Goose root and no network, provider, credential, tool,
-workspace, or user configuration. Unsupported versions or capabilities fail
-without repository or private-state effects.
+P5.1 pins Rust 1.96.1, `cargo-auditable 0.7.4`, and `cargo-audit 0.22.2`.
+The builder emits an immutable per-target executable, committed lock copy,
+CycloneDX 1.6 active-graph SBOM, normalized audit evidence, exact Goose
+Apache-2.0 payload, executed build-tool archive and executable digests, and
+manifest. The runtime admission path rejects symlinks,
+unexpected files or keys, size or digest changes, widened features, incompatible
+ACP metadata, incomplete audits, or substituted binaries. It also requires the
+caller to supply a trusted manifest SHA-256 and expected target triple from
+outside the artifact, so a self-consistent or wrong-architecture replacement
+cannot authorize itself. ADR-0025 allows only
+the exact `RUSTSEC-2023-0071` / `rsa 0.9.10`
+`metadata-only-not-compiled` record while all-target dependency queries and
+compiled artifacts independently prove no selected RSA or SQLx MySQL path.
+
+The adapter stages rehashed executable bytes into an attempt-private root,
+launches only stdio ACP under a macOS deny-network sandbox and a closed
+environment, and sends only numeric ACP protocol version 1 `initialize`. It
+checks `agentInfo.name`, exact version, protocol, capabilities, authentication
+method advertisement, and runner digest before session creation. The first
+handshake has no provider, credential, tool, workspace, model, or user
+configuration. Unsupported versions or capabilities, spawn errors, digest
+failures, successful close, and forced termination all remove the private root;
+the process receives no original checkout path.
 
 For a coding task, Actestra creates and owns the isolated Git worktree. Goose
 receives no builtin tool and does not receive the original checkout. The ACP
@@ -542,10 +564,11 @@ cache state are disposable. Cancellation and crashes cross the existing
 persist-before-release barrier before the process group, private root, or
 worktree is removed.
 
-The P5.0 evidence therefore changes the accepted source and process design but
-adds no executable Worker. P5.1 must build and admit the minimal runner and
-prove exact handshake, fail-closed incompatibility, supervision, and cleanup
-before P5.2 exposes coding capabilities.
+P5.1 adds the minimal executable and admission/supervision machinery but stops
+after `initialize`; it creates no ACP session and exposes no coding capability.
+Its ignored local and short-lived CI artifacts are evidence, not signed release
+bytes. P5.2 remains blocked until P5.1 passes local review, exact-head CI,
+merge, and merged-main CI.
 
 ## Event contract
 

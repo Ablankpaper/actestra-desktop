@@ -29,6 +29,7 @@ const backendRuntimeReadyMarker = "startup: managed runtime background preparati
 const rendererProviderFailureMarker = "ACTESTRA_RENDERER_PROVIDER_SMOKE_FAILED ";
 const maximumOutputBytes = 2 * 1_024 * 1_024;
 const startupTimeoutMs = 60_000;
+const workerCrashInjectionQuiescenceMs = 15_000;
 const schedulePrompt = "/actestra Produce the scheduled Actestra artifact.";
 const scheduleRunNowName = "Schedule smoke run-now";
 const scheduleMissedName = "Schedule smoke missed";
@@ -230,6 +231,7 @@ async function runScenario(scenario, profilePath, workspacePath, packagedExecuta
   });
   const outcomePromise = childOutcome(child);
   let workerPid;
+  let workerCrashReadyAt;
   child.stdout.on("data", (chunk) => {
     output = appendOutput(output, chunk);
   });
@@ -253,8 +255,12 @@ async function runScenario(scenario, profilePath, workspacePath, packagedExecuta
       workerPid === undefined &&
       targetAppIsReady(output)
     ) {
+      workerCrashReadyAt ??= Date.now();
       const activeMarkerIndex = output.indexOf(workerActiveMarkerPrefix);
-      if (activeMarkerIndex !== -1) {
+      if (
+        activeMarkerIndex !== -1 &&
+        Date.now() - workerCrashReadyAt >= workerCrashInjectionQuiescenceMs
+      ) {
         const markerLine = output
           .slice(activeMarkerIndex + workerActiveMarkerPrefix.length)
           .split(/\r?\n/u)[0];

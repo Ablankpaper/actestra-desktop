@@ -100,9 +100,19 @@ releases begin.
   workspace-file, and local-research artifacts, with schema-versioned closed
   journey kinds, main-owned inputs, supervised Worker processing,
   create-only Markdown outputs, owned Preview, and prepared-task recovery.
+- ADR-0024 and the exact Goose `v1.45.0` source, ACP, license, dependency,
+  rollback, telemetry, network, artifact, and minimal-runner admission boundary.
+- ADR-0025, a pinned Rust 1.96.1 minimal Goose core runner, exact lock and audit
+  tools, CycloneDX 1.6 and immutable artifact evidence, strict ACP initialize,
+  deny-network private supervision, and deterministic preparation, rejection,
+  close, and process cleanup without adding a Goose UI or coding-session
+  authority.
 
 ### Changed
 
+- Stabilized the packaged external-Worker crash gate with a 15-second
+  post-readiness quiescence window while retaining the real `SIGKILL`, failed
+  Task, restart-recovery, and cleanup assertions.
 - Hardened the AionUi-first review boundary with canonical capture-independent
   shadow revisions, exact workspace counts, explicit terminal-state mapping,
   durable evidence-tuple checks, normalized validation errors, service-owned
