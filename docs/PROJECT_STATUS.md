@@ -4,7 +4,7 @@ Last updated: 2026-08-01
 
 ## Current phase
 
-### Tool failure is final-local; Worker crash still blocks P4
+### Tool failure is accepted; Worker crash still blocks P4
 
 Pull request 8 reached exact final head
 `3f85e13072f5fb13fb43c9dae94f992bb0b7fb9c` and squash merged F3.3 as
@@ -734,19 +734,22 @@ rate-limited summary/walkthrough output, not line-level review evidence. The PR
 squash merged as `5b0748af674165f9e9475be61dc1e02a1b08c8bc`, and exact
 merged-main CI 30660078199 passes.
 
-The representative tool-failure slice is final-local on
-`feat/p4-representative-tool-failure` from exact `main` and `origin/main`
-`3d8d697a6416176d90183f671da28347bb194553`. Exact local implementation commit
+The representative tool-failure slice is accepted on `main` through Ready
+[pull request 22](https://github.com/bignormal/actestra-desktop/pull/22). It
+started from exact verified `main`
+`3d8d697a6416176d90183f671da28347bb194553`; exact implementation commit
 `fd5524c7f0485923b2aa765df95b5ef0b14187e7` contains only the 15 reviewed
-files. Ready [pull request 22](https://github.com/bignormal/actestra-desktop/pull/22)
-opened at initial head `3d5bfaeeb5b64c607850965bd94ab22d73247fdb` against that
-exact base. Initial PR CI run 30673609902 is in progress; the final reviewed
-head is not yet verified, merged, or verified by merged-main CI. The slice
-keeps the existing workspace-file user journey and deliberately exceeds its
-main-owned 64 KiB read bound. The scoped read fails as `content-too-large`;
-Actestra remains authoritative for the one Task, Session, Worker, Attempt,
-policy result, audit sequence, normalized event stream, finalized checkpoint,
-and restart projection. No output Artifact or second execution is created.
+files. The PR reached exact final head
+`077f30bcfa3929959c971d08081092bbf976e2ee`, passed
+[PR CI run 30673687603](https://github.com/bignormal/actestra-desktop/actions/runs/30673687603),
+and squash merged as `c7c414c0c5a126b276fb02b372e02fff437e5f23`.
+[Merged-main CI run 30673919260](https://github.com/bignormal/actestra-desktop/actions/runs/30673919260)
+passes on that exact merge. The slice keeps the existing workspace-file user
+journey and deliberately exceeds its main-owned 64 KiB read bound. The scoped
+read fails as `content-too-large`; Actestra remains authoritative for the one
+Task, Session, Worker, Attempt, policy result, audit sequence, normalized event
+stream, finalized checkpoint, and restart projection. No output Artifact or
+second execution is created.
 
 Focused RED-to-GREEN evidence first exposed and fixed missing terminal Attempt
 incident evidence when the failed tool and final `task.failed` code match. A
@@ -790,15 +793,17 @@ The complete manual review covers all 15 tracked files. It fixed fail-closed
 terminal evidence validation when a Supervisor incident already exists,
 corrected stale schedule truth in the architecture documents, and strengthened
 the target-app smoke's Workspace and Task/Session/Worker/Attempt identity
-chain; no additional confirmed defect remains. The known CodeRabbit endpoint
-remains rate-limited and was not retried, so it is not formal review evidence.
-The exact 15-file scope, high-confidence secret, binary/generated-output,
-tracked-document, frozen-foundation, user-copy, and process-cleanup audits pass.
-Exact final PR-head CI, merge, and merged-main CI remain before acceptance. The
-package is disposable local Apple Development-signed evidence only; it is not
-notarized and is not a candidate, release, distribution, deployment, user
-acceptance, Goose, CrewAI, or Eigent runtime. Worker-crash evidence remains a
-separate later P4 slice.
+chain; no additional confirmed defect remains. PR 22 has no submitted review
+or inline comment. CodeRabbit was rate-limited before formal review and emitted
+only its Free summary and walkthrough, so the successful status is not
+line-level review evidence and was not manually retried. The exact 15-file
+scope, high-confidence secret, binary/generated-output, tracked-document,
+frozen-foundation, user-copy, and process-cleanup audits pass. The exact final
+PR-head CI, squash merge, and merged-main CI above close this slice as accepted
+implementation evidence. The package remains disposable local Apple
+Development-signed evidence only; it is not notarized and is not a candidate,
+release, distribution, deployment, user acceptance, Goose, CrewAI, or Eigent
+runtime. Worker-crash/recovery is the sole remaining P4 evidence slice.
 
 F0 implementation commit
 `13270ca0abd7353710541afca9ddf46c47670be3` first established the preserved
@@ -1403,7 +1408,7 @@ Review closure validation at
 | P4 bounded writing journey                         | Accepted on `main` through PR 18                                  | Final head `2febf25e80868fac51fb7b37fffb746d10f8edde`; PR CI 30585829619; squash merge `d5dbc68bb4b3076448dc0bfb9ffc164ffd1c40d2`; merged-main CI 30586015008; ADR-0021; schema 11; 50/325 root and 341/2,639 native tests; root/native builds; ad-hoc-signed unnotarized local arm64 package and target-app smoke; Free-plan remote summary is not line-level review evidence                                                                                       |
 | P4 bounded Office-document journey                 | Accepted on `main` through PR 19                                  | Final head `091f786d57c6b4569cdaac17ea969a0b9070ea02`; PR CI 30602624426; squash merge `505afb2f3916e75c7abb07cdf461bda29a602b9b`; merged-main CI 30602821085; ADR-0022; schema 12; 50/338 root and 343/2,644 native tests; final local CodeRabbit closure; signed unnotarized arm64 package and real Office target-app smoke pass; remote Free output is summary/walkthrough only                                                                                   |
 | P4 bounded scheduled General Work                  | Accepted on `main` through PR 20                                  | ADR-0023; exact final head `c06ca5b4bd842fbad098ffc3b9e7bcef1aadbceb`; PR CI 30659567604; squash merge `5b0748af674165f9e9475be61dc1e02a1b08c8bc`; merged-main CI 30660078199; schema 13; 56/424 root and 345/2,658 native tests; final local review closure; signed unnotarized arm64 package, strict package/ASAR/resource checks, and real schedule target-app smoke; remote CodeRabbit output is rate-limited summary/walkthrough only                           |
-| P4 representative tool failure                     | Ready PR 22; exact final-head delivery pending                    | Implementation commit `fd5524c7f0485923b2aa765df95b5ef0b14187e7` from base `3d8d697a6416176d90183f671da28347bb194553`; Ready PR 22 opened at initial head `3d5bfaeeb5b64c607850965bd94ab22d73247fdb`; initial CI 30673609902 is in progress; 56/425 final root and 345/2,662 native tests; complete 15-file manual review and final scope/secret/generated-output audit; final native build; pinned, signed, unnotarized local arm64 package and schema-13 target-app `content-too-large` evidence; final PR-head CI, merge, and merged-main CI remain; the known rate-limited CodeRabbit endpoint was not manually retried |
+| P4 representative tool failure                     | Accepted on `main` through PR 22                                  | Implementation `fd5524c7f0485923b2aa765df95b5ef0b14187e7`; final head `077f30bcfa3929959c971d08081092bbf976e2ee`; PR CI 30673687603; squash merge `c7c414c0c5a126b276fb02b372e02fff437e5f23`; merged-main CI 30673919260; 56/425 final root and 345/2,662 native tests; complete 15-file manual review and final scope/secret/generated-output audit; pinned, signed, unnotarized local arm64 package and schema-13 target-app `content-too-large` plus restart evidence; CodeRabbit was rate-limited before formal review and its Free summary is not line-level review evidence |
 | P6 orchestration boundary                          | Accepted architecture direction only                              | ADR-0015; CrewAI `1.15.8` at `e9caf1e1b89343bb833b5da6660faa91804a9dce` verified as the first supervised sidecar candidate; Eigent `v1.0.2` at `e478094a9ff433132b3cf1928e4143338ddaab20` retained as a reference; neither is imported, bundled, or implemented                                                                                                                                                                                                      |
 | Native AionUi source                               | Exact local desktop snapshot                                      | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot                                                                                                                                                                                                                                                                                                                                                   |
 | Native preservation contract                       | Local pass                                                        | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified                                                                                                                                                                                                                                                                                                                                        |
@@ -1494,17 +1499,15 @@ The ordered implementation index and P3 non-claims are in
    `c06ca5b4bd842fbad098ffc3b9e7bcef1aadbceb`, PR CI 30659567604, squash merge
    `5b0748af674165f9e9475be61dc1e02a1b08c8bc`, and merged-main CI 30660078199.
    The rate-limited CodeRabbit summary is not formal review evidence.
-4. Preserve the completed 15-file manual review and exact scope, secret,
-   binary/generated-output, tracked-document, foundation, user-copy, and
-   process-cleanup audits for the final-local representative tool-failure
-   input and exact implementation commit
-   `fd5524c7f0485923b2aa765df95b5ef0b14187e7`. Preserve Ready PR 22, require
-   exact final PR-head CI, squash merge under repository rules, and require
-   exact merged-main CI. Do not retry the unchanged rate-limited CodeRabbit
-   request or represent its Free summary as line-level review.
-5. Only after the tool-failure merge and merged-main CI, implement the separate
-   Worker-crash/recovery fixture in addition to the accepted denial,
-   cancellation, persistence, restart, and Artifact-conflict paths.
+4. Preserve representative tool-failure final head
+   `077f30bcfa3929959c971d08081092bbf976e2ee`, PR CI 30673687603, squash merge
+   `c7c414c0c5a126b276fb02b372e02fff437e5f23`, and merged-main CI 30673919260,
+   together with its completed 15-file manual review and final scope audits.
+   Do not retry the unchanged rate-limited CodeRabbit request or represent its
+   Free summary as line-level review.
+5. Implement the separate Worker-crash/recovery fixture in addition to the
+   accepted denial, cancellation, persistence, restart, tool-failure, and
+   Artifact-conflict paths.
 6. Do not enter Goose P5 until the full P4 exit gate is evidenced.
 7. Keep CrewAI-assisted Team P6 ordered after Goose P5.
 
@@ -1595,11 +1598,12 @@ The ordered implementation index and P3 non-claims are in
   Schedule is accepted through PR 20, exact final head
   `c06ca5b4bd842fbad098ffc3b9e7bcef1aadbceb`, PR CI 30659567604, squash merge
   `5b0748af674165f9e9475be61dc1e02a1b08c8bc`, and merged-main CI 30660078199.
-  Representative tool-failure now has final local root, native, package,
-  target-app, manual-review, and final-scope-audit evidence, but its GitHub
-  delivery gates remain. Worker-crash/recovery has not started. Full
-  representative P4 acceptance is pending, and specialized Goose work remains
-  a later gate.
+  Representative tool-failure is accepted through exact final head
+  `077f30bcfa3929959c971d08081092bbf976e2ee`, PR CI 30673687603, squash merge
+  `c7c414c0c5a126b276fb02b372e02fff437e5f23`, and merged-main CI 30673919260,
+  while its local package remains distinct unnotarized evidence.
+  Worker-crash/recovery has not started. Full representative P4 acceptance is
+  pending, and specialized Goose work remains a later gate.
 - F0 alone proves only that the original AionUi application can be preserved
   and run. F1, F2, F3.1, F3.2, and merged F3.3 add their separately recorded
   identity, shadow, narrow decision-authority, fixed-delivery audit, and
