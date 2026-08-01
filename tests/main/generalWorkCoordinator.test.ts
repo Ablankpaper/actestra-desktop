@@ -975,6 +975,65 @@ describe("GeneralWorkCoordinator", () => {
     await persistence.close();
   });
 
+  it("fails closed when an unreplaced crash has no canonical worker-failure evidence", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-general-work-test-"));
+    testDirectories.push(directory);
+    const persistence = (await openTestPersistenceUtility(directory)).client;
+    const clock = new DeterministicAgentClock(instant("2026-08-01T00:45:00.000Z"));
+    const request: AgentStartRequest = {
+      workspaceId: workspaceId("workspace-unreplaced-crash-mismatch"),
+      taskId: taskId("task-unreplaced-crash-mismatch"),
+      sessionId: sessionId("session-unreplaced-crash-mismatch"),
+      workerId: workerId("worker-unreplaced-crash-mismatch"),
+      streamId: eventStreamId("stream-unreplaced-crash-mismatch"),
+      correlationId: correlationId("correlation-unreplaced-crash-mismatch"),
+      taskState: "ready",
+      startedAt: clock.now(),
+      initialPrompt: "Reject incomplete crash evidence.",
+    };
+    await persistence.replaceDomainGraph(domainGraph(request));
+    const adapter = new DeterministicFakeAgentAdapter(clock);
+    adapter.registerPlan(request.sessionId, {
+      steps: [
+        {
+          type: "crash",
+          errorCode: "worker-crashed",
+          message: "Injected crash without canonical process-exit evidence.",
+          retryable: true,
+        },
+      ],
+    });
+    const supervisor = new AgentAdapterSupervisor(adapter, clock, {
+      expectedAdapterKind: "deterministic-fake",
+      requiredCapabilities: ["messages", "approvals", "cancellation", "heartbeats", "tool-results"],
+      startupTimeoutMs: 2_000,
+      heartbeatTimeoutMs: 3_000,
+      cancellationTimeoutMs: 1_000,
+      maxRestarts: 1,
+    });
+    const coordinator = new GeneralWorkCoordinator({
+      persistence,
+      clock,
+      supervisor,
+      nativeTools: createScopedNativeToolPlatform({ persistence, clock }),
+      unreplacedCrashDisposition: "failed",
+    });
+    await supervisor.start(request);
+    await coordinator.checkpointAttempt(request.sessionId);
+    await adapter.advance(request.sessionId);
+    vi.spyOn(supervisor, "coreEvents").mockReturnValueOnce(
+      supervisor.coreEvents(request.sessionId).filter((event) => event.type !== "worker.failed"),
+    );
+
+    await expect(coordinator.finalizeAttempt(request.sessionId)).rejects.toMatchObject({
+      code: "event-mismatch",
+    });
+    await expect(persistence.getGeneralWorkCheckpoint(request.sessionId)).resolves.toMatchObject({
+      phase: "active",
+    });
+    await persistence.close();
+  });
+
   it("retries a terminal checkpoint after an injected persistence failure", async () => {
     const harness = await openHarness("persistence-retry");
     const appendEvent = harness.persistence.appendEvent.bind(harness.persistence);

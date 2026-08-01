@@ -79,8 +79,10 @@ line-level review evidence. Representative tool failure is accepted through
 exact final head `077f30bcfa3929959c971d08081092bbf976e2ee`, PR CI 30673687603,
 squash merge `c7c414c0c5a126b276fb02b372e02fff437e5f23`, and merged-main CI
 30673919260. Its CodeRabbit status is a rate-limited Free walkthrough rather
-than formal line-level review. Only the Worker-crash/recovery P4 gate remains;
-P5 Goose and P6 CrewAI/Team work have not started.
+than formal line-level review. Worker-crash/recovery now has complete local
+gates, packaged target-app evidence, manual review, and exact scope audits from
+accepted base `df3fd3cd27f034cd900e2528adf8af9b87f7ee40`, but Git delivery and exact
+remote CI remain. P5 Goose and P6 CrewAI/Team work have not started.
 
 ## P0 — Project Foundation
 
@@ -257,8 +259,12 @@ slice previously described as P4.3/F3.1.
   exact final head `077f30bcfa3929959c971d08081092bbf976e2ee`, passed PR CI
   30673687603, squash merged as
   `c7c414c0c5a126b276fb02b372e02fff437e5f23`, and passed merged-main CI
-  30673919260. The phase exit gate now remains pending only until the separate
-  Worker-crash/recovery smoke passes.
+  30673919260. The separate Worker-crash/recovery implementation now has
+  focused local contracts for failed Task/Session, crashed Worker/Attempt,
+  canonical event order, fail-closed missing evidence, and no-relaunch restart.
+  Its complete final-byte gates, packaged target-app smoke, 14-file manual
+  review, and exact scope audits pass. The phase exit gate remains pending
+  until remote acceptance passes.
 - Support scoped workspace reads and task-output writes through the preserved
   file, workspace, conversation, preview, and artifact surfaces.
 - Add representative file, research, writing, office-document, schedule,

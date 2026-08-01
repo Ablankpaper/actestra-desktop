@@ -900,11 +900,19 @@ replaceOnce(
   "packages/desktop/src/index.ts",
   `    await initializeProcess();
     await initializeActestraPersistenceUtility(app.getPath('userData'));
-    if (process.env.ACTESTRA_E2E_TEST === '1') {`,
+    if (
+      process.env.ACTESTRA_E2E_TEST === '1' &&
+      process.env.ACTESTRA_GENERAL_WORK_SMOKE_SCENARIO !==
+        'recover-worker-crash'
+    ) {`,
   `    await initializeProcess();
     await initializeActestraPersistenceUtility(app.getPath('userData'));
     registerActestraScheduleResumeBridge();
-    if (process.env.ACTESTRA_E2E_TEST === '1') {`,
+    if (
+      process.env.ACTESTRA_E2E_TEST === '1' &&
+      process.env.ACTESTRA_GENERAL_WORK_SMOKE_SCENARIO !==
+        'recover-worker-crash'
+    ) {`,
 );
 
 replaceOnce(
@@ -1460,11 +1468,15 @@ replaceOnce(
   'recover-office-restart',
   'prepare-tool-failure',
   'recover-tool-failure',
+  'prepare-worker-crash',
+  'recover-worker-crash',
   'denial',`,
   `  'prepare-office-restart',
   'recover-office-restart',
   'prepare-tool-failure',
   'recover-tool-failure',
+  'prepare-worker-crash',
+  'recover-worker-crash',
   'prepare-schedule-restart',
   'recover-schedule-restart',
   'denial',`,

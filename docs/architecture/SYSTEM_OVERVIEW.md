@@ -3,10 +3,13 @@
 Status: P3, F0 through F3.3, GW-P4.2 through GW-P4.6, the representative
 workspace-file, bounded local-research, writing, Office-document, schema-13
 schedule, and representative tool-failure journeys are accepted on `main`
-through exact current head `c7c414c0c5a126b276fb02b372e02fff437e5f23` and
-merged-main CI run 30673919260; Worker-crash/recovery remains before the P4
-exit gate; CrewAI is accepted as the first P6 planner-sidecar candidate but is
-not implemented or packaged
+through exact current head `df3fd3cd27f034cd900e2528adf8af9b87f7ee40` and
+merged-main CI run 30674966106; Worker-crash/recovery has complete local gates,
+a signed unnotarized arm64 package, real target-app crash/restart evidence, and
+complete manual review and scope audits, but still awaits remote gates before
+P4 acceptance; CrewAI is
+accepted as the first P6 planner-sidecar candidate but is not implemented or
+packaged
 
 ## Context
 
@@ -124,6 +127,17 @@ policy path and is accepted through pull request 22, exact final head
 `c7c414c0c5a126b276fb02b372e02fff437e5f23`, and merged-main CI 30673919260.
 Its local package remains distinct from commit, CI, merge, notarization,
 candidate, release, distribution, or user-acceptance evidence.
+
+The next independent reliability fixture keeps the generic coordinator's
+retryable crash state while selecting a terminal no-replacement disposition
+only for the preserved AionUI General Work composition. A canonical
+`worker.failed` event is required before main appends `task.failed`; the Task
+and Session become failed while the Worker and Attempt remain crashed with the
+same incident. Local contracts cover stable restart projection and fail-closed
+missing-event behavior. Complete root/native gates, a fresh signed unnotarized
+arm64 package, strict package checks, and real target-app crash/restart smoke
+pass, followed by complete 14-file manual review and exact scope audits. Git,
+PR, merge, and merged-main CI remain separate pending evidence.
 
 P4.2 adds the separate compatibility boundary accepted in
 [ADR-0011](decisions/0011-aionui-shadow-projection.md). Successful native HTTP
@@ -590,7 +604,10 @@ the pre-execution, pre-acknowledgement, terminal-pending, and finalized
 barriers, retains ambiguous effects, and deterministically converts
 application-interrupted attempts into recoverable terminal evidence. GW-P4.6
 adds atomic pre-attempt registration and separately restarts prepared linked
-Tasks only from that already durable authority.
+Tasks only from that already durable authority. Its no-replacement crash
+composition now terminalizes a canonical Worker process exit as failed
+Task/Session plus crashed Worker/Attempt evidence; finalized restart reads that
+authority without relaunching work.
 
 ## Deferred choices
 
@@ -625,7 +642,9 @@ are recorded above. The representative tool-failure slice adds no new renderer
 or tool capability: it forces the existing 64 KiB file-read boundary, retains
 matching tool/Task/Attempt incident evidence, creates no Artifact, and proves
 stable restart projection. Pull request 22 and its exact remote gates are
-recorded above. General or network research, Worker crash, credential storage,
+recorded above. The separate Worker-crash/recovery implementation has complete
+local validation, package, target-app, manual-review, and exact-scope evidence;
+remote acceptance gates remain open. General or network research, credential storage,
 and OS sandbox mechanisms remain later work. Local Apple Development-signed
 packages remain unnotarized and are not candidates, releases, distributions,
 or user-acceptance artifacts.

@@ -9,6 +9,7 @@ import { eventId, instant, taskId } from "../../apps/desktop/src/core";
 import { createScopedNativeToolPlatform } from "../../apps/desktop/src/main/privileged/scopedNativeToolPlatform";
 import { AionUiGeneralWorkJourneyService } from "../../apps/desktop/src/main/compatibility/aionuiGeneralWorkJourneyService";
 import { DeterministicAgentClock } from "../../apps/desktop/src/main/workers/deterministicFakeAgentAdapter";
+import { GeneralWorkCoordinator } from "../../apps/desktop/src/main/workers/generalWorkCoordinator";
 import { MAX_GENERAL_WORKER_SEND_CONTENT_BYTES } from "../../apps/desktop/src/shared/generalWorkerProtocol";
 import type { LoopbackGeneralWorkerTransport } from "../fixtures/generalWorker";
 import { openTestGeneralWorker } from "../fixtures/generalWorker";
@@ -2056,5 +2057,132 @@ describe("AionUiGeneralWorkJourneyService", () => {
       ]);
       expect(transport?.killCount).toBe(1);
     }
+  });
+
+  it("terminalizes an unreplaced Worker process crash and preserves it after restart", async () => {
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "actestra-aionui-journey-service-test-"),
+    );
+    testDirectories.push(directory);
+    const persistence = (await openTestPersistenceUtility(directory)).client;
+    persistenceClients.push(persistence);
+    const workspaceRoot = path.join(directory, "workspace");
+    fs.mkdirSync(workspaceRoot);
+    const clock = new DeterministicAgentClock(instant("2026-08-01T00:30:00.000Z"));
+    const nativeTools = createScopedNativeToolPlatform({ persistence, clock });
+    let workerEventSequence = 0;
+    let transport: LoopbackGeneralWorkerTransport | undefined;
+    const service = new AionUiGeneralWorkJourneyService({
+      persistence,
+      nativeTools,
+      clock,
+      nativeContext: {
+        resolve: async () => ({
+          rootPath: fs.realpathSync(workspaceRoot),
+          displayName: "AionUI Worker crash workspace",
+        }),
+      },
+      launchWorker: async () => {
+        const opened = await openTestGeneralWorker(clock, {
+          executionMode: "hold",
+          newAttemptToken: () => "attempt-aionui-worker-process-crash",
+          newEventId: () =>
+            eventId(`event-aionui-worker-process-crash-${String(++workerEventSequence)}`),
+        });
+        transport = opened.transport;
+        return opened.adapter;
+      },
+    });
+    const intent = {
+      contractVersion: 1,
+      nativeConversationId: "conversation-native-worker-process-crash",
+      submissionId: "submission-native-worker-process-crash",
+      prompt: "Hold until the external Worker process is terminated.",
+    } as const;
+
+    const running = await service.submit(intent);
+    expect(running).toMatchObject({ status: "running", canCancel: true, artifacts: [] });
+    const activeTransport = transport;
+    if (activeTransport === undefined) {
+      throw new Error("Worker crash fixture did not launch its transport");
+    }
+    activeTransport.crash(9);
+    await service.waitForIdle();
+
+    await expect(service.list(intent.nativeConversationId)).resolves.toEqual([
+      expect.objectContaining({
+        taskId: running.taskId,
+        status: "failed",
+        canCancel: false,
+        incidentCode: "worker-process-exit",
+        artifacts: [],
+      }),
+    ]);
+    const graph = await persistence.loadDomainGraph();
+    expect(graph).toMatchObject({
+      tasks: [{ state: "failed", activeSessionId: undefined }],
+      sessions: [{ state: "failed" }],
+      workers: [{ state: "crashed" }],
+      artifacts: [],
+    });
+    const checkpoint = await persistence.getGeneralWorkCheckpoint(graph.sessions[0]!.id);
+    expect(checkpoint).toMatchObject({
+      phase: "finalized",
+      attempt: {
+        state: "crashed",
+        taskState: "failed",
+        disposed: true,
+        incident: { code: "worker-process-exit" },
+      },
+    });
+    expect(checkpoint?.events.map(({ type }) => type)).toEqual([
+      "task.started",
+      "agent.message",
+      "task.updated",
+      "worker.failed",
+      "task.failed",
+    ]);
+    await expect(persistence.listRecentAgentAttemptEvidence(10)).resolves.toEqual([
+      expect.objectContaining({
+        taskId: running.taskId,
+        state: "crashed",
+        incident: { code: "worker-process-exit", occurredAt: expect.any(String) },
+      }),
+    ]);
+
+    await persistence.close();
+    const reopened = (await openTestPersistenceUtility(directory)).client;
+    persistenceClients.push(reopened);
+    const recovery = new GeneralWorkCoordinator({ persistence: reopened, clock });
+    await expect(recovery.recover()).resolves.toEqual([]);
+    const launchAfterRestart = vi.fn(async () => {
+      throw new Error("A finalized Worker crash must not relaunch after restart");
+    });
+    const restarted = new AionUiGeneralWorkJourneyService({
+      persistence: reopened,
+      nativeTools: createScopedNativeToolPlatform({ persistence: reopened, clock }),
+      clock,
+      nativeContext: {
+        resolve: async () => {
+          throw new Error("Worker crash recovery must not replay native context");
+        },
+      },
+      launchWorker: launchAfterRestart,
+    });
+    await expect(restarted.recoverPrepared()).resolves.toEqual({
+      attempted: 0,
+      started: 0,
+      failed: 0,
+    });
+    await expect(restarted.list(intent.nativeConversationId)).resolves.toEqual([
+      expect.objectContaining({
+        taskId: running.taskId,
+        status: "failed",
+        canCancel: false,
+        incidentCode: "worker-process-exit",
+        artifacts: [],
+      }),
+    ]);
+    expect(launchAfterRestart).not.toHaveBeenCalled();
   });
 });

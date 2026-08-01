@@ -86,6 +86,7 @@ export interface GeneralWorkCoordinatorConfig {
   readonly newEventId?: () => EventId;
   readonly supervisor?: AgentAdapterSupervisor;
   readonly nativeTools?: ScopedNativeToolPlatform;
+  readonly unreplacedCrashDisposition?: "blocked" | "failed";
 }
 
 const persistenceReleaseBarriers = new WeakMap<ActestraPersistencePort, Promise<void>>();
@@ -193,14 +194,14 @@ function maximumInstant(...values: readonly Instant[]): Instant {
   return values.reduce((latest, value) => (compareInstants(value, latest) > 0 ? value : latest));
 }
 
-function taskStateForAttempt(state: GeneralWorkTerminalAttemptState): TaskState {
-  switch (state) {
+function taskStateForAttempt(attempt: GeneralWorkAttemptRecord): TaskState {
+  switch (attempt.state as GeneralWorkTerminalAttemptState) {
     case "completed":
       return "completed";
     case "cancelled":
       return "cancelled";
     case "crashed":
-      return "blocked";
+      return attempt.taskState === "failed" ? "failed" : "blocked";
     case "failed":
     case "timed-out":
     case "protocol-failed":
@@ -229,7 +230,7 @@ function workerStateForAttempt(state: GeneralWorkTerminalAttemptState): WorkerSt
 }
 
 function updateTask(task: Task, attempt: GeneralWorkAttemptRecord, updatedAt: Instant): Task {
-  const state = taskStateForAttempt(attempt.state as GeneralWorkTerminalAttemptState);
+  const state = taskStateForAttempt(attempt);
   return Object.freeze({
     ...task,
     state,
@@ -461,13 +462,62 @@ export class GeneralWorkCoordinator {
           : { artifactId: existing.artifactBinding.artifact.id }),
       });
     }
-    const events = supervisor.coreEvents(session);
-    const pending = await this.persistTerminal(
-      existing,
-      terminalAttemptWithToolIncident(snapshot, existing, events),
-      events,
-    );
+    const terminal = this.terminalAttempt(snapshot, existing, supervisor.coreEvents(session));
+    const pending = await this.persistTerminal(existing, terminal.attempt, terminal.events);
     return this.settle(pending, supervisor);
+  }
+
+  private terminalAttempt(
+    snapshot: AgentAttemptSnapshot,
+    checkpoint: GeneralWorkCheckpoint,
+    events: readonly CoreEvent[],
+  ): {
+    readonly attempt: GeneralWorkAttemptRecord;
+    readonly events: readonly CoreEvent[];
+  } {
+    const attempt = terminalAttemptWithToolIncident(snapshot, checkpoint, events);
+    if (
+      this.config.unreplacedCrashDisposition !== "failed" ||
+      attempt.state !== "crashed" ||
+      attempt.replacementSessionId !== undefined
+    ) {
+      return Object.freeze({ attempt, events });
+    }
+    const workerFailure = events
+      .filter((event): event is CoreEvent<"worker.failed"> => event.type === "worker.failed")
+      .at(-1);
+    if (attempt.taskState !== "blocked" || workerFailure === undefined) {
+      throw new GeneralWorkRecoveryError(
+        "event-mismatch",
+        "An unreplaced Worker crash requires blocked Task and worker-failure evidence",
+      );
+    }
+    const taskFailure = this.eventFor(
+      { attempt, eventBaseline: checkpoint.eventBaseline, events },
+      "task.failed",
+      {
+        from: "blocked",
+        to: "failed",
+        errorCode: workerFailure.payload.errorCode,
+        message: "The General Worker process exited without a replacement attempt.",
+      },
+    );
+    return Object.freeze({
+      attempt: Object.freeze({
+        ...attempt,
+        taskState: "failed",
+        lastCoreEventSequence: taskFailure.sequence,
+        ...(attempt.incident === undefined
+          ? {
+              incident: Object.freeze({
+                code: workerFailure.payload.errorCode,
+                occurredAt: workerFailure.occurredAt,
+              }),
+            }
+          : {}),
+      }),
+      events: Object.freeze([...events, taskFailure]),
+    });
   }
 
   async recover(): Promise<readonly GeneralWorkRecoveryResult[]> {

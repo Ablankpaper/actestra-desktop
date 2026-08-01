@@ -5,12 +5,14 @@ bounded local-research, writing, Office-document, schedule, and tool-failure
 journeys are accepted on `main`. Tool failure reached exact final head
 `077f30bcfa3929959c971d08081092bbf976e2ee`, PR CI 30673687603, squash merge
 `c7c414c0c5a126b276fb02b372e02fff437e5f23`, and merged-main CI 30673919260.
-Only Worker-crash/recovery evidence still blocks the P4 gate.
+Worker-crash/recovery has complete local gates, a fresh signed unnotarized
+package, real target-app smoke, manual review, and exact scope audits; Git
+delivery and exact remote CI still block the P4 gate.
 
 Date: 2026-08-01
 
 Exact current accepted head:
-`c7c414c0c5a126b276fb02b372e02fff437e5f23`
+`df3fd3cd27f034cd900e2528adf8af9b87f7ee40`
 
 ## Entry evidence
 
@@ -727,6 +729,40 @@ merged as `c7c414c0c5a126b276fb02b372e02fff437e5f23`, and passed merged-main CI
 it is not notarized, a candidate, release, deployment, distribution, or user
 acceptance. Worker crash/recovery is the sole remaining P4 slice.
 
+### Worker-crash/recovery local evidence complete
+
+The independent reliability slice starts from exact verified `main` and
+`origin/main` `df3fd3cd27f034cd900e2528adf8af9b87f7ee40`; exact merged-main CI
+30674966106 passes on that base. It adds no schema, journey kind, renderer
+operation, Worker command, tool capability, path selector, credential access,
+or scheduler authority.
+
+The generic coordinator retains its retryable `blocked` crash disposition.
+Only the preserved AionUI composition explicitly selects terminal handling
+when no replacement Session exists. It requires canonical `worker.failed`
+evidence, appends `task.failed` after `task.updated` and `worker.failed`, and
+persists Task/Session `failed` with Worker/Attempt `crashed` and incident
+`worker-process-exit`. A missing canonical failure event rejects finalization
+with `event-mismatch`. Restart reads the finalized projection without
+relaunching the Worker or exposing cancellation.
+
+Final evidence on the current uncommitted branch passes the complete 56-file/
+427-test root gate, 345-file/2,665-test native gate, and both production builds.
+The fresh Apple Development-signed, unnotarized arm64 directory package passes
+the package verifier, recursive signature, ASAR, Hub Git blob, ZIP, symlink,
+and exact AionCore `0.1.52` checks. Its external target-app harness selects only
+the descendant Electron NodeService with exact environment role
+`ACTESTRA_UTILITY_ROLE=general-worker` after the native window,
+renderer/provider, and managed runtime are ready, sends `SIGKILL`, then
+compares the complete Core-owned authority snapshot before and after restart.
+The real schema-13 smoke passes. The complete 14-file manual review found no
+remaining confirmed defect. Exact allowlist, high-confidence secret,
+binary/generated/package, mode, staged-scope, frozen-foundation,
+48-visible/8-ignored user-copy, package-hash, signature, and process-cleanup
+audits pass. The standing CodeRabbit rate limit was not retried and supplies no
+formal line-level review evidence for this slice. Commit, push, PR-head CI,
+merge, and merged-main CI have not yet completed.
+
 Exit: the complete general-work journey is understandable and recoverable in
 the retained AionUi UI with Actestra as the declared system of record.
 
@@ -765,6 +801,9 @@ P4 is complete only after:
   `c7c414c0c5a126b276fb02b372e02fff437e5f23`, and merged-main CI 30673919260.
   It does not close the separate Worker-crash/recovery gate or full P4
   acceptance.
+- Worker-crash/recovery currently has complete local package and target-app
+  evidence. It is not accepted, pushed, PR-CI-backed, merged, notarized,
+  released, deployed, distributed, or user-accepted.
 - No shell, network, credential, MCP, publish, Git, arbitrary workspace
   mutation, model, Goose adapter, CrewAI sidecar, or Team orchestration is
   active.
