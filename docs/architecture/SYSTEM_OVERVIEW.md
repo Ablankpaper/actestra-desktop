@@ -1,15 +1,12 @@
 # System Overview
 
-Status: P3, F0 through F3.3, GW-P4.2 through GW-P4.6, the representative
-workspace-file, bounded local-research, writing, Office-document, schema-13
-schedule, and representative tool-failure journeys are accepted on `main`
-through exact current head `df3fd3cd27f034cd900e2528adf8af9b87f7ee40` and
-merged-main CI run 30674966106; Worker-crash/recovery has complete local gates,
-a signed unnotarized arm64 package, real target-app crash/restart evidence, and
-complete manual review and scope audits. Ready pull request 24 is open, but
-still awaits exact final-head remote gates before P4 acceptance; CrewAI is
-accepted as the first P6 planner-sidecar candidate but is not implemented or
-packaged
+Status: P3 and P4 are accepted on `main` through exact current head
+`80e84a28cb6e4e08eb73ec83193908ab3aa69cbe` and merged-main CI run
+30687433298. P4 includes F0 through F3.3, GW-P4.2 through GW-P4.6, the
+representative workspace-file, bounded local-research, writing,
+Office-document, schema-13 schedule, tool-failure, and Worker-crash/recovery
+journeys. Goose P5 has not started. CrewAI is accepted as the first P6
+planner-sidecar candidate but is not implemented or packaged.
 
 ## Context
 
@@ -128,7 +125,7 @@ policy path and is accepted through pull request 22, exact final head
 Its local package remains distinct from commit, CI, merge, notarization,
 candidate, release, distribution, or user-acceptance evidence.
 
-The next independent reliability fixture keeps the generic coordinator's
+The accepted Worker-crash/recovery reliability fixture keeps the generic coordinator's
 retryable crash state while selecting a terminal no-replacement disposition
 only for the preserved AionUI General Work composition. A canonical
 `worker.failed` event is required before main appends `task.failed`; the Task
@@ -137,10 +134,11 @@ same incident. Local contracts cover stable restart projection and fail-closed
 missing-event behavior. Complete root/native gates, a fresh signed unnotarized
 arm64 package, strict package checks, and real target-app crash/restart smoke
 pass, followed by complete 14-file manual review and exact scope audits in
-implementation commit `47ed445eab204c0998e44167455c062600158dd3`. Ready pull
-request 24 was opened from initial pushed documentation head
-`3211a7ab2e436c83fc756f02bb09f9d395a13bd5`; exact final-head CI, merge, and
-merged-main CI remain separate pending evidence.
+implementation commit `47ed445eab204c0998e44167455c062600158dd3`.
+Ready pull request 24 reached exact final head
+`3593fac8db48a0cb149bb6c736374eeaccebe332`, passed PR CI 30687199671, squash
+merged as `80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`, and passed merged-main CI
+30687433298. Its rate-limited CodeRabbit status is not formal review evidence.
 
 P4.2 adds the separate compatibility boundary accepted in
 [ADR-0011](decisions/0011-aionui-shadow-projection.md). Successful native HTTP
@@ -645,12 +643,11 @@ are recorded above. The representative tool-failure slice adds no new renderer
 or tool capability: it forces the existing 64 KiB file-read boundary, retains
 matching tool/Task/Attempt incident evidence, creates no Artifact, and proves
 stable restart projection. Pull request 22 and its exact remote gates are
-recorded above. The separate Worker-crash/recovery implementation has complete
-local validation, package, target-app, manual-review, and exact-scope evidence;
-remote acceptance gates remain open. General or network research, credential storage,
-and OS sandbox mechanisms remain later work. Local Apple Development-signed
-packages remain unnotarized and are not candidates, releases, distributions,
-or user-acceptance artifacts.
+recorded above. The separate Worker-crash/recovery implementation is accepted
+through the exact PR and merged-main gates recorded above, completing P4.
+General or network research, credential storage, and OS sandbox mechanisms
+remain later work. Local Apple Development-signed packages remain unnotarized
+and are not candidates, releases, distributions, or user-acceptance artifacts.
 Signing, notarization, update delivery, and cross-platform candidate packaging
 remain P8 work.
 
