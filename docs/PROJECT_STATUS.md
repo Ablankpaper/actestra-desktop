@@ -4,7 +4,64 @@ Last updated: 2026-08-01
 
 ## Current phase
 
-### P4 is accepted on main; P5 Goose entry is next and has not started
+### P4 is accepted on main; P5.0 Goose source and protocol admission is current
+
+P4's phase acceptance record reached pull request 25 at exact head
+`c461fb06bdebd4bf6f55d39741a21dcb6980b3ff` and squash merged as current
+`main` `adc9a99d7806f5627041368b4ff932c1fe9a42f0`. Merged-main CI run
+30689608454 initially failed only while the smoke harness externally killed the
+Worker after all target-app readiness markers were present. The same exact
+product and documentation bytes passed the failed job once on a fresh runner as
+attempt 2. That is recorded as a runner/timing failure followed by a passing
+exact-SHA rerun, not as a product fix or a hidden regression.
+
+P5.0 starts from that exact accepted main in the clean
+`upstream/goose-v1-45-0` worktree. Live upstream evaluation on 2026-08-01
+verified Goose `v1.45.0` at exact commit
+`4dc0420f5704a92806c6628c8f0a3497d7a88759`, root Apache-2.0 with no root
+`NOTICE`, ACP `agent-client-protocol 1.0.1` and schema `1.1.0`, and rollback
+comparison `v1.44.0` at
+`876555f85b1bd0e15ed75eed7c5ac1163c1f097a`. Revisions older than
+`v1.44.0` are excluded by `GHSA-r5pp-p5r8-466r`.
+
+The official macOS arm64 release archive has verified SHA-256
+`3a1b41197ff670c36b0b6285f41ccd949966ee037933f38c5e11c9356799ce58`.
+Its extracted 262,553,568-byte binary is ad-hoc signed, Gatekeeper-rejected,
+contains no bundled Apache-2.0 license, and has no dependency metadata
+recoverable by `cargo-audit bin`. It is not accepted for import, distribution,
+or substitution as the Actestra Worker.
+
+An isolated `cargo-audit 0.22.2` scan of the exact 1,238-package upstream lock
+reports five vulnerability matches, one unsoundness warning, and five
+unmaintained warnings. `event-listener 5.4.1` is on the ACP path and is fixed
+in `>=5.4.2`; two affected `quick-xml` versions enter through the broad CLI's
+`goose-mcp` graph; `rsa 0.9.10` enters Goose core's JWT/SQLx lock graph. A fresh
+scan of upstream `main` at `20bb609c68f98c856b7fcc473fd1bf140b0406f0`
+has the same findings. Crates.io yanked checks timed out and are separately
+recorded as incomplete environment evidence; they do not reduce the findings.
+
+[ADR-0024](architecture/decisions/0024-minimal-goose-acp-runner.md) therefore
+selects the exact source and ACP target but rejects the broad upstream CLI. The
+planned runtime is a minimal Actestra-owned runner that links Goose core with
+default features disabled and calls
+`goose::acp::server::run(Vec::new(), false)`: stdio only, no builtins, no
+scheduler, no Goose UI, and no Goose tool or state authority. A real artifact
+remains blocked on its own closed feature lock, `event-listener >=5.4.2`,
+auditable dependency metadata, SBOM, Apache-2.0 payload, exact digests,
+provenance, no-network handshake, unsupported-version rejection, and cleanup
+proof.
+
+This P5.0 change is source-of-truth and evaluation evidence only. No Goose
+source, binary, lockfile, model, credential, private state, runtime session,
+renderer route, second UI, CrewAI sidecar, or Eigent runtime is committed or
+packaged by Actestra. The local documentation-link gate passes all 59 Markdown
+files. Manual review found and removed one unnecessary proposed `rustls-tls`
+feature from the initial runner; the admitted Goose feature set is now empty.
+The final staged audit covers exactly 11 documentation/notice files; doc links,
+`git diff --check`, doc-only scope, private-key/token patterns, temporary local
+paths, and text-only numstat all pass. Commit, PR, PR CI, merge, and merged-main
+CI remain pending for this branch. P5.1 runner implementation cannot start from
+a stale or unmerged decision head.
 
 Pull request 8 reached exact final head
 `3f85e13072f5fb13fb43c9dae94f992bb0b7fb9c` and squash merged F3.3 as
@@ -1464,7 +1521,8 @@ Review closure validation at
 | P4 bounded scheduled General Work                  | Accepted on `main` through PR 20                                  | ADR-0023; exact final head `c06ca5b4bd842fbad098ffc3b9e7bcef1aadbceb`; PR CI 30659567604; squash merge `5b0748af674165f9e9475be61dc1e02a1b08c8bc`; merged-main CI 30660078199; schema 13; 56/424 root and 345/2,658 native tests; final local review closure; signed unnotarized arm64 package, strict package/ASAR/resource checks, and real schedule target-app smoke; remote CodeRabbit output is rate-limited summary/walkthrough only                           |
 | P4 representative tool failure                     | Accepted on `main` through PR 22                                  | Implementation `fd5524c7f0485923b2aa765df95b5ef0b14187e7`; final head `077f30bcfa3929959c971d08081092bbf976e2ee`; PR CI 30673687603; squash merge `c7c414c0c5a126b276fb02b372e02fff437e5f23`; merged-main CI 30673919260; 56/425 final root and 345/2,662 native tests; complete 15-file manual review and final scope/secret/generated-output audit; pinned, signed, unnotarized local arm64 package and schema-13 target-app `content-too-large` plus restart evidence; CodeRabbit was rate-limited before formal review and its Free summary is not line-level review evidence |
 | P4 Worker crash/recovery                            | Accepted on `main` through PR 24                                  | Implementation `47ed445eab204c0998e44167455c062600158dd3`; exact final head `3593fac8db48a0cb149bb6c736374eeaccebe332`; PR CI 30687199671; squash merge `80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`; merged-main CI 30687433298; 56/427 root and 345/2,665 native tests; builds; signed unnotarized arm64 package; external-`SIGKILL` schema-13 smoke; complete 14-file manual review and exact scope audits; automatic CodeRabbit was rate-limited before review and is not line-level review evidence |
-| P4 phase                                            | Accepted on `main`                                                 | The retained AionUI journey and representative file, local-research, writing, Office, schedule, denial, cancellation, tool-failure, persistence, Worker-crash/recovery, and Artifact-conflict evidence satisfy the P4 exit gate at exact merged head `80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`; merged-main CI 30687433298 passes; P5 has not started |
+| P4 phase                                            | Accepted on `main`                                                 | The retained AionUI journey and representative file, local-research, writing, Office, schedule, denial, cancellation, tool-failure, persistence, Worker-crash/recovery, and Artifact-conflict evidence satisfy the P4 exit gate at exact phase head `80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`; acceptance record merge `adc9a99d7806f5627041368b4ff932c1fe9a42f0`; merged-main CI 30689608454 attempt 2 passes |
+| P5.0 Goose source and ACP admission                 | Local source-of-truth change; remote gates pending                  | ADR-0024 selects `v1.45.0` / `4dc0420f5704a92806c6628c8f0a3497d7a88759`, minimal Goose core stdio runner with empty Goose feature set, no builtins/scheduler/second UI, exact artifact admission, and `v1.44.0` rollback comparison; upstream CLI rejected; no Goose bytes or runtime added; 59-file docs link gate and exact 11-file diff/scope/secret/path/text audits pass; manual review removed an unnecessary TLS feature; commit, PR, CI, merge, and merged-main CI pending |
 | P6 orchestration boundary                          | Accepted architecture direction only                              | ADR-0015; CrewAI `1.15.8` at `e9caf1e1b89343bb833b5da6660faa91804a9dce` verified as the first supervised sidecar candidate; Eigent `v1.0.2` at `e478094a9ff433132b3cf1928e4143338ddaab20` retained as a reference; neither is imported, bundled, or implemented                                                                                                                                                                                                      |
 | Native AionUi source                               | Exact local desktop snapshot                                      | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot                                                                                                                                                                                                                                                                                                                                                   |
 | Native preservation contract                       | Local pass                                                        | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified                                                                                                                                                                                                                                                                                                                                        |
@@ -1568,10 +1626,11 @@ The ordered implementation index and P3 non-claims are in
    together with its completed 14-file manual review and exact scope audits.
    Do not retry the unchanged CodeRabbit rate limit or represent its status as
    formal review.
-6. Enter P5 from exact accepted P4 main only. First re-evaluate Goose's current
-   exact version, commit, process/CLI protocol, license and NOTICE, dependency
-   graph, telemetry and network behavior, rollback pin, and cross-platform
-   package implications; accept a new ADR before importing or executing it.
+6. Complete the P5.0 ADR-0024 source/protocol admission gates on the exact P4
+   main. After merge and exact merged-main CI, start P5.1 by building the
+   minimal Goose core runner, admitting its exact artifact manifest, and
+   proving ACP handshake, fail-closed incompatibility, supervision, and cleanup
+   before any real session or repository effect.
 7. Keep CrewAI-assisted Team P6 ordered after an accepted Goose P5 gate.
 
 ## Open decisions

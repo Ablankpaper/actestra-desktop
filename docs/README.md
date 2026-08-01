@@ -30,6 +30,8 @@ planning, and governance documents.
 | [Bounded Writing Journey Decision](architecture/decisions/0021-bounded-writing-artifact-journey.md)                    | Structured writing brief, Worker-authored private draft input, document Artifact, Preview, and recovery boundary        |
 | [Bounded Office Document Journey Decision](architecture/decisions/0022-bounded-office-document-artifact-journey.md)    | Structured Office brief, main-owned DOCX creation, document Artifact, native Word Preview, and recovery boundary        |
 | [Actestra-Owned Scheduled General Work Decision](architecture/decisions/0023-actestra-owned-scheduled-general-work.md) | Native Scheduled Tasks provider, schema-13 authority, main-owned timing, bounded execution, and restart boundary        |
+| [Minimal Goose ACP Runner Decision](architecture/decisions/0024-minimal-goose-acp-runner.md)                            | Exact Goose source/protocol pin, minimal runner, artifact admission, isolation, authority, and rollback boundary        |
+| [Goose v1.45.0 Evaluation](upstream/GOOSE_V1.45.0_EVALUATION.md)                                                       | Exact release, ACP, license, artifact, dependency, RustSec, telemetry, network, rollback, and packaging evidence         |
 | [GW-P4.6 Pause Handoff](handoffs/2026-07-30-gw-p4.6-local-gate-handoff.md)                                             | Exact safe-pause state, completed local evidence, non-claims, resume order, and remaining P4 work                       |
 | [Architecture Decisions](architecture/decisions/README.md)                                                             | Accepted and proposed architectural decisions                                                                           |
 

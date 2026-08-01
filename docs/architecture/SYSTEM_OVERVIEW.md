@@ -1,12 +1,15 @@
 # System Overview
 
-Status: P3 and P4 are accepted on `main` through exact current head
-`80e84a28cb6e4e08eb73ec83193908ab3aa69cbe` and merged-main CI run
-30687433298. P4 includes F0 through F3.3, GW-P4.2 through GW-P4.6, the
-representative workspace-file, bounded local-research, writing,
+Status: P3 and P4 are accepted on `main`; the exact phase implementation head is
+`80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`, and the phase acceptance record is
+on current `main` `adc9a99d7806f5627041368b4ff932c1fe9a42f0`. Merged-main CI
+run 30689608454 attempt 2 passes. P4 includes F0 through F3.3, GW-P4.2 through
+GW-P4.6, the representative workspace-file, bounded local-research, writing,
 Office-document, schema-13 schedule, tool-failure, and Worker-crash/recovery
-journeys. Goose P5 has not started. CrewAI is accepted as the first P6
-planner-sidecar candidate but is not implemented or packaged.
+journeys. ADR-0024 starts P5.0 by selecting the exact Goose source and minimal
+stdio ACP boundary; no Goose runner is imported, built, executed, or packaged
+yet. CrewAI is accepted as the first P6 planner-sidecar candidate but is not
+implemented or packaged.
 
 ## Context
 
@@ -35,7 +38,7 @@ flowchart TD
     PERSIST["Persistence Utility\nschema 13 schedule authority and existing state"]
     ADAPTERS["Agent Adapter Boundary"]
     GENERAL["General Worker Process"]
-    GOOSE["Goose Worker Process"]
+    GOOSE["Minimal Goose ACP Runner\nP5 exact artifact gate"]
     FUTURE["Future Worker Process"]
     STORE["Actestra-owned Local Store"]
 
@@ -505,6 +508,44 @@ General Worker, Goose, or future-worker private event format. The deterministic
 fake performs no I/O. The GW-P4.3 process worker performs only protocol and
 lifecycle computation; it has no filesystem, network, shell, model,
 credential, persistence, Electron, or tool-execution authority.
+
+## Goose P5 boundary
+
+[ADR-0024](decisions/0024-minimal-goose-acp-runner.md) selects Goose `v1.45.0`
+at exact commit `4dc0420f5704a92806c6628c8f0a3497d7a88759` as the source
+and ACP compatibility target. It does not admit the upstream release CLI.
+Actestra builds a small runner against Goose core with default features
+disabled, an initially empty Goose feature set, and calls the public stdio entry
+with no builtins and no scheduler.
+The exact source, feature, lock, patch, target, executable, ACP, license, SBOM,
+audit, and provenance manifest must pass before a real session starts.
+
+The adapter checks `agentInfo.name`, exact version, protocol, capabilities, and
+runner digest before session creation. The first handshake has an
+attempt-private Goose root and no network, provider, credential, tool,
+workspace, or user configuration. Unsupported versions or capabilities fail
+without repository or private-state effects.
+
+For a coding task, Actestra creates and owns the isolated Git worktree. Goose
+receives no builtin tool and does not receive the original checkout. The ACP
+session may declare only an Actestra-owned MCP/capability proxy. That proxy
+turns file, terminal, Git, diff, test, and publish requests into the existing
+Tool Gateway's canonical scope, policy, one-shot approval, audit, result, and
+Artifact flow. Later model traffic may reach only an Actestra loopback proxy
+with an opaque attempt lease; arbitrary Worker network and raw provider secrets
+remain denied.
+
+ACP messages and identifiers are compatibility input. Actestra Task, Session,
+Worker, Attempt, event, approval, Artifact, audit, terminal, cancellation, and
+cleanup state remain authoritative. Goose configuration, SQLite, session, and
+cache state are disposable. Cancellation and crashes cross the existing
+persist-before-release barrier before the process group, private root, or
+worktree is removed.
+
+The P5.0 evidence therefore changes the accepted source and process design but
+adds no executable Worker. P5.1 must build and admit the minimal runner and
+prove exact handshake, fail-closed incompatibility, supervision, and cleanup
+before P5.2 exposes coding capabilities.
 
 ## Event contract
 

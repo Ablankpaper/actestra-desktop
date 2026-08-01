@@ -69,13 +69,19 @@ Exact evaluation pins do not change their non-imported status.
 | Project | Evaluated revision | Observed root license | Role | Source |
 | --- | --- | --- | --- | --- |
 | AionCore | `v0.1.52` (`76f5554286ba0b6d33fb74d5c2bb2b3b0b83100d`) | Root Apache-2.0; Cargo metadata says MIT; no root `NOTICE` | Ignored local F0 launch runtime and proposed initial general-worker compatibility runtime; not committed or approved for distribution | <https://github.com/iOfficeAI/AionCore> |
-| Goose | Not selected | Not yet inspected | Specialized coding and terminal worker | <https://github.com/aaif-goose/goose> |
+| Goose | `v1.45.0` (`4dc0420f5704a92806c6628c8f0a3497d7a88759`) | Apache-2.0; no root `NOTICE` | Selected source and stdio ACP compatibility target for a future minimal Actestra-built coding Worker; metadata inspected only, with no source or binary imported | <https://github.com/aaif-goose/goose> |
 | CrewAI | `1.15.8` (`e9caf1e1b89343bb833b5da6660faa91804a9dce`) | MIT | First supervised P6 planner-sidecar candidate; metadata inspected only, with no source or package imported | <https://github.com/crewAIInc/crewAI> |
 | Eigent | `v1.0.2` (`e478094a9ff433132b3cf1928e4143338ddaab20`) | Root Apache-2.0; root `package.json` says MIT | Team product and acceptance reference; metadata inspected only, with no source or runtime imported | <https://github.com/eigent-ai/eigent> |
 
 This file must be updated in the same change that imports, vendors, bundles,
 upgrades, or distributes third-party code or assets. A reference link alone
 does not satisfy license or notice obligations.
+
+ADR-0024 rejects the broad upstream Goose release CLI as the Actestra runtime
+artifact. The future minimal runner must carry the exact Apache-2.0 license,
+source and patch provenance, lock and executable digests, SBOM, and applicable
+dependency notices before it is distributed. The P5.0 evaluation commits none
+of those upstream bytes.
 
 The exact AionUi runnable desktop source selection is committed as the accepted
 product foundation; its installed dependencies and generated packages are

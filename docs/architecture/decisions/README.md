@@ -38,6 +38,7 @@ components or phases.
 | [0021](0021-bounded-writing-artifact-journey.md)               | Accepted                     | Add one prompt-derived writing journey whose Worker-authored draft input persists before create-only document output                     |
 | [0022](0022-bounded-office-document-artifact-journey.md)       | Accepted                     | Add one bounded Office journey that creates a real DOCX in main and projects only an owned document model into native Word Preview       |
 | [0023](0023-actestra-owned-scheduled-general-work.md)          | Accepted                     | Route bounded existing-conversation scheduled General Work through the native AionUI cron surface with Actestra-owned durable execution  |
+| [0024](0024-minimal-goose-acp-runner.md)                       | Accepted                     | Pin Goose v1.45.0 and admit only a minimal Actestra-built stdio ACP runner behind exact artifact, policy, and authority gates             |
 
 ## Creating an ADR
 
