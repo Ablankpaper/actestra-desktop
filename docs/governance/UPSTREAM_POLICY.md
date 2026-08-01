@@ -10,7 +10,7 @@ security model, update path, and license trail.
 | Upstream | Intended role | Initial integration posture |
 | --- | --- | --- |
 | [AionUi](https://github.com/iOfficeAI/AionUi) | Complete functional UI and general-work product foundation | Exact frozen downstream source foundation plus reviewed patches under ADR-0010 |
-| [Goose](https://github.com/aaif-goose/goose) | Coding and terminal worker | External worker adapter in P5 |
+| [Goose](https://github.com/aaif-goose/goose) | Coding and terminal worker | Exact Goose core pin behind an Actestra-built, supervised stdio ACP runner under ADR-0024 |
 | [CrewAI](https://github.com/crewAIInc/crewAI) | First P6 planner-sidecar candidate | Reference and protocol evaluation first; no runtime import before the ADR-0015 production gate |
 | [Eigent](https://github.com/eigent-ai/eigent) | Multi-agent product, Team experience, and acceptance reference | Reference-first; no complete UI, service, memory, tool, workspace, or CAMEL-runtime import |
 
@@ -68,6 +68,27 @@ An unavailable provider is not a reason to delete its UI.
 
 See the
 [AionUi Retention Matrix](../upstream/AIONUI_RETENTION_MATRIX.md).
+
+## P5 Goose rule
+
+Goose is admitted only as a separately supervised coding Worker through the
+exact stdio ACP boundary accepted in
+[ADR-0024](../architecture/decisions/0024-minimal-goose-acp-runner.md). Actestra
+does not import Goose's application UI or bundle the broad upstream CLI.
+
+The runner uses the exact source pin, disables default features, enables no
+Goose builtin or scheduler, and accepts tools only through an Actestra-owned
+MCP/capability proxy. Actestra creates the coding worktree, owns every task,
+attempt, approval, event, artifact, audit, and cleanup record, and denies
+unknown versions or artifact digests before a session starts. Goose private
+configuration, SQLite, session, and cache state is disposable.
+
+Before a runner artifact is executable outside deterministic protocol tests,
+the implementation must record its exact toolchain, feature set, lock and
+executable digests, dependency audit, SBOM, Apache-2.0 payload, build
+provenance, network policy, and process-cleanup evidence. An upstream release
+asset, environment-only telemetry opt-out, or successful ACP handshake does
+not satisfy artifact admission.
 
 ## P6 orchestration rule
 

@@ -39,6 +39,13 @@ The user selects a Git repository. Actestra creates an isolated worktree, routes
 the task to the Goose worker, shows commands and diffs, runs checks, and returns
 evidence before the user chooses whether to publish.
 
+Goose enters as the exact minimal stdio ACP runner selected by ADR-0024, not as
+a second application or the broad upstream CLI. It receives no builtin tool,
+original checkout, raw provider credential, unrestricted network, or product
+history. File, terminal, Git, diff, test, and publish actions cross the
+Actestra-owned capability proxy and existing policy, approval, event, artifact,
+audit, and recovery boundaries.
+
 ### 3. Team work
 
 The user gives Actestra a complex goal. A leader creates a small dependency
@@ -55,7 +62,8 @@ aggregations without receiving direct tool or product authority.
 - Local workspace selection with explicit scope.
 - One Actestra-owned task and conversation history.
 - General worker for file, research, and artifact tasks.
-- Goose worker adapter for repository and terminal tasks.
+- Exact-version Goose worker adapter for isolated repository and terminal tasks,
+  backed by an admitted minimal runner artifact and fail-closed ACP handshake.
 - Small team orchestration with a leader, dependencies, parallel workers,
   retries, pause, cancel, and user handoff.
 - A separately supervised planner sidecar whose private state is disposable and

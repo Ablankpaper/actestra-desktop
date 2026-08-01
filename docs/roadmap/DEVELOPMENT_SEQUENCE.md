@@ -85,7 +85,11 @@ implementation `47ed445eab204c0998e44167455c062600158dd3`, final PR head
 `80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`, and merged-main CI 30687433298.
 Its completed local gates, packaged target-app evidence, manual review, and
 exact scope audits close the P4 exit gate. P5 Goose and P6 CrewAI/Team work
-have not started.
+have not entered runtime implementation. ADR-0024 starts the bounded P5.0
+admission slice by selecting Goose `v1.45.0` at exact commit
+`4dc0420f5704a92806c6628c8f0a3497d7a88759`, stdio ACP, and an
+Actestra-built minimal runner. No Goose source or binary is imported or
+executed by that decision; P5.1 remains blocked on an admitted runner artifact.
 
 ## P0 — Project Foundation
 
@@ -290,7 +294,13 @@ slice previously described as P4.3/F3.1.
 
 ### Deliverables
 
-- Pin an exact Goose revision or compatible published interface.
+- Pin an exact Goose revision and compatible published interface. ADR-0024
+  selects `v1.45.0` at
+  `4dc0420f5704a92806c6628c8f0a3497d7a88759`, ACP `1.0.1` with schema
+  `1.1.0`, and `v1.44.0` as the lowest rollback comparison.
+- Build an Actestra-owned minimal Goose core runner with default features
+  disabled, no upstream CLI, no builtins, no scheduler, auditable dependency
+  metadata, SBOM, exact artifact manifest, and an accepted RustSec result.
 - Launch Goose outside the renderer through a dedicated adapter.
 - Register Goose through the preserved AionUi agent settings, selector, repair,
   ACP conversation, permission, terminal, diff, and test experience; do not add
@@ -301,11 +311,31 @@ slice previously described as P4.3/F3.1.
 - Add version detection and fail-closed compatibility checks.
 - Clean up workers and worktrees after completion, failure, and cancellation.
 
+### Ordered slices
+
+1. **P5.0 — source and protocol admission:** accept ADR-0024, exact upstream,
+   license, provenance, lock-audit, rollback, telemetry, network, and packaging
+   evidence. Exit with no imported or executed Goose runtime.
+2. **P5.1 — minimal runner and handshake:** build and admit one exact runner,
+   validate ACP name/version/capabilities and private-root cleanup, and fail
+   unsupported versions before session or repository effects.
+3. **P5.2 — isolated coding capability:** create one fixture Git worktree and
+   route only closed file, terminal, Git, diff, and test capabilities through
+   the Actestra gateway, with denial, approval, failure, cancellation, and
+   process cleanup evidence.
+4. **P5.3 — preserved AionUI coding journey:** project the accepted events and
+   artifacts into the retained agent settings, selector, repair, ACP
+   conversation, permission, terminal, diff, and test surfaces, then run the
+   full P5 gate.
+
 ### Exit gate
 
 - A repository fixture can be modified, tested, reviewed, and cancelled without
   writing to the source checkout or bypassing approvals.
 - Unsupported Goose versions fail with a clear, non-destructive error.
+- The admitted runner's source pin, feature set, lock, executable digest,
+  license, SBOM, binary audit, network policy, and process cleanup all agree;
+  the broad upstream CLI cannot be substituted silently.
 
 ## P6 — Multi-Agent Team Orchestration
 

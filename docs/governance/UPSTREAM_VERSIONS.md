@@ -4,7 +4,8 @@ This file records immutable upstream revisions and verification evidence.
 
 ## Current pins
 
-P1 selected and verified the following pins on 2026-07-27. The complete
+P1 selected and verified the initial AionUI and AionCore pins on 2026-07-27.
+Later phases append their own exact selections and evidence. The complete
 runnable AionUi desktop source foundation was imported on 2026-07-29 under
 ADR-0010.
 
@@ -13,7 +14,7 @@ ADR-0010.
 | AionUi | `iOfficeAI/AionUi` | `v2.1.41` | `2d8925fc67a97a20996fadcd2a0862b778b572ba` | Product UI and general-work foundation | P1 reproduced; exact 1,766-file runnable desktop snapshot imported and manifest-verified |
 | AionCore | `iOfficeAI/AionCore` | `v0.1.52` | `76f5554286ba0b6d33fb74d5c2bb2b3b0b83100d` | Initial native compatibility runtime/general worker | P1 locally built; ignored local bundle used for F0 launch; not committed or approved for distribution |
 | Croner | `Hexagon/croner` | `9.1.0` | `364a3074c2642b903eaf26e96f4bc197e3eaa6bc` | Main-owned schedule validation and occurrence calculation | Exact npm and downstream-native pin; MIT notice retained and package-verified |
-| Goose | `aaif-goose/goose` | Not selected | Not selected | Worker adapter | Pending P5 |
+| Goose | `aaif-goose/goose` | `v1.45.0` source/ACP target | `4dc0420f5704a92806c6628c8f0a3497d7a88759` | Minimal Actestra-built stdio ACP coding Worker under ADR-0024 | Source and protocol selected; upstream binary rejected; admitted runner artifact pending P5.1 |
 | CrewAI | `crewAIInc/crewAI` | `1.15.8` evaluation snapshot | `e9caf1e1b89343bb833b5da6660faa91804a9dce` | First supervised planner-sidecar candidate | Metadata and license verified; not imported, installed, bundled, or selected as the production P6 pin |
 | Eigent | `eigent-ai/eigent` | `v1.0.2` reference snapshot | `e478094a9ff433132b3cf1928e4143338ddaab20` | Team product and acceptance reference | Metadata inspected; not imported, installed, bundled, or selected as a runtime |
 
@@ -81,6 +82,39 @@ clarified before Actestra distributes AionCore-derived code or binaries.
 - Runtime scope is limited to main-owned validation and next-occurrence
   calculation under ADR-0023. The renderer receives neither Croner nor timer
   authority.
+
+## Goose v1.45.0 evidence
+
+- Verification date: 2026-08-01.
+- Upstream URL: <https://github.com/aaif-goose/goose>.
+- Release/tag: `v1.45.0`, published 2026-07-29; exact commit:
+  `4dc0420f5704a92806c6628c8f0a3497d7a88759`.
+- Root license: Apache-2.0; no root `NOTICE`.
+- Exact locked ACP dependencies: `agent-client-protocol 1.0.1` and
+  `agent-client-protocol-schema 1.1.0`.
+- Selected integration: an Actestra-owned minimal runner calling the public
+  Goose core stdio ACP entry with default features disabled, an initially empty
+  Goose feature set, no builtins, and no scheduler. The broad upstream CLI is
+  not selected as a runtime artifact.
+- Rollback comparison: `v1.44.0` at
+  `876555f85b1bd0e15ed75eed7c5ac1163c1f097a`. Older revisions are disallowed
+  because `v1.44.0` fixes `GHSA-r5pp-p5r8-466r`.
+- Official macOS arm64 release asset SHA-256:
+  `3a1b41197ff670c36b0b6285f41ccd949966ee037933f38c5e11c9356799ce58`.
+  It is provenance evidence only: the extracted binary is ad-hoc signed,
+  Gatekeeper-rejected, lacks recoverable dependency metadata, and is not
+  committed or approved for distribution.
+- Exact upstream `Cargo.lock` audit: five vulnerability matches, one unsoundness
+  warning, and five unmaintained warnings. The first Actestra runner lock must
+  remove `RUSTSEC-2026-0221` by selecting `event-listener >=5.4.2`; no artifact
+  is admitted by this metadata decision.
+- Current import status: no Goose source, binary, lockfile, model, credential,
+  or private state is committed or distributed by Actestra.
+- Full commands, cross-platform artifact digests, dependency paths, telemetry,
+  network, signing, and remaining admission gates:
+  [Goose v1.45.0 Evaluation](../upstream/GOOSE_V1.45.0_EVALUATION.md).
+- Governing decision:
+  [ADR-0024](../architecture/decisions/0024-minimal-goose-acp-runner.md).
 
 ## CrewAI 1.15.8 evaluation snapshot
 
