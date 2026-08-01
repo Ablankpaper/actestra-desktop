@@ -944,11 +944,19 @@ function main() {
     [
       'ACTESTRA_UTILITY_ROLE: "general-worker"',
       "utilityProcess.fork",
+      "subscribeDeferredUtilityProcessTerminalEvent",
       'this.child.once("error", handleError)',
-      'this.child.once("exit", listener)',
+      'this.child.once("exit", handleExit)',
       "allowLoadingUnsignedLibraries: false",
       "respondToAuthRequestsFromMainProcess: false",
     ],
+  );
+  requireText(
+    path.join(
+      outputRoot,
+      "packages/desktop/src/actestra/main/workers/utilityProcessTerminalDispatch.ts",
+    ),
+    ["setImmediate", "clearImmediate", "triggered", "listener(...arguments_)"],
   );
   requireText(
     path.join(outputRoot, "packages/desktop/src/actestra/utility/worker/generalWorkerService.ts"),
