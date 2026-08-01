@@ -42,6 +42,11 @@
     "verify:package": "node scripts/verify-packaged-app.mjs",
     "smoke:package": "node scripts/smoke-packaged-app.mjs",
     "smoke:aionui-general-work": "node scripts/smoke-aionui-general-work.mjs",
+    "goose:runner:tools": "node scripts/install-goose-runner-tools.mjs",
+    "goose:runner:format:check": "cargo fmt --manifest-path workers/goose-runner/Cargo.toml -- --check",
+    "goose:runner:build": "node scripts/build-goose-runner.mjs",
+    "goose:runner:test": "node scripts/test-goose-runner.mjs",
+    "goose:runner:check": "bun run goose:runner:format:check && bun run goose:runner:tools && bun run goose:runner:build && bun run goose:runner:test",
     "check": "bun run format:check && bun run lint && bun run typecheck && bun run test:electron-sqlite && bun run test && bun run test:smoke-harness && bun run boundary:check && bun run foundation:aionui:check && bun run downstream:aionui:check && bun run package"
   },
   "dependencies": {

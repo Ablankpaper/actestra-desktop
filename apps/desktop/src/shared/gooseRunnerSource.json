@@ -1,0 +1,69 @@
+{
+  "contractVersion": 1,
+  "runner": {
+    "name": "actestra-goose-runner",
+    "version": "0.1.0"
+  },
+  "goose": {
+    "repository": "https://github.com/aaif-goose/goose.git",
+    "version": "1.45.0",
+    "commit": "4dc0420f5704a92806c6628c8f0a3497d7a88759",
+    "cargoFeatures": [],
+    "patchSetSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "acp": {
+    "protocolVersion": 1,
+    "crateVersion": "1.0.1",
+    "schemaVersion": "1.1.0"
+  },
+  "rust": {
+    "toolchain": "1.96.1",
+    "rustcCommit": "31fca3adb283cc9dfd56b49cdee9a96eb9c96ffd",
+    "rustfmt": "rustfmt 1.9.0-stable (31fca3adb2 2026-06-26)"
+  },
+  "buildTools": {
+    "cargoAuditable": {
+      "version": "0.7.4",
+      "commit": "1d50810095d1a40d02c4f5c38152cdb9d0ea06bd"
+    },
+    "cargoAudit": {
+      "version": "0.22.2",
+      "commit": "281452c35cf0870969042374110f099a411bc185"
+    }
+  },
+  "buildToolAssets": {
+    "darwin-arm64": [
+      {
+        "name": "cargo-auditable",
+        "archive": "cargo-auditable-aarch64-apple-darwin.tar.xz",
+        "size": 389720,
+        "sha256": "fade0f3befebce7b54a46edfa31bea27789ea2136c51e662c2922b10f9d6f701"
+      },
+      {
+        "name": "cargo-audit",
+        "archive": "cargo-audit-aarch64-apple-darwin-v0.22.2.tgz",
+        "size": 5954803,
+        "sha256": "ec7ca4263769593df4d909be85b94a6b79efa2897be5d2bb8ebd516e823175af"
+      }
+    ],
+    "darwin-x64": [
+      {
+        "name": "cargo-auditable",
+        "archive": "cargo-auditable-x86_64-apple-darwin.tar.xz",
+        "size": 431300,
+        "sha256": "2a1e73d769b2ab6c027178d11c6ba6bf3ad7c1e756910b349b513583da9d52bc"
+      },
+      {
+        "name": "cargo-audit",
+        "archive": "cargo-audit-x86_64-apple-darwin-v0.22.2.tgz",
+        "size": 6357453,
+        "sha256": "847831323de932155b226ab60ee4a180e13e5d007a019f0d4b7b4d89a6de2ab2"
+      }
+    ]
+  },
+  "license": {
+    "spdx": "Apache-2.0",
+    "sourcePath": "workers/goose-runner/licenses/GOOSE-APACHE-2.0.txt",
+    "sha256": "44459b86c2e96fdbfd8a6b5c33d30d4b04b5293fcb2ec96fe4dcc4e0f90b8962"
+  }
+}

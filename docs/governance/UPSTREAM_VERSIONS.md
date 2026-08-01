@@ -14,7 +14,7 @@ ADR-0010.
 | AionUi | `iOfficeAI/AionUi` | `v2.1.41` | `2d8925fc67a97a20996fadcd2a0862b778b572ba` | Product UI and general-work foundation | P1 reproduced; exact 1,766-file runnable desktop snapshot imported and manifest-verified |
 | AionCore | `iOfficeAI/AionCore` | `v0.1.52` | `76f5554286ba0b6d33fb74d5c2bb2b3b0b83100d` | Initial native compatibility runtime/general worker | P1 locally built; ignored local bundle used for F0 launch; not committed or approved for distribution |
 | Croner | `Hexagon/croner` | `9.1.0` | `364a3074c2642b903eaf26e96f4bc197e3eaa6bc` | Main-owned schedule validation and occurrence calculation | Exact npm and downstream-native pin; MIT notice retained and package-verified |
-| Goose | `aaif-goose/goose` | `v1.45.0` source/ACP target | `4dc0420f5704a92806c6628c8f0a3497d7a88759` | Minimal Actestra-built stdio ACP coding Worker under ADR-0024 | Source and protocol selected; upstream binary rejected; admitted runner artifact pending P5.1 |
+| Goose | `aaif-goose/goose` | `v1.45.0` source/ACP target | `4dc0420f5704a92806c6628c8f0a3497d7a88759` | Minimal Actestra-built stdio ACP coding Worker under ADR-0024 | P5.0 accepted; P5.1 exact runner, lock, artifact admission, no-network initialize, and cleanup implemented locally; upstream binary rejected |
 | CrewAI | `crewAIInc/crewAI` | `1.15.8` evaluation snapshot | `e9caf1e1b89343bb833b5da6660faa91804a9dce` | First supervised planner-sidecar candidate | Metadata and license verified; not imported, installed, bundled, or selected as the production P6 pin |
 | Eigent | `eigent-ai/eigent` | `v1.0.2` reference snapshot | `e478094a9ff433132b3cf1928e4143338ddaab20` | Team product and acceptance reference | Metadata inspected; not imported, installed, bundled, or selected as a runtime |
 
@@ -22,13 +22,14 @@ ADR-0010.
 
 The following actions are executed by CI and are not imported into or
 distributed with the Actestra application. The immutable commits were resolved
-from the corresponding official GitHub tags on 2026-07-28.
+from the corresponding official GitHub tags on 2026-07-28 and 2026-08-01.
 
 | Action | Version | Exact commit | Use |
 | --- | --- | --- | --- |
 | `actions/checkout` | `v4.4.0` | `11d5960a326750d5838078e36cf38b85af677262` | Repository checkout |
 | `actions/setup-node` | `v4.4.0` | `49933ea5288caeca8642d1e84afbd3f7d6820020` | Node.js 24.13.0 setup |
 | `oven-sh/setup-bun` | `v2.2.0` | `0c5077e51419868618aeaa5fe8019c62421857d6` | Bun 1.3.9 setup |
+| `actions/upload-artifact` | `v4.6.2` | `ea165f8d65b6e75b540449e92b4886f43607fa02` | Preserve the short-lived P5.1 runner admission artifact |
 
 ## AionUi v2.1.41 evidence
 
@@ -106,15 +107,50 @@ clarified before Actestra distributes AionCore-derived code or binaries.
   committed or approved for distribution.
 - Exact upstream `Cargo.lock` audit: five vulnerability matches, one unsoundness
   warning, and five unmaintained warnings. The first Actestra runner lock must
-  remove `RUSTSEC-2026-0221` by selecting `event-listener >=5.4.2`; no artifact
-  is admitted by this metadata decision.
-- Current import status: no Goose source, binary, lockfile, model, credential,
-  or private state is committed or distributed by Actestra.
+  remove `RUSTSEC-2026-0221` by selecting `event-listener >=5.4.2`.
+- P5.1 build tools are pinned separately from Goose:
+
+  | Tool | Version | Exact commit | Release license | Role |
+  | --- | --- | --- | --- | --- |
+  | `cargo-auditable` | `0.7.4` | `1d50810095d1a40d02c4f5c38152cdb9d0ea06bd` | MIT OR Apache-2.0 | Embed dependency metadata in the exact runner binary |
+  | `cargo-audit` | `0.22.2` | `281452c35cf0870969042374110f099a411bc185` | Apache-2.0 OR MIT | Scan the committed lock and auditable binary against a recorded RustSec database commit |
+
+- The shared tool-asset contract pins both macOS architectures. The
+  `cargo-auditable` archive SHA-256 values are
+  `fade0f3befebce7b54a46edfa31bea27789ea2136c51e662c2922b10f9d6f701`
+  for arm64 and
+  `2a1e73d769b2ab6c027178d11c6ba6bf3ad7c1e756910b349b513583da9d52bc`
+  for x64. The `cargo-audit` archive SHA-256 values are
+  `ec7ca4263769593df4d909be85b94a6b79efa2897be5d2bb8ebd516e823175af`
+  for arm64 and
+  `847831323de932155b226ab60ee4a180e13e5d007a019f0d4b7b4d89a6de2ab2`
+  for x64. The local arm64 installed executable hashes are respectively
+  `89ef000f9619f83aaa252af61c70a6ba3a623abf1295ff902edf701f06b19dd7`
+  and `33fbe81adca1b794f4ffe98574d59b0ebe6fcfdb310976fafed98a094c795111`;
+  the builder rehashes each executable before use.
+- The committed minimal runner uses Rust 1.96.1 at rustc commit
+  `31fca3adb283cc9dfd56b49cdee9a96eb9c96ffd` with the same toolchain's
+  `rustfmt 1.9.0-stable (31fca3adb2 2026-06-26)`, an empty Goose patch and
+  feature set, and `event-listener 5.4.2`. The local macOS arm64 executable is
+  63,911,512 bytes with SHA-256
+  `1aa35cfa29a781752f992afa67dc6139f235b3cc662e01d2d556080dabbe8d21`.
+- The first exact runner lock and embedded-metadata scans both report only
+  `RUSTSEC-2023-0071` for `rsa 0.9.10`. ADR-0025 permits that record only as
+  `metadata-only-not-compiled`: the active graph excludes RSA and SQLx MySQL,
+  all-target inverse normal-edge queries have no path, and no corresponding
+  release artifact is compiled. The audit is not represented as clean.
+- Current import status: the small Actestra runner source, exact lock, Goose
+  Apache-2.0 license payload, source contract, and build/admission scripts are
+  committed by P5.1. Cargo fetches the exact Goose source to build ignored local
+  or short-lived CI evidence. No Goose upstream source tree, official binary,
+  model, credential, private state, desktop package, candidate, or release is
+  committed or distributed by Actestra.
 - Full commands, cross-platform artifact digests, dependency paths, telemetry,
   network, signing, and remaining admission gates:
   [Goose v1.45.0 Evaluation](../upstream/GOOSE_V1.45.0_EVALUATION.md).
 - Governing decision:
-  [ADR-0024](../architecture/decisions/0024-minimal-goose-acp-runner.md).
+  [ADR-0024](../architecture/decisions/0024-minimal-goose-acp-runner.md) and
+  [ADR-0025](../architecture/decisions/0025-goose-rsa-metadata-only-disposition.md).
 
 ## CrewAI 1.15.8 evaluation snapshot
 

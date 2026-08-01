@@ -2,8 +2,10 @@
 
 Actestra uses third-party runtime and development packages from locked Bun
 dependency graphs. The AionUi-first foundation contains the exact AionUi source
-snapshot recorded below. It contains no committed AionCore binary, Goose,
-CrewAI, Eigent, Aera, or AgentEra source or asset.
+snapshot recorded below. It contains no committed AionCore binary, Goose
+upstream source tree or official binary, CrewAI, Eigent, Aera, or AgentEra
+source or asset. The separately identified P5.1 Goose license and build
+materials do not alter that frozen foundation.
 
 ## Distributed runtime components
 
@@ -43,6 +45,27 @@ and provenance record are under `foundation/`. Original Actestra code remains
 unlicensed pending the owner's license decision; Apache-2.0 applies to the
 AionUi material identified there.
 
+## P5.1 Goose runner build materials
+
+The minimal `actestra-goose-runner` resolves Goose `v1.45.0` at exact commit
+`4dc0420f5704a92806c6628c8f0a3497d7a88759` as an Apache-2.0 Cargo
+dependency with default features disabled and no enabled Goose feature. The
+upstream source tree and official CLI binary are not committed. The exact
+Apache-2.0 payload is retained at
+`workers/goose-runner/licenses/GOOSE-APACHE-2.0.txt`, and each generated runner
+artifact copies it beside the executable, lock, audit report, CycloneDX 1.6
+SBOM, and immutable manifest.
+
+The generated local artifact and any future seven-day CI artifact are admission
+evidence, not a packaged, signed, notarized, released, or distributed Actestra
+component.
+Before a desktop candidate includes the runner, Release must verify the full
+transitive SBOM and license expressions, applicable notices, package placement,
+signature, provenance, update and rollback behavior, and target-platform
+acceptance. ADR-0024 governs the source and authority boundary; ADR-0025 records
+the sole exact RSA metadata-only audit disposition without calling the audit
+clean.
+
 ## Direct development and test dependencies
 
 These packages are required to build, test, lint, format, or package the
@@ -56,6 +79,8 @@ repository. They are not represented as Actestra-authored code.
 | `@electron/asar`, `electron-builder`, `electron-vite`, `vite` | `3.4.1`, `26.15.2`, `5.0.0`, `6.4.1` | MIT |
 | `oxfmt`, `oxlint` | `0.41.0`, `1.56.0` | MIT |
 | TypeScript | `5.9.3` | Apache-2.0 |
+| `cargo-auditable` | `0.7.4` (`1d50810095d1a40d02c4f5c38152cdb9d0ea06bd`) | MIT OR Apache-2.0 |
+| `cargo-audit` | `0.22.2` (`281452c35cf0870969042374110f099a411bc185`) | Apache-2.0 OR MIT |
 
 Transitive dependency licenses remain part of the locked package graph and must
 be represented in the P8 SBOM and candidate notice bundle. This P2 inventory is
@@ -69,7 +94,6 @@ Exact evaluation pins do not change their non-imported status.
 | Project | Evaluated revision | Observed root license | Role | Source |
 | --- | --- | --- | --- | --- |
 | AionCore | `v0.1.52` (`76f5554286ba0b6d33fb74d5c2bb2b3b0b83100d`) | Root Apache-2.0; Cargo metadata says MIT; no root `NOTICE` | Ignored local F0 launch runtime and proposed initial general-worker compatibility runtime; not committed or approved for distribution | <https://github.com/iOfficeAI/AionCore> |
-| Goose | `v1.45.0` (`4dc0420f5704a92806c6628c8f0a3497d7a88759`) | Apache-2.0; no root `NOTICE` | Selected source and stdio ACP compatibility target for a future minimal Actestra-built coding Worker; metadata inspected only, with no source or binary imported | <https://github.com/aaif-goose/goose> |
 | CrewAI | `1.15.8` (`e9caf1e1b89343bb833b5da6660faa91804a9dce`) | MIT | First supervised P6 planner-sidecar candidate; metadata inspected only, with no source or package imported | <https://github.com/crewAIInc/crewAI> |
 | Eigent | `v1.0.2` (`e478094a9ff433132b3cf1928e4143338ddaab20`) | Root Apache-2.0; root `package.json` says MIT | Team product and acceptance reference; metadata inspected only, with no source or runtime imported | <https://github.com/eigent-ai/eigent> |
 
@@ -78,10 +102,10 @@ upgrades, or distributes third-party code or assets. A reference link alone
 does not satisfy license or notice obligations.
 
 ADR-0024 rejects the broad upstream Goose release CLI as the Actestra runtime
-artifact. The future minimal runner must carry the exact Apache-2.0 license,
-source and patch provenance, lock and executable digests, SBOM, and applicable
-dependency notices before it is distributed. The P5.0 evaluation commits none
-of those upstream bytes.
+artifact. P5.1 commits the exact Goose Apache-2.0 license payload and runner
+lock and generates source and patch provenance, lock and executable digests,
+SBOM, and normalized audit evidence. Applicable transitive notices and release
+packaging remain mandatory before distribution.
 
 The exact AionUi runnable desktop source selection is committed as the accepted
 product foundation; its installed dependencies and generated packages are
