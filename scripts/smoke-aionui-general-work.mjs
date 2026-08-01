@@ -129,6 +129,12 @@ function childOutcome(child) {
   });
 }
 
+function describeChildOutcome(outcome) {
+  return outcome.kind === "error"
+    ? `spawn-error=${outcome.error.message}`
+    : `code=${String(outcome.code)}, signal=${String(outcome.signal)}`;
+}
+
 function appendOutput(current, chunk) {
   const next = current + chunk.toString();
   return Buffer.byteLength(next) <= maximumOutputBytes
@@ -306,7 +312,9 @@ async function runScenario(scenario, profilePath, workspacePath, packagedExecuta
     }
     const outcome = await Promise.race([outcomePromise, delay(100)]);
     if (outcome !== undefined) {
-      fail(`${scenario} exited before target-app readiness\n${output}`);
+      fail(
+        `${scenario} exited before target-app readiness (${describeChildOutcome(outcome)})\n${output}`,
+      );
     }
   }
   if (summary === undefined) {

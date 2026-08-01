@@ -92,6 +92,8 @@ try {
         generalWorkSmokeSource,
       ) &&
       generalWorkSmokeSource.includes('process.kill(workerPid, "SIGKILL")') &&
+      generalWorkSmokeSource.includes("describeChildOutcome(outcome)") &&
+      generalWorkSmokeSource.includes("signal=${String(outcome.signal)}") &&
       generalWorkSmokeSource.includes('"worker-process-exit"') &&
       generalWorkSmokeSource.includes('workers[0]?.state !== "crashed"') &&
       generalWorkSmokeSource.includes('checkpoint.attempt?.state !== "crashed"') &&

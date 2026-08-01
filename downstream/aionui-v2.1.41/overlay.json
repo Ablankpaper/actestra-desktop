@@ -314,6 +314,10 @@
       "destination": "packages/desktop/src/actestra/main/workers/electronGeneralWorker.ts"
     },
     {
+      "source": "apps/desktop/src/main/workers/utilityProcessTerminalDispatch.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/utilityProcessTerminalDispatch.ts"
+    },
+    {
       "source": "apps/desktop/src/main/workers/generalWorkerProcessAdapter.ts",
       "destination": "packages/desktop/src/actestra/main/workers/generalWorkerProcessAdapter.ts"
     },
@@ -478,6 +482,7 @@
     "packages/desktop/src/actestra/main/workers/agentAdapterSupervisor.ts",
     "packages/desktop/src/actestra/main/workers/agentAttemptEvidenceCoordinator.ts",
     "packages/desktop/src/actestra/main/workers/electronGeneralWorker.ts",
+    "packages/desktop/src/actestra/main/workers/utilityProcessTerminalDispatch.ts",
     "packages/desktop/src/actestra/main/workers/generalWorkerProbe.ts",
     "packages/desktop/src/actestra/main/workers/generalWorkerProcessAdapter.ts",
     "packages/desktop/src/actestra/main/workers/generalWorkCoordinator.ts",

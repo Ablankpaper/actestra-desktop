@@ -110,9 +110,10 @@ releases begin.
 
 ### Changed
 
-- Prevented reentrant Electron General Worker lifecycle cleanup by registering
-  fatal `error` and `exit` events once while retaining the real packaged
-  `SIGKILL`, failed Task, restart-recovery, and cleanup assertions.
+- Made Electron General Worker terminal events one-shot and deferred their Core
+  delivery until the native termination stack unwinds, preventing persistence
+  from reentering `UtilityProcessWrapper::PostMessage` during child-process
+  teardown while retaining real packaged `SIGKILL` recovery assertions.
 - Made the locked all-target Goose dependency proof fetch missing Cargo
   manifests on clean runners while keeping graph paths and query failures as
   separate fail-closed outcomes.

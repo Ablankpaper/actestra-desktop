@@ -4,7 +4,7 @@ Last updated: 2026-08-01
 
 ## Current phase
 
-### P5.0 is accepted on main; P5.1 minimal Goose runner and handshake is current
+### P5.0 is accepted; P5.1 is merged but its desktop-crash hotfix is current
 
 P4's phase acceptance record reached pull request 25 at exact head
 `c461fb06bdebd4bf6f55d39741a21dcb6980b3ff` and squash merged as current
@@ -27,8 +27,11 @@ review. ADR-0024 selects Goose `v1.45.0` at exact commit
 an empty Goose feature set, and the minimal stdio runner; the broad upstream
 CLI remains rejected.
 
-P5.1 starts from that exact accepted main in the clean
-`feat/p5-goose-runner-handshake` worktree. It adds a minimal Rust entry point
+P5.1 reached
+[pull request 27](https://github.com/bignormal/actestra-desktop/pull/27) at
+exact head `d3be6c665b1df51acec13c95691315ba97ba98dc`, passed exact-head CI
+30698164038, and squash merged as
+`df5bd41ca0ecd4838e046f48a9016e418b036ac7`. It adds a minimal Rust entry point
 that calls `goose::acp::server::run(Vec::new(), false)`, an exact committed
 Cargo lock, Rust 1.96.1, pinned `cargo-auditable 0.7.4` and
 `cargo-audit 0.22.2` installers, CycloneDX 1.6 and normalized RustSec evidence,
@@ -69,18 +72,44 @@ General Worker terminal-listener correction, its downstream invariant, and the
 clean-runner Cargo-query correction separately, and supplies the review
 substitute.
 
-The local submission gates pass from the current diff:
+The P5.1 exact-head gates passed both the macOS arm64 foundation and Goose
+runner-admission jobs. Merged-main run 30698648996 then separated the outcomes:
+Goose runner admission job 91365677397 passed, while macOS arm64 foundation job
+91365677408 failed because the packaged target application exited during the
+injected Worker-crash scenario. P5.1 is therefore merged but not accepted.
+
+Four retained local crash reports reproduce the same Electron 37.10.3 arm64
+`EXC_BAD_ACCESS` null dereference before and after the one-shot-listener change.
+Symbolication with Electron's official v37.10.3 arm64 symbols resolves the
+native path to `electron::api::UtilityProcessWrapper::HandleTermination`, a
+synchronous JavaScript `exit` emission, and then
+`electron::api::UtilityProcessWrapper::PostMessage`. The General Worker exit
+callback synchronously persisted terminal state through the separate
+Persistence Utility while Electron was still unwinding the native child
+termination stack. Making listeners one-shot removed duplicate delivery but did
+not remove that reentrant native call and was not the root-cause fix.
+
+The current clean `codex/p5-utility-process-reentrancy` hotfix keeps AionUI as
+the only UI and changes no schema, bridge, permission, task state, or recovery
+authority. A small main-owned helper defers only Electron General Worker
+terminal-event delivery with `setImmediate`, cancels pending delivery during
+competing cleanup, and leaves the real Worker `SIGKILL` plus authoritative Core
+persistence unchanged. The downstream overlay and checker require the same
+implementation, and the smoke harness now records exact spawn error or
+exit-code/signal diagnostics on early application termination.
+
+The current hotfix local gates pass:
 
 - complete root `bun run check` passes formatting, zero-warning lint, strict
-  types, the Electron SQLite probe, 59 passing and 1 skipped test files with 447
+  types, the Electron SQLite probe, 60 passing and 1 skipped test files with 449
   passing and 1 skipped tests, the smoke and authority boundaries, frozen
   AionUi foundation and downstream contract, and the root production build;
-- materialized AionUi strict TypeScript passes, the complete retained native
-  suite passes 345 files and 2,665 tests with 1 file and 5 tests skipped, and
-  the native production build transforms 607 main, 24 preload, and 10,184
-  renderer modules;
+- 2 focused files and 13 tests specifically prove next-turn terminal delivery,
+  queued-delivery cancellation, and existing General Worker adapter behavior;
+- materialized AionUi strict TypeScript and production build pass, transforming
+  608 main, 24 preload, and 10,184 renderer modules;
 - the local macOS arm64 directory package at
-  `/private/tmp/actestra-p5-package-once-exit-20260801-1/mac-arm64/Actestra.app`
+  `/private/tmp/actestra-p5-package-deferred-terminal-20260801-2/mac-arm64/Actestra.app`
   passes 11 afterPack resource checks, the independent package verifier, and
   strict recursive code-sign verification with an Apple Development identity.
   It is not notarized, a candidate, a release, or a deployment; and
@@ -90,32 +119,7 @@ The local submission gates pass from the current diff:
   authorization-denial, cancellation, event, artifact, audit, privacy, and
   process-cleanup evidence.
 
-The first direct package preparation was blocked by a GitHub release timeout,
-and the retained upstream Hub downloader later held an unconsumed redirect
-socket. Those are environment failures; the successful package uses the
-previously verified local AionCore 0.1.52 and 13-entry Hub resources. A first
-Desktop/File Provider output was rejected by independent deep code-sign
-verification and was never accepted as smoke evidence. The correctly sealed
-temporary-directory package then exposed a repeatable startup-boundary
-`EXC_BAD_ACCESS` only when the harness injected an external Worker `SIGKILL`
-immediately after readiness. An accepted P4 package passed the same full smoke,
-and the two packages have identical `app.asar`, unsigned Electron, Framework,
-and SQLite native-module hashes and identical entitlements. A minimal current-
-package reproduction initially suggested that injection after a 15-second
-quiescence window preserved the main process, but PR 27 exact-head CI run
-30697131524 reproduced the native main-process crash after that full delay and
-therefore rejected timing as a fix. The product-side defect was reentrant
-terminal cleanup: Electron General Worker `error` and `exit` callbacks were
-registered persistently while their synchronous Core callback removed the same
-listeners. They are now one-shot listeners, and the downstream contract requires
-that invariant. A newly signed package passes strict recursive signature and
-package-boundary verification, then passes the complete smoke with the real
-Worker `SIGKILL` injected immediately after readiness, including failed Task,
-restart recovery, terminal evidence, and process cleanup. The retained rejected
-packages, smoke roots, and macOS crash reports remain diagnostic evidence, not
-product acceptance.
-
-The same first exact-head CI run failed Goose admission separately because a
+The first P5.1 exact-head CI run failed Goose admission separately because a
 clean runner lacked all-platform Cargo manifests while the all-target inverse
 query was forced offline. The command failure was incorrectly reported as an
 RSA dependency path. The corrected query keeps the exact lock and Goose commit,
@@ -124,17 +128,19 @@ query failure from a non-empty dependency path. The corrected local runner
 rebuild has manifest SHA-256
 `3dc1bf1b58dee9639ff35453a6486f890bb68f38fbc9dbf3e63ef56bfcdbb4af`, the
 unchanged executable SHA-256 above, and all 4 files/21 admission and real
-handshake tests pass. A separate fresh-cache local query was stopped after the
-GitHub exact-commit fetch remained blocked; that is environment evidence, not a
-passing clean-runner claim. PR 27 must prove both corrections on a new exact
-head.
+handshake tests pass. PR 27 and merged-main Goose job 91365677397 now supply the
+previously missing clean-runner evidence.
 
-The exact 34-file scope, high-confidence secret, generated/binary, local Cargo
-path, cross-product import, recursive signature, and process-cleanup audits
-pass. PR, exact-head CI, merge, and merged-main CI remain P5.1 gates. No
-Goose session, coding capability, original-checkout write, renderer route,
-second UI, CrewAI sidecar, Eigent runtime, candidate, release, or deployment is
-added by this slice.
+The earlier complete CodeRabbit CLI review emitted only progress and heartbeat
+events for ten minutes and ended without a conclusion. It remains incomplete,
+not zero-finding evidence, and was not rerun against unchanged bytes. A complete
+manual/static review of the 9-file hotfix verifies the native-stack deferral,
+competing-cleanup cancellation, one-shot production wiring, downstream copy,
+smoke diagnostics, changelog, and status evidence and finds no unresolved
+issue. PR, exact-head CI, merge, and a passing merged-main macOS foundation job
+remain the hotfix exit gates. No Goose session, coding capability,
+original-checkout write, renderer route, second UI, CrewAI sidecar, Eigent
+runtime, candidate, release, or deployment is added by this slice.
 
 Pull request 8 reached exact final head
 `3f85e13072f5fb13fb43c9dae94f992bb0b7fb9c` and squash merged F3.3 as
@@ -1596,7 +1602,7 @@ Review closure validation at
 | P4 Worker crash/recovery                           | Accepted on `main` through PR 24                                  | Implementation `47ed445eab204c0998e44167455c062600158dd3`; exact final head `3593fac8db48a0cb149bb6c736374eeaccebe332`; PR CI 30687199671; squash merge `80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`; merged-main CI 30687433298; 56/427 root and 345/2,665 native tests; builds; signed unnotarized arm64 package; external-`SIGKILL` schema-13 smoke; complete 14-file manual review and exact scope audits; automatic CodeRabbit was rate-limited before review and is not line-level review evidence                                                                                                                                                                  |
 | P4 phase                                           | Accepted on `main`                                                | The retained AionUI journey and representative file, local-research, writing, Office, schedule, denial, cancellation, tool-failure, persistence, Worker-crash/recovery, and Artifact-conflict evidence satisfy the P4 exit gate at exact phase head `80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`; acceptance record merge `adc9a99d7806f5627041368b4ff932c1fe9a42f0`; merged-main CI 30689608454 attempt 2 passes                                                                                                                                                                                                                                                         |
 | P5.0 Goose source and ACP admission                | Accepted on `main` through PR 26                                  | Exact head `e622f36e697b4e0be1037175267452e24cc180e3`; exact-head CI 30691045159; squash merge `b61dd3ea44a4c522ca0c15a84a01d8f76b335e4c`; merged-main CI 30691300690; ADR-0024 selects `v1.45.0` / `4dc0420f5704a92806c6628c8f0a3497d7a88759`, minimal Goose core stdio runner with empty feature set and no builtins, scheduler, or second UI; upstream CLI rejected; CodeRabbit rate limit is not formal review evidence                                                                                                                                                                                                                                             |
-| P5.1 minimal Goose runner and ACP handshake        | PR 27 open; corrected exact-head gates pending                     | First head `39e21a4778dd3f738cb76d70ad7f90c3de68781d` and CI 30697131524 exposed independent native terminal-listener reentrancy and clean-runner Cargo-cache failures; local corrections pass immediate-`SIGKILL` signed-package smoke and 4 files/21 Goose tests; minimal exact Goose core runner and lock; Rust 1.96.1; pinned audit tools; CycloneDX 1.6, normalized RustSec evidence, externally trusted exact manifest and Apache-2.0 payload; ADR-0025 exact RSA metadata-only disposition; strict ACP protocol/name/version/capability admission; deny-network private process; incomplete automatic review is not zero-finding evidence; no session, tool, workspace, model, credential, UI, candidate, release, or deployment authority |
+| P5.1 minimal Goose runner and ACP handshake        | Merged through PR 27; acceptance blocked by desktop crash hotfix   | Exact head `d3be6c665b1df51acec13c95691315ba97ba98dc`; exact-head CI 30698164038 passes; squash merge `df5bd41ca0ecd4838e046f48a9016e418b036ac7`; merged-main Goose job 91365677397 passes while macOS foundation job 91365677408 fails in run 30698648996 at the externally killed Worker scenario; official symbols identify synchronous `HandleTermination` to `PostMessage` reentrancy; current deferred-terminal hotfix passes focused tests, materialized type/build, signed package verification, and the complete immediate-`SIGKILL` smoke; PR/main CI pending; no session, tool, workspace, model, credential, UI, candidate, release, or deployment authority |
 | P6 orchestration boundary                          | Accepted architecture direction only                              | ADR-0015; CrewAI `1.15.8` at `e9caf1e1b89343bb833b5da6660faa91804a9dce` verified as the first supervised sidecar candidate; Eigent `v1.0.2` at `e478094a9ff433132b3cf1928e4143338ddaab20` retained as a reference; neither is imported, bundled, or implemented                                                                                                                                                                                                                                                                                                                                                                                                         |
 | Native AionUi source                               | Exact local desktop snapshot                                      | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Native preservation contract                       | Local pass                                                        | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
@@ -1700,14 +1706,15 @@ The ordered implementation index and P3 non-claims are in
    together with its completed 14-file manual review and exact scope audits.
    Do not retry the unchanged CodeRabbit rate limit or represent its status as
    formal review.
-6. Complete P5.1 on exact P5.0 main through open PR 27 by submitting the
-   terminal-listener and clean-runner Cargo-query corrections, then require new
-   exact-head CI, merge, and merged-main CI. Do not enter P5.2
-   until the minimal runner manifest, ADR-0025 disposition, strict ACP
-   initialize, deny-network supervision, preparation/handshake/close cleanup,
-   and real-runner evidence agree on the same source. P5.2 may then add one
-   fixture worktree and closed capability proxy; it may not expose Goose
-   builtins, the original checkout, raw credentials, or a second UI.
+6. Close the P5.1 desktop-crash hotfix from exact merge
+   `df5bd41ca0ecd4838e046f48a9016e418b036ac7`: require the full root gate,
+   traceable review, exact-head CI, merge, and passing merged-main Goose plus
+   macOS foundation jobs. Do not enter P5.2 until the deferred terminal path,
+   minimal runner manifest, ADR-0025 disposition, strict ACP initialize,
+   deny-network supervision, preparation/handshake/close cleanup, and
+   real-runner evidence agree on the same source. P5.2 may then add one fixture
+   worktree and closed capability proxy; it may not expose Goose builtins, the
+   original checkout, raw credentials, or a second UI.
 7. Keep CrewAI-assisted Team P6 ordered after an accepted Goose P5 gate.
 
 ## Open decisions

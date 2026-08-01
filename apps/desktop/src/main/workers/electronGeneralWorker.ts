@@ -6,6 +6,7 @@ import {
   type GeneralWorkerProcessAdapterOptions,
   type GeneralWorkerProcessTransport,
 } from "./generalWorkerProcessAdapter";
+import { subscribeDeferredUtilityProcessTerminalEvent } from "./utilityProcessTerminalDispatch";
 
 export interface LaunchElectronGeneralWorkerOptions {
   readonly modulePath: string;
@@ -29,20 +30,29 @@ class ElectronGeneralWorkerTransport implements GeneralWorkerProcessTransport {
   }
 
   onError(listener: () => void): () => void {
-    const handleError = (): void => {
-      listener();
-    };
-    this.child.once("error", handleError);
-    return () => {
-      this.child.off("error", handleError);
-    };
+    return subscribeDeferredUtilityProcessTerminalEvent<[]>(
+      (handleError) => {
+        this.child.once("error", handleError);
+      },
+      (handleError) => {
+        this.child.off("error", handleError);
+      },
+      () => {
+        listener();
+      },
+    );
   }
 
   onExit(listener: (code: number) => void): () => void {
-    this.child.once("exit", listener);
-    return () => {
-      this.child.off("exit", listener);
-    };
+    return subscribeDeferredUtilityProcessTerminalEvent<[number]>(
+      (handleExit) => {
+        this.child.once("exit", handleExit);
+      },
+      (handleExit) => {
+        this.child.off("exit", handleExit);
+      },
+      listener,
+    );
   }
 
   kill(): boolean {
