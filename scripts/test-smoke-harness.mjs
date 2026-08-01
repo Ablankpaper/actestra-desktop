@@ -79,6 +79,30 @@ try {
     "General Work target-app smoke must prove a private representative tool failure and stable restart projection",
   );
   assert(
+    generalWorkSmokeSource.includes('"prepare-worker-crash"') &&
+      generalWorkSmokeSource.includes('"recover-worker-crash"') &&
+      generalWorkSmokeSource.includes('"ACTESTRA_UTILITY_ROLE=general-worker"') &&
+      generalWorkSmokeSource.includes('"eww"') &&
+      !generalWorkSmokeSource.includes('command.includes("Actestra General Worker")') &&
+      generalWorkSmokeSource.includes(
+        '"startup: managed runtime background preparation completed"',
+      ) &&
+      generalWorkSmokeSource.includes("output.includes(backendRuntimeReadyMarker)") &&
+      /scenario === "prepare-worker-crash" &&\s+workerPid === undefined &&\s+targetAppIsReady\(output\)/u.test(
+        generalWorkSmokeSource,
+      ) &&
+      generalWorkSmokeSource.includes('process.kill(workerPid, "SIGKILL")') &&
+      generalWorkSmokeSource.includes('"worker-process-exit"') &&
+      generalWorkSmokeSource.includes('workers[0]?.state !== "crashed"') &&
+      generalWorkSmokeSource.includes('checkpoint.attempt?.state !== "crashed"') &&
+      generalWorkSmokeSource.includes('checkpoint.attempt?.taskState !== "failed"') &&
+      generalWorkSmokeSource.includes('"task.updated", "worker.failed", "task.failed"') &&
+      generalWorkSmokeSource.includes("agent_attempt_evidence") &&
+      generalWorkSmokeSource.includes('output.includes("ACTESTRA_GENERAL_WORKER_READY")') &&
+      generalWorkSmokeSource.includes("P4 representative-failure smoke passed"),
+    "General Work target-app smoke must kill the packaged Worker process and prove stable Core-owned crash recovery",
+  );
+  assert(
     generalWorkSmokeSource.includes(
       "const canonicalWorkspacePath = fs.realpathSync(workspacePath);",
     ) &&

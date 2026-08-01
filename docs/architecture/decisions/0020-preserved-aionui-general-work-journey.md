@@ -153,6 +153,17 @@ the active `running` or `blocked` supervised attempt owned by the requesting
 conversation link. A prepared `ready` Task has no live Worker to cancel and
 must not advertise a misleading cancellation action.
 
+The generic coordinator retains ADR-0006's retryable crash disposition: a
+crashed attempt may leave its Task `blocked` while an explicit replacement is
+possible. The preserved AionUI journey does not launch a replacement attempt.
+For that exact no-replacement composition, an unexpected General Worker exit
+must include the canonical `worker.failed` event, then main appends
+`task.failed` after `task.updated` and `worker.failed`. The authoritative Task
+and Session become `failed`; the Worker and Attempt remain `crashed` with the
+same `worker-process-exit` incident. Missing or inconsistent crash evidence
+fails closed instead of inventing a terminal result. No renderer operation can
+request, simulate, or recover a process crash.
+
 Artifact preview requires all of the following:
 
 1. the hashed native conversation owns the linked Task;
@@ -195,9 +206,15 @@ the stored workspace authority. A failed recovery is counted and reported; it
 does not mark the Task successful or fall back to AionCore or Worker-private
 state.
 
+A finalized no-replacement Worker crash is terminal, not prepared or
+recoverable work. Startup reads its persisted failed projection without
+relaunching a Worker, re-resolving native context, adding a replacement
+Session, or exposing cancellation. Its checkpoint, Attempt evidence, and
+normalized event stream remain unchanged across restart.
+
 ### Keep target-app smoke explicit and non-production
 
-The final schema-13 materialized desktop admits thirteen fixed smoke scenarios
+The final schema-13 materialized desktop admits fifteen fixed smoke scenarios
 across this journey and ADR-0023's schedule provider only when both
 `ACTESTRA_E2E_TEST=1` and a recognized
 `ACTESTRA_GENERAL_WORK_SMOKE_SCENARIO` are present. The smoke workspace must be
@@ -206,6 +223,15 @@ revoke its own fixture grant, or cancel its own held Worker; it cannot select
 an arbitrary tool, policy, command, credential, or runtime mode. With no smoke
 scenario, production construction continues to resolve native context only
 from AionCore.
+
+The Worker-crash scenario adds no production crash bridge or process selector.
+After the packaged application reports that its held fixture attempt is active
+and its native window, renderer/provider, and managed runtime are ready, the
+external smoke harness recursively identifies the unique descendant Electron
+NodeService whose exact environment role is
+`ACTESTRA_UTILITY_ROLE=general-worker` and sends that process `SIGKILL`. The
+recovery scenario disables the ordinary startup Worker probe so that any
+Worker-ready marker is a failure rather than ambiguous probe output.
 
 The external target-app smoke launches the packaged macOS `Actestra.app`
 produced from the production-built materialized desktop, using only the exact
@@ -228,6 +254,12 @@ Representative tool failure proves one failed file journey, exact matching
 tool/Task/Attempt incident evidence, no output Artifact, no restart execution,
 and absence of its root, source marker, filename, and opaque references from
 normalized events, metadata audit, and renderer-facing output.
+Worker crash proves a failed Task and Session, crashed Worker and Attempt,
+exact `worker-process-exit` evidence, the terminal event tail
+`task.updated -> worker.failed -> task.failed`, no replacement Session, tool,
+approval, audit, or Artifact effect, and an identical authority snapshot after
+restart. The external kill and process discovery remain test-harness authority
+outside the packaged renderer and production bridge.
 
 ## Consequences
 
@@ -249,6 +281,8 @@ normalized events, metadata audit, and renderer-facing output.
 - A renderer cannot choose a filesystem path or invoke a Worker/tool directly.
 - Duplicate submit responses and pre-attempt application restarts are
   recoverable without duplicating the task output.
+- An externally killed, unreplaced General Worker becomes explicit durable
+  failure evidence and is not silently relaunched after restart.
 - Artifact content uses the native Preview experience without becoming a
   renderer persistence record.
 
@@ -262,8 +296,8 @@ normalized events, metadata audit, and renderer-facing output.
 - The loopback native-context read remains a compatibility dependency and must
   fail closed when AionCore is unavailable or incompatible.
 - Schema versions 8 through 13 are forward-only.
-- General or network research, Worker crash, and broader permission journeys
-  remain later P4 acceptance work. Schedule is governed by ADR-0023; the
+- General or network research and broader permission journeys remain outside
+  this representative P4 fixture set. Schedule is governed by ADR-0023; the
   representative tool-failure fixture reuses the accepted file journey rather
   than adding another journey kind.
 
@@ -295,6 +329,12 @@ message-status, cancellation, and Preview surfaces.
 Rejected because restart must use the authority already committed atomically;
 re-reading could silently rebind a Task to changed compatibility state.
 
+### Add a production crash-control operation
+
+Rejected because process discovery and forced termination are external test
+harness responsibilities. Giving the renderer or production bridge a Worker
+PID or kill operation would violate the main-owned process boundary.
+
 ## Review triggers
 
 Review this decision if:
@@ -306,4 +346,5 @@ Review this decision if:
 - a workspace grant requires a separate interactive approval beyond native
   workspace selection;
 - AionCore changes its conversation endpoint or workspace semantics; or
+- preserved General Work admits automatic replacement after a Worker crash; or
 - renderer preview persistence can no longer honor non-persisted content.

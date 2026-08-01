@@ -535,6 +535,18 @@ replaceOnce(
 );
 
 replaceOnce(
+  "packages/desktop/src/index.ts",
+  `    if (process.env.ACTESTRA_E2E_TEST === '1') {
+      const workerProbe = await runGeneralWorkerProbe({`,
+  `    if (
+      process.env.ACTESTRA_E2E_TEST === '1' &&
+      process.env.ACTESTRA_GENERAL_WORK_SMOKE_SCENARIO !==
+        'recover-worker-crash'
+    ) {
+      const workerProbe = await runGeneralWorkerProbe({`,
+);
+
+replaceOnce(
   "packages/desktop/src/process/services/actestraShadowBridge.ts",
   `import { GeneralWorkCoordinator } from '@/actestra/main/workers/generalWorkCoordinator';
 import { ACTESTRA_SHADOW_OBSERVE_CHANNEL } from '@/common/config/actestraShadowContract';`,
@@ -741,7 +753,8 @@ replaceOnce(
         workingDirectory: process.resourcesPath,
         adapter: {
           executionMode:
-            generalWorkSmokeConfig?.scenario === 'cancellation'
+            generalWorkSmokeConfig?.scenario === 'cancellation' ||
+            generalWorkSmokeConfig?.scenario === 'prepare-worker-crash'
               ? 'hold'
               : journeyKind === 'office-document-artifact'
                 ? 'office-document-artifact-fixture'
@@ -1081,6 +1094,8 @@ const SMOKE_SCENARIOS = [
   'recover-office-restart',
   'prepare-tool-failure',
   'recover-tool-failure',
+  'prepare-worker-crash',
+  'recover-worker-crash',
   'denial',
   'cancellation',
   'local-research',
@@ -1169,12 +1184,24 @@ function submissionId(
   ) {
     return 'submission-aionui-smoke-office-restart';
   }
+  if (
+    scenario === 'prepare-worker-crash' ||
+    scenario === 'recover-worker-crash'
+  ) {
+    return 'submission-aionui-smoke-worker-crash';
+  }
   return \`submission-aionui-smoke-\${scenario}\`;
 }
 
 function prompt(scenario: ActestraGeneralWorkSmokeScenario): string {
   if (scenario === 'cancellation') {
     return 'Hold the bounded Actestra smoke task until cancellation.';
+  }
+  if (
+    scenario === 'prepare-worker-crash' ||
+    scenario === 'recover-worker-crash'
+  ) {
+    return 'Hold until the packaged General Worker process is terminated.';
   }
   if (scenario === 'denial') {
     return 'Exercise the bounded Actestra workspace grant denial.';
@@ -1237,6 +1264,9 @@ export async function runActestraGeneralWorkSmoke(
       ? { journeyKind: 'workspace-file-artifact' as const }
       : config.scenario === 'local-research'
         ? { journeyKind: 'local-research-artifact' as const }
+      : config.scenario === 'prepare-worker-crash' ||
+          config.scenario === 'recover-worker-crash'
+        ? { journeyKind: 'prompt-artifact' as const }
       : {}),
   } as const;
 
@@ -1382,14 +1412,21 @@ export async function runActestraGeneralWorkSmoke(
     });
   }
 
-  if (config.scenario === 'recover-tool-failure') {
+  if (
+    config.scenario === 'recover-tool-failure' ||
+    config.scenario === 'recover-worker-crash'
+  ) {
+    const workerCrash = config.scenario === 'recover-worker-crash';
+    const expectedIncident = workerCrash
+      ? 'worker-process-exit'
+      : 'content-too-large';
     if (
       recoverySummary.attempted !== 0 ||
       recoverySummary.started !== 0 ||
       recoverySummary.failed !== 0
     ) {
       throw new Error(
-        'The recovered tool-failure smoke attempted to restart terminal work',
+        \`The recovered \${workerCrash ? 'Worker-crash' : 'tool-failure'} smoke attempted to restart terminal work\`,
       );
     }
     const projection = oneProjection(
@@ -1398,11 +1435,11 @@ export async function runActestraGeneralWorkSmoke(
     if (
       projection.status !== 'failed' ||
       projection.canCancel ||
-      projection.incidentCode !== 'content-too-large' ||
+      projection.incidentCode !== expectedIncident ||
       projection.artifacts.length !== 0
     ) {
       throw new Error(
-        'The recovered tool-failure smoke lost exact content-too-large evidence',
+        \`The recovered \${workerCrash ? 'Worker-crash' : 'tool-failure'} smoke lost exact \${expectedIncident} evidence\`,
       );
     }
     return Object.freeze({
@@ -1436,6 +1473,33 @@ export async function runActestraGeneralWorkSmoke(
     return Object.freeze({
       scenario: config.scenario,
       status: 'cancelled',
+      taskCount: 1,
+      artifactCount: 0,
+    });
+  }
+
+  if (config.scenario === 'prepare-worker-crash') {
+    console.info(
+      \`ACTESTRA_AIONUI_GENERAL_WORKER_ACTIVE \${JSON.stringify({ taskId: started.taskId })}\`,
+    );
+    await service.waitForIdle(started.taskId);
+    const projection = oneProjection(
+      await service.list(config.nativeConversationId),
+    );
+    if (
+      projection.taskId !== started.taskId ||
+      projection.status !== 'failed' ||
+      projection.canCancel ||
+      projection.incidentCode !== 'worker-process-exit' ||
+      projection.artifacts.length !== 0
+    ) {
+      throw new Error(
+        'The Worker-crash smoke did not persist exact worker-process-exit evidence',
+      );
+    }
+    return Object.freeze({
+      scenario: config.scenario,
+      status: 'failed',
       taskCount: 1,
       artifactCount: 0,
     });
@@ -2447,6 +2511,8 @@ function config(
     | 'recover-office-restart'
     | 'prepare-tool-failure'
     | 'recover-tool-failure'
+    | 'prepare-worker-crash'
+    | 'recover-worker-crash'
     | 'denial'
     | 'cancellation'
     | 'local-research',
@@ -2495,6 +2561,20 @@ describe('Actestra target-app General Work smoke contract', () => {
         ACTESTRA_GENERAL_WORK_SMOKE_WORKSPACE: path.resolve('smoke-workspace'),
       }),
     ).toEqual(config('recover-tool-failure'));
+    expect(
+      resolveActestraGeneralWorkSmokeConfig({
+        ACTESTRA_E2E_TEST: '1',
+        ACTESTRA_GENERAL_WORK_SMOKE_SCENARIO: 'prepare-worker-crash',
+        ACTESTRA_GENERAL_WORK_SMOKE_WORKSPACE: path.resolve('smoke-workspace'),
+      }),
+    ).toEqual(config('prepare-worker-crash'));
+    expect(
+      resolveActestraGeneralWorkSmokeConfig({
+        ACTESTRA_E2E_TEST: '1',
+        ACTESTRA_GENERAL_WORK_SMOKE_SCENARIO: 'recover-worker-crash',
+        ACTESTRA_GENERAL_WORK_SMOKE_WORKSPACE: path.resolve('smoke-workspace'),
+      }),
+    ).toEqual(config('recover-worker-crash'));
   });
 
   it('requires terminal cancellation evidence from the target service', async () => {
@@ -2644,6 +2724,106 @@ describe('Actestra target-app General Work smoke contract', () => {
     await expect(
       runActestraGeneralWorkSmoke(
         config('recover-tool-failure'),
+        service,
+        Promise.resolve({ attempted: 1, started: 1, failed: 0 }),
+      ),
+    ).rejects.toThrow(/terminal work/u);
+    expect(service.list).not.toHaveBeenCalled();
+  });
+
+  it('waits for an externally terminated Worker and requires exact crash evidence', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    let releaseIdle: (() => void) | undefined;
+    const idle = new Promise<void>((resolve) => {
+      releaseIdle = resolve;
+    });
+    const service = {
+      submit: vi.fn(async () => ({
+        taskId: 'task-worker-crash-smoke',
+        canCancel: true,
+      })),
+      waitForIdle: vi.fn(async () => idle),
+      list: vi.fn(async () => [
+        {
+          taskId: 'task-worker-crash-smoke',
+          status: 'failed',
+          canCancel: false,
+          incidentCode: 'worker-process-exit',
+          artifacts: [],
+        },
+      ]),
+    } as unknown as AionUiGeneralWorkJourneyService;
+
+    const operation = runActestraGeneralWorkSmoke(
+      config('prepare-worker-crash'),
+      service,
+      zeroRecovery,
+    );
+    await vi.waitFor(() => {
+      expect(info).toHaveBeenCalledWith(
+        'ACTESTRA_AIONUI_GENERAL_WORKER_ACTIVE ' +
+          JSON.stringify({ taskId: 'task-worker-crash-smoke' }),
+      );
+    });
+    releaseIdle?.();
+
+    await expect(operation).resolves.toEqual({
+      scenario: 'prepare-worker-crash',
+      status: 'failed',
+      taskCount: 1,
+      artifactCount: 0,
+    });
+    expect(service.submit).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        journeyKind: 'prompt-artifact',
+      }),
+    );
+  });
+
+  it('projects a finalized Worker crash after restart without relaunching work', async () => {
+    const service = {
+      submit: vi.fn(async () => {
+        throw new Error('recover-worker-crash must not submit');
+      }),
+      waitForIdle: vi.fn(async () => undefined),
+      list: vi.fn(async () => [
+        {
+          taskId: 'task-worker-crash-smoke',
+          status: 'failed',
+          canCancel: false,
+          incidentCode: 'worker-process-exit',
+          artifacts: [],
+        },
+      ]),
+    } as unknown as AionUiGeneralWorkJourneyService;
+
+    await expect(
+      runActestraGeneralWorkSmoke(
+        config('recover-worker-crash'),
+        service,
+        zeroRecovery,
+      ),
+    ).resolves.toEqual({
+      scenario: 'recover-worker-crash',
+      status: 'failed',
+      taskCount: 1,
+      artifactCount: 0,
+    });
+    expect(service.submit).not.toHaveBeenCalled();
+    expect(service.waitForIdle).not.toHaveBeenCalled();
+    expect(service.list).toHaveBeenCalledExactlyOnceWith(
+      'conversation-aionui-smoke',
+    );
+  });
+
+  it('rejects a recovered Worker crash when startup attempts terminal work', async () => {
+    const service = {
+      list: vi.fn(async () => []),
+    } as unknown as AionUiGeneralWorkJourneyService;
+
+    await expect(
+      runActestraGeneralWorkSmoke(
+        config('recover-worker-crash'),
         service,
         Promise.resolve({ attempted: 1, started: 1, failed: 0 }),
       ),

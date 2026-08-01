@@ -973,6 +973,7 @@ export class AionUiGeneralWorkJourneyService {
       clock: this.config.clock,
       supervisor,
       nativeTools: this.config.nativeTools,
+      unreplacedCrashDisposition: "failed",
     });
     try {
       await supervisor.start({
