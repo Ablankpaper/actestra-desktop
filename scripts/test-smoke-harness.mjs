@@ -91,11 +91,6 @@ try {
       /scenario === "prepare-worker-crash" &&\s+workerPid === undefined &&\s+targetAppIsReady\(output\)/u.test(
         generalWorkSmokeSource,
       ) &&
-      generalWorkSmokeSource.includes("const workerCrashInjectionQuiescenceMs = 15_000;") &&
-      generalWorkSmokeSource.includes("workerCrashReadyAt ??= Date.now();") &&
-      generalWorkSmokeSource.includes(
-        "Date.now() - workerCrashReadyAt >= workerCrashInjectionQuiescenceMs",
-      ) &&
       generalWorkSmokeSource.includes('process.kill(workerPid, "SIGKILL")') &&
       generalWorkSmokeSource.includes('"worker-process-exit"') &&
       generalWorkSmokeSource.includes('workers[0]?.state !== "crashed"') &&

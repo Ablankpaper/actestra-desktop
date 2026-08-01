@@ -110,9 +110,12 @@ releases begin.
 
 ### Changed
 
-- Stabilized the packaged external-Worker crash gate with a 15-second
-  post-readiness quiescence window while retaining the real `SIGKILL`, failed
-  Task, restart-recovery, and cleanup assertions.
+- Prevented reentrant Electron General Worker lifecycle cleanup by registering
+  fatal `error` and `exit` events once while retaining the real packaged
+  `SIGKILL`, failed Task, restart-recovery, and cleanup assertions.
+- Made the locked all-target Goose dependency proof fetch missing Cargo
+  manifests on clean runners while keeping graph paths and query failures as
+  separate fail-closed outcomes.
 - Hardened the AionUi-first review boundary with canonical capture-independent
   shadow revisions, exact workspace counts, explicit terminal-state mapping,
   durable evidence-tuple checks, normalized validation errors, service-owned

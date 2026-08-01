@@ -944,6 +944,8 @@ function main() {
     [
       'ACTESTRA_UTILITY_ROLE: "general-worker"',
       "utilityProcess.fork",
+      'this.child.once("error", handleError)',
+      'this.child.once("exit", listener)',
       "allowLoadingUnsignedLibraries: false",
       "respondToAuthRequestsFromMainProcess: false",
     ],

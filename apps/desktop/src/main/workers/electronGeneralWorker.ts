@@ -32,14 +32,14 @@ class ElectronGeneralWorkerTransport implements GeneralWorkerProcessTransport {
     const handleError = (): void => {
       listener();
     };
-    this.child.on("error", handleError);
+    this.child.once("error", handleError);
     return () => {
       this.child.off("error", handleError);
     };
   }
 
   onExit(listener: (code: number) => void): () => void {
-    this.child.on("exit", listener);
+    this.child.once("exit", listener);
     return () => {
       this.child.off("exit", listener);
     };

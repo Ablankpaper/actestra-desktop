@@ -523,9 +523,17 @@ for (const packageName of ["rsa", "sqlx-mysql"]) {
       "--edges",
       "normal",
     ],
-    { cwd: runnerRoot, env: { ...buildEnvironment, CARGO_NET_OFFLINE: "true" } },
+    {
+      cwd: runnerRoot,
+      env: { ...buildEnvironment, CARGO_NET_OFFLINE: "false" },
+    },
   );
-  if (tree.code !== 0 || tree.stdout.trim() !== "" || !tree.stderr.includes("nothing to print")) {
+  if (tree.code !== 0 || tree.signal !== null) {
+    fail(
+      `${packageName} all-target dependency query failed (code=${String(tree.code)}, signal=${String(tree.signal)}): ${tree.stderr.trim()}`,
+    );
+  }
+  if (tree.stdout.trim() !== "" || !tree.stderr.includes("nothing to print")) {
     fail(`${packageName} has entered the all-target selected dependency graph`);
   }
   const packageIds = metadata.packages
