@@ -1,16 +1,16 @@
 # P4 General-Work Vertical Slice
 
 Status: GW-P4.2 through GW-P4.6 plus the representative workspace-file,
-bounded local-research, writing, Office-document, and schedule journeys are
-accepted on `main`. Schedule reached exact final head
-`c06ca5b4bd842fbad098ffc3b9e7bcef1aadbceb`, PR CI 30659567604, squash merge
-`5b0748af674165f9e9475be61dc1e02a1b08c8bc`, and merged-main CI 30660078199.
-Representative tool-failure and Worker-crash evidence still blocks the P4 gate
+bounded local-research, writing, Office-document, schedule, and tool-failure
+journeys are accepted on `main`. Tool failure reached exact final head
+`077f30bcfa3929959c971d08081092bbf976e2ee`, PR CI 30673687603, squash merge
+`c7c414c0c5a126b276fb02b372e02fff437e5f23`, and merged-main CI 30673919260.
+Only Worker-crash/recovery evidence still blocks the P4 gate.
 
 Date: 2026-08-01
 
-Exact base:
-`505afb2f3916e75c7abb07cdf461bda29a602b9b`
+Exact current accepted head:
+`c7c414c0c5a126b276fb02b372e02fff437e5f23`
 
 ## Entry evidence
 
@@ -665,7 +665,7 @@ line-level review. The PR squash merged as
 30660078199 passes. The local Apple Development signature is not notarization,
 a candidate, release, distribution, or user acceptance.
 
-### Representative tool-failure final-local evidence
+### Representative tool-failure accepted evidence
 
 The next independent slice reuses the accepted workspace-file journey and
 forces the main-owned `actestra.workspace.read-text` capability above its 64 KiB
@@ -684,7 +684,7 @@ its non-canonical macOS test alias. A separate RED-to-GREEN harness correction
 now compares the canonical root and checks both aliases for privacy leakage;
 the packaged app itself did not change for that correction.
 
-Final-local evidence on `feat/p4-representative-tool-failure` from exact base
+Final local evidence on `feat/p4-representative-tool-failure` from exact base
 `3d8d697a6416176d90183f671da28347bb194553`:
 
 - final root `bun run check` passes 56 files/425 tests, all source, smoke,
@@ -713,17 +713,19 @@ wrapper is
 
 The complete manual review covers all 15 tracked files and closed terminal
 Attempt fail-closed validation, stale schedule truth, and target-app identity
-chain issues without another confirmed defect. This remains local evidence.
-CodeRabbit was not retried after the known rate limit. The exact scope,
-high-confidence secret, binary/generated-output, tracked-document,
-frozen-foundation, user-copy, and process-cleanup audits pass. Exact local
-implementation commit `fd5524c7f0485923b2aa765df95b5ef0b14187e7` contains the
-15 reviewed files. Ready pull request 22 opened at initial head
-`3d5bfaeeb5b64c607850965bd94ab22d73247fdb`; initial PR CI 30673609902 is in
-progress. Exact final PR-head CI, merge, and merged-main CI remain before
-acceptance. The Apple Development-signed package is not notarized, a candidate,
-release, deployment, distribution, or user acceptance. Worker crash/recovery
-remains the next separate P4 slice after this one is accepted on `main`.
+chain issues without another confirmed defect. CodeRabbit was rate-limited
+before formal review and emitted only its Free summary and walkthrough; PR 22
+has no submitted review or inline comment, so that status is not line-level
+review evidence and was not manually retried. The exact scope, high-confidence
+secret, binary/generated-output, tracked-document, frozen-foundation,
+user-copy, and process-cleanup audits pass. Exact implementation commit
+`fd5524c7f0485923b2aa765df95b5ef0b14187e7` contains the 15 reviewed files.
+Ready pull request 22 reached exact final head
+`077f30bcfa3929959c971d08081092bbf976e2ee`, passed PR CI 30673687603, squash
+merged as `c7c414c0c5a126b276fb02b372e02fff437e5f23`, and passed merged-main CI
+30673919260. The Apple Development-signed package remains local-only evidence:
+it is not notarized, a candidate, release, deployment, distribution, or user
+acceptance. Worker crash/recovery is the sole remaining P4 slice.
 
 Exit: the complete general-work journey is understandable and recoverable in
 the retained AionUi UI with Actestra as the declared system of record.
@@ -757,10 +759,12 @@ P4 is complete only after:
   tasks. The two text tools retain their accepted fixed or bounded paths; the
   Office tool accepts only fixed `brief.docx`. None is a renderer-selected
   generic filesystem API.
-- Representative tool failure has complete local root, native, package, and
-  target-app evidence and implementation commit `fd5524c7` in Ready PR 22, but
-  no exact final PR-head CI, merge, or merged-main CI. It does not close the
-  separate Worker-crash/recovery gate or full P4 acceptance.
+- Representative tool failure is accepted through implementation
+  `fd5524c7f0485923b2aa765df95b5ef0b14187e7`, exact final PR head
+  `077f30bcfa3929959c971d08081092bbf976e2ee`, PR CI 30673687603, squash merge
+  `c7c414c0c5a126b276fb02b372e02fff437e5f23`, and merged-main CI 30673919260.
+  It does not close the separate Worker-crash/recovery gate or full P4
+  acceptance.
 - No shell, network, credential, MCP, publish, Git, arbitrary workspace
   mutation, model, Goose adapter, CrewAI sidecar, or Team orchestration is
   active.

@@ -1,13 +1,12 @@
 # System Overview
 
 Status: P3, F0 through F3.3, GW-P4.2 through GW-P4.6, the representative
-workspace-file, bounded local-research, writing, Office-document, and
-schema-13 schedule journeys are accepted on `main` through exact current head
-`3d8d697a6416176d90183f671da28347bb194553` and merged-main CI run
-30661178474; representative tool failure has final-local root, native, package,
-package-audit, and target-app evidence but no Git or remote acceptance yet;
-Worker-crash/recovery remains before the P4 exit gate; CrewAI is accepted as
-the first P6 planner-sidecar candidate but is not implemented or packaged
+workspace-file, bounded local-research, writing, Office-document, schema-13
+schedule, and representative tool-failure journeys are accepted on `main`
+through exact current head `c7c414c0c5a126b276fb02b372e02fff437e5f23` and
+merged-main CI run 30673919260; Worker-crash/recovery remains before the P4
+exit gate; CrewAI is accepted as the first P6 planner-sidecar candidate but is
+not implemented or packaged
 
 ## Context
 
@@ -120,8 +119,11 @@ scoped capabilities inside that same journey. ADR-0023's main-owned
 schedule-provider boundary, schema 13, timers, claims, and native cron routing
 are accepted through pull requests 20 and 21 with exact merged-main CI.
 Representative tool failure reuses the existing file journey and scoped-read
-policy path; its local evidence remains distinct from commit, PR, merge, or
-release evidence.
+policy path and is accepted through pull request 22, exact final head
+`077f30bcfa3929959c971d08081092bbf976e2ee`, PR CI 30673687603, squash merge
+`c7c414c0c5a126b276fb02b372e02fff437e5f23`, and merged-main CI 30673919260.
+Its local package remains distinct from commit, CI, merge, notarization,
+candidate, release, distribution, or user-acceptance evidence.
 
 P4.2 adds the separate compatibility boundary accepted in
 [ADR-0011](decisions/0011-aionui-shadow-projection.md). Successful native HTTP
@@ -622,11 +624,11 @@ evidence. Final local gates, exact PR-head CI, squash merge, and merged-main CI
 are recorded above. The representative tool-failure slice adds no new renderer
 or tool capability: it forces the existing 64 KiB file-read boundary, retains
 matching tool/Task/Attempt incident evidence, creates no Artifact, and proves
-stable restart projection locally. Its Git delivery remains pending. General
-or network research, Worker crash, credential storage, and OS sandbox
-mechanisms remain later work. Local Apple Development-signed packages remain
-unnotarized and are not candidates, releases, distributions, or user-acceptance
-artifacts.
+stable restart projection. Pull request 22 and its exact remote gates are
+recorded above. General or network research, Worker crash, credential storage,
+and OS sandbox mechanisms remain later work. Local Apple Development-signed
+packages remain unnotarized and are not candidates, releases, distributions,
+or user-acceptance artifacts.
 Signing, notarization, update delivery, and cross-platform candidate packaging
 remain P8 work.
 

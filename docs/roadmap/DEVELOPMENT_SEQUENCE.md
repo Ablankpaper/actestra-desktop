@@ -75,8 +75,12 @@ target native app. Focused workflow TDD produced exact final head
 native package and clean-profile smoke path. PR 20 squash merged as
 `5b0748af674165f9e9475be61dc1e02a1b08c8bc`, and exact merged-main CI
 30660078199 passes. Its remote CodeRabbit output is a rate-limited summary, not
-line-level review evidence. Representative tool-failure and Worker-crash gates
-remain; P5 Goose and P6 CrewAI/Team work have not started.
+line-level review evidence. Representative tool failure is accepted through
+exact final head `077f30bcfa3929959c971d08081092bbf976e2ee`, PR CI 30673687603,
+squash merge `c7c414c0c5a126b276fb02b372e02fff437e5f23`, and merged-main CI
+30673919260. Its CodeRabbit status is a rate-limited Free walkthrough rather
+than formal line-level review. Only the Worker-crash/recovery P4 gate remains;
+P5 Goose and P6 CrewAI/Team work have not started.
 
 ## P0 — Project Foundation
 
@@ -245,16 +249,16 @@ slice previously described as P4.3/F3.1.
   reached final head `c06ca5b4bd842fbad098ffc3b9e7bcef1aadbceb`, passed PR CI
   30659567604, squash merged as `5b0748af674165f9e9475be61dc1e02a1b08c8bc`,
   and passed merged-main CI 30660078199. The representative tool-failure slice
-  now has final-local RED-to-GREEN, 56/425 root, 345/2,662 native, production
-  build, complete 15-file manual review, a pinned signed-unnotarized arm64
-  package, strict resource/signature, and real schema-13 target-app first-run
-  plus restart evidence. Exact local implementation commit
-  `fd5524c7f0485923b2aa765df95b5ef0b14187e7` is pushed in Ready pull request
-  22, opened at initial head `3d5bfaeeb5b64c607850965bd94ab22d73247fdb`.
-  Initial PR CI 30673609902 is in progress; exact final PR-head and merged-main
-  CI remain, so the slice is not accepted. The phase exit gate remains pending
-  until that delivery closes and the separate Worker-crash/recovery smoke
-  passes.
+  has RED-to-GREEN, 56/425 root, 345/2,662 native, production-build, complete
+  15-file manual-review, pinned signed-unnotarized arm64 package, strict
+  resource/signature, and real schema-13 target-app first-run plus restart
+  evidence. Exact implementation commit
+  `fd5524c7f0485923b2aa765df95b5ef0b14187e7` reached Ready pull request 22 at
+  exact final head `077f30bcfa3929959c971d08081092bbf976e2ee`, passed PR CI
+  30673687603, squash merged as
+  `c7c414c0c5a126b276fb02b372e02fff437e5f23`, and passed merged-main CI
+  30673919260. The phase exit gate now remains pending only until the separate
+  Worker-crash/recovery smoke passes.
 - Support scoped workspace reads and task-output writes through the preserved
   file, workspace, conversation, preview, and artifact surfaces.
 - Add representative file, research, writing, office-document, schedule,
@@ -268,8 +272,8 @@ slice previously described as P4.3/F3.1.
   account, endpoint, telemetry, updater, or public listener effect.
 - The general-work core journey completes end to end after restart with
   Actestra declared as the system of record for every fused domain.
-- Permission denial, cancellation, tool failure, and artifact conflict paths are
-  covered.
+- Permission denial, cancellation, tool failure, Worker crash/recovery, and
+  artifact conflict paths are covered.
 
 ## P5 — Goose Coding-Worker Vertical Slice
 
