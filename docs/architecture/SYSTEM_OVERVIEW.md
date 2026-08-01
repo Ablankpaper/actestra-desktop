@@ -136,8 +136,9 @@ and Session become failed while the Worker and Attempt remain crashed with the
 same incident. Local contracts cover stable restart projection and fail-closed
 missing-event behavior. Complete root/native gates, a fresh signed unnotarized
 arm64 package, strict package checks, and real target-app crash/restart smoke
-pass, followed by complete 14-file manual review and exact scope audits. Git,
-PR, merge, and merged-main CI remain separate pending evidence.
+pass, followed by complete 14-file manual review and exact scope audits in
+implementation commit `47ed445eab204c0998e44167455c062600158dd3`. Push, PR,
+merge, and merged-main CI remain separate pending evidence.
 
 P4.2 adds the separate compatibility boundary accepted in
 [ADR-0011](decisions/0011-aionui-shadow-projection.md). Successful native HTTP

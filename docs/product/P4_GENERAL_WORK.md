@@ -746,8 +746,9 @@ persists Task/Session `failed` with Worker/Attempt `crashed` and incident
 with `event-mismatch`. Restart reads the finalized projection without
 relaunching the Worker or exposing cancellation.
 
-Final evidence on the current uncommitted branch passes the complete 56-file/
-427-test root gate, 345-file/2,665-test native gate, and both production builds.
+Final evidence on exact implementation commit
+`47ed445eab204c0998e44167455c062600158dd3` passes the complete 56-file/427-test
+root gate, 345-file/2,665-test native gate, and both production builds.
 The fresh Apple Development-signed, unnotarized arm64 directory package passes
 the package verifier, recursive signature, ASAR, Hub Git blob, ZIP, symlink,
 and exact AionCore `0.1.52` checks. Its external target-app harness selects only
@@ -760,8 +761,9 @@ remaining confirmed defect. Exact allowlist, high-confidence secret,
 binary/generated/package, mode, staged-scope, frozen-foundation,
 48-visible/8-ignored user-copy, package-hash, signature, and process-cleanup
 audits pass. The standing CodeRabbit rate limit was not retried and supplies no
-formal line-level review evidence for this slice. Commit, push, PR-head CI,
-merge, and merged-main CI have not yet completed.
+formal line-level review evidence for this slice. The exact implementation
+commit contains all 14 reviewed files; push, PR-head CI, merge, and merged-main
+CI have not yet completed.
 
 Exit: the complete general-work journey is understandable and recoverable in
 the retained AionUi UI with Actestra as the declared system of record.
