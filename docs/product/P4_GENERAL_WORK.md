@@ -1,18 +1,16 @@
 # P4 General-Work Vertical Slice
 
-Status: GW-P4.2 through GW-P4.6 plus the representative workspace-file,
-bounded local-research, writing, Office-document, schedule, and tool-failure
-journeys are accepted on `main`. Tool failure reached exact final head
-`077f30bcfa3929959c971d08081092bbf976e2ee`, PR CI 30673687603, squash merge
-`c7c414c0c5a126b276fb02b372e02fff437e5f23`, and merged-main CI 30673919260.
-Worker-crash/recovery has complete local gates, a fresh signed unnotarized
-package, real target-app smoke, manual review, and exact scope audits. Ready
-pull request 24 is open; exact final-head remote CI still blocks the P4 gate.
+Status: Accepted on `main`. GW-P4.2 through GW-P4.6 plus the representative
+workspace-file, bounded local-research, writing, Office-document, schedule,
+tool-failure, and Worker-crash/recovery journeys satisfy the P4 exit gate.
+Worker crash reached exact final head
+`3593fac8db48a0cb149bb6c736374eeaccebe332`, PR CI 30687199671, squash merge
+`80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`, and merged-main CI 30687433298.
 
 Date: 2026-08-01
 
 Exact current accepted head:
-`df3fd3cd27f034cd900e2528adf8af9b87f7ee40`
+`80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`
 
 ## Entry evidence
 
@@ -727,9 +725,10 @@ Ready pull request 22 reached exact final head
 merged as `c7c414c0c5a126b276fb02b372e02fff437e5f23`, and passed merged-main CI
 30673919260. The Apple Development-signed package remains local-only evidence:
 it is not notarized, a candidate, release, deployment, distribution, or user
-acceptance. Worker crash/recovery is the sole remaining P4 slice.
+acceptance. Worker crash/recovery is accepted as recorded below and closes the
+P4 phase gate.
 
-### Worker-crash/recovery local evidence complete
+### Worker-crash/recovery accepted evidence
 
 The independent reliability slice starts from exact verified `main` and
 `origin/main` `df3fd3cd27f034cd900e2528adf8af9b87f7ee40`; exact merged-main CI
@@ -762,19 +761,19 @@ binary/generated/package, mode, staged-scope, frozen-foundation,
 48-visible/8-ignored user-copy, package-hash, signature, and process-cleanup
 audits pass. The standing CodeRabbit rate limit was not manually retried. Exact
 implementation commit `47ed445eab204c0998e44167455c062600158dd3` contains all
-14 reviewed files and was pushed with documentation head
-`3211a7ab2e436c83fc756f02bb09f9d395a13bd5` to Ready pull request 24. Its
-automatic CodeRabbit run selected all 14 files but was rate-limited before
-review, so its successful status is not formal line-level review evidence.
-Exact final PR head, PR-head CI, merge, and merged-main CI have not yet
-completed.
+14 reviewed files. Ready pull request 24 reached exact final head
+`3593fac8db48a0cb149bb6c736374eeaccebe332`, passed PR CI 30687199671, squash
+merged as `80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`, and passed merged-main CI
+30687433298. Its automatic CodeRabbit request selected all 14 files but was
+rate-limited before review, so its successful status is not formal line-level
+review evidence.
 
 Exit: the complete general-work journey is understandable and recoverable in
 the retained AionUi UI with Actestra as the declared system of record.
 
 ## Phase gate
 
-P4 is complete only after:
+P4 is accepted because:
 
 - the general-work journey completes after restart;
 - scoped file, local research, writing, office-document, schedule, and
@@ -788,6 +787,11 @@ P4 is complete only after:
 - exact PR-head and merged-main CI pass; and
 - the packaged target AionUi product, not only the legacy harness, passes the
   required smoke.
+
+The final missing Worker-crash/recovery remote gates passed on exact PR head
+`3593fac8db48a0cb149bb6c736374eeaccebe332` and exact merged-main head
+`80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`. This closes the phase gate but is
+not a candidate, release, distribution, deployment, or user acceptance claim.
 
 ## Current non-claims
 
@@ -805,11 +809,12 @@ P4 is complete only after:
   `fd5524c7f0485923b2aa765df95b5ef0b14187e7`, exact final PR head
   `077f30bcfa3929959c971d08081092bbf976e2ee`, PR CI 30673687603, squash merge
   `c7c414c0c5a126b276fb02b372e02fff437e5f23`, and merged-main CI 30673919260.
-  It does not close the separate Worker-crash/recovery gate or full P4
-  acceptance.
-- Worker-crash/recovery currently has complete local package and target-app
-  evidence. It is not accepted, pushed, PR-CI-backed, merged, notarized,
-  released, deployed, distributed, or user-accepted.
+  The separate Worker-crash/recovery gate is now also accepted through PR 24.
+- Worker-crash/recovery is accepted through final head
+  `3593fac8db48a0cb149bb6c736374eeaccebe332`, PR CI 30687199671, squash merge
+  `80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`, and merged-main CI 30687433298.
+  Its local package is not notarized, released, deployed, distributed, or
+  user-accepted.
 - No shell, network, credential, MCP, publish, Git, arbitrary workspace
   mutation, model, Goose adapter, CrewAI sidecar, or Team orchestration is
   active.

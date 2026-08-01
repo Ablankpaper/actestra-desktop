@@ -79,13 +79,13 @@ line-level review evidence. Representative tool failure is accepted through
 exact final head `077f30bcfa3929959c971d08081092bbf976e2ee`, PR CI 30673687603,
 squash merge `c7c414c0c5a126b276fb02b372e02fff437e5f23`, and merged-main CI
 30673919260. Its CodeRabbit status is a rate-limited Free walkthrough rather
-than formal line-level review. Worker-crash/recovery now has complete local
-gates, packaged target-app evidence, manual review, and exact scope audits in
-implementation commit `47ed445eab204c0998e44167455c062600158dd3` from accepted
-base `df3fd3cd27f034cd900e2528adf8af9b87f7ee40`. Ready pull request 24 is open
-from initial pushed documentation head
-`3211a7ab2e436c83fc756f02bb09f9d395a13bd5`, but exact final-head remote CI
-remains. P5 Goose and P6 CrewAI/Team work have not started.
+than formal line-level review. Worker-crash/recovery is accepted through exact
+implementation `47ed445eab204c0998e44167455c062600158dd3`, final PR head
+`3593fac8db48a0cb149bb6c736374eeaccebe332`, PR CI 30687199671, squash merge
+`80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`, and merged-main CI 30687433298.
+Its completed local gates, packaged target-app evidence, manual review, and
+exact scope audits close the P4 exit gate. P5 Goose and P6 CrewAI/Team work
+have not started.
 
 ## P0 — Project Foundation
 
@@ -266,8 +266,10 @@ slice previously described as P4.3/F3.1.
   focused local contracts for failed Task/Session, crashed Worker/Attempt,
   canonical event order, fail-closed missing evidence, and no-relaunch restart.
   Its complete final-byte gates, packaged target-app smoke, 14-file manual
-  review, and exact scope audits pass. The phase exit gate remains pending
-  until remote acceptance passes.
+  review, and exact scope audits pass. Exact final head
+  `3593fac8db48a0cb149bb6c736374eeaccebe332` passed PR CI 30687199671, squash
+  merged as `80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`, and passed merged-main CI
+  30687433298. The P4 phase exit gate is accepted.
 - Support scoped workspace reads and task-output writes through the preserved
   file, workspace, conversation, preview, and artifact surfaces.
 - Add representative file, research, writing, office-document, schedule,
