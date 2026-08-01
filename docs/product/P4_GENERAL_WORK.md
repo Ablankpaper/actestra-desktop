@@ -6,8 +6,8 @@ journeys are accepted on `main`. Tool failure reached exact final head
 `077f30bcfa3929959c971d08081092bbf976e2ee`, PR CI 30673687603, squash merge
 `c7c414c0c5a126b276fb02b372e02fff437e5f23`, and merged-main CI 30673919260.
 Worker-crash/recovery has complete local gates, a fresh signed unnotarized
-package, real target-app smoke, manual review, and exact scope audits; Git
-delivery and exact remote CI still block the P4 gate.
+package, real target-app smoke, manual review, and exact scope audits. Ready
+pull request 24 is open; exact final-head remote CI still blocks the P4 gate.
 
 Date: 2026-08-01
 
@@ -760,10 +760,14 @@ The real schema-13 smoke passes. The complete 14-file manual review found no
 remaining confirmed defect. Exact allowlist, high-confidence secret,
 binary/generated/package, mode, staged-scope, frozen-foundation,
 48-visible/8-ignored user-copy, package-hash, signature, and process-cleanup
-audits pass. The standing CodeRabbit rate limit was not retried and supplies no
-formal line-level review evidence for this slice. The exact implementation
-commit contains all 14 reviewed files; push, PR-head CI, merge, and merged-main
-CI have not yet completed.
+audits pass. The standing CodeRabbit rate limit was not manually retried. Exact
+implementation commit `47ed445eab204c0998e44167455c062600158dd3` contains all
+14 reviewed files and was pushed with documentation head
+`3211a7ab2e436c83fc756f02bb09f9d395a13bd5` to Ready pull request 24. Its
+automatic CodeRabbit run selected all 14 files but was rate-limited before
+review, so its successful status is not formal line-level review evidence.
+Exact final PR head, PR-head CI, merge, and merged-main CI have not yet
+completed.
 
 Exit: the complete general-work journey is understandable and recoverable in
 the retained AionUi UI with Actestra as the declared system of record.

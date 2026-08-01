@@ -82,8 +82,10 @@ squash merge `c7c414c0c5a126b276fb02b372e02fff437e5f23`, and merged-main CI
 than formal line-level review. Worker-crash/recovery now has complete local
 gates, packaged target-app evidence, manual review, and exact scope audits in
 implementation commit `47ed445eab204c0998e44167455c062600158dd3` from accepted
-base `df3fd3cd27f034cd900e2528adf8af9b87f7ee40`, but push and exact remote CI
-remain. P5 Goose and P6 CrewAI/Team work have not started.
+base `df3fd3cd27f034cd900e2528adf8af9b87f7ee40`. Ready pull request 24 is open
+from initial pushed documentation head
+`3211a7ab2e436c83fc756f02bb09f9d395a13bd5`, but exact final-head remote CI
+remains. P5 Goose and P6 CrewAI/Team work have not started.
 
 ## P0 — Project Foundation
 

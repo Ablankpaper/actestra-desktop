@@ -4,7 +4,7 @@ Last updated: 2026-08-01
 
 ## Current phase
 
-### Worker crash/recovery local gates are complete; remote delivery is pending
+### Worker crash/recovery Ready PR is open; exact remote gates are pending
 
 Pull request 8 reached exact final head
 `3f85e13072f5fb13fb43c9dae94f992bb0b7fb9c` and squash merged F3.3 as
@@ -843,9 +843,15 @@ acceptance. The complete 14-file manual review found no remaining confirmed
 defect. Exact allowlist, high-confidence secret, binary/generated/package,
 mode, staged-scope, frozen-foundation, 48-visible/8-ignored user-copy, package-
 hash, signature, and process-cleanup audits pass. The standing CodeRabbit rate
-limit was not retried and supplies no formal line-level review evidence for
-this slice. The exact implementation commit contains all 14 reviewed files;
-push, PR-head CI, merge, and merged-main CI remain.
+limit was not manually retried and supplies no formal line-level review
+evidence for this slice. The exact implementation commit contains all 14
+reviewed files and was pushed with documentation head
+`3211a7ab2e436c83fc756f02bb09f9d395a13bd5` to
+[Ready pull request 24](https://github.com/bignormal/actestra-desktop/pull/24).
+Automatic CodeRabbit run `93875bfe-4335-4bcf-a805-90ef33862d6f` selected all
+14 files but was rate-limited before review; its successful status is not
+line-level review evidence. Exact final PR head, PR-head CI, merge, and
+merged-main CI remain.
 
 F0 implementation commit
 `13270ca0abd7353710541afca9ddf46c47670be3` first established the preserved
@@ -1451,7 +1457,7 @@ Review closure validation at
 | P4 bounded Office-document journey                 | Accepted on `main` through PR 19                                  | Final head `091f786d57c6b4569cdaac17ea969a0b9070ea02`; PR CI 30602624426; squash merge `505afb2f3916e75c7abb07cdf461bda29a602b9b`; merged-main CI 30602821085; ADR-0022; schema 12; 50/338 root and 343/2,644 native tests; final local CodeRabbit closure; signed unnotarized arm64 package and real Office target-app smoke pass; remote Free output is summary/walkthrough only                                                                                   |
 | P4 bounded scheduled General Work                  | Accepted on `main` through PR 20                                  | ADR-0023; exact final head `c06ca5b4bd842fbad098ffc3b9e7bcef1aadbceb`; PR CI 30659567604; squash merge `5b0748af674165f9e9475be61dc1e02a1b08c8bc`; merged-main CI 30660078199; schema 13; 56/424 root and 345/2,658 native tests; final local review closure; signed unnotarized arm64 package, strict package/ASAR/resource checks, and real schedule target-app smoke; remote CodeRabbit output is rate-limited summary/walkthrough only                           |
 | P4 representative tool failure                     | Accepted on `main` through PR 22                                  | Implementation `fd5524c7f0485923b2aa765df95b5ef0b14187e7`; final head `077f30bcfa3929959c971d08081092bbf976e2ee`; PR CI 30673687603; squash merge `c7c414c0c5a126b276fb02b372e02fff437e5f23`; merged-main CI 30673919260; 56/425 final root and 345/2,662 native tests; complete 15-file manual review and final scope/secret/generated-output audit; pinned, signed, unnotarized local arm64 package and schema-13 target-app `content-too-large` plus restart evidence; CodeRabbit was rate-limited before formal review and its Free summary is not line-level review evidence |
-| P4 Worker crash/recovery                            | Complete local gates, review, scope, and target-app evidence; remote delivery pending | Implementation `47ed445eab204c0998e44167455c062600158dd3` on branch `feat/p4-worker-crash-recovery` from `main@df3fd3cd27f034cd900e2528adf8af9b87f7ee40`; 56/427 root and 345/2,665 native tests; root and native production builds; signed unnotarized arm64 package with strict package/resource checks; real external-`SIGKILL` schema-13 target-app smoke; failed Task/Session, crashed Worker/Attempt, exact event tail, fail-closed missing evidence, no-relaunch restart, complete 14-file manual review, and exact scope audits; push, PR CI, merge, and merged-main CI remain |
+| P4 Worker crash/recovery                            | Ready PR 24 open; exact final head and remote gates pending        | Implementation `47ed445eab204c0998e44167455c062600158dd3`, initial pushed documentation head `3211a7ab2e436c83fc756f02bb09f9d395a13bd5`, and Ready PR 24 from `main@df3fd3cd27f034cd900e2528adf8af9b87f7ee40`; 56/427 root and 345/2,665 native tests; builds; signed unnotarized arm64 package; external-`SIGKILL` schema-13 smoke; complete 14-file manual review and exact scope audits; automatic CodeRabbit selected all files but was rate-limited before review; final PR head, PR CI, merge, and merged-main CI remain |
 | P6 orchestration boundary                          | Accepted architecture direction only                              | ADR-0015; CrewAI `1.15.8` at `e9caf1e1b89343bb833b5da6660faa91804a9dce` verified as the first supervised sidecar candidate; Eigent `v1.0.2` at `e478094a9ff433132b3cf1928e4143338ddaab20` retained as a reference; neither is imported, bundled, or implemented                                                                                                                                                                                                      |
 | Native AionUi source                               | Exact local desktop snapshot                                      | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot                                                                                                                                                                                                                                                                                                                                                   |
 | Native preservation contract                       | Local pass                                                        | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified                                                                                                                                                                                                                                                                                                                                        |
@@ -1551,8 +1557,10 @@ The ordered implementation index and P3 non-claims are in
 5. Preserve the completed Worker-crash/recovery 14-file manual review and exact
    scope audits. Do not retry the unchanged CodeRabbit rate limit or represent
    it as review evidence. Preserve exact implementation commit
-   `47ed445eab204c0998e44167455c062600158dd3`, push, obtain exact PR-head CI,
-   squash merge under repository rules, and verify exact merged-main CI.
+   `47ed445eab204c0998e44167455c062600158dd3` and Ready pull request 24; do not
+   represent its rate-limited automatic CodeRabbit status as formal review.
+   Obtain exact final PR-head CI, squash merge under repository rules, and
+   verify exact merged-main CI.
 6. Reassess the complete P4 exit gate from exact merged-main evidence; do not
    enter Goose P5 before that gate is evidenced.
 7. Keep CrewAI-assisted Team P6 ordered after Goose P5.

@@ -6,8 +6,8 @@ schedule, and representative tool-failure journeys are accepted on `main`
 through exact current head `df3fd3cd27f034cd900e2528adf8af9b87f7ee40` and
 merged-main CI run 30674966106; Worker-crash/recovery has complete local gates,
 a signed unnotarized arm64 package, real target-app crash/restart evidence, and
-complete manual review and scope audits, but still awaits remote gates before
-P4 acceptance; CrewAI is
+complete manual review and scope audits. Ready pull request 24 is open, but
+still awaits exact final-head remote gates before P4 acceptance; CrewAI is
 accepted as the first P6 planner-sidecar candidate but is not implemented or
 packaged
 
@@ -137,8 +137,10 @@ same incident. Local contracts cover stable restart projection and fail-closed
 missing-event behavior. Complete root/native gates, a fresh signed unnotarized
 arm64 package, strict package checks, and real target-app crash/restart smoke
 pass, followed by complete 14-file manual review and exact scope audits in
-implementation commit `47ed445eab204c0998e44167455c062600158dd3`. Push, PR,
-merge, and merged-main CI remain separate pending evidence.
+implementation commit `47ed445eab204c0998e44167455c062600158dd3`. Ready pull
+request 24 was opened from initial pushed documentation head
+`3211a7ab2e436c83fc756f02bb09f9d395a13bd5`; exact final-head CI, merge, and
+merged-main CI remain separate pending evidence.
 
 P4.2 adds the separate compatibility boundary accepted in
 [ADR-0011](decisions/0011-aionui-shadow-projection.md). Successful native HTTP
