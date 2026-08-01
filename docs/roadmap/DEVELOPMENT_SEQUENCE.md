@@ -89,10 +89,14 @@ exact head `e622f36e697b4e0be1037175267452e24cc180e3`, squash merge
 `b61dd3ea44a4c522ca0c15a84a01d8f76b335e4c`, and merged-main CI
 30691300690. ADR-0024 selects Goose `v1.45.0` at exact commit
 `4dc0420f5704a92806c6628c8f0a3497d7a88759`, stdio ACP, and the
-Actestra-built minimal runner. P5.1 is now the only active slice: build and
-admit the exact runner, apply ADR-0025's sole RSA metadata-only disposition,
-prove strict initialize and deny-network cleanup, and stop before session or
-repository effects. P6 CrewAI/Team runtime work has not started.
+Actestra-built minimal runner. P5.1 is accepted through PR 28, exact hotfix head
+`eed1623e9849b9f662f3dec690d02d7c85a693ef`, squash merge
+`d313fb2ed65e4b010f777435953752818fbbfae4`, and merged-main CI 30700441312.
+It admits the exact runner, applies ADR-0025's sole RSA metadata-only
+disposition, and proves strict initialize and deny-network cleanup without
+session or repository effects. P5.2 is the next ordered slice and has not
+started; it must add one fixture worktree and only closed Actestra-gateway
+capabilities. P6 CrewAI/Team runtime work has not started.
 
 ## P0 — Project Foundation
 
