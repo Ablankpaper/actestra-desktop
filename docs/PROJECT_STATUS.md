@@ -1,10 +1,10 @@
 # Project Status
 
-Last updated: 2026-08-03
+Last updated: 2026-08-04
 
 ## Current phase
 
-### P5.1 is accepted; P5.2 transport work continues after the delivered lower layers
+### P5.1 is accepted; P5.2 authenticated tool-call work continues after the delivered lower layers
 
 The containment foundation was developed from exact `origin/main`
 `071aa922c08dd9a139f0c11dee2aa0dadab02417` on branch
@@ -171,14 +171,46 @@ zero-warning lint over 195 files, strict TypeScript, the Electron SQLite probe,
 deterministic smoke, the 88-source product boundary, frozen/downstream
 contracts, and the 58-main/3-preload/28-renderer-module production build.
 
-This evidence does not accept P5.2. The composition helper is not yet connected
-to the desktop-main coding service, the MCP server intentionally executes no
-`tools/call`, and the model catalog intentionally exposes no inference route.
-Prompt/tool execution, normalized durable ACP evidence, and publish/Artifact
-flow remain absent, so no real Goose coding session has been claimed. P5.3, P6,
-candidate, release, deployment, and user acceptance also remain unclaimed. Git
-delivery and CI evidence stay separate from phase acceptance. Detailed scope
-and rollback are recorded in
+Pull request 36 corrected final head
+`5fe78bfaf2982556af975d23bc904d10b77a1f29` passed exact-head CI 30843561874:
+macOS arm64 foundation job 91786216829 and Goose runner admission job
+91786216934. CodeRabbit selected all 15 changed files but supplied only its
+Free-plan summary and walkthrough, skipped the unchanged integration file as
+similar to its prior review, and left no submitted review, inline comment, or
+review thread. The branch squash merged as
+`08e6fefcd87721fbe4f21eee73f9ba6c52a638c0`. Exact merged-main CI 30845006202
+passed macOS arm64 foundation job 91791030796 and Goose runner admission job
+91791030814.
+
+The authenticated MCP tool-call slice starts from that exact merge on branch
+`codex/p5-goose-prompt-tool-loop`. After authenticated initialize, initialized,
+and exact tool discovery, the server validates one active ACP session, the exact
+isolated worktree, a bounded unique tool-call correlation identifier, one of the
+six closed tools, and its versioned input contract. Replay and calls after
+cleanup begins fail before main authority; result bytes and failures are bounded
+and sanitized; shutdown aborts and awaits in-flight work. A main-owned invoker
+binds the active desktop coding grant and Actestra Task, Session, Worker,
+request, input, and output owners, persists the input, and routes execution
+through the existing Tool Gateway policy, approval, audit, and executor. An
+approval-required write is not executed. The affected focused fingerprint
+passes 3 files and 64 tests: 48 MCP transport/call tests, 10 desktop-main and
+real Gateway tests, and 6 composition tests. The unchanged artifact-gated
+readiness integration was not rebuilt or rerun during focused iteration. The
+Goose runner admission script now includes the real Gateway bridge test. On the
+exact final production/test/script fingerprint, the one permitted `bun run check`
+passes formatting over 204 files, zero-warning lint over 196 files, strict
+TypeScript, the Electron SQLite probe, 68 passing and 1 skipped test files with
+588 passing and 1 skipped tests, deterministic smoke, the 89-source product
+boundary, frozen/downstream contracts, and the
+58-main/3-preload/28-renderer-module production build.
+
+This evidence does not accept P5.2. The composition helper is still not called
+by the desktop-main coding service, and the model catalog intentionally exposes
+no inference route. No real Goose-generated `tools/call`, prompt loop, approval
+continuation or denial projection, normalized ACP session evidence, or
+publish/Artifact flow has been proved. P5.3, P6, candidate, release, deployment,
+and user acceptance also remain unclaimed. Git delivery and CI evidence stay
+separate from phase acceptance. Detailed scope and rollback are recorded in
 [P5.2 Isolated Coding Capability](product/P5_ISOLATED_CODING_CAPABILITY.md).
 
 P4's phase acceptance record reached pull request 25 at exact head

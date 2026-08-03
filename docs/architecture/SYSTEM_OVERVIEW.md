@@ -635,9 +635,9 @@ accept headers, body length, and the negotiated MCP protocol header. It admits
 only the ordered `initialize`, `notifications/initialized`, and `tools/list`
 exchange. The list exposes the same six closed coding schemas with snapshotted
 command/test identifiers and the exact pinned Goose session/progress metadata
-shape. All additional metadata and methods are rejected; in particular,
-`tools/call` returns method-not-found and cannot enter the Tool Gateway. Shutdown
-destroys partial and retained sockets.
+shape. All additional metadata and methods are rejected; in particular, that
+delivered transport boundary returns method-not-found for `tools/call` and
+cannot enter the Tool Gateway. Shutdown destroys partial and retained sockets.
 
 The current main-process composition helper creates separate 256-bit MCP and
 model-readiness leases; the Worker cannot supply either. It starts the MCP
@@ -665,13 +665,34 @@ session creation, explicit loopback `NO_PROXY` because the host proxy otherwise
 intercepts the request, exact two-port sandbox admission, and the explicit ACP
 method because `session/new` initializes MCP but does not itself issue
 `tools/list`. An admitted-artifact local integration passes the corrected path
-and exact-six discovery.
+and exact-six discovery. Corrected final head
+`5fe78bfaf2982556af975d23bc904d10b77a1f29` passed exact-head CI 30843561874,
+squash merged as `08e6fefcd87721fbe4f21eee73f9ba6c52a638c0`, and passed exact
+merged-main CI 30845006202.
 
-This composition is still not P5.2 acceptance. It is not yet connected to the
-desktop-main coding service. The model catalog deliberately exposes no
-inference route and the MCP server deliberately rejects `tools/call`; therefore
-prompt/tool execution, normalized durable ACP evidence, and publish/Artifact
-remain absent. No real Goose coding session or renderer journey is claimed.
+The current authenticated tool-call slice extends only that MCP boundary. After
+the accepted list, it requires the exact ACP session, isolated worktree, bounded
+unique Worker correlation identifier, closed tool identifier, and versioned
+input. Replay and post-close calls fail before authority; synchronous and
+asynchronous failures are sanitized; listener cleanup stops admission, aborts
+and awaits in-flight invocations, and destroys retained sockets. The
+caller-supplied main invoker generates fresh Actestra request/input identifiers,
+persists the exact Task/Session/Worker/grant owner, invokes the existing Tool
+Gateway, and resolves only the matching durable output. An approval-required
+operation is not executed. Goose correlation identifiers remain compatibility
+metadata and never replace Actestra identity or authority.
+
+The exact final production/test/script fingerprint passes the single required
+root gate: formatting, zero-warning lint, strict TypeScript, Electron SQLite,
+68 passing and 1 skipped test files with 588 passing and 1 skipped tests,
+deterministic smoke, the 89-source boundary, frozen/downstream contracts, and
+the 58-main/3-preload/28-renderer-module production build.
+
+This composition is still not P5.2 acceptance. The desktop-main coding service
+does not yet call the session helper, and the model catalog deliberately exposes
+no inference route. No real Goose-generated call, prompt loop, approval outcome
+projection, normalized ACP session evidence, or publish/Artifact flow has been
+proved. No real Goose coding session or renderer journey is claimed.
 
 ## Event contract
 

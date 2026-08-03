@@ -15,10 +15,18 @@ import {
 import {
   startGooseMcpCapabilityServer,
   type GooseMcpCapabilityServer,
+  type GooseMcpToolInvoker,
 } from "../../apps/desktop/src/main/workers/gooseMcpCapabilityServer";
 
 const ATTEMPT_LEASE = "attempt-lease-0123456789abcdef0123456789abcdef";
 const MCP_PROTOCOL_VERSION = "2025-03-26";
+const WORKSPACE_DIRECTORY = "/tmp/actestra-isolated-coding-worktree";
+
+const defaultToolInvoker: GooseMcpToolInvoker = async () =>
+  Object.freeze({
+    isError: false,
+    content: JSON.stringify({ contractVersion: 1, type: "empty-test-result" }),
+  });
 
 interface McpHttpResponse {
   readonly status: number;
@@ -28,11 +36,15 @@ interface McpHttpResponse {
 
 const servers = new Set<GooseMcpCapabilityServer>();
 
-async function openServer(): Promise<GooseMcpCapabilityServer> {
+async function openServer(
+  invokeTool: GooseMcpToolInvoker = defaultToolInvoker,
+): Promise<GooseMcpCapabilityServer> {
   const server = await startGooseMcpCapabilityServer({
     attemptLease: ATTEMPT_LEASE,
     commandIds: ["format-check", "typecheck"],
     testIds: ["focused-tests"],
+    workspaceDirectory: WORKSPACE_DIRECTORY,
+    invokeTool,
   });
   servers.add(server);
   return server;
@@ -279,6 +291,8 @@ describe("Goose authenticated loopback MCP capability server", () => {
     {
       label: "short lease",
       options: {
+        workspaceDirectory: WORKSPACE_DIRECTORY,
+        invokeTool: defaultToolInvoker,
         attemptLease: "short",
         commandIds: ["format-check"],
         testIds: ["focused-tests"],
@@ -287,6 +301,8 @@ describe("Goose authenticated loopback MCP capability server", () => {
     {
       label: "empty command registry",
       options: {
+        workspaceDirectory: WORKSPACE_DIRECTORY,
+        invokeTool: defaultToolInvoker,
         attemptLease: ATTEMPT_LEASE,
         commandIds: [],
         testIds: ["focused-tests"],
@@ -295,6 +311,8 @@ describe("Goose authenticated loopback MCP capability server", () => {
     {
       label: "invalid command identifier",
       options: {
+        workspaceDirectory: WORKSPACE_DIRECTORY,
+        invokeTool: defaultToolInvoker,
         attemptLease: ATTEMPT_LEASE,
         commandIds: ["FORMAT CHECK"],
         testIds: ["focused-tests"],
@@ -303,6 +321,8 @@ describe("Goose authenticated loopback MCP capability server", () => {
     {
       label: "duplicate test identifier",
       options: {
+        workspaceDirectory: WORKSPACE_DIRECTORY,
+        invokeTool: defaultToolInvoker,
         attemptLease: ATTEMPT_LEASE,
         commandIds: ["format-check"],
         testIds: ["focused-tests", "focused-tests"],
@@ -311,6 +331,8 @@ describe("Goose authenticated loopback MCP capability server", () => {
     {
       label: "additional authority field",
       options: {
+        workspaceDirectory: WORKSPACE_DIRECTORY,
+        invokeTool: defaultToolInvoker,
         attemptLease: ATTEMPT_LEASE,
         commandIds: ["format-check"],
         testIds: ["focused-tests"],
@@ -370,6 +392,8 @@ describe("Goose authenticated loopback MCP capability server", () => {
       attemptLease: ATTEMPT_LEASE,
       commandIds,
       testIds,
+      workspaceDirectory: WORKSPACE_DIRECTORY,
+      invokeTool: defaultToolInvoker,
     });
     servers.add(server);
     commandIds.push("unreviewed-command");
@@ -746,12 +770,35 @@ describe("Goose authenticated loopback MCP capability server", () => {
     ).resolves.toMatchObject({ status: 200 });
   });
 
-  it("rejects tools/call as an unimplemented method without executing authority", async () => {
-    const server = await openServer();
+  it("invokes one authenticated read tool with exact Goose correlation metadata", async () => {
+    const calls: Parameters<GooseMcpToolInvoker>[0][] = [];
+    const server = await openServer(async (call) => {
+      calls.push(call);
+      expect(call.signal.aborted).toBe(false);
+      return Object.freeze({
+        isError: false,
+        content: JSON.stringify({
+          contractVersion: 1,
+          type: "file-read",
+          relativePath: "answer.txt",
+          content: "forty-two\n",
+        }),
+      });
+    });
     await initialize(server);
     await postMcp(
       server.url,
       { jsonrpc: "2.0", method: "notifications/initialized" },
+      { protocolVersion: MCP_PROTOCOL_VERSION },
+    );
+    await postMcp(
+      server.url,
+      {
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/list",
+        params: { _meta: { "agent-session-id": "goose-session-1" } },
+      },
       { protocolVersion: MCP_PROTOCOL_VERSION },
     );
 
@@ -763,7 +810,13 @@ describe("Goose authenticated loopback MCP capability server", () => {
         method: "tools/call",
         params: {
           name: CODING_FILE_READ_TOOL_ID,
-          arguments: { contractVersion: 1, relativePath: "secret.txt" },
+          arguments: { contractVersion: 1, relativePath: "answer.txt" },
+          _meta: {
+            "agent-session-id": "goose-session-1",
+            "agent-working-dir": WORKSPACE_DIRECTORY,
+            "agent-tool-call-request-id": "model-tool-call-1",
+            progressToken: 1,
+          },
         },
       },
       { protocolVersion: MCP_PROTOCOL_VERSION },
@@ -773,8 +826,289 @@ describe("Goose authenticated loopback MCP capability server", () => {
     expect(JSON.parse(response.body)).toEqual({
       jsonrpc: "2.0",
       id: 3,
-      error: { code: -32601, message: "Method not found" },
+      result: {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              contractVersion: 1,
+              type: "file-read",
+              relativePath: "answer.txt",
+              content: "forty-two\n",
+            }),
+          },
+        ],
+        isError: false,
+      },
     });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      sessionId: "goose-session-1",
+      toolCallRequestId: "model-tool-call-1",
+      toolId: CODING_FILE_READ_TOOL_ID,
+      input: { contractVersion: 1, relativePath: "answer.txt" },
+    });
+
+    const replay = await postMcp(
+      server.url,
+      {
+        jsonrpc: "2.0",
+        id: 4,
+        method: "tools/call",
+        params: {
+          name: CODING_FILE_READ_TOOL_ID,
+          arguments: { contractVersion: 1, relativePath: "answer.txt" },
+          _meta: {
+            "agent-session-id": "goose-session-1",
+            "agent-working-dir": WORKSPACE_DIRECTORY,
+            "agent-tool-call-request-id": "model-tool-call-1",
+          },
+        },
+      },
+      { protocolVersion: MCP_PROTOCOL_VERSION },
+    );
+    expect(replay.status).toBe(400);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("rejects malformed tools/call input before entering main authority", async () => {
+    let invoked = false;
+    const server = await openServer(async () => {
+      invoked = true;
+      return defaultToolInvoker({} as never);
+    });
+    await initialize(server);
+    await postMcp(
+      server.url,
+      { jsonrpc: "2.0", method: "notifications/initialized" },
+      { protocolVersion: MCP_PROTOCOL_VERSION },
+    );
+    await postMcp(
+      server.url,
+      {
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/list",
+        params: { _meta: { "agent-session-id": "goose-session-1" } },
+      },
+      { protocolVersion: MCP_PROTOCOL_VERSION },
+    );
+
+    const response = await postMcp(
+      server.url,
+      {
+        jsonrpc: "2.0",
+        id: 3,
+        method: "tools/call",
+        params: {
+          name: CODING_FILE_READ_TOOL_ID,
+          arguments: { contractVersion: 1, relativePath: "../outside.txt" },
+          _meta: {
+            "agent-session-id": "goose-session-1",
+            "agent-working-dir": WORKSPACE_DIRECTORY,
+            "agent-tool-call-request-id": "model-tool-call-invalid",
+          },
+        },
+      },
+      { protocolVersion: MCP_PROTOCOL_VERSION },
+    );
+
+    expect(response.status).toBe(400);
+    expect(invoked).toBe(false);
+  });
+
+  it("sanitizes a synchronous main-process tool invocation failure", async () => {
+    const server = await openServer(() => {
+      throw new Error("private failure detail");
+    });
+    await initialize(server);
+    await postMcp(
+      server.url,
+      { jsonrpc: "2.0", method: "notifications/initialized" },
+      { protocolVersion: MCP_PROTOCOL_VERSION },
+    );
+    await postMcp(
+      server.url,
+      {
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/list",
+        params: { _meta: { "agent-session-id": "goose-session-1" } },
+      },
+      { protocolVersion: MCP_PROTOCOL_VERSION },
+    );
+
+    const response = await postMcp(
+      server.url,
+      {
+        jsonrpc: "2.0",
+        id: 3,
+        method: "tools/call",
+        params: {
+          name: CODING_FILE_READ_TOOL_ID,
+          arguments: { contractVersion: 1, relativePath: "answer.txt" },
+          _meta: {
+            "agent-session-id": "goose-session-1",
+            "agent-working-dir": WORKSPACE_DIRECTORY,
+            "agent-tool-call-request-id": "model-tool-call-failure",
+          },
+        },
+      },
+      { protocolVersion: MCP_PROTOCOL_VERSION },
+    );
+
+    expect(response.status).toBe(200);
+    expect(JSON.parse(response.body)).toEqual({
+      jsonrpc: "2.0",
+      id: 3,
+      error: { code: -32603, message: "Tool invocation failed" },
+    });
+    expect(response.body).not.toContain("private failure detail");
+  });
+
+  it("stops accepting new tool calls as soon as close begins", async () => {
+    let invocationCount = 0;
+    let firstInvocationEntered!: () => void;
+    const firstInvocationStarted = new Promise<void>((resolve) => {
+      firstInvocationEntered = resolve;
+    });
+    let releaseFirstInvocation!: () => void;
+    const firstInvocationReleased = new Promise<void>((resolve) => {
+      releaseFirstInvocation = resolve;
+    });
+    const server = await openServer(async () => {
+      invocationCount += 1;
+      if (invocationCount === 1) {
+        firstInvocationEntered();
+        await firstInvocationReleased;
+      }
+      return Object.freeze({ isError: false, content: "completed" });
+    });
+    await initialize(server);
+    await postMcp(
+      server.url,
+      { jsonrpc: "2.0", method: "notifications/initialized" },
+      { protocolVersion: MCP_PROTOCOL_VERSION },
+    );
+    await postMcp(
+      server.url,
+      {
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/list",
+        params: { _meta: { "agent-session-id": "goose-session-1" } },
+      },
+      { protocolVersion: MCP_PROTOCOL_VERSION },
+    );
+    const firstRequest = postMcp(
+      server.url,
+      {
+        jsonrpc: "2.0",
+        id: 3,
+        method: "tools/call",
+        params: {
+          name: CODING_FILE_READ_TOOL_ID,
+          arguments: { contractVersion: 1, relativePath: "answer.txt" },
+          _meta: {
+            "agent-session-id": "goose-session-1",
+            "agent-working-dir": WORKSPACE_DIRECTORY,
+            "agent-tool-call-request-id": "model-tool-call-before-close",
+          },
+        },
+      },
+      { protocolVersion: MCP_PROTOCOL_VERSION },
+    ).catch((): undefined => undefined);
+    await firstInvocationStarted;
+
+    const closing = server.close();
+    const secondOutcome = await postMcp(
+      server.url,
+      {
+        jsonrpc: "2.0",
+        id: 4,
+        method: "tools/call",
+        params: {
+          name: CODING_FILE_READ_TOOL_ID,
+          arguments: { contractVersion: 1, relativePath: "answer.txt" },
+          _meta: {
+            "agent-session-id": "goose-session-1",
+            "agent-working-dir": WORKSPACE_DIRECTORY,
+            "agent-tool-call-request-id": "model-tool-call-after-close",
+          },
+        },
+      },
+      { protocolVersion: MCP_PROTOCOL_VERSION },
+    ).then(
+      () => "accepted" as const,
+      () => "rejected" as const,
+    );
+    releaseFirstInvocation();
+    await closing;
+    await firstRequest;
+
+    expect(secondOutcome).toBe("rejected");
+    expect(invocationCount).toBe(1);
+  });
+
+  it("aborts an in-flight tool invocation before closing sockets", async () => {
+    let entered!: () => void;
+    const invocationEntered = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    let observedReason: unknown;
+    const server = await openServer(async (call) => {
+      entered();
+      await new Promise<void>((resolve) => {
+        call.signal.addEventListener(
+          "abort",
+          () => {
+            observedReason = call.signal.reason;
+            resolve();
+          },
+          { once: true },
+        );
+      });
+      return Object.freeze({ isError: true, content: "cancelled" });
+    });
+    await initialize(server);
+    await postMcp(
+      server.url,
+      { jsonrpc: "2.0", method: "notifications/initialized" },
+      { protocolVersion: MCP_PROTOCOL_VERSION },
+    );
+    await postMcp(
+      server.url,
+      {
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/list",
+        params: { _meta: { "agent-session-id": "goose-session-1" } },
+      },
+      { protocolVersion: MCP_PROTOCOL_VERSION },
+    );
+    const request = postMcp(
+      server.url,
+      {
+        jsonrpc: "2.0",
+        id: 3,
+        method: "tools/call",
+        params: {
+          name: CODING_FILE_READ_TOOL_ID,
+          arguments: { contractVersion: 1, relativePath: "answer.txt" },
+          _meta: {
+            "agent-session-id": "goose-session-1",
+            "agent-working-dir": WORKSPACE_DIRECTORY,
+            "agent-tool-call-request-id": "model-tool-call-cancel",
+          },
+        },
+      },
+      { protocolVersion: MCP_PROTOCOL_VERSION },
+    );
+    await invocationEntered;
+
+    await expect(server.close()).resolves.toBeUndefined();
+    await request.catch((): undefined => undefined);
+    expect(observedReason).toBe("goose-mcp-capability-server-closing");
   });
 
   it.each([

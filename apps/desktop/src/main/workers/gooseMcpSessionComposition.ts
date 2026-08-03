@@ -4,6 +4,7 @@ import type { AdmittedGooseRunnerArtifact } from "./gooseRunnerArtifact";
 import {
   startGooseMcpCapabilityServer,
   type GooseMcpCapabilityServer,
+  type GooseMcpToolInvoker,
   type StartGooseMcpCapabilityServerOptions,
 } from "./gooseMcpCapabilityServer";
 import {
@@ -32,6 +33,7 @@ export interface OpenGooseMcpSessionCompositionOptions {
   readonly privateRootParent: string;
   readonly workspaceDirectory: string;
   readonly modelId: string;
+  readonly toolInvoker: GooseMcpToolInvoker;
   readonly commandIds: readonly string[];
   readonly testIds: readonly string[];
   readonly handshakeTimeoutMs?: number;
@@ -157,6 +159,8 @@ export async function openGooseMcpSessionComposition(
     attemptLease,
     commandIds: options.commandIds,
     testIds: options.testIds,
+    workspaceDirectory: options.workspaceDirectory,
+    invokeTool: options.toolInvoker,
   });
   let modelServer: GooseLoopbackModelServer | undefined;
   let runner: OpenGooseRunnerHandshakeResult | undefined;

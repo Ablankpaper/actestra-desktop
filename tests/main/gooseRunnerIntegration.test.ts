@@ -6,10 +6,16 @@ import { afterEach, describe, expect, it } from "vitest";
 import { CODING_TOOL_IDS } from "../../apps/desktop/src/core";
 import { openGooseMcpSessionComposition } from "../../apps/desktop/src/main/workers/gooseMcpSessionComposition";
 import { admitGooseRunnerArtifact } from "../../apps/desktop/src/main/workers/gooseRunnerArtifact";
+import type { GooseMcpToolInvoker } from "../../apps/desktop/src/main/workers/gooseMcpCapabilityServer";
 
 const artifactDirectory = process.env.ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIR;
 const trustedManifestSha256 = process.env.ACTESTRA_GOOSE_RUNNER_MANIFEST_SHA256;
 const fixtureDirectories: string[] = [];
+const toolInvoker: GooseMcpToolInvoker = async () =>
+  Object.freeze({
+    isError: false,
+    content: JSON.stringify({ contractVersion: 1, type: "integration-result" }),
+  });
 const targetTriple =
   process.platform === "darwin" && process.arch === "arm64"
     ? "aarch64-apple-darwin"
@@ -42,6 +48,7 @@ describe.skipIf(
       privateRootParent,
       workspaceDirectory,
       modelId: "actestra-loopback-integration",
+      toolInvoker,
       commandIds: Object.freeze(["format-check"]),
       testIds: Object.freeze(["focused-tests"]),
       handshakeTimeoutMs: 20_000,

@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CODING_FILE_READ_TOOL_ID,
+  CODING_FILE_WRITE_TOOL_ID,
   PRIVILEGED_CONTRACT_VERSION,
   WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
   instant,
@@ -27,6 +28,7 @@ import {
   createIsolatedCodingMainService,
   type IsolatedCodingMainService,
 } from "../../apps/desktop/src/main/workers/isolatedCodingMainService";
+import { createGooseCodingToolInvoker } from "../../apps/desktop/src/main/workers/gooseCodingToolInvoker";
 import type { PersistenceUtilityClient } from "../../apps/desktop/src/main/persistence/persistenceUtilityClient";
 
 const execFileAsync = promisify(execFile);
@@ -181,6 +183,90 @@ afterEach(async () => {
 });
 
 describe("P5.2 desktop-main isolated coding composition", () => {
+  it("routes one MCP file read through the durable Tool Gateway owner", async () => {
+    const fixture = await openFixture("goose-mcp-read");
+    const session = await fixture.service.open({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-goose-mcp-read"),
+      displayName: "P5.2 Goose MCP read worktree",
+      commands: {},
+      tests: {},
+    });
+    const invokeTool = createGooseCodingToolInvoker({
+      persistence: fixture.persistence,
+      clock: fixture.clock,
+      session,
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+      newToolRequestId: () => toolRequestId("request-coding-main-goose-mcp-read"),
+      newToolInputReference: () => toolInputReference("input-coding-main-goose-mcp-read"),
+    });
+
+    const result = await invokeTool({
+      sessionId: "goose-session-1",
+      toolCallRequestId: "model-tool-call-1",
+      toolId: CODING_FILE_READ_TOOL_ID,
+      input: Object.freeze({ contractVersion: 1, relativePath: "answer.txt" }),
+      signal: new AbortController().signal,
+    });
+
+    expect(result).toEqual({
+      isError: false,
+      content: JSON.stringify({
+        contractVersion: 1,
+        type: "file-read",
+        relativePath: "answer.txt",
+        content: "before\n",
+      }),
+    });
+    expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
+    expect(await runGit(fixture.repositoryRoot, "status", "--porcelain=v1")).toBe("");
+  });
+
+  it("does not execute an MCP file write before main-owned approval", async () => {
+    const fixture = await openFixture("goose-mcp-approval");
+    const session = await fixture.service.open({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-goose-mcp-approval"),
+      displayName: "P5.2 Goose MCP approval worktree",
+      commands: {},
+      tests: {},
+    });
+    const invokeTool = createGooseCodingToolInvoker({
+      persistence: fixture.persistence,
+      clock: fixture.clock,
+      session,
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+      newToolRequestId: () => toolRequestId("request-coding-main-goose-mcp-approval"),
+      newToolInputReference: () => toolInputReference("input-coding-main-goose-mcp-approval"),
+    });
+
+    const result = await invokeTool({
+      sessionId: "goose-session-approval",
+      toolCallRequestId: "model-tool-call-approval",
+      toolId: CODING_FILE_WRITE_TOOL_ID,
+      input: Object.freeze({
+        contractVersion: 1,
+        relativePath: "answer.txt",
+        content: "after\n",
+      }),
+      signal: new AbortController().signal,
+    });
+
+    expect(result).toEqual({
+      isError: true,
+      content: JSON.stringify({ contractVersion: 1, type: "approval-required" }),
+    });
+    expect(fs.readFileSync(path.join(session.worktreeRoot, "answer.txt"), "utf8")).toBe("before\n");
+    expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
+    expect(await runGit(fixture.repositoryRoot, "status", "--porcelain=v1")).toBe("");
+  });
+
   it("persists one exact worktree grant before exposing the closed Tool Gateway", async () => {
     const fixture = await openFixture("open");
     const grantId = workspaceGrantId("grant-coding-main-open");
