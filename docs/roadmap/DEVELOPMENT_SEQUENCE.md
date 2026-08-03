@@ -105,7 +105,7 @@ metadata cleanup, exact lifecycle persistence and revocation receipts,
 response-loss-safe revocation retry, and retryable Git-metadata-first removal
 are covered locally. The complete root gate also records 63 passing and 1
 skipped test files with 488 passing and 1 skipped tests, the 84-source product
-boundary, frozen foundation, 178-file downstream contract, and production
+boundary, frozen foundation, 179-file downstream contract, and production
 build. It is not composed into desktop main; ACP `session/new`, authenticated
 MCP transport, the loopback model path, normalized evidence, publish/Artifact
 flow, and phase acceptance remain open. P6 CrewAI/Team runtime work has not

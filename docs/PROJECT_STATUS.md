@@ -11,7 +11,8 @@ The containment slice was developed from exact `origin/main`
 `feat/p5-isolated-coding-capability`. It adds a detached Actestra-managed Git
 worktree and six closed file, terminal, Git, diff, and test capabilities behind
 the existing policy, one-shot approval, durable audit, credential, grant, and
-content-reference boundaries. It adds no renderer or AionUi change.
+content-reference boundaries. It adds no renderer or AionUi runtime or UI
+change.
 
 The focused local set passes 3 files and 39 tests. It proves source-checkout
 preservation, canonical and disjoint roots, exact per-invocation Git binding,
@@ -28,8 +29,19 @@ and retryable worktree removal. Zero-warning lint and strict TypeScript pass.
 Complete root `bun run check` also passes formatting, zero-warning lint, strict
 types, the Electron SQLite probe, 63 passing and 1 skipped test files with 488
 passing and 1 skipped tests, deterministic smoke, the 84-source product
-boundary, the 1,766-file frozen AionUi foundation, the 178-file downstream
+boundary, the 1,766-file frozen AionUi foundation, the 179-file downstream
 contract, and the 58-main/3-preload/28-renderer-module production build.
+
+Initial pull-request head `40ba94d98293a260cdbce6b79731372fe5bac334`
+passed the complete root check in CI run 30806677080, then failed materialized
+AionUi strict TypeScript because the copied core barrel exported
+`isolatedCodingTools.ts` without declaring that Actestra-owned file in the
+downstream manifest. The focused correction adds the byte-identical source copy
+and expected changed-file entry. A clean local materialization and 3,177-package
+install now pass strict TypeScript; the downstream contract passes 179 declared
+files, 4 R0 invariants, and 59 reviewed source copies, while the exact 1,766-file
+frozen foundation remains unchanged. This is source-contract compatibility,
+not desktop-main coding composition.
 
 This evidence does not accept P5.2. Desktop-main composition, ACP `session/new`,
 an authenticated Actestra MCP transport, ADR-0024's exact loopback model path,

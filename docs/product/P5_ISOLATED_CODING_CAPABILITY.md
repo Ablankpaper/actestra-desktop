@@ -20,9 +20,11 @@ main-owned capabilities:
 - fixed working-tree diff inspection; and
 - a main-registered test command.
 
-It adds no renderer route, bridge, or visual surface. The frozen AionUi source,
-downstream overlay, and R0/R1/R2 retention inventory are unchanged. P5.3 remains
-the first user-visible coding journey.
+It adds no renderer route, bridge, or visual surface. The frozen AionUi source
+and R0/R1/R2 retention inventory are unchanged. The downstream manifest adds
+one byte-identical Actestra-owned copy of the core contract so the copied core
+barrel remains complete; no downstream patch imports or invokes the coding
+platform. P5.3 remains the first user-visible coding journey.
 
 ## Authority and policy
 
@@ -100,7 +102,7 @@ The focused P5.2 set passes 3 files and 39 tests:
 Complete root `bun run check` passes formatting, zero-warning lint, strict
 types, the Electron SQLite probe, 63 passing and 1 skipped test files with 488
 passing and 1 skipped tests, the smoke harness, the 84-source product boundary,
-the 1,766-file frozen AionUi foundation, the 178-file downstream contract, and
+the 1,766-file frozen AionUi foundation, the 179-file downstream contract, and
 the 58-main/3-preload/28-renderer-module production build. Git delivery and CI
 evidence remain separate from these local gates and do not by themselves accept
 P5.2.
@@ -123,6 +125,6 @@ review, exact-head CI, and merged-main gates.
 ## Rollback
 
 Rollback removes the isolated coding contract, worktree, Gateway platform,
-executor, focused tests, and core export together. No schema, frozen upstream
-source, downstream overlay, user profile, release artifact, or migration needs
-reversal.
+executor, focused tests, core export, and downstream source-copy declaration
+together. No schema, frozen upstream source, user profile, release artifact, or
+migration needs reversal.

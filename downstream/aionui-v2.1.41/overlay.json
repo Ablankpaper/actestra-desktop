@@ -186,6 +186,10 @@
       "destination": "packages/desktop/src/actestra/core/index.ts"
     },
     {
+      "source": "apps/desktop/src/core/isolatedCodingTools.ts",
+      "destination": "packages/desktop/src/actestra/core/isolatedCodingTools.ts"
+    },
+    {
       "source": "apps/desktop/src/core/officeDocumentArtifact.ts",
       "destination": "packages/desktop/src/actestra/core/officeDocumentArtifact.ts"
     },
@@ -460,6 +464,7 @@
     "packages/desktop/src/actestra/core/events.ts",
     "packages/desktop/src/actestra/core/generalWorkRecovery.ts",
     "packages/desktop/src/actestra/core/index.ts",
+    "packages/desktop/src/actestra/core/isolatedCodingTools.ts",
     "packages/desktop/src/actestra/core/officeDocumentArtifact.ts",
     "packages/desktop/src/actestra/core/persistence.ts",
     "packages/desktop/src/actestra/core/platform.ts",

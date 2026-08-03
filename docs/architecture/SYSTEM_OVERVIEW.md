@@ -592,7 +592,10 @@ with retryable Git-metadata-first cleanup.
 This lower boundary is not composed into desktop main and is not P5.2
 acceptance. No ACP `session/new`, authenticated Actestra MCP transport, admitted
 loopback model path, normalized ACP evidence, or publish/Artifact path exists
-yet, and no real Goose coding session or renderer journey is claimed.
+yet, and no real Goose coding session or renderer journey is claimed. The
+materialized AionUi source receives only a declared byte-identical copy of the
+public core contract so its copied core barrel resolves; no downstream patch
+imports or invokes the executor, platform, or worktree lifecycle.
 
 ## Event contract
 

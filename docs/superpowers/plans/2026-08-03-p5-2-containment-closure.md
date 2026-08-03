@@ -320,4 +320,4 @@ git diff -- apps/desktop/src/main/workers/isolatedCodingWorktree.ts apps/desktop
 
 Expected: only intended P5.2 files plus the pre-existing P5.2 foundation and this plan are present. Do not stage, commit, push, or open a pull request until the owner accepts this intermediate boundary.
 
-Owner continuation on 2026-08-03 explicitly authorized the scoped Git, pull-request, review, CI, merge, and merged-main closure after the unchanged local gates. That delivery does not expand this slice into ACP composition, P5.3, P6, release, or P5.2 phase acceptance.
+Owner continuation on 2026-08-03 explicitly authorized the scoped Git, pull-request, review, CI, merge, and merged-main closure after the unchanged local gates. The initial pull-request CI exposed one missing byte-identical core-contract source copy in `downstream/aionui-v2.1.41/overlay.json`; adding that exact materialization declaration remains part of this containment slice. That delivery does not expand this slice into ACP composition, P5.3, P6, release, or P5.2 phase acceptance.
