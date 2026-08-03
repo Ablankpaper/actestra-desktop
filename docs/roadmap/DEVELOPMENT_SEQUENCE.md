@@ -141,16 +141,25 @@ It reached pull request 35 at exact head
 `93a8e9633f2be7b5f8c8b1eead3f2a21b0770073`, passed exact-head CI
 30832907098, squash merged as `8a31bafc1cd322744189fc4ed1e68f769225c999`,
 and passed exact merged-main CI 30834217310. The current session-composition
-slice starts from that exact merge. Electron main generates the 256-bit lease,
-starts MCP before the admitted Worker, opens the single ACP session, and waits
-for accepted `tools/list` evidence before returning. The affected focused input
-passes 2 files and 48 tests; the 1 real-runner integration test remains
-artifact-gated locally. The complete root gate passes 67 files and 571 tests
-with 1 file and 1 test skipped, plus the 87-source boundary and production
-build. Worker-first all-settled cleanup is idempotent.
-`tools/call` deliberately returns method-not-found. The loopback model path,
-prompt/tool execution, durable normalized evidence, publish/Artifact flow, and
-P5.2 phase acceptance remain open. P6 CrewAI/Team runtime work has not started.
+slice starts from that exact merge. Pull request 36 old head
+`9e277e1593b2715ed3721e1febb886985a942824` passed its macOS job but failed
+Goose runner admission in exact-head CI 30837296114 at `session/new`; that SHA
+was not rerun. The correction uses separate main-generated MCP/model leases,
+starts an authenticated non-inference model catalog and MCP on separate random
+loopback ports, admits only those ports through the Worker sandbox, and supplies
+the closed provider/model environment required by pinned Goose. After
+`session/new`, one explicit `_goose/unstable/tools/list` request triggers the
+real authenticated MCP `tools/list`; the composition requires all six coding
+tool identifiers before returning. The corrected focused input passes 4 files
+and 51 tests, and the admitted-artifact real integration passes 1 file/1 test.
+Worker-first MCP/model all-settled cleanup is idempotent. The corrected complete
+root gate passes 68 files and 582 tests with 1 file and 1 test skipped, the
+88-source boundary, frozen/downstream contracts, and production build. Corrected
+remote gates remain to be recorded.
+`tools/call` deliberately returns method-not-found and the model catalog exposes
+no inference route. Prompt/tool execution, durable normalized evidence,
+publish/Artifact flow, and P5.2 phase acceptance remain open. P6 CrewAI/Team
+runtime work has not started.
 
 ## P0 — Project Foundation
 

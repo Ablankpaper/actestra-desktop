@@ -35,8 +35,12 @@ export const EXPECTED_GOOSE_INITIALIZE_RESULT = Object.freeze({
 export interface LoopbackGooseAcpOptions {
   readonly initializeResult?: unknown;
   readonly sessionMessages?: (request: Readonly<Record<string, unknown>>) => readonly unknown[];
+  readonly toolDiscoveryMessages?: (
+    request: Readonly<Record<string, unknown>>,
+  ) => readonly unknown[];
   readonly silent?: boolean;
   readonly silentSession?: boolean;
+  readonly silentToolDiscovery?: boolean;
 }
 
 export class LoopbackGooseAcpTransport implements GooseAcpTransport {
@@ -76,6 +80,42 @@ export class LoopbackGooseAcpTransport implements GooseAcpTransport {
           jsonrpc: "2.0",
           id: request.id,
           result: { sessionId: "goose-session-1" },
+        },
+      ];
+      for (const message of messages) {
+        queueMicrotask(() => {
+          this.emitLine(JSON.stringify(message));
+        });
+      }
+      return;
+    }
+    if (request.method === "_goose/unstable/tools/list") {
+      if (this.options.silentToolDiscovery === true) {
+        return;
+      }
+      const messages = this.options.toolDiscoveryMessages?.(request) ?? [
+        {
+          jsonrpc: "2.0",
+          id: request.id,
+          result: {
+            tools: [
+              {
+                name: "actestra-capability-proxy__coding.file.read",
+                description: "Read one bounded file.",
+                parameters: ["contractVersion", "path"],
+                permission: null,
+                inputSchema: { type: "object" },
+              },
+              {
+                name: "actestra-capability-proxy__coding.test.run",
+                description: "Run one registered test.",
+                parameters: ["contractVersion", "testId"],
+                permission: "ask_before",
+                inputSchema: { type: "object" },
+                outputSchema: { type: "object" },
+              },
+            ],
+          },
         },
       ];
       for (const message of messages) {

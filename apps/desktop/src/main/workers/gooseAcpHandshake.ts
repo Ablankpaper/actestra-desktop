@@ -6,9 +6,11 @@ export const GOOSE_ACP_SCHEMA_VERSION = "1.1.0" as const;
 export const GOOSE_AGENT_NAME = "goose" as const;
 export const GOOSE_AGENT_VERSION = "1.45.0" as const;
 export const ACTESTRA_ACP_CLIENT_VERSION = "0.1.0-alpha.0" as const;
+export const ACTESTRA_GOOSE_MCP_EXTENSION_NAME = "actestra-capability-proxy" as const;
 
 const INITIALIZE_REQUEST_ID = "actestra-goose-initialize-1";
 const SESSION_NEW_REQUEST_ID = "actestra-goose-session-new-1";
+const TOOLS_LIST_REQUEST_ID = "actestra-goose-tools-list-1";
 const DEFAULT_HANDSHAKE_TIMEOUT_MS = 10_000;
 const DEFAULT_SESSION_TIMEOUT_MS = 30_000;
 const MAX_SESSION_TIMEOUT_MS = 120_000;
@@ -45,7 +47,10 @@ export type GooseAcpSessionErrorCode =
   | "session-closed"
   | "session-timeout"
   | "session-process-exit"
-  | "session-transport-error";
+  | "session-transport-error"
+  | "tool-discovery-rejected"
+  | "tool-discovery-timeout"
+  | "tool-discovery-already-requested";
 
 export class GooseAcpSessionError extends Error {
   constructor(
@@ -94,6 +99,7 @@ export interface GooseAcpInfo {
 export interface GooseAcpConnection {
   readonly info: GooseAcpInfo;
   openSession(options: GooseAcpSessionOptions): Promise<GooseAcpSession>;
+  discoverTools(options: GooseAcpToolDiscoveryOptions): Promise<GooseAcpToolDiscovery>;
   close(): Promise<void>;
 }
 
@@ -109,6 +115,16 @@ export type GooseAcpSetupNotificationKind = "usage_update" | "available_commands
 export interface GooseAcpSession {
   readonly sessionId: string;
   readonly setupNotificationKinds: readonly GooseAcpSetupNotificationKind[];
+}
+
+export interface GooseAcpToolDiscoveryOptions {
+  readonly sessionId: string;
+  readonly extensionName: string;
+  readonly timeoutMs?: number;
+}
+
+export interface GooseAcpToolDiscovery {
+  readonly toolNames: readonly string[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -561,7 +577,7 @@ async function openGooseAcpSession(
             mcpServers: [
               {
                 type: "http",
-                name: "actestra-capability-proxy",
+                name: ACTESTRA_GOOSE_MCP_EXTENSION_NAME,
                 url: options.capabilityProxyUrl,
                 headers: [
                   {
@@ -594,6 +610,211 @@ async function openGooseAcpSession(
       );
     }
     throw sessionError;
+  } finally {
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
+    for (const unsubscribe of unsubscribers) {
+      unsubscribe();
+    }
+  }
+}
+
+function assertToolDiscoveryOptions(
+  options: GooseAcpToolDiscoveryOptions,
+  expectedSessionId: string,
+): void {
+  if (options.sessionId !== expectedSessionId) {
+    throw new GooseAcpSessionError(
+      "invalid-session-options",
+      "Goose tool discovery must reference the active admitted session",
+    );
+  }
+  if (options.extensionName !== ACTESTRA_GOOSE_MCP_EXTENSION_NAME) {
+    throw new GooseAcpSessionError(
+      "invalid-session-options",
+      "Goose tool discovery must reference the admitted Actestra MCP extension",
+    );
+  }
+  if (
+    options.timeoutMs !== undefined &&
+    (!Number.isSafeInteger(options.timeoutMs) ||
+      options.timeoutMs < 1 ||
+      options.timeoutMs > MAX_SESSION_TIMEOUT_MS)
+  ) {
+    throw new GooseAcpSessionError(
+      "invalid-session-options",
+      "Goose tool discovery timeout must be a bounded positive safe integer",
+    );
+  }
+}
+
+function parseToolDiscoveryMessage(
+  line: string,
+  options: GooseAcpToolDiscoveryOptions,
+): GooseAcpToolDiscovery {
+  if (Buffer.byteLength(line, "utf8") > MAX_SESSION_LINE_BYTES) {
+    throw invalidSessionMessage("Goose tool-discovery message is too large");
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch (error) {
+    throw invalidSessionMessage("Goose tool-discovery message is not valid JSON", error);
+  }
+  const message = assertSessionRecord(parsed, "Goose tool-discovery message");
+  if (Object.hasOwn(message, "method")) {
+    throw invalidSessionMessage("Goose sent an unadmitted message during tool discovery");
+  }
+  if (Object.hasOwn(message, "error")) {
+    assertSessionExactKeys(message, ["jsonrpc", "id", "error"], "Goose tool-discovery error");
+    if (message.jsonrpc !== "2.0" || message.id !== TOOLS_LIST_REQUEST_ID) {
+      throw invalidSessionMessage("Goose tool-discovery error correlation is incompatible");
+    }
+    const error = assertSessionRecord(message.error, "Goose tool-discovery error payload");
+    assertSessionAllowedKeys(
+      error,
+      ["code", "message", "data"],
+      ["code", "message"],
+      "Goose tool-discovery error payload",
+    );
+    if (
+      !Number.isSafeInteger(error.code) ||
+      typeof error.message !== "string" ||
+      error.message.length < 1 ||
+      error.message.length > 1_024
+    ) {
+      throw invalidSessionMessage("Goose tool-discovery error payload is invalid");
+    }
+    throw new GooseAcpSessionError(
+      "tool-discovery-rejected",
+      "Goose rejected explicit MCP tool discovery",
+    );
+  }
+  assertSessionExactKeys(message, ["jsonrpc", "id", "result"], "Goose tool-discovery response");
+  if (message.jsonrpc !== "2.0" || message.id !== TOOLS_LIST_REQUEST_ID) {
+    throw invalidSessionMessage("Goose tool-discovery response correlation is incompatible");
+  }
+  const result = assertSessionRecord(message.result, "Goose tool-discovery result");
+  assertSessionExactKeys(result, ["tools"], "Goose tool-discovery result");
+  if (!Array.isArray(result.tools) || result.tools.length < 1 || result.tools.length > 128) {
+    throw invalidSessionMessage("Goose tool discovery returned an invalid tool count");
+  }
+  const prefix = `${options.extensionName}__`;
+  const names: string[] = [];
+  const seen = new Set<string>();
+  for (const value of result.tools) {
+    const tool = assertSessionRecord(value, "Goose discovered tool");
+    assertSessionAllowedKeys(
+      tool,
+      ["name", "description", "parameters", "permission", "inputSchema", "outputSchema"],
+      ["name", "description", "parameters", "permission", "inputSchema"],
+      "Goose discovered tool",
+    );
+    if (
+      typeof tool.name !== "string" ||
+      !tool.name.startsWith(prefix) ||
+      tool.name.length <= prefix.length ||
+      tool.name.length > 512 ||
+      !/^[A-Za-z0-9._:-]+(?:__[A-Za-z0-9._:-]+)?$/.test(tool.name) ||
+      seen.has(tool.name) ||
+      typeof tool.description !== "string" ||
+      tool.description.length > 16_384 ||
+      !Array.isArray(tool.parameters) ||
+      tool.parameters.length > 128 ||
+      tool.parameters.some(
+        (parameter) =>
+          typeof parameter !== "string" || parameter.length < 1 || parameter.length > 128,
+      ) ||
+      (tool.permission !== null &&
+        tool.permission !== "always_allow" &&
+        tool.permission !== "ask_before" &&
+        tool.permission !== "never_allow") ||
+      !isRecord(tool.inputSchema) ||
+      (tool.outputSchema !== undefined && !isRecord(tool.outputSchema))
+    ) {
+      throw invalidSessionMessage("Goose discovered tool differs from the admitted shape");
+    }
+    seen.add(tool.name);
+    names.push(tool.name);
+  }
+  return Object.freeze({ toolNames: Object.freeze(names) });
+}
+
+async function discoverGooseAcpTools(
+  transport: GooseAcpTransport,
+  options: GooseAcpToolDiscoveryOptions,
+): Promise<GooseAcpToolDiscovery> {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_SESSION_TIMEOUT_MS;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const unsubscribers: Array<() => void> = [];
+  try {
+    return await new Promise<GooseAcpToolDiscovery>((resolve, reject) => {
+      unsubscribers.push(
+        transport.onLine((line) => {
+          try {
+            resolve(parseToolDiscoveryMessage(line, options));
+          } catch (error) {
+            reject(error);
+          }
+        }),
+        transport.onError((error) => {
+          reject(
+            new GooseAcpSessionError(
+              "session-transport-error",
+              "Goose ACP transport failed during explicit tool discovery",
+              { cause: error },
+            ),
+          );
+        }),
+        transport.onExit((code, signal) => {
+          reject(
+            new GooseAcpSessionError(
+              "session-process-exit",
+              `Goose exited before tool discovery completed (code=${String(code)}, signal=${String(signal)})`,
+            ),
+          );
+        }),
+      );
+      timeout = setTimeout(() => {
+        reject(
+          new GooseAcpSessionError(
+            "tool-discovery-timeout",
+            "Goose did not complete explicit MCP tool discovery before the deadline",
+          ),
+        );
+      }, timeoutMs);
+      transport.sendLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: TOOLS_LIST_REQUEST_ID,
+          method: "_goose/unstable/tools/list",
+          params: {
+            sessionId: options.sessionId,
+            extensionName: options.extensionName,
+          },
+        }),
+      );
+    });
+  } catch (error) {
+    const discoveryError =
+      error instanceof GooseAcpSessionError
+        ? error
+        : new GooseAcpSessionError(
+            "session-transport-error",
+            "Goose ACP transport failed while sending explicit tool discovery",
+            { cause: error },
+          );
+    try {
+      await transport.close();
+    } catch (closeError) {
+      throw new GooseAcpSessionError(
+        "session-transport-error",
+        "Goose tool discovery failed and transport cleanup also failed",
+        { cause: new AggregateError([discoveryError, closeError]) },
+      );
+    }
+    throw discoveryError;
   } finally {
     if (timeout !== undefined) {
       clearTimeout(timeout);
@@ -732,6 +953,8 @@ export async function connectGooseAcp(
 
     let closed = false;
     let sessionRequested = false;
+    let activeSessionId: string | undefined;
+    let toolDiscoveryRequested = false;
     return Object.freeze({
       info,
       async openSession(options: GooseAcpSessionOptions): Promise<GooseAcpSession> {
@@ -749,7 +972,32 @@ export async function connectGooseAcp(
           );
         }
         sessionRequested = true;
-        return openGooseAcpSession(transport, options);
+        const session = await openGooseAcpSession(transport, options);
+        activeSessionId = session.sessionId;
+        return session;
+      },
+      async discoverTools(options: GooseAcpToolDiscoveryOptions): Promise<GooseAcpToolDiscovery> {
+        if (closed) {
+          throw new GooseAcpSessionError(
+            "session-closed",
+            "Goose ACP connection is already closed",
+          );
+        }
+        if (activeSessionId === undefined) {
+          throw new GooseAcpSessionError(
+            "invalid-session-options",
+            "Goose tool discovery requires an active admitted session",
+          );
+        }
+        assertToolDiscoveryOptions(options, activeSessionId);
+        if (toolDiscoveryRequested) {
+          throw new GooseAcpSessionError(
+            "tool-discovery-already-requested",
+            "Goose process already received its single admitted tool-discovery request",
+          );
+        }
+        toolDiscoveryRequested = true;
+        return discoverGooseAcpTools(transport, options);
       },
       async close(): Promise<void> {
         if (closed) {

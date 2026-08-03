@@ -159,6 +159,103 @@ describe("Goose ACP handshake", () => {
     expect(transport.closeCount).toBe(1);
   });
 
+  it("explicitly asks pinned Goose to discover only the admitted MCP extension tools", async () => {
+    const transport = new LoopbackGooseAcpTransport();
+    const connection = await connectGooseAcp(transport);
+    const session = await connection.openSession({
+      workspaceDirectory: "/private/tmp/actestra-worktree",
+      capabilityProxyUrl: "http://127.0.0.1:43123/mcp",
+      attemptLease: "attempt-lease-0123456789abcdef0123456789abcdef",
+    });
+
+    await expect(
+      connection.discoverTools({
+        sessionId: session.sessionId,
+        extensionName: "actestra-capability-proxy",
+      }),
+    ).resolves.toEqual({
+      toolNames: [
+        "actestra-capability-proxy__coding.file.read",
+        "actestra-capability-proxy__coding.test.run",
+      ],
+    });
+    expect(JSON.parse(transport.sentLines[2]!)).toEqual({
+      jsonrpc: "2.0",
+      id: "actestra-goose-tools-list-1",
+      method: "_goose/unstable/tools/list",
+      params: {
+        sessionId: "goose-session-1",
+        extensionName: "actestra-capability-proxy",
+      },
+    });
+
+    await connection.close();
+  });
+
+  it("closes when Goose expands the admitted tool-discovery response", async () => {
+    const transport = new LoopbackGooseAcpTransport({
+      toolDiscoveryMessages: (request) => [
+        {
+          jsonrpc: "2.0",
+          id: request.id,
+          result: {
+            tools: [
+              {
+                name: "actestra-capability-proxy__coding.file.read",
+                description: "Read one bounded file.",
+                parameters: ["contractVersion", "path"],
+                permission: null,
+                inputSchema: { type: "object" },
+                unexpectedAuthority: true,
+              },
+            ],
+          },
+        },
+      ],
+    });
+    const connection = await connectGooseAcp(transport);
+    const session = await connection.openSession({
+      workspaceDirectory: "/private/tmp/actestra-worktree",
+      capabilityProxyUrl: "http://127.0.0.1:43123/mcp",
+      attemptLease: "attempt-lease-0123456789abcdef0123456789abcdef",
+    });
+
+    await expect(
+      connection.discoverTools({
+        sessionId: session.sessionId,
+        extensionName: "actestra-capability-proxy",
+      }),
+    ).rejects.toMatchObject({
+      name: "GooseAcpSessionError",
+      code: "invalid-session-message",
+    });
+    expect(transport.closeCount).toBe(1);
+  });
+
+  it("bounds a silent explicit tool-discovery request and closes the transport", async () => {
+    vi.useFakeTimers();
+    const transport = new LoopbackGooseAcpTransport({ silentToolDiscovery: true });
+    const connection = await connectGooseAcp(transport);
+    const session = await connection.openSession({
+      workspaceDirectory: "/private/tmp/actestra-worktree",
+      capabilityProxyUrl: "http://127.0.0.1:43123/mcp",
+      attemptLease: "attempt-lease-0123456789abcdef0123456789abcdef",
+    });
+    const discovery = connection.discoverTools({
+      sessionId: session.sessionId,
+      extensionName: "actestra-capability-proxy",
+      timeoutMs: 10,
+    });
+    const rejection = expect(discovery).rejects.toMatchObject({
+      name: "GooseAcpSessionError",
+      code: "tool-discovery-timeout",
+    });
+
+    await vi.advanceTimersByTimeAsync(11);
+    await rejection;
+    expect(transport.closeCount).toBe(1);
+  });
+
   it.each([
     {
       label: "relative workspace",

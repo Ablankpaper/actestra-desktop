@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { afterEach, describe, expect, it } from "vitest";
+import { CODING_TOOL_IDS } from "../../apps/desktop/src/core";
 import { openGooseMcpSessionComposition } from "../../apps/desktop/src/main/workers/gooseMcpSessionComposition";
 import { admitGooseRunnerArtifact } from "../../apps/desktop/src/main/workers/gooseRunnerArtifact";
 
@@ -40,6 +41,7 @@ describe.skipIf(
       artifact,
       privateRootParent,
       workspaceDirectory,
+      modelId: "actestra-loopback-integration",
       commandIds: Object.freeze(["format-check"]),
       testIds: Object.freeze(["focused-tests"]),
       handshakeTimeoutMs: 20_000,
@@ -54,6 +56,9 @@ describe.skipIf(
       setupNotificationKinds: expect.arrayContaining(["available_commands_update"]),
     });
     expect(opened.session.sessionId).toEqual(expect.any(String));
+    expect([...opened.toolNames].sort()).toEqual(
+      CODING_TOOL_IDS.map((toolId) => `actestra-capability-proxy__${toolId}`).sort(),
+    );
     expect(await readdir(privateRootParent)).toHaveLength(1);
 
     await opened.close();

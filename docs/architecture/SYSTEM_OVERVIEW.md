@@ -639,21 +639,39 @@ shape. All additional metadata and methods are rejected; in particular,
 `tools/call` returns method-not-found and cannot enter the Tool Gateway. Shutdown
 destroys partial and retained sockets.
 
-The current main-process composition helper creates the 256-bit attempt lease;
-the Worker cannot supply it. The helper starts MCP before Goose, passes only the
-random loopback URL and Bearer lease through the existing one-session ACP
-contract, and waits for both `session/new` and the server's accepted
-`tools/list` evidence. Opening failure and normal close release Worker before
-MCP; every cleanup is attempted, idempotent, and reported as an aggregate. The
-helper has no renderer, preload, model, credential, shell, or filesystem
-authority of its own.
+The current main-process composition helper creates separate 256-bit MCP and
+model-readiness leases; the Worker cannot supply either. It starts the MCP
+server and an authenticated non-inference model catalog on separate random
+`127.0.0.1` ports before Goose. The model-related additions to the Worker's
+rebuilt environment are the pinned provider, caller-selected model, exact
+catalog base URL, opaque local API lease, and loopback proxy bypass. Its macOS
+sandbox still denies all other network traffic and admits outbound access only
+to those exact two ports.
+
+After `session/new`, Actestra sends the pinned
+`_goose/unstable/tools/list` ACP request filtered to the admitted MCP extension.
+The helper waits for both the server's accepted authenticated `tools/list` and
+Goose's strict response, then requires the exact six coding tool identifiers
+before returning. Opening failure and normal close release Worker before MCP
+and the model catalog; every cleanup is attempted, idempotent, and reported as
+an aggregate. The helper has no renderer, preload, inference, raw credential,
+shell, or filesystem authority of its own.
+
+Pull request 36 old head `9e277e1593b2715ed3721e1febb886985a942824`
+passed its macOS arm64 job but failed Goose runner admission in CI 30837296114
+at `session/new`. The exact SHA was not rerun. The corrected runtime uses the
+model-readiness catalog because pinned Goose resolves provider/model state at
+session creation, explicit loopback `NO_PROXY` because the host proxy otherwise
+intercepts the request, exact two-port sandbox admission, and the explicit ACP
+method because `session/new` initializes MCP but does not itself issue
+`tools/list`. An admitted-artifact local integration passes the corrected path
+and exact-six discovery.
 
 This composition is still not P5.2 acceptance. It is not yet connected to the
-desktop-main coding service, and its admitted live-Goose path remains an
-artifact-gated CI test at the local checkpoint. No admitted loopback model
-path, prompt/tool execution, normalized durable ACP evidence, or
-publish/Artifact path exists yet. No real Goose coding session or renderer
-journey is claimed.
+desktop-main coding service. The model catalog deliberately exposes no
+inference route and the MCP server deliberately rejects `tools/call`; therefore
+prompt/tool execution, normalized durable ACP evidence, and publish/Artifact
+remain absent. No real Goose coding session or renderer journey is claimed.
 
 ## Event contract
 

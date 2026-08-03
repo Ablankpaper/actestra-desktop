@@ -1,11 +1,21 @@
 import { randomBytes } from "node:crypto";
+import { CODING_TOOL_IDS } from "../../core";
 import type { AdmittedGooseRunnerArtifact } from "./gooseRunnerArtifact";
 import {
   startGooseMcpCapabilityServer,
   type GooseMcpCapabilityServer,
   type StartGooseMcpCapabilityServerOptions,
 } from "./gooseMcpCapabilityServer";
-import type { GooseAcpInfo, GooseAcpSession } from "./gooseAcpHandshake";
+import {
+  ACTESTRA_GOOSE_MCP_EXTENSION_NAME,
+  type GooseAcpInfo,
+  type GooseAcpSession,
+} from "./gooseAcpHandshake";
+import {
+  startGooseLoopbackModelServer,
+  type GooseLoopbackModelServer,
+  type StartGooseLoopbackModelServerOptions,
+} from "./gooseLoopbackModelServer";
 import {
   openGooseRunnerHandshake,
   type OpenGooseRunnerHandshakeOptions,
@@ -13,11 +23,15 @@ import {
 } from "./gooseRunnerProcess";
 
 const DEFAULT_TOOLS_LIST_WAIT_MS = 30_000;
+const EXPECTED_GOOSE_TOOL_NAMES = Object.freeze(
+  CODING_TOOL_IDS.map((toolId) => `${ACTESTRA_GOOSE_MCP_EXTENSION_NAME}__${toolId}`),
+);
 
 export interface OpenGooseMcpSessionCompositionOptions {
   readonly artifact: AdmittedGooseRunnerArtifact;
   readonly privateRootParent: string;
   readonly workspaceDirectory: string;
+  readonly modelId: string;
   readonly commandIds: readonly string[];
   readonly testIds: readonly string[];
   readonly handshakeTimeoutMs?: number;
@@ -28,10 +42,11 @@ export interface GooseMcpSessionComposition {
   readonly info: GooseAcpInfo;
   readonly privateRoot: string;
   readonly session: GooseAcpSession;
+  readonly toolNames: readonly string[];
   close(): Promise<void>;
 }
 
-export type GooseMcpSessionCompositionErrorCode = "cleanup-failed";
+export type GooseMcpSessionCompositionErrorCode = "cleanup-failed" | "tool-discovery-mismatch";
 
 export class GooseMcpSessionCompositionError extends Error {
   constructor(
@@ -48,6 +63,9 @@ export interface GooseMcpSessionCompositionDependencies {
   startCapabilityServer(
     options: StartGooseMcpCapabilityServerOptions,
   ): Promise<GooseMcpCapabilityServer>;
+  startModelServer(
+    options: StartGooseLoopbackModelServerOptions,
+  ): Promise<GooseLoopbackModelServer>;
   openRunnerHandshake(
     options: OpenGooseRunnerHandshakeOptions,
   ): Promise<OpenGooseRunnerHandshakeResult>;
@@ -55,6 +73,7 @@ export interface GooseMcpSessionCompositionDependencies {
 
 const DEFAULT_DEPENDENCIES: GooseMcpSessionCompositionDependencies = Object.freeze({
   startCapabilityServer: startGooseMcpCapabilityServer,
+  startModelServer: startGooseLoopbackModelServer,
   openRunnerHandshake: openGooseRunnerHandshake,
 });
 
@@ -62,9 +81,30 @@ function createAttemptLease(): string {
   return randomBytes(32).toString("base64url");
 }
 
+function normalizeDiscoveredToolNames(value: unknown): readonly string[] {
+  if (!Array.isArray(value) || value.length !== EXPECTED_GOOSE_TOOL_NAMES.length) {
+    throw new GooseMcpSessionCompositionError(
+      "tool-discovery-mismatch",
+      "Goose did not return the exact admitted Actestra coding tool set",
+    );
+  }
+  const names = new Set<unknown>(value);
+  if (
+    names.size !== value.length ||
+    !EXPECTED_GOOSE_TOOL_NAMES.every((toolName) => names.has(toolName))
+  ) {
+    throw new GooseMcpSessionCompositionError(
+      "tool-discovery-mismatch",
+      "Goose did not return the exact admitted Actestra coding tool set",
+    );
+  }
+  return EXPECTED_GOOSE_TOOL_NAMES;
+}
+
 async function collectCleanupFailures(
   runner: OpenGooseRunnerHandshakeResult | undefined,
   capabilityServer: GooseMcpCapabilityServer,
+  modelServer: GooseLoopbackModelServer | undefined,
 ): Promise<unknown[]> {
   const failures: unknown[] = [];
   if (runner !== undefined) {
@@ -79,18 +119,26 @@ async function collectCleanupFailures(
   } catch (error) {
     failures.push(error);
   }
+  if (modelServer !== undefined) {
+    try {
+      await modelServer.close();
+    } catch (error) {
+      failures.push(error);
+    }
+  }
   return failures;
 }
 
-async function closeRunnerThenCapabilityServer(
+async function closeComposition(
   runner: OpenGooseRunnerHandshakeResult,
   capabilityServer: GooseMcpCapabilityServer,
+  modelServer: GooseLoopbackModelServer,
 ): Promise<void> {
-  const failures = await collectCleanupFailures(runner, capabilityServer);
+  const failures = await collectCleanupFailures(runner, capabilityServer, modelServer);
   if (failures.length > 0) {
     throw new GooseMcpSessionCompositionError(
       "cleanup-failed",
-      "Goose Worker or MCP capability server cleanup failed",
+      "Goose Worker, MCP capability server, or model server cleanup failed",
       { cause: new AggregateError(failures, "One or more Goose session cleanups failed") },
     );
   }
@@ -101,35 +149,57 @@ export async function openGooseMcpSessionComposition(
   dependencies: GooseMcpSessionCompositionDependencies = DEFAULT_DEPENDENCIES,
 ): Promise<GooseMcpSessionComposition> {
   const attemptLease = createAttemptLease();
+  let modelAttemptLease = createAttemptLease();
+  while (modelAttemptLease === attemptLease) {
+    modelAttemptLease = createAttemptLease();
+  }
   const capabilityServer = await dependencies.startCapabilityServer({
     attemptLease,
     commandIds: options.commandIds,
     testIds: options.testIds,
   });
+  let modelServer: GooseLoopbackModelServer | undefined;
   let runner: OpenGooseRunnerHandshakeResult | undefined;
   let session: GooseAcpSession;
+  let toolNames: readonly string[];
   try {
+    modelServer = await dependencies.startModelServer({
+      modelId: options.modelId,
+      attemptLease: modelAttemptLease,
+    });
     runner = await dependencies.openRunnerHandshake({
       artifact: options.artifact,
       privateRootParent: options.privateRootParent,
+      capabilityProxyUrl: capabilityServer.url,
+      modelBinding: {
+        baseUrl: modelServer.baseUrl,
+        modelId: options.modelId,
+        attemptLease: modelAttemptLease,
+      },
       ...(options.handshakeTimeoutMs === undefined
         ? {}
         : { handshakeTimeoutMs: options.handshakeTimeoutMs }),
     });
+    session = await runner.openSession({
+      workspaceDirectory: options.workspaceDirectory,
+      capabilityProxyUrl: capabilityServer.url,
+      attemptLease,
+      ...(options.sessionTimeoutMs === undefined ? {} : { timeoutMs: options.sessionTimeoutMs }),
+    });
     const toolsListed = capabilityServer.waitForToolsList(
       options.sessionTimeoutMs ?? DEFAULT_TOOLS_LIST_WAIT_MS,
     );
-    [session] = await Promise.all([
-      runner.openSession({
-        workspaceDirectory: options.workspaceDirectory,
-        capabilityProxyUrl: capabilityServer.url,
-        attemptLease,
+    const [discovery] = await Promise.all([
+      runner.discoverTools({
+        sessionId: session.sessionId,
+        extensionName: ACTESTRA_GOOSE_MCP_EXTENSION_NAME,
         ...(options.sessionTimeoutMs === undefined ? {} : { timeoutMs: options.sessionTimeoutMs }),
       }),
       toolsListed,
     ]);
+    toolNames = normalizeDiscoveredToolNames(discovery.toolNames);
   } catch (error) {
-    const cleanupFailures = await collectCleanupFailures(runner, capabilityServer);
+    const cleanupFailures = await collectCleanupFailures(runner, capabilityServer, modelServer);
     if (cleanupFailures.length > 0) {
       throw new GooseMcpSessionCompositionError(
         "cleanup-failed",
@@ -147,12 +217,14 @@ export async function openGooseMcpSessionComposition(
 
   let closePromise: Promise<void> | undefined;
   const stableRunner = runner;
+  const stableModelServer = modelServer;
   return Object.freeze({
     info: stableRunner.info,
     privateRoot: stableRunner.privateRoot,
     session,
+    toolNames,
     close(): Promise<void> {
-      closePromise ??= closeRunnerThenCapabilityServer(stableRunner, capabilityServer);
+      closePromise ??= closeComposition(stableRunner, capabilityServer, stableModelServer);
       return closePromise;
     },
   });

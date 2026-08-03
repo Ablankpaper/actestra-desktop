@@ -1,5 +1,6 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { CODING_TOOL_IDS } from "../../apps/desktop/src/core";
 import type { AdmittedGooseRunnerArtifact } from "../../apps/desktop/src/main/workers/gooseRunnerArtifact";
 import {
   GooseMcpSessionCompositionError,
@@ -9,6 +10,7 @@ import {
 import type {
   GooseAcpSession,
   GooseAcpSessionOptions,
+  GooseAcpToolDiscoveryOptions,
 } from "../../apps/desktop/src/main/workers/gooseAcpHandshake";
 
 const artifact = Object.freeze({
@@ -38,10 +40,15 @@ const runnerSession = Object.freeze({
   setupNotificationKinds: Object.freeze(["available_commands_update"] as const),
 } satisfies GooseAcpSession);
 
+const runnerDiscovery = Object.freeze({
+  toolNames: Object.freeze(CODING_TOOL_IDS.map((toolId) => `actestra-capability-proxy__${toolId}`)),
+});
+
 describe("Goose MCP session composition", () => {
-  it("owns one generated attempt lease across the MCP and ACP boundaries", async () => {
+  it("owns separate generated leases across model, MCP, and ACP boundaries", async () => {
     let serverLease: string | undefined;
     let sessionLease: string | undefined;
+    let modelLease: string | undefined;
     const dependencies: GooseMcpSessionCompositionDependencies = {
       async startCapabilityServer(options) {
         serverLease = options.attemptLease;
@@ -51,7 +58,21 @@ describe("Goose MCP session composition", () => {
           async close() {},
         });
       },
-      async openRunnerHandshake() {
+      async startModelServer(options) {
+        modelLease = options.attemptLease;
+        expect(options.modelId).toBe("actestra-caller-model");
+        return Object.freeze({
+          baseUrl: "http://127.0.0.1:43124/v1",
+          async close() {},
+        });
+      },
+      async openRunnerHandshake(options) {
+        expect(options).toHaveProperty("capabilityProxyUrl", "http://127.0.0.1:43123/mcp");
+        expect(options.modelBinding).toEqual({
+          baseUrl: "http://127.0.0.1:43124/v1",
+          modelId: "actestra-caller-model",
+          attemptLease: modelLease,
+        });
         return Object.freeze({
           info: runnerInfo,
           privateRoot: "/tmp/actestra-goose-attempt",
@@ -63,6 +84,13 @@ describe("Goose MCP session composition", () => {
             });
             return runnerSession;
           },
+          async discoverTools(options: GooseAcpToolDiscoveryOptions) {
+            expect(options).toEqual({
+              sessionId: "goose-session-1",
+              extensionName: "actestra-capability-proxy",
+            });
+            return runnerDiscovery;
+          },
           async close() {},
         });
       },
@@ -73,6 +101,7 @@ describe("Goose MCP session composition", () => {
         artifact,
         privateRootParent: path.resolve("/tmp/actestra-goose-attempts"),
         workspaceDirectory: path.resolve("/tmp/actestra-worktree"),
+        modelId: "actestra-caller-model",
         commandIds: Object.freeze(["git.status"]),
         testIds: Object.freeze(["test.unit"]),
       },
@@ -82,14 +111,18 @@ describe("Goose MCP session composition", () => {
     expect(serverLease).toBeDefined();
     expect(sessionLease).toBe(serverLease);
     expect(serverLease).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(modelLease).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(modelLease).not.toBe(serverLease);
+    expect(opened.toolNames).toEqual(runnerDiscovery.toolNames);
     expect(opened).not.toHaveProperty("attemptLease");
     await opened.close();
   });
 
-  it("aggregates cleanup failures after attempting Worker then MCP exactly once", async () => {
+  it("aggregates cleanup failures after attempting Worker, MCP, then model exactly once", async () => {
     const events: string[] = [];
     const runnerFailure = new Error("injected runner close failure");
     const serverFailure = new Error("injected MCP close failure");
+    const modelFailure = new Error("injected model close failure");
     const dependencies: GooseMcpSessionCompositionDependencies = {
       async startCapabilityServer() {
         return Object.freeze({
@@ -101,12 +134,24 @@ describe("Goose MCP session composition", () => {
           },
         });
       },
+      async startModelServer() {
+        return Object.freeze({
+          baseUrl: "http://127.0.0.1:43124/v1",
+          async close() {
+            events.push("model:close");
+            throw modelFailure;
+          },
+        });
+      },
       async openRunnerHandshake() {
         return Object.freeze({
           info: runnerInfo,
           privateRoot: "/tmp/actestra-goose-attempt",
           async openSession() {
             return runnerSession;
+          },
+          async discoverTools() {
+            return runnerDiscovery;
           },
           async close() {
             events.push("runner:close");
@@ -120,6 +165,7 @@ describe("Goose MCP session composition", () => {
         artifact,
         privateRootParent: path.resolve("/tmp/actestra-goose-attempts"),
         workspaceDirectory: path.resolve("/tmp/actestra-worktree"),
+        modelId: "actestra-caller-model",
         commandIds: Object.freeze(["git.status"]),
         testIds: Object.freeze(["test.unit"]),
       },
@@ -131,7 +177,7 @@ describe("Goose MCP session composition", () => {
     expect(secondClose).toBe(firstClose);
     const failure = await firstClose.catch((error: unknown) => error);
 
-    expect(events).toEqual(["runner:close", "mcp:close"]);
+    expect(events).toEqual(["runner:close", "mcp:close", "model:close"]);
     expect(failure).toMatchObject({
       name: "GooseMcpSessionCompositionError",
       code: "cleanup-failed",
@@ -140,10 +186,14 @@ describe("Goose MCP session composition", () => {
       throw new Error("Expected a Goose MCP session composition cleanup error");
     }
     expect(failure.cause).toBeInstanceOf(AggregateError);
-    expect((failure.cause as AggregateError).errors).toEqual([runnerFailure, serverFailure]);
+    expect((failure.cause as AggregateError).errors).toEqual([
+      runnerFailure,
+      serverFailure,
+      modelFailure,
+    ]);
   });
 
-  it("closes Worker then MCP when ACP session creation fails", async () => {
+  it("closes Worker, MCP, then model when ACP session creation fails", async () => {
     const events: string[] = [];
     const sessionFailure = new Error("injected session/new failure");
     const dependencies: GooseMcpSessionCompositionDependencies = {
@@ -157,6 +207,15 @@ describe("Goose MCP session composition", () => {
           },
         });
       },
+      async startModelServer() {
+        events.push("model:start");
+        return Object.freeze({
+          baseUrl: "http://127.0.0.1:43124/v1",
+          async close() {
+            events.push("model:close");
+          },
+        });
+      },
       async openRunnerHandshake() {
         events.push("runner:open");
         return Object.freeze({
@@ -165,6 +224,9 @@ describe("Goose MCP session composition", () => {
           async openSession() {
             events.push("runner:session/new");
             throw sessionFailure;
+          },
+          async discoverTools() {
+            throw new Error("tool discovery must not start after session/new failure");
           },
           async close() {
             events.push("runner:close");
@@ -178,6 +240,7 @@ describe("Goose MCP session composition", () => {
         artifact,
         privateRootParent: path.resolve("/tmp/actestra-goose-attempts"),
         workspaceDirectory: path.resolve("/tmp/actestra-worktree"),
+        modelId: "actestra-caller-model",
         commandIds: Object.freeze(["git.status"]),
         testIds: Object.freeze(["test.unit"]),
       },
@@ -187,10 +250,12 @@ describe("Goose MCP session composition", () => {
     expect(failure).toBe(sessionFailure);
     expect(events).toEqual([
       "mcp:start",
+      "model:start",
       "runner:open",
       "runner:session/new",
       "runner:close",
       "mcp:close",
+      "model:close",
     ]);
   });
 
@@ -207,12 +272,21 @@ describe("Goose MCP session composition", () => {
           async close() {},
         });
       },
+      async startModelServer() {
+        return Object.freeze({
+          baseUrl: "http://127.0.0.1:43124/v1",
+          async close() {},
+        });
+      },
       async openRunnerHandshake() {
         return Object.freeze({
           info: runnerInfo,
           privateRoot: "/tmp/actestra-goose-attempt",
           async openSession() {
             return runnerSession;
+          },
+          async discoverTools() {
+            return runnerDiscovery;
           },
           async close() {},
         });
@@ -224,6 +298,7 @@ describe("Goose MCP session composition", () => {
         artifact,
         privateRootParent: path.resolve("/tmp/actestra-goose-attempts"),
         workspaceDirectory: path.resolve("/tmp/actestra-worktree"),
+        modelId: "actestra-caller-model",
         commandIds: Object.freeze(["git.status"]),
         testIds: Object.freeze(["test.unit"]),
       },
@@ -239,5 +314,122 @@ describe("Goose MCP session composition", () => {
     releaseToolList();
     const opened = await opening;
     await opened.close();
+  });
+
+  it("does not return before pinned Goose acknowledges explicit tool discovery", async () => {
+    let releaseDiscovery!: () => void;
+    const discoveryAccepted = new Promise<void>((resolve) => {
+      releaseDiscovery = resolve;
+    });
+    const dependencies: GooseMcpSessionCompositionDependencies = {
+      async startCapabilityServer() {
+        return Object.freeze({
+          url: "http://127.0.0.1:43123/mcp",
+          async waitForToolsList() {},
+          async close() {},
+        });
+      },
+      async startModelServer() {
+        return Object.freeze({
+          baseUrl: "http://127.0.0.1:43124/v1",
+          async close() {},
+        });
+      },
+      async openRunnerHandshake() {
+        return Object.freeze({
+          info: runnerInfo,
+          privateRoot: "/tmp/actestra-goose-attempt",
+          async openSession() {
+            return runnerSession;
+          },
+          async discoverTools() {
+            await discoveryAccepted;
+            return runnerDiscovery;
+          },
+          async close() {},
+        });
+      },
+    };
+
+    const opening = openGooseMcpSessionComposition(
+      {
+        artifact,
+        privateRootParent: path.resolve("/tmp/actestra-goose-attempts"),
+        workspaceDirectory: path.resolve("/tmp/actestra-worktree"),
+        modelId: "actestra-caller-model",
+        commandIds: Object.freeze(["git.status"]),
+        testIds: Object.freeze(["test.unit"]),
+      },
+      dependencies,
+    );
+    let settled = false;
+    void opening.then(() => {
+      settled = true;
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(settled).toBe(false);
+    releaseDiscovery();
+    const opened = await opening;
+    expect(opened.toolNames).toEqual(runnerDiscovery.toolNames);
+    await opened.close();
+  });
+
+  it("fails closed and cleans every boundary when Goose does not return the exact tool set", async () => {
+    const events: string[] = [];
+    const dependencies: GooseMcpSessionCompositionDependencies = {
+      async startCapabilityServer() {
+        return Object.freeze({
+          url: "http://127.0.0.1:43123/mcp",
+          async waitForToolsList() {},
+          async close() {
+            events.push("mcp:close");
+          },
+        });
+      },
+      async startModelServer() {
+        return Object.freeze({
+          baseUrl: "http://127.0.0.1:43124/v1",
+          async close() {
+            events.push("model:close");
+          },
+        });
+      },
+      async openRunnerHandshake() {
+        return Object.freeze({
+          info: runnerInfo,
+          privateRoot: "/tmp/actestra-goose-attempt",
+          async openSession() {
+            return runnerSession;
+          },
+          async discoverTools() {
+            return Object.freeze({
+              toolNames: Object.freeze([runnerDiscovery.toolNames[0]!]),
+            });
+          },
+          async close() {
+            events.push("runner:close");
+          },
+        });
+      },
+    };
+
+    await expect(
+      openGooseMcpSessionComposition(
+        {
+          artifact,
+          privateRootParent: path.resolve("/tmp/actestra-goose-attempts"),
+          workspaceDirectory: path.resolve("/tmp/actestra-worktree"),
+          modelId: "actestra-caller-model",
+          commandIds: Object.freeze(["git.status"]),
+          testIds: Object.freeze(["test.unit"]),
+        },
+        dependencies,
+      ),
+    ).rejects.toMatchObject({
+      name: "GooseMcpSessionCompositionError",
+      code: "tool-discovery-mismatch",
+    });
+    expect(events).toEqual(["runner:close", "mcp:close", "model:close"]);
   });
 });
