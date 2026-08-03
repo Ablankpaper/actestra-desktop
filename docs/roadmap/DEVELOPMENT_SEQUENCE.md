@@ -183,8 +183,8 @@ the intentional containment ceiling. Pull request 37 reached exact head
 and passed exact merged-main CI 30853499159. CodeRabbit stopped at its review
 limit; GitHub has no submitted review or inline review thread.
 
-The current authenticated inference/prompt slice starts from that exact merge.
-It upgrades the authenticated model catalog to a session-bound, bounded
+The authenticated inference/prompt slice starts from that exact merge. It
+upgrades the authenticated model catalog to a session-bound, bounded
 OpenAI-compatible model proxy, keeps the model invoker in Electron main, and
 admits one strict ACP text prompt after exact tool discovery. Goose private
 session naming is disabled so Actestra Core retains naming authority. Four
@@ -193,10 +193,17 @@ exactly two model requests, one authenticated MCP file-read call, the tool resul
 in the second request, final assistant text and usage, and complete cleanup. The
 single final-byte root gate passes 68 test files and 593 tests with 1 file and 1
 test skipped, the 89-source boundary, frozen/downstream contracts, and the
-production build. The desktop-main coding service does not yet call the session
-helper; approval outcomes, durable normalized evidence, publish/Artifact flow,
-and P5.2 phase acceptance remain open. P6 CrewAI/Team runtime work has not
-started.
+production build. Pull request 38 reached exact head
+`cc773081ba448266951a3b2ac3654831022118fc`, passed exact-head CI 30859115162,
+and squash merged as `a6280dd38eacdbada9db159c4784110ec8e42770`. Its single
+automatic merged-main CI 30860137257 passed the macOS foundation job but failed
+the Goose job when one real-Git desktop-main integration test took 5.260 seconds
+under parallel runner load and crossed Vitest's implicit five-second unit-test
+deadline; the other 123 Goose tests passed. The correction gives only that
+integration test an explicit bounded deadline. The desktop-main coding service
+does not yet call the session helper; approval outcomes, durable normalized
+evidence, publish/Artifact flow, and P5.2 phase acceptance remain open. P6
+CrewAI/Team runtime work has not started.
 
 ## P0 — Project Foundation
 

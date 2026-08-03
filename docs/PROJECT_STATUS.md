@@ -256,6 +256,34 @@ deterministic smoke, the 89-source product boundary, the exact 1,766-file frozen
 AionUi foundation, the 184-file downstream contract, and the
 58-main/3-preload/28-renderer-module production build.
 
+Pull request 38 reached exact head
+`cc773081ba448266951a3b2ac3654831022118fc`. Exact-head CI 30859115162 passed
+macOS arm64 foundation job 91836946596 and Goose runner admission job
+91836946628. CodeRabbit explicitly did not start a review because its quota was
+exhausted; GitHub records no submitted review or inline review thread, so that
+status is not formal review evidence. The branch squash merged as
+`a6280dd38eacdbada9db159c4784110ec8e42770`.
+
+The single automatic merged-main CI 30860137257 passed macOS arm64 foundation
+job 91840096925 but failed Goose runner admission job 91840096947 after the
+runner artifact built successfully. The exact eight-file Goose gate passed 123
+of 124 tests; the first real-Git desktop-main integration test took 5.260
+seconds and crossed Vitest's implicit five-second unit-test deadline. The PR
+head and squash merge have the same tree
+`46b3941436b5ed232e6ba674c67abfcf42b09dbb`; the same test took 2.413 seconds
+in exact-head CI. The unchanged test passes locally in 329 ms when run alone.
+The correction gives only that real Git plus persistence-utility integration
+test an explicit bounded 15-second deadline. A forced one-millisecond default
+reproduces the timeout before the correction and passes after the per-test
+deadline. The exact eight-file Goose selection then passes locally with 7 files
+and 123 tests passing and the unchanged real-artifact file skipped because no
+artifact environment was supplied. Formatting, zero-warning lint, strict
+TypeScript, Markdown style, 63-file documentation links, and whitespace checks
+pass without changing production code, tool authority, Worker behavior, or the
+frozen AionUi foundation. The expensive runner build and complete root gate are
+not repeated for this test-and-document-only fingerprint. The failed merged-main
+run is not rerun and is not represented as successful remote closure.
+
 This evidence does not accept P5.2. The composition helper is still not called
 by the desktop-main coding service. The contained real Goose-generated
 prompt/tool loop is proved, but approval continuation and denial projection,
@@ -2000,7 +2028,11 @@ The ordered implementation index and P3 non-claims are in
    CI 30845006202. Preserve the tool-call bridge through PR 37 exact head
    `84b0550495717343b75ca2540cb7c191ab65b12a`, merge
    `d933546454e63a2d836e728f1b93980cb4a7c0ac`, and merged-main CI
-   30853499159. Complete the current authenticated inference/prompt remote gates,
+   30853499159. Preserve PR 38 exact head
+   `cc773081ba448266951a3b2ac3654831022118fc`, passing exact-head CI
+   30859115162, merge `a6280dd38eacdbada9db159c4784110ec8e42770`, and failed
+   merged-main CI 30860137257 as separate evidence; do not rerun or describe the
+   failed SHA as closed. Land the bounded integration-test deadline correction,
    then continue into desktop-main composition, approval outcomes, durable
    normalized evidence, and publish/Artifact slices. Goose may not receive
    builtins, the original checkout, raw credentials, or a second UI.

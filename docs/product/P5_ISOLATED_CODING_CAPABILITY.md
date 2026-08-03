@@ -23,11 +23,17 @@ composition is delivered through pull request 36 at exact head
 request 37 at exact head `84b0550495717343b75ca2540cb7c191ab65b12a`,
 squash merge `d933546454e63a2d836e728f1b93980cb4a7c0ac`, and exact
 merged-main CI 30853499159. The authenticated inference and prompt loop starts
-from that exact merge on branch `codex/p5-goose-inference-prompt-loop`. This
-document records the closed worktree, Tool Gateway, main-owned lifecycle
-composition, bounded ACP session, authenticated MCP transport, bounded tool-call
-bridge, and current real Goose prompt/tool round trip. It is not P5.2 phase
-acceptance.
+from that exact merge on branch `codex/p5-goose-inference-prompt-loop` and is
+delivered through pull request 38 at exact head
+`cc773081ba448266951a3b2ac3654831022118fc`, squash merge
+`a6280dd38eacdbada9db159c4784110ec8e42770`, and exact-head CI 30859115162.
+The single automatic merged-main CI 30860137257 failed only when the first
+real-Git desktop-main integration test exceeded Vitest's implicit five-second
+unit-test deadline; the macOS foundation job and the other 123 Goose tests
+passed. This document records the closed worktree, Tool Gateway, main-owned
+lifecycle composition, bounded ACP session, authenticated MCP transport,
+bounded tool-call bridge, and current real Goose prompt/tool round trip. It is
+not P5.2 phase acceptance or a successful merged-main CI claim.
 
 ## Scope
 
