@@ -1,0 +1,626 @@
+import { createHash, timingSafeEqual } from "node:crypto";
+import http, { type IncomingMessage, type ServerResponse } from "node:http";
+import type { AddressInfo, Socket } from "node:net";
+import {
+  CODING_DIFF_TOOL_ID,
+  CODING_FILE_READ_TOOL_ID,
+  CODING_FILE_WRITE_TOOL_ID,
+  CODING_GIT_TOOL_ID,
+  CODING_TERMINAL_TOOL_ID,
+  CODING_TEST_TOOL_ID,
+  MAX_ISOLATED_CODING_TEXT_BYTES,
+  MAX_SCOPED_NATIVE_RELATIVE_PATH_BYTES,
+} from "../../core";
+
+const MCP_PROTOCOL_VERSION = "2025-03-26";
+const SERVER_NAME = "actestra-core";
+const SERVER_VERSION = "0.1.0-alpha.0";
+const MAX_REQUEST_BYTES = 64 * 1024;
+
+export interface StartGooseMcpCapabilityServerOptions {
+  readonly attemptLease: string;
+  readonly commandIds: readonly string[];
+  readonly testIds: readonly string[];
+}
+
+export interface GooseMcpCapabilityServer {
+  readonly url: string;
+  close(): Promise<void>;
+}
+
+export type GooseMcpCapabilityServerErrorCode = "invalid-config";
+
+export class GooseMcpCapabilityServerError extends Error {
+  constructor(
+    readonly code: GooseMcpCapabilityServerErrorCode,
+    message: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "GooseMcpCapabilityServerError";
+  }
+}
+
+type ServerPhase = "initialize" | "initialized" | "ready";
+type RequestBodyErrorCode = "invalid-json" | "invalid-request" | "too-large";
+
+class RequestBodyError extends Error {
+  constructor(
+    readonly code: RequestBodyErrorCode,
+    message: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "RequestBodyError";
+  }
+}
+
+type JsonRpcRequest = Record<string, unknown>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
+  const keys = Object.keys(value);
+  return keys.length === expected.length && keys.every((key) => expected.includes(key));
+}
+
+function isEmptyRecord(value: unknown): boolean {
+  return isRecord(value) && Object.keys(value).length === 0;
+}
+
+function initializeRequestId(message: JsonRpcRequest): number | undefined {
+  if (!hasExactKeys(message, ["jsonrpc", "id", "method", "params"])) {
+    return undefined;
+  }
+  if (
+    message.jsonrpc !== "2.0" ||
+    message.method !== "initialize" ||
+    typeof message.id !== "number" ||
+    !Number.isSafeInteger(message.id) ||
+    message.id < 0 ||
+    !isRecord(message.params) ||
+    !hasExactKeys(message.params, ["protocolVersion", "capabilities", "clientInfo"]) ||
+    message.params.protocolVersion !== MCP_PROTOCOL_VERSION
+  ) {
+    return undefined;
+  }
+  const capabilities = message.params.capabilities;
+  if (
+    !isRecord(capabilities) ||
+    !hasExactKeys(capabilities, ["extensions", "roots", "sampling", "elicitation"]) ||
+    !isEmptyRecord(capabilities.extensions) ||
+    !isEmptyRecord(capabilities.roots) ||
+    !isEmptyRecord(capabilities.sampling) ||
+    !isEmptyRecord(capabilities.elicitation)
+  ) {
+    return undefined;
+  }
+  const clientInfo = message.params.clientInfo;
+  if (
+    !isRecord(clientInfo) ||
+    !hasExactKeys(clientInfo, ["name", "version"]) ||
+    clientInfo.name !== SERVER_NAME ||
+    clientInfo.version !== SERVER_VERSION
+  ) {
+    return undefined;
+  }
+  return message.id;
+}
+
+function isInitializedNotification(message: JsonRpcRequest): boolean {
+  return (
+    hasExactKeys(message, ["jsonrpc", "method"]) &&
+    message.jsonrpc === "2.0" &&
+    message.method === "notifications/initialized"
+  );
+}
+
+function isRequestId(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function toolsListRequestId(message: JsonRpcRequest): number | undefined {
+  if (
+    !hasExactKeys(message, ["jsonrpc", "id", "method", "params"]) ||
+    message.jsonrpc !== "2.0" ||
+    message.method !== "tools/list" ||
+    !isRequestId(message.id) ||
+    !isRecord(message.params) ||
+    !hasExactKeys(message.params, ["_meta"])
+  ) {
+    return undefined;
+  }
+  const meta = message.params._meta;
+  if (
+    !isRecord(meta) ||
+    (!hasExactKeys(meta, ["agent-session-id"]) &&
+      !hasExactKeys(meta, ["agent-session-id", "progressToken"]))
+  ) {
+    return undefined;
+  }
+  const sessionId = meta["agent-session-id"];
+  if (
+    typeof sessionId !== "string" ||
+    sessionId.length < 1 ||
+    sessionId.length > 256 ||
+    !/^[A-Za-z0-9._:-]+$/.test(sessionId)
+  ) {
+    return undefined;
+  }
+  if (
+    Object.hasOwn(meta, "progressToken") &&
+    (typeof meta.progressToken !== "number" ||
+      !Number.isSafeInteger(meta.progressToken) ||
+      meta.progressToken < 0)
+  ) {
+    return undefined;
+  }
+  return message.id;
+}
+
+function invalidConfig(message: string): GooseMcpCapabilityServerError {
+  return new GooseMcpCapabilityServerError("invalid-config", message);
+}
+
+function ownDataProperty(value: object, key: string): unknown {
+  const descriptor = Object.getOwnPropertyDescriptor(value, key);
+  if (descriptor === undefined || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+    throw invalidConfig(`Goose MCP server ${key} must be an own data property`);
+  }
+  return descriptor.value;
+}
+
+function snapshotRegistryIds(value: unknown, label: string): readonly string[] {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 128) {
+    throw invalidConfig(`Goose MCP server ${label} must contain between 1 and 128 identifiers`);
+  }
+  const identifiers: string[] = [];
+  const seen = new Set<string>();
+  for (let index = 0; index < value.length; index += 1) {
+    const identifier = ownDataProperty(value, String(index));
+    if (
+      typeof identifier !== "string" ||
+      identifier.length < 1 ||
+      identifier.length > 128 ||
+      !/^[a-z0-9]+(?:[._-][a-z0-9]+)*$/.test(identifier) ||
+      seen.has(identifier)
+    ) {
+      throw invalidConfig(`Goose MCP server ${label} contains an invalid identifier`);
+    }
+    seen.add(identifier);
+    identifiers.push(identifier);
+  }
+  return Object.freeze(identifiers);
+}
+
+function validateOptions(options: StartGooseMcpCapabilityServerOptions): {
+  readonly attemptLease: string;
+  readonly commandIds: readonly string[];
+  readonly testIds: readonly string[];
+} {
+  if (!isRecord(options)) {
+    throw invalidConfig("Goose MCP server options must be an object");
+  }
+  const keys = Reflect.ownKeys(options);
+  if (
+    keys.length !== 3 ||
+    keys.some(
+      (key) => typeof key !== "string" || !["attemptLease", "commandIds", "testIds"].includes(key),
+    )
+  ) {
+    throw invalidConfig("Goose MCP server options contain unsupported fields");
+  }
+  const attemptLease = ownDataProperty(options, "attemptLease");
+  if (
+    typeof attemptLease !== "string" ||
+    attemptLease.length < 32 ||
+    attemptLease.length > 256 ||
+    !/^[A-Za-z0-9._~-]+$/.test(attemptLease)
+  ) {
+    throw invalidConfig("Goose MCP server attempt lease is invalid");
+  }
+  return Object.freeze({
+    attemptLease,
+    commandIds: snapshotRegistryIds(ownDataProperty(options, "commandIds"), "commandIds"),
+    testIds: snapshotRegistryIds(ownDataProperty(options, "testIds"), "testIds"),
+  });
+}
+
+function jsonResponse(
+  response: ServerResponse,
+  status: number,
+  body: Readonly<Record<string, unknown>>,
+): void {
+  if (response.destroyed || response.writableEnded) {
+    return;
+  }
+  response.writeHead(status, {
+    "Cache-Control": "no-store",
+    "Content-Type": "application/json; charset=utf-8",
+    "X-Content-Type-Options": "nosniff",
+  });
+  response.end(JSON.stringify(body));
+}
+
+function accepted(response: ServerResponse): void {
+  response.writeHead(202, {
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+  });
+  response.end();
+}
+
+function rawHeaderValues(request: IncomingMessage, name: string): readonly string[] {
+  const values: string[] = [];
+  for (let index = 0; index < request.rawHeaders.length; index += 2) {
+    if (request.rawHeaders[index]?.toLowerCase() === name) {
+      values.push(request.rawHeaders[index + 1] ?? "");
+    }
+  }
+  return values;
+}
+
+function rejectHttp(request: IncomingMessage, response: ServerResponse, status: number): void {
+  request.pause();
+  response.shouldKeepAlive = false;
+  response.setHeader("Connection", "close");
+  response.once("finish", () => request.socket.destroy());
+  jsonResponse(response, status, {
+    jsonrpc: "2.0",
+    id: null,
+    error: { code: -32600, message: "Rejected MCP transport request" },
+  });
+}
+
+function hasExpectedAuthorization(request: IncomingMessage, expectedLeaseDigest: Buffer): boolean {
+  const values = rawHeaderValues(request, "authorization");
+  if (values.length !== 1) {
+    return false;
+  }
+  const match = /^Bearer ([A-Za-z0-9._~-]{32,256})$/.exec(values[0]!);
+  if (match === null) {
+    return false;
+  }
+  const candidateDigest = createHash("sha256").update(match[1]!, "utf8").digest();
+  return timingSafeEqual(candidateDigest, expectedLeaseDigest);
+}
+
+function validateHeaders(
+  request: IncomingMessage,
+  response: ServerResponse,
+  expectedHost: string,
+  expectedLeaseDigest: Buffer,
+  phase: ServerPhase,
+): boolean {
+  if (!hasExpectedAuthorization(request, expectedLeaseDigest)) {
+    rejectHttp(request, response, 401);
+    return false;
+  }
+  const hosts = rawHeaderValues(request, "host");
+  if (hosts.length !== 1 || hosts[0] !== expectedHost) {
+    rejectHttp(request, response, 400);
+    return false;
+  }
+  if (rawHeaderValues(request, "origin").length !== 0) {
+    rejectHttp(request, response, 403);
+    return false;
+  }
+  const contentTypes = rawHeaderValues(request, "content-type");
+  if (contentTypes.length !== 1 || contentTypes[0] !== "application/json") {
+    rejectHttp(request, response, 415);
+    return false;
+  }
+  const transferEncodings = rawHeaderValues(request, "transfer-encoding");
+  const contentLengths = rawHeaderValues(request, "content-length");
+  if (transferEncodings.length !== 0 || contentLengths.length !== 1) {
+    rejectHttp(request, response, 411);
+    return false;
+  }
+  if (!/^(?:0|[1-9][0-9]*)$/.test(contentLengths[0]!)) {
+    rejectHttp(request, response, 400);
+    return false;
+  }
+  const contentLength = Number(contentLengths[0]);
+  if (!Number.isSafeInteger(contentLength) || contentLength < 1) {
+    rejectHttp(request, response, 400);
+    return false;
+  }
+  if (contentLength > MAX_REQUEST_BYTES) {
+    rejectHttp(request, response, 413);
+    return false;
+  }
+  const accepts = rawHeaderValues(request, "accept");
+  if (accepts.length !== 1 || accepts[0] !== "text/event-stream, application/json") {
+    rejectHttp(request, response, 406);
+    return false;
+  }
+  const userAgents = rawHeaderValues(request, "user-agent");
+  if (userAgents.length !== 1 || userAgents[0] !== "goose/1.45.0") {
+    rejectHttp(request, response, 403);
+    return false;
+  }
+  if (rawHeaderValues(request, "mcp-session-id").length !== 0) {
+    rejectHttp(request, response, 400);
+    return false;
+  }
+  const protocolVersions = rawHeaderValues(request, "mcp-protocol-version");
+  if (
+    (phase === "initialize" && protocolVersions.length !== 0) ||
+    (phase !== "initialize" &&
+      (protocolVersions.length !== 1 || protocolVersions[0] !== MCP_PROTOCOL_VERSION))
+  ) {
+    rejectHttp(request, response, 400);
+    return false;
+  }
+  return true;
+}
+
+async function readJson(request: IncomingMessage): Promise<JsonRpcRequest> {
+  const chunks: Buffer[] = [];
+  let byteLength = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    byteLength += buffer.byteLength;
+    if (byteLength > MAX_REQUEST_BYTES) {
+      throw new RequestBodyError("too-large", "MCP request body is too large");
+    }
+    chunks.push(buffer);
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch (error) {
+    throw new RequestBodyError("invalid-json", "MCP request body is not valid JSON", {
+      cause: error,
+    });
+  }
+  if (!isRecord(value)) {
+    throw new RequestBodyError("invalid-request", "MCP request must be a JSON object");
+  }
+  return value;
+}
+
+function contractVersionProperty(): Readonly<Record<string, unknown>> {
+  return Object.freeze({ type: "integer", const: 1 });
+}
+
+function toolList(commandIds: readonly string[], testIds: readonly string[]): readonly unknown[] {
+  return Object.freeze([
+    Object.freeze({
+      name: CODING_FILE_READ_TOOL_ID,
+      description: "Read bounded UTF-8 text inside the isolated coding worktree.",
+      inputSchema: Object.freeze({
+        type: "object",
+        additionalProperties: false,
+        required: Object.freeze(["contractVersion", "relativePath"]),
+        properties: Object.freeze({
+          contractVersion: contractVersionProperty(),
+          relativePath: Object.freeze({
+            type: "string",
+            minLength: 1,
+            maxLength: MAX_SCOPED_NATIVE_RELATIVE_PATH_BYTES,
+          }),
+          maximumBytes: Object.freeze({
+            type: "integer",
+            minimum: 1,
+            maximum: MAX_ISOLATED_CODING_TEXT_BYTES,
+          }),
+        }),
+      }),
+    }),
+    Object.freeze({
+      name: CODING_FILE_WRITE_TOOL_ID,
+      description: "Write bounded UTF-8 text inside the isolated coding worktree after approval.",
+      inputSchema: Object.freeze({
+        type: "object",
+        additionalProperties: false,
+        required: Object.freeze(["contractVersion", "relativePath", "content"]),
+        properties: Object.freeze({
+          contractVersion: contractVersionProperty(),
+          relativePath: Object.freeze({
+            type: "string",
+            minLength: 1,
+            maxLength: MAX_SCOPED_NATIVE_RELATIVE_PATH_BYTES,
+          }),
+          content: Object.freeze({ type: "string", maxLength: MAX_ISOLATED_CODING_TEXT_BYTES }),
+        }),
+      }),
+    }),
+    Object.freeze({
+      name: CODING_TERMINAL_TOOL_ID,
+      description: "Run one Actestra-registered command in the isolated worktree after approval.",
+      inputSchema: Object.freeze({
+        type: "object",
+        additionalProperties: false,
+        required: Object.freeze(["contractVersion", "commandId"]),
+        properties: Object.freeze({
+          contractVersion: contractVersionProperty(),
+          commandId: Object.freeze({ type: "string", enum: Object.freeze([...commandIds]) }),
+        }),
+      }),
+    }),
+    Object.freeze({
+      name: CODING_GIT_TOOL_ID,
+      description: "Inspect fixed Git status or HEAD state without changing the repository.",
+      inputSchema: Object.freeze({
+        type: "object",
+        additionalProperties: false,
+        required: Object.freeze(["contractVersion", "query"]),
+        properties: Object.freeze({
+          contractVersion: contractVersionProperty(),
+          query: Object.freeze({ type: "string", enum: Object.freeze(["status", "head"]) }),
+        }),
+      }),
+    }),
+    Object.freeze({
+      name: CODING_DIFF_TOOL_ID,
+      description: "Inspect the fixed worktree diff without external diff or text conversion.",
+      inputSchema: Object.freeze({
+        type: "object",
+        additionalProperties: false,
+        required: Object.freeze(["contractVersion"]),
+        properties: Object.freeze({ contractVersion: contractVersionProperty() }),
+      }),
+    }),
+    Object.freeze({
+      name: CODING_TEST_TOOL_ID,
+      description:
+        "Run one Actestra-registered test command in the isolated worktree after approval.",
+      inputSchema: Object.freeze({
+        type: "object",
+        additionalProperties: false,
+        required: Object.freeze(["contractVersion", "testId"]),
+        properties: Object.freeze({
+          contractVersion: contractVersionProperty(),
+          testId: Object.freeze({ type: "string", enum: Object.freeze([...testIds]) }),
+        }),
+      }),
+    }),
+  ]);
+}
+
+export async function startGooseMcpCapabilityServer(
+  options: StartGooseMcpCapabilityServerOptions,
+): Promise<GooseMcpCapabilityServer> {
+  const config = validateOptions(options);
+  const tools = toolList(config.commandIds, config.testIds);
+  const expectedLeaseDigest = createHash("sha256").update(config.attemptLease, "utf8").digest();
+  let phase: ServerPhase = "initialize";
+  let expectedHost = "";
+  const sockets = new Set<Socket>();
+
+  const server = http.createServer(async (request, response) => {
+    if (request.url !== "/mcp") {
+      rejectHttp(request, response, 404);
+      return;
+    }
+    if (request.method !== "POST") {
+      rejectHttp(request, response, 405);
+      return;
+    }
+    if (!validateHeaders(request, response, expectedHost, expectedLeaseDigest, phase)) {
+      return;
+    }
+    try {
+      const message = await readJson(request);
+      const initializeId = phase === "initialize" ? initializeRequestId(message) : undefined;
+      if (initializeId !== undefined) {
+        phase = "initialized";
+        jsonResponse(response, 200, {
+          jsonrpc: "2.0",
+          id: initializeId,
+          result: {
+            protocolVersion: MCP_PROTOCOL_VERSION,
+            capabilities: { tools: {} },
+            serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
+          },
+        });
+        return;
+      }
+
+      if (phase === "initialized" && isInitializedNotification(message)) {
+        phase = "ready";
+        accepted(response);
+        return;
+      }
+
+      if (phase === "ready" && message.method === "tools/list") {
+        const listRequestId = toolsListRequestId(message);
+        if (listRequestId !== undefined) {
+          jsonResponse(response, 200, {
+            jsonrpc: "2.0",
+            id: listRequestId,
+            result: { tools },
+          });
+        } else {
+          jsonResponse(response, 400, {
+            jsonrpc: "2.0",
+            id: null,
+            error: { code: -32600, message: "Invalid MCP request" },
+          });
+        }
+        return;
+      }
+
+      if (
+        phase === "ready" &&
+        message.jsonrpc === "2.0" &&
+        typeof message.method === "string" &&
+        isRequestId(message.id)
+      ) {
+        jsonResponse(response, 200, {
+          jsonrpc: "2.0",
+          id: message.id,
+          error: { code: -32601, message: "Method not found" },
+        });
+        return;
+      }
+
+      jsonResponse(response, 400, {
+        jsonrpc: "2.0",
+        id: null,
+        error: { code: -32600, message: "Invalid MCP request" },
+      });
+    } catch (error) {
+      const requestError = error instanceof RequestBodyError ? error : undefined;
+      const status = requestError?.code === "too-large" ? 413 : 400;
+      const code = requestError?.code === "invalid-request" ? -32600 : -32700;
+      jsonResponse(response, status, {
+        jsonrpc: "2.0",
+        id: null,
+        error: {
+          code,
+          message:
+            requestError?.code === "invalid-request" ? "Invalid MCP request" : "Invalid MCP JSON",
+        },
+      });
+    }
+  });
+  server.maxHeadersCount = 32;
+  server.headersTimeout = 5_000;
+  server.requestTimeout = 5_000;
+  server.keepAliveTimeout = 1_000;
+  server.on("connection", (socket) => {
+    sockets.add(socket);
+    socket.once("close", () => sockets.delete(socket));
+  });
+  server.on("clientError", (_error, socket) => socket.destroy());
+
+  await new Promise<void>((resolve, reject) => {
+    const onError = (error: Error): void => {
+      server.off("listening", onListening);
+      reject(error);
+    };
+    const onListening = (): void => {
+      server.off("error", onError);
+      resolve();
+    };
+    server.once("error", onError);
+    server.once("listening", onListening);
+    server.listen(0, "127.0.0.1");
+  });
+
+  const address = server.address() as AddressInfo;
+  expectedHost = `127.0.0.1:${address.port}`;
+  let closePromise: Promise<void> | undefined;
+  return Object.freeze({
+    url: `http://127.0.0.1:${address.port}/mcp`,
+    close(): Promise<void> {
+      closePromise ??= new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error === undefined) {
+            resolve();
+          } else {
+            reject(error);
+          }
+        });
+        for (const socket of sockets) {
+          socket.destroy();
+        }
+      });
+      return closePromise;
+    },
+  });
+}
