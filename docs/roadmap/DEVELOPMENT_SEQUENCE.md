@@ -155,9 +155,31 @@ and 51 tests, and the admitted-artifact real integration passes 1 file/1 test.
 Worker-first MCP/model all-settled cleanup is idempotent. The corrected complete
 root gate passes 68 files and 582 tests with 1 file and 1 test skipped, the
 88-source boundary, frozen/downstream contracts, and production build. Corrected
-remote gates remain to be recorded.
-`tools/call` deliberately returns method-not-found and the model catalog exposes
-no inference route. Prompt/tool execution, durable normalized evidence,
+final head `5fe78bfaf2982556af975d23bc904d10b77a1f29` passed exact-head CI
+30843561874, squash merged as `08e6fefcd87721fbe4f21eee73f9ba6c52a638c0`,
+and passed exact merged-main CI 30845006202.
+
+The current authenticated `tools/call` slice starts from that exact merge. It
+admits only after authenticated discovery; binds the exact ACP session,
+worktree, unique bounded Worker correlation, closed tool, and versioned input;
+and routes through a caller-supplied main invoker. That invoker creates the
+Actestra request and input references, persists the exact active-grant owner,
+uses the existing policy/approval/audit/executor path, and resolves only matching
+durable output. Replay, post-close calls, invalid results, and private failures
+fail closed; shutdown stops admission and cancels and awaits in-flight calls.
+Closure is rechecked after body intake and before the deferred invoker, so a
+close-winning race cannot enter main authority. The affected focused fingerprint
+passes 3 files and 65 tests, and the dedicated
+Goose runner job now includes the real Gateway bridge test. Its single final
+root gate passes formatting and zero-warning lint, 68 test files and 589 tests
+with 1 file and 1 test skipped, the 89-source boundary, frozen/downstream
+contracts, and the production build. A 12-file committed CodeRabbit review
+raised six findings: the close race and fixed `/tmp` fixture were confirmed and
+fixed, while four suggestions were rejected because the Gateway union is closed,
+invalid tools already fail the parser, the CST date is correct, and 128 calls is
+the intentional containment ceiling. The desktop-main coding service does not
+yet call the session helper, and the model catalog exposes no inference route. A
+real Goose prompt/tool loop, approval outcomes, normalized evidence,
 publish/Artifact flow, and P5.2 phase acceptance remain open. P6 CrewAI/Team
 runtime work has not started.
 

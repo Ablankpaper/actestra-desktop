@@ -12,6 +12,7 @@ import type {
   GooseAcpSessionOptions,
   GooseAcpToolDiscoveryOptions,
 } from "../../apps/desktop/src/main/workers/gooseAcpHandshake";
+import type { GooseMcpToolInvoker } from "../../apps/desktop/src/main/workers/gooseMcpCapabilityServer";
 
 const artifact = Object.freeze({
   directory: "/tmp/actestra-goose-artifact",
@@ -44,6 +45,12 @@ const runnerDiscovery = Object.freeze({
   toolNames: Object.freeze(CODING_TOOL_IDS.map((toolId) => `actestra-capability-proxy__${toolId}`)),
 });
 
+const toolInvoker: GooseMcpToolInvoker = async () =>
+  Object.freeze({
+    isError: false,
+    content: JSON.stringify({ contractVersion: 1, type: "composition-test-result" }),
+  });
+
 describe("Goose MCP session composition", () => {
   it("owns separate generated leases across model, MCP, and ACP boundaries", async () => {
     let serverLease: string | undefined;
@@ -52,6 +59,8 @@ describe("Goose MCP session composition", () => {
     const dependencies: GooseMcpSessionCompositionDependencies = {
       async startCapabilityServer(options) {
         serverLease = options.attemptLease;
+        expect(options.workspaceDirectory).toBe(path.resolve("/tmp/actestra-worktree"));
+        expect(options.invokeTool).toBe(toolInvoker);
         return Object.freeze({
           url: "http://127.0.0.1:43123/mcp",
           async waitForToolsList() {},
@@ -102,6 +111,7 @@ describe("Goose MCP session composition", () => {
         privateRootParent: path.resolve("/tmp/actestra-goose-attempts"),
         workspaceDirectory: path.resolve("/tmp/actestra-worktree"),
         modelId: "actestra-caller-model",
+        toolInvoker,
         commandIds: Object.freeze(["git.status"]),
         testIds: Object.freeze(["test.unit"]),
       },
@@ -166,6 +176,7 @@ describe("Goose MCP session composition", () => {
         privateRootParent: path.resolve("/tmp/actestra-goose-attempts"),
         workspaceDirectory: path.resolve("/tmp/actestra-worktree"),
         modelId: "actestra-caller-model",
+        toolInvoker,
         commandIds: Object.freeze(["git.status"]),
         testIds: Object.freeze(["test.unit"]),
       },
@@ -241,6 +252,7 @@ describe("Goose MCP session composition", () => {
         privateRootParent: path.resolve("/tmp/actestra-goose-attempts"),
         workspaceDirectory: path.resolve("/tmp/actestra-worktree"),
         modelId: "actestra-caller-model",
+        toolInvoker,
         commandIds: Object.freeze(["git.status"]),
         testIds: Object.freeze(["test.unit"]),
       },
@@ -299,6 +311,7 @@ describe("Goose MCP session composition", () => {
         privateRootParent: path.resolve("/tmp/actestra-goose-attempts"),
         workspaceDirectory: path.resolve("/tmp/actestra-worktree"),
         modelId: "actestra-caller-model",
+        toolInvoker,
         commandIds: Object.freeze(["git.status"]),
         testIds: Object.freeze(["test.unit"]),
       },
@@ -357,6 +370,7 @@ describe("Goose MCP session composition", () => {
         privateRootParent: path.resolve("/tmp/actestra-goose-attempts"),
         workspaceDirectory: path.resolve("/tmp/actestra-worktree"),
         modelId: "actestra-caller-model",
+        toolInvoker,
         commandIds: Object.freeze(["git.status"]),
         testIds: Object.freeze(["test.unit"]),
       },
@@ -421,6 +435,7 @@ describe("Goose MCP session composition", () => {
           privateRootParent: path.resolve("/tmp/actestra-goose-attempts"),
           workspaceDirectory: path.resolve("/tmp/actestra-worktree"),
           modelId: "actestra-caller-model",
+          toolInvoker,
           commandIds: Object.freeze(["git.status"]),
           testIds: Object.freeze(["test.unit"]),
         },

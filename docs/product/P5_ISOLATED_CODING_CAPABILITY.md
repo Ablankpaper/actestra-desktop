@@ -15,12 +15,15 @@ delivered on `main` through pull request 33 and squash merge
 below. Pull request 34 records that closure in the source-of-truth documents and
 squash merged as `776d1e1c10d13f036a3318f7d3c193a7819443a2`. The authenticated
 MCP transport is delivered through pull request 35 and squash merge
-`8a31bafc1cd322744189fc4ed1e68f769225c999`. The session-composition slice
-starts from that exact merge on branch
-`feat/p5-goose-mcp-session-composition`. This document records the closed
+`8a31bafc1cd322744189fc4ed1e68f769225c999`. The authenticated readiness
+composition is delivered through pull request 36 at exact head
+`5fe78bfaf2982556af975d23bc904d10b77a1f29`, squash merge
+`08e6fefcd87721fbe4f21eee73f9ba6c52a638c0`, and exact merged-main CI
+30845006202. The authenticated MCP tool-call slice starts from that exact merge
+on branch `codex/p5-goose-prompt-tool-loop`. This document records the closed
 worktree, Tool Gateway, main-owned lifecycle composition, bounded ACP session,
-authenticated MCP transport, and current session-composition helper. It is not
-P5.2 phase acceptance.
+authenticated MCP transport, readiness composition, and current bounded
+tool-call bridge. It is not P5.2 phase acceptance.
 
 ## Scope
 
@@ -72,15 +75,21 @@ the exact `/mcp` path over `POST`. Every request requires the attempt-private
 Bearer lease plus the pinned Goose `v1.45.0` User-Agent, exact Host, bounded
 non-chunked JSON content, the expected Accept header, no Origin or MCP session
 header, and the correct MCP 2025-03-26 header for the current phase. The server
-admits only the ordered initialize notification and tool-list sequence. It
-returns no stateful MCP session identifier and exposes only the same six closed
-coding schemas. Command and test identifiers are copied into closed enums before
-the listener starts. The pinned Goose numeric `progressToken` is allowed beside
-the bounded ACP session metadata; other metadata is denied. `tools/call` and all
-other methods return method-not-found without entering the Tool Gateway. Body
-and header bounds, immediate rejected-connection closure, idempotent shutdown,
-and destruction of partial sockets prevent the listener from becoming a second
-unbounded process or network authority.
+admits only the ordered initialize notification and tool-list sequence before
+any tool invocation. It returns no stateful MCP session identifier and exposes
+only the same six closed coding schemas. Command and test identifiers are
+copied into closed enums before the listener starts. The pinned Goose numeric
+`progressToken` is allowed beside bounded ACP correlation metadata; other
+metadata is denied. After the accepted list, `tools/call` requires the exact
+active ACP session, isolated worktree, bounded Worker tool-call correlation
+identifier, closed tool identifier, and versioned input contract. It admits at
+most 128 unique calls, rejects replay before main authority, bounds and
+sanitizes the result, stops accepting new calls when cleanup begins, aborts and
+awaits in-flight invocations, and only then completes listener shutdown. All other
+methods return method-not-found. Body and header bounds, immediate
+rejected-connection closure, idempotent shutdown, and destruction of partial
+sockets prevent the listener from becoming a second unbounded process or
+network authority.
 
 The session-composition helper creates separate fresh 256-bit base64url leases
 for MCP and model readiness inside Electron main and never accepts either from
@@ -104,6 +113,16 @@ cleanup even after an earlier failure, and preserves all cleanup errors in
 order. The returned object exposes only normalized Goose info, private-root
 path, session identity, setup kinds, canonical tool names, and close; it does
 not expose either Bearer lease.
+
+The caller supplies one main-owned tool invoker to that composition. The
+current invoker binds the active desktop-main coding grant and Actestra Task,
+Session, and Worker identities, generates fresh Tool Gateway request and input
+reference identifiers, persists the exact versioned input owner, invokes the
+existing policy/approval/audit/executor path, and resolves only the matching
+durable output reference. Goose session and tool-call identifiers remain
+correlation metadata and never become authority. An approval-required result
+does not execute the protected operation and returns only a bounded generic MCP
+error; approval continuation and denial projection remain later work.
 
 ## Authority and policy
 
@@ -195,10 +214,14 @@ installs 3,177 packages, passes strict TypeScript, and passes the generated
 native composition test 1 file/1 test. Git delivery and CI evidence remain
 separate from these local gates and do not by themselves accept P5.2.
 
-The authenticated transport test now has 44 passing tests. It covers
+The authenticated transport/call test now has 49 passing tests. It covers
 configuration snapshotting, lease and header authentication,
 the exact pinned initialize and tool-list sequence, all six schemas, real Goose
-session/progress metadata, size and method rejection, and socket cleanup. A
+session/progress/tool-call metadata, versioned input rejection, replay denial,
+sanitized synchronous failure, cancellation, close-time admission denial, the
+close-winning deferred-invocation race, size and method rejection, and socket
+cleanup. Test workspaces derive from the operating-system temporary directory
+instead of a fixed POSIX-only path. A
 source comparison against pinned Goose `v1.45.0` first exposed the missing
 `progressToken` compatibility case; the focused test failed before the minimal
 server correction and then passed. The corrected Worker-readiness input passes
@@ -210,6 +233,29 @@ matching. With the admitted artifact whose manifest SHA-256 is
 real-runner integration passes 1 file and 1 test: real Goose completes
 `session/new`, triggers the authenticated MCP `tools/list` through explicit ACP
 discovery, returns the exact six tools, and leaves no private root.
+
+The current tool-call fingerprint passes 3 affected files and 65 tests: 49 MCP
+transport/call tests, 10 desktop-main containment and real Tool Gateway tests,
+and 6 session-composition tests. The artifact-gated integration is unchanged
+and was not rerun for this focused iteration because the admitted runner,
+manifest, model-readiness path, and discovery bytes did not change. On the exact
+final production/test/script fingerprint, the one permitted `bun run check`
+passes formatting over 204 files, zero-warning lint over 196 files, strict
+TypeScript, the Electron SQLite probe, 68 passing and 1 skipped test files with
+589 passing and 1 skipped tests, deterministic smoke, the 89-source product
+boundary, frozen/downstream contracts, and the
+58-main/3-preload/28-renderer-module production build.
+
+One committed CodeRabbit review covered all 12 changed files and raised six
+findings. The shutdown/deferred-invocation race and fixed `/tmp` fixture were
+confirmed and remediated. The regression test's red phase proved the old path
+could enter main authority after close won; the restored closure guard makes the
+same test pass. Four suggestions were rejected after checking the production
+contracts: the Gateway returns only `approval-required` or `executed`; invalid
+tool identifiers already fail `parseCodingToolInput` through the closed tool
+definition; the recorded `2026-08-04` date is correct for the CST environment;
+and the 128-call limit is the documented containment decision rather than an
+unbounded production quota.
 
 ## Git delivery evidence
 
@@ -251,10 +297,16 @@ Goose source and isolated probes established that `session/new` resolves a
 provider and model, the previous deny-all sandbox blocked both required
 loopback connections, the host proxy path required explicit loopback
 `NO_PROXY`, and `session/new` initializes MCP without itself issuing
-`tools/list`. The local correction adds the authenticated non-inference model
-catalog, exact two-port sandbox admission, closed provider/model environment,
-and one explicit `_goose/unstable/tools/list` request. Corrected pushed-head CI
-and review remain separate pending remote evidence.
+`tools/list`. The corrected final head
+`5fe78bfaf2982556af975d23bc904d10b77a1f29` passed exact-head CI 30843561874:
+macOS arm64 foundation job 91786216829 and Goose runner admission job
+91786216934. CodeRabbit selected all 15 changed files, skipped the unchanged
+real-runner integration as similar to its prior review, and supplied only its
+Free-plan summary and walkthrough; GitHub records no submitted review, inline
+comment, or review thread. The branch squash merged as
+`08e6fefcd87721fbe4f21eee73f9ba6c52a638c0`. Exact merged-main CI 30845006202
+passed macOS arm64 foundation job 91791030796 and Goose runner admission job
+91791030814.
 
 ## Remaining P5.2 work and non-claims
 
@@ -262,22 +314,28 @@ The closed capability foundation is composed into desktop main, the Goose
 adapter has a bounded `session/new` declaration and cleanup contract, the
 authenticated MCP transport is delivered, and a production main-process helper
 calls the authenticated MCP and non-inference model-readiness listeners
-together. The desktop-main coding service does not yet call that helper. The MCP
-server intentionally rejects `tools/call`, and the model listener intentionally
-implements no inference endpoint, so prompt/tool execution, normalized durable
-ACP evidence, and the publish and Artifact flow required by ADR-0024 remain
-absent. The passing real-runner readiness integration therefore does not prove a
-real Goose coding session. It also adds no renderer projection, AionUi journey,
-candidate, release, deployment, P5.3 work, CrewAI sidecar, Eigent runtime, or P6
-behavior.
+together. The current caller-supplied bridge validates and routes bounded
+`tools/call` through the real Tool Gateway and durable content references. The
+desktop-main coding service does not yet call that helper, and the model listener
+intentionally implements no inference endpoint. No real Goose-generated tool
+call, prompt loop, approval continuation or denial projection, normalized ACP
+session evidence, or publish/Artifact flow required by ADR-0024 has therefore
+been proved. The passing real-runner readiness integration is still not a real
+Goose coding session. This slice also adds no renderer projection, AionUi
+journey, candidate, release, deployment, P5.3 work, CrewAI sidecar, Eigent
+runtime, or P6 behavior.
 
-P5.2 can be accepted only after the remaining inference, prompt/tool execution,
-evidence, publish, and Artifact boundaries are implemented or the accepted
-architecture is explicitly revised, followed by the complete local, review,
-exact-head CI, and merged-main gates.
+P5.2 can be accepted only after the remaining inference and real prompt/tool
+loop, approval outcomes, normalized evidence, publish, and Artifact boundaries
+are implemented or the accepted architecture is explicitly revised, followed
+by the complete local, review, exact-head CI, and merged-main gates.
 
 ## Rollback
 
+Rollback of the current tool-call slice removes the MCP `tools/call` admission,
+main-owned invoker, session-composition injection, dedicated Goose-job coverage,
+and focused tests together. The delivered authenticated discovery composition
+then remains readiness-only and returns method-not-found for `tools/call`.
 Rollback of the current session-composition correction removes explicit ACP
 tool discovery, the non-inference model catalog, the exact two-port sandbox and
 closed provider/model environment, and their focused evidence; the composition

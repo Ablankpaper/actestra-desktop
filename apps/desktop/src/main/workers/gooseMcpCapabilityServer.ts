@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo, Socket } from "node:net";
+import path from "node:path";
 import {
   CODING_DIFF_TOOL_ID,
   CODING_FILE_READ_TOOL_ID,
@@ -8,8 +9,12 @@ import {
   CODING_GIT_TOOL_ID,
   CODING_TERMINAL_TOOL_ID,
   CODING_TEST_TOOL_ID,
+  CODING_TOOL_IDS,
   MAX_ISOLATED_CODING_TEXT_BYTES,
   MAX_SCOPED_NATIVE_RELATIVE_PATH_BYTES,
+  parseCodingToolInput,
+  type IsolatedCodingToolId,
+  type IsolatedCodingToolInput,
 } from "../../core";
 
 const MCP_PROTOCOL_VERSION = "2025-03-26";
@@ -18,11 +23,30 @@ const SERVER_VERSION = "0.1.0-alpha.0";
 const MAX_REQUEST_BYTES = 64 * 1024;
 const DEFAULT_TOOLS_LIST_WAIT_MS = 30_000;
 const MAX_TOOLS_LIST_WAIT_MS = 120_000;
+const MAX_WORKSPACE_PATH_BYTES = 4 * 1024;
+const MAX_TOOL_CALLS = 128;
+
+export interface GooseMcpToolCall {
+  readonly sessionId: string;
+  readonly toolCallRequestId: string;
+  readonly toolId: IsolatedCodingToolId;
+  readonly input: IsolatedCodingToolInput;
+  readonly signal: AbortSignal;
+}
+
+export interface GooseMcpToolInvocationResult {
+  readonly isError: boolean;
+  readonly content: string;
+}
+
+export type GooseMcpToolInvoker = (call: GooseMcpToolCall) => Promise<GooseMcpToolInvocationResult>;
 
 export interface StartGooseMcpCapabilityServerOptions {
   readonly attemptLease: string;
   readonly commandIds: readonly string[];
   readonly testIds: readonly string[];
+  readonly workspaceDirectory: string;
+  readonly invokeTool: GooseMcpToolInvoker;
 }
 
 export interface GooseMcpCapabilityServer {
@@ -134,7 +158,12 @@ function isRequestId(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
-function toolsListRequestId(message: JsonRpcRequest): number | undefined {
+interface ToolsListRequest {
+  readonly requestId: number;
+  readonly sessionId: string;
+}
+
+function toolsListRequest(message: JsonRpcRequest): ToolsListRequest | undefined {
   if (
     !hasExactKeys(message, ["jsonrpc", "id", "method", "params"]) ||
     message.jsonrpc !== "2.0" ||
@@ -170,7 +199,7 @@ function toolsListRequestId(message: JsonRpcRequest): number | undefined {
   ) {
     return undefined;
   }
-  return message.id;
+  return Object.freeze({ requestId: message.id, sessionId });
 }
 
 function invalidConfig(message: string): GooseMcpCapabilityServerError {
@@ -212,15 +241,21 @@ function validateOptions(options: StartGooseMcpCapabilityServerOptions): {
   readonly attemptLease: string;
   readonly commandIds: readonly string[];
   readonly testIds: readonly string[];
+  readonly workspaceDirectory: string;
+  readonly invokeTool: GooseMcpToolInvoker;
 } {
   if (!isRecord(options)) {
     throw invalidConfig("Goose MCP server options must be an object");
   }
   const keys = Reflect.ownKeys(options);
   if (
-    keys.length !== 3 ||
+    keys.length !== 5 ||
     keys.some(
-      (key) => typeof key !== "string" || !["attemptLease", "commandIds", "testIds"].includes(key),
+      (key) =>
+        typeof key !== "string" ||
+        !["attemptLease", "commandIds", "testIds", "workspaceDirectory", "invokeTool"].includes(
+          key,
+        ),
     )
   ) {
     throw invalidConfig("Goose MCP server options contain unsupported fields");
@@ -234,11 +269,130 @@ function validateOptions(options: StartGooseMcpCapabilityServerOptions): {
   ) {
     throw invalidConfig("Goose MCP server attempt lease is invalid");
   }
+  const workspaceDirectory = ownDataProperty(options, "workspaceDirectory");
+  if (
+    typeof workspaceDirectory !== "string" ||
+    !path.isAbsolute(workspaceDirectory) ||
+    path.resolve(workspaceDirectory) !== workspaceDirectory ||
+    path.parse(workspaceDirectory).root === workspaceDirectory ||
+    workspaceDirectory.includes("\0") ||
+    Buffer.byteLength(workspaceDirectory, "utf8") > MAX_WORKSPACE_PATH_BYTES
+  ) {
+    throw invalidConfig("Goose MCP server workspace must be an absolute normalized non-root path");
+  }
+  const invokeTool = ownDataProperty(options, "invokeTool");
+  if (typeof invokeTool !== "function") {
+    throw invalidConfig("Goose MCP server tool invoker must be a function");
+  }
   return Object.freeze({
     attemptLease,
     commandIds: snapshotRegistryIds(ownDataProperty(options, "commandIds"), "commandIds"),
     testIds: snapshotRegistryIds(ownDataProperty(options, "testIds"), "testIds"),
+    workspaceDirectory,
+    invokeTool: invokeTool as GooseMcpToolInvoker,
   });
+}
+
+interface ParsedToolCall {
+  readonly requestId: number;
+  readonly sessionId: string;
+  readonly toolCallRequestId: string;
+  readonly toolId: IsolatedCodingToolId;
+  readonly input: IsolatedCodingToolInput;
+}
+
+function isBoundedIdentifier(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length >= 1 &&
+    value.length <= 256 &&
+    /^[A-Za-z0-9._:-]+$/.test(value)
+  );
+}
+
+function parseToolCallRequest(
+  message: JsonRpcRequest,
+  expectedSessionId: string | undefined,
+  expectedWorkspaceDirectory: string,
+): ParsedToolCall | undefined {
+  if (
+    expectedSessionId === undefined ||
+    !hasExactKeys(message, ["jsonrpc", "id", "method", "params"]) ||
+    message.jsonrpc !== "2.0" ||
+    message.method !== "tools/call" ||
+    !isRequestId(message.id) ||
+    !isRecord(message.params) ||
+    !hasExactKeys(message.params, ["name", "arguments", "_meta"]) ||
+    typeof message.params.name !== "string" ||
+    !CODING_TOOL_IDS.includes(message.params.name as IsolatedCodingToolId) ||
+    !isRecord(message.params.arguments) ||
+    !isRecord(message.params._meta)
+  ) {
+    return undefined;
+  }
+  const meta = message.params._meta;
+  const requiredMeta = [
+    "agent-session-id",
+    "agent-working-dir",
+    "agent-tool-call-request-id",
+  ] as const;
+  if (
+    (!hasExactKeys(meta, requiredMeta) &&
+      !hasExactKeys(meta, [...requiredMeta, "progressToken"])) ||
+    meta["agent-session-id"] !== expectedSessionId ||
+    meta["agent-working-dir"] !== expectedWorkspaceDirectory ||
+    !isBoundedIdentifier(meta["agent-tool-call-request-id"]) ||
+    (Object.hasOwn(meta, "progressToken") &&
+      (typeof meta.progressToken !== "number" ||
+        !Number.isSafeInteger(meta.progressToken) ||
+        meta.progressToken < 0))
+  ) {
+    return undefined;
+  }
+  const toolId = message.params.name as IsolatedCodingToolId;
+  let input: IsolatedCodingToolInput;
+  try {
+    input = parseCodingToolInput(toolId, JSON.stringify(message.params.arguments));
+  } catch {
+    return undefined;
+  }
+  return Object.freeze({
+    requestId: message.id,
+    sessionId: expectedSessionId,
+    toolCallRequestId: meta["agent-tool-call-request-id"],
+    toolId,
+    input: Object.freeze({ ...input }),
+  });
+}
+
+function hasUnpairedSurrogate(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const unit = value.charCodeAt(index);
+    if (unit >= 0xd800 && unit <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (next < 0xdc00 || next > 0xdfff) {
+        return true;
+      }
+      index += 1;
+    } else if (unit >= 0xdc00 && unit <= 0xdfff) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function normalizeToolResult(value: unknown): GooseMcpToolInvocationResult | undefined {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["isError", "content"]) ||
+    typeof value.isError !== "boolean" ||
+    typeof value.content !== "string" ||
+    hasUnpairedSurrogate(value.content) ||
+    Buffer.byteLength(value.content, "utf8") > MAX_REQUEST_BYTES
+  ) {
+    return undefined;
+  }
+  return Object.freeze({ isError: value.isError, content: value.content });
 }
 
 function jsonResponse(
@@ -504,7 +658,11 @@ export async function startGooseMcpCapabilityServer(
   let expectedHost = "";
   const sockets = new Set<Socket>();
   const toolsListWaiters = new Set<ToolsListWaiter>();
+  const toolCallControllers = new Set<AbortController>();
+  const toolCallInvocations = new Set<Promise<GooseMcpToolInvocationResult>>();
+  const seenToolCallRequestIds = new Set<string>();
   let toolsListed = false;
+  let activeSessionId: string | undefined;
   let closed = false;
 
   const resolveToolsListWaiters = (): void => {
@@ -525,6 +683,10 @@ export async function startGooseMcpCapabilityServer(
   };
 
   const server = http.createServer(async (request, response) => {
+    if (closed) {
+      rejectHttp(request, response, 503);
+      return;
+    }
     if (request.url !== "/mcp") {
       rejectHttp(request, response, 404);
       return;
@@ -538,6 +700,10 @@ export async function startGooseMcpCapabilityServer(
     }
     try {
       const message = await readJson(request);
+      if (closed) {
+        rejectHttp(request, response, 503);
+        return;
+      }
       const initializeId = phase === "initialize" ? initializeRequestId(message) : undefined;
       if (initializeId !== undefined) {
         phase = "initialized";
@@ -560,11 +726,15 @@ export async function startGooseMcpCapabilityServer(
       }
 
       if (phase === "ready" && message.method === "tools/list") {
-        const listRequestId = toolsListRequestId(message);
-        if (listRequestId !== undefined) {
+        const listRequest = toolsListRequest(message);
+        if (
+          listRequest !== undefined &&
+          (activeSessionId === undefined || activeSessionId === listRequest.sessionId)
+        ) {
+          activeSessionId = listRequest.sessionId;
           jsonResponse(response, 200, {
             jsonrpc: "2.0",
-            id: listRequestId,
+            id: listRequest.requestId,
             result: { tools },
           });
           resolveToolsListWaiters();
@@ -573,6 +743,74 @@ export async function startGooseMcpCapabilityServer(
             jsonrpc: "2.0",
             id: null,
             error: { code: -32600, message: "Invalid MCP request" },
+          });
+        }
+        return;
+      }
+
+      if (phase === "ready" && message.method === "tools/call") {
+        const call = parseToolCallRequest(message, activeSessionId, config.workspaceDirectory);
+        if (
+          call === undefined ||
+          seenToolCallRequestIds.has(call.toolCallRequestId) ||
+          seenToolCallRequestIds.size >= MAX_TOOL_CALLS
+        ) {
+          jsonResponse(response, 400, {
+            jsonrpc: "2.0",
+            id: null,
+            error: { code: -32600, message: "Invalid MCP request" },
+          });
+          return;
+        }
+        seenToolCallRequestIds.add(call.toolCallRequestId);
+        const controller = new AbortController();
+        toolCallControllers.add(controller);
+        let invocation: Promise<GooseMcpToolInvocationResult>;
+        invocation = Promise.resolve()
+          .then(() => {
+            if (closed || controller.signal.aborted) {
+              throw new GooseMcpCapabilityServerError(
+                "closed",
+                "Goose MCP capability server closed before tool invocation",
+              );
+            }
+            return config.invokeTool(
+              Object.freeze({
+                sessionId: call.sessionId,
+                toolCallRequestId: call.toolCallRequestId,
+                toolId: call.toolId,
+                input: call.input,
+                signal: controller.signal,
+              }),
+            );
+          })
+          .finally(() => {
+            toolCallControllers.delete(controller);
+            toolCallInvocations.delete(invocation);
+          });
+        toolCallInvocations.add(invocation);
+        try {
+          const result = normalizeToolResult(await invocation);
+          if (result === undefined) {
+            throw new Error("Goose MCP tool invoker returned an invalid result");
+          }
+          const body = {
+            jsonrpc: "2.0",
+            id: call.requestId,
+            result: {
+              content: [{ type: "text", text: result.content }],
+              isError: result.isError,
+            },
+          } as const;
+          if (Buffer.byteLength(JSON.stringify(body), "utf8") > MAX_REQUEST_BYTES) {
+            throw new Error("Goose MCP tool result exceeds the admitted frame bound");
+          }
+          jsonResponse(response, 200, body);
+        } catch {
+          jsonResponse(response, 200, {
+            jsonrpc: "2.0",
+            id: call.requestId,
+            error: { code: -32603, message: "Tool invocation failed" },
           });
         }
         return;
@@ -679,7 +917,7 @@ export async function startGooseMcpCapabilityServer(
       });
     },
     close(): Promise<void> {
-      closePromise ??= new Promise<void>((resolve, reject) => {
+      closePromise ??= (async () => {
         closed = true;
         rejectToolsListWaiters(
           new GooseMcpCapabilityServerError(
@@ -687,17 +925,24 @@ export async function startGooseMcpCapabilityServer(
             "Goose MCP capability server closed before tools/list was accepted",
           ),
         );
-        server.close((error) => {
-          if (error === undefined) {
-            resolve();
-          } else {
-            reject(error);
-          }
+        const serverClosed = new Promise<void>((resolve, reject) => {
+          server.close((error) => {
+            if (error === undefined) {
+              resolve();
+            } else {
+              reject(error);
+            }
+          });
         });
+        for (const controller of toolCallControllers) {
+          controller.abort("goose-mcp-capability-server-closing");
+        }
         for (const socket of sockets) {
           socket.destroy();
         }
-      });
+        await Promise.allSettled(toolCallInvocations);
+        await serverClosed;
+      })();
       return closePromise;
     },
   });
