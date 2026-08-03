@@ -332,6 +332,37 @@ describe("Goose authenticated loopback MCP capability server", () => {
     });
   });
 
+  it("exposes bounded evidence after the authenticated MCP tool list is accepted", async () => {
+    const server = await openServer();
+    const toolsListed = server.waitForToolsList(1_000);
+    let settled = false;
+    void toolsListed.then(() => {
+      settled = true;
+    });
+
+    await initialize(server);
+    await postMcp(
+      server.url,
+      { jsonrpc: "2.0", method: "notifications/initialized" },
+      { protocolVersion: MCP_PROTOCOL_VERSION },
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(settled).toBe(false);
+
+    await postMcp(
+      server.url,
+      {
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/list",
+        params: { _meta: { "agent-session-id": "goose-session-1" } },
+      },
+      { protocolVersion: MCP_PROTOCOL_VERSION },
+    );
+
+    await expect(toolsListed).resolves.toBeUndefined();
+  });
+
   it("snapshots command and test identifiers before exposing schemas", async () => {
     const commandIds = ["format-check"];
     const testIds = ["focused-tests"];

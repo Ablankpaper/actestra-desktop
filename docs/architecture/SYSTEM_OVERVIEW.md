@@ -625,8 +625,10 @@ exact-head CI 30827073008, squash merged as
 `776d1e1c10d13f036a3318f7d3c193a7819443a2`, and passed exact merged-main CI
 30828549443. It introduced no additional runtime authority.
 
-The next local slice adds an authenticated, stateless MCP transport without yet
-composing it. One Actestra-owned server listens on a random `127.0.0.1` port,
+The authenticated, stateless MCP transport is delivered through pull request
+35 at exact head `93a8e9633f2be7b5f8c8b1eead3f2a21b0770073`, squash merge
+`8a31bafc1cd322744189fc4ed1e68f769225c999`, and exact merged-main CI
+30834217310. One Actestra-owned server listens on a random `127.0.0.1` port,
 accepts only exact `POST /mcp` requests with the attempt-private Bearer lease,
 and validates Host, absence of Origin, pinned Goose User-Agent, content and
 accept headers, body length, and the negotiated MCP protocol header. It admits
@@ -637,10 +639,19 @@ shape. All additional metadata and methods are rejected; in particular,
 `tools/call` returns method-not-found and cannot enter the Tool Gateway. Shutdown
 destroys partial and retained sockets.
 
-This composition is still not P5.2 acceptance. The server and the existing
-`session/new` contract are not called together by the desktop-main coding
-service or exercised by the admitted live Goose runner. No admitted loopback
-model path, prompt/tool execution, normalized durable ACP evidence, or
+The current main-process composition helper creates the 256-bit attempt lease;
+the Worker cannot supply it. The helper starts MCP before Goose, passes only the
+random loopback URL and Bearer lease through the existing one-session ACP
+contract, and waits for both `session/new` and the server's accepted
+`tools/list` evidence. Opening failure and normal close release Worker before
+MCP; every cleanup is attempted, idempotent, and reported as an aggregate. The
+helper has no renderer, preload, model, credential, shell, or filesystem
+authority of its own.
+
+This composition is still not P5.2 acceptance. It is not yet connected to the
+desktop-main coding service, and its admitted live-Goose path remains an
+artifact-gated CI test at the local checkpoint. No admitted loopback model
+path, prompt/tool execution, normalized durable ACP evidence, or
 publish/Artifact path exists yet. No real Goose coding session or renderer
 journey is claimed.
 

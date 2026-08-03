@@ -16,6 +16,8 @@ const MCP_PROTOCOL_VERSION = "2025-03-26";
 const SERVER_NAME = "actestra-core";
 const SERVER_VERSION = "0.1.0-alpha.0";
 const MAX_REQUEST_BYTES = 64 * 1024;
+const DEFAULT_TOOLS_LIST_WAIT_MS = 30_000;
+const MAX_TOOLS_LIST_WAIT_MS = 120_000;
 
 export interface StartGooseMcpCapabilityServerOptions {
   readonly attemptLease: string;
@@ -25,10 +27,15 @@ export interface StartGooseMcpCapabilityServerOptions {
 
 export interface GooseMcpCapabilityServer {
   readonly url: string;
+  waitForToolsList(timeoutMs?: number): Promise<void>;
   close(): Promise<void>;
 }
 
-export type GooseMcpCapabilityServerErrorCode = "invalid-config";
+export type GooseMcpCapabilityServerErrorCode =
+  | "invalid-config"
+  | "invalid-wait-timeout"
+  | "closed"
+  | "tools-list-timeout";
 
 export class GooseMcpCapabilityServerError extends Error {
   constructor(
@@ -43,6 +50,12 @@ export class GooseMcpCapabilityServerError extends Error {
 
 type ServerPhase = "initialize" | "initialized" | "ready";
 type RequestBodyErrorCode = "invalid-json" | "invalid-request" | "too-large";
+
+interface ToolsListWaiter {
+  readonly resolve: () => void;
+  readonly reject: (error: Error) => void;
+  readonly timeout: ReturnType<typeof setTimeout>;
+}
 
 class RequestBodyError extends Error {
   constructor(
@@ -490,6 +503,26 @@ export async function startGooseMcpCapabilityServer(
   let phase: ServerPhase = "initialize";
   let expectedHost = "";
   const sockets = new Set<Socket>();
+  const toolsListWaiters = new Set<ToolsListWaiter>();
+  let toolsListed = false;
+  let closed = false;
+
+  const resolveToolsListWaiters = (): void => {
+    toolsListed = true;
+    for (const waiter of toolsListWaiters) {
+      clearTimeout(waiter.timeout);
+      waiter.resolve();
+    }
+    toolsListWaiters.clear();
+  };
+
+  const rejectToolsListWaiters = (error: Error): void => {
+    for (const waiter of toolsListWaiters) {
+      clearTimeout(waiter.timeout);
+      waiter.reject(error);
+    }
+    toolsListWaiters.clear();
+  };
 
   const server = http.createServer(async (request, response) => {
     if (request.url !== "/mcp") {
@@ -534,6 +567,7 @@ export async function startGooseMcpCapabilityServer(
             id: listRequestId,
             result: { tools },
           });
+          resolveToolsListWaiters();
         } else {
           jsonResponse(response, 400, {
             jsonrpc: "2.0",
@@ -607,8 +641,52 @@ export async function startGooseMcpCapabilityServer(
   let closePromise: Promise<void> | undefined;
   return Object.freeze({
     url: `http://127.0.0.1:${address.port}/mcp`,
+    waitForToolsList(timeoutMs = DEFAULT_TOOLS_LIST_WAIT_MS): Promise<void> {
+      if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_TOOLS_LIST_WAIT_MS) {
+        return Promise.reject(
+          new GooseMcpCapabilityServerError(
+            "invalid-wait-timeout",
+            "Goose MCP tools/list wait must use a bounded positive safe integer",
+          ),
+        );
+      }
+      if (toolsListed) {
+        return Promise.resolve();
+      }
+      if (closed) {
+        return Promise.reject(
+          new GooseMcpCapabilityServerError(
+            "closed",
+            "Goose MCP capability server closed before tools/list was accepted",
+          ),
+        );
+      }
+      return new Promise<void>((resolve, reject) => {
+        const waiter: ToolsListWaiter = {
+          resolve,
+          reject,
+          timeout: setTimeout(() => {
+            toolsListWaiters.delete(waiter);
+            reject(
+              new GooseMcpCapabilityServerError(
+                "tools-list-timeout",
+                "Goose MCP capability server did not accept tools/list before the deadline",
+              ),
+            );
+          }, timeoutMs),
+        };
+        toolsListWaiters.add(waiter);
+      });
+    },
     close(): Promise<void> {
       closePromise ??= new Promise<void>((resolve, reject) => {
+        closed = true;
+        rejectToolsListWaiters(
+          new GooseMcpCapabilityServerError(
+            "closed",
+            "Goose MCP capability server closed before tools/list was accepted",
+          ),
+        );
         server.close((error) => {
           if (error === undefined) {
             resolve();

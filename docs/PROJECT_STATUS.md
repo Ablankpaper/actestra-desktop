@@ -112,7 +112,7 @@ automatically created exact-head CI 30827073008, squash merged as
 merged-main CI 30828549443: macOS arm64 foundation job 91736358985 and Goose
 runner admission job 91736358994. That PR changed no product bytes.
 
-The authenticated MCP transport slice starts from that exact merge on branch
+The authenticated MCP transport slice started from that exact merge on branch
 `feat/p5-goose-mcp-transport`. It adds one Actestra-owned HTTP server that
 listens on a random `127.0.0.1` port and accepts only exact `POST /mcp` requests
 carrying the attempt-private Bearer lease. It enforces the pinned Goose
@@ -126,23 +126,43 @@ JSON-RPC method-not-found and cannot reach the Tool Gateway in this slice.
 Rejected and partial connections are closed, and server shutdown destroys all
 remaining sockets.
 
-The final focused transport test passes 1 file and 43 tests after a RED/GREEN
-correction against the exact pinned Goose source. Two-file format and
-zero-warning lint checks and strict TypeScript pass. A prior complete-root
-attempt on the pre-correction fingerprint reached the full Vitest step after
-format, lint, strict TypeScript, and the Electron SQLite probe, but its terminal
-did not retain the final exit status; it is not represented as a passing full
-root gate. Exact-head remote validation remains a separate, not-yet-created
-evidence layer for this branch.
+Pull request 35 reached exact head
+`93a8e9633f2be7b5f8c8b1eead3f2a21b0770073`. Exact-head CI 30832907098
+passed macOS arm64 foundation job 91750962007 and Goose runner admission job
+91750962049. CodeRabbit exhausted its review quota and GitHub records no
+submitted review, inline comment, or review thread, so its status is not
+represented as line-level review. The branch squash merged as
+`8a31bafc1cd322744189fc4ed1e68f769225c999`, and exact merged-main CI
+30834217310 passed macOS arm64 foundation job 91755320708 and Goose runner
+admission job 91755320706.
 
-This evidence does not accept P5.2. The new server is not yet composed into the
-desktop-main coding service or exercised by the admitted live Goose runner, and
-it intentionally executes no `tools/call`. The exact loopback model path,
-prompt/tool execution, normalized durable ACP evidence, and publish/Artifact
-flow remain absent, so no real Goose coding session has been claimed. P5.3, P6,
-candidate, release, deployment, and user acceptance also remain unclaimed. Git
-delivery and CI evidence stay separate from phase acceptance. Detailed scope
-and rollback are recorded in
+The session-composition slice starts from that exact merge on branch
+`feat/p5-goose-mcp-session-composition`. A main-process helper generates the
+256-bit attempt lease itself, starts the authenticated MCP listener before the
+Goose Worker, opens the admitted ACP handshake and single `session/new`, and
+does not return until that same listener accepts a valid `tools/list`. Because
+the server admits `tools/list` only in its ready phase, this is bounded evidence
+of the ordered authenticated `initialize`, `notifications/initialized`, and
+`tools/list` exchange. Normal and failed opening close Worker before MCP;
+idempotent close attempts both steps and aggregates every cleanup failure.
+The affected local focused input passes 2 files and 48 tests. The real admitted
+runner integration is collected as 1 artifact-gated test and skips locally
+without an admitted artifact; its first functional evidence belongs to the
+single exact-head Goose CI job. On the same final production fingerprint,
+`bun run check` passes formatting over 201 files, zero-warning lint over 193
+files, strict TypeScript, the Electron SQLite probe, 67 passing and 1 skipped
+test files with 571 passing and 1 skipped tests, deterministic smoke, the
+87-source product boundary, frozen/downstream contracts, and the
+58-main/3-preload/28-renderer-module production build.
+
+This evidence does not accept P5.2. The composition helper is not yet connected
+to the desktop-main coding service, its real admitted-runner test has no local
+artifact evidence, and the server intentionally executes no `tools/call`. The
+exact loopback model path, prompt/tool execution, normalized durable ACP
+evidence, and publish/Artifact flow remain absent, so no real Goose coding
+session has been claimed. P5.3, P6, candidate, release, deployment, and user
+acceptance also remain unclaimed. Git delivery and CI evidence stay separate
+from phase acceptance. Detailed scope and rollback are recorded in
 [P5.2 Isolated Coding Capability](product/P5_ISOLATED_CODING_CAPABILITY.md).
 
 P4's phase acceptance record reached pull request 25 at exact head
@@ -1751,7 +1771,9 @@ Review closure validation at
 | P5.1 minimal Goose runner and ACP handshake        | Accepted on `main` through PR 28                                  | Runner exact head `d3be6c665b1df51acec13c95691315ba97ba98dc`; PR 27 CI 30698164038; runner merge `df5bd41ca0ecd4838e046f48a9016e418b036ac7`; its main CI 30698648996 isolates a passing Goose job and failing Worker-crash desktop job; official symbols identify synchronous `HandleTermination` to `PostMessage` reentrancy; hotfix exact head `eed1623e9849b9f662f3dec690d02d7c85a693ef`; PR 28 CI 30699859869 passes; squash merge `d313fb2ed65e4b010f777435953752818fbbfae4`; merged-main CI 30700441312 passes both Goose admission and the packaged immediate-`SIGKILL` recovery smoke; incomplete automatic review is not zero-finding evidence; complete 9-file manual/static review; no session, tool, workspace, model, credential, UI, candidate, release, or deployment authority |
 | P5.2 isolated-coding containment foundation       | Delivered on `main` through PR 31                                 | Exact final head `c10110b38e8714b831a6d6d0fc09aa8df4218b7c`; exact-head CI 30808650150 passes; squash merge `266e3857bed7d4c32b773f92deff676bf2144b15`; exact merged-main CI 30809931486 passes; CodeRabbit was rate-limited before line-level review and its successful status/Free walkthrough are not formal review evidence; 3 focused files/39 tests and the recorded 63-file/488-test root gate pass; no ACP session or P5.2 acceptance |
 | P5.2 desktop-main containment composition         | Delivered on `main` through PR 32                                | Exact final head `5c4dade91d279e6a6f7d4c2daad1ebe972e47b98`; exact-head CI 30817462671 passes; exact-head CodeRabbit re-review covers 12 files with 0 issues and no GitHub review threads; squash merge `f55b5550c6ac189f09536061a70e8c8c7299c4f4`; exact merged-main CI 30818949121 passes both jobs; main-owned worktree/grant/Gateway lifecycle and patch 0012; 5 focused files/49 tests; recorded 65-file/498-test root gate; no renderer surface, real Goose coding, or phase acceptance |
-| P5.2 ACP session/new lifecycle                    | Local fixture-backed contract passes                             | Branch `feat/p5-goose-acp-session` from exact `f55b5550c6ac189f09536061a70e8c8c7299c4f4`; one process/one session; fixed request-ID correlation; exact loopback MCP declaration; opaque attempt lease; bounded setup notifications and frames; timeout/error/exit cleanup removes the runner private root; combined 7-file/85-test focused gate and complete 65-file/523-test root gate pass with 1 file/1 test skipped; no live MCP server, model proxy, prompt/tool execution, durable ACP evidence, publish/Artifact flow, or phase acceptance |
+| P5.2 ACP session/new lifecycle                    | Delivered on `main` through PR 33                                | Exact head `5d873f2feb94679341627aab0472a66630cf16cd`; exact-head CI 30823601815; squash merge `c5f498e926adac484694dab6d2f05b9822cc0b12`; merged-main CI 30825221070; one process/one session, fixed request-ID correlation, exact loopback MCP declaration, bounded setup notifications/frames, and failed-session private-root cleanup; no model, prompt/tool execution, publish/Artifact flow, or phase acceptance |
+| P5.2 authenticated MCP transport                  | Delivered on `main` through PR 35                                | Exact head `93a8e9633f2be7b5f8c8b1eead3f2a21b0770073`; exact-head CI 30832907098; squash merge `8a31bafc1cd322744189fc4ed1e68f769225c999`; merged-main CI 30834217310; random authenticated loopback endpoint and six closed schemas; CodeRabbit quota exhaustion is not review evidence; `tools/call` remains denied |
+| P5.2 MCP/ACP session composition                  | Local complete root gate passes                                  | Branch `feat/p5-goose-mcp-session-composition` from exact `8a31bafc1cd322744189fc4ed1e68f769225c999`; Core-generated 256-bit lease; MCP-before-Worker open; waits for ACP session plus authenticated tools-list evidence; Worker-before-MCP idempotent all-settled cleanup; 2 focused files/48 tests pass; complete root gate passes 67 files/571 tests with 1 file/1 artifact-gated test skipped; no remote evidence, model, prompt/tool execution, durable evidence, publish/Artifact flow, or phase acceptance |
 | P6 orchestration boundary                          | Accepted architecture direction only                              | ADR-0015; CrewAI `1.15.8` at `e9caf1e1b89343bb833b5da6660faa91804a9dce` verified as the first supervised sidecar candidate; Eigent `v1.0.2` at `e478094a9ff433132b3cf1928e4143338ddaab20` retained as a reference; neither is imported, bundled, or implemented                                                                                                                                                                                                                                                                                                                                                                                                         |
 | Native AionUi source                               | Exact local desktop snapshot                                      | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Native preservation contract                       | Local pass                                                        | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
@@ -1867,11 +1889,13 @@ The ordered implementation index and P3 non-claims are in
    line-level review. Preserve desktop-main composition final head
    `5c4dade91d279e6a6f7d4c2daad1ebe972e47b98`, PR CI 30817462671, squash
    merge `f55b5550c6ac189f09536061a70e8c8c7299c4f4`, merged-main CI
-   30818949121, and its exact-head 12-file/0-issue re-review. Continue from the
-   fixture-backed ACP `session/new` lifecycle with authenticated MCP, exact
-   loopback model, normalized evidence, and publish/Artifact slices. Goose may
-   not receive builtins, the original checkout, raw credentials, or a second
-   UI.
+   30818949121, and its exact-head 12-file/0-issue re-review. Preserve ACP
+   `session/new` delivery through PR 33 and authenticated MCP delivery through
+   PR 35 at exact merge `8a31bafc1cd322744189fc4ed1e68f769225c999` and
+   merged-main CI 30834217310. Continue with the main-owned session composition,
+   exact loopback model, normalized evidence, and publish/Artifact slices.
+   Goose may not receive builtins, the original checkout, raw credentials, or
+   a second UI.
 8. Keep P5.3 and CrewAI-assisted Team P6 ordered after an accepted P5.2 gate.
 
 ## Open decisions
@@ -1971,9 +1995,10 @@ The ordered implementation index and P3 non-claims are in
   `3593fac8db48a0cb149bb6c736374eeaccebe332`, PR CI 30687199671, squash merge
   `80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`, and merged-main CI 30687433298.
   Full representative P4 acceptance is closed. The specialized Goose P5.2
-  containment foundation is delivered on `main`, and its desktop-main
-  lifecycle composition is locally implemented. No ACP session, real coding
-  journey, or accepted P5.2 gate is claimed.
+  containment foundation, desktop-main containment, ACP session lifecycle, and
+  authenticated MCP transport are delivered on `main`; the MCP/ACP session
+  helper is locally implemented. No model-backed prompt/tool execution,
+  publish/Artifact journey, or accepted P5.2 gate is claimed.
 - F0 alone proves only that the original AionUi application can be preserved
   and run. F1, F2, F3.1, F3.2, and merged F3.3 add their separately recorded
   identity, shadow, narrow decision-authority, fixed-delivery audit, and
