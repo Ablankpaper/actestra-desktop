@@ -9,10 +9,12 @@ The P5.2 containment foundation was developed on branch
 `5c4dade91d279e6a6f7d4c2daad1ebe972e47b98`, passed exact-head CI
 30817462671, squash merged as
 `f55b5550c6ac189f09536061a70e8c8c7299c4f4`, and passed exact merged-main CI
-30818949121. The ACP `session/new` lifecycle slice starts from that merge on
-branch `feat/p5-goose-acp-session`. This document records the closed worktree,
-Tool Gateway, main-owned lifecycle composition, and fixture-backed ACP session
-contract. It is not P5.2 phase acceptance.
+30818949121. The ACP `session/new` lifecycle slice starts from that merge and is
+delivered on `main` through pull request 33 and squash merge
+`c5f498e926adac484694dab6d2f05b9822cc0b12`; exact remote evidence is recorded
+below. This document records the closed worktree, Tool Gateway, main-owned
+lifecycle composition, and fixture-backed ACP session contract. It is not P5.2
+phase acceptance.
 
 ## Scope
 
@@ -148,6 +150,20 @@ contains 4 R0 invariants and 63 reviewed source copies. A clean materialization
 installs 3,177 packages, passes strict TypeScript, and passes the generated
 native composition test 1 file/1 test. Git delivery and CI evidence remain
 separate from these local gates and do not by themselves accept P5.2.
+
+## Git delivery evidence
+
+Pull request 33 reached exact final head
+`5d873f2feb94679341627aab0472a66630cf16cd`. Exact-head CI 30823601815
+passed Goose runner admission and macOS arm64 foundation. CodeRabbit selected
+all 9 changed files and returned only its Free-plan summary and walkthrough;
+GitHub has no submitted review, inline review comment, or review thread. Its
+successful status is therefore not represented as formal line-level review.
+The branch squash merged as `c5f498e926adac484694dab6d2f05b9822cc0b12`.
+Exact merged-main CI 30825221070 passed macOS arm64 foundation job 91725008830
+and Goose runner admission job 91725008914, including the real ACP handshake
+and cleanup step. This is remote delivery evidence for the bounded lifecycle,
+not P5.2 phase acceptance.
 
 ## Remaining P5.2 work and non-claims
 

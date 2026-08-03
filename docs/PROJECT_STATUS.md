@@ -4,7 +4,7 @@ Last updated: 2026-08-03
 
 ## Current phase
 
-### P5.1 is accepted; P5.2 containment and desktop-main composition are delivered
+### P5.1 is accepted; P5.2 containment, main composition, and ACP lifecycle are delivered
 
 The containment foundation was developed from exact `origin/main`
 `071aa922c08dd9a139f0c11dee2aa0dadab02417` on branch
@@ -75,7 +75,7 @@ thread. The branch squash merged as
 `f55b5550c6ac189f09536061a70e8c8c7299c4f4`, and exact merged-main CI
 30818949121 passed both macOS arm64 foundation and Goose runner admission.
 
-The next slice starts from that exact merge on branch
+The ACP session lifecycle slice starts from that exact merge on branch
 `feat/p5-goose-acp-session`. It adds one bounded ACP `session/new` operation to
 the admitted Goose connection and runner lifecycle. The request declares only
 an absolute coding workspace and one exact
@@ -93,6 +93,17 @@ zero-warning lint, strict TypeScript, the Electron SQLite probe, 65 passing and
 1 skipped test files with 523 passing and 1 skipped tests, deterministic smoke,
 the 85-source product boundary, frozen/downstream contracts, and the
 58-main/3-preload/28-renderer-module production build.
+
+Pull request 33 reached exact final head
+`5d873f2feb94679341627aab0472a66630cf16cd`; exact-head CI 30823601815
+passed both Goose runner admission and macOS arm64 foundation. CodeRabbit
+selected all 9 changed files but supplied only its Free-plan summary and
+walkthrough; GitHub records no submitted review, inline review comment, or
+review thread, so the successful status is not formal review evidence. The
+branch squash merged as `c5f498e926adac484694dab6d2f05b9822cc0b12`, and exact
+merged-main CI 30825221070 passed macOS arm64 foundation job 91725008830 and
+Goose runner admission job 91725008914, including the real ACP handshake and
+cleanup step.
 
 This evidence does not accept P5.2. The new `session/new` proof uses a loopback
 transport fixture and is not composed into the desktop-main coding service or

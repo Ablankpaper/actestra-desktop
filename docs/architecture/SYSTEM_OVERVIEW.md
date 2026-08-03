@@ -615,6 +615,11 @@ on session failure. ACP modes, configuration options, command details, and
 Goose metadata are compatibility input and are not promoted into Actestra
 authority.
 
+That bounded ACP lifecycle is delivered on `main` through pull request 33 at
+exact final head `5d873f2feb94679341627aab0472a66630cf16cd`, squash merge
+`c5f498e926adac484694dab6d2f05b9822cc0b12`, and exact merged-main CI
+30825221070. Delivery does not expand its fixture-backed authority boundary.
+
 This composition is still not P5.2 acceptance. The `session/new` proof is
 fixture-backed and is not called by the desktop-main coding service or connected
 to a live authenticated Actestra MCP server. No admitted loopback model path,
