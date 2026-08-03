@@ -8,10 +8,10 @@ GW-P4.6, the representative workspace-file, bounded local-research, writing,
 Office-document, schema-13 schedule, tool-failure, and Worker-crash/recovery
 journeys. P5.0 is accepted through PR 26 and merged-main CI 30691300690.
 ADR-0024 selects the exact Goose source and minimal stdio ACP boundary;
-ADR-0025 admits only the exact uncompiled RSA metadata finding. P5.1 now builds
-and validates the runner locally and adds a gate that must reproduce the same
-evidence in a short-lived CI artifact; that remote gate remains pending. It does
-not package the runner into the desktop product or create a coding session.
+ADR-0025 admits only the exact uncompiled RSA metadata finding. P5.1 builds and
+validates the runner and is accepted through its reviewed hotfix, exact-head CI,
+squash merge, and merged-main CI recorded in project status. It does not package
+the runner into the desktop product or create a coding session.
 CrewAI is accepted as the first P6 planner-sidecar candidate but is not
 implemented or packaged.
 
@@ -566,9 +566,33 @@ worktree is removed.
 
 P5.1 adds the minimal executable and admission/supervision machinery but stops
 after `initialize`; it creates no ACP session and exposes no coding capability.
-Its ignored local and short-lived CI artifacts are evidence, not signed release
-bytes. P5.2 remains blocked until P5.1 passes local review, exact-head CI,
-merge, and merged-main CI.
+P5.1 is accepted through the reviewed hotfix, exact-head CI, merge, and
+merged-main CI recorded in project status. Its ignored local and short-lived CI
+artifacts are evidence, not signed release bytes.
+
+P5.2 now has an implemented lower boundary: one detached
+Actestra-managed worktree and six exact file, terminal, Git, diff, and test
+capabilities use the existing Tool Gateway, active grant, persistent content
+references, one-shot approval, audit, timeout, and cancellation contracts.
+Main-owned Git holds local configuration locks through inspection and checkout,
+disables hooks and fsmonitor, rejects executable repository filters and include
+indirection, captures the exact Git directory/common-directory binding, and
+uses no optional locks for read-only inspection. Every invocation rechecks that
+binding before consuming input. A post-create validation failure removes Git
+worktree metadata before attempt bytes. Registered processes run with a rebuilt
+environment under the macOS deny-network and host-user-data-read sandbox; they
+cannot rewrite the worktree `.git` pointer. Leader success or failure,
+cancellation, timeout, and output overflow all clean the process group.
+Lifecycle close uses the executor's exact persistence authority, waits through
+durable output persistence while retaining completed-side-effect evidence,
+reuses one exact revocation record across ambiguous persistence-response
+retries, requires an exact grant-revocation receipt, and removes the worktree
+with retryable Git-metadata-first cleanup.
+
+This lower boundary is not composed into desktop main and is not P5.2
+acceptance. No ACP `session/new`, authenticated Actestra MCP transport, admitted
+loopback model path, normalized ACP evidence, or publish/Artifact path exists
+yet, and no real Goose coding session or renderer journey is claimed.
 
 ## Event contract
 

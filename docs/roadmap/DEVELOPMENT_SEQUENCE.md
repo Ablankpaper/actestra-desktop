@@ -29,7 +29,7 @@ features are implemented.
 | P7    | Security and reliability hardening                       | P4-P6             |
 | P8    | Cross-platform internal beta                             | P7                |
 
-Current execution state on 2026-08-01: native-fusion slices F0 through F3.3,
+Current execution state on 2026-08-03: native-fusion slices F0 through F3.3,
 general-work through GW-P4.6, and the representative workspace-file, bounded
 local-research, writing, Office-document, and schedule extensions are accepted
 on `main`. Office reached exact final PR head
@@ -94,9 +94,22 @@ Actestra-built minimal runner. P5.1 is accepted through PR 28, exact hotfix head
 `d313fb2ed65e4b010f777435953752818fbbfae4`, and merged-main CI 30700441312.
 It admits the exact runner, applies ADR-0025's sole RSA metadata-only
 disposition, and proves strict initialize and deny-network cleanup without
-session or repository effects. P5.2 is the next ordered slice and has not
-started; it must add one fixture worktree and only closed Actestra-gateway
-capabilities. P6 CrewAI/Team runtime work has not started.
+session or repository effects. P5.2 is the current ordered slice. Its
+implemented library foundation adds one fixture worktree and six closed
+Actestra-gateway capabilities. The focused containment set passes 3 files and
+39 tests, plus formatting, zero-warning lint, and strict TypeScript. Exact Git
+binding, checkout-configuration locks, host-user-data and network denial,
+`.git` pointer-write denial, prototype-chain tool denial, complete process-group
+cleanup, side-effect-aware timeout-after-persistence behavior, post-create Git
+metadata cleanup, exact lifecycle persistence and revocation receipts,
+response-loss-safe revocation retry, and retryable Git-metadata-first removal
+are covered locally. The complete root gate also records 63 passing and 1
+skipped test files with 488 passing and 1 skipped tests, the 84-source product
+boundary, frozen foundation, 178-file downstream contract, and production
+build. It is not composed into desktop main; ACP `session/new`, authenticated
+MCP transport, the loopback model path, normalized evidence, publish/Artifact
+flow, and phase acceptance remain open. P6 CrewAI/Team runtime work has not
+started.
 
 ## P0 — Project Foundation
 
