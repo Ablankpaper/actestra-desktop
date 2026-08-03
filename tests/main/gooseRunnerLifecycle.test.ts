@@ -208,6 +208,16 @@ describe("Goose runner private lifecycle", () => {
 
     expect(await readFile(spawnOptions!.executablePath, "utf8")).toBe("fixture-goose-runner");
     expect(opened.privateRoot.startsWith(fixture.privateRootParent)).toBe(true);
+    await expect(
+      opened.openSession({
+        workspaceDirectory: fixture.repository,
+        capabilityProxyUrl: "http://127.0.0.1:43123/mcp",
+        attemptLease: "attempt-lease-0123456789abcdef0123456789abcdef",
+      }),
+    ).resolves.toEqual({
+      sessionId: "goose-session-1",
+      setupNotificationKinds: ["available_commands_update"],
+    });
     await opened.close();
     await opened.close();
     expect(transport.closeCount).toBe(1);
@@ -230,5 +240,88 @@ describe("Goose runner private lifecycle", () => {
 
     expect(transport.closeCount).toBe(1);
     expect(await readdir(fixture.privateRootParent)).toEqual([]);
+  });
+
+  it("removes the private root when ACP session setup fails", async () => {
+    const fixture = await createLifecycleFixture();
+    const transport = new LoopbackGooseAcpTransport({
+      sessionMessages: (request) => [
+        {
+          jsonrpc: "2.0",
+          method: "session/update",
+          params: {
+            sessionId: "setup-session",
+            update: {
+              sessionUpdate: "available_commands_update",
+              availableCommands: [],
+            },
+          },
+        },
+        {
+          jsonrpc: "2.0",
+          id: request.id,
+          result: { sessionId: "response-session" },
+        },
+      ],
+    });
+    const opened = await openGooseRunnerHandshake({
+      artifact: fixture.artifact,
+      privateRootParent: fixture.privateRootParent,
+      transportFactory: () => transport,
+    });
+
+    await expect(
+      opened.openSession({
+        workspaceDirectory: fixture.repository,
+        capabilityProxyUrl: "http://127.0.0.1:43123/mcp",
+        attemptLease: "attempt-lease-0123456789abcdef0123456789abcdef",
+      }),
+    ).rejects.toMatchObject({
+      name: "GooseAcpSessionError",
+      code: "invalid-session-message",
+    });
+
+    expect(transport.closeCount).toBe(1);
+    expect(await readdir(fixture.privateRootParent)).toEqual([]);
+    expect(await readFile(fixture.sentinelPath, "utf8")).toBe(
+      "original checkout must remain unchanged",
+    );
+    await opened.close();
+    expect(transport.closeCount).toBe(1);
+  });
+
+  it("still removes the private root when failed session cleanup reports a transport error", async () => {
+    const fixture = await createLifecycleFixture();
+    const transport = new FailingCloseGooseAcpTransport({
+      sessionMessages: (request) => [
+        {
+          jsonrpc: "2.0",
+          id: request.id,
+          error: { code: -32_603, message: "Internal error" },
+        },
+      ],
+    });
+    const opened = await openGooseRunnerHandshake({
+      artifact: fixture.artifact,
+      privateRootParent: fixture.privateRootParent,
+      transportFactory: () => transport,
+    });
+
+    await expect(
+      opened.openSession({
+        workspaceDirectory: fixture.repository,
+        capabilityProxyUrl: "http://127.0.0.1:43123/mcp",
+        attemptLease: "attempt-lease-0123456789abcdef0123456789abcdef",
+      }),
+    ).rejects.toMatchObject({
+      name: "GooseRunnerProcessError",
+      code: "cleanup-failed",
+    });
+
+    expect(transport.closeCount).toBe(1);
+    expect(await readdir(fixture.privateRootParent)).toEqual([]);
+    expect(await readFile(fixture.sentinelPath, "utf8")).toBe(
+      "original checkout must remain unchanged",
+    );
   });
 });

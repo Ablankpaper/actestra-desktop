@@ -603,11 +603,23 @@ patch 0012 creates the service under the private profile's
 coding sources are copied into the materialized native application; no preload,
 renderer bridge, route, state projection, or second UI is added.
 
-This main composition is still not P5.2 acceptance. Nothing calls the service
-from a Goose attempt, and no ACP `session/new`, authenticated Actestra MCP
-transport, admitted loopback model path, normalized ACP evidence, or
-publish/Artifact path exists yet. No real Goose coding session or renderer
-journey is claimed.
+The admitted Goose connection now has a separate, bounded `session/new`
+lifecycle contract. One process accepts one request with an absolute coding
+workspace, one exact loopback HTTP MCP declaration, and one opaque Bearer
+attempt lease. The reader correlates the response by fixed JSON-RPC ID while
+admitting at most one usage and one available-commands setup notification for
+the same ACP session. Unknown envelopes, result fields, update kinds or fields,
+oversized frames, rejection, timeout, transport failure, process exit, or a
+second session fail closed. The runner wrapper removes its attempt-private root
+on session failure. ACP modes, configuration options, command details, and
+Goose metadata are compatibility input and are not promoted into Actestra
+authority.
+
+This composition is still not P5.2 acceptance. The `session/new` proof is
+fixture-backed and is not called by the desktop-main coding service or connected
+to a live authenticated Actestra MCP server. No admitted loopback model path,
+prompt/tool execution, normalized durable ACP evidence, or publish/Artifact
+path exists yet. No real Goose coding session or renderer journey is claimed.
 
 ## Event contract
 

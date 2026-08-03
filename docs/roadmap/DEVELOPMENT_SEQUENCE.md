@@ -102,18 +102,31 @@ head `c10110b38e8714b831a6d6d0fc09aa8df4218b7c`, passed exact-head CI
 30809931486. CodeRabbit was rate-limited before line-level review; its successful
 status and Free walkthrough are not review evidence.
 
-The locally implemented composition creates a main-owned lifecycle service,
+The desktop-main composition reached exact final head
+`5c4dade91d279e6a6f7d4c2daad1ebe972e47b98`, passed exact-head CI
+30817462671, squash merged as
+`f55b5550c6ac189f09536061a70e8c8c7299c4f4`, and passed exact merged-main CI
+30818949121. Its exact-head CodeRabbit re-review covered 12 changed files and
+reported 0 issues. The composition creates a main-owned lifecycle service,
 persists the exact active grant before exposing the Tool Gateway, tracks opening
 and cleanup races, and closes coding authority before persistence shutdown. The
-combined focused set passes 5 files and 49 tests. The downstream contract passes 184
-declared files, 4 R0 invariants, and 63 reviewed source copies; a clean
+combined focused set passes 5 files and 49 tests. The downstream contract passes
+184 declared files, 4 R0 invariants, and 63 reviewed source copies; a clean
 3,177-package materialization passes strict TypeScript and its generated native
 composition test. The root gate components pass 65 files/498 tests with 1 file
 and 1 test skipped, the 85-source boundary, frozen/downstream contracts, and the
-58/3/28-module production build. No renderer surface changes. ACP `session/new`,
-authenticated MCP transport, the loopback model path, normalized evidence,
-publish/Artifact flow, real Goose coding, and P5.2 phase acceptance remain open.
-P6 CrewAI/Team runtime work has not started.
+58/3/28-module production build. No renderer surface changes.
+
+The next local slice adds one-process/one-session ACP `session/new` with exact
+request-ID correlation, one loopback MCP declaration and opaque attempt lease,
+bounded Goose setup notifications and frames, normalized session identity, and
+transport plus private-root cleanup on rejection, timeout, error, or exit. The
+combined P5.2 focused gate passes 7 files and 85 tests. This is fixture-backed
+protocol/lifecycle evidence; the complete root gate passes 65 files and 523
+tests with 1 file and 1 test skipped. It is not a live authenticated MCP
+transport or real Goose coding session. The loopback model path, prompt/tool
+execution, durable normalized evidence, publish/Artifact flow, and P5.2 phase
+acceptance remain open. P6 CrewAI/Team runtime work has not started.
 
 ## P0 — Project Foundation
 

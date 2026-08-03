@@ -5,11 +5,14 @@
 The P5.2 containment foundation was developed on branch
 `feat/p5-isolated-coding-capability` from exact `main` baseline
 `071aa922c08dd9a139f0c11dee2aa0dadab02417` and delivered through pull request
-31. The desktop-main composition slice is developed on branch
-`feat/p5-coding-main-composition` from its exact merge baseline
-`266e3857bed7d4c32b773f92deff676bf2144b15`. This document records the closed
-worktree, Tool Gateway, and main-owned lifecycle composition. It is not P5.2
-phase acceptance.
+31. The desktop-main composition slice reached exact final head
+`5c4dade91d279e6a6f7d4c2daad1ebe972e47b98`, passed exact-head CI
+30817462671, squash merged as
+`f55b5550c6ac189f09536061a70e8c8c7299c4f4`, and passed exact merged-main CI
+30818949121. The ACP `session/new` lifecycle slice starts from that merge on
+branch `feat/p5-goose-acp-session`. This document records the closed worktree,
+Tool Gateway, main-owned lifecycle composition, and fixture-backed ACP session
+contract. It is not P5.2 phase acceptance.
 
 ## Scope
 
@@ -40,6 +43,21 @@ preload or renderer exposure. The manifest copies the four reviewed coding main
 sources and adds one native lifecycle test. It adds no renderer route, bridge,
 or visual surface. The frozen AionUi source and R0 retention invariants remain
 unchanged, and P5.3 remains the first user-visible coding journey.
+
+The admitted Goose connection sends exactly one `session/new` request per
+process. It declares an absolute coding workspace and one Actestra capability
+proxy at exact `http://127.0.0.1:<port>/mcp`, carrying one bounded opaque Bearer
+attempt lease. The connection matches the fixed JSON-RPC request ID instead of
+assuming the first stdout line is the response because Goose
+v1.45.0 sends `session/update` setup notifications first. It admits at most one
+`usage_update` and one `available_commands_update`, requires their session ID
+to match the response, bounds every frame to 64 KiB, and returns only the ACP
+session ID plus admitted notification kinds. Known modes, configuration
+options, command details, and metadata are discarded as compatibility input.
+Unknown envelopes, result fields, update kinds or fields, malformed
+correlation, JSON-RPC rejection, timeout, transport failure, process exit, and
+a second session request fail closed. Session failure closes the transport and
+removes the runner's attempt-private root without touching the repository.
 
 ## Authority and policy
 
@@ -106,20 +124,23 @@ underlying executor as an alternate Worker path.
 
 ## Local evidence
 
-The focused P5.2 set passes 5 files and 49 tests:
+The combined focused P5.2 set passes 7 files and 85 tests:
 
 - 3 core contract tests;
 - 9 worktree creation, binding, configuration-lock, rejection, hook, filter,
-  and retryable-cleanup tests; and
+  and retryable-cleanup tests;
 - 27 Gateway, approval, file, Git-binding, diff, process, registry, sandbox,
   persistence-timeout, cancellation, process-group, and lifecycle tests;
 - 8 desktop-main private-root, grant-ordering, response-loss, failed-open
-  cleanup, close-race, all-settled session, and cleanup-retry tests; and
-- 2 native-manifest composition and shutdown-order tests.
+  cleanup, close-race, all-settled session, and cleanup-retry tests;
+- 2 native-manifest composition and shutdown-order tests;
+- 27 ACP initialize/session declaration, correlation, allowlist, bound,
+  timeout, transport, process-exit, and one-session tests; and
+- 9 runner artifact/private-root/session cleanup tests.
 
 The complete root gate components pass formatting over 197 files, zero-warning
 lint over 189 files, strict TypeScript, the Electron SQLite probe, 65 passing
-and 1 skipped test files with 498 passing and 1 skipped tests, the smoke
+and 1 skipped test files with 523 passing and 1 skipped tests, the smoke
 harness, the 85-source product boundary, the exact 1,766-file frozen AionUi
 foundation, the 184-file downstream contract, and the
 58-main/3-preload/28-renderer-module production build. The downstream contract
@@ -130,13 +151,15 @@ separate from these local gates and do not by themselves accept P5.2.
 
 ## Remaining P5.2 work and non-claims
 
-The closed capability foundation is composed into desktop main, but nothing
-calls `open` from an ACP attempt yet. It does not send ACP `session/new`, expose
-an authenticated Actestra MCP transport, admit the exact loopback model path,
-normalize ACP evidence, or provide the publish and Artifact flow required by
-ADR-0024. It therefore does not yet prove a real Goose coding session. It also
-adds no renderer projection, AionUi journey, candidate, release, deployment,
-P5.3 work, CrewAI sidecar, Eigent runtime, or P6 behavior.
+The closed capability foundation is composed into desktop main, and the Goose
+adapter has a fixture-backed `session/new` declaration and cleanup contract.
+The desktop-main coding service does not call that adapter yet, and no live
+authenticated Actestra MCP server receives the declaration. The exact loopback
+model path, prompt and tool execution, normalized durable ACP evidence, and the
+publish and Artifact flow required by ADR-0024 remain absent. It therefore does
+not yet prove a real Goose coding session. It also adds no renderer projection,
+AionUi journey, candidate, release, deployment, P5.3 work, CrewAI sidecar,
+Eigent runtime, or P6 behavior.
 
 P5.2 can be accepted only after the remaining ACP, MCP, model, evidence,
 publish, and Artifact boundaries are implemented or the accepted architecture
@@ -145,7 +168,10 @@ and merged-main gates.
 
 ## Rollback
 
-Rollback of the composition removes downstream patch 0012, the main service,
+Rollback of the ACP slice removes the bounded session method, its runner
+lifecycle wrapper, and focused fixtures while leaving the accepted initialize
+handshake and desktop-main containment composition intact. Rollback of the
+composition removes downstream patch 0012, the main service,
 its four source-copy declarations, and its focused tests while leaving the
 delivered containment foundation inert and available. Rolling back the full
 foundation additionally removes the isolated coding contract, worktree,
