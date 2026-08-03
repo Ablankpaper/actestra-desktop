@@ -73,7 +73,7 @@ export interface IsolatedCodingToolPlatformConfig {
   readonly clock: PrivilegedClock;
   readonly commands: Readonly<Record<string, IsolatedCodingProcessDefinition>>;
   readonly tests: Readonly<Record<string, IsolatedCodingProcessDefinition>>;
-  readonly identifiers: IsolatedCodingToolPlatformIdSources;
+  readonly identifiers?: IsolatedCodingToolPlatformIdSources;
 }
 
 export interface IsolatedCodingToolPlatform {

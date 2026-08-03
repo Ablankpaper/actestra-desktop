@@ -2,11 +2,14 @@
 
 ## Status
 
-The P5.2 containment slice was developed on branch
+The P5.2 containment foundation was developed on branch
 `feat/p5-isolated-coding-capability` from exact `main` baseline
-`071aa922c08dd9a139f0c11dee2aa0dadab02417`. This document records the
-implemented closed worktree and Tool Gateway foundation. It is not P5.2 phase
-acceptance.
+`071aa922c08dd9a139f0c11dee2aa0dadab02417` and delivered through pull request
+31. The desktop-main composition slice is developed on branch
+`feat/p5-coding-main-composition` from its exact merge baseline
+`266e3857bed7d4c32b773f92deff676bf2144b15`. This document records the closed
+worktree, Tool Gateway, and main-owned lifecycle composition. It is not P5.2
+phase acceptance.
 
 ## Scope
 
@@ -20,11 +23,23 @@ main-owned capabilities:
 - fixed working-tree diff inspection; and
 - a main-registered test command.
 
-It adds no renderer route, bridge, or visual surface. The frozen AionUi source
-and R0/R1/R2 retention inventory are unchanged. The downstream manifest adds
-one byte-identical Actestra-owned copy of the core contract so the copied core
-barrel remains complete; no downstream patch imports or invokes the coding
-platform. P5.3 remains the first user-visible coding journey.
+The desktop-main service creates the worktree, persists the exact active grant
+before exposing the Tool Gateway, composes the managed platform, tracks
+in-flight openings and sessions, retains failed cleanup for retry, and closes
+all coding authority before the persistence utility. It repairs a pre-existing
+managed root to POSIX `0700`, attempts every pending cleanup and active session
+before aggregating shutdown failures, and preserves the service plus persistence
+authority when coding cleanup must retry. Production invocations use
+main-generated random identifiers; deterministic identifier sources remain an
+explicit test-only option.
+
+Downstream patch 0012 composes that service only in the native AionUi Electron
+main persistence owner under the Actestra private profile's
+`coding-worktrees` directory. It provides a main-process getter but adds no
+preload or renderer exposure. The manifest copies the four reviewed coding main
+sources and adds one native lifecycle test. It adds no renderer route, bridge,
+or visual surface. The frozen AionUi source and R0 retention invariants remain
+unchanged, and P5.3 remains the first user-visible coding journey.
 
 ## Authority and policy
 
@@ -91,40 +106,49 @@ underlying executor as an alternate Worker path.
 
 ## Local evidence
 
-The focused P5.2 set passes 3 files and 39 tests:
+The focused P5.2 set passes 5 files and 49 tests:
 
 - 3 core contract tests;
 - 9 worktree creation, binding, configuration-lock, rejection, hook, filter,
   and retryable-cleanup tests; and
 - 27 Gateway, approval, file, Git-binding, diff, process, registry, sandbox,
-  persistence-timeout, cancellation, process-group, and lifecycle tests.
+  persistence-timeout, cancellation, process-group, and lifecycle tests;
+- 8 desktop-main private-root, grant-ordering, response-loss, failed-open
+  cleanup, close-race, all-settled session, and cleanup-retry tests; and
+- 2 native-manifest composition and shutdown-order tests.
 
-Complete root `bun run check` passes formatting, zero-warning lint, strict
-types, the Electron SQLite probe, 63 passing and 1 skipped test files with 488
-passing and 1 skipped tests, the smoke harness, the 84-source product boundary,
-the 1,766-file frozen AionUi foundation, the 179-file downstream contract, and
-the 58-main/3-preload/28-renderer-module production build. Git delivery and CI
-evidence remain separate from these local gates and do not by themselves accept
-P5.2.
+The complete root gate components pass formatting over 197 files, zero-warning
+lint over 189 files, strict TypeScript, the Electron SQLite probe, 65 passing
+and 1 skipped test files with 498 passing and 1 skipped tests, the smoke
+harness, the 85-source product boundary, the exact 1,766-file frozen AionUi
+foundation, the 184-file downstream contract, and the
+58-main/3-preload/28-renderer-module production build. The downstream contract
+contains 4 R0 invariants and 63 reviewed source copies. A clean materialization
+installs 3,177 packages, passes strict TypeScript, and passes the generated
+native composition test 1 file/1 test. Git delivery and CI evidence remain
+separate from these local gates and do not by themselves accept P5.2.
 
 ## Remaining P5.2 work and non-claims
 
-This library-level foundation is not yet composed into desktop main. It does
-not send ACP `session/new`, expose an authenticated Actestra MCP transport,
-admit the exact loopback model path, normalize ACP evidence, or provide the
-publish and Artifact flow required by ADR-0024. It therefore does not yet prove
-a real Goose coding session. It also adds no renderer projection, AionUi
-journey, candidate, release, deployment, P5.3 work, CrewAI sidecar, Eigent
-runtime, or P6 behavior.
+The closed capability foundation is composed into desktop main, but nothing
+calls `open` from an ACP attempt yet. It does not send ACP `session/new`, expose
+an authenticated Actestra MCP transport, admit the exact loopback model path,
+normalize ACP evidence, or provide the publish and Artifact flow required by
+ADR-0024. It therefore does not yet prove a real Goose coding session. It also
+adds no renderer projection, AionUi journey, candidate, release, deployment,
+P5.3 work, CrewAI sidecar, Eigent runtime, or P6 behavior.
 
-P5.2 can be accepted only after the remaining desktop composition, ACP, MCP,
-model, evidence, publish, and Artifact boundaries are implemented or the
-accepted architecture is explicitly revised, followed by the complete local,
-review, exact-head CI, and merged-main gates.
+P5.2 can be accepted only after the remaining ACP, MCP, model, evidence,
+publish, and Artifact boundaries are implemented or the accepted architecture
+is explicitly revised, followed by the complete local, review, exact-head CI,
+and merged-main gates.
 
 ## Rollback
 
-Rollback removes the isolated coding contract, worktree, Gateway platform,
-executor, focused tests, core export, and downstream source-copy declaration
-together. No schema, frozen upstream source, user profile, release artifact, or
-migration needs reversal.
+Rollback of the composition removes downstream patch 0012, the main service,
+its four source-copy declarations, and its focused tests while leaving the
+delivered containment foundation inert and available. Rolling back the full
+foundation additionally removes the isolated coding contract, worktree,
+Gateway platform, executor, core export, and focused tests together. No schema,
+frozen upstream source, native AionUi profile, release artifact, or migration
+needs reversal.

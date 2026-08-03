@@ -34,21 +34,48 @@ describe("AionUi downstream path safety", () => {
     ).toThrow(/Downstream output/u);
   });
 
-  it("declares the complete schema-13 scheduled-work overlay boundary", () => {
+  it("declares the P5 isolated-coding composition over the retained schema-13 boundary", () => {
     const repositoryRoot = path.resolve(import.meta.dirname, "../..");
     const overlay = JSON.parse(
       fs.readFileSync(path.join(repositoryRoot, "downstream/aionui-v2.1.41/overlay.json"), "utf8"),
     );
 
-    expect(overlay.phase).toBe("P4-scheduled-general-work");
+    expect(overlay.phase).toBe("P5-isolated-coding-main-composition");
     expect(overlay.migration.strategy).toContain("schema v13");
-    expect(overlay.migration.rollback).toContain("patch 0011");
-    expect(overlay.patches.at(-1)?.path).toBe("patches/0011-actestra-scheduled-general-work.mjs");
+    expect(overlay.migration.rollback).toContain("patch 0012");
+    expect(overlay.patches.at(-1)?.path).toBe("patches/0012-actestra-isolated-coding-main.mjs");
     expect(overlay.expectedChangedFiles).toEqual(
       expect.arrayContaining([
         "packages/desktop/src/renderer/pages/conversation/GroupedHistory/hooks/useConversationActions.ts",
         "packages/desktop/src/renderer/pages/cron/ScheduledTasksPage/index.tsx",
         "packages/desktop/src/renderer/pages/cron/ScheduledTasksPage/CreateTaskDialog.tsx",
+        "packages/desktop/src/actestra/main/workers/isolatedCodingMainService.ts",
+        "packages/desktop/src/actestra/main/workers/isolatedCodingWorktree.ts",
+        "packages/desktop/src/actestra/main/privileged/isolatedCodingToolExecutor.ts",
+        "packages/desktop/src/actestra/main/privileged/isolatedCodingToolPlatform.ts",
+        "tests/unit/actestra/isolatedCodingMainComposition.test.ts",
+      ]),
+    );
+    expect(overlay.sourceCopies).toEqual(
+      expect.arrayContaining([
+        {
+          source: "apps/desktop/src/main/workers/isolatedCodingMainService.ts",
+          destination: "packages/desktop/src/actestra/main/workers/isolatedCodingMainService.ts",
+        },
+        {
+          source: "apps/desktop/src/main/workers/isolatedCodingWorktree.ts",
+          destination: "packages/desktop/src/actestra/main/workers/isolatedCodingWorktree.ts",
+        },
+        {
+          source: "apps/desktop/src/main/privileged/isolatedCodingToolExecutor.ts",
+          destination:
+            "packages/desktop/src/actestra/main/privileged/isolatedCodingToolExecutor.ts",
+        },
+        {
+          source: "apps/desktop/src/main/privileged/isolatedCodingToolPlatform.ts",
+          destination:
+            "packages/desktop/src/actestra/main/privileged/isolatedCodingToolPlatform.ts",
+        },
       ]),
     );
     expect(overlay.invariantFiles).toContain("packages/desktop/src/common/adapter/ipcBridge.ts");

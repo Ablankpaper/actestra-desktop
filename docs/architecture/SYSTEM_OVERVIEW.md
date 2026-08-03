@@ -589,13 +589,25 @@ reuses one exact revocation record across ambiguous persistence-response
 retries, requires an exact grant-revocation receipt, and removes the worktree
 with retryable Git-metadata-first cleanup.
 
-This lower boundary is not composed into desktop main and is not P5.2
-acceptance. No ACP `session/new`, authenticated Actestra MCP transport, admitted
-loopback model path, normalized ACP evidence, or publish/Artifact path exists
-yet, and no real Goose coding session or renderer journey is claimed. The
-materialized AionUi source receives only a declared byte-identical copy of the
-public core contract so its copied core barrel resolves; no downstream patch
-imports or invokes the executor, platform, or worktree lifecycle.
+The lower boundary is now locally composed into desktop main by one
+Actestra-owned lifecycle service. It creates the worktree, persists the exact
+active grant before exposing its Tool Gateway, composes the managed platform,
+tracks openings and live sessions, retains failed cleanup for retry, and closes
+coding sessions before the persistence utility. A pre-existing managed root is
+repaired to POSIX `0700`; shutdown attempts all retained cleanups and active
+sessions, and a remaining coding-cleanup error keeps the service and persistence
+available for retry after schedule/general cleanup. Production identifiers are
+main-generated; deterministic sources remain explicit test input. Downstream
+patch 0012 creates the service under the private profile's
+`coding-worktrees` root and provides only a main-process getter. Four reviewed
+coding sources are copied into the materialized native application; no preload,
+renderer bridge, route, state projection, or second UI is added.
+
+This main composition is still not P5.2 acceptance. Nothing calls the service
+from a Goose attempt, and no ACP `session/new`, authenticated Actestra MCP
+transport, admitted loopback model path, normalized ACP evidence, or
+publish/Artifact path exists yet. No real Goose coding session or renderer
+journey is claimed.
 
 ## Event contract
 

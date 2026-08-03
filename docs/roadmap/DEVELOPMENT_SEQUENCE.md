@@ -94,22 +94,26 @@ Actestra-built minimal runner. P5.1 is accepted through PR 28, exact hotfix head
 `d313fb2ed65e4b010f777435953752818fbbfae4`, and merged-main CI 30700441312.
 It admits the exact runner, applies ADR-0025's sole RSA metadata-only
 disposition, and proves strict initialize and deny-network cleanup without
-session or repository effects. P5.2 is the current ordered slice. Its
-implemented library foundation adds one fixture worktree and six closed
-Actestra-gateway capabilities. The focused containment set passes 3 files and
-39 tests, plus formatting, zero-warning lint, and strict TypeScript. Exact Git
-binding, checkout-configuration locks, host-user-data and network denial,
-`.git` pointer-write denial, prototype-chain tool denial, complete process-group
-cleanup, side-effect-aware timeout-after-persistence behavior, post-create Git
-metadata cleanup, exact lifecycle persistence and revocation receipts,
-response-loss-safe revocation retry, and retryable Git-metadata-first removal
-are covered locally. The complete root gate also records 63 passing and 1
-skipped test files with 488 passing and 1 skipped tests, the 84-source product
-boundary, frozen foundation, 179-file downstream contract, and production
-build. It is not composed into desktop main; ACP `session/new`, authenticated
-MCP transport, the loopback model path, normalized evidence, publish/Artifact
-flow, and phase acceptance remain open. P6 CrewAI/Team runtime work has not
-started.
+session or repository effects. P5.2 is the current ordered slice. Its closed
+worktree and six-capability foundation reached pull request 31 at exact final
+head `c10110b38e8714b831a6d6d0fc09aa8df4218b7c`, passed exact-head CI
+30808650150, squash merged as
+`266e3857bed7d4c32b773f92deff676bf2144b15`, and passed exact merged-main CI
+30809931486. CodeRabbit was rate-limited before line-level review; its successful
+status and Free walkthrough are not review evidence.
+
+The locally implemented composition creates a main-owned lifecycle service,
+persists the exact active grant before exposing the Tool Gateway, tracks opening
+and cleanup races, and closes coding authority before persistence shutdown. The
+combined focused set passes 5 files and 49 tests. The downstream contract passes 184
+declared files, 4 R0 invariants, and 63 reviewed source copies; a clean
+3,177-package materialization passes strict TypeScript and its generated native
+composition test. The root gate components pass 65 files/498 tests with 1 file
+and 1 test skipped, the 85-source boundary, frozen/downstream contracts, and the
+58/3/28-module production build. No renderer surface changes. ACP `session/new`,
+authenticated MCP transport, the loopback model path, normalized evidence,
+publish/Artifact flow, real Goose coding, and P5.2 phase acceptance remain open.
+P6 CrewAI/Team runtime work has not started.
 
 ## P0 — Project Foundation
 
