@@ -34,7 +34,9 @@ export const EXPECTED_GOOSE_INITIALIZE_RESULT = Object.freeze({
 
 export interface LoopbackGooseAcpOptions {
   readonly initializeResult?: unknown;
+  readonly sessionMessages?: (request: Readonly<Record<string, unknown>>) => readonly unknown[];
   readonly silent?: boolean;
+  readonly silentSession?: boolean;
 }
 
 export class LoopbackGooseAcpTransport implements GooseAcpTransport {
@@ -53,7 +55,36 @@ export class LoopbackGooseAcpTransport implements GooseAcpTransport {
       return;
     }
 
-    const request = JSON.parse(line) as { readonly id?: unknown; readonly method?: unknown };
+    const request = JSON.parse(line) as Readonly<Record<string, unknown>>;
+    if (request.method === "session/new") {
+      if (this.options.silentSession === true) {
+        return;
+      }
+      const messages = this.options.sessionMessages?.(request) ?? [
+        {
+          jsonrpc: "2.0",
+          method: "session/update",
+          params: {
+            sessionId: "goose-session-1",
+            update: {
+              sessionUpdate: "available_commands_update",
+              availableCommands: [],
+            },
+          },
+        },
+        {
+          jsonrpc: "2.0",
+          id: request.id,
+          result: { sessionId: "goose-session-1" },
+        },
+      ];
+      for (const message of messages) {
+        queueMicrotask(() => {
+          this.emitLine(JSON.stringify(message));
+        });
+      }
+      return;
+    }
     if (request.method !== "initialize") {
       return;
     }
@@ -108,6 +139,12 @@ export class LoopbackGooseAcpTransport implements GooseAcpTransport {
   emitError(error: Error): void {
     for (const listener of this.errorListeners) {
       listener(error);
+    }
+  }
+
+  emitExit(code: number | null, signal: string | null): void {
+    for (const listener of this.exitListeners) {
+      listener(code, signal);
     }
   }
 }

@@ -9,6 +9,8 @@ import {
   connectGooseAcp,
   type GooseAcpConnection,
   type GooseAcpInfo,
+  type GooseAcpSession,
+  type GooseAcpSessionOptions,
   type GooseAcpTransport,
 } from "./gooseAcpHandshake";
 import type { AdmittedGooseRunnerArtifact } from "./gooseRunnerArtifact";
@@ -56,6 +58,7 @@ export interface OpenGooseRunnerHandshakeOptions {
 export interface OpenGooseRunnerHandshakeResult {
   readonly info: GooseAcpInfo;
   readonly privateRoot: string;
+  openSession(options: GooseAcpSessionOptions): Promise<GooseAcpSession>;
   close(): Promise<void>;
 }
 
@@ -448,6 +451,23 @@ export async function openGooseRunnerHandshake(
     return Object.freeze({
       info: connection.info,
       privateRoot: prepared.root,
+      async openSession(sessionOptions: GooseAcpSessionOptions): Promise<GooseAcpSession> {
+        try {
+          return await connection.openSession(sessionOptions);
+        } catch (error) {
+          closePromise ??= closeAndRemove(connection, prepared!.root);
+          try {
+            await closePromise;
+          } catch (cleanupError) {
+            throw new GooseRunnerProcessError(
+              "cleanup-failed",
+              "Goose session setup failed and process or private-root cleanup also failed",
+              { cause: new AggregateError([error, cleanupError]) },
+            );
+          }
+          throw error;
+        }
+      },
       close(): Promise<void> {
         closePromise ??= closeAndRemove(connection, prepared!.root);
         return closePromise;
