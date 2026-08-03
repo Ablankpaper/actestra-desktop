@@ -117,13 +117,18 @@ composition test. The root gate components pass 65 files/498 tests with 1 file
 and 1 test skipped, the 85-source boundary, frozen/downstream contracts, and the
 58/3/28-module production build. No renderer surface changes.
 
-The next local slice adds one-process/one-session ACP `session/new` with exact
-request-ID correlation, one loopback MCP declaration and opaque attempt lease,
-bounded Goose setup notifications and frames, normalized session identity, and
-transport plus private-root cleanup on rejection, timeout, error, or exit. The
-combined P5.2 focused gate passes 7 files and 85 tests. This is fixture-backed
-protocol/lifecycle evidence; the complete root gate passes 65 files and 523
-tests with 1 file and 1 test skipped. It is not a live authenticated MCP
+The ACP session lifecycle slice adds one-process/one-session ACP `session/new`
+with exact request-ID correlation, one loopback MCP declaration and opaque
+attempt lease, bounded Goose setup notifications and frames, normalized session
+identity, and transport plus private-root cleanup on rejection, timeout, error,
+or exit. Its combined P5.2 focused gate passes 7 files and 85 tests; the complete
+root gate passes 65 files and 523 tests with 1 file and 1 test skipped. Pull
+request 33 reached exact final head
+`5d873f2feb94679341627aab0472a66630cf16cd`, passed exact-head CI 30823601815,
+squash merged as `c5f498e926adac484694dab6d2f05b9822cc0b12`, and passed exact
+merged-main CI 30825221070. CodeRabbit supplied only a Free-plan summary and
+walkthrough, with no submitted review or inline review thread. This remains
+fixture-backed protocol/lifecycle evidence, not a live authenticated MCP
 transport or real Goose coding session. The loopback model path, prompt/tool
 execution, durable normalized evidence, publish/Artifact flow, and P5.2 phase
 acceptance remain open. P6 CrewAI/Team runtime work has not started.
