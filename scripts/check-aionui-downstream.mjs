@@ -114,14 +114,14 @@ function main() {
 
   if (
     overlay.schemaVersion !== 1 ||
-    overlay.phase !== "P4-scheduled-general-work" ||
+    overlay.phase !== "P5-isolated-coding-main-composition" ||
     !overlay.migration.strategy.includes("schema v13") ||
-    !overlay.migration.rollback.includes("patch 0011") ||
-    overlay.patches.at(-1)?.path !== "patches/0011-actestra-scheduled-general-work.mjs" ||
+    !overlay.migration.rollback.includes("patch 0012") ||
+    overlay.patches.at(-1)?.path !== "patches/0012-actestra-isolated-coding-main.mjs" ||
     overlay.uiContract.layoutChangesAllowed !== false ||
     overlay.uiContract.featureEntryRemovalAllowed !== false
   ) {
-    throw new Error("Invalid P4 scheduled General Work downstream overlay policy");
+    throw new Error("Invalid P5 isolated-coding main-composition downstream overlay policy");
   }
 
   for (const patch of overlay.patches) {
@@ -220,6 +220,16 @@ function main() {
   ]) {
     if (!sourceCopyDestinations.has(requiredScheduleSourceCopy)) {
       throw new Error(`Missing scheduled-work source copy: ${requiredScheduleSourceCopy}`);
+    }
+  }
+  for (const requiredCodingSourceCopy of [
+    "packages/desktop/src/actestra/main/workers/isolatedCodingMainService.ts",
+    "packages/desktop/src/actestra/main/workers/isolatedCodingWorktree.ts",
+    "packages/desktop/src/actestra/main/privileged/isolatedCodingToolExecutor.ts",
+    "packages/desktop/src/actestra/main/privileged/isolatedCodingToolPlatform.ts",
+  ]) {
+    if (!sourceCopyDestinations.has(requiredCodingSourceCopy)) {
+      throw new Error(`Missing isolated-coding source copy: ${requiredCodingSourceCopy}`);
     }
   }
   if (!overlay.invariantFiles.includes("packages/desktop/src/common/adapter/ipcBridge.ts")) {
@@ -337,6 +347,10 @@ function main() {
       "createScopedNativeToolPlatform",
       "getActestraScopedNativeToolPlatform",
       "[Actestra native tools] Ready tools=",
+      "createIsolatedCodingMainService",
+      "getActestraIsolatedCodingMainService",
+      "path.join(userDataPath, 'coding-worktrees')",
+      "[Actestra isolated coding] Desktop-main containment ready",
       "GeneralWorkCoordinator",
       "ACTESTRA_GENERAL_WORK_RECOVERY_READY",
       "ACTESTRA_GENERAL_WORK_SUBMIT_CHANNEL",
@@ -638,7 +652,8 @@ function main() {
   requireOrderedFragments(
     path.join(outputRoot, "packages/desktop/src/process/services/actestraShadowBridge.ts"),
     [
-      "configurePersistenceServices(utility);",
+      "isolatedCodingMainService = createIsolatedCodingMainService({",
+      "configurePersistenceServices(utility, userDataPath);",
       "new GeneralWorkCoordinator({",
       "}).recover();",
       "ACTESTRA_GENERAL_WORK_RECOVERY_READY",
@@ -653,6 +668,9 @@ function main() {
     path.join(outputRoot, "packages/desktop/src/process/services/actestraShadowBridge.ts"),
     [
       "disposeScheduleBridge?.();",
+      "await activeIsolatedCoding?.close();",
+      "isolatedCodingMainService = null;",
+      "persistence = null;",
       "await activeSchedule?.close()",
       "await activeGeneralWork?.close()",
       "await activePersistence.close();",
@@ -1038,14 +1056,21 @@ function main() {
     "missed-occurrence",
     "interrupted",
   ]);
+  requireText(path.join(outputRoot, "tests/unit/actestra/isolatedCodingMainComposition.test.ts"), [
+    "Actestra native isolated-coding main composition",
+    "createIsolatedCodingMainService",
+    "denies opening after close",
+    "code: 'closed'",
+  ]);
 
   console.log(
-    `Verified Actestra P4 scheduled General Work downstream overlay: ${changedFiles.size} declared files, ` +
+    `Verified Actestra P5 isolated-coding main-composition downstream overlay: ${changedFiles.size} declared files, ` +
       `${overlay.invariantFiles.length} R0 invariant files, ${overlay.sourceCopies.length} ` +
       "reviewed source copies, preserved AionUI surfaces, utility-owned persistence, shadow and " +
       "approval authority, workspace grants, bounded content references, AgentAdapter v2, and " +
       "the supervised General Worker, scoped native text tools, deterministic recovery, and " +
-      "the preserved AionUI General Work and scheduled-task journeys present.",
+      "the preserved AionUI General Work and scheduled-task journeys plus the main-owned " +
+      "isolated-coding containment lifecycle present.",
   );
 }
 

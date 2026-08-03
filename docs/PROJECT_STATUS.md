@@ -4,9 +4,9 @@ Last updated: 2026-08-03
 
 ## Current phase
 
-### P5.1 is accepted on main; the P5.2 containment foundation is implemented
+### P5.1 is accepted; P5.2 containment is delivered and composed in desktop main locally
 
-The containment slice was developed from exact `origin/main`
+The containment foundation was developed from exact `origin/main`
 `071aa922c08dd9a139f0c11dee2aa0dadab02417` on branch
 `feat/p5-isolated-coding-capability`. It adds a detached Actestra-managed Git
 worktree and six closed file, terminal, Git, diff, and test capabilities behind
@@ -26,7 +26,7 @@ process-group cleanup, post-create Git-metadata cleanup, exact persistence
 authority and grant-revocation receipts, response-loss-safe revocation retry,
 and retryable worktree removal. Zero-warning lint and strict TypeScript pass.
 
-Complete root `bun run check` also passes formatting, zero-warning lint, strict
+Its complete root `bun run check` also passed formatting, zero-warning lint, strict
 types, the Electron SQLite probe, 63 passing and 1 skipped test files with 488
 passing and 1 skipped tests, deterministic smoke, the 84-source product
 boundary, the 1,766-file frozen AionUi foundation, the 179-file downstream
@@ -36,19 +36,43 @@ Initial pull-request head `40ba94d98293a260cdbce6b79731372fe5bac334`
 passed the complete root check in CI run 30806677080, then failed materialized
 AionUi strict TypeScript because the copied core barrel exported
 `isolatedCodingTools.ts` without declaring that Actestra-owned file in the
-downstream manifest. The focused correction adds the byte-identical source copy
-and expected changed-file entry. A clean local materialization and 3,177-package
-install now pass strict TypeScript; the downstream contract passes 179 declared
-files, 4 R0 invariants, and 59 reviewed source copies, while the exact 1,766-file
-frozen foundation remains unchanged. This is source-contract compatibility,
-not desktop-main coding composition.
+downstream manifest. The focused correction added the byte-identical source
+copy and expected changed-file entry. Pull request 31 reached exact final head
+`c10110b38e8714b831a6d6d0fc09aa8df4218b7c`; exact-head CI 30808650150 passed
+both Goose runner admission and macOS arm64 foundation. CodeRabbit selected the
+six final correction files but was rate-limited before line-level review; its
+successful status and Free walkthrough are not formal review evidence. The
+branch squash merged as `266e3857bed7d4c32b773f92deff676bf2144b15`, and exact
+merged-main CI 30809931486 passes both jobs.
 
-This evidence does not accept P5.2. Desktop-main composition, ACP `session/new`,
-an authenticated Actestra MCP transport, ADR-0024's exact loopback model path,
-normalized ACP evidence, and the publish/Artifact flow remain absent, so no real
-Goose coding session has been claimed. P5.3, P6, candidate, release, deployment,
-and user acceptance also remain unclaimed. Git delivery and CI evidence stay
-separate from phase acceptance. Detailed local scope and rollback are recorded in
+The desktop-main composition slice starts from that exact merge on branch
+`feat/p5-coding-main-composition`. It adds a main-owned lifecycle service that
+creates the isolated worktree, persists the exact active grant before exposing
+the Tool Gateway, composes the managed platform with production-random
+identifiers, tracks opening and close races, retains failed cleanup for retry,
+and closes coding authority before the persistence utility. Downstream patch
+0012 creates the service under the private Actestra profile and exposes only a
+main-process getter. It adds no preload, renderer, route, bridge, UI, schema, or
+frozen-foundation change.
+
+The combined focused P5.2 set passes 5 files and 47 tests. The downstream
+contract passes 184 declared files, 4 R0 invariants, and 63 reviewed source
+copies. A clean materialization from the exact 1,766-file frozen foundation
+installs 3,177 packages, passes strict TypeScript, and passes the generated
+native composition test 1 file/1 test. The complete root gate components pass
+formatting over 197 files, zero-warning lint over 189 files, strict TypeScript,
+the Electron SQLite probe, 65 passing and 1 skipped test files with 496 passing
+and 1 skipped tests, deterministic smoke, the 85-source product boundary, the
+frozen foundation and downstream contracts, and the
+58-main/3-preload/28-renderer-module production build.
+
+This evidence does not accept P5.2. Nothing calls the service from a Goose
+attempt; ACP `session/new`, an authenticated Actestra MCP transport, ADR-0024's
+exact loopback model path, normalized ACP evidence, and the publish/Artifact
+flow remain absent, so no real Goose coding session has been claimed. P5.3, P6,
+candidate, release, deployment, and user acceptance also remain unclaimed. Git
+delivery and CI evidence stay separate from phase acceptance. Detailed local
+scope and rollback are recorded in
 [P5.2 Isolated Coding Capability](product/P5_ISOLATED_CODING_CAPABILITY.md).
 
 P4's phase acceptance record reached pull request 25 at exact head
@@ -1655,6 +1679,8 @@ Review closure validation at
 | P4 phase                                           | Accepted on `main`                                                | The retained AionUI journey and representative file, local-research, writing, Office, schedule, denial, cancellation, tool-failure, persistence, Worker-crash/recovery, and Artifact-conflict evidence satisfy the P4 exit gate at exact phase head `80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`; acceptance record merge `adc9a99d7806f5627041368b4ff932c1fe9a42f0`; merged-main CI 30689608454 attempt 2 passes                                                                                                                                                                                                                                                         |
 | P5.0 Goose source and ACP admission                | Accepted on `main` through PR 26                                  | Exact head `e622f36e697b4e0be1037175267452e24cc180e3`; exact-head CI 30691045159; squash merge `b61dd3ea44a4c522ca0c15a84a01d8f76b335e4c`; merged-main CI 30691300690; ADR-0024 selects `v1.45.0` / `4dc0420f5704a92806c6628c8f0a3497d7a88759`, minimal Goose core stdio runner with empty feature set and no builtins, scheduler, or second UI; upstream CLI rejected; CodeRabbit rate limit is not formal review evidence                                                                                                                                                                                                                                             |
 | P5.1 minimal Goose runner and ACP handshake        | Accepted on `main` through PR 28                                  | Runner exact head `d3be6c665b1df51acec13c95691315ba97ba98dc`; PR 27 CI 30698164038; runner merge `df5bd41ca0ecd4838e046f48a9016e418b036ac7`; its main CI 30698648996 isolates a passing Goose job and failing Worker-crash desktop job; official symbols identify synchronous `HandleTermination` to `PostMessage` reentrancy; hotfix exact head `eed1623e9849b9f662f3dec690d02d7c85a693ef`; PR 28 CI 30699859869 passes; squash merge `d313fb2ed65e4b010f777435953752818fbbfae4`; merged-main CI 30700441312 passes both Goose admission and the packaged immediate-`SIGKILL` recovery smoke; incomplete automatic review is not zero-finding evidence; complete 9-file manual/static review; no session, tool, workspace, model, credential, UI, candidate, release, or deployment authority |
+| P5.2 isolated-coding containment foundation       | Delivered on `main` through PR 31                                 | Exact final head `c10110b38e8714b831a6d6d0fc09aa8df4218b7c`; exact-head CI 30808650150 passes; squash merge `266e3857bed7d4c32b773f92deff676bf2144b15`; exact merged-main CI 30809931486 passes; CodeRabbit was rate-limited before line-level review and its successful status/Free walkthrough are not formal review evidence; 3 focused files/39 tests and the recorded 63-file/488-test root gate pass; no ACP session or P5.2 acceptance |
+| P5.2 desktop-main containment composition         | Local final-byte validation passes                               | Branch `feat/p5-coding-main-composition` from exact `266e3857bed7d4c32b773f92deff676bf2144b15`; main-owned worktree/grant/Gateway lifecycle and patch 0012; 5 focused files/47 tests; 65 root files and 496 tests pass with 1 file and 1 test skipped; downstream 184 files/4 R0 invariants/63 source copies; clean materialized strict TypeScript and generated 1-file/1-test native composition pass; 58/3/28-module root build; no renderer surface, ACP session, MCP/model path, real Goose coding, or phase acceptance |
 | P6 orchestration boundary                          | Accepted architecture direction only                              | ADR-0015; CrewAI `1.15.8` at `e9caf1e1b89343bb833b5da6660faa91804a9dce` verified as the first supervised sidecar candidate; Eigent `v1.0.2` at `e478094a9ff433132b3cf1928e4143338ddaab20` retained as a reference; neither is imported, bundled, or implemented                                                                                                                                                                                                                                                                                                                                                                                                         |
 | Native AionUi source                               | Exact local desktop snapshot                                      | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Native preservation contract                       | Local pass                                                        | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
@@ -1762,13 +1788,16 @@ The ordered implementation index and P3 non-claims are in
    PR CI 30699859869, squash merge
    `d313fb2ed65e4b010f777435953752818fbbfae4`, and merged-main CI
    30700441312 together with its complete manual/static review, local signed
-   package, and PR/main packaged external-`SIGKILL` recovery evidence. P5.2 is
-   now has an implemented containment foundation with one fixture worktree and
-   closed capability proxy, but no ACP
-   session, authenticated MCP, loopback model, publish/Artifact path, desktop
-   composition, or real Goose coding evidence. It may not expose Goose builtins,
-   the original checkout, raw credentials, or a second UI.
-7. Keep CrewAI-assisted Team P6 ordered after an accepted Goose P5 gate.
+   package, and PR/main packaged external-`SIGKILL` recovery evidence.
+7. Preserve P5.2 foundation exact head
+   `c10110b38e8714b831a6d6d0fc09aa8df4218b7c`, PR CI 30808650150, squash
+   merge `266e3857bed7d4c32b773f92deff676bf2144b15`, and merged-main CI
+   30809931486. Do not represent the rate-limited CodeRabbit walkthrough as
+   line-level review. Complete and deliver the desktop-main composition, then
+   continue with ACP `session/new`, authenticated MCP, exact loopback model,
+   normalized evidence, and publish/Artifact slices. Goose may not receive
+   builtins, the original checkout, raw credentials, or a second UI.
+8. Keep P5.3 and CrewAI-assisted Team P6 ordered after an accepted P5.2 gate.
 
 ## Open decisions
 
@@ -1867,8 +1896,9 @@ The ordered implementation index and P3 non-claims are in
   `3593fac8db48a0cb149bb6c736374eeaccebe332`, PR CI 30687199671, squash merge
   `80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`, and merged-main CI 30687433298.
   Full representative P4 acceptance is closed. The specialized Goose P5.2
-  containment foundation is implemented; no real coding session or accepted
-  P5.2 gate is claimed.
+  containment foundation is delivered on `main`, and its desktop-main
+  lifecycle composition is locally implemented. No ACP session, real coding
+  journey, or accepted P5.2 gate is claimed.
 - F0 alone proves only that the original AionUi application can be preserved
   and run. F1, F2, F3.1, F3.2, and merged F3.3 add their separately recorded
   identity, shadow, narrow decision-authority, fixed-delivery audit, and
