@@ -620,11 +620,29 @@ exact final head `5d873f2feb94679341627aab0472a66630cf16cd`, squash merge
 `c5f498e926adac484694dab6d2f05b9822cc0b12`, and exact merged-main CI
 30825221070. Delivery does not expand its fixture-backed authority boundary.
 
-This composition is still not P5.2 acceptance. The `session/new` proof is
-fixture-backed and is not called by the desktop-main coding service or connected
-to a live authenticated Actestra MCP server. No admitted loopback model path,
-prompt/tool execution, normalized durable ACP evidence, or publish/Artifact
-path exists yet. No real Goose coding session or renderer journey is claimed.
+Pull request 34 changed only the four P5 source-of-truth documents, passed
+exact-head CI 30827073008, squash merged as
+`776d1e1c10d13f036a3318f7d3c193a7819443a2`, and passed exact merged-main CI
+30828549443. It introduced no additional runtime authority.
+
+The next local slice adds an authenticated, stateless MCP transport without yet
+composing it. One Actestra-owned server listens on a random `127.0.0.1` port,
+accepts only exact `POST /mcp` requests with the attempt-private Bearer lease,
+and validates Host, absence of Origin, pinned Goose User-Agent, content and
+accept headers, body length, and the negotiated MCP protocol header. It admits
+only the ordered `initialize`, `notifications/initialized`, and `tools/list`
+exchange. The list exposes the same six closed coding schemas with snapshotted
+command/test identifiers and the exact pinned Goose session/progress metadata
+shape. All additional metadata and methods are rejected; in particular,
+`tools/call` returns method-not-found and cannot enter the Tool Gateway. Shutdown
+destroys partial and retained sockets.
+
+This composition is still not P5.2 acceptance. The server and the existing
+`session/new` contract are not called together by the desktop-main coding
+service or exercised by the admitted live Goose runner. No admitted loopback
+model path, prompt/tool execution, normalized durable ACP evidence, or
+publish/Artifact path exists yet. No real Goose coding session or renderer
+journey is claimed.
 
 ## Event contract
 

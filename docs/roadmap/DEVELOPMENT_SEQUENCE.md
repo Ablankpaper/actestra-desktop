@@ -128,8 +128,19 @@ request 33 reached exact final head
 squash merged as `c5f498e926adac484694dab6d2f05b9822cc0b12`, and passed exact
 merged-main CI 30825221070. CodeRabbit supplied only a Free-plan summary and
 walkthrough, with no submitted review or inline review thread. This remains
-fixture-backed protocol/lifecycle evidence, not a live authenticated MCP
-transport or real Goose coding session. The loopback model path, prompt/tool
+fixture-backed protocol/lifecycle evidence, not a real Goose coding session.
+Pull request 34 changed only the four P5 source-of-truth documents, passed
+exact-head CI 30827073008, squash merged as
+`776d1e1c10d13f036a3318f7d3c193a7819443a2`, and passed exact merged-main CI
+30828549443.
+
+The next local slice adds a random-port `127.0.0.1` MCP server with the opaque
+attempt lease, strict pinned Goose/MCP headers and initialization order, bounded
+non-chunked JSON, no stateful session, and only the six closed coding schemas.
+Its focused test passes 1 file and 43 tests after correcting the real pinned
+Goose numeric `progressToken` shape through RED/GREEN TDD. The server is not yet
+composed with the ACP adapter or exercised by live Goose, and `tools/call`
+deliberately returns method-not-found. The loopback model path, prompt/tool
 execution, durable normalized evidence, publish/Artifact flow, and P5.2 phase
 acceptance remain open. P6 CrewAI/Team runtime work has not started.
 

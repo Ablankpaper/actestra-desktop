@@ -4,7 +4,7 @@ Last updated: 2026-08-03
 
 ## Current phase
 
-### P5.1 is accepted; P5.2 containment, main composition, and ACP lifecycle are delivered
+### P5.1 is accepted; P5.2 transport work continues after the delivered lower layers
 
 The containment foundation was developed from exact `origin/main`
 `071aa922c08dd9a139f0c11dee2aa0dadab02417` on branch
@@ -105,14 +105,44 @@ merged-main CI 30825221070 passed macOS arm64 foundation job 91725008830 and
 Goose runner admission job 91725008914, including the real ACP handshake and
 cleanup step.
 
-This evidence does not accept P5.2. The new `session/new` proof uses a loopback
-transport fixture and is not composed into the desktop-main coding service or
-run against a live authenticated Actestra MCP server. The exact loopback model
-path, prompt/tool execution, normalized durable ACP evidence, and the
-publish/Artifact flow remain absent, so no real Goose coding session has been
-claimed. P5.3, P6, candidate, release, deployment, and user acceptance also
-remain unclaimed. Git delivery and CI evidence stay separate from phase
-acceptance. Detailed scope and rollback are recorded in
+Pull request 34 then updated only these four source-of-truth documents. It
+reached exact head `c17d5cd6df9de187ea93659e768da6207c6b4f34`, passed the
+automatically created exact-head CI 30827073008, squash merged as
+`776d1e1c10d13f036a3318f7d3c193a7819443a2`, and passed the single automatic
+merged-main CI 30828549443: macOS arm64 foundation job 91736358985 and Goose
+runner admission job 91736358994. That PR changed no product bytes.
+
+The authenticated MCP transport slice starts from that exact merge on branch
+`feat/p5-goose-mcp-transport`. It adds one Actestra-owned HTTP server that
+listens on a random `127.0.0.1` port and accepts only exact `POST /mcp` requests
+carrying the attempt-private Bearer lease. It enforces the pinned Goose
+`v1.45.0` User-Agent and MCP 2025-03-26 header sequence, rejects Origin and
+stateful MCP session headers, requires a bounded non-chunked JSON body, and
+admits only `initialize`, `notifications/initialized`, and `tools/list` in
+order. The returned tool list contains only the six closed coding schemas and
+snapshotted command/test identifiers. The real pinned Goose `progressToken`
+shape is admitted, while expanded metadata remains denied. `tools/call` returns
+JSON-RPC method-not-found and cannot reach the Tool Gateway in this slice.
+Rejected and partial connections are closed, and server shutdown destroys all
+remaining sockets.
+
+The final focused transport test passes 1 file and 43 tests after a RED/GREEN
+correction against the exact pinned Goose source. Two-file format and
+zero-warning lint checks and strict TypeScript pass. A prior complete-root
+attempt on the pre-correction fingerprint reached the full Vitest step after
+format, lint, strict TypeScript, and the Electron SQLite probe, but its terminal
+did not retain the final exit status; it is not represented as a passing full
+root gate. Exact-head remote validation remains a separate, not-yet-created
+evidence layer for this branch.
+
+This evidence does not accept P5.2. The new server is not yet composed into the
+desktop-main coding service or exercised by the admitted live Goose runner, and
+it intentionally executes no `tools/call`. The exact loopback model path,
+prompt/tool execution, normalized durable ACP evidence, and publish/Artifact
+flow remain absent, so no real Goose coding session has been claimed. P5.3, P6,
+candidate, release, deployment, and user acceptance also remain unclaimed. Git
+delivery and CI evidence stay separate from phase acceptance. Detailed scope
+and rollback are recorded in
 [P5.2 Isolated Coding Capability](product/P5_ISOLATED_CODING_CAPABILITY.md).
 
 P4's phase acceptance record reached pull request 25 at exact head

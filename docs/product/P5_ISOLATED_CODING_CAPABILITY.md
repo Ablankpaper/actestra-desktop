@@ -12,9 +12,12 @@ The P5.2 containment foundation was developed on branch
 30818949121. The ACP `session/new` lifecycle slice starts from that merge and is
 delivered on `main` through pull request 33 and squash merge
 `c5f498e926adac484694dab6d2f05b9822cc0b12`; exact remote evidence is recorded
-below. This document records the closed worktree, Tool Gateway, main-owned
-lifecycle composition, and fixture-backed ACP session contract. It is not P5.2
-phase acceptance.
+below. Pull request 34 records that closure in the source-of-truth documents and
+squash merged as `776d1e1c10d13f036a3318f7d3c193a7819443a2`. The authenticated
+MCP transport slice starts from that exact merge on branch
+`feat/p5-goose-mcp-transport`. This document records the closed worktree, Tool
+Gateway, main-owned lifecycle composition, fixture-backed ACP session contract,
+and locally implemented MCP server. It is not P5.2 phase acceptance.
 
 ## Scope
 
@@ -60,6 +63,21 @@ Unknown envelopes, result fields, update kinds or fields, malformed
 correlation, JSON-RPC rejection, timeout, transport failure, process exit, and
 a second session request fail closed. Session failure closes the transport and
 removes the runner's attempt-private root without touching the repository.
+
+The local MCP server listens only on a random `127.0.0.1` port and accepts only
+the exact `/mcp` path over `POST`. Every request requires the attempt-private
+Bearer lease plus the pinned Goose `v1.45.0` User-Agent, exact Host, bounded
+non-chunked JSON content, the expected Accept header, no Origin or MCP session
+header, and the correct MCP 2025-03-26 header for the current phase. The server
+admits only the ordered initialize notification and tool-list sequence. It
+returns no stateful MCP session identifier and exposes only the same six closed
+coding schemas. Command and test identifiers are copied into closed enums before
+the listener starts. The pinned Goose numeric `progressToken` is allowed beside
+the bounded ACP session metadata; other metadata is denied. `tools/call` and all
+other methods return method-not-found without entering the Tool Gateway. Body
+and header bounds, immediate rejected-connection closure, idempotent shutdown,
+and destruction of partial sockets prevent the listener from becoming a second
+unbounded process or network authority.
 
 ## Authority and policy
 
@@ -151,6 +169,17 @@ installs 3,177 packages, passes strict TypeScript, and passes the generated
 native composition test 1 file/1 test. Git delivery and CI evidence remain
 separate from these local gates and do not by themselves accept P5.2.
 
+The authenticated transport adds a separate focused test file with 43 passing
+tests. It covers configuration snapshotting, lease and header authentication,
+the exact pinned initialize and tool-list sequence, all six schemas, real Goose
+session/progress metadata, size and method rejection, and socket cleanup. A
+source comparison against pinned Goose `v1.45.0` first exposed the missing
+`progressToken` compatibility case; the focused test failed before the minimal
+server correction and then passed. Two-file format and zero-warning lint checks
+and strict TypeScript pass. A complete-root attempt on the earlier fingerprint
+lost its final exit status after entering full Vitest and is not counted as a
+passing complete root gate.
+
 ## Git delivery evidence
 
 Pull request 33 reached exact final head
@@ -165,17 +194,27 @@ and Goose runner admission job 91725008914, including the real ACP handshake
 and cleanup step. This is remote delivery evidence for the bounded lifecycle,
 not P5.2 phase acceptance.
 
+Pull request 34 changed only this document and the other three P5
+source-of-truth files. It reached exact head
+`c17d5cd6df9de187ea93659e768da6207c6b4f34`, passed exact-head CI
+30827073008, squash merged as `776d1e1c10d13f036a3318f7d3c193a7819443a2`,
+and passed exact merged-main CI 30828549443, including macOS arm64 foundation
+job 91736358985 and Goose runner admission job 91736358994. It changed no
+product bytes. The current transport branch has no remote delivery evidence yet.
+
 ## Remaining P5.2 work and non-claims
 
-The closed capability foundation is composed into desktop main, and the Goose
-adapter has a fixture-backed `session/new` declaration and cleanup contract.
-The desktop-main coding service does not call that adapter yet, and no live
-authenticated Actestra MCP server receives the declaration. The exact loopback
-model path, prompt and tool execution, normalized durable ACP evidence, and the
-publish and Artifact flow required by ADR-0024 remain absent. It therefore does
-not yet prove a real Goose coding session. It also adds no renderer projection,
-AionUi journey, candidate, release, deployment, P5.3 work, CrewAI sidecar,
-Eigent runtime, or P6 behavior.
+The closed capability foundation is composed into desktop main, the Goose
+adapter has a fixture-backed `session/new` declaration and cleanup contract, and
+an authenticated MCP server is locally implemented. The desktop-main coding
+service does not call the adapter and server together, and the admitted live
+Goose runner has not completed their real initialization/tool-list exchange.
+The server intentionally rejects `tools/call`, so the exact loopback model path,
+prompt and tool execution, normalized durable ACP evidence, and the publish and
+Artifact flow required by ADR-0024 remain absent. It therefore does not yet
+prove a real Goose coding session. It also adds no renderer projection, AionUi
+journey, candidate, release, deployment, P5.3 work, CrewAI sidecar, Eigent
+runtime, or P6 behavior.
 
 P5.2 can be accepted only after the remaining ACP, MCP, model, evidence,
 publish, and Artifact boundaries are implemented or the accepted architecture
@@ -184,6 +223,8 @@ and merged-main gates.
 
 ## Rollback
 
+Rollback of the transport slice removes its one server module and focused test;
+it does not alter the delivered ACP session contract or desktop composition.
 Rollback of the ACP slice removes the bounded session method, its runner
 lifecycle wrapper, and focused fixtures while leaving the accepted initialize
 handshake and desktop-main containment composition intact. Rollback of the
