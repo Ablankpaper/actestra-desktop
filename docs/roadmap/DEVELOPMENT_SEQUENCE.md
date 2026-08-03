@@ -166,12 +166,18 @@ and routes through a caller-supplied main invoker. That invoker creates the
 Actestra request and input references, persists the exact active-grant owner,
 uses the existing policy/approval/audit/executor path, and resolves only matching
 durable output. Replay, post-close calls, invalid results, and private failures
-fail closed; shutdown stops admission and cancels and awaits in-flight calls. The
-affected focused fingerprint passes 3 files and 64 tests, and the dedicated
+fail closed; shutdown stops admission and cancels and awaits in-flight calls.
+Closure is rechecked after body intake and before the deferred invoker, so a
+close-winning race cannot enter main authority. The affected focused fingerprint
+passes 3 files and 65 tests, and the dedicated
 Goose runner job now includes the real Gateway bridge test. Its single final
-root gate passes formatting and zero-warning lint, 68 test files and 588 tests
+root gate passes formatting and zero-warning lint, 68 test files and 589 tests
 with 1 file and 1 test skipped, the 89-source boundary, frozen/downstream
-contracts, and the production build. The desktop-main coding service does not
+contracts, and the production build. A 12-file committed CodeRabbit review
+raised six findings: the close race and fixed `/tmp` fixture were confirmed and
+fixed, while four suggestions were rejected because the Gateway union is closed,
+invalid tools already fail the parser, the CST date is correct, and 128 calls is
+the intentional containment ceiling. The desktop-main coding service does not
 yet call the session helper, and the model catalog exposes no inference route. A
 real Goose prompt/tool loop, approval outcomes, normalized evidence,
 publish/Artifact flow, and P5.2 phase acceptance remain open. P6 CrewAI/Team

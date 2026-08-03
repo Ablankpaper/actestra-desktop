@@ -214,12 +214,14 @@ installs 3,177 packages, passes strict TypeScript, and passes the generated
 native composition test 1 file/1 test. Git delivery and CI evidence remain
 separate from these local gates and do not by themselves accept P5.2.
 
-The authenticated transport/call test now has 48 passing tests. It covers
+The authenticated transport/call test now has 49 passing tests. It covers
 configuration snapshotting, lease and header authentication,
 the exact pinned initialize and tool-list sequence, all six schemas, real Goose
 session/progress/tool-call metadata, versioned input rejection, replay denial,
-sanitized synchronous failure, cancellation, close-time admission denial, size
-and method rejection, and socket cleanup. A
+sanitized synchronous failure, cancellation, close-time admission denial, the
+close-winning deferred-invocation race, size and method rejection, and socket
+cleanup. Test workspaces derive from the operating-system temporary directory
+instead of a fixed POSIX-only path. A
 source comparison against pinned Goose `v1.45.0` first exposed the missing
 `progressToken` compatibility case; the focused test failed before the minimal
 server correction and then passed. The corrected Worker-readiness input passes
@@ -232,7 +234,7 @@ real-runner integration passes 1 file and 1 test: real Goose completes
 `session/new`, triggers the authenticated MCP `tools/list` through explicit ACP
 discovery, returns the exact six tools, and leaves no private root.
 
-The current tool-call fingerprint passes 3 affected files and 64 tests: 48 MCP
+The current tool-call fingerprint passes 3 affected files and 65 tests: 49 MCP
 transport/call tests, 10 desktop-main containment and real Tool Gateway tests,
 and 6 session-composition tests. The artifact-gated integration is unchanged
 and was not rerun for this focused iteration because the admitted runner,
@@ -240,9 +242,20 @@ manifest, model-readiness path, and discovery bytes did not change. On the exact
 final production/test/script fingerprint, the one permitted `bun run check`
 passes formatting over 204 files, zero-warning lint over 196 files, strict
 TypeScript, the Electron SQLite probe, 68 passing and 1 skipped test files with
-588 passing and 1 skipped tests, deterministic smoke, the 89-source product
+589 passing and 1 skipped tests, deterministic smoke, the 89-source product
 boundary, frozen/downstream contracts, and the
 58-main/3-preload/28-renderer-module production build.
+
+One committed CodeRabbit review covered all 12 changed files and raised six
+findings. The shutdown/deferred-invocation race and fixed `/tmp` fixture were
+confirmed and remediated. The regression test's red phase proved the old path
+could enter main authority after close won; the restored closure guard makes the
+same test pass. Four suggestions were rejected after checking the production
+contracts: the Gateway returns only `approval-required` or `executed`; invalid
+tool identifiers already fail `parseCodingToolInput` through the closed tool
+definition; the recorded `2026-08-04` date is correct for the CST environment;
+and the 128-call limit is the documented containment decision rather than an
+unbounded production quota.
 
 ## Git delivery evidence
 

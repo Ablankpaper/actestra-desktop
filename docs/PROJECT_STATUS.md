@@ -193,16 +193,28 @@ binds the active desktop coding grant and Actestra Task, Session, Worker,
 request, input, and output owners, persists the input, and routes execution
 through the existing Tool Gateway policy, approval, audit, and executor. An
 approval-required write is not executed. The affected focused fingerprint
-passes 3 files and 64 tests: 48 MCP transport/call tests, 10 desktop-main and
+passes 3 files and 65 tests: 49 MCP transport/call tests, 10 desktop-main and
 real Gateway tests, and 6 composition tests. The unchanged artifact-gated
 readiness integration was not rebuilt or rerun during focused iteration. The
 Goose runner admission script now includes the real Gateway bridge test. On the
 exact final production/test/script fingerprint, the one permitted `bun run check`
 passes formatting over 204 files, zero-warning lint over 196 files, strict
 TypeScript, the Electron SQLite probe, 68 passing and 1 skipped test files with
-588 passing and 1 skipped tests, deterministic smoke, the 89-source product
+589 passing and 1 skipped tests, deterministic smoke, the 89-source product
 boundary, frozen/downstream contracts, and the
 58-main/3-preload/28-renderer-module production build.
+
+A committed CodeRabbit review covered all 12 files in the pushed slice and
+raised six findings. Verification confirmed two: shutdown could win before the
+deferred invoker while the request still entered main authority, and the test
+fixture used a non-portable fixed `/tmp` path. The server now rechecks closure
+after body intake and immediately before deferred invocation, the regression
+test proves the close-winning path never invokes main authority, and the fixture
+uses the operating-system temporary directory. Four suggestions were rejected
+after source and contract checks: the Gateway result union has only
+`approval-required` and `executed`; invalid tool identifiers already fail the
+closed parser; the recorded `2026-08-04` date matches this checkout's CST
+environment; and the 128-call ceiling is the intentional P5.2 containment bound.
 
 This evidence does not accept P5.2. The composition helper is still not called
 by the desktop-main coding service, and the model catalog intentionally exposes

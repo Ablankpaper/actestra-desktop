@@ -675,7 +675,9 @@ the accepted list, it requires the exact ACP session, isolated worktree, bounded
 unique Worker correlation identifier, closed tool identifier, and versioned
 input. Replay and post-close calls fail before authority; synchronous and
 asynchronous failures are sanitized; listener cleanup stops admission, aborts
-and awaits in-flight invocations, and destroys retained sockets. The
+and awaits in-flight invocations, and destroys retained sockets. Closure is
+rechecked after request-body intake and immediately before the deferred invoker,
+so shutdown that wins either race cannot enter main authority. The
 caller-supplied main invoker generates fresh Actestra request/input identifiers,
 persists the exact Task/Session/Worker/grant owner, invokes the existing Tool
 Gateway, and resolves only the matching durable output. An approval-required
@@ -684,9 +686,17 @@ metadata and never replace Actestra identity or authority.
 
 The exact final production/test/script fingerprint passes the single required
 root gate: formatting, zero-warning lint, strict TypeScript, Electron SQLite,
-68 passing and 1 skipped test files with 588 passing and 1 skipped tests,
+68 passing and 1 skipped test files with 589 passing and 1 skipped tests,
 deterministic smoke, the 89-source boundary, frozen/downstream contracts, and
 the 58-main/3-preload/28-renderer-module production build.
+
+The 12-file committed CodeRabbit review raised six findings. The close race and
+fixed `/tmp` fixture were confirmed and remediated with a deterministic
+no-main-authority regression and an operating-system-derived temporary path.
+Four suggestions were rejected after verification: the Gateway result union has
+no third state, the closed parser already rejects invalid tool identifiers, the
+recorded CST date is correct, and the 128-call ceiling is the deliberate
+containment limit.
 
 This composition is still not P5.2 acceptance. The desktop-main coding service
 does not yet call the session helper, and the model catalog deliberately exposes

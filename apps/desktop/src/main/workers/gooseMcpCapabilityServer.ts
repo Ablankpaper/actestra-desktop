@@ -700,6 +700,10 @@ export async function startGooseMcpCapabilityServer(
     }
     try {
       const message = await readJson(request);
+      if (closed) {
+        rejectHttp(request, response, 503);
+        return;
+      }
       const initializeId = phase === "initialize" ? initializeRequestId(message) : undefined;
       if (initializeId !== undefined) {
         phase = "initialized";
@@ -763,8 +767,14 @@ export async function startGooseMcpCapabilityServer(
         toolCallControllers.add(controller);
         let invocation: Promise<GooseMcpToolInvocationResult>;
         invocation = Promise.resolve()
-          .then(() =>
-            config.invokeTool(
+          .then(() => {
+            if (closed || controller.signal.aborted) {
+              throw new GooseMcpCapabilityServerError(
+                "closed",
+                "Goose MCP capability server closed before tool invocation",
+              );
+            }
+            return config.invokeTool(
               Object.freeze({
                 sessionId: call.sessionId,
                 toolCallRequestId: call.toolCallRequestId,
@@ -772,8 +782,8 @@ export async function startGooseMcpCapabilityServer(
                 input: call.input,
                 signal: controller.signal,
               }),
-            ),
-          )
+            );
+          })
           .finally(() => {
             toolCallControllers.delete(controller);
             toolCallInvocations.delete(invocation);

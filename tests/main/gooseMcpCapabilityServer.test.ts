@@ -2,8 +2,10 @@
 
 import http from "node:http";
 import net from "node:net";
+import os from "node:os";
+import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CODING_DIFF_TOOL_ID,
   CODING_FILE_READ_TOOL_ID,
@@ -20,7 +22,7 @@ import {
 
 const ATTEMPT_LEASE = "attempt-lease-0123456789abcdef0123456789abcdef";
 const MCP_PROTOCOL_VERSION = "2025-03-26";
-const WORKSPACE_DIRECTORY = "/tmp/actestra-isolated-coding-worktree";
+const WORKSPACE_DIRECTORY = path.resolve(os.tmpdir(), "actestra-isolated-coding-worktree");
 
 const defaultToolInvoker: GooseMcpToolInvoker = async () =>
   Object.freeze({
@@ -1048,6 +1050,74 @@ describe("Goose authenticated loopback MCP capability server", () => {
 
     expect(secondOutcome).toBe("rejected");
     expect(invocationCount).toBe(1);
+  });
+
+  it("does not enter main authority when close wins before deferred invocation", async () => {
+    let invoked = false;
+    const server = await openServer(async () => {
+      invoked = true;
+      return Object.freeze({ isError: false, content: "completed" });
+    });
+    await initialize(server);
+    await postMcp(
+      server.url,
+      { jsonrpc: "2.0", method: "notifications/initialized" },
+      { protocolVersion: MCP_PROTOCOL_VERSION },
+    );
+    await postMcp(
+      server.url,
+      {
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/list",
+        params: { _meta: { "agent-session-id": "goose-session-1" } },
+      },
+      { protocolVersion: MCP_PROTOCOL_VERSION },
+    );
+
+    const NativeAbortController = globalThis.AbortController;
+    let signalCloseStarted!: () => void;
+    const closeStarted = new Promise<void>((resolve) => {
+      signalCloseStarted = resolve;
+    });
+    let closing: Promise<void> | undefined;
+    class CloseBeforeInvocationController extends NativeAbortController {
+      constructor() {
+        super();
+        queueMicrotask(() => {
+          closing = server.close();
+          signalCloseStarted();
+        });
+      }
+    }
+    vi.stubGlobal("AbortController", CloseBeforeInvocationController);
+    try {
+      const request = postMcp(
+        server.url,
+        {
+          jsonrpc: "2.0",
+          id: 3,
+          method: "tools/call",
+          params: {
+            name: CODING_FILE_READ_TOOL_ID,
+            arguments: { contractVersion: 1, relativePath: "answer.txt" },
+            _meta: {
+              "agent-session-id": "goose-session-1",
+              "agent-working-dir": WORKSPACE_DIRECTORY,
+              "agent-tool-call-request-id": "model-tool-call-close-race",
+            },
+          },
+        },
+        { protocolVersion: MCP_PROTOCOL_VERSION },
+      ).catch((): undefined => undefined);
+      await closeStarted;
+      await closing;
+      await request;
+
+      expect(invoked).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("aborts an in-flight tool invocation before closing sockets", async () => {
