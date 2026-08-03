@@ -61,6 +61,7 @@ describe("Goose runner private lifecycle", () => {
       GOOSE_PATH_ROOT: root,
       GOOSE_TELEMETRY_OFF: "1",
       GOOSE_DISABLE_KEYRING: "1",
+      GOOSE_DISABLE_SESSION_NAMING: "true",
       HOME: path.join(root, "home"),
       TMPDIR: path.join(root, "tmp"),
       TMP: path.join(root, "tmp"),
@@ -176,6 +177,7 @@ describe("Goose runner private lifecycle", () => {
     expect(Object.keys(spawnOptions?.environment ?? {}).sort()).toEqual(
       [
         "GOOSE_DISABLE_KEYRING",
+        "GOOSE_DISABLE_SESSION_NAMING",
         "GOOSE_PATH_ROOT",
         "GOOSE_TELEMETRY_OFF",
         "HOME",

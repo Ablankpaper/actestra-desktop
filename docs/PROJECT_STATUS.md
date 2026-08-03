@@ -4,7 +4,7 @@ Last updated: 2026-08-04
 
 ## Current phase
 
-### P5.1 is accepted; P5.2 authenticated tool-call work continues after the delivered lower layers
+### P5.1 is accepted; P5.2 authenticated inference/prompt work continues after the delivered lower layers
 
 The containment foundation was developed from exact `origin/main`
 `071aa922c08dd9a139f0c11dee2aa0dadab02417` on branch
@@ -216,13 +216,53 @@ after source and contract checks: the Gateway result union has only
 closed parser; the recorded `2026-08-04` date matches this checkout's CST
 environment; and the 128-call ceiling is the intentional P5.2 containment bound.
 
+Pull request 37 delivered that authenticated tool-call bridge at exact head
+`84b0550495717343b75ca2540cb7c191ab65b12a`. Exact-head CI 30851778390
+passed macOS arm64 foundation job 91813249905 and Goose runner admission job
+91813250047. CodeRabbit selected all 12 files but explicitly stopped at its
+review limit; its successful status and Free summary are not line-level review
+evidence. GitHub records no submitted review or inline review thread. The branch
+squash merged as `d933546454e63a2d836e728f1b93980cb4a7c0ac`. The single
+automatic merged-main CI 30853499159 passed macOS arm64 foundation job
+91818968991 and Goose runner admission job 91818969025.
+
+The authenticated inference/prompt slice starts from that exact merge on branch
+`codex/p5-goose-inference-prompt-loop`. The Actestra model listener now retains
+its authenticated catalog and adds one session-bound, bounded
+`POST /v1/chat/completions` path. It requires the exact local lease, Host,
+Actestra-bound ACP session header, selected model, streaming request, bounded
+messages, and non-chunked JSON; a main-owned invoker returns only bounded
+assistant text or one MCP tool call with usage, which Actestra serializes to the
+closed SSE shape. The closed Worker environment adds
+`GOOSE_DISABLE_SESSION_NAMING=true`, preventing pinned Goose's private
+background naming inference and preserving Actestra Core's naming authority.
+
+After exact tool discovery, the ACP connection admits one bounded text prompt
+with fixed request correlation. It normalizes only same-session session-info,
+tool-call, tool-call-update, assistant-text, and usage shapes; expanded frames,
+rejection, timeout, transport failure, process exit, or a second prompt fail
+closed and remove the private Worker root. The affected focused gate passes 4
+files and 55 tests. The environment regression failed before the exact naming
+key was added and then passed. With admitted artifact manifest SHA-256
+`3dc1bf1b58dee9639ff35453a6486f890bb68f38fbc9dbf3e63ef56bfcdbb4af`,
+the real-runner integration passes 1 file/1 test: exactly two model invocations,
+one authenticated MCP file-read call, the bounded tool result in the second
+request, normalized tool-call/completed/final-message updates, ACP usage, and an
+empty private-root parent after close. No Runner process remains. The final root
+gate on the same production/test fingerprint passes formatting over 204 files,
+zero-warning lint over 196 files, strict TypeScript, the Electron SQLite probe,
+68 passing and 1 skipped test files with 593 passing and 1 skipped tests,
+deterministic smoke, the 89-source product boundary, the exact 1,766-file frozen
+AionUi foundation, the 184-file downstream contract, and the
+58-main/3-preload/28-renderer-module production build.
+
 This evidence does not accept P5.2. The composition helper is still not called
-by the desktop-main coding service, and the model catalog intentionally exposes
-no inference route. No real Goose-generated `tools/call`, prompt loop, approval
-continuation or denial projection, normalized ACP session evidence, or
-publish/Artifact flow has been proved. P5.3, P6, candidate, release, deployment,
-and user acceptance also remain unclaimed. Git delivery and CI evidence stay
-separate from phase acceptance. Detailed scope and rollback are recorded in
+by the desktop-main coding service. The contained real Goose-generated
+prompt/tool loop is proved, but approval continuation and denial projection,
+durable normalized Task/Session evidence, publish, and Artifact registration are
+not. P5.3, P6, candidate, release, deployment, and user acceptance also remain
+unclaimed. Git delivery and CI evidence stay separate from phase acceptance.
+Detailed scope and rollback are recorded in
 [P5.2 Isolated Coding Capability](product/P5_ISOLATED_CODING_CAPABILITY.md).
 
 P4's phase acceptance record reached pull request 25 at exact head
@@ -1833,7 +1873,9 @@ Review closure validation at
 | P5.2 desktop-main containment composition         | Delivered on `main` through PR 32                                | Exact final head `5c4dade91d279e6a6f7d4c2daad1ebe972e47b98`; exact-head CI 30817462671 passes; exact-head CodeRabbit re-review covers 12 files with 0 issues and no GitHub review threads; squash merge `f55b5550c6ac189f09536061a70e8c8c7299c4f4`; exact merged-main CI 30818949121 passes both jobs; main-owned worktree/grant/Gateway lifecycle and patch 0012; 5 focused files/49 tests; recorded 65-file/498-test root gate; no renderer surface, real Goose coding, or phase acceptance |
 | P5.2 ACP session/new lifecycle                    | Delivered on `main` through PR 33                                | Exact head `5d873f2feb94679341627aab0472a66630cf16cd`; exact-head CI 30823601815; squash merge `c5f498e926adac484694dab6d2f05b9822cc0b12`; merged-main CI 30825221070; one process/one session, fixed request-ID correlation, exact loopback MCP declaration, bounded setup notifications/frames, and failed-session private-root cleanup; no model, prompt/tool execution, publish/Artifact flow, or phase acceptance |
 | P5.2 authenticated MCP transport                  | Delivered on `main` through PR 35                                | Exact head `93a8e9633f2be7b5f8c8b1eead3f2a21b0770073`; exact-head CI 30832907098; squash merge `8a31bafc1cd322744189fc4ed1e68f769225c999`; merged-main CI 30834217310; random authenticated loopback endpoint and six closed schemas; CodeRabbit quota exhaustion is not review evidence; `tools/call` remains denied |
-| P5.2 authenticated Goose readiness                | Corrected local complete root gate passes                        | PR 36 old head `9e277e1593b2715ed3721e1febb886985a942824`; CI 30837296114 macOS pass/Goose `session-rejected` failure, not rerun; corrected separate MCP/model leases and loopback ports, authenticated non-inference model catalog, closed provider/model environment, explicit ACP tool discovery, exact-six match, Worker-first three-part cleanup; 4 focused files/51 tests plus admitted-artifact integration 1 file/1 test pass; corrected root gate 68 files/582 tests with 1 file/1 test skipped and 88-source boundary; corrected remote gates pending; no inference, prompt/tool execution, durable evidence, publish/Artifact flow, or phase acceptance |
+| P5.2 authenticated Goose readiness                | Delivered on `main` through PR 36                                | Old head `9e277e1593b2715ed3721e1febb886985a942824` had macOS pass/Goose `session-rejected` failure in CI 30837296114 and was not rerun; corrected exact head `5fe78bfaf2982556af975d23bc904d10b77a1f29`; exact-head CI 30843561874; squash merge `08e6fefcd87721fbe4f21eee73f9ba6c52a638c0`; merged-main CI 30845006202; separate MCP/model leases and loopback ports, authenticated non-inference catalog, closed provider/model environment, explicit ACP tool discovery, exact-six match, and Worker-first cleanup; 4 focused files/51 tests, admitted-artifact integration 1 file/1 test, and recorded 68-file/582-test root gate pass; no inference, prompt/tool execution, durable evidence, publish/Artifact flow, or phase acceptance |
+| P5.2 authenticated MCP tool-call bridge           | Delivered on `main` through PR 37                                | Exact head `84b0550495717343b75ca2540cb7c191ab65b12a`; exact-head CI 30851778390; squash merge `d933546454e63a2d836e728f1b93980cb4a7c0ac`; merged-main CI 30853499159; bounded `tools/call` through the real Tool Gateway, close-race guard, 3 focused files/65 tests, and recorded 68-file/589-test root gate; CodeRabbit review limit and zero GitHub review threads are not line-level review evidence; no inference, prompt loop, publish/Artifact flow, or phase acceptance |
+| P5.2 authenticated inference/prompt loop          | Complete local root gate passes                                  | `GOOSE_DISABLE_SESSION_NAMING=true`; session-bound authenticated model proxy; one bounded normalized ACP prompt; 4 focused files/55 tests and admitted-artifact two-round prompt/tool integration 1 file/1 test pass; root gate 68 files/593 tests with 1 file/1 test skipped, 89-source boundary, frozen/downstream contracts, and production build pass; review, Git, PR, exact-head CI, and merged-main gates pending; no desktop-main composition, approval outcome projection, durable normalized evidence, publish/Artifact flow, or phase acceptance |
 | P6 orchestration boundary                          | Accepted architecture direction only                              | ADR-0015; CrewAI `1.15.8` at `e9caf1e1b89343bb833b5da6660faa91804a9dce` verified as the first supervised sidecar candidate; Eigent `v1.0.2` at `e478094a9ff433132b3cf1928e4143338ddaab20` retained as a reference; neither is imported, bundled, or implemented                                                                                                                                                                                                                                                                                                                                                                                                         |
 | Native AionUi source                               | Exact local desktop snapshot                                      | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Native preservation contract                       | Local pass                                                        | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
@@ -1953,11 +1995,15 @@ The ordered implementation index and P3 non-claims are in
    `session/new` delivery through PR 33 and authenticated MCP delivery through
    PR 35 at exact merge `8a31bafc1cd322744189fc4ed1e68f769225c999` and
    merged-main CI 30834217310. Preserve PR 36 old-head CI 30837296114 as a
-   macOS-pass/Goose-session-rejected failure without rerunning that SHA. Continue
-   from the corrected authenticated readiness composition into the remaining
-   inference, prompt/tool execution, normalized evidence, and publish/Artifact
-   slices. Goose may not receive builtins, the original checkout, raw
-   credentials, or a second UI.
+   macOS-pass/Goose-session-rejected failure without rerunning that SHA, and its
+   corrected merge `08e6fefcd87721fbe4f21eee73f9ba6c52a638c0` with merged-main
+   CI 30845006202. Preserve the tool-call bridge through PR 37 exact head
+   `84b0550495717343b75ca2540cb7c191ab65b12a`, merge
+   `d933546454e63a2d836e728f1b93980cb4a7c0ac`, and merged-main CI
+   30853499159. Complete the current authenticated inference/prompt remote gates,
+   then continue into desktop-main composition, approval outcomes, durable
+   normalized evidence, and publish/Artifact slices. Goose may not receive
+   builtins, the original checkout, raw credentials, or a second UI.
 8. Keep P5.3 and CrewAI-assisted Team P6 ordered after an accepted P5.2 gate.
 
 ## Open decisions
@@ -2058,9 +2104,11 @@ The ordered implementation index and P3 non-claims are in
   `80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`, and merged-main CI 30687433298.
   Full representative P4 acceptance is closed. The specialized Goose P5.2
   containment foundation, desktop-main containment, ACP session lifecycle, and
-  authenticated MCP transport are delivered on `main`; the MCP/ACP session
-  helper is locally implemented. No model-backed prompt/tool execution,
-  publish/Artifact journey, or accepted P5.2 gate is claimed.
+  authenticated MCP transport and tool-call bridge are delivered on `main`;
+  the authenticated model-backed prompt/tool loop passes focused and real-
+  artifact local evidence. No desktop-main integration, approval outcome,
+  durable normalized evidence, publish/Artifact journey, or accepted P5.2 gate
+  is claimed.
 - F0 alone proves only that the original AionUi application can be preserved
   and run. F1, F2, F3.1, F3.2, and merged F3.3 add their separately recorded
   identity, shadow, narrow decision-authority, fixed-delivery audit, and

@@ -38,9 +38,11 @@ export interface LoopbackGooseAcpOptions {
   readonly toolDiscoveryMessages?: (
     request: Readonly<Record<string, unknown>>,
   ) => readonly unknown[];
+  readonly promptMessages?: (request: Readonly<Record<string, unknown>>) => readonly unknown[];
   readonly silent?: boolean;
   readonly silentSession?: boolean;
   readonly silentToolDiscovery?: boolean;
+  readonly silentPrompt?: boolean;
 }
 
 export class LoopbackGooseAcpTransport implements GooseAcpTransport {
@@ -115,6 +117,101 @@ export class LoopbackGooseAcpTransport implements GooseAcpTransport {
                 outputSchema: { type: "object" },
               },
             ],
+          },
+        },
+      ];
+      for (const message of messages) {
+        queueMicrotask(() => {
+          this.emitLine(JSON.stringify(message));
+        });
+      }
+      return;
+    }
+    if (request.method === "session/prompt") {
+      if (this.options.silentPrompt === true) {
+        return;
+      }
+      const messages = this.options.promptMessages?.(request) ?? [
+        {
+          jsonrpc: "2.0",
+          method: "session/update",
+          params: {
+            sessionId: "goose-session-1",
+            update: {
+              sessionUpdate: "session_info_update",
+              title: "Read README.md",
+              updatedAt: "2026-08-04T00:00:00Z",
+              _meta: { goose: { activeRunId: "run-fixture-1" } },
+            },
+          },
+        },
+        {
+          jsonrpc: "2.0",
+          method: "session/update",
+          params: {
+            sessionId: "goose-session-1",
+            update: {
+              sessionUpdate: "tool_call",
+              toolCallId: "call-actestra-1",
+              title: "Read README.md",
+              kind: "read",
+              status: "pending",
+              rawInput: { contractVersion: 1, path: "README.md" },
+            },
+          },
+        },
+        {
+          jsonrpc: "2.0",
+          method: "session/update",
+          params: {
+            sessionId: "goose-session-1",
+            update: {
+              sessionUpdate: "tool_call_update",
+              toolCallId: "call-actestra-1",
+              status: "completed",
+              content: [
+                {
+                  type: "content",
+                  content: { type: "text", text: "fixture tool result" },
+                },
+              ],
+              rawOutput: { contractVersion: 1, type: "file-read" },
+            },
+          },
+        },
+        {
+          jsonrpc: "2.0",
+          method: "session/update",
+          params: {
+            sessionId: "goose-session-1",
+            update: {
+              sessionUpdate: "agent_message_chunk",
+              content: { type: "text", text: "fixture final answer" },
+              messageId: "message-actestra-1",
+            },
+          },
+        },
+        {
+          jsonrpc: "2.0",
+          method: "session/update",
+          params: {
+            sessionId: "goose-session-1",
+            update: { sessionUpdate: "usage_update", used: 19, size: 128_000 },
+          },
+        },
+        {
+          jsonrpc: "2.0",
+          id: request.id,
+          result: {
+            stopReason: "end_turn",
+            usage: {
+              totalTokens: 51,
+              inputTokens: 47,
+              outputTokens: 4,
+              thoughtTokens: 0,
+              cachedReadTokens: 0,
+              cachedWriteTokens: 0,
+            },
           },
         },
       ];

@@ -640,22 +640,23 @@ delivered transport boundary returns method-not-found for `tools/call` and
 cannot enter the Tool Gateway. Shutdown destroys partial and retained sockets.
 
 The current main-process composition helper creates separate 256-bit MCP and
-model-readiness leases; the Worker cannot supply either. It starts the MCP
-server and an authenticated non-inference model catalog on separate random
-`127.0.0.1` ports before Goose. The model-related additions to the Worker's
-rebuilt environment are the pinned provider, caller-selected model, exact
-catalog base URL, opaque local API lease, and loopback proxy bypass. Its macOS
-sandbox still denies all other network traffic and admits outbound access only
-to those exact two ports.
+model leases; the Worker cannot supply either. It starts the MCP server and an
+authenticated model proxy on separate random `127.0.0.1` ports before Goose.
+The model-related additions to the Worker's rebuilt environment are the pinned
+provider, caller-selected model, exact proxy base URL, opaque local API lease,
+loopback proxy bypass, and `GOOSE_DISABLE_SESSION_NAMING=true`. Actestra Core,
+not Goose's private model call, remains authoritative for session naming. The
+macOS sandbox still denies all other network traffic and admits outbound access
+only to those exact two ports.
 
 After `session/new`, Actestra sends the pinned
 `_goose/unstable/tools/list` ACP request filtered to the admitted MCP extension.
 The helper waits for both the server's accepted authenticated `tools/list` and
 Goose's strict response, then requires the exact six coding tool identifiers
 before returning. Opening failure and normal close release Worker before MCP
-and the model catalog; every cleanup is attempted, idempotent, and reported as
-an aggregate. The helper has no renderer, preload, inference, raw credential,
-shell, or filesystem authority of its own.
+and the model proxy; every cleanup is attempted, idempotent, and reported as an
+aggregate. The helper has no renderer, preload, raw provider credential, shell,
+or filesystem authority of its own.
 
 Pull request 36 old head `9e277e1593b2715ed3721e1febb886985a942824`
 passed its macOS arm64 job but failed Goose runner admission in CI 30837296114
@@ -670,7 +671,7 @@ and exact-six discovery. Corrected final head
 squash merged as `08e6fefcd87721fbe4f21eee73f9ba6c52a638c0`, and passed exact
 merged-main CI 30845006202.
 
-The current authenticated tool-call slice extends only that MCP boundary. After
+The authenticated tool-call slice extends only that MCP boundary. After
 the accepted list, it requires the exact ACP session, isolated worktree, bounded
 unique Worker correlation identifier, closed tool identifier, and versioned
 input. Replay and post-close calls fail before authority; synchronous and
@@ -683,6 +684,14 @@ persists the exact Task/Session/Worker/grant owner, invokes the existing Tool
 Gateway, and resolves only the matching durable output. An approval-required
 operation is not executed. Goose correlation identifiers remain compatibility
 metadata and never replace Actestra identity or authority.
+
+Pull request 37 delivered that bridge at exact head
+`84b0550495717343b75ca2540cb7c191ab65b12a`, exact-head CI 30851778390,
+squash merge `d933546454e63a2d836e728f1b93980cb4a7c0ac`, and exact
+merged-main CI 30853499159. Both CI layers passed macOS arm64 foundation and
+Goose runner admission. CodeRabbit stopped at its review limit; GitHub has no
+submitted review or inline review thread, so the successful status is not
+line-level review evidence.
 
 The exact final production/test/script fingerprint passes the single required
 root gate: formatting, zero-warning lint, strict TypeScript, Electron SQLite,
@@ -698,11 +707,31 @@ no third state, the closed parser already rejects invalid tool identifiers, the
 recorded CST date is correct, and the 128-call ceiling is the deliberate
 containment limit.
 
+The current inference/prompt slice extends the model proxy only after Actestra
+binds the exact ACP session. Authenticated `POST /v1/chat/completions` requires
+the opaque model lease, exact Host and session header, bounded non-chunked JSON,
+the selected model, streaming mode, and a bounded messages array. A caller-owned
+model invoker receives that bounded request plus an abort signal and may return
+only assistant text or one MCP tool call with usage; Actestra serializes the
+closed SSE form. After exact tool discovery, ACP admits one bounded text prompt,
+strictly correlates the response and session updates, and normalizes only
+session-info, tool-call, completed update, assistant-text, and usage evidence.
+
+The affected local gate passes 4 files and 55 tests. An admitted pinned-Goose
+artifact passes one real integration: two model requests, one authenticated MCP
+file-read call, the tool result in the second request, a final assistant message
+and usage, complete Worker/model/MCP cleanup, and no remaining private root or
+Runner process. The single final-byte root gate passes formatting, zero-warning
+lint, strict TypeScript, Electron SQLite, 68 passing and 1 skipped test files
+with 593 passing and 1 skipped tests, deterministic smoke, the 89-source
+boundary, frozen/downstream contracts, and the 58-main/3-preload/28-renderer-
+module production build.
+
 This composition is still not P5.2 acceptance. The desktop-main coding service
-does not yet call the session helper, and the model catalog deliberately exposes
-no inference route. No real Goose-generated call, prompt loop, approval outcome
-projection, normalized ACP session evidence, or publish/Artifact flow has been
-proved. No real Goose coding session or renderer journey is claimed.
+does not yet call the session helper. The contained real Goose prompt/tool loop
+is proved, but approval continuation and denial projection, durable normalized
+Task/Session evidence, publish, and Artifact registration are not. No retained-
+AionUI coding journey is claimed.
 
 ## Event contract
 

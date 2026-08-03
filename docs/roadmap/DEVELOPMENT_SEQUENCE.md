@@ -140,8 +140,8 @@ non-chunked JSON, no stateful session, and only the six closed coding schemas.
 It reached pull request 35 at exact head
 `93a8e9633f2be7b5f8c8b1eead3f2a21b0770073`, passed exact-head CI
 30832907098, squash merged as `8a31bafc1cd322744189fc4ed1e68f769225c999`,
-and passed exact merged-main CI 30834217310. The current session-composition
-slice starts from that exact merge. Pull request 36 old head
+and passed exact merged-main CI 30834217310. The session-composition slice
+started from that exact merge. Pull request 36 old head
 `9e277e1593b2715ed3721e1febb886985a942824` passed its macOS job but failed
 Goose runner admission in exact-head CI 30837296114 at `session/new`; that SHA
 was not rerun. The correction uses separate main-generated MCP/model leases,
@@ -159,7 +159,7 @@ final head `5fe78bfaf2982556af975d23bc904d10b77a1f29` passed exact-head CI
 30843561874, squash merged as `08e6fefcd87721fbe4f21eee73f9ba6c52a638c0`,
 and passed exact merged-main CI 30845006202.
 
-The current authenticated `tools/call` slice starts from that exact merge. It
+The authenticated `tools/call` slice starts from that exact merge. It
 admits only after authenticated discovery; binds the exact ACP session,
 worktree, unique bounded Worker correlation, closed tool, and versioned input;
 and routes through a caller-supplied main invoker. That invoker creates the
@@ -177,11 +177,26 @@ contracts, and the production build. A 12-file committed CodeRabbit review
 raised six findings: the close race and fixed `/tmp` fixture were confirmed and
 fixed, while four suggestions were rejected because the Gateway union is closed,
 invalid tools already fail the parser, the CST date is correct, and 128 calls is
-the intentional containment ceiling. The desktop-main coding service does not
-yet call the session helper, and the model catalog exposes no inference route. A
-real Goose prompt/tool loop, approval outcomes, normalized evidence,
-publish/Artifact flow, and P5.2 phase acceptance remain open. P6 CrewAI/Team
-runtime work has not started.
+the intentional containment ceiling. Pull request 37 reached exact head
+`84b0550495717343b75ca2540cb7c191ab65b12a`, passed exact-head CI
+30851778390, squash merged as `d933546454e63a2d836e728f1b93980cb4a7c0ac`,
+and passed exact merged-main CI 30853499159. CodeRabbit stopped at its review
+limit; GitHub has no submitted review or inline review thread.
+
+The current authenticated inference/prompt slice starts from that exact merge.
+It upgrades the authenticated model catalog to a session-bound, bounded
+OpenAI-compatible model proxy, keeps the model invoker in Electron main, and
+admits one strict ACP text prompt after exact tool discovery. Goose private
+session naming is disabled so Actestra Core retains naming authority. Four
+affected files and 55 tests pass, and one admitted-artifact integration proves
+exactly two model requests, one authenticated MCP file-read call, the tool result
+in the second request, final assistant text and usage, and complete cleanup. The
+single final-byte root gate passes 68 test files and 593 tests with 1 file and 1
+test skipped, the 89-source boundary, frozen/downstream contracts, and the
+production build. The desktop-main coding service does not yet call the session
+helper; approval outcomes, durable normalized evidence, publish/Artifact flow,
+and P5.2 phase acceptance remain open. P6 CrewAI/Team runtime work has not
+started.
 
 ## P0 — Project Foundation
 
