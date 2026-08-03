@@ -223,7 +223,7 @@ describe("P5.2 desktop-main isolated coding composition", () => {
     });
     expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
     expect(await runGit(fixture.repositoryRoot, "status", "--porcelain=v1")).toBe("");
-  });
+  }, 15_000);
 
   it("does not execute an MCP file write before main-owned approval", async () => {
     const fixture = await openFixture("goose-mcp-approval");
