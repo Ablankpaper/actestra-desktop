@@ -8,11 +8,14 @@ import {
   type GooseMcpSessionCompositionDependencies,
 } from "../../apps/desktop/src/main/workers/gooseMcpSessionComposition";
 import type {
+  GooseAcpPromptOptions,
+  GooseAcpPromptResult,
   GooseAcpSession,
   GooseAcpSessionOptions,
   GooseAcpToolDiscoveryOptions,
 } from "../../apps/desktop/src/main/workers/gooseAcpHandshake";
 import type { GooseMcpToolInvoker } from "../../apps/desktop/src/main/workers/gooseMcpCapabilityServer";
+import type { GooseLoopbackModelInvoker } from "../../apps/desktop/src/main/workers/gooseLoopbackModelServer";
 
 const artifact = Object.freeze({
   directory: "/tmp/actestra-goose-artifact",
@@ -50,12 +53,30 @@ const toolInvoker: GooseMcpToolInvoker = async () =>
     isError: false,
     content: JSON.stringify({ contractVersion: 1, type: "composition-test-result" }),
   });
+const modelInvoker: GooseLoopbackModelInvoker = async () =>
+  Object.freeze({
+    type: "message",
+    text: "composition model result",
+    usage: Object.freeze({ promptTokens: 8, completionTokens: 2 }),
+  });
+const runnerPromptResult = Object.freeze({
+  stopReason: "end_turn",
+  updates: Object.freeze([
+    Object.freeze({
+      type: "agent_message_chunk",
+      messageId: "message-actestra-1",
+      text: "composition model result",
+    }),
+  ]),
+}) satisfies GooseAcpPromptResult;
 
 describe("Goose MCP session composition", () => {
   it("owns separate generated leases across model, MCP, and ACP boundaries", async () => {
     let serverLease: string | undefined;
     let sessionLease: string | undefined;
     let modelLease: string | undefined;
+    let boundModelSessionId: string | undefined;
+    let promptOptions: GooseAcpPromptOptions | undefined;
     const dependencies: GooseMcpSessionCompositionDependencies = {
       async startCapabilityServer(options) {
         serverLease = options.attemptLease;
@@ -70,8 +91,12 @@ describe("Goose MCP session composition", () => {
       async startModelServer(options) {
         modelLease = options.attemptLease;
         expect(options.modelId).toBe("actestra-caller-model");
+        expect(options.invokeModel).toBe(modelInvoker);
         return Object.freeze({
           baseUrl: "http://127.0.0.1:43124/v1",
+          bindSession(sessionId: string) {
+            boundModelSessionId = sessionId;
+          },
           async close() {},
         });
       },
@@ -100,6 +125,10 @@ describe("Goose MCP session composition", () => {
             });
             return runnerDiscovery;
           },
+          async prompt(options: GooseAcpPromptOptions) {
+            promptOptions = options;
+            return runnerPromptResult;
+          },
           async close() {},
         });
       },
@@ -111,6 +140,7 @@ describe("Goose MCP session composition", () => {
         privateRootParent: path.resolve("/tmp/actestra-goose-attempts"),
         workspaceDirectory: path.resolve("/tmp/actestra-worktree"),
         modelId: "actestra-caller-model",
+        modelInvoker,
         toolInvoker,
         commandIds: Object.freeze(["git.status"]),
         testIds: Object.freeze(["test.unit"]),
@@ -123,8 +153,16 @@ describe("Goose MCP session composition", () => {
     expect(serverLease).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(modelLease).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(modelLease).not.toBe(serverLease);
+    expect(boundModelSessionId).toBe("goose-session-1");
     expect(opened.toolNames).toEqual(runnerDiscovery.toolNames);
     expect(opened).not.toHaveProperty("attemptLease");
+    await expect(opened.prompt({ text: "Return the bounded result." })).resolves.toBe(
+      runnerPromptResult,
+    );
+    expect(promptOptions).toEqual({
+      sessionId: "goose-session-1",
+      text: "Return the bounded result.",
+    });
     await opened.close();
   });
 
@@ -147,6 +185,7 @@ describe("Goose MCP session composition", () => {
       async startModelServer() {
         return Object.freeze({
           baseUrl: "http://127.0.0.1:43124/v1",
+          bindSession() {},
           async close() {
             events.push("model:close");
             throw modelFailure;
@@ -163,6 +202,9 @@ describe("Goose MCP session composition", () => {
           async discoverTools() {
             return runnerDiscovery;
           },
+          async prompt() {
+            return runnerPromptResult;
+          },
           async close() {
             events.push("runner:close");
             throw runnerFailure;
@@ -176,6 +218,7 @@ describe("Goose MCP session composition", () => {
         privateRootParent: path.resolve("/tmp/actestra-goose-attempts"),
         workspaceDirectory: path.resolve("/tmp/actestra-worktree"),
         modelId: "actestra-caller-model",
+        modelInvoker,
         toolInvoker,
         commandIds: Object.freeze(["git.status"]),
         testIds: Object.freeze(["test.unit"]),
@@ -222,6 +265,7 @@ describe("Goose MCP session composition", () => {
         events.push("model:start");
         return Object.freeze({
           baseUrl: "http://127.0.0.1:43124/v1",
+          bindSession() {},
           async close() {
             events.push("model:close");
           },
@@ -239,6 +283,9 @@ describe("Goose MCP session composition", () => {
           async discoverTools() {
             throw new Error("tool discovery must not start after session/new failure");
           },
+          async prompt() {
+            throw new Error("prompt must not start after session/new failure");
+          },
           async close() {
             events.push("runner:close");
           },
@@ -252,6 +299,7 @@ describe("Goose MCP session composition", () => {
         privateRootParent: path.resolve("/tmp/actestra-goose-attempts"),
         workspaceDirectory: path.resolve("/tmp/actestra-worktree"),
         modelId: "actestra-caller-model",
+        modelInvoker,
         toolInvoker,
         commandIds: Object.freeze(["git.status"]),
         testIds: Object.freeze(["test.unit"]),
@@ -287,6 +335,7 @@ describe("Goose MCP session composition", () => {
       async startModelServer() {
         return Object.freeze({
           baseUrl: "http://127.0.0.1:43124/v1",
+          bindSession() {},
           async close() {},
         });
       },
@@ -300,6 +349,9 @@ describe("Goose MCP session composition", () => {
           async discoverTools() {
             return runnerDiscovery;
           },
+          async prompt() {
+            return runnerPromptResult;
+          },
           async close() {},
         });
       },
@@ -311,6 +363,7 @@ describe("Goose MCP session composition", () => {
         privateRootParent: path.resolve("/tmp/actestra-goose-attempts"),
         workspaceDirectory: path.resolve("/tmp/actestra-worktree"),
         modelId: "actestra-caller-model",
+        modelInvoker,
         toolInvoker,
         commandIds: Object.freeze(["git.status"]),
         testIds: Object.freeze(["test.unit"]),
@@ -345,6 +398,7 @@ describe("Goose MCP session composition", () => {
       async startModelServer() {
         return Object.freeze({
           baseUrl: "http://127.0.0.1:43124/v1",
+          bindSession() {},
           async close() {},
         });
       },
@@ -359,6 +413,9 @@ describe("Goose MCP session composition", () => {
             await discoveryAccepted;
             return runnerDiscovery;
           },
+          async prompt() {
+            return runnerPromptResult;
+          },
           async close() {},
         });
       },
@@ -370,6 +427,7 @@ describe("Goose MCP session composition", () => {
         privateRootParent: path.resolve("/tmp/actestra-goose-attempts"),
         workspaceDirectory: path.resolve("/tmp/actestra-worktree"),
         modelId: "actestra-caller-model",
+        modelInvoker,
         toolInvoker,
         commandIds: Object.freeze(["git.status"]),
         testIds: Object.freeze(["test.unit"]),
@@ -404,6 +462,7 @@ describe("Goose MCP session composition", () => {
       async startModelServer() {
         return Object.freeze({
           baseUrl: "http://127.0.0.1:43124/v1",
+          bindSession() {},
           async close() {
             events.push("model:close");
           },
@@ -421,6 +480,9 @@ describe("Goose MCP session composition", () => {
               toolNames: Object.freeze([runnerDiscovery.toolNames[0]!]),
             });
           },
+          async prompt() {
+            return runnerPromptResult;
+          },
           async close() {
             events.push("runner:close");
           },
@@ -435,6 +497,7 @@ describe("Goose MCP session composition", () => {
           privateRootParent: path.resolve("/tmp/actestra-goose-attempts"),
           workspaceDirectory: path.resolve("/tmp/actestra-worktree"),
           modelId: "actestra-caller-model",
+          modelInvoker,
           toolInvoker,
           commandIds: Object.freeze(["git.status"]),
           testIds: Object.freeze(["test.unit"]),

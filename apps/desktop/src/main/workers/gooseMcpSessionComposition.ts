@@ -10,11 +10,13 @@ import {
 import {
   ACTESTRA_GOOSE_MCP_EXTENSION_NAME,
   type GooseAcpInfo,
+  type GooseAcpPromptResult,
   type GooseAcpSession,
 } from "./gooseAcpHandshake";
 import {
   startGooseLoopbackModelServer,
   type GooseLoopbackModelServer,
+  type GooseLoopbackModelInvoker,
   type StartGooseLoopbackModelServerOptions,
 } from "./gooseLoopbackModelServer";
 import {
@@ -33,6 +35,7 @@ export interface OpenGooseMcpSessionCompositionOptions {
   readonly privateRootParent: string;
   readonly workspaceDirectory: string;
   readonly modelId: string;
+  readonly modelInvoker: GooseLoopbackModelInvoker;
   readonly toolInvoker: GooseMcpToolInvoker;
   readonly commandIds: readonly string[];
   readonly testIds: readonly string[];
@@ -40,11 +43,17 @@ export interface OpenGooseMcpSessionCompositionOptions {
   readonly sessionTimeoutMs?: number;
 }
 
+export interface GooseMcpSessionPromptOptions {
+  readonly text: string;
+  readonly timeoutMs?: number;
+}
+
 export interface GooseMcpSessionComposition {
   readonly info: GooseAcpInfo;
   readonly privateRoot: string;
   readonly session: GooseAcpSession;
   readonly toolNames: readonly string[];
+  prompt(options: GooseMcpSessionPromptOptions): Promise<GooseAcpPromptResult>;
   close(): Promise<void>;
 }
 
@@ -170,6 +179,7 @@ export async function openGooseMcpSessionComposition(
     modelServer = await dependencies.startModelServer({
       modelId: options.modelId,
       attemptLease: modelAttemptLease,
+      invokeModel: options.modelInvoker,
     });
     runner = await dependencies.openRunnerHandshake({
       artifact: options.artifact,
@@ -190,6 +200,7 @@ export async function openGooseMcpSessionComposition(
       attemptLease,
       ...(options.sessionTimeoutMs === undefined ? {} : { timeoutMs: options.sessionTimeoutMs }),
     });
+    modelServer.bindSession(session.sessionId);
     const toolsListed = capabilityServer.waitForToolsList(
       options.sessionTimeoutMs ?? DEFAULT_TOOLS_LIST_WAIT_MS,
     );
@@ -227,6 +238,13 @@ export async function openGooseMcpSessionComposition(
     privateRoot: stableRunner.privateRoot,
     session,
     toolNames,
+    prompt(promptOptions: GooseMcpSessionPromptOptions): Promise<GooseAcpPromptResult> {
+      return stableRunner.prompt({
+        sessionId: session.sessionId,
+        text: promptOptions.text,
+        ...(promptOptions.timeoutMs === undefined ? {} : { timeoutMs: promptOptions.timeoutMs }),
+      });
+    },
     close(): Promise<void> {
       closePromise ??= closeComposition(stableRunner, capabilityServer, stableModelServer);
       return closePromise;

@@ -11,12 +11,15 @@ export const ACTESTRA_GOOSE_MCP_EXTENSION_NAME = "actestra-capability-proxy" as 
 const INITIALIZE_REQUEST_ID = "actestra-goose-initialize-1";
 const SESSION_NEW_REQUEST_ID = "actestra-goose-session-new-1";
 const TOOLS_LIST_REQUEST_ID = "actestra-goose-tools-list-1";
+const SESSION_PROMPT_REQUEST_ID = "actestra-goose-session-prompt-1";
 const DEFAULT_HANDSHAKE_TIMEOUT_MS = 10_000;
 const DEFAULT_SESSION_TIMEOUT_MS = 30_000;
 const MAX_SESSION_TIMEOUT_MS = 120_000;
 const MAX_INITIALIZE_LINE_BYTES = 64 * 1024;
 const MAX_SESSION_LINE_BYTES = 64 * 1024;
 const MAX_WORKSPACE_PATH_BYTES = 4 * 1024;
+const MAX_PROMPT_TEXT_BYTES = 256 * 1024;
+const MAX_PROMPT_UPDATES = 512;
 
 export type GooseAcpHandshakeErrorCode =
   | "invalid-message"
@@ -50,7 +53,10 @@ export type GooseAcpSessionErrorCode =
   | "session-transport-error"
   | "tool-discovery-rejected"
   | "tool-discovery-timeout"
-  | "tool-discovery-already-requested";
+  | "tool-discovery-already-requested"
+  | "prompt-rejected"
+  | "prompt-timeout"
+  | "prompt-already-requested";
 
 export class GooseAcpSessionError extends Error {
   constructor(
@@ -100,6 +106,7 @@ export interface GooseAcpConnection {
   readonly info: GooseAcpInfo;
   openSession(options: GooseAcpSessionOptions): Promise<GooseAcpSession>;
   discoverTools(options: GooseAcpToolDiscoveryOptions): Promise<GooseAcpToolDiscovery>;
+  prompt(options: GooseAcpPromptOptions): Promise<GooseAcpPromptResult>;
   close(): Promise<void>;
 }
 
@@ -125,6 +132,114 @@ export interface GooseAcpToolDiscoveryOptions {
 
 export interface GooseAcpToolDiscovery {
   readonly toolNames: readonly string[];
+}
+
+export interface GooseAcpPromptOptions {
+  readonly sessionId: string;
+  readonly text: string;
+  readonly timeoutMs?: number;
+}
+
+export type GooseAcpPromptStopReason =
+  | "end_turn"
+  | "max_tokens"
+  | "max_turn_requests"
+  | "refusal"
+  | "cancelled";
+
+export type GooseAcpJsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly GooseAcpJsonValue[]
+  | Readonly<{ [key: string]: GooseAcpJsonValue }>;
+
+export type GooseAcpToolKind =
+  | "read"
+  | "edit"
+  | "delete"
+  | "move"
+  | "search"
+  | "execute"
+  | "think"
+  | "fetch"
+  | "switch_mode"
+  | "other";
+
+export type GooseAcpToolStatus = "pending" | "in_progress" | "completed" | "failed";
+
+export type GooseAcpToolCallContent =
+  | Readonly<{
+      type: "content";
+      content: Readonly<{ type: "text"; text: string }>;
+    }>
+  | Readonly<{
+      type: "diff";
+      path: string;
+      oldText?: string | null;
+      newText: string;
+    }>
+  | Readonly<{
+      type: "terminal";
+      terminalId: string;
+    }>;
+
+export interface GooseAcpToolCallLocation {
+  readonly path: string;
+  readonly line?: number;
+}
+
+export type GooseAcpPromptUpdate =
+  | Readonly<{
+      type: "session_info_update";
+      title?: string | null;
+      updatedAt?: string | null;
+    }>
+  | Readonly<{
+      type: "tool_call";
+      toolCallId: string;
+      title: string;
+      kind: GooseAcpToolKind;
+      status: GooseAcpToolStatus;
+      content?: readonly GooseAcpToolCallContent[];
+      locations?: readonly GooseAcpToolCallLocation[];
+      rawInput?: GooseAcpJsonValue;
+      rawOutput?: GooseAcpJsonValue;
+    }>
+  | Readonly<{
+      type: "tool_call_update";
+      toolCallId: string;
+      title?: string;
+      kind?: GooseAcpToolKind;
+      status?: GooseAcpToolStatus;
+      content?: readonly GooseAcpToolCallContent[];
+      locations?: readonly GooseAcpToolCallLocation[];
+      rawInput?: GooseAcpJsonValue;
+      rawOutput?: GooseAcpJsonValue;
+    }>
+  | Readonly<{
+      type: "agent_message_chunk";
+      messageId?: string;
+      text: string;
+    }>
+  | Readonly<{
+      type: "usage_update";
+      used: number;
+      size: number;
+    }>;
+
+export interface GooseAcpPromptResult {
+  readonly stopReason: GooseAcpPromptStopReason;
+  readonly usage?: Readonly<{
+    totalTokens: number;
+    inputTokens: number;
+    outputTokens: number;
+    thoughtTokens?: number;
+    cachedReadTokens?: number;
+    cachedWriteTokens?: number;
+  }>;
+  readonly updates: readonly GooseAcpPromptUpdate[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -825,6 +940,595 @@ async function discoverGooseAcpTools(
   }
 }
 
+function freezeJsonValue(value: unknown, depth = 0): GooseAcpJsonValue {
+  if (depth > 32) {
+    throw invalidSessionMessage("Goose prompt JSON value exceeds the admitted nesting depth");
+  }
+  if (
+    value === null ||
+    typeof value === "boolean" ||
+    typeof value === "string" ||
+    (typeof value === "number" && Number.isFinite(value))
+  ) {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    if (value.length > 512) {
+      throw invalidSessionMessage("Goose prompt JSON array exceeds the admitted item count");
+    }
+    return Object.freeze(value.map((item) => freezeJsonValue(item, depth + 1)));
+  }
+  if (isRecord(value)) {
+    const entries = Object.entries(value);
+    if (entries.length > 512 || entries.some(([key]) => key.length > 1_024)) {
+      throw invalidSessionMessage("Goose prompt JSON object exceeds the admitted field bound");
+    }
+    return Object.freeze(
+      Object.fromEntries(entries.map(([key, item]) => [key, freezeJsonValue(item, depth + 1)])),
+    );
+  }
+  throw invalidSessionMessage("Goose prompt JSON value is incompatible");
+}
+
+function normalizeToolKind(value: unknown, fallback?: GooseAcpToolKind): GooseAcpToolKind {
+  const kinds: readonly GooseAcpToolKind[] = [
+    "read",
+    "edit",
+    "delete",
+    "move",
+    "search",
+    "execute",
+    "think",
+    "fetch",
+    "switch_mode",
+    "other",
+  ];
+  if (value === undefined && fallback !== undefined) {
+    return fallback;
+  }
+  if (typeof value !== "string" || !kinds.includes(value as GooseAcpToolKind)) {
+    throw invalidSessionMessage("Goose tool call kind is incompatible");
+  }
+  return value as GooseAcpToolKind;
+}
+
+function normalizeToolStatus(value: unknown, fallback?: GooseAcpToolStatus): GooseAcpToolStatus {
+  const statuses: readonly GooseAcpToolStatus[] = ["pending", "in_progress", "completed", "failed"];
+  if (value === undefined && fallback !== undefined) {
+    return fallback;
+  }
+  if (typeof value !== "string" || !statuses.includes(value as GooseAcpToolStatus)) {
+    throw invalidSessionMessage("Goose tool call status is incompatible");
+  }
+  return value as GooseAcpToolStatus;
+}
+
+function normalizeToolCallContent(value: unknown): readonly GooseAcpToolCallContent[] {
+  if (!Array.isArray(value) || value.length > 128) {
+    throw invalidSessionMessage("Goose tool call content exceeds the admitted shape");
+  }
+  return Object.freeze(
+    value.map((item): GooseAcpToolCallContent => {
+      const content = assertSessionRecord(item, "Goose tool call content item");
+      if (content.type === "content") {
+        assertSessionAllowedKeys(
+          content,
+          ["type", "content", "_meta"],
+          ["type", "content"],
+          "Goose tool call content item",
+        );
+        if (content._meta !== undefined && !isRecord(content._meta)) {
+          throw invalidSessionMessage("Goose tool call content metadata is incompatible");
+        }
+        const block = assertSessionRecord(content.content, "Goose tool call content block");
+        assertSessionAllowedKeys(
+          block,
+          ["type", "text", "annotations", "_meta"],
+          ["type", "text"],
+          "Goose tool call text block",
+        );
+        if (
+          block.type !== "text" ||
+          typeof block.text !== "string" ||
+          Buffer.byteLength(block.text, "utf8") > MAX_PROMPT_TEXT_BYTES ||
+          (block.annotations !== undefined && !isRecord(block.annotations)) ||
+          (block._meta !== undefined && !isRecord(block._meta))
+        ) {
+          throw invalidSessionMessage("Goose tool call text content is incompatible");
+        }
+        return Object.freeze({
+          type: "content" as const,
+          content: Object.freeze({ type: "text" as const, text: block.text }),
+        });
+      }
+      if (content.type === "diff") {
+        assertSessionAllowedKeys(
+          content,
+          ["type", "path", "oldText", "newText", "_meta"],
+          ["type", "path", "newText"],
+          "Goose tool call diff",
+        );
+        if (
+          typeof content.path !== "string" ||
+          content.path.length < 1 ||
+          Buffer.byteLength(content.path, "utf8") > MAX_WORKSPACE_PATH_BYTES ||
+          (content.oldText !== undefined &&
+            content.oldText !== null &&
+            typeof content.oldText !== "string") ||
+          typeof content.newText !== "string" ||
+          Buffer.byteLength(content.newText, "utf8") > MAX_PROMPT_TEXT_BYTES ||
+          (content._meta !== undefined && !isRecord(content._meta))
+        ) {
+          throw invalidSessionMessage("Goose tool call diff is incompatible");
+        }
+        return Object.freeze({
+          type: "diff" as const,
+          path: content.path,
+          ...(content.oldText === undefined ? {} : { oldText: content.oldText }),
+          newText: content.newText,
+        });
+      }
+      if (content.type === "terminal") {
+        assertSessionAllowedKeys(
+          content,
+          ["type", "terminalId", "_meta"],
+          ["type", "terminalId"],
+          "Goose tool call terminal",
+        );
+        const terminalId = assertSessionId(content.terminalId, "Goose terminal identifier");
+        if (content._meta !== undefined && !isRecord(content._meta)) {
+          throw invalidSessionMessage("Goose tool call terminal metadata is incompatible");
+        }
+        return Object.freeze({ type: "terminal" as const, terminalId });
+      }
+      throw invalidSessionMessage("Goose tool call content type is not admitted");
+    }),
+  );
+}
+
+function normalizeToolCallLocations(value: unknown): readonly GooseAcpToolCallLocation[] {
+  if (!Array.isArray(value) || value.length > 128) {
+    throw invalidSessionMessage("Goose tool call locations exceed the admitted shape");
+  }
+  return Object.freeze(
+    value.map((item): GooseAcpToolCallLocation => {
+      const location = assertSessionRecord(item, "Goose tool call location");
+      assertSessionAllowedKeys(
+        location,
+        ["path", "line", "_meta"],
+        ["path"],
+        "Goose tool call location",
+      );
+      if (
+        typeof location.path !== "string" ||
+        location.path.length < 1 ||
+        Buffer.byteLength(location.path, "utf8") > MAX_WORKSPACE_PATH_BYTES ||
+        (location.line !== undefined &&
+          (!Number.isSafeInteger(location.line) || (location.line as number) < 0)) ||
+        (location._meta !== undefined && !isRecord(location._meta))
+      ) {
+        throw invalidSessionMessage("Goose tool call location is incompatible");
+      }
+      return Object.freeze({
+        path: location.path,
+        ...(location.line === undefined ? {} : { line: location.line as number }),
+      });
+    }),
+  );
+}
+
+function normalizePromptUpdate(value: unknown): GooseAcpPromptUpdate {
+  const update = assertSessionRecord(value, "Goose prompt session update");
+  if (update.sessionUpdate === "session_info_update") {
+    assertSessionAllowedKeys(
+      update,
+      ["sessionUpdate", "title", "updatedAt", "_meta"],
+      ["sessionUpdate"],
+      "Goose session-info update",
+    );
+    if (
+      (update.title !== undefined &&
+        update.title !== null &&
+        (typeof update.title !== "string" || update.title.length > 1_024)) ||
+      (update.updatedAt !== undefined &&
+        update.updatedAt !== null &&
+        (typeof update.updatedAt !== "string" || update.updatedAt.length > 128)) ||
+      (update._meta !== undefined && !isRecord(update._meta))
+    ) {
+      throw invalidSessionMessage("Goose session-info update is incompatible");
+    }
+    return Object.freeze({
+      type: "session_info_update" as const,
+      ...(update.title === undefined ? {} : { title: update.title as string | null }),
+      ...(update.updatedAt === undefined ? {} : { updatedAt: update.updatedAt as string | null }),
+    });
+  }
+
+  if (update.sessionUpdate === "tool_call" || update.sessionUpdate === "tool_call_update") {
+    const initial = update.sessionUpdate === "tool_call";
+    assertSessionAllowedKeys(
+      update,
+      [
+        "sessionUpdate",
+        "toolCallId",
+        "title",
+        "kind",
+        "status",
+        "content",
+        "locations",
+        "rawInput",
+        "rawOutput",
+        "_meta",
+      ],
+      initial ? ["sessionUpdate", "toolCallId", "title"] : ["sessionUpdate", "toolCallId"],
+      initial ? "Goose tool call" : "Goose tool call update",
+    );
+    const toolCallId = assertSessionId(update.toolCallId, "Goose tool call identifier");
+    if (
+      (update.title !== undefined &&
+        (typeof update.title !== "string" ||
+          update.title.length < 1 ||
+          update.title.length > 4_096)) ||
+      (update._meta !== undefined && !isRecord(update._meta))
+    ) {
+      throw invalidSessionMessage("Goose tool call fields are incompatible");
+    }
+    const optionalFields = {
+      ...(update.title === undefined ? {} : { title: update.title }),
+      ...(update.kind === undefined ? {} : { kind: normalizeToolKind(update.kind) }),
+      ...(update.status === undefined ? {} : { status: normalizeToolStatus(update.status) }),
+      ...(update.content === undefined
+        ? {}
+        : { content: normalizeToolCallContent(update.content) }),
+      ...(update.locations === undefined
+        ? {}
+        : { locations: normalizeToolCallLocations(update.locations) }),
+      ...(update.rawInput === undefined ? {} : { rawInput: freezeJsonValue(update.rawInput) }),
+      ...(update.rawOutput === undefined ? {} : { rawOutput: freezeJsonValue(update.rawOutput) }),
+    };
+    if (initial) {
+      return Object.freeze({
+        type: "tool_call" as const,
+        toolCallId,
+        title: update.title as string,
+        kind: normalizeToolKind(update.kind, "other"),
+        status: normalizeToolStatus(update.status, "pending"),
+        ...(update.content === undefined
+          ? {}
+          : { content: normalizeToolCallContent(update.content) }),
+        ...(update.locations === undefined
+          ? {}
+          : { locations: normalizeToolCallLocations(update.locations) }),
+        ...(update.rawInput === undefined ? {} : { rawInput: freezeJsonValue(update.rawInput) }),
+        ...(update.rawOutput === undefined ? {} : { rawOutput: freezeJsonValue(update.rawOutput) }),
+      });
+    }
+    return Object.freeze({ type: "tool_call_update" as const, toolCallId, ...optionalFields });
+  }
+
+  if (update.sessionUpdate === "agent_message_chunk") {
+    assertSessionAllowedKeys(
+      update,
+      ["sessionUpdate", "content", "messageId", "_meta"],
+      ["sessionUpdate", "content"],
+      "Goose agent-message chunk",
+    );
+    const content = assertSessionRecord(update.content, "Goose agent-message content");
+    assertSessionAllowedKeys(
+      content,
+      ["type", "text", "annotations", "_meta"],
+      ["type", "text"],
+      "Goose agent-message text",
+    );
+    if (
+      content.type !== "text" ||
+      typeof content.text !== "string" ||
+      Buffer.byteLength(content.text, "utf8") > MAX_PROMPT_TEXT_BYTES ||
+      (content.annotations !== undefined && !isRecord(content.annotations)) ||
+      (content._meta !== undefined && !isRecord(content._meta)) ||
+      (update._meta !== undefined && !isRecord(update._meta))
+    ) {
+      throw invalidSessionMessage("Goose agent-message chunk is incompatible");
+    }
+    const messageId =
+      update.messageId === undefined
+        ? undefined
+        : assertSessionId(update.messageId, "Goose agent-message identifier");
+    return Object.freeze({
+      type: "agent_message_chunk" as const,
+      ...(messageId === undefined ? {} : { messageId }),
+      text: content.text,
+    });
+  }
+
+  if (update.sessionUpdate === "usage_update") {
+    assertSessionAllowedKeys(
+      update,
+      ["sessionUpdate", "used", "size", "cost", "_meta"],
+      ["sessionUpdate", "used", "size"],
+      "Goose prompt usage update",
+    );
+    if (
+      !Number.isSafeInteger(update.used) ||
+      (update.used as number) < 0 ||
+      !Number.isSafeInteger(update.size) ||
+      (update.size as number) < 1 ||
+      (update.cost !== undefined && !isRecord(update.cost)) ||
+      (update._meta !== undefined && !isRecord(update._meta))
+    ) {
+      throw invalidSessionMessage("Goose prompt usage update is incompatible");
+    }
+    return Object.freeze({
+      type: "usage_update" as const,
+      used: update.used as number,
+      size: update.size as number,
+    });
+  }
+
+  throw invalidSessionMessage("Goose sent an unadmitted prompt session update");
+}
+
+function parsePromptMessage(
+  line: string,
+  options: GooseAcpPromptOptions,
+  updates: GooseAcpPromptUpdate[],
+): GooseAcpPromptResult | undefined {
+  if (Buffer.byteLength(line, "utf8") > MAX_SESSION_LINE_BYTES) {
+    throw invalidSessionMessage("Goose prompt message is too large");
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch (error) {
+    throw invalidSessionMessage("Goose prompt message is not valid JSON", error);
+  }
+  const message = assertSessionRecord(parsed, "Goose prompt message");
+  if (Object.hasOwn(message, "method")) {
+    assertSessionExactKeys(message, ["jsonrpc", "method", "params"], "Goose prompt notification");
+    if (message.jsonrpc !== "2.0" || message.method !== "session/update") {
+      throw invalidSessionMessage("Goose sent an unadmitted prompt notification");
+    }
+    const params = assertSessionRecord(message.params, "Goose prompt update params");
+    assertSessionExactKeys(params, ["sessionId", "update"], "Goose prompt update params");
+    if (params.sessionId !== options.sessionId) {
+      throw invalidSessionMessage("Goose prompt update references a different session");
+    }
+    if (updates.length >= MAX_PROMPT_UPDATES) {
+      throw invalidSessionMessage("Goose prompt exceeded the admitted update count");
+    }
+    updates.push(normalizePromptUpdate(params.update));
+    return undefined;
+  }
+  if (Object.hasOwn(message, "error")) {
+    assertSessionExactKeys(message, ["jsonrpc", "id", "error"], "Goose prompt error");
+    if (message.jsonrpc !== "2.0" || message.id !== SESSION_PROMPT_REQUEST_ID) {
+      throw invalidSessionMessage("Goose prompt error correlation is incompatible");
+    }
+    const error = assertSessionRecord(message.error, "Goose prompt error payload");
+    assertSessionAllowedKeys(
+      error,
+      ["code", "message", "data"],
+      ["code", "message"],
+      "Goose prompt error payload",
+    );
+    if (
+      !Number.isSafeInteger(error.code) ||
+      typeof error.message !== "string" ||
+      error.message.length < 1 ||
+      error.message.length > 1_024
+    ) {
+      throw invalidSessionMessage("Goose prompt error payload is invalid");
+    }
+    throw new GooseAcpSessionError(
+      "prompt-rejected",
+      "Goose rejected the ACP session/prompt request",
+    );
+  }
+  assertSessionExactKeys(message, ["jsonrpc", "id", "result"], "Goose prompt response");
+  if (message.jsonrpc !== "2.0" || message.id !== SESSION_PROMPT_REQUEST_ID) {
+    throw invalidSessionMessage("Goose prompt response correlation is incompatible");
+  }
+  const result = assertSessionRecord(message.result, "Goose prompt result");
+  assertSessionAllowedKeys(
+    result,
+    ["stopReason", "usage", "_meta"],
+    ["stopReason"],
+    "Goose prompt result",
+  );
+  const stopReasons: readonly GooseAcpPromptStopReason[] = [
+    "end_turn",
+    "max_tokens",
+    "max_turn_requests",
+    "refusal",
+    "cancelled",
+  ];
+  if (
+    typeof result.stopReason !== "string" ||
+    !stopReasons.includes(result.stopReason as GooseAcpPromptStopReason) ||
+    (result._meta !== undefined && !isRecord(result._meta))
+  ) {
+    throw invalidSessionMessage("Goose prompt result is incompatible");
+  }
+  let usage: GooseAcpPromptResult["usage"];
+  if (result.usage !== undefined) {
+    const rawUsage = assertSessionRecord(result.usage, "Goose prompt result usage");
+    assertSessionAllowedKeys(
+      rawUsage,
+      [
+        "totalTokens",
+        "inputTokens",
+        "outputTokens",
+        "thoughtTokens",
+        "cachedReadTokens",
+        "cachedWriteTokens",
+        "_meta",
+      ],
+      ["totalTokens", "inputTokens", "outputTokens"],
+      "Goose prompt result usage",
+    );
+    const tokenFields = [
+      "totalTokens",
+      "inputTokens",
+      "outputTokens",
+      "thoughtTokens",
+      "cachedReadTokens",
+      "cachedWriteTokens",
+    ] as const;
+    if (
+      tokenFields.some(
+        (field) =>
+          rawUsage[field] !== undefined &&
+          (!Number.isSafeInteger(rawUsage[field]) || (rawUsage[field] as number) < 0),
+      ) ||
+      (rawUsage._meta !== undefined && !isRecord(rawUsage._meta))
+    ) {
+      throw invalidSessionMessage("Goose prompt result usage is incompatible");
+    }
+    usage = Object.freeze({
+      totalTokens: rawUsage.totalTokens as number,
+      inputTokens: rawUsage.inputTokens as number,
+      outputTokens: rawUsage.outputTokens as number,
+      ...(rawUsage.thoughtTokens === undefined
+        ? {}
+        : { thoughtTokens: rawUsage.thoughtTokens as number }),
+      ...(rawUsage.cachedReadTokens === undefined
+        ? {}
+        : { cachedReadTokens: rawUsage.cachedReadTokens as number }),
+      ...(rawUsage.cachedWriteTokens === undefined
+        ? {}
+        : { cachedWriteTokens: rawUsage.cachedWriteTokens as number }),
+    });
+  }
+  return Object.freeze({
+    stopReason: result.stopReason as GooseAcpPromptStopReason,
+    ...(usage === undefined ? {} : { usage }),
+    updates: Object.freeze([...updates]),
+  });
+}
+
+function assertPromptOptions(options: GooseAcpPromptOptions, expectedSessionId: string): void {
+  if (
+    options.sessionId !== expectedSessionId ||
+    typeof options.text !== "string" ||
+    options.text.length < 1 ||
+    Buffer.byteLength(options.text, "utf8") > MAX_PROMPT_TEXT_BYTES ||
+    (options.timeoutMs !== undefined &&
+      (!Number.isSafeInteger(options.timeoutMs) ||
+        options.timeoutMs < 1 ||
+        options.timeoutMs > MAX_SESSION_TIMEOUT_MS))
+  ) {
+    throw new GooseAcpSessionError(
+      "invalid-session-options",
+      "Goose prompt options differ from the active bounded text session",
+    );
+  }
+}
+
+async function promptGooseAcp(
+  transport: GooseAcpTransport,
+  options: GooseAcpPromptOptions,
+): Promise<GooseAcpPromptResult> {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_SESSION_TIMEOUT_MS;
+  const updates: GooseAcpPromptUpdate[] = [];
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const unsubscribers: Array<() => void> = [];
+  try {
+    return await new Promise<GooseAcpPromptResult>((resolve, reject) => {
+      let settled = false;
+      const settle = (operation: () => void): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        operation();
+      };
+      unsubscribers.push(
+        transport.onLine((line) => {
+          if (settled) {
+            return;
+          }
+          try {
+            const result = parsePromptMessage(line, options, updates);
+            if (result !== undefined) {
+              settle(() => resolve(result));
+            }
+          } catch (error) {
+            settle(() => reject(error));
+          }
+        }),
+        transport.onError((error) => {
+          settle(() =>
+            reject(
+              new GooseAcpSessionError(
+                "session-transport-error",
+                "Goose ACP transport failed during session/prompt",
+                { cause: error },
+              ),
+            ),
+          );
+        }),
+        transport.onExit((code, signal) => {
+          settle(() =>
+            reject(
+              new GooseAcpSessionError(
+                "session-process-exit",
+                `Goose exited before session/prompt completed (code=${String(code)}, signal=${String(signal)})`,
+              ),
+            ),
+          );
+        }),
+      );
+      timeout = setTimeout(() => {
+        settle(() =>
+          reject(
+            new GooseAcpSessionError(
+              "prompt-timeout",
+              "Goose did not complete ACP session/prompt before the deadline",
+            ),
+          ),
+        );
+      }, timeoutMs);
+      transport.sendLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: SESSION_PROMPT_REQUEST_ID,
+          method: "session/prompt",
+          params: {
+            sessionId: options.sessionId,
+            prompt: [{ type: "text", text: options.text }],
+          },
+        }),
+      );
+    });
+  } catch (error) {
+    const promptError =
+      error instanceof GooseAcpSessionError
+        ? error
+        : new GooseAcpSessionError(
+            "session-transport-error",
+            "Goose ACP transport failed while sending session/prompt",
+            { cause: error },
+          );
+    try {
+      await transport.close();
+    } catch (closeError) {
+      throw new GooseAcpSessionError(
+        "session-transport-error",
+        "Goose prompt failed and transport cleanup also failed",
+        { cause: new AggregateError([promptError, closeError]) },
+      );
+    }
+    throw promptError;
+  } finally {
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
+    for (const unsubscribe of unsubscribers) {
+      unsubscribe();
+    }
+  }
+}
+
 function assertSessionOptions(options: GooseAcpSessionOptions): void {
   if (
     typeof options.workspaceDirectory !== "string" ||
@@ -955,6 +1659,8 @@ export async function connectGooseAcp(
     let sessionRequested = false;
     let activeSessionId: string | undefined;
     let toolDiscoveryRequested = false;
+    let toolDiscoveryCompleted = false;
+    let promptRequested = false;
     return Object.freeze({
       info,
       async openSession(options: GooseAcpSessionOptions): Promise<GooseAcpSession> {
@@ -997,7 +1703,32 @@ export async function connectGooseAcp(
           );
         }
         toolDiscoveryRequested = true;
-        return discoverGooseAcpTools(transport, options);
+        const discovery = await discoverGooseAcpTools(transport, options);
+        toolDiscoveryCompleted = true;
+        return discovery;
+      },
+      async prompt(options: GooseAcpPromptOptions): Promise<GooseAcpPromptResult> {
+        if (closed) {
+          throw new GooseAcpSessionError(
+            "session-closed",
+            "Goose ACP connection is already closed",
+          );
+        }
+        if (activeSessionId === undefined || !toolDiscoveryCompleted) {
+          throw new GooseAcpSessionError(
+            "invalid-session-options",
+            "Goose prompt requires an active session with admitted tool discovery",
+          );
+        }
+        assertPromptOptions(options, activeSessionId);
+        if (promptRequested) {
+          throw new GooseAcpSessionError(
+            "prompt-already-requested",
+            "Goose process already received its single admitted session/prompt request",
+          );
+        }
+        promptRequested = true;
+        return promptGooseAcp(transport, options);
       },
       async close(): Promise<void> {
         if (closed) {

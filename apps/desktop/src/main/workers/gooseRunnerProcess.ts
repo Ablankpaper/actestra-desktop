@@ -9,6 +9,8 @@ import {
   connectGooseAcp,
   type GooseAcpConnection,
   type GooseAcpInfo,
+  type GooseAcpPromptOptions,
+  type GooseAcpPromptResult,
   type GooseAcpSession,
   type GooseAcpSessionOptions,
   type GooseAcpToolDiscovery,
@@ -77,6 +79,7 @@ export interface OpenGooseRunnerHandshakeResult {
   readonly privateRoot: string;
   openSession(options: GooseAcpSessionOptions): Promise<GooseAcpSession>;
   discoverTools(options: GooseAcpToolDiscoveryOptions): Promise<GooseAcpToolDiscovery>;
+  prompt(options: GooseAcpPromptOptions): Promise<GooseAcpPromptResult>;
   close(): Promise<void>;
 }
 
@@ -125,6 +128,7 @@ export function createGooseRunnerEnvironment(
     GOOSE_PATH_ROOT: privateRoot,
     GOOSE_TELEMETRY_OFF: "1",
     GOOSE_DISABLE_KEYRING: "1",
+    GOOSE_DISABLE_SESSION_NAMING: "true",
     HOME: path.join(privateRoot, "home"),
     TMPDIR: temporaryDirectory,
     TMP: temporaryDirectory,
@@ -599,6 +603,23 @@ export async function openGooseRunnerHandshake(
             throw new GooseRunnerProcessError(
               "cleanup-failed",
               "Goose tool discovery failed and process or private-root cleanup also failed",
+              { cause: new AggregateError([error, cleanupError]) },
+            );
+          }
+          throw error;
+        }
+      },
+      async prompt(promptOptions: GooseAcpPromptOptions): Promise<GooseAcpPromptResult> {
+        try {
+          return await connection.prompt(promptOptions);
+        } catch (error) {
+          closePromise ??= closeAndRemove(connection, prepared!.root);
+          try {
+            await closePromise;
+          } catch (cleanupError) {
+            throw new GooseRunnerProcessError(
+              "cleanup-failed",
+              "Goose prompt failed and process or private-root cleanup also failed",
               { cause: new AggregateError([error, cleanupError]) },
             );
           }

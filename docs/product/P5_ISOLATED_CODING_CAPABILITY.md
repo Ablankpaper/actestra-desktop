@@ -19,11 +19,15 @@ MCP transport is delivered through pull request 35 and squash merge
 composition is delivered through pull request 36 at exact head
 `5fe78bfaf2982556af975d23bc904d10b77a1f29`, squash merge
 `08e6fefcd87721fbe4f21eee73f9ba6c52a638c0`, and exact merged-main CI
-30845006202. The authenticated MCP tool-call slice starts from that exact merge
-on branch `codex/p5-goose-prompt-tool-loop`. This document records the closed
-worktree, Tool Gateway, main-owned lifecycle composition, bounded ACP session,
-authenticated MCP transport, readiness composition, and current bounded
-tool-call bridge. It is not P5.2 phase acceptance.
+30845006202. The authenticated MCP tool-call slice is delivered through pull
+request 37 at exact head `84b0550495717343b75ca2540cb7c191ab65b12a`,
+squash merge `d933546454e63a2d836e728f1b93980cb4a7c0ac`, and exact
+merged-main CI 30853499159. The authenticated inference and prompt loop starts
+from that exact merge on branch `codex/p5-goose-inference-prompt-loop`. This
+document records the closed worktree, Tool Gateway, main-owned lifecycle
+composition, bounded ACP session, authenticated MCP transport, bounded tool-call
+bridge, and current real Goose prompt/tool round trip. It is not P5.2 phase
+acceptance.
 
 ## Scope
 
@@ -92,15 +96,24 @@ sockets prevent the listener from becoming a second unbounded process or
 network authority.
 
 The session-composition helper creates separate fresh 256-bit base64url leases
-for MCP and model readiness inside Electron main and never accepts either from
-the Worker. Before the admitted Goose handshake, it starts the MCP listener and
-an Actestra-owned model catalog on separate random `127.0.0.1` ports. The model
-catalog accepts only an authenticated `GET /v1/models` for the caller-selected
-model ID; every inference route remains absent. The model-related additions to
-the closed Worker environment are the pinned OpenAI provider, caller model,
-exact catalog base URL, opaque local API lease, and loopback `NO_PROXY`. The
-macOS sandbox continues to deny all other network access and admits outbound
-traffic only to the exact MCP and catalog ports.
+for MCP and model traffic inside Electron main and never accepts either from the
+Worker. Before the admitted Goose handshake, it starts the MCP listener and an
+Actestra-owned model proxy on separate random `127.0.0.1` ports. The model proxy
+accepts the authenticated `GET /v1/models` catalog for the caller-selected model
+ID. Its `POST /v1/chat/completions` route remains unavailable until Actestra
+binds the exact ACP session, then requires the same opaque lease, exact Host,
+absence of Origin and transfer encoding, one matching `agent-session-id`, a
+bounded non-chunked JSON body, the caller-selected model, streaming mode, and a
+bounded messages array. The route delegates only to a caller-supplied
+main-process model invoker and emits a closed OpenAI-compatible SSE union:
+bounded assistant text or one bounded MCP tool call plus token usage. The
+model-related additions to the closed Worker environment are the pinned OpenAI
+provider, caller model, exact proxy base URL, opaque local API lease, loopback
+`NO_PROXY`, and `GOOSE_DISABLE_SESSION_NAMING=true`. The last setting prevents
+Goose from making a private background model call to name the session; Actestra
+Core retains session naming authority. The macOS sandbox continues to deny all
+other network access and admits outbound traffic only to the exact MCP and model
+ports.
 
 After `session/new`, Actestra sends pinned Goose's explicit
 `_goose/unstable/tools/list` ACP request for the admitted MCP extension. The
@@ -108,11 +121,17 @@ helper returns only after the server accepts its authenticated `tools/list`,
 Goose acknowledges discovery, and the response matches exactly the six
 Actestra coding tool identifiers. A valid list necessarily follows authenticated
 initialize and initialized requests. Opening failure and normal close release
-the Worker before MCP and the model catalog. Close is idempotent, attempts every
+the Worker before MCP and the model proxy. Close is idempotent, attempts every
 cleanup even after an earlier failure, and preserves all cleanup errors in
-order. The returned object exposes only normalized Goose info, private-root
-path, session identity, setup kinds, canonical tool names, and close; it does
-not expose either Bearer lease.
+order. After discovery, the helper admits one bounded text `session/prompt`
+request with fixed correlation. It accepts only updates for the exact session,
+bounds the turn to 512 updates, normalizes admitted session-info, tool-call,
+tool-call-update, assistant-text, and usage shapes, and rejects expanded or
+uncorrelated messages. Timeout, rejection, transport failure, or process exit
+closes the Worker and its private root. The returned object exposes only
+normalized Goose info, private-root path, session identity, setup kinds,
+canonical tool names, the single bounded prompt method, and close; it does not
+expose either Bearer lease.
 
 The caller supplies one main-owned tool invoker to that composition. The
 current invoker binds the active desktop-main coding grant and Actestra Task,
@@ -123,6 +142,15 @@ durable output reference. Goose session and tool-call identifiers remain
 correlation metadata and never become authority. An approval-required result
 does not execute the protected operation and returns only a bounded generic MCP
 error; approval continuation and denial projection remain later work.
+
+The caller also supplies the model invoker. It receives only the bound Actestra
+session identifier, selected model identifier, bounded Goose request, and an
+abort signal, and may return only the closed message-or-tool-call completion
+union. The loopback proxy owns streaming compatibility and never receives a raw
+provider credential from Goose. In the admitted real-runner proof, the first
+model result selects the authenticated Actestra file-read tool, Goose invokes it
+once through MCP, and the second model request contains the bounded tool result
+before returning the final assistant message and ACP usage.
 
 ## Authority and policy
 
@@ -246,6 +274,25 @@ TypeScript, the Electron SQLite probe, 68 passing and 1 skipped test files with
 boundary, frozen/downstream contracts, and the
 58-main/3-preload/28-renderer-module production build.
 
+The current inference/prompt fingerprint passes 4 affected files and 55 tests
+covering the closed Runner environment, authenticated and session-bound model
+catalog/inference routes, bounded message and tool-call SSE, in-flight
+abort-and-await, strict ACP prompt correlation and normalization, single-prompt
+admission, and composition forwarding. The environment regression first failed because
+`GOOSE_DISABLE_SESSION_NAMING` was absent, then passed with the exact upstream
+documented value `true`. With admitted artifact manifest SHA-256
+`3dc1bf1b58dee9639ff35453a6486f890bb68f38fbc9dbf3e63ef56bfcdbb4af`,
+the real-runner test passes 1 file and 1 test on the current bytes: exactly two
+model invocations, one authenticated MCP tool call, the second request carrying
+`integration tool result`, normalized tool-call/completed/final-message updates,
+ACP usage, and an empty private-root parent after close. No Runner process
+remains. The single final-byte root gate passes formatting over 204 files,
+zero-warning lint over 196 files, strict TypeScript, the Electron SQLite probe,
+68 passing and 1 skipped test files with 593 passing and 1 skipped tests,
+deterministic smoke, the 89-source boundary, the exact 1,766-file frozen AionUi
+foundation, the 184-file downstream contract, and the
+58-main/3-preload/28-renderer-module production build.
+
 One committed CodeRabbit review covered all 12 changed files and raised six
 findings. The shutdown/deferred-invocation race and fixed `/tmp` fixture were
 confirmed and remediated. The regression test's red phase proved the old path
@@ -308,34 +355,47 @@ comment, or review thread. The branch squash merged as
 passed macOS arm64 foundation job 91791030796 and Goose runner admission job
 91791030814.
 
+Pull request 37 reached exact head
+`84b0550495717343b75ca2540cb7c191ab65b12a`. Exact-head CI 30851778390
+passed macOS arm64 foundation job 91813249905 and Goose runner admission job
+91813250047. CodeRabbit selected all 12 changed files but explicitly stopped at
+its review limit; that successful status and Free summary are not line-level
+review evidence. GitHub records no submitted review or inline review thread.
+The branch squash merged as `d933546454e63a2d836e728f1b93980cb4a7c0ac`.
+The single automatic merged-main CI 30853499159 passed macOS arm64 foundation
+job 91818968991 and Goose runner admission job 91818969025.
+
 ## Remaining P5.2 work and non-claims
 
 The closed capability foundation is composed into desktop main, the Goose
 adapter has a bounded `session/new` declaration and cleanup contract, the
-authenticated MCP transport is delivered, and a production main-process helper
-calls the authenticated MCP and non-inference model-readiness listeners
-together. The current caller-supplied bridge validates and routes bounded
-`tools/call` through the real Tool Gateway and durable content references. The
-desktop-main coding service does not yet call that helper, and the model listener
-intentionally implements no inference endpoint. No real Goose-generated tool
-call, prompt loop, approval continuation or denial projection, normalized ACP
-session evidence, or publish/Artifact flow required by ADR-0024 has therefore
-been proved. The passing real-runner readiness integration is still not a real
-Goose coding session. This slice also adds no renderer projection, AionUi
-journey, candidate, release, deployment, P5.3 work, CrewAI sidecar, Eigent
-runtime, or P6 behavior.
+authenticated MCP transport and tool-call bridge are delivered, and the current
+main-process helper adds the authenticated model proxy and a real bounded
+Goose-generated prompt/tool round trip. The desktop-main coding service does not
+yet call that helper. Approval continuation and denial projection, durable
+normalized Task/Session evidence, publish, and Artifact registration required
+by ADR-0024 have not been proved. The current real-runner evidence is a contained
+coding-session contract, not the desktop-main or retained-AionUI product journey.
+This slice also adds no renderer projection, AionUi journey, candidate, release,
+deployment, P5.3 work, CrewAI sidecar, Eigent runtime, or P6 behavior.
 
-P5.2 can be accepted only after the remaining inference and real prompt/tool
-loop, approval outcomes, normalized evidence, publish, and Artifact boundaries
-are implemented or the accepted architecture is explicitly revised, followed
-by the complete local, review, exact-head CI, and merged-main gates.
+P5.2 can be accepted only after the helper is composed into the desktop-main
+coding lifecycle and the remaining approval outcomes, durable normalized
+evidence, publish, and Artifact boundaries are implemented or the accepted
+architecture is explicitly revised, followed by the complete local, review,
+exact-head CI, and merged-main gates.
 
 ## Rollback
 
-Rollback of the current tool-call slice removes the MCP `tools/call` admission,
-main-owned invoker, session-composition injection, dedicated Goose-job coverage,
-and focused tests together. The delivered authenticated discovery composition
-then remains readiness-only and returns method-not-found for `tools/call`.
+Rollback of the current inference/prompt slice removes the authenticated chat
+completion route, bound model invoker, bounded ACP prompt/updates, private
+session-naming disablement, and real two-round prompt/tool proof together. The
+delivered pull-request-37 tool-call bridge then remains without an inference or
+prompt route. Rollback of that tool-call slice removes the MCP `tools/call`
+admission, main-owned invoker, session-composition injection, dedicated
+Goose-job coverage, and focused tests together. The delivered authenticated
+discovery composition then remains readiness-only and returns method-not-found
+for `tools/call`.
 Rollback of the current session-composition correction removes explicit ACP
 tool discovery, the non-inference model catalog, the exact two-port sandbox and
 closed provider/model environment, and their focused evidence; the composition

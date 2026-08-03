@@ -192,6 +192,81 @@ describe("Goose ACP handshake", () => {
     await connection.close();
   });
 
+  it("sends one bounded text prompt and normalizes the admitted Goose turn updates", async () => {
+    const transport = new LoopbackGooseAcpTransport();
+    const connection = await connectGooseAcp(transport);
+    const session = await connection.openSession({
+      workspaceDirectory: "/private/tmp/actestra-worktree",
+      capabilityProxyUrl: "http://127.0.0.1:43123/mcp",
+      attemptLease: "attempt-lease-0123456789abcdef0123456789abcdef",
+    });
+    await connection.discoverTools({
+      sessionId: session.sessionId,
+      extensionName: "actestra-capability-proxy",
+    });
+
+    await expect(
+      connection.prompt({
+        sessionId: session.sessionId,
+        text: "Read README.md.",
+      }),
+    ).resolves.toEqual({
+      stopReason: "end_turn",
+      usage: {
+        totalTokens: 51,
+        inputTokens: 47,
+        outputTokens: 4,
+        thoughtTokens: 0,
+        cachedReadTokens: 0,
+        cachedWriteTokens: 0,
+      },
+      updates: [
+        {
+          type: "session_info_update",
+          title: "Read README.md",
+          updatedAt: "2026-08-04T00:00:00Z",
+        },
+        {
+          type: "tool_call",
+          toolCallId: "call-actestra-1",
+          title: "Read README.md",
+          kind: "read",
+          status: "pending",
+          rawInput: { contractVersion: 1, path: "README.md" },
+        },
+        {
+          type: "tool_call_update",
+          toolCallId: "call-actestra-1",
+          status: "completed",
+          content: [
+            {
+              type: "content",
+              content: { type: "text", text: "fixture tool result" },
+            },
+          ],
+          rawOutput: { contractVersion: 1, type: "file-read" },
+        },
+        {
+          type: "agent_message_chunk",
+          messageId: "message-actestra-1",
+          text: "fixture final answer",
+        },
+        { type: "usage_update", used: 19, size: 128_000 },
+      ],
+    });
+    expect(JSON.parse(transport.sentLines[3]!)).toEqual({
+      jsonrpc: "2.0",
+      id: "actestra-goose-session-prompt-1",
+      method: "session/prompt",
+      params: {
+        sessionId: "goose-session-1",
+        prompt: [{ type: "text", text: "Read README.md." }],
+      },
+    });
+
+    await connection.close();
+  });
+
   it("closes when Goose expands the admitted tool-discovery response", async () => {
     const transport = new LoopbackGooseAcpTransport({
       toolDiscoveryMessages: (request) => [
