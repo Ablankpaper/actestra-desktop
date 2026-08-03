@@ -11,6 +11,8 @@ import {
   type GooseAcpInfo,
   type GooseAcpSession,
   type GooseAcpSessionOptions,
+  type GooseAcpToolDiscovery,
+  type GooseAcpToolDiscoveryOptions,
   type GooseAcpTransport,
 } from "./gooseAcpHandshake";
 import type { AdmittedGooseRunnerArtifact } from "./gooseRunnerArtifact";
@@ -43,14 +45,29 @@ export interface GooseAcpSpawnOptions {
   readonly executablePath: string;
   readonly workingDirectory: string;
   readonly environment: Readonly<Record<string, string>>;
-  readonly networkPolicy: "deny-all";
+  readonly networkPolicy:
+    | "deny-all"
+    | {
+        readonly kind: "loopback-session";
+        readonly host: "127.0.0.1";
+        readonly capabilityProxyPort: number;
+        readonly modelProxyPort: number;
+      };
 }
 
 export type GooseAcpTransportFactory = (options: GooseAcpSpawnOptions) => GooseAcpTransport;
 
+export interface GooseRunnerModelBinding {
+  readonly baseUrl: string;
+  readonly modelId: string;
+  readonly attemptLease: string;
+}
+
 export interface OpenGooseRunnerHandshakeOptions {
   readonly artifact: AdmittedGooseRunnerArtifact;
   readonly privateRootParent: string;
+  readonly capabilityProxyUrl?: string;
+  readonly modelBinding?: GooseRunnerModelBinding;
   readonly handshakeTimeoutMs?: number;
   readonly transportFactory?: GooseAcpTransportFactory;
 }
@@ -59,6 +76,7 @@ export interface OpenGooseRunnerHandshakeResult {
   readonly info: GooseAcpInfo;
   readonly privateRoot: string;
   openSession(options: GooseAcpSessionOptions): Promise<GooseAcpSession>;
+  discoverTools(options: GooseAcpToolDiscoveryOptions): Promise<GooseAcpToolDiscovery>;
   close(): Promise<void>;
 }
 
@@ -92,6 +110,7 @@ async function sha256File(filePath: string): Promise<string> {
 
 export function createGooseRunnerEnvironment(
   privateRoot: string,
+  modelBinding?: GooseRunnerModelBinding,
 ): Readonly<Record<string, string>> {
   if (!isAbsoluteDirectory(privateRoot)) {
     throw new GooseRunnerProcessError(
@@ -99,6 +118,8 @@ export function createGooseRunnerEnvironment(
       "Goose private root must be an absolute path",
     );
   }
+  const stableModelBinding =
+    modelBinding === undefined ? undefined : validateModelBinding(modelBinding).binding;
   const temporaryDirectory = path.join(privateRoot, "tmp");
   return Object.freeze({
     GOOSE_PATH_ROOT: privateRoot,
@@ -113,6 +134,15 @@ export function createGooseRunnerEnvironment(
     OTEL_TRACES_EXPORTER: "none",
     OTEL_METRICS_EXPORTER: "none",
     OTEL_LOGS_EXPORTER: "none",
+    ...(stableModelBinding === undefined
+      ? {}
+      : {
+          GOOSE_PROVIDER: "openai",
+          GOOSE_MODEL: stableModelBinding.modelId,
+          OPENAI_BASE_URL: stableModelBinding.baseUrl,
+          OPENAI_API_KEY: stableModelBinding.attemptLease,
+          NO_PROXY: "127.0.0.1,localhost",
+        }),
   });
 }
 
@@ -137,6 +167,71 @@ function signalProcessGroup(child: ChildProcessWithoutNullStreams, signal: NodeJ
       throw error;
     }
   }
+}
+
+function exactLoopbackMcpPort(url: string): number | undefined {
+  const match = /^http:\/\/127\.0\.0\.1:([1-9][0-9]{0,4})\/mcp$/.exec(url);
+  if (match === null) {
+    return undefined;
+  }
+  const port = Number(match[1]);
+  return port <= 65_535 ? port : undefined;
+}
+
+function validateModelBinding(modelBinding: GooseRunnerModelBinding): {
+  readonly binding: GooseRunnerModelBinding;
+  readonly port: number;
+} {
+  const match = /^http:\/\/127\.0\.0\.1:([1-9][0-9]{0,4})\/v1$/.exec(modelBinding.baseUrl);
+  const port = match === null ? 0 : Number(match[1]);
+  if (
+    port < 1 ||
+    port > 65_535 ||
+    typeof modelBinding.modelId !== "string" ||
+    modelBinding.modelId.length < 1 ||
+    modelBinding.modelId.length > 256 ||
+    !/^[A-Za-z0-9]+(?:[._:/-][A-Za-z0-9]+)*$/.test(modelBinding.modelId) ||
+    typeof modelBinding.attemptLease !== "string" ||
+    modelBinding.attemptLease.length < 32 ||
+    modelBinding.attemptLease.length > 256 ||
+    !/^[A-Za-z0-9._~-]+$/.test(modelBinding.attemptLease)
+  ) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose runner model binding must use the exact admitted loopback model endpoint and opaque lease",
+    );
+  }
+  return Object.freeze({
+    binding: Object.freeze({
+      baseUrl: modelBinding.baseUrl,
+      modelId: modelBinding.modelId,
+      attemptLease: modelBinding.attemptLease,
+    }),
+    port,
+  });
+}
+
+function macosNetworkProfile(options: GooseAcpSpawnOptions): string | undefined {
+  if (options.networkPolicy === "deny-all") {
+    return MACOS_NO_NETWORK_PROFILE;
+  }
+  const policy = options.networkPolicy;
+  if (
+    policy.kind !== "loopback-session" ||
+    policy.host !== "127.0.0.1" ||
+    !Number.isSafeInteger(policy.capabilityProxyPort) ||
+    policy.capabilityProxyPort < 1 ||
+    policy.capabilityProxyPort > 65_535 ||
+    !Number.isSafeInteger(policy.modelProxyPort) ||
+    policy.modelProxyPort < 1 ||
+    policy.modelProxyPort > 65_535
+  ) {
+    return undefined;
+  }
+  const ports = [...new Set([policy.capabilityProxyPort, policy.modelProxyPort])];
+  return `${MACOS_NO_NETWORK_PROFILE}${ports
+    .map((port) => `(allow network-outbound (remote ip "localhost:${String(port)}"))`)
+    .join("")}`;
 }
 
 class NodeGooseAcpTransport implements GooseAcpTransport {
@@ -276,8 +371,9 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
 }
 
 function createNodeGooseAcpTransport(options: GooseAcpSpawnOptions): GooseAcpTransport {
+  const networkProfile = macosNetworkProfile(options);
   if (
-    options.networkPolicy !== "deny-all" ||
+    networkProfile === undefined ||
     !path.isAbsolute(options.executablePath) ||
     !path.isAbsolute(options.workingDirectory)
   ) {
@@ -299,17 +395,13 @@ function createNodeGooseAcpTransport(options: GooseAcpSpawnOptions): GooseAcpTra
 
   let child: ChildProcessWithoutNullStreams;
   try {
-    child = spawn(
-      "/usr/bin/sandbox-exec",
-      ["-p", MACOS_NO_NETWORK_PROFILE, options.executablePath],
-      {
-        cwd: options.workingDirectory,
-        env: { ...options.environment },
-        detached: true,
-        stdio: ["pipe", "pipe", "pipe"],
-        windowsHide: true,
-      },
-    );
+    child = spawn("/usr/bin/sandbox-exec", ["-p", networkProfile, options.executablePath], {
+      cwd: options.workingDirectory,
+      env: { ...options.environment },
+      detached: true,
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+    });
   } catch (error) {
     throw new GooseRunnerProcessError("spawn-failed", "Failed to launch Goose ACP process", {
       cause: error,
@@ -431,6 +523,24 @@ export async function openGooseRunnerHandshake(
       "P5.1 requires a Goose runner built for the current supported macOS host",
     );
   }
+  const capabilityProxyPort =
+    options.capabilityProxyUrl === undefined
+      ? undefined
+      : exactLoopbackMcpPort(options.capabilityProxyUrl);
+  if (options.capabilityProxyUrl !== undefined && capabilityProxyPort === undefined) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose runner capability proxy must use the exact admitted loopback MCP endpoint",
+    );
+  }
+  if ((capabilityProxyPort === undefined) !== (options.modelBinding === undefined)) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose runner loopback session requires both MCP and model bindings",
+    );
+  }
+  const stableModelBinding =
+    options.modelBinding === undefined ? undefined : validateModelBinding(options.modelBinding);
   let prepared:
     | { readonly root: string; readonly executablePath: string; readonly workingDirectory: string }
     | undefined;
@@ -440,8 +550,16 @@ export async function openGooseRunnerHandshake(
     const spawnOptions: GooseAcpSpawnOptions = Object.freeze({
       executablePath: prepared.executablePath,
       workingDirectory: prepared.workingDirectory,
-      environment: createGooseRunnerEnvironment(prepared.root),
-      networkPolicy: "deny-all",
+      environment: createGooseRunnerEnvironment(prepared.root, stableModelBinding?.binding),
+      networkPolicy:
+        capabilityProxyPort === undefined || stableModelBinding === undefined
+          ? "deny-all"
+          : Object.freeze({
+              kind: "loopback-session",
+              host: "127.0.0.1",
+              capabilityProxyPort,
+              modelProxyPort: stableModelBinding.port,
+            }),
     });
     transport = (options.transportFactory ?? createNodeGooseAcpTransport)(spawnOptions);
     const connection = await connectGooseAcp(transport, {
@@ -462,6 +580,25 @@ export async function openGooseRunnerHandshake(
             throw new GooseRunnerProcessError(
               "cleanup-failed",
               "Goose session setup failed and process or private-root cleanup also failed",
+              { cause: new AggregateError([error, cleanupError]) },
+            );
+          }
+          throw error;
+        }
+      },
+      async discoverTools(
+        discoveryOptions: GooseAcpToolDiscoveryOptions,
+      ): Promise<GooseAcpToolDiscovery> {
+        try {
+          return await connection.discoverTools(discoveryOptions);
+        } catch (error) {
+          closePromise ??= closeAndRemove(connection, prepared!.root);
+          try {
+            await closePromise;
+          } catch (cleanupError) {
+            throw new GooseRunnerProcessError(
+              "cleanup-failed",
+              "Goose tool discovery failed and process or private-root cleanup also failed",
               { cause: new AggregateError([error, cleanupError]) },
             );
           }

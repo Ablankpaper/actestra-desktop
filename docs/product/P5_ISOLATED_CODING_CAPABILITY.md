@@ -14,10 +14,13 @@ delivered on `main` through pull request 33 and squash merge
 `c5f498e926adac484694dab6d2f05b9822cc0b12`; exact remote evidence is recorded
 below. Pull request 34 records that closure in the source-of-truth documents and
 squash merged as `776d1e1c10d13f036a3318f7d3c193a7819443a2`. The authenticated
-MCP transport slice starts from that exact merge on branch
-`feat/p5-goose-mcp-transport`. This document records the closed worktree, Tool
-Gateway, main-owned lifecycle composition, fixture-backed ACP session contract,
-and locally implemented MCP server. It is not P5.2 phase acceptance.
+MCP transport is delivered through pull request 35 and squash merge
+`8a31bafc1cd322744189fc4ed1e68f769225c999`. The session-composition slice
+starts from that exact merge on branch
+`feat/p5-goose-mcp-session-composition`. This document records the closed
+worktree, Tool Gateway, main-owned lifecycle composition, bounded ACP session,
+authenticated MCP transport, and current session-composition helper. It is not
+P5.2 phase acceptance.
 
 ## Scope
 
@@ -78,6 +81,29 @@ other methods return method-not-found without entering the Tool Gateway. Body
 and header bounds, immediate rejected-connection closure, idempotent shutdown,
 and destruction of partial sockets prevent the listener from becoming a second
 unbounded process or network authority.
+
+The session-composition helper creates separate fresh 256-bit base64url leases
+for MCP and model readiness inside Electron main and never accepts either from
+the Worker. Before the admitted Goose handshake, it starts the MCP listener and
+an Actestra-owned model catalog on separate random `127.0.0.1` ports. The model
+catalog accepts only an authenticated `GET /v1/models` for the caller-selected
+model ID; every inference route remains absent. The model-related additions to
+the closed Worker environment are the pinned OpenAI provider, caller model,
+exact catalog base URL, opaque local API lease, and loopback `NO_PROXY`. The
+macOS sandbox continues to deny all other network access and admits outbound
+traffic only to the exact MCP and catalog ports.
+
+After `session/new`, Actestra sends pinned Goose's explicit
+`_goose/unstable/tools/list` ACP request for the admitted MCP extension. The
+helper returns only after the server accepts its authenticated `tools/list`,
+Goose acknowledges discovery, and the response matches exactly the six
+Actestra coding tool identifiers. A valid list necessarily follows authenticated
+initialize and initialized requests. Opening failure and normal close release
+the Worker before MCP and the model catalog. Close is idempotent, attempts every
+cleanup even after an earlier failure, and preserves all cleanup errors in
+order. The returned object exposes only normalized Goose info, private-root
+path, session identity, setup kinds, canonical tool names, and close; it does
+not expose either Bearer lease.
 
 ## Authority and policy
 
@@ -158,10 +184,10 @@ The combined focused P5.2 set passes 7 files and 85 tests:
   timeout, transport, process-exit, and one-session tests; and
 - 9 runner artifact/private-root/session cleanup tests.
 
-The complete root gate components pass formatting over 197 files, zero-warning
-lint over 189 files, strict TypeScript, the Electron SQLite probe, 65 passing
-and 1 skipped test files with 523 passing and 1 skipped tests, the smoke
-harness, the 85-source product boundary, the exact 1,766-file frozen AionUi
+The corrected composition fingerprint passes formatting over 203 files,
+zero-warning lint over 195 files, strict TypeScript, the Electron SQLite probe,
+68 passing and 1 skipped test files with 582 passing and 1 skipped tests, the
+smoke harness, the 88-source product boundary, the exact 1,766-file frozen AionUi
 foundation, the 184-file downstream contract, and the
 58-main/3-preload/28-renderer-module production build. The downstream contract
 contains 4 R0 invariants and 63 reviewed source copies. A clean materialization
@@ -169,16 +195,21 @@ installs 3,177 packages, passes strict TypeScript, and passes the generated
 native composition test 1 file/1 test. Git delivery and CI evidence remain
 separate from these local gates and do not by themselves accept P5.2.
 
-The authenticated transport adds a separate focused test file with 43 passing
-tests. It covers configuration snapshotting, lease and header authentication,
+The authenticated transport test now has 44 passing tests. It covers
+configuration snapshotting, lease and header authentication,
 the exact pinned initialize and tool-list sequence, all six schemas, real Goose
 session/progress metadata, size and method rejection, and socket cleanup. A
 source comparison against pinned Goose `v1.45.0` first exposed the missing
 `progressToken` compatibility case; the focused test failed before the minimal
-server correction and then passed. Two-file format and zero-warning lint checks
-and strict TypeScript pass. A complete-root attempt on the earlier fingerprint
-lost its final exit status after entering full Vitest and is not counted as a
-passing complete root gate.
+server correction and then passed. The corrected Worker-readiness input passes
+4 focused files and 51 tests for strict ACP discovery, separate model/MCP
+leases, exact-port sandboxing, authenticated catalog denial, ordered all-settled
+cleanup, failed-session cleanup, both readiness waits, and exact-six tool
+matching. With the admitted artifact whose manifest SHA-256 is
+`e7bf0a7b78c6a603748cd119db888ed3fc367e118aed8bc10c4ded05611ea97c`, the
+real-runner integration passes 1 file and 1 test: real Goose completes
+`session/new`, triggers the authenticated MCP `tools/list` through explicit ACP
+discovery, returns the exact six tools, and leaves no private root.
 
 ## Git delivery evidence
 
@@ -200,31 +231,63 @@ source-of-truth files. It reached exact head
 30827073008, squash merged as `776d1e1c10d13f036a3318f7d3c193a7819443a2`,
 and passed exact merged-main CI 30828549443, including macOS arm64 foundation
 job 91736358985 and Goose runner admission job 91736358994. It changed no
-product bytes. The current transport branch has no remote delivery evidence yet.
+product bytes.
+
+Pull request 35 reached exact head
+`93a8e9633f2be7b5f8c8b1eead3f2a21b0770073`; exact-head CI 30832907098
+passed macOS arm64 foundation job 91750962007 and Goose runner admission job
+91750962049. CodeRabbit supplied no line-level review because its quota was
+exhausted; GitHub has no submitted review, inline comment, or review thread.
+The branch squash merged as `8a31bafc1cd322744189fc4ed1e68f769225c999`.
+Exact merged-main CI 30834217310 passed macOS arm64 foundation job 91755320708
+and Goose runner admission job 91755320706.
+
+Pull request 36 first reached exact head
+`9e277e1593b2715ed3721e1febb886985a942824`. Its automatic exact-head CI
+30837296114 passed macOS arm64 foundation job 91765490611, while Goose runner
+admission job 91765490592 failed the real integration at `session/new` with
+`session-rejected`. That exact SHA was not rerun. Diagnosis against the pinned
+Goose source and isolated probes established that `session/new` resolves a
+provider and model, the previous deny-all sandbox blocked both required
+loopback connections, the host proxy path required explicit loopback
+`NO_PROXY`, and `session/new` initializes MCP without itself issuing
+`tools/list`. The local correction adds the authenticated non-inference model
+catalog, exact two-port sandbox admission, closed provider/model environment,
+and one explicit `_goose/unstable/tools/list` request. Corrected pushed-head CI
+and review remain separate pending remote evidence.
 
 ## Remaining P5.2 work and non-claims
 
 The closed capability foundation is composed into desktop main, the Goose
-adapter has a fixture-backed `session/new` declaration and cleanup contract, and
-an authenticated MCP server is locally implemented. The desktop-main coding
-service does not call the adapter and server together, and the admitted live
-Goose runner has not completed their real initialization/tool-list exchange.
-The server intentionally rejects `tools/call`, so the exact loopback model path,
-prompt and tool execution, normalized durable ACP evidence, and the publish and
-Artifact flow required by ADR-0024 remain absent. It therefore does not yet
-prove a real Goose coding session. It also adds no renderer projection, AionUi
-journey, candidate, release, deployment, P5.3 work, CrewAI sidecar, Eigent
-runtime, or P6 behavior.
+adapter has a bounded `session/new` declaration and cleanup contract, the
+authenticated MCP transport is delivered, and a production main-process helper
+calls the authenticated MCP and non-inference model-readiness listeners
+together. The desktop-main coding service does not yet call that helper. The MCP
+server intentionally rejects `tools/call`, and the model listener intentionally
+implements no inference endpoint, so prompt/tool execution, normalized durable
+ACP evidence, and the publish and Artifact flow required by ADR-0024 remain
+absent. The passing real-runner readiness integration therefore does not prove a
+real Goose coding session. It also adds no renderer projection, AionUi journey,
+candidate, release, deployment, P5.3 work, CrewAI sidecar, Eigent runtime, or P6
+behavior.
 
-P5.2 can be accepted only after the remaining ACP, MCP, model, evidence,
-publish, and Artifact boundaries are implemented or the accepted architecture
-is explicitly revised, followed by the complete local, review, exact-head CI,
-and merged-main gates.
+P5.2 can be accepted only after the remaining inference, prompt/tool execution,
+evidence, publish, and Artifact boundaries are implemented or the accepted
+architecture is explicitly revised, followed by the complete local, review,
+exact-head CI, and merged-main gates.
 
 ## Rollback
 
-Rollback of the transport slice removes its one server module and focused test;
-it does not alter the delivered ACP session contract or desktop composition.
+Rollback of the current session-composition correction removes explicit ACP
+tool discovery, the non-inference model catalog, the exact two-port sandbox and
+closed provider/model environment, and their focused evidence; the composition
+then returns to the known `session/new` rejection. Rolling back the complete
+session-composition slice additionally removes its helper and focused test,
+restores the real-runner integration to handshake-only, and removes the bounded
+tools-list evidence waiter while leaving the delivered transport and ACP
+session contract separate. Rollback of the transport slice removes its server
+module and focused test; it does not alter the delivered ACP session contract or
+desktop containment composition.
 Rollback of the ACP slice removes the bounded session method, its runner
 lifecycle wrapper, and focused fixtures while leaving the accepted initialize
 handshake and desktop-main containment composition intact. Rollback of the

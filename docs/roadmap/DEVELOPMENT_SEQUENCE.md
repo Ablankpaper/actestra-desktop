@@ -134,15 +134,32 @@ exact-head CI 30827073008, squash merged as
 `776d1e1c10d13f036a3318f7d3c193a7819443a2`, and passed exact merged-main CI
 30828549443.
 
-The next local slice adds a random-port `127.0.0.1` MCP server with the opaque
+The random-port `127.0.0.1` MCP transport carries the opaque
 attempt lease, strict pinned Goose/MCP headers and initialization order, bounded
 non-chunked JSON, no stateful session, and only the six closed coding schemas.
-Its focused test passes 1 file and 43 tests after correcting the real pinned
-Goose numeric `progressToken` shape through RED/GREEN TDD. The server is not yet
-composed with the ACP adapter or exercised by live Goose, and `tools/call`
-deliberately returns method-not-found. The loopback model path, prompt/tool
-execution, durable normalized evidence, publish/Artifact flow, and P5.2 phase
-acceptance remain open. P6 CrewAI/Team runtime work has not started.
+It reached pull request 35 at exact head
+`93a8e9633f2be7b5f8c8b1eead3f2a21b0770073`, passed exact-head CI
+30832907098, squash merged as `8a31bafc1cd322744189fc4ed1e68f769225c999`,
+and passed exact merged-main CI 30834217310. The current session-composition
+slice starts from that exact merge. Pull request 36 old head
+`9e277e1593b2715ed3721e1febb886985a942824` passed its macOS job but failed
+Goose runner admission in exact-head CI 30837296114 at `session/new`; that SHA
+was not rerun. The correction uses separate main-generated MCP/model leases,
+starts an authenticated non-inference model catalog and MCP on separate random
+loopback ports, admits only those ports through the Worker sandbox, and supplies
+the closed provider/model environment required by pinned Goose. After
+`session/new`, one explicit `_goose/unstable/tools/list` request triggers the
+real authenticated MCP `tools/list`; the composition requires all six coding
+tool identifiers before returning. The corrected focused input passes 4 files
+and 51 tests, and the admitted-artifact real integration passes 1 file/1 test.
+Worker-first MCP/model all-settled cleanup is idempotent. The corrected complete
+root gate passes 68 files and 582 tests with 1 file and 1 test skipped, the
+88-source boundary, frozen/downstream contracts, and production build. Corrected
+remote gates remain to be recorded.
+`tools/call` deliberately returns method-not-found and the model catalog exposes
+no inference route. Prompt/tool execution, durable normalized evidence,
+publish/Artifact flow, and P5.2 phase acceptance remain open. P6 CrewAI/Team
+runtime work has not started.
 
 ## P0 — Project Foundation
 

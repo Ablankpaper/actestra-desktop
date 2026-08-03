@@ -30,6 +30,9 @@ const test = spawnSync(
     "tests/main/gooseAcpHandshake.test.ts",
     "tests/main/gooseRunnerArtifact.test.ts",
     "tests/main/gooseRunnerLifecycle.test.ts",
+    "tests/main/gooseMcpCapabilityServer.test.ts",
+    "tests/main/gooseLoopbackModelServer.test.ts",
+    "tests/main/gooseMcpSessionComposition.test.ts",
     "tests/main/gooseRunnerIntegration.test.ts",
   ],
   {

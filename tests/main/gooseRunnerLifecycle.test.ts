@@ -73,6 +73,50 @@ describe("Goose runner private lifecycle", () => {
     });
   });
 
+  it("binds the sandbox and closed environment to exact MCP and model loopback ports", async () => {
+    const fixture = await createLifecycleFixture();
+    const transport = new LoopbackGooseAcpTransport();
+    let spawnOptions: GooseAcpSpawnOptions | undefined;
+    const opened = await openGooseRunnerHandshake({
+      artifact: fixture.artifact,
+      privateRootParent: fixture.privateRootParent,
+      capabilityProxyUrl: "http://127.0.0.1:43123/mcp",
+      modelBinding: {
+        baseUrl: "http://127.0.0.1:43124/v1",
+        modelId: "actestra-loopback-model",
+        attemptLease: "model-lease-0123456789abcdef0123456789abcdef",
+      },
+      transportFactory: (options) => {
+        spawnOptions = options;
+        return transport;
+      },
+    });
+
+    expect(spawnOptions?.networkPolicy).toEqual({
+      kind: "loopback-session",
+      host: "127.0.0.1",
+      capabilityProxyPort: 43_123,
+      modelProxyPort: 43_124,
+    });
+    expect(spawnOptions?.environment).toMatchObject({
+      GOOSE_PROVIDER: "openai",
+      GOOSE_MODEL: "actestra-loopback-model",
+      OPENAI_BASE_URL: "http://127.0.0.1:43124/v1",
+      OPENAI_API_KEY: "model-lease-0123456789abcdef0123456789abcdef",
+      NO_PROXY: "127.0.0.1,localhost",
+    });
+    await expect(
+      opened.openSession({
+        workspaceDirectory: fixture.repository,
+        capabilityProxyUrl: "http://127.0.0.1:43123/mcp",
+        attemptLease: "attempt-lease-0123456789abcdef0123456789abcdef",
+      }),
+    ).resolves.toMatchObject({ sessionId: "goose-session-1" });
+
+    await opened.close();
+    expect(await readdir(fixture.privateRootParent)).toEqual([]);
+  });
+
   it("rejects a runner built for another host before creating a private root", async () => {
     const fixture = await createLifecycleFixture();
 
