@@ -2,6 +2,7 @@ export * from "./agentAdapter";
 export * from "./domain";
 export * from "./events";
 export * from "./generalWorkRecovery";
+export * from "./isolatedCodingTools";
 export * from "./officeDocumentArtifact";
 export * from "./persistence";
 export * from "./platform";

@@ -1,10 +1,55 @@
 # Project Status
 
-Last updated: 2026-08-01
+Last updated: 2026-08-03
 
 ## Current phase
 
-### P5.1 is accepted on main; P5.2 is next and has not started
+### P5.1 is accepted on main; the P5.2 containment foundation is implemented
+
+The containment slice was developed from exact `origin/main`
+`071aa922c08dd9a139f0c11dee2aa0dadab02417` on branch
+`feat/p5-isolated-coding-capability`. It adds a detached Actestra-managed Git
+worktree and six closed file, terminal, Git, diff, and test capabilities behind
+the existing policy, one-shot approval, durable audit, credential, grant, and
+content-reference boundaries. It adds no renderer or AionUi runtime or UI
+change.
+
+The focused local set passes 3 files and 39 tests. It proves source-checkout
+preservation, canonical and disjoint roots, exact per-invocation Git binding,
+configuration locks across inspection and checkout, hook and fsmonitor
+overrides, repository filter denial, bounded UTF-8 file access, Git and diff
+inspection, approval and replay denial, closed process environments, network
+and host-user-data denial, `.git` pointer-write denial, registry snapshotting,
+prototype-chain tool-identifier denial, output limits, side-effect-aware timeout
+after durable output persistence, success/failure/cancellation descendant
+process-group cleanup, post-create Git-metadata cleanup, exact persistence
+authority and grant-revocation receipts, response-loss-safe revocation retry,
+and retryable worktree removal. Zero-warning lint and strict TypeScript pass.
+
+Complete root `bun run check` also passes formatting, zero-warning lint, strict
+types, the Electron SQLite probe, 63 passing and 1 skipped test files with 488
+passing and 1 skipped tests, deterministic smoke, the 84-source product
+boundary, the 1,766-file frozen AionUi foundation, the 179-file downstream
+contract, and the 58-main/3-preload/28-renderer-module production build.
+
+Initial pull-request head `40ba94d98293a260cdbce6b79731372fe5bac334`
+passed the complete root check in CI run 30806677080, then failed materialized
+AionUi strict TypeScript because the copied core barrel exported
+`isolatedCodingTools.ts` without declaring that Actestra-owned file in the
+downstream manifest. The focused correction adds the byte-identical source copy
+and expected changed-file entry. A clean local materialization and 3,177-package
+install now pass strict TypeScript; the downstream contract passes 179 declared
+files, 4 R0 invariants, and 59 reviewed source copies, while the exact 1,766-file
+frozen foundation remains unchanged. This is source-contract compatibility,
+not desktop-main coding composition.
+
+This evidence does not accept P5.2. Desktop-main composition, ACP `session/new`,
+an authenticated Actestra MCP transport, ADR-0024's exact loopback model path,
+normalized ACP evidence, and the publish/Artifact flow remain absent, so no real
+Goose coding session has been claimed. P5.3, P6, candidate, release, deployment,
+and user acceptance also remain unclaimed. Git delivery and CI evidence stay
+separate from phase acceptance. Detailed local scope and rollback are recorded in
+[P5.2 Isolated Coding Capability](product/P5_ISOLATED_CODING_CAPABILITY.md).
 
 P4's phase acceptance record reached pull request 25 at exact head
 `c461fb06bdebd4bf6f55d39741a21dcb6980b3ff` and squash merged as current
@@ -1718,9 +1763,11 @@ The ordered implementation index and P3 non-claims are in
    `d313fb2ed65e4b010f777435953752818fbbfae4`, and merged-main CI
    30700441312 together with its complete manual/static review, local signed
    package, and PR/main packaged external-`SIGKILL` recovery evidence. P5.2 is
-   the next resumable gate and has not started. It may add one fixture worktree
-   and closed capability proxy; it may not expose Goose builtins, the original
-   checkout, raw credentials, or a second UI.
+   now has an implemented containment foundation with one fixture worktree and
+   closed capability proxy, but no ACP
+   session, authenticated MCP, loopback model, publish/Artifact path, desktop
+   composition, or real Goose coding evidence. It may not expose Goose builtins,
+   the original checkout, raw credentials, or a second UI.
 7. Keep CrewAI-assisted Team P6 ordered after an accepted Goose P5 gate.
 
 ## Open decisions
@@ -1819,8 +1866,9 @@ The ordered implementation index and P3 non-claims are in
   Worker-crash/recovery is accepted through exact final head
   `3593fac8db48a0cb149bb6c736374eeaccebe332`, PR CI 30687199671, squash merge
   `80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`, and merged-main CI 30687433298.
-  Full representative P4 acceptance is closed; specialized Goose work is the
-  next phase and has not started.
+  Full representative P4 acceptance is closed. The specialized Goose P5.2
+  containment foundation is implemented; no real coding session or accepted
+  P5.2 gate is claimed.
 - F0 alone proves only that the original AionUi application can be preserved
   and run. F1, F2, F3.1, F3.2, and merged F3.3 add their separately recorded
   identity, shadow, narrow decision-authority, fixed-delivery audit, and
