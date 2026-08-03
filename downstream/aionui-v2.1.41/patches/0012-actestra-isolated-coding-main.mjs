@@ -139,12 +139,24 @@ replaceOnce(
 replaceOnce(
   bridgePath,
   `  disposeScheduleBridge?.();
-  await activeSchedule?.close().catch((): undefined => undefined);`,
+  await activeSchedule?.close().catch((): undefined => undefined);
+  await activeGeneralWork?.close().catch((): undefined => undefined);`,
   `  disposeScheduleBridge?.();
-  await activeIsolatedCoding?.close();
-  isolatedCodingMainService = null;
-  persistence = null;
-  await activeSchedule?.close().catch((): undefined => undefined);`,
+  let isolatedCodingCloseFailed = false;
+  let isolatedCodingCloseError: unknown;
+  try {
+    await activeIsolatedCoding?.close();
+    isolatedCodingMainService = null;
+  } catch (error) {
+    isolatedCodingCloseFailed = true;
+    isolatedCodingCloseError = error;
+  }
+  await activeSchedule?.close().catch((): undefined => undefined);
+  await activeGeneralWork?.close().catch((): undefined => undefined);
+  if (isolatedCodingCloseFailed) {
+    throw isolatedCodingCloseError;
+  }
+  persistence = null;`,
 );
 
 writeNew(

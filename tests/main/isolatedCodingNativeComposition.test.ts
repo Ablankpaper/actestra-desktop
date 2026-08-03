@@ -71,7 +71,21 @@ describe("P5.2 native AionUI desktop-main composition", () => {
     const source = fs.readFileSync(patchPath, "utf8");
     expect(source).toContain("createIsolatedCodingMainService");
     expect(source).toContain("getActestraIsolatedCodingMainService");
-    expect(source).toContain("await activeIsolatedCoding?.close()");
     expect(source).toContain("path.join(userDataPath, 'coding-worktrees')");
+    expect(source).toContain(`  let isolatedCodingCloseFailed = false;
+  let isolatedCodingCloseError: unknown;
+  try {
+    await activeIsolatedCoding?.close();
+    isolatedCodingMainService = null;
+  } catch (error) {
+    isolatedCodingCloseFailed = true;
+    isolatedCodingCloseError = error;
+  }
+  await activeSchedule?.close().catch((): undefined => undefined);
+  await activeGeneralWork?.close().catch((): undefined => undefined);
+  if (isolatedCodingCloseFailed) {
+    throw isolatedCodingCloseError;
+  }
+  persistence = null;`);
   });
 });

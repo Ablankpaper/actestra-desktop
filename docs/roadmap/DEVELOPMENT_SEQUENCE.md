@@ -102,13 +102,13 @@ head `c10110b38e8714b831a6d6d0fc09aa8df4218b7c`, passed exact-head CI
 30809931486. CodeRabbit was rate-limited before line-level review; its successful
 status and Free walkthrough are not review evidence.
 
-The next local composition creates a main-owned lifecycle service, persists the
-exact active grant before exposing the Tool Gateway, tracks opening and cleanup
-races, and closes coding authority before persistence shutdown. The combined
-focused set passes 5 files and 47 tests. The downstream contract passes 184
+The locally implemented composition creates a main-owned lifecycle service,
+persists the exact active grant before exposing the Tool Gateway, tracks opening
+and cleanup races, and closes coding authority before persistence shutdown. The
+combined focused set passes 5 files and 49 tests. The downstream contract passes 184
 declared files, 4 R0 invariants, and 63 reviewed source copies; a clean
 3,177-package materialization passes strict TypeScript and its generated native
-composition test. The root gate components pass 65 files/496 tests with 1 file
+composition test. The root gate components pass 65 files/498 tests with 1 file
 and 1 test skipped, the 85-source boundary, frozen/downstream contracts, and the
 58/3/28-module production build. No renderer surface changes. ACP `session/new`,
 authenticated MCP transport, the loopback model path, normalized evidence,

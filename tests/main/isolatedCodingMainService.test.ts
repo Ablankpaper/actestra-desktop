@@ -248,6 +248,27 @@ describe("P5.2 desktop-main isolated coding composition", () => {
     ).resolves.toBeNull();
   });
 
+  it.skipIf(process.platform === "win32")(
+    "repairs a pre-existing managed root to private POSIX permissions before opening",
+    async () => {
+      const fixture = await openFixture("managed-root-mode");
+      fs.mkdirSync(fixture.managedRoot, { mode: 0o755 });
+      fs.chmodSync(fixture.managedRoot, 0o755);
+
+      const session = await fixture.service.open({
+        repositoryRoot: fixture.repositoryRoot,
+        workspaceId: fixture.ids.workspaceId,
+        grantId: workspaceGrantId("grant-coding-main-managed-root-mode"),
+        displayName: "P5.2 private managed root",
+        commands: {},
+        tests: {},
+      });
+
+      expect(fs.statSync(fixture.managedRoot).mode & 0o777).toBe(0o700);
+      await session.close();
+    },
+  );
+
   it("closes every active worktree before the desktop-main service becomes unavailable", async () => {
     const fixture = await openFixture("shutdown");
     const session = await fixture.service.open({
@@ -391,6 +412,86 @@ describe("P5.2 desktop-main isolated coding composition", () => {
       fixture.persistence.getActiveWorkspaceGrant(fixture.ids.workspaceId),
     ).resolves.toBeNull();
     await expect(fs.promises.stat(activeGrant!.rootPath)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("attempts active session cleanup when a retained failed opening still cannot close", async () => {
+    const fixture = await openFixture("all-settled-close");
+    const failedOpeningIds = {
+      workspaceId: workspaceId("workspace-coding-main-failed-opening"),
+      taskId: taskId("task-coding-main-failed-opening"),
+      sessionId: sessionId("session-coding-main-failed-opening"),
+      workerId: workerId("worker-coding-main-failed-opening"),
+    };
+    const activeGraph = await fixture.persistence.loadDomainGraph();
+    const failedOpeningGraph = graph(failedOpeningIds, fixture.clock.now());
+    await fixture.persistence.replaceDomainGraph({
+      workspaces: [...activeGraph.workspaces, ...failedOpeningGraph.workspaces],
+      tasks: [...activeGraph.tasks, ...failedOpeningGraph.tasks],
+      workers: [...activeGraph.workers, ...failedOpeningGraph.workers],
+      sessions: [...activeGraph.sessions, ...failedOpeningGraph.sessions],
+      approvals: [],
+      artifacts: [],
+    });
+
+    const activeSession = await fixture.service.open({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-active-session"),
+      displayName: "P5.2 active session cleanup",
+      commands: {},
+      tests: {},
+    });
+    const persistWorkspaceGrant = fixture.persistence.persistWorkspaceGrant.bind(
+      fixture.persistence,
+    );
+    vi.spyOn(fixture.persistence, "persistWorkspaceGrant")
+      .mockImplementationOnce(async (grant) => {
+        await persistWorkspaceGrant(grant);
+        throw new Error("failed opening active grant response lost after commit");
+      })
+      .mockRejectedValueOnce(new Error("failed opening initial revocation unavailable"))
+      .mockRejectedValueOnce(new Error("failed opening shutdown revocation unavailable"))
+      .mockImplementation(persistWorkspaceGrant);
+
+    await expect(
+      fixture.service.open({
+        repositoryRoot: fixture.repositoryRoot,
+        workspaceId: failedOpeningIds.workspaceId,
+        grantId: workspaceGrantId("grant-coding-main-failed-opening"),
+        displayName: "P5.2 retained failed opening",
+        commands: {},
+        tests: {},
+      }),
+    ).rejects.toMatchObject({
+      name: "IsolatedCodingMainServiceError",
+      code: "cleanup-failed",
+    });
+    const failedOpeningGrant = await fixture.persistence.getActiveWorkspaceGrant(
+      failedOpeningIds.workspaceId,
+    );
+    expect(failedOpeningGrant).not.toBeNull();
+
+    await expect(fixture.service.close()).rejects.toMatchObject({
+      name: "IsolatedCodingMainServiceError",
+      code: "cleanup-failed",
+    });
+
+    await expect(
+      fixture.persistence.getActiveWorkspaceGrant(fixture.ids.workspaceId),
+    ).resolves.toBeNull();
+    await expect(fs.promises.stat(activeSession.worktreeRoot)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    await expect(fs.promises.stat(failedOpeningGrant!.rootPath)).resolves.toMatchObject({});
+
+    await fixture.service.close();
+
+    await expect(
+      fixture.persistence.getActiveWorkspaceGrant(failedOpeningIds.workspaceId),
+    ).resolves.toBeNull();
+    await expect(fs.promises.stat(failedOpeningGrant!.rootPath)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
   });
 
   it("keeps a raced managed session owned when its first shutdown cleanup fails", async () => {

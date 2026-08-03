@@ -1,4 +1,4 @@
-import { lstat, mkdir, realpath } from "node:fs/promises";
+import { chmod, lstat, mkdir, realpath } from "node:fs/promises";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
@@ -96,12 +96,27 @@ async function ensureManagedRoot(managedRoot: string): Promise<void> {
       throw error;
     }
   }
-  const [metadata, canonical] = await Promise.all([lstat(managedRoot), realpath(managedRoot)]);
+  let [metadata, canonical] = await Promise.all([lstat(managedRoot), realpath(managedRoot)]);
   if (metadata.isSymbolicLink() || !metadata.isDirectory() || canonical !== managedRoot) {
     throw new IsolatedCodingMainServiceError(
       "invalid-options",
       "Isolated coding managed root must be a canonical directory",
     );
+  }
+  if (process.platform !== "win32") {
+    await chmod(managedRoot, 0o700);
+    [metadata, canonical] = await Promise.all([lstat(managedRoot), realpath(managedRoot)]);
+    if (
+      metadata.isSymbolicLink() ||
+      !metadata.isDirectory() ||
+      canonical !== managedRoot ||
+      (metadata.mode & 0o777) !== 0o700
+    ) {
+      throw new IsolatedCodingMainServiceError(
+        "invalid-options",
+        "Isolated coding managed root must remain a private canonical directory",
+      );
+    }
   }
 }
 
@@ -309,13 +324,29 @@ export function createIsolatedCodingMainService(
       accepting = false;
       closePromise ??= (async () => {
         await Promise.allSettled(openings);
-        await Promise.all(
+        const failures: unknown[] = [];
+        const cleanupOutcomes = await Promise.allSettled(
           [...pendingCleanups].map(async (cleanup) => {
             await cleanup.close();
             pendingCleanups.delete(cleanup);
           }),
         );
-        await Promise.all([...sessions].map((session) => session.close()));
+        for (const outcome of cleanupOutcomes) {
+          if (outcome.status === "rejected") {
+            failures.push(outcome.reason);
+          }
+        }
+        const sessionOutcomes = await Promise.allSettled(
+          [...sessions].map((session) => session.close()),
+        );
+        for (const outcome of sessionOutcomes) {
+          if (outcome.status === "rejected") {
+            failures.push(outcome.reason);
+          }
+        }
+        if (failures.length > 0) {
+          throw new AggregateError(failures, "One or more isolated coding cleanups failed");
+        }
       })()
         .then(() => {
           sessions.clear();

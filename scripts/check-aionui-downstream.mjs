@@ -668,11 +668,15 @@ function main() {
     path.join(outputRoot, "packages/desktop/src/process/services/actestraShadowBridge.ts"),
     [
       "disposeScheduleBridge?.();",
+      "let isolatedCodingCloseFailed = false;",
       "await activeIsolatedCoding?.close();",
       "isolatedCodingMainService = null;",
-      "persistence = null;",
+      "isolatedCodingCloseFailed = true;",
       "await activeSchedule?.close()",
       "await activeGeneralWork?.close()",
+      "if (isolatedCodingCloseFailed)",
+      "throw isolatedCodingCloseError;",
+      "persistence = null;",
       "await activePersistence.close();",
     ],
   );

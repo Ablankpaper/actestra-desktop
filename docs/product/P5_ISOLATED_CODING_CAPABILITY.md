@@ -26,7 +26,10 @@ main-owned capabilities:
 The desktop-main service creates the worktree, persists the exact active grant
 before exposing the Tool Gateway, composes the managed platform, tracks
 in-flight openings and sessions, retains failed cleanup for retry, and closes
-all coding authority before the persistence utility. Production invocations use
+all coding authority before the persistence utility. It repairs a pre-existing
+managed root to POSIX `0700`, attempts every pending cleanup and active session
+before aggregating shutdown failures, and preserves the service plus persistence
+authority when coding cleanup must retry. Production invocations use
 main-generated random identifiers; deterministic identifier sources remain an
 explicit test-only option.
 
@@ -103,20 +106,20 @@ underlying executor as an alternate Worker path.
 
 ## Local evidence
 
-The focused P5.2 set passes 5 files and 47 tests:
+The focused P5.2 set passes 5 files and 49 tests:
 
 - 3 core contract tests;
 - 9 worktree creation, binding, configuration-lock, rejection, hook, filter,
   and retryable-cleanup tests; and
 - 27 Gateway, approval, file, Git-binding, diff, process, registry, sandbox,
   persistence-timeout, cancellation, process-group, and lifecycle tests;
-- 6 desktop-main grant-ordering, response-loss, failed-open cleanup,
-  close-race, session, and cleanup-retry tests; and
+- 8 desktop-main private-root, grant-ordering, response-loss, failed-open
+  cleanup, close-race, all-settled session, and cleanup-retry tests; and
 - 2 native-manifest composition and shutdown-order tests.
 
 The complete root gate components pass formatting over 197 files, zero-warning
 lint over 189 files, strict TypeScript, the Electron SQLite probe, 65 passing
-and 1 skipped test files with 496 passing and 1 skipped tests, the smoke
+and 1 skipped test files with 498 passing and 1 skipped tests, the smoke
 harness, the 85-source product boundary, the exact 1,766-file frozen AionUi
 foundation, the 184-file downstream contract, and the
 58-main/3-preload/28-renderer-module production build. The downstream contract

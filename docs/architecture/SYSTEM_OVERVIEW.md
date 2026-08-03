@@ -593,7 +593,10 @@ The lower boundary is now locally composed into desktop main by one
 Actestra-owned lifecycle service. It creates the worktree, persists the exact
 active grant before exposing its Tool Gateway, composes the managed platform,
 tracks openings and live sessions, retains failed cleanup for retry, and closes
-coding sessions before the persistence utility. Production identifiers are
+coding sessions before the persistence utility. A pre-existing managed root is
+repaired to POSIX `0700`; shutdown attempts all retained cleanups and active
+sessions, and a remaining coding-cleanup error keeps the service and persistence
+available for retry after schedule/general cleanup. Production identifiers are
 main-generated; deterministic sources remain explicit test input. Downstream
 patch 0012 creates the service under the private profile's
 `coding-worktrees` root and provides only a main-process getter. Four reviewed
