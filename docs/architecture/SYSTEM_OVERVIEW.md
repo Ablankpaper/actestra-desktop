@@ -432,7 +432,12 @@ failures, and returns only a Core-admitted plan. The slice does not persist or
 schedule the plan and adds no Python process, Worker launch, renderer, bridge,
 route, or Team UI. Its final local root gate passes 76 test files with 2
 skipped, 672 tests with 5 skipped, the 100-source product boundary, exact
-foundation and 217/4/80 downstream contracts, and the 62/3/28 production build.
+foundation and then-current 217/4/80 downstream contract, and the 62/3/28
+production build. PR 45 run 30905371865 exposed the missing
+`teamOrchestration.ts` source-copy declaration only when the generated native
+tree was type-checked. The local overlay-only correction passes the final
+218/4/81 downstream contract, locked materialization, and exact CI TypeScript
+command; it is not pushed and has no additional CI evidence.
 
 CrewAI is the first P6 planner-sidecar candidate under
 [ADR-0015](decisions/0015-crewai-supervised-orchestration-sidecar.md). It runs

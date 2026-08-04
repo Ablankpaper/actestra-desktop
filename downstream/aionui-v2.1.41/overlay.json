@@ -243,6 +243,10 @@
       "destination": "packages/desktop/src/actestra/core/scopedNativeTools.ts"
     },
     {
+      "source": "apps/desktop/src/core/teamOrchestration.ts",
+      "destination": "packages/desktop/src/actestra/core/teamOrchestration.ts"
+    },
+    {
       "source": "apps/desktop/src/core/workloadContent.ts",
       "destination": "packages/desktop/src/actestra/core/workloadContent.ts"
     },
@@ -586,6 +590,7 @@
     "packages/desktop/src/actestra/core/productPersistence.ts",
     "packages/desktop/src/actestra/core/privilegedServices.ts",
     "packages/desktop/src/actestra/core/scopedNativeTools.ts",
+    "packages/desktop/src/actestra/core/teamOrchestration.ts",
     "packages/desktop/src/actestra/core/workloadContent.ts",
     "packages/desktop/src/actestra/core/writingArtifact.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiApprovalAuthorityService.ts",

@@ -313,11 +313,19 @@ human feedback, and at least one parallel branch. It maps admitted candidates
 to deterministic Actestra plan, node, and Task identities. Desktop main owns a
 cancellable planner port that sends only the normalized, deeply frozen request,
 sanitizes planner failures, and returns only Core-admitted plans. Two focused
-files pass 30 tests. The single final-byte root gate passes 76/2 test files,
-672/5 tests, the 100-source product boundary, exact foundation and 217/4/80
-downstream contracts, and the 62/3/28 build. No CrewAI/Python runtime,
-persistence, scheduler, Worker launch, bridge, renderer, Team UI, or P6 phase
-acceptance is claimed.
+files pass 30 tests. The single production/test-fingerprint root gate passes
+76/2 test files, 672/5 tests, the 100-source product boundary, exact foundation,
+the then-current 217/4/80 downstream contract, and the 62/3/28 build.
+
+Initial PR 45 head `59cf48fbbb45d78c803ab6691547b61878fc8eb3` used the sole
+exact-head run 30905371865. Root source/tests passed, but materialized TypeScript
+failed because the Core barrel export lacked a matching source-copy declaration;
+the still-running Goose job was cancelled after that failure. The local
+overlay-only correction passes the final 218/4/81 downstream contract, exact
+foundation, locked 3,177-package materialization, and exact CI TypeScript
+command. It is not pushed because another exact-head run requires explicit
+authorization. No CrewAI/Python runtime, persistence, scheduler, Worker launch,
+bridge, renderer, Team UI, or P6 phase acceptance is claimed.
 
 ## P0 — Project Foundation
 

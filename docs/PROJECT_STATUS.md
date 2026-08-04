@@ -497,16 +497,32 @@ topological result.
 Desktop main normalizes and freezes the closed request before invoking the
 planner port, refuses pre-call and in-flight cancellation, sanitizes planner
 failures, and preserves Core admission error codes. The focused local set
-passes 2 files and 30 tests. The single final-byte root `bun run check` passes
-formatting over 225 files, zero-warning lint over 217 files, strict TypeScript,
-the Electron SQLite probe, 76 passing and 2 skipped test files with 672 passing
-and 5 skipped tests, deterministic smoke, the 100-source product boundary, the
-exact 1,766-file foundation with 27 routes and 41 bridge domains, the
-217-file downstream contract with 4 R0 invariants and 80 reviewed source
-copies, and the 62-main/3-preload/28-renderer-module production build. This
-slice does not import or run CrewAI/Python and adds no persistence, scheduler,
-Worker launch, renderer, bridge, route, Team UI, or packaged runtime dependency.
-It is not a P6 phase-completion claim.
+passes 2 files and 30 tests. On the unchanged production/test fingerprint, the
+single root `bun run check` passes formatting over 225 files, zero-warning lint
+over 217 files, strict TypeScript, the Electron SQLite probe, 76 passing and 2
+skipped test files with 672 passing and 5 skipped tests, deterministic smoke,
+the 100-source product boundary, the exact 1,766-file foundation with 27 routes
+and 41 bridge domains, the then-current 217/4/80 downstream contract, and the
+62-main/3-preload/28-renderer-module production build.
+
+Pull request 45 initially reached exact head
+`59cf48fbbb45d78c803ab6691547b61878fc8eb3`. Its sole exact-head CI run
+30905371865 passed the root source/test/boundary step, then failed macOS job
+91979102770 at materialized-native TypeScript because the copied Core barrel
+exported `teamOrchestration.ts` without declaring that new source copy. The
+already-running Goose job 91979102841 was cancelled after the deterministic
+macOS failure to stop further Actions consumption; the failed SHA is not
+rerun.
+
+The local overlay-only correction adds exactly that source copy and expected
+changed-file entry. It changes no production/test bytes and passes formatting,
+the exact 1,766-file foundation check, the corrected 218-file downstream
+contract with 4 R0 invariants and 81 reviewed source copies, a locked
+3,177-package materialized install, and the exact CI TypeScript command. It has
+not been pushed; one additional exact-head run requires explicit authorization.
+This slice does not import or run CrewAI/Python and adds no persistence,
+scheduler, Worker launch, renderer, bridge, route, Team UI, or packaged runtime
+dependency. It is not a P6 phase-completion claim.
 Detailed scope and rollback are recorded in
 [P5.2 Isolated Coding Capability](product/P5_ISOLATED_CODING_CAPABILITY.md).
 
@@ -2126,7 +2142,7 @@ Review closure validation at
 | P5.2 durable normalized coding evidence            | Delivered on `main` through PR 42                                 | Exact head `a20882abeb6caac3b4f230fde42a7e06965a0730`; exact-head CI 30876755457; squash merge `e064dc88e717cef093c866cdbc2692d23ed7dd03`; merged-main CI 30877711241 with Goose job 91892412815 and macOS job 91892412830; stable Actestra-owned stream/correlation identity, persist-before-open start, bounded evidence, review-blocked projection, response-loss-safe replay, and shared mutation barrier; Free CodeRabbit summary is not line-level review evidence; no publish/Artifact flow or phase acceptance in that delivery                                                                                                                                                                                                                                                        |
 | P5.2 publish and Artifact registration             | Accepted on `main` through PR 43                                  | Exact head `305a29d9b2b514865983ae9d8a23f877566bb7a5`; exact-head CI 30883055147; squash merge `9048fe2cc23819f596d8721adb8c544dcd0b786f`; merged-main CI 30884138218; main-only seventh publish capability remains outside Goose's six MCP tools; locked exact patch capture, metadata-only one-shot approval, drift denial, durable Artifact completion, ordered cleanup, 5 focused files/123 passed/2 artifact-gated skipped, recorded 68-file/618-test root gate, and 196-file downstream contract; rate-limited CodeRabbit status is not line-level review evidence; P5.2 accepted, not released or user-accepted                                                                                                                                                                      |
 | P5.3 preserved AionUI coding journey               | Accepted on `main` through PR 44                                  | Exact head `15a8e29b44a6684313f29a694f0d0615de95cf36`; exact-head CI 30899489690 passes; squash merge `ee8425e39e201078cd64fe3af38355279ecf56de`; merged-main CI 30900884248 passes; exact-head and merged-main tree `e301a0acede51671b404daf11248788cdaba34d9`; R1 patch 0013 preserves native and Team paths while providing the fixed Goose journey, real approval/publish/cancel evidence, 74/2 files and 642/5 tests in the final root gate, 217/4/80 downstream checks, and the 61/3/28 build; Free CodeRabbit summary is not line-level review evidence; no candidate, release, deployment, or user-acceptance claim                                                                                                                                                 |
-| P6 bounded team-plan admission                     | Current local implementation slice                               | Branch `codex/p6-team-plan-admission` from exact `ee8425e39e201078cd64fe3af38355279ecf56de`; Core-owned protocol version 1 closes request/candidate fields, validates a 3-5-node General/coding/human-feedback graph and fixed budgets, maps deterministic Actestra plan/node/Task IDs, and deeply freezes the result; desktop main owns the cancellable, sanitized planner port/service; 2 focused files/30 tests and the recorded 76/2-file, 672/5-test root gate pass with the 100-source boundary, 217/4/80 downstream contract, and 62/3/28 build; CrewAI/Python, persistence, scheduling, Worker launch, bridge, renderer, Team UI, packaging, and P6 phase acceptance remain absent                                                                                                                                  |
+| P6 bounded team-plan admission                     | Local correction validated; remote authorization required         | Initial PR 45 head `59cf48fbbb45d78c803ab6691547b61878fc8eb3`; sole run 30905371865 passed root source/tests then failed macOS materialized TypeScript because `teamOrchestration.ts` was absent from the source-copy declaration; Goose job was cancelled after that failure and the SHA was not rerun; local correction changes only `overlay.json` and passes the 218/4/81 downstream contract, exact foundation, locked 3,177-package materialization, and exact CI TypeScript command; an additional exact-head run is not authorized; 2 focused files/30 tests and the recorded 76/2-file, 672/5-test root gate pass; CrewAI/Python, persistence, scheduling, Worker launch, Team UI, packaging, and P6 acceptance remain absent                                                                                      |
 | Native AionUi source                               | Exact local desktop snapshot                                      | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Native preservation contract                       | Local pass                                                        | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | Native AionUi build and launch                     | Local pass                                                        | Frozen install, production build, isolated native Electron launch, and actual Guide screenshot pass                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
