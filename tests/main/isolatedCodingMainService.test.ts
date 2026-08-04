@@ -33,6 +33,7 @@ import {
   type IsolatedCodingMainService,
 } from "../../apps/desktop/src/main/workers/isolatedCodingMainService";
 import { createGooseCodingToolInvoker } from "../../apps/desktop/src/main/workers/gooseCodingToolInvoker";
+import { deriveGooseCodingEvidenceIdentity } from "../../apps/desktop/src/main/workers/gooseCodingEvidenceCoordinator";
 import type {
   GooseMcpSessionComposition,
   OpenGooseMcpSessionCompositionOptions,
@@ -336,6 +337,1209 @@ describe("P5.2 desktop-main isolated coding composition", () => {
       fixture.persistence.getActiveWorkspaceGrant(fixture.ids.workspaceId),
     ).resolves.toBeNull();
     expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
+  }, 15_000);
+
+  it("persists normalized task and session evidence before returning a Goose prompt", async () => {
+    let fixture!: MainServiceFixture;
+    let graphObservedAtGooseClose: DomainGraph | undefined;
+    fixture = await openFixture("goose-durable-prompt", {
+      createToolInvoker(options) {
+        return createGooseCodingToolInvoker(options);
+      },
+      async openGooseSession() {
+        return Object.freeze({
+          info: GOOSE_INFO,
+          privateRoot: path.join(fixture.root, "goose-private", "attempt-durable-prompt"),
+          session: Object.freeze({
+            sessionId: "goose-desktop-main-durable-prompt",
+            setupNotificationKinds: Object.freeze([]),
+          }),
+          toolNames: Object.freeze([]),
+          async prompt() {
+            return Object.freeze({
+              stopReason: "end_turn" as const,
+              usage: Object.freeze({
+                totalTokens: 9,
+                inputTokens: 5,
+                outputTokens: 4,
+              }),
+              updates: Object.freeze([
+                Object.freeze({
+                  type: "session_info_update" as const,
+                  title: "Disposable Goose title",
+                }),
+                Object.freeze({
+                  type: "agent_message_chunk" as const,
+                  messageId: "goose-private-message",
+                  text: "Review the isolated coding result.",
+                }),
+              ]),
+            });
+          },
+          async close() {
+            graphObservedAtGooseClose = await fixture.persistence.loadDomainGraph();
+          },
+        });
+      },
+    });
+    const opened = await fixture.service.openGoose({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-goose-durable-prompt"),
+      displayName: "P5.2 durable Goose prompt evidence",
+      commands: {},
+      tests: {},
+      artifact: GOOSE_ARTIFACT,
+      privateRootParent: path.join(fixture.root, "goose-private"),
+      modelId: "actestra-desktop-main-model",
+      modelInvoker: async () =>
+        Object.freeze({
+          type: "message" as const,
+          text: "desktop-main durable result",
+          usage: Object.freeze({ promptTokens: 5, completionTokens: 4 }),
+        }),
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+    });
+
+    const started = await fixture.persistence.replayEvents(opened.streamId);
+    expect(started).toMatchObject([
+      {
+        sequence: 1,
+        type: "task.started",
+        payload: { from: "ready", to: "running" },
+      },
+    ]);
+    expect(started[0]).toMatchObject({
+      workspaceId: fixture.ids.workspaceId,
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+      streamId: opened.streamId,
+      correlationId: opened.correlationId,
+    });
+
+    const prompt = await opened.prompt({ text: "Complete the isolated coding task." });
+
+    expect(prompt.stopReason).toBe("end_turn");
+    const reviewEvents = await fixture.persistence.replayEvents(opened.streamId);
+    expect(reviewEvents.map((event) => event.type)).toEqual([
+      "task.started",
+      "agent.message",
+      "task.updated",
+    ]);
+    expect(reviewEvents[1]).toMatchObject({
+      sequence: 2,
+      type: "agent.message",
+      payload: {
+        role: "assistant",
+        content: "Review the isolated coding result.",
+      },
+    });
+    expect(reviewEvents[2]).toMatchObject({
+      sequence: 3,
+      type: "task.updated",
+      payload: {
+        from: "running",
+        to: "blocked",
+        reason: "coding-review-required:end_turn",
+      },
+    });
+    await expect(fixture.persistence.loadDomainGraph()).resolves.toMatchObject({
+      tasks: [{ id: fixture.ids.taskId, state: "blocked", activeSessionId: fixture.ids.sessionId }],
+      sessions: [{ id: fixture.ids.sessionId, state: "blocked" }],
+      workers: [{ id: fixture.ids.workerId, state: "ready" }],
+    });
+
+    const worktreeRoot = opened.worktreeRoot;
+    await opened.close();
+
+    expect(graphObservedAtGooseClose).toMatchObject({
+      tasks: [{ id: fixture.ids.taskId, state: "cancelled" }],
+      sessions: [{ id: fixture.ids.sessionId, state: "cancelled" }],
+      workers: [{ id: fixture.ids.workerId, state: "stopping" }],
+    });
+    const cancelledEvents = await fixture.persistence.replayEvents(opened.streamId);
+    expect(cancelledEvents.map((event) => event.type)).toEqual([
+      "task.started",
+      "agent.message",
+      "task.updated",
+      "task.cancelled",
+    ]);
+    expect(cancelledEvents.at(-1)).toMatchObject({
+      sequence: 4,
+      payload: { from: "blocked", to: "cancelled", reason: "coding-session-closed" },
+    });
+    const cancelledGraph = await fixture.persistence.loadDomainGraph();
+    expect(cancelledGraph).toMatchObject({
+      tasks: [{ id: fixture.ids.taskId, state: "cancelled" }],
+      sessions: [{ id: fixture.ids.sessionId, state: "cancelled" }],
+      workers: [{ id: fixture.ids.workerId, state: "stopped" }],
+    });
+    expect(cancelledGraph.tasks[0]?.activeSessionId).toBeUndefined();
+    await expect(fs.promises.stat(worktreeRoot)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
+    expect(await runGit(fixture.repositoryRoot, "status", "--porcelain=v1")).toBe("");
+  }, 15_000);
+
+  it("persists approval and tool evidence before an approved result returns to Goose", async () => {
+    let fixture!: MainServiceFixture;
+    let opened!: Awaited<ReturnType<IsolatedCodingMainService["openGoose"]>>;
+    let evidenceAtApproval: Awaited<ReturnType<PersistenceUtilityClient["replayEvents"]>> = [];
+    let graphAtApproval: DomainGraph | undefined;
+    fixture = await openFixture("goose-durable-approval", {
+      createToolInvoker(options) {
+        return createGooseCodingToolInvoker({
+          ...options,
+          newToolRequestId: () => toolRequestId("request-coding-main-durable-approval"),
+          newToolInputReference: () => toolInputReference("input-coding-main-durable-approval"),
+        });
+      },
+      async openGooseSession(options) {
+        return Object.freeze({
+          info: GOOSE_INFO,
+          privateRoot: path.join(fixture.root, "goose-private", "attempt-durable-approval"),
+          session: Object.freeze({
+            sessionId: "goose-desktop-main-durable-approval",
+            setupNotificationKinds: Object.freeze([]),
+          }),
+          toolNames: Object.freeze([]),
+          async prompt() {
+            const result = await options.toolInvoker({
+              sessionId: "goose-desktop-main-durable-approval",
+              toolCallRequestId: "goose-private-tool-call",
+              toolId: CODING_FILE_WRITE_TOOL_ID,
+              input: Object.freeze({
+                contractVersion: 1,
+                relativePath: "answer.txt",
+                content: "after durable approval\n",
+              }),
+              signal: new AbortController().signal,
+            });
+            expect(result).toEqual({
+              isError: false,
+              content: JSON.stringify({
+                contractVersion: 1,
+                type: "file-written",
+                relativePath: "answer.txt",
+                byteLength: Buffer.byteLength("after durable approval\n", "utf8"),
+              }),
+            });
+            return Object.freeze({
+              stopReason: "end_turn" as const,
+              updates: Object.freeze([
+                Object.freeze({
+                  type: "agent_message_chunk" as const,
+                  text: "The approved isolated change is ready for review.",
+                }),
+              ]),
+            });
+          },
+          async close() {},
+        });
+      },
+    });
+    const actorId = approvalActorId("local-user");
+    opened = await fixture.service.openGoose({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-goose-durable-approval"),
+      displayName: "P5.2 durable Goose approval evidence",
+      commands: {},
+      tests: {},
+      artifact: GOOSE_ARTIFACT,
+      privateRootParent: path.join(fixture.root, "goose-private"),
+      modelId: "actestra-desktop-main-model",
+      modelInvoker: async () =>
+        Object.freeze({
+          type: "message" as const,
+          text: "desktop-main durable approval result",
+          usage: Object.freeze({ promptTokens: 5, completionTokens: 4 }),
+        }),
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+      async approvalDecisionHandler() {
+        evidenceAtApproval = await fixture.persistence.replayEvents(opened.streamId);
+        graphAtApproval = await fixture.persistence.loadDomainGraph();
+        expect(fs.readFileSync(path.join(opened.worktreeRoot, "answer.txt"), "utf8")).toBe(
+          "before\n",
+        );
+        return Object.freeze({ decision: "approved" as const, actorId });
+      },
+    });
+    const resolveApproval = opened.approvalService.resolve.bind(opened.approvalService);
+    let resolutionResponseLost = false;
+    vi.spyOn(opened.approvalService, "resolve").mockImplementation(async (...args) => {
+      const result = await resolveApproval(...args);
+      if (!resolutionResponseLost) {
+        resolutionResponseLost = true;
+        throw new Error("injected approved-resolution response loss after commit");
+      }
+      return result;
+    });
+    const appendEvent = fixture.persistence.appendEvent.bind(fixture.persistence);
+    let completionResponseLost = false;
+    vi.spyOn(fixture.persistence, "appendEvent").mockImplementation(async (event) => {
+      const result = await appendEvent(event);
+      if (event.type === "tool.completed" && !completionResponseLost) {
+        completionResponseLost = true;
+        throw new Error("injected tool-completion response loss after commit");
+      }
+      return result;
+    });
+    const invokeTool = opened.toolGateway.invoke.bind(opened.toolGateway);
+    let gatewayInvocations = 0;
+    vi.spyOn(opened.toolGateway, "invoke").mockImplementation(async (...args) => {
+      gatewayInvocations += 1;
+      return invokeTool(...args);
+    });
+
+    await opened.prompt({ text: "Write the approved isolated change." });
+
+    expect(evidenceAtApproval.map((event) => event.type)).toEqual([
+      "task.started",
+      "tool.requested",
+      "approval.required",
+      "task.updated",
+      "worker.blocked",
+    ]);
+    expect(evidenceAtApproval[1]).toMatchObject({
+      type: "tool.requested",
+      payload: {
+        requestId: "request-coding-main-durable-approval",
+        toolName: CODING_FILE_WRITE_TOOL_ID,
+      },
+    });
+    expect(graphAtApproval).toMatchObject({
+      tasks: [{ id: fixture.ids.taskId, state: "blocked" }],
+      sessions: [{ id: fixture.ids.sessionId, state: "blocked" }],
+      workers: [{ id: fixture.ids.workerId, state: "busy" }],
+      approvals: [
+        {
+          taskId: fixture.ids.taskId,
+          sessionId: fixture.ids.sessionId,
+          state: "pending",
+        },
+      ],
+    });
+
+    const events = await fixture.persistence.replayEvents(opened.streamId);
+    expect(events.map((event) => event.type)).toEqual([
+      "task.started",
+      "tool.requested",
+      "approval.required",
+      "task.updated",
+      "worker.blocked",
+      "approval.resolved",
+      "task.updated",
+      "tool.started",
+      "tool.completed",
+      "agent.message",
+      "task.updated",
+    ]);
+    expect(events[5]).toMatchObject({
+      type: "approval.resolved",
+      payload: { decision: "approved" },
+    });
+    expect(events[7]).toMatchObject({
+      type: "tool.started",
+      payload: { requestId: "request-coding-main-durable-approval" },
+    });
+    expect(events[8]).toMatchObject({
+      type: "tool.completed",
+      payload: { requestId: "request-coding-main-durable-approval" },
+    });
+    expect(JSON.stringify(events)).not.toContain("after durable approval");
+    const graph = await fixture.persistence.loadDomainGraph();
+    expect(graph).toMatchObject({
+      tasks: [{ id: fixture.ids.taskId, state: "blocked" }],
+      sessions: [{ id: fixture.ids.sessionId, state: "blocked" }],
+      workers: [{ id: fixture.ids.workerId, state: "ready" }],
+      approvals: [{ state: "approved", resolvedAt: fixture.clock.now() }],
+    });
+    expect(fs.readFileSync(path.join(opened.worktreeRoot, "answer.txt"), "utf8")).toBe(
+      "after durable approval\n",
+    );
+    expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
+    expect(await runGit(fixture.repositoryRoot, "status", "--porcelain=v1")).toBe("");
+    expect(gatewayInvocations).toBe(2);
+
+    await opened.close();
+  }, 15_000);
+
+  it("persists a denied tool outcome without executing the isolated write", async () => {
+    let fixture!: MainServiceFixture;
+    fixture = await openFixture("goose-durable-denial", {
+      createToolInvoker(options) {
+        return createGooseCodingToolInvoker({
+          ...options,
+          newToolRequestId: () => toolRequestId("request-coding-main-durable-denial"),
+          newToolInputReference: () => toolInputReference("input-coding-main-durable-denial"),
+        });
+      },
+      async openGooseSession(options) {
+        return Object.freeze({
+          info: GOOSE_INFO,
+          privateRoot: path.join(fixture.root, "goose-private", "attempt-durable-denial"),
+          session: Object.freeze({
+            sessionId: "goose-desktop-main-durable-denial",
+            setupNotificationKinds: Object.freeze([]),
+          }),
+          toolNames: Object.freeze([]),
+          async prompt() {
+            const result = await options.toolInvoker({
+              sessionId: "goose-desktop-main-durable-denial",
+              toolCallRequestId: "goose-private-denied-tool-call",
+              toolId: CODING_FILE_WRITE_TOOL_ID,
+              input: Object.freeze({
+                contractVersion: 1,
+                relativePath: "answer.txt",
+                content: "must remain denied\n",
+              }),
+              signal: new AbortController().signal,
+            });
+            expect(result).toEqual({
+              isError: true,
+              content: JSON.stringify({ contractVersion: 1, type: "approval-denied" }),
+            });
+            return Object.freeze({
+              stopReason: "end_turn" as const,
+              updates: Object.freeze([
+                Object.freeze({
+                  type: "agent_message_chunk" as const,
+                  text: "The requested isolated change was denied.",
+                }),
+              ]),
+            });
+          },
+          async close() {},
+        });
+      },
+    });
+    const opened = await fixture.service.openGoose({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-goose-durable-denial"),
+      displayName: "P5.2 durable Goose denial evidence",
+      commands: {},
+      tests: {},
+      artifact: GOOSE_ARTIFACT,
+      privateRootParent: path.join(fixture.root, "goose-private"),
+      modelId: "actestra-desktop-main-model",
+      modelInvoker: async () =>
+        Object.freeze({
+          type: "message" as const,
+          text: "desktop-main denial result",
+          usage: Object.freeze({ promptTokens: 5, completionTokens: 4 }),
+        }),
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+      async approvalDecisionHandler() {
+        return Object.freeze({
+          decision: "denied" as const,
+          actorId: approvalActorId("local-user"),
+        });
+      },
+    });
+
+    await opened.prompt({ text: "Attempt the denied isolated change." });
+
+    const events = await fixture.persistence.replayEvents(opened.streamId);
+    expect(events.map((event) => event.type)).toEqual([
+      "task.started",
+      "tool.requested",
+      "approval.required",
+      "task.updated",
+      "worker.blocked",
+      "approval.resolved",
+      "task.updated",
+      "tool.failed",
+      "agent.message",
+      "task.updated",
+    ]);
+    expect(events[7]).toMatchObject({
+      payload: {
+        requestId: "request-coding-main-durable-denial",
+        errorCode: "approval-denied",
+        mayHaveExecuted: false,
+      },
+    });
+    await expect(fixture.persistence.loadDomainGraph()).resolves.toMatchObject({
+      tasks: [{ id: fixture.ids.taskId, state: "blocked" }],
+      sessions: [{ id: fixture.ids.sessionId, state: "blocked" }],
+      workers: [{ id: fixture.ids.workerId, state: "ready" }],
+      approvals: [{ state: "denied" }],
+    });
+    expect(fs.readFileSync(path.join(opened.worktreeRoot, "answer.txt"), "utf8")).toBe("before\n");
+    expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
+    expect(JSON.stringify(events)).not.toContain("must remain denied");
+
+    await opened.close();
+  }, 15_000);
+
+  it("cancels an unresolved coding approval before terminal session cleanup", async () => {
+    let fixture!: MainServiceFixture;
+    fixture = await openFixture("goose-durable-approval-cancel", {
+      createToolInvoker(options) {
+        return createGooseCodingToolInvoker({
+          ...options,
+          newToolRequestId: () => toolRequestId("request-coding-main-durable-approval-cancel"),
+          newToolInputReference: () =>
+            toolInputReference("input-coding-main-durable-approval-cancel"),
+        });
+      },
+      async openGooseSession(options) {
+        return Object.freeze({
+          info: GOOSE_INFO,
+          privateRoot: path.join(fixture.root, "goose-private", "attempt-approval-cancel"),
+          session: Object.freeze({
+            sessionId: "goose-desktop-main-approval-cancel",
+            setupNotificationKinds: Object.freeze([]),
+          }),
+          toolNames: Object.freeze([]),
+          async prompt() {
+            const result = await options.toolInvoker({
+              sessionId: "goose-desktop-main-approval-cancel",
+              toolCallRequestId: "goose-private-approval-cancel-tool-call",
+              toolId: CODING_FILE_WRITE_TOOL_ID,
+              input: Object.freeze({
+                contractVersion: 1,
+                relativePath: "answer.txt",
+                content: "must remain unapproved\n",
+              }),
+              signal: new AbortController().signal,
+            });
+            expect(result).toEqual({
+              isError: true,
+              content: JSON.stringify({ contractVersion: 1, type: "approval-required" }),
+            });
+            return Object.freeze({ stopReason: "end_turn" as const, updates: Object.freeze([]) });
+          },
+          async close() {},
+        });
+      },
+    });
+    const opened = await fixture.service.openGoose({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-goose-durable-approval-cancel"),
+      displayName: "P5.2 durable Goose approval cancellation",
+      commands: {},
+      tests: {},
+      artifact: GOOSE_ARTIFACT,
+      privateRootParent: path.join(fixture.root, "goose-private"),
+      modelId: "actestra-desktop-main-model",
+      modelInvoker: async () =>
+        Object.freeze({
+          type: "message" as const,
+          text: "unused approval cancellation result",
+          usage: Object.freeze({ promptTokens: 1, completionTokens: 1 }),
+        }),
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+    });
+
+    await opened.prompt({ text: "Request a write that remains pending." });
+    const pendingGraph = await fixture.persistence.loadDomainGraph();
+    const approval = pendingGraph.approvals[0];
+    expect(approval).toMatchObject({ state: "pending" });
+    await opened.close();
+
+    await expect(opened.approvalService.get(approval!.id)).resolves.toMatchObject({
+      state: "cancelled",
+      resolvedBy: "actestra-coding-session-close",
+    });
+    const events = await fixture.persistence.replayEvents(opened.streamId);
+    expect(events.map((event) => event.type)).toEqual([
+      "task.started",
+      "tool.requested",
+      "approval.required",
+      "task.updated",
+      "worker.blocked",
+      "approval.resolved",
+      "tool.failed",
+      "task.cancelled",
+    ]);
+    expect(events[5]).toMatchObject({
+      payload: { approvalId: approval!.id, decision: "cancelled" },
+    });
+    expect(events[6]).toMatchObject({
+      payload: {
+        requestId: "request-coding-main-durable-approval-cancel",
+        errorCode: "approval-cancelled",
+        mayHaveExecuted: false,
+      },
+    });
+    await expect(fixture.persistence.loadDomainGraph()).resolves.toMatchObject({
+      tasks: [{ id: fixture.ids.taskId, state: "cancelled" }],
+      sessions: [{ id: fixture.ids.sessionId, state: "cancelled" }],
+      workers: [{ id: fixture.ids.workerId, state: "stopped" }],
+      approvals: [{ id: approval!.id, state: "cancelled" }],
+    });
+    expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
+    expect(await runGit(fixture.repositoryRoot, "status", "--porcelain=v1")).toBe("");
+  }, 15_000);
+
+  it("settles a pending approval before a cancelled Goose prompt becomes terminal", async () => {
+    let fixture!: MainServiceFixture;
+    fixture = await openFixture("goose-durable-prompt-cancel", {
+      createToolInvoker(options) {
+        return createGooseCodingToolInvoker({
+          ...options,
+          newToolRequestId: () => toolRequestId("request-coding-main-prompt-cancel"),
+          newToolInputReference: () => toolInputReference("input-coding-main-prompt-cancel"),
+        });
+      },
+      async openGooseSession(options) {
+        return Object.freeze({
+          info: GOOSE_INFO,
+          privateRoot: path.join(fixture.root, "goose-private", "attempt-prompt-cancel"),
+          session: Object.freeze({
+            sessionId: "goose-desktop-main-prompt-cancel",
+            setupNotificationKinds: Object.freeze([]),
+          }),
+          toolNames: Object.freeze([]),
+          async prompt() {
+            await options.toolInvoker({
+              sessionId: "goose-desktop-main-prompt-cancel",
+              toolCallRequestId: "goose-private-prompt-cancel",
+              toolId: CODING_FILE_WRITE_TOOL_ID,
+              input: Object.freeze({
+                contractVersion: 1,
+                relativePath: "answer.txt",
+                content: "must remain cancelled\n",
+              }),
+              signal: new AbortController().signal,
+            });
+            return Object.freeze({ stopReason: "cancelled" as const, updates: Object.freeze([]) });
+          },
+          async close() {},
+        });
+      },
+    });
+    const opened = await fixture.service.openGoose({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-goose-prompt-cancel"),
+      displayName: "P5.2 durable cancelled prompt evidence",
+      commands: {},
+      tests: {},
+      artifact: GOOSE_ARTIFACT,
+      privateRootParent: path.join(fixture.root, "goose-private"),
+      modelId: "actestra-desktop-main-model",
+      modelInvoker: async () =>
+        Object.freeze({
+          type: "message" as const,
+          text: "unused cancelled prompt result",
+          usage: Object.freeze({ promptTokens: 1, completionTokens: 1 }),
+        }),
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+    });
+
+    await expect(
+      opened.prompt({ text: "Cancel with one pending approval." }),
+    ).resolves.toMatchObject({ stopReason: "cancelled" });
+
+    const events = await fixture.persistence.replayEvents(opened.streamId);
+    expect(events.map((event) => event.type)).toEqual([
+      "task.started",
+      "tool.requested",
+      "approval.required",
+      "task.updated",
+      "worker.blocked",
+      "approval.resolved",
+      "tool.failed",
+      "task.cancelled",
+    ]);
+    await expect(fixture.persistence.loadDomainGraph()).resolves.toMatchObject({
+      tasks: [{ id: fixture.ids.taskId, state: "cancelled" }],
+      sessions: [{ id: fixture.ids.sessionId, state: "cancelled" }],
+      workers: [{ id: fixture.ids.workerId, state: "stopping" }],
+      approvals: [{ state: "cancelled" }],
+    });
+    await expect(opened.close()).resolves.toBeUndefined();
+    await expect(fixture.persistence.loadDomainGraph()).resolves.toMatchObject({
+      workers: [{ id: fixture.ids.workerId, state: "stopped" }],
+    });
+    expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
+  }, 15_000);
+
+  it("retries a lost approval-cancellation acknowledgement without duplicating evidence", async () => {
+    let fixture!: MainServiceFixture;
+    fixture = await openFixture("goose-durable-approval-cancel-loss", {
+      createToolInvoker(options) {
+        return createGooseCodingToolInvoker({
+          ...options,
+          newToolRequestId: () => toolRequestId("request-coding-main-approval-cancel-loss"),
+          newToolInputReference: () => toolInputReference("input-coding-main-approval-cancel-loss"),
+        });
+      },
+      async openGooseSession(options) {
+        return Object.freeze({
+          info: GOOSE_INFO,
+          privateRoot: path.join(fixture.root, "goose-private", "attempt-approval-cancel-loss"),
+          session: Object.freeze({
+            sessionId: "goose-desktop-main-approval-cancel-loss",
+            setupNotificationKinds: Object.freeze([]),
+          }),
+          toolNames: Object.freeze([]),
+          async prompt() {
+            await options.toolInvoker({
+              sessionId: "goose-desktop-main-approval-cancel-loss",
+              toolCallRequestId: "goose-private-approval-cancel-loss",
+              toolId: CODING_FILE_WRITE_TOOL_ID,
+              input: Object.freeze({
+                contractVersion: 1,
+                relativePath: "answer.txt",
+                content: "must remain unapproved\n",
+              }),
+              signal: new AbortController().signal,
+            });
+            return Object.freeze({ stopReason: "end_turn" as const, updates: Object.freeze([]) });
+          },
+          async close() {},
+        });
+      },
+    });
+    const opened = await fixture.service.openGoose({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-goose-approval-cancel-loss"),
+      displayName: "P5.2 durable approval cancellation response loss",
+      commands: {},
+      tests: {},
+      artifact: GOOSE_ARTIFACT,
+      privateRootParent: path.join(fixture.root, "goose-private"),
+      modelId: "actestra-desktop-main-model",
+      modelInvoker: async () =>
+        Object.freeze({
+          type: "message" as const,
+          text: "unused cancellation response-loss result",
+          usage: Object.freeze({ promptTokens: 1, completionTokens: 1 }),
+        }),
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+    });
+    await opened.prompt({ text: "Leave one approval pending." });
+    const resolveApproval = opened.approvalService.resolve.bind(opened.approvalService);
+    let responseLost = false;
+    vi.spyOn(opened.approvalService, "resolve").mockImplementation(async (...args) => {
+      const result = await resolveApproval(...args);
+      if (!responseLost) {
+        responseLost = true;
+        throw new Error("injected approval cancellation response loss after commit");
+      }
+      return result;
+    });
+
+    await expect(fixture.service.close()).rejects.toMatchObject({
+      name: "IsolatedCodingMainServiceError",
+      code: "cleanup-failed",
+    });
+    expect(fs.existsSync(opened.worktreeRoot)).toBe(true);
+    await expect(
+      fixture.persistence.getActiveWorkspaceGrant(fixture.ids.workspaceId),
+    ).resolves.not.toBeNull();
+    await expect(fixture.service.close()).resolves.toBeUndefined();
+
+    const events = await fixture.persistence.replayEvents(opened.streamId);
+    expect(events.filter((event) => event.type === "approval.resolved")).toHaveLength(1);
+    expect(events.filter((event) => event.type === "tool.failed")).toHaveLength(1);
+    expect(events.filter((event) => event.type === "task.cancelled")).toHaveLength(1);
+    await expect(fs.promises.stat(opened.worktreeRoot)).rejects.toMatchObject({ code: "ENOENT" });
+  }, 15_000);
+
+  it("recovers a lost event acknowledgement without invoking the Goose prompt twice", async () => {
+    let fixture!: MainServiceFixture;
+    let promptInvocations = 0;
+    fixture = await openFixture("goose-durable-response-loss", {
+      createToolInvoker(options) {
+        return createGooseCodingToolInvoker(options);
+      },
+      async openGooseSession() {
+        return Object.freeze({
+          info: GOOSE_INFO,
+          privateRoot: path.join(fixture.root, "goose-private", "attempt-response-loss"),
+          session: Object.freeze({
+            sessionId: "goose-desktop-main-response-loss",
+            setupNotificationKinds: Object.freeze([]),
+          }),
+          toolNames: Object.freeze([]),
+          async prompt() {
+            promptInvocations += 1;
+            return Object.freeze({
+              stopReason: "end_turn" as const,
+              updates: Object.freeze([
+                Object.freeze({
+                  type: "agent_message_chunk" as const,
+                  text: "Durable response-loss evidence.",
+                }),
+              ]),
+            });
+          },
+          async close() {},
+        });
+      },
+    });
+    const opened = await fixture.service.openGoose({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-goose-durable-response-loss"),
+      displayName: "P5.2 durable Goose response-loss evidence",
+      commands: {},
+      tests: {},
+      artifact: GOOSE_ARTIFACT,
+      privateRootParent: path.join(fixture.root, "goose-private"),
+      modelId: "actestra-desktop-main-model",
+      modelInvoker: async () =>
+        Object.freeze({
+          type: "message" as const,
+          text: "desktop-main response-loss result",
+          usage: Object.freeze({ promptTokens: 5, completionTokens: 4 }),
+        }),
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+    });
+    const appendEvent = fixture.persistence.appendEvent.bind(fixture.persistence);
+    let responseLost = false;
+    vi.spyOn(fixture.persistence, "appendEvent").mockImplementation(async (event) => {
+      const result = await appendEvent(event);
+      if (event.type === "agent.message" && !responseLost) {
+        responseLost = true;
+        throw new Error("injected append-event response loss after commit");
+      }
+      return result;
+    });
+    const replaceDomainGraph = fixture.persistence.replaceDomainGraph.bind(fixture.persistence);
+    let projectionResponseLost = false;
+    vi.spyOn(fixture.persistence, "replaceDomainGraph").mockImplementation(async (next) => {
+      await replaceDomainGraph(next);
+      if (next.tasks[0]?.state === "blocked" && !projectionResponseLost) {
+        projectionResponseLost = true;
+        throw new Error("injected projection response loss after commit");
+      }
+    });
+    const promptOptions = Object.freeze({ text: "Return durable evidence once." });
+
+    await expect(opened.prompt(promptOptions)).resolves.toMatchObject({ stopReason: "end_turn" });
+    await expect(opened.prompt(promptOptions)).resolves.toMatchObject({ stopReason: "end_turn" });
+
+    expect(promptInvocations).toBe(1);
+    const events = await fixture.persistence.replayEvents(opened.streamId);
+    expect(events.map((event) => event.type)).toEqual([
+      "task.started",
+      "agent.message",
+      "task.updated",
+    ]);
+    await expect(fixture.persistence.loadDomainGraph()).resolves.toMatchObject({
+      tasks: [{ id: fixture.ids.taskId, state: "blocked" }],
+      sessions: [{ id: fixture.ids.sessionId, state: "blocked" }],
+      workers: [{ id: fixture.ids.workerId, state: "ready" }],
+    });
+
+    await opened.close();
+  }, 15_000);
+
+  it("persists sanitized terminal evidence before exposing a Goose prompt failure", async () => {
+    let fixture!: MainServiceFixture;
+    fixture = await openFixture("goose-durable-prompt-failure", {
+      createToolInvoker(options) {
+        return createGooseCodingToolInvoker(options);
+      },
+      async openGooseSession() {
+        return Object.freeze({
+          info: GOOSE_INFO,
+          privateRoot: path.join(fixture.root, "goose-private", "attempt-prompt-failure"),
+          session: Object.freeze({
+            sessionId: "goose-desktop-main-prompt-failure",
+            setupNotificationKinds: Object.freeze([]),
+          }),
+          toolNames: Object.freeze([]),
+          async prompt() {
+            throw new Error("private Goose provider failure detail");
+          },
+          async close() {},
+        });
+      },
+    });
+    const opened = await fixture.service.openGoose({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-goose-durable-prompt-failure"),
+      displayName: "P5.2 durable Goose prompt failure evidence",
+      commands: {},
+      tests: {},
+      artifact: GOOSE_ARTIFACT,
+      privateRootParent: path.join(fixture.root, "goose-private"),
+      modelId: "actestra-desktop-main-model",
+      modelInvoker: async () =>
+        Object.freeze({
+          type: "message" as const,
+          text: "unused prompt failure result",
+          usage: Object.freeze({ promptTokens: 1, completionTokens: 1 }),
+        }),
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+    });
+
+    await expect(opened.prompt({ text: "Fail with durable evidence." })).rejects.toThrow(
+      "private Goose provider failure detail",
+    );
+
+    const events = await fixture.persistence.replayEvents(opened.streamId);
+    expect(events.map((event) => event.type)).toEqual([
+      "task.started",
+      "worker.failed",
+      "task.failed",
+    ]);
+    expect(events[1]).toMatchObject({
+      payload: {
+        errorCode: "goose-prompt-failed",
+        message: "The isolated Goose prompt failed before review evidence was available.",
+        retryable: false,
+      },
+    });
+    expect(events[2]).toMatchObject({
+      payload: {
+        from: "running",
+        to: "failed",
+        errorCode: "goose-prompt-failed",
+        message: "The isolated Goose prompt failed before review evidence was available.",
+      },
+    });
+    expect(JSON.stringify(events)).not.toContain("private Goose provider failure detail");
+    await expect(fixture.persistence.loadDomainGraph()).resolves.toMatchObject({
+      tasks: [{ id: fixture.ids.taskId, state: "failed" }],
+      sessions: [{ id: fixture.ids.sessionId, state: "failed" }],
+      workers: [{ id: fixture.ids.workerId, state: "crashed" }],
+    });
+
+    await opened.close();
+  }, 15_000);
+
+  it("recovers lost prompt-failure evidence without invoking Goose twice", async () => {
+    let fixture!: MainServiceFixture;
+    let promptInvocations = 0;
+    fixture = await openFixture("goose-durable-prompt-failure-loss", {
+      createToolInvoker(options) {
+        return createGooseCodingToolInvoker(options);
+      },
+      async openGooseSession() {
+        return Object.freeze({
+          info: GOOSE_INFO,
+          privateRoot: path.join(fixture.root, "goose-private", "attempt-prompt-failure-loss"),
+          session: Object.freeze({
+            sessionId: "goose-desktop-main-prompt-failure-loss",
+            setupNotificationKinds: Object.freeze([]),
+          }),
+          toolNames: Object.freeze([]),
+          async prompt() {
+            promptInvocations += 1;
+            throw new Error("private prompt failure retained for retry");
+          },
+          async close() {},
+        });
+      },
+    });
+    const opened = await fixture.service.openGoose({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-goose-prompt-failure-loss"),
+      displayName: "P5.2 prompt failure evidence response loss",
+      commands: {},
+      tests: {},
+      artifact: GOOSE_ARTIFACT,
+      privateRootParent: path.join(fixture.root, "goose-private"),
+      modelId: "actestra-desktop-main-model",
+      modelInvoker: async () =>
+        Object.freeze({
+          type: "message" as const,
+          text: "unused prompt failure response-loss result",
+          usage: Object.freeze({ promptTokens: 1, completionTokens: 1 }),
+        }),
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+    });
+    const appendEvent = fixture.persistence.appendEvent.bind(fixture.persistence);
+    let responseLost = false;
+    vi.spyOn(fixture.persistence, "appendEvent").mockImplementation(async (event) => {
+      const result = await appendEvent(event);
+      if (event.type === "worker.failed" && !responseLost) {
+        responseLost = true;
+        throw new Error("injected prompt failure evidence response loss after commit");
+      }
+      return result;
+    });
+    const promptOptions = Object.freeze({ text: "Fail once and persist terminal evidence." });
+
+    await expect(opened.prompt(promptOptions)).rejects.toThrow(
+      "private prompt failure retained for retry",
+    );
+    await expect(opened.prompt(promptOptions)).rejects.toThrow(
+      "private prompt failure retained for retry",
+    );
+
+    expect(promptInvocations).toBe(1);
+    const events = await fixture.persistence.replayEvents(opened.streamId);
+    expect(events.map((event) => event.type)).toEqual([
+      "task.started",
+      "worker.failed",
+      "task.failed",
+    ]);
+    await expect(fixture.persistence.loadDomainGraph()).resolves.toMatchObject({
+      tasks: [{ id: fixture.ids.taskId, state: "failed" }],
+      sessions: [{ id: fixture.ids.sessionId, state: "failed" }],
+      workers: [{ id: fixture.ids.workerId, state: "crashed" }],
+    });
+    await opened.close();
+  }, 15_000);
+
+  it("cancels a pending approval before persisting terminal prompt-failure evidence", async () => {
+    let fixture!: MainServiceFixture;
+    fixture = await openFixture("goose-durable-approval-handler-failure", {
+      createToolInvoker(options) {
+        return createGooseCodingToolInvoker({
+          ...options,
+          newToolRequestId: () => toolRequestId("request-coding-main-handler-failure"),
+          newToolInputReference: () => toolInputReference("input-coding-main-handler-failure"),
+        });
+      },
+      async openGooseSession(options) {
+        return Object.freeze({
+          info: GOOSE_INFO,
+          privateRoot: path.join(fixture.root, "goose-private", "attempt-handler-failure"),
+          session: Object.freeze({
+            sessionId: "goose-desktop-main-handler-failure",
+            setupNotificationKinds: Object.freeze([]),
+          }),
+          toolNames: Object.freeze([]),
+          async prompt() {
+            await options.toolInvoker({
+              sessionId: "goose-desktop-main-handler-failure",
+              toolCallRequestId: "goose-private-handler-failure",
+              toolId: CODING_FILE_WRITE_TOOL_ID,
+              input: Object.freeze({
+                contractVersion: 1,
+                relativePath: "answer.txt",
+                content: "must not survive handler failure\n",
+              }),
+              signal: new AbortController().signal,
+            });
+            throw new Error("unreachable after failed approval handler");
+          },
+          async close() {},
+        });
+      },
+    });
+    const opened = await fixture.service.openGoose({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-goose-handler-failure"),
+      displayName: "P5.2 durable approval handler failure",
+      commands: {},
+      tests: {},
+      artifact: GOOSE_ARTIFACT,
+      privateRootParent: path.join(fixture.root, "goose-private"),
+      modelId: "actestra-desktop-main-model",
+      modelInvoker: async () =>
+        Object.freeze({
+          type: "message" as const,
+          text: "unused handler failure result",
+          usage: Object.freeze({ promptTokens: 1, completionTokens: 1 }),
+        }),
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+      async approvalDecisionHandler() {
+        throw new Error("private approval handler failure detail");
+      },
+    });
+
+    await expect(opened.prompt({ text: "Fail the pending approval handler." })).rejects.toThrow(
+      "Goose coding approval could not be resolved inside the Tool Gateway",
+    );
+
+    const events = await fixture.persistence.replayEvents(opened.streamId);
+    expect(events.map((event) => event.type)).toEqual([
+      "task.started",
+      "tool.requested",
+      "approval.required",
+      "task.updated",
+      "worker.blocked",
+      "approval.resolved",
+      "tool.failed",
+      "worker.failed",
+      "task.failed",
+    ]);
+    expect(events[5]).toMatchObject({ payload: { decision: "cancelled" } });
+    expect(events[6]).toMatchObject({
+      payload: { errorCode: "approval-cancelled", mayHaveExecuted: false },
+    });
+    expect(JSON.stringify(events)).not.toContain("private approval handler failure detail");
+    await expect(fixture.persistence.loadDomainGraph()).resolves.toMatchObject({
+      tasks: [{ id: fixture.ids.taskId, state: "failed" }],
+      sessions: [{ id: fixture.ids.sessionId, state: "failed" }],
+      workers: [{ id: fixture.ids.workerId, state: "crashed" }],
+      approvals: [{ state: "cancelled" }],
+    });
+    await expect(opened.close()).resolves.toBeUndefined();
+    expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
+  }, 15_000);
+
+  it("persists sanitized terminal evidence before a Goose opening failure is cleaned up", async () => {
+    const privateOpeningFailure = new Error("private Goose opening failure detail");
+    let worktreeRoot = "";
+    let fixture!: MainServiceFixture;
+    fixture = await openFixture("goose-durable-opening-failure", {
+      createToolInvoker(options) {
+        return createGooseCodingToolInvoker(options);
+      },
+      async openGooseSession(options) {
+        worktreeRoot = options.workspaceDirectory;
+        throw privateOpeningFailure;
+      },
+    });
+    const identity = deriveGooseCodingEvidenceIdentity(fixture.ids);
+    const appendEvent = fixture.persistence.appendEvent.bind(fixture.persistence);
+    let failureEvidencePrecedesCleanup = false;
+    vi.spyOn(fixture.persistence, "appendEvent").mockImplementation(async (event) => {
+      if (event.type === "worker.failed") {
+        failureEvidencePrecedesCleanup =
+          fs.existsSync(worktreeRoot) &&
+          (await fixture.persistence.getActiveWorkspaceGrant(fixture.ids.workspaceId)) !== null;
+      }
+      return appendEvent(event);
+    });
+
+    await expect(
+      fixture.service.openGoose({
+        repositoryRoot: fixture.repositoryRoot,
+        workspaceId: fixture.ids.workspaceId,
+        grantId: workspaceGrantId("grant-coding-main-goose-durable-opening-failure"),
+        displayName: "P5.2 durable Goose opening failure evidence",
+        commands: {},
+        tests: {},
+        artifact: GOOSE_ARTIFACT,
+        privateRootParent: path.join(fixture.root, "goose-private"),
+        modelId: "actestra-desktop-main-model",
+        modelInvoker: async () =>
+          Object.freeze({
+            type: "message" as const,
+            text: "unused opening failure result",
+            usage: Object.freeze({ promptTokens: 1, completionTokens: 1 }),
+          }),
+        taskId: fixture.ids.taskId,
+        sessionId: fixture.ids.sessionId,
+        workerId: fixture.ids.workerId,
+      }),
+    ).rejects.toThrow("Desktop-main Goose coding session failed to open");
+
+    expect(failureEvidencePrecedesCleanup).toBe(true);
+    const events = await fixture.persistence.replayEvents(identity.streamId);
+    expect(events.map((event) => event.type)).toEqual([
+      "task.started",
+      "worker.failed",
+      "task.failed",
+    ]);
+    expect(events[1]).toMatchObject({
+      payload: {
+        errorCode: "goose-session-open-failed",
+        message: "The isolated Goose session failed before coding became available.",
+        retryable: false,
+      },
+    });
+    expect(events[2]).toMatchObject({
+      payload: {
+        from: "running",
+        to: "failed",
+        errorCode: "goose-session-open-failed",
+        message: "The isolated Goose session failed before coding became available.",
+      },
+    });
+    expect(JSON.stringify(events)).not.toContain("private Goose opening failure detail");
+    await expect(fixture.persistence.loadDomainGraph()).resolves.toMatchObject({
+      tasks: [{ id: fixture.ids.taskId, state: "failed" }],
+      sessions: [{ id: fixture.ids.sessionId, state: "failed" }],
+      workers: [{ id: fixture.ids.workerId, state: "crashed" }],
+    });
+    await expect(
+      fixture.persistence.getActiveWorkspaceGrant(fixture.ids.workspaceId),
+    ).resolves.toBeNull();
+    await expect(fs.promises.stat(worktreeRoot)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
+    expect(await runGit(fixture.repositoryRoot, "status", "--porcelain=v1")).toBe("");
+  }, 15_000);
+
+  it("retries a failed opening-evidence write during service shutdown", async () => {
+    let fixture!: MainServiceFixture;
+    fixture = await openFixture("goose-opening-evidence-retry", {
+      createToolInvoker(options) {
+        return createGooseCodingToolInvoker(options);
+      },
+      async openGooseSession() {
+        throw new Error("private Goose opening failure for evidence retry");
+      },
+    });
+    const identity = deriveGooseCodingEvidenceIdentity(fixture.ids);
+    const appendEvent = fixture.persistence.appendEvent.bind(fixture.persistence);
+    let evidenceWriteRejected = false;
+    vi.spyOn(fixture.persistence, "appendEvent").mockImplementation(async (event) => {
+      if (event.type === "worker.failed" && !evidenceWriteRejected) {
+        evidenceWriteRejected = true;
+        throw new Error("injected opening failure evidence write rejection");
+      }
+      return appendEvent(event);
+    });
+
+    await expect(
+      fixture.service.openGoose({
+        repositoryRoot: fixture.repositoryRoot,
+        workspaceId: fixture.ids.workspaceId,
+        grantId: workspaceGrantId("grant-coding-main-goose-opening-evidence-retry"),
+        displayName: "P5.2 opening failure evidence retry",
+        commands: {},
+        tests: {},
+        artifact: GOOSE_ARTIFACT,
+        privateRootParent: path.join(fixture.root, "goose-private"),
+        modelId: "actestra-desktop-main-model",
+        modelInvoker: async () =>
+          Object.freeze({
+            type: "message" as const,
+            text: "unused opening evidence retry result",
+            usage: Object.freeze({ promptTokens: 1, completionTokens: 1 }),
+          }),
+        taskId: fixture.ids.taskId,
+        sessionId: fixture.ids.sessionId,
+        workerId: fixture.ids.workerId,
+      }),
+    ).rejects.toMatchObject({
+      name: "IsolatedCodingMainServiceError",
+      code: "cleanup-failed",
+    });
+
+    await fixture.service.close();
+
+    const events = await fixture.persistence.replayEvents(identity.streamId);
+    expect(events.map((event) => event.type)).toEqual([
+      "task.started",
+      "worker.failed",
+      "task.failed",
+    ]);
+    await expect(fixture.persistence.loadDomainGraph()).resolves.toMatchObject({
+      tasks: [{ id: fixture.ids.taskId, state: "failed" }],
+      sessions: [{ id: fixture.ids.sessionId, state: "failed" }],
+      workers: [{ id: fixture.ids.workerId, state: "crashed" }],
+    });
   }, 15_000);
 
   it("waits for a Goose opening and closes it when desktop-main shutdown wins", async () => {

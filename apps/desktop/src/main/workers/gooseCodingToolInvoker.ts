@@ -24,6 +24,7 @@ import {
   type ProtectedOperation,
   type SessionId,
   type TaskId,
+  type ToolGatewayResult,
   type ToolInputReference,
   type ToolRequestId,
   type UserApprovalDecision,
@@ -61,6 +62,7 @@ export interface CreateGooseCodingToolInvokerOptions {
   readonly sessionId: SessionId;
   readonly workerId: WorkerId;
   readonly approvalDecisionHandler?: GooseCodingApprovalDecisionHandler;
+  readonly evidenceRecorder?: GooseCodingToolEvidenceRecorder;
   readonly newToolRequestId?: () => ToolRequestId;
   readonly newToolInputReference?: () => ToolInputReference;
 }
@@ -80,6 +82,29 @@ export interface GooseCodingApprovalDecision {
 export type GooseCodingApprovalDecisionHandler = (
   request: GooseCodingApprovalDecisionRequest,
 ) => Promise<GooseCodingApprovalDecision>;
+
+export interface GooseCodingToolFailureEvidence {
+  readonly errorCode: string;
+  readonly message: string;
+  readonly mayHaveExecuted: boolean;
+}
+
+export interface GooseCodingToolEvidenceRecorder {
+  recordRequested(operation: ProtectedOperation): Promise<void>;
+  recordApprovalRequired(
+    operation: ProtectedOperation,
+    approval: ApprovalRequestSnapshot,
+  ): Promise<void>;
+  recordApprovalResolved(
+    operation: ProtectedOperation,
+    approval: ApprovalRequestSnapshot,
+  ): Promise<void>;
+  recordCompleted(operation: ProtectedOperation, summary: string): Promise<void>;
+  recordFailed(
+    operation: ProtectedOperation,
+    failure: GooseCodingToolFailureEvidence,
+  ): Promise<void>;
+}
 
 function identifier(prefix: string): string {
   return `${prefix}-${randomUUID()}`;
@@ -105,6 +130,7 @@ function assertOptions(options: CreateGooseCodingToolInvokerOptions): void {
     "sessionId",
     "workerId",
     "approvalDecisionHandler",
+    "evidenceRecorder",
     "newToolRequestId",
     "newToolInputReference",
   ]);
@@ -122,6 +148,14 @@ function assertOptions(options: CreateGooseCodingToolInvokerOptions): void {
     typeof options.session?.toolGateway?.invoke !== "function" ||
     (options.approvalDecisionHandler !== undefined &&
       typeof options.approvalDecisionHandler !== "function") ||
+    (options.evidenceRecorder !== undefined &&
+      (typeof options.evidenceRecorder !== "object" ||
+        options.evidenceRecorder === null ||
+        typeof options.evidenceRecorder.recordRequested !== "function" ||
+        typeof options.evidenceRecorder.recordApprovalRequired !== "function" ||
+        typeof options.evidenceRecorder.recordApprovalResolved !== "function" ||
+        typeof options.evidenceRecorder.recordCompleted !== "function" ||
+        typeof options.evidenceRecorder.recordFailed !== "function")) ||
     (options.newToolRequestId !== undefined && typeof options.newToolRequestId !== "function") ||
     (options.newToolInputReference !== undefined &&
       typeof options.newToolInputReference !== "function")
@@ -240,6 +274,51 @@ function approvalDeniedResult(): GooseMcpToolInvocationResult {
   });
 }
 
+function normalizedFailure(error: unknown): GooseCodingToolFailureEvidence {
+  const code =
+    isRecord(error) &&
+    typeof error.code === "string" &&
+    /^[a-z0-9][a-z0-9-]{0,127}$/u.test(error.code)
+      ? error.code
+      : "coding-tool-failed";
+  return Object.freeze({
+    errorCode: code,
+    message: "The closed coding capability failed inside the Actestra Tool Gateway.",
+    mayHaveExecuted:
+      isRecord(error) && typeof error.mayHaveExecuted === "boolean" ? error.mayHaveExecuted : false,
+  });
+}
+
+function matchesApprovalResolution(
+  resolved: ApprovalRequestSnapshot,
+  pending: ApprovalRequestSnapshot,
+  operation: ProtectedOperation,
+  decision: GooseCodingApprovalDecision,
+): boolean {
+  try {
+    assertApprovalRequestSnapshot(resolved);
+  } catch {
+    return false;
+  }
+  return (
+    resolved.approvalId === pending.approvalId &&
+    resolved.policyRevision === pending.policyRevision &&
+    resolved.requestedAt === pending.requestedAt &&
+    resolved.expiresAt === pending.expiresAt &&
+    resolved.state === decision.decision &&
+    resolved.resolvedBy === decision.actorId &&
+    isDeepStrictEqual(resolved.operation, operation)
+  );
+}
+
+async function persistEvidence(operation: () => Promise<void>, message: string): Promise<void> {
+  try {
+    await operation();
+  } catch (error) {
+    throw new GooseCodingToolInvokerError("persistence-failed", message, { cause: error });
+  }
+}
+
 export function createGooseCodingToolInvoker(
   options: CreateGooseCodingToolInvokerOptions,
 ): GooseMcpToolInvoker {
@@ -338,13 +417,25 @@ export function createGooseCodingToolInvoker(
         "Goose coding tool input persistence returned mismatched evidence",
       );
     }
+    if (options.evidenceRecorder !== undefined) {
+      await persistEvidence(
+        () => options.evidenceRecorder!.recordRequested(operation),
+        "Goose coding tool request evidence could not be persisted",
+      );
+    }
 
-    let gatewayResult;
+    let gatewayResult: ToolGatewayResult;
     try {
       gatewayResult = await options.session.toolGateway.invoke(operation, undefined, {
         signal: call.signal,
       });
     } catch (error) {
+      if (options.evidenceRecorder !== undefined) {
+        await persistEvidence(
+          () => options.evidenceRecorder!.recordFailed(operation, normalizedFailure(error)),
+          "Goose coding tool failure evidence could not be persisted",
+        );
+      }
       throw new GooseCodingToolInvokerError(
         "gateway-failed",
         "Goose coding tool invocation failed inside the Tool Gateway",
@@ -352,6 +443,13 @@ export function createGooseCodingToolInvoker(
       );
     }
     if (gatewayResult.status === "approval-required") {
+      const pendingApproval = gatewayResult.approval;
+      if (options.evidenceRecorder !== undefined) {
+        await persistEvidence(
+          () => options.evidenceRecorder!.recordApprovalRequired(operation, pendingApproval),
+          "Goose coding approval-required evidence could not be persisted",
+        );
+      }
       if (options.approvalDecisionHandler === undefined) {
         return approvalRequiredResult();
       }
@@ -359,37 +457,70 @@ export function createGooseCodingToolInvoker(
         const decision = await awaitApprovalDecision(
           options.approvalDecisionHandler,
           Object.freeze({
-            approval: gatewayResult.approval,
+            approval: pendingApproval,
             sessionId: call.sessionId,
             toolCallRequestId: call.toolCallRequestId,
             signal: call.signal,
           }),
         );
-        const resolvedApproval = await options.session.approvalService.resolve(
-          gatewayResult.approval.approvalId,
-          decision.decision,
-          decision.actorId,
-        );
-        assertApprovalRequestSnapshot(resolvedApproval);
-        if (
-          resolvedApproval.approvalId !== gatewayResult.approval.approvalId ||
-          resolvedApproval.policyRevision !== gatewayResult.approval.policyRevision ||
-          resolvedApproval.requestedAt !== gatewayResult.approval.requestedAt ||
-          resolvedApproval.expiresAt !== gatewayResult.approval.expiresAt ||
-          resolvedApproval.state !== decision.decision ||
-          resolvedApproval.resolvedBy !== decision.actorId ||
-          !isDeepStrictEqual(resolvedApproval.operation, operation)
-        ) {
+        let resolvedApproval: ApprovalRequestSnapshot;
+        try {
+          resolvedApproval = await options.session.approvalService.resolve(
+            pendingApproval.approvalId,
+            decision.decision,
+            decision.actorId,
+          );
+        } catch (error) {
+          const committed = await options.session.approvalService.get(pendingApproval.approvalId);
+          if (
+            committed === undefined ||
+            !matchesApprovalResolution(committed, pendingApproval, operation, decision)
+          ) {
+            throw error;
+          }
+          resolvedApproval = committed;
+        }
+        if (!matchesApprovalResolution(resolvedApproval, pendingApproval, operation, decision)) {
           throw invalidConfig("Goose coding approval resolution returned mismatched evidence");
         }
+        if (options.evidenceRecorder !== undefined) {
+          await persistEvidence(
+            () => options.evidenceRecorder!.recordApprovalResolved(operation, resolvedApproval),
+            "Goose coding approval resolution evidence could not be persisted",
+          );
+        }
         if (decision.decision !== "approved") {
+          if (options.evidenceRecorder !== undefined) {
+            await persistEvidence(
+              () =>
+                options.evidenceRecorder!.recordFailed(
+                  operation,
+                  Object.freeze({
+                    errorCode: "approval-denied",
+                    message: "The user denied the closed coding capability.",
+                    mayHaveExecuted: false,
+                  }),
+                ),
+              "Goose coding denial evidence could not be persisted",
+            );
+          }
           return approvalDeniedResult();
         }
-        gatewayResult = await options.session.toolGateway.invoke(
-          operation,
-          resolvedApproval.approvalId,
-          { signal: call.signal },
-        );
+        try {
+          gatewayResult = await options.session.toolGateway.invoke(
+            operation,
+            resolvedApproval.approvalId,
+            { signal: call.signal },
+          );
+        } catch (error) {
+          if (options.evidenceRecorder !== undefined) {
+            await persistEvidence(
+              () => options.evidenceRecorder!.recordFailed(operation, normalizedFailure(error)),
+              "Goose coding tool failure evidence could not be persisted",
+            );
+          }
+          throw error;
+        }
       } catch (error) {
         if (error instanceof GooseCodingToolInvokerError) {
           throw error;
@@ -408,6 +539,16 @@ export function createGooseCodingToolInvoker(
       }
     }
     if (gatewayResult.result.outputRef === undefined) {
+      if (options.evidenceRecorder !== undefined) {
+        await persistEvidence(
+          () =>
+            options.evidenceRecorder!.recordCompleted(
+              operation,
+              "The closed coding capability completed without durable output content.",
+            ),
+          "Goose coding tool completion evidence could not be persisted",
+        );
+      }
       return Object.freeze({
         isError: false,
         content: JSON.stringify({ contractVersion: 1, type: "completed" }),
@@ -426,6 +567,20 @@ export function createGooseCodingToolInvoker(
       });
       assertResolvedContentReference(resolved);
     } catch (error) {
+      if (options.evidenceRecorder !== undefined) {
+        await persistEvidence(
+          () =>
+            options.evidenceRecorder!.recordFailed(
+              operation,
+              Object.freeze({
+                errorCode: "coding-output-persistence-failed",
+                message: "The executed coding capability output could not be resolved safely.",
+                mayHaveExecuted: true,
+              }),
+            ),
+          "Goose coding output failure evidence could not be persisted",
+        );
+      }
       throw new GooseCodingToolInvokerError(
         "persistence-failed",
         "Goose coding tool output could not be resolved",
@@ -452,10 +607,34 @@ export function createGooseCodingToolInvoker(
       }
       normalizedOutput = JSON.stringify(parsed);
     } catch (error) {
+      if (options.evidenceRecorder !== undefined) {
+        await persistEvidence(
+          () =>
+            options.evidenceRecorder!.recordFailed(
+              operation,
+              Object.freeze({
+                errorCode: "coding-output-invalid",
+                message: "The executed coding capability returned invalid normalized output.",
+                mayHaveExecuted: true,
+              }),
+            ),
+          "Goose coding invalid-output evidence could not be persisted",
+        );
+      }
       throw new GooseCodingToolInvokerError(
         "persistence-failed",
         "Goose coding tool output is not normalized JSON evidence",
         { cause: error },
+      );
+    }
+    if (options.evidenceRecorder !== undefined) {
+      await persistEvidence(
+        () =>
+          options.evidenceRecorder!.recordCompleted(
+            operation,
+            "The closed coding capability completed with durable normalized output.",
+          ),
+        "Goose coding tool completion evidence could not be persisted",
       );
     }
     return Object.freeze({ isError: false, content: normalizedOutput });

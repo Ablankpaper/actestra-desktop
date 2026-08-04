@@ -780,11 +780,53 @@ smoke, and the 58-main/3-preload/28-renderer-module production build. The
 installed materialized-native tree passes TypeScript and its generated
 composition test.
 
+Pull request 41 delivered those approval outcomes at exact head
+`917a95260d84f09aacf5038d92a5230d1781676d`, exact-head CI 30870425378,
+squash merge `7dfc4973021d68d5df0ded12fa218ecd42da9691`, and passing
+merged-main CI 30871703449.
+
+The current durable-evidence slice keeps Actestra Core authoritative across the
+real Goose prompt/tool loop. Electron main derives one stable SHA-256 stream and
+correlation identity from the exact Actestra Workspace, Task, Session, and
+Worker, writes `task.started` before Goose opening, and normalizes only bounded
+assistant text, tool intent/outcome, approval, failure, cancellation, and review
+state. Goose message, session, and tool-call identifiers remain disposable
+correlation input. Tool input and output content do not enter metadata-only
+events. Tool request, approval-required/resolved, start, completion, denial, and
+failure evidence is durable before the corresponding bounded result returns.
+
+Successful prompt completion moves Task and Session to `blocked` and Worker to
+`ready`, retaining the isolated worktree for the later publish/Artifact slice.
+Close first persists Task/Session cancellation and Worker stopping, cancels any
+pending approval through the same ApprovalService, then closes Goose, revokes
+the grant, removes the worktree, and records Worker stopped. Cancelled prompts
+and approval-handler failures settle pending approvals before terminal Task
+events. Goose opening and prompt failures use stable sanitized codes and failed
+Task/Session plus crashed Worker projections. Event and projection retries reuse
+the same normalized result after a committed response is lost; they do not call
+Goose or the Tool Gateway again. General Work terminal reconciliation and coding
+projection now share one main-owned persistence mutation barrier, preventing
+lost DomainGraph updates between the two coordinators.
+
+The downstream overlay adds the evidence coordinator and shared mutation
+barrier as source copies, producing a passing 194-file contract with 4 R0
+invariants and 73 reviewed source copies and no new patch, preload, renderer,
+route, schema, or frozen-foundation change. The affected local gate passes 2
+files with 44 tests passed and 2 admitted-artifact tests skipped, strict
+TypeScript, and affected zero-warning lint. The installed materialized-native
+tree passes strict TypeScript and its generated composition test 1 file/1 test.
+The final-byte root gate passes formatting over 206 files, zero-warning lint
+over 198 files, strict TypeScript, the Electron SQLite probe, 68 passing and 1
+skipped test files with 613 passing and 3 skipped tests, deterministic smoke,
+the 91-source product boundary, the exact 1,766-file foundation, the downstream
+contract, and the 59-main/3-preload/28-renderer-module production build. Git and
+remote evidence remain pending for this branch.
+
 This composition is still not P5.2 acceptance. The contained real Goose
-prompt/tool loop and desktop-main lifecycle are remotely delivered, and approval
-outcomes are locally proved, but current-slice remote delivery, durable
-normalized Task/Session evidence, publish, and Artifact registration remain
-open. No retained-AionUI coding journey is claimed.
+prompt/tool loop, desktop-main lifecycle, and approval outcomes are remotely
+delivered; durable normalized Task/Session evidence is locally proved. Current-
+slice remote delivery plus publish and Artifact registration remain open. No
+retained-AionUI coding journey is claimed.
 
 ## Event contract
 

@@ -32,12 +32,18 @@ passed. Pull request 39 corrected only that test deadline at exact head
 30861770178, squash merged as
 `7e8732e264febff42fb3d451011b3b8e48caaff5`, and passed exact merged-main CI 30862710547. The desktop-main Goose lifecycle was delivered through pull request
 40 at exact head `c35f8c37c14dedaa980dfbb539f16fc21379be8a`, squash merge
-`1909033977576d94f6983f9c911b8e0a866a59de`, and exact merged-main CI 30866691199. The main-owned approval-outcome slice starts from that merge on
-branch `codex/p5-goose-approval-outcomes` and is locally implemented. This
+`1909033977576d94f6983f9c911b8e0a866a59de`, and exact merged-main CI
+30866691199. The main-owned approval-outcome slice was delivered through pull
+request 41 at exact head `917a95260d84f09aacf5038d92a5230d1781676d`,
+exact-head CI 30870425378, squash merge
+`7dfc4973021d68d5df0ded12fa218ecd42da9691`, and exact merged-main CI
+30871703449. The durable normalized-evidence slice starts from that merge on
+branch `codex/p5-goose-durable-evidence` and is locally implemented. This
 document records the closed worktree, Tool Gateway, service-owned Goose session,
 bounded ACP session, authenticated MCP transport, bounded tool-call bridge,
-real Goose prompt/tool round trip, and local approved/denied outcome projection.
-It is not P5.2 phase acceptance or current-slice remote delivery evidence.
+real Goose prompt/tool round trip, approved/denied outcome projection, and
+Actestra-owned attempt evidence. It is not P5.2 phase acceptance or current-
+slice remote delivery evidence.
 
 ## Scope
 
@@ -64,10 +70,11 @@ explicit test-only option.
 Downstream patch 0012 composes that service only in the native AionUi Electron
 main persistence owner under the Actestra private profile's
 `coding-worktrees` directory. It provides a main-process getter but adds no
-preload or renderer exposure. The manifest copies the four containment sources,
-seven Goose session sources, and exact runner source pin and adds one native
-lifecycle test. It adds no renderer route, bridge, or visual surface. The frozen
-AionUi source and R0 retention invariants remain
+preload or renderer exposure. The current manifest copies the four containment
+sources, eight Goose session/evidence sources, the shared persistence mutation
+barrier, and exact runner source pin and adds one native lifecycle test. It adds
+no renderer route, bridge, or visual surface. The frozen AionUi source and R0
+retention invariants remain
 unchanged, and P5.3 remains the first user-visible coding journey.
 
 The admitted Goose connection sends exactly one `session/new` request per
@@ -184,6 +191,35 @@ in that order, and retry unfinished stages. Service shutdown waits for Goose
 openings; an opening that loses the shutdown race closes its Worker and coding
 authority before rejecting. A failed Goose opening plus failed worktree cleanup
 retains both causes and the managed session for shutdown retry.
+
+The same desktop-main session now owns one durable evidence coordinator. Its
+stream and correlation identifiers are stable SHA-256 derivations over the
+exact Actestra Workspace, Task, Session, and Worker; Goose-private session,
+message, and tool-call identifiers never become product identity. It appends
+`task.started` before opening Goose. Prompt updates contribute only bounded
+assistant text, while the main-owned invoker records `tool.requested`,
+`approval.required`, `approval.resolved`, `tool.started`, `tool.completed`, and
+`tool.failed` around the existing Tool Gateway result. Metadata events retain
+only typed references and stable summaries; raw tool input, tool output,
+provider failure, and Goose-private diagnostics do not enter the event stream.
+
+After a non-cancelled prompt, Task and Session become `blocked` and Worker
+becomes `ready`, preserving the isolated worktree for review and the later
+publish/Artifact boundary. Close first persists cancellation and a stopping
+Worker projection, then closes Goose, revokes the grant, removes the worktree,
+and records Worker stopped. Any pending Approval is resolved as `cancelled`
+through the same Actestra ApprovalService before terminal Task evidence; this
+also covers cancelled prompts and approval-handler failure. Prompt and opening
+failures use stable sanitized codes and reconcile Task/Session as failed plus
+Worker as crashed. A failed opening is terminalized before worktree/grant
+cleanup; an uncommitted terminal-evidence failure is retained for service-
+shutdown retry.
+
+Event append and projection operations are replay-safe. A committed response
+loss retries the same event/result and never invokes Goose or the Tool Gateway a
+second time. The General Work release coordinator and coding evidence
+coordinator share one weakly keyed persistence mutation barrier, so load/replace
+cycles against the same Actestra persistence owner cannot overwrite each other.
 
 ## Authority and policy
 
@@ -363,6 +399,27 @@ frozen foundation, the 192-file downstream contract, and the
 materialized-native tree passed TypeScript and its generated composition test 1
 file/1 test.
 
+The current durable-evidence fingerprint passes the two affected coordinator
+files with 44 tests passed and 2 admitted-artifact tests skipped. Its red/green
+coverage proves stable Actestra stream identity, persist-before-open start,
+bounded assistant/tool/approval evidence, review-blocked projection, approved
+and denied outcomes, pending-approval cancellation, cancelled prompt, sanitized
+opening and prompt failure, cleanup ordering, shared persistence serialization,
+and replay after event or approval-resolution response loss without a second
+Goose prompt or tool invocation. Strict TypeScript passes, and affected lint
+reports zero warnings across the seven changed TypeScript/JavaScript files. The
+downstream contract passes with 194 declared files, 4 R0 invariants, and 73
+reviewed source copies. After a locked 3,177-package install, the materialized-
+native tree passes strict TypeScript and its generated composition test 1 file/1
+test.
+
+The final-byte root gate passes formatting over 206 files, zero-warning lint
+over 198 files, strict TypeScript, the Electron SQLite probe, 68 passing and 1
+skipped test files with 613 passing and 3 skipped tests, deterministic smoke,
+the 91-source product boundary, the exact 1,766-file frozen foundation, the
+194-file downstream contract, and the 59-main/3-preload/28-renderer-module
+production build.
+
 One committed CodeRabbit review covered all 12 changed files and raised six
 findings. The shutdown/deferred-invocation race and fixed `/tmp` fixture were
 confirmed and remediated. The regression test's red phase proved the old path
@@ -464,6 +521,14 @@ merged-main CI 30866691199 passed macOS arm64 foundation job 91859998038 and
 Goose runner admission job 91859998109. This closes remote delivery of the
 lifecycle composition, not P5.2 phase acceptance.
 
+Pull request 41 delivered the main-owned approval outcomes at exact head
+`917a95260d84f09aacf5038d92a5230d1781676d`. Its single exact-head CI
+30870425378 passed. The branch squash merged as
+`7dfc4973021d68d5df0ded12fa218ecd42da9691`, and the single exact
+merged-main CI 30871703449 passed. The owner had explicitly resumed remote
+progress before merge. This closes approval-outcome delivery, not durable
+evidence, publish/Artifact, or P5.2 phase acceptance.
+
 ## Remaining P5.2 work and non-claims
 
 The closed capability foundation is composed into desktop main, the Goose
@@ -471,22 +536,30 @@ adapter has a bounded `session/new` declaration and cleanup contract, the
 authenticated MCP transport, tool-call bridge, and prompt loop are delivered.
 The delivered desktop-main coding service calls that helper and owns its
 complete worktree/Worker cleanup order. Approval continuation and denial
-projection are proved on the current local branch, including artifact-gated real
-Goose coverage, but are not yet remotely delivered. Durable normalized
-Task/Session evidence, publish, and Artifact registration required by ADR-0024
-remain unproved. The current contained coding-session contract is not the
-retained-AionUI product journey. This slice also adds no renderer projection,
-AionUi journey, candidate, release, deployment, P5.3 work, CrewAI sidecar,
-Eigent runtime, or P6 behavior.
+projection are remotely delivered with artifact-gated real Goose coverage.
+Durable normalized Task/Session/Worker/Approval evidence is locally proved but
+not yet remotely delivered. Publish and Artifact registration required by
+ADR-0024 remain unproved. The current contained coding-session contract is not
+the retained-AionUI product journey. This slice also adds no renderer
+projection, AionUi journey, candidate, release, deployment, P5.3 work, CrewAI
+sidecar, Eigent runtime, or P6 behavior.
 
-P5.2 can be accepted only after the approval outcomes are remotely delivered
-and the remaining durable normalized evidence, publish, and Artifact boundaries
-are implemented or the accepted architecture is explicitly revised, followed
-by the complete local, review, exact-head CI, and merged-main gates.
+P5.2 can be accepted only after durable normalized evidence is remotely
+delivered and the remaining publish and Artifact boundaries are implemented or
+the accepted architecture is explicitly revised, followed by the complete
+local, review, exact-head CI, and merged-main gates.
 
 ## Rollback
 
-Rollback of the current approval-outcome slice removes the optional
+Rollback of the current durable-evidence slice removes the evidence coordinator,
+shared persistence mutation barrier, stable stream/correlation fields, invoker
+recorder callbacks, pending-approval cancellation, normalized prompt/failure/
+close projection, their two downstream source copies, and focused tests
+together. The delivered approval outcomes then remain fail closed at exact merge
+`7dfc4973021d68d5df0ded12fa218ecd42da9691` without durable normalized coding
+events.
+
+Rollback of the delivered approval-outcome slice removes the optional
 main-decision handler contract and forwarding, approval resolution/re-entry,
 denial projection, and focused plus real-runner outcome tests together. The
 delivered desktop-main lifecycle then retains its explicit

@@ -4,7 +4,7 @@ Last updated: 2026-08-04
 
 ## Current phase
 
-### P5.1 is accepted; P5.2 main-owned approval outcomes are the current slice
+### P5.1 is accepted; P5.2 durable normalized coding evidence is the current slice
 
 The containment foundation was developed from exact `origin/main`
 `071aa922c08dd9a139f0c11dee2aa0dadab02417` on branch
@@ -350,12 +350,50 @@ foundation, the 192-file downstream contract, and the
 materialized-native tree also passes TypeScript and its generated composition
 test 1 file/1 test.
 
-This evidence does not accept P5.2. Desktop-main composition is remotely
-delivered and approval outcomes are locally proved, but current-slice remote
-delivery, durable normalized Task/Session evidence, publish, and Artifact
-registration remain open. P5.3, P6, candidate, release, deployment, and user
-acceptance also remain unclaimed. Git delivery and CI evidence stay separate
-from phase acceptance. Detailed scope and rollback are recorded in
+Pull request 41 delivered those approval outcomes at exact head
+`917a95260d84f09aacf5038d92a5230d1781676d`, passed its single exact-head CI
+30870425378, squash merged as
+`7dfc4973021d68d5df0ded12fa218ecd42da9691`, and passed the single exact
+merged-main CI 30871703449. The merge was authorized after the owner resumed
+remote progress; it is not an accidental or bypassed merge.
+
+The durable normalized-evidence slice starts from that exact merge on branch
+`codex/p5-goose-durable-evidence`. Electron main derives stable SHA-256 attempt
+stream and correlation identifiers only from Actestra Workspace, Task, Session,
+and Worker identity, persists `task.started` before Goose opening, and records
+bounded assistant, tool, approval, failure, cancellation, and review-blocked
+events without promoting Goose-private identifiers or raw tool inputs. The same
+coordinator reconciles authoritative Task, Session, Worker, and Approval
+projections; prompt completion leaves the isolated worktree blocked for review,
+while close persists cancellation before Goose, grant, and worktree cleanup.
+Pending approvals are cancelled before terminal Task evidence, including
+cancelled prompts and approval-handler failures. Opening and prompt failures use
+stable sanitized codes, and committed-but-lost evidence acknowledgements replay
+without invoking Goose or a tool twice. General Work and coding reconciliation
+share one persistence mutation barrier so two main-owned graph writers cannot
+overwrite each other.
+
+The affected local fingerprint passes 2 focused files with 44 tests passed and
+2 admitted-artifact tests skipped, strict TypeScript, and zero-warning lint over
+the seven affected TypeScript/JavaScript files. The downstream overlay passes
+with 194 declared files, 4 R0 invariants, and 73 reviewed source copies. After a
+locked 3,177-package install, the materialized-native tree passes strict
+TypeScript and its generated composition test 1 file/1 test. The final-byte root
+gate passes formatting over 206 files, zero-warning lint over 198 files, strict
+TypeScript, the Electron SQLite probe, 68 passing and 1 skipped test files with
+613 passing and 3 skipped tests, deterministic smoke, the 91-source product
+boundary, the exact 1,766-file foundation, the downstream contract, and the
+59-main/3-preload/28-renderer-module production build. Git, PR, review, and CI
+evidence for this slice remain pending. It adds no schema, preload, renderer,
+route, frozen-foundation, credential, original-checkout, publish, or Artifact
+authority.
+
+This evidence does not accept P5.2. Approval outcomes are remotely delivered
+and durable normalized Task/Session evidence is locally proved, but current-
+slice remote delivery plus publish and Artifact registration remain open. P5.3,
+P6, candidate, release, deployment, and user acceptance also remain unclaimed.
+Git delivery and CI evidence stay separate from phase acceptance. Detailed
+scope and rollback are recorded in
 [P5.2 Isolated Coding Capability](product/P5_ISOLATED_CODING_CAPABILITY.md).
 
 P4's phase acceptance record reached pull request 25 at exact head
@@ -1970,7 +2008,8 @@ Review closure validation at
 | P5.2 authenticated MCP tool-call bridge           | Delivered on `main` through PR 37                                | Exact head `84b0550495717343b75ca2540cb7c191ab65b12a`; exact-head CI 30851778390; squash merge `d933546454e63a2d836e728f1b93980cb4a7c0ac`; merged-main CI 30853499159; bounded `tools/call` through the real Tool Gateway, close-race guard, 3 focused files/65 tests, and recorded 68-file/589-test root gate; CodeRabbit review limit and zero GitHub review threads are not line-level review evidence; no inference, prompt loop, publish/Artifact flow, or phase acceptance |
 | P5.2 authenticated inference/prompt loop          | Delivered on `main` through PR 39                                | Prompt exact head `cc773081ba448266951a3b2ac3654831022118fc`; exact-head CI 30859115162; squash merge `a6280dd38eacdbada9db159c4784110ec8e42770`; merged-main CI 30860137257 failed only the Goose job when one real-Git test crossed the implicit 5-second limit and was not rerun; bounded-deadline correction exact head `38cbbaaedbb8e5955b96a6d7148841180e751e35`; exact-head CI 30861770178; squash merge `7e8732e264febff42fb3d451011b3b8e48caaff5`; merged-main CI 30862710547 passes both jobs; no submitted review or inline thread; no desktop-main composition, approval outcome projection, durable normalized evidence, publish/Artifact flow, or phase acceptance |
 | P5.2 desktop-main Goose lifecycle                  | Delivered on `main` through PR 40                                 | Exact head `c35f8c37c14dedaa980dfbb539f16fc21379be8a`; exact-head CI 30865837496; squash merge `1909033977576d94f6983f9c911b8e0a866a59de`; merged-main CI 30866691199; service-owned worktree/grant/Gateway/invoker/Goose opening, prompt, close ordering, close-race rejection, failure aggregation, and cleanup retry; no submitted review or inline thread; no approval outcomes, durable normalized evidence, publish/Artifact flow, or phase acceptance in that delivery                                                                                                                                                                                                                                                                                                                  |
-| P5.2 main-owned approval outcomes                  | Complete local root and native type gates pass                    | Branch `codex/p5-goose-approval-outcomes` from exact `1909033977576d94f6983f9c911b8e0a866a59de`; persisted approve/deny outcomes, exact approval-snapshot binding, one-shot approved execution, denied no-execution projection, abort settlement, and explicit service forwarding; focused 18 passed/2 artifact-gated; root 68 passed/1 skipped files and 601 passed/3 skipped tests; materialized-native TypeScript and generated 1/1 test pass; Git/PR/review/CI, durable normalized evidence, publish/Artifact flow, and phase acceptance remain pending                                                                                                                                                                                                                                    |
+| P5.2 main-owned approval outcomes                  | Delivered on `main` through PR 41                                 | Exact head `917a95260d84f09aacf5038d92a5230d1781676d`; exact-head CI 30870425378; squash merge `7dfc4973021d68d5df0ded12fa218ecd42da9691`; merged-main CI 30871703449; persisted approve/deny outcomes, exact approval-snapshot binding, one-shot approved execution, denied no-execution projection, abort settlement, and explicit service forwarding; focused 18 passed/2 artifact-gated, recorded 68-file/601-test root gate, and materialized-native TypeScript plus generated 1/1 test pass; no durable normalized evidence, publish/Artifact flow, or phase acceptance in that delivery                                                                                                                                                                                                 |
+| P5.2 durable normalized coding evidence            | Complete local root and native gates pass                         | Branch `codex/p5-goose-durable-evidence` from exact `7dfc4973021d68d5df0ded12fa218ecd42da9691`; stable Actestra-owned stream/correlation identity; persist-before-open `task.started`; bounded assistant/tool/approval/failure/cancellation evidence; review-blocked projection; pending-approval cancellation; sanitized opening/prompt failure; response-loss-safe replay; shared General Work/coding mutation barrier; 2 focused files with 44 passed/2 artifact-gated skipped; 68-file/613-test final root gate; 194-file downstream contract; materialized-native TypeScript and generated 1/1 test pass; Git/PR/review/CI, publish/Artifact flow, and phase acceptance remain pending                                                                                                                           |
 | P6 orchestration boundary                          | Accepted architecture direction only                              | ADR-0015; CrewAI `1.15.8` at `e9caf1e1b89343bb833b5da6660faa91804a9dce` verified as the first supervised sidecar candidate; Eigent `v1.0.2` at `e478094a9ff433132b3cf1928e4143338ddaab20` retained as a reference; neither is imported, bundled, or implemented                                                                                                                                                                                                                                                                                                                                                                                                         |
 | Native AionUi source                               | Exact local desktop snapshot                                      | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Native preservation contract                       | Local pass                                                        | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
@@ -2101,8 +2140,12 @@ The ordered implementation index and P3 non-claims are in
    `38cbbaaedbb8e5955b96a6d7148841180e751e35`, exact-head CI 30861770178,
    merge `7e8732e264febff42fb3d451011b3b8e48caaff5`, and passing merged-main CI 30862710547. Preserve desktop-main lifecycle exact head
    `c35f8c37c14dedaa980dfbb539f16fc21379be8a`, exact-head CI 30865837496,
-   merge `1909033977576d94f6983f9c911b8e0a866a59de`, and merged-main CI 30866691199. Deliver the current approval outcomes, then continue into
-   durable normalized evidence and publish/Artifact slices. Goose may not
+   merge `1909033977576d94f6983f9c911b8e0a866a59de`, and merged-main CI
+   30866691199. Preserve approval-outcome exact head
+   `917a95260d84f09aacf5038d92a5230d1781676d`, exact-head CI 30870425378,
+   merge `7dfc4973021d68d5df0ded12fa218ecd42da9691`, and merged-main CI
+   30871703449. Deliver the current durable normalized evidence with the same
+   bounded Actions budget, then continue into publish/Artifact. Goose may not
    receive builtins, the original checkout, raw credentials, or a second UI.
 8. Keep P5.3 and CrewAI-assisted Team P6 ordered after an accepted P5.2 gate.
 
@@ -2209,10 +2252,11 @@ The ordered implementation index and P3 non-claims are in
   delivered through exact merge `7e8732e264febff42fb3d451011b3b8e48caaff5`
   and merged-main CI 30862710547. The desktop-main Goose lifecycle is delivered
   through exact merge `1909033977576d94f6983f9c911b8e0a866a59de` and
-  merged-main CI 30866691199. Approval continuation and denial projection pass
-  the current focused local evidence but are not yet pushed. No durable
-  normalized evidence, publish/Artifact journey, or accepted P5.2 gate is
-  claimed.
+  merged-main CI 30866691199. Approval continuation and denial projection are
+  delivered through exact merge `7dfc4973021d68d5df0ded12fa218ecd42da9691`
+  and merged-main CI 30871703449. Durable normalized attempt evidence passes the
+  current focused local gate but is not yet pushed. No publish/Artifact journey
+  or accepted P5.2 gate is claimed.
 - F0 alone proves only that the original AionUi application can be preserved
   and run. F1, F2, F3.1, F3.2, and merged F3.3 add their separately recorded
   identity, shadow, narrow decision-authority, fixed-delivery audit, and

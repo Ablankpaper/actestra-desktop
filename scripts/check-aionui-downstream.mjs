@@ -225,6 +225,7 @@ function main() {
   for (const requiredCodingSourceCopy of [
     "packages/desktop/src/actestra/main/workers/gooseAcpHandshake.ts",
     "packages/desktop/src/actestra/main/workers/gooseCodingToolInvoker.ts",
+    "packages/desktop/src/actestra/main/workers/gooseCodingEvidenceCoordinator.ts",
     "packages/desktop/src/actestra/main/workers/gooseLoopbackModelServer.ts",
     "packages/desktop/src/actestra/main/workers/gooseMcpCapabilityServer.ts",
     "packages/desktop/src/actestra/main/workers/gooseMcpSessionComposition.ts",

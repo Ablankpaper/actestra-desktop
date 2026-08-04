@@ -319,6 +319,10 @@
       "destination": "packages/desktop/src/actestra/main/persistence/persistenceUtilityClient.ts"
     },
     {
+      "source": "apps/desktop/src/main/persistence/persistenceMutationBarrier.ts",
+      "destination": "packages/desktop/src/actestra/main/persistence/persistenceMutationBarrier.ts"
+    },
+    {
       "source": "apps/desktop/src/main/workers/agentAdapterSupervisor.ts",
       "destination": "packages/desktop/src/actestra/main/workers/agentAdapterSupervisor.ts"
     },
@@ -353,6 +357,10 @@
     {
       "source": "apps/desktop/src/main/workers/gooseCodingToolInvoker.ts",
       "destination": "packages/desktop/src/actestra/main/workers/gooseCodingToolInvoker.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/workers/gooseCodingEvidenceCoordinator.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/gooseCodingEvidenceCoordinator.ts"
     },
     {
       "source": "apps/desktop/src/main/workers/gooseLoopbackModelServer.ts",
@@ -545,6 +553,7 @@
     "packages/desktop/src/actestra/main/compatibility/aionuiScheduleService.ts",
     "packages/desktop/src/actestra/main/persistence/electronPersistenceUtility.ts",
     "packages/desktop/src/actestra/main/persistence/persistenceUtilityClient.ts",
+    "packages/desktop/src/actestra/main/persistence/persistenceMutationBarrier.ts",
     "packages/desktop/src/actestra/main/workers/agentAdapterSupervisor.ts",
     "packages/desktop/src/actestra/main/workers/agentAttemptEvidenceCoordinator.ts",
     "packages/desktop/src/actestra/main/workers/electronGeneralWorker.ts",
@@ -554,6 +563,7 @@
     "packages/desktop/src/actestra/main/workers/generalWorkCoordinator.ts",
     "packages/desktop/src/actestra/main/workers/gooseAcpHandshake.ts",
     "packages/desktop/src/actestra/main/workers/gooseCodingToolInvoker.ts",
+    "packages/desktop/src/actestra/main/workers/gooseCodingEvidenceCoordinator.ts",
     "packages/desktop/src/actestra/main/workers/gooseLoopbackModelServer.ts",
     "packages/desktop/src/actestra/main/workers/gooseMcpCapabilityServer.ts",
     "packages/desktop/src/actestra/main/workers/gooseMcpSessionComposition.ts",

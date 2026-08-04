@@ -227,9 +227,34 @@ is absent; the existing Goose CI gate selects both. The single final-production/
 test-byte root gate passes 68 test files and 601 tests with 1 file and 3 tests
 skipped, the 89-source boundary, frozen/downstream contracts, strict types,
 smoke, and the production build; materialized-native TypeScript and its generated
-composition test also pass. Current-slice Git/PR/CI, durable normalized evidence,
-publish/Artifact flow, and P5.2 phase acceptance remain open. P6 CrewAI/Team
-runtime work has not started.
+composition test also pass. Pull request 41 delivered those approval outcomes at
+exact head `917a95260d84f09aacf5038d92a5230d1781676d`, exact-head CI
+30870425378, squash merge `7dfc4973021d68d5df0ded12fa218ecd42da9691`,
+and passing merged-main CI 30871703449.
+
+The durable normalized-evidence slice starts from that exact merge. It derives
+only Actestra-owned stream/correlation identity, persists `task.started` before
+Goose opens, normalizes bounded assistant/tool/approval/failure/cancellation
+events, reconciles Task/Session/Worker/Approval projections, and leaves a
+successful prompt blocked with its isolated worktree retained for review. Close
+persists cancellation before Worker/grant/worktree release, and pending
+approvals become cancelled before any terminal Task event. Sanitized opening and
+prompt failures, cancelled prompts, approval-handler failure, and committed-
+response-loss retries are covered without a second Goose or tool invocation.
+General Work and coding graph writes share one mutation barrier. The affected
+local gate passes 2 files with 44 tests passed and 2 artifact-gated skipped,
+strict TypeScript, and affected zero-warning lint. The overlay passes with 194
+declared files, 4 R0 invariants, and 73 source copies without a renderer or
+schema change. The installed materialized-native tree passes strict TypeScript
+and its generated 1-file/1-test composition proof. The final-byte root gate
+passes formatting over 206 files, zero-warning lint over 198 files, strict
+TypeScript, the Electron SQLite probe, 68 passing and 1 skipped test files with
+613 passing and 3 skipped tests, deterministic smoke, the 91-source product
+boundary, frozen/downstream contracts, and the
+59-main/3-preload/28-renderer-module production build.
+
+Current-slice Git/PR/CI, publish/Artifact flow, and P5.2 phase acceptance remain
+open. P6 CrewAI/Team runtime work has not started.
 
 ## P0 — Project Foundation
 
