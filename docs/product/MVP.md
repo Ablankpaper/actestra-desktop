@@ -76,6 +76,12 @@ identities, then persists the canonical admitted graph in its own schema-14
 authority before returning it for any later scheduling. This boundary does not
 itself add a CrewAI process or make an admitted candidate executable.
 
+Executable Team state remains separate from that admitted plan. Schema 15 owns
+the Team definition, current run snapshot, and append-only revisions used for
+scheduling, controls, recovery, and result references. The renderer receives a
+bounded AionUI-native projection of that authority; neither the UI nor a
+planner sidecar may write or reinterpret canonical Team state directly.
+
 ## MVP capabilities
 
 - The preserved AionUi desktop frame, Guide, navigation, conversation history,

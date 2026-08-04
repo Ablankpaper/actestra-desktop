@@ -97,6 +97,12 @@ Exact evaluation pins do not change their non-imported status.
 | CrewAI | `1.15.8` (`e9caf1e1b89343bb833b5da6660faa91804a9dce`) | MIT | First supervised P6 planner-sidecar candidate; metadata inspected only, with no source or package imported | <https://github.com/crewAIInc/crewAI> |
 | Eigent | `v1.0.2` (`e478094a9ff433132b3cf1928e4143338ddaab20`) | Root Apache-2.0; root `package.json` says MIT | Team product and acceptance reference; metadata inspected only, with no source or runtime imported | <https://github.com/eigent-ai/eigent> |
 
+The local P6 planner protocol, generic supervised-process fixture, Team
+orchestrator, and downstream patch 0014 are Actestra-owned implementation.
+They do not import, vendor, install, bundle, or distribute CrewAI or Eigent
+source, packages, assets, or application UI. Their presence therefore does not
+change the evaluation-only notice status above.
+
 This file must be updated in the same change that imports, vendors, bundles,
 upgrades, or distributes third-party code or assets. A reference link alone
 does not satisfy license or notice obligations.

@@ -15,7 +15,7 @@ ADR-0010.
 | AionCore | `iOfficeAI/AionCore` | `v0.1.52` | `76f5554286ba0b6d33fb74d5c2bb2b3b0b83100d` | Initial native compatibility runtime/general worker | P1 locally built; ignored local bundle used for F0 launch; not committed or approved for distribution |
 | Croner | `Hexagon/croner` | `9.1.0` | `364a3074c2642b903eaf26e96f4bc197e3eaa6bc` | Main-owned schedule validation and occurrence calculation | Exact npm and downstream-native pin; MIT notice retained and package-verified |
 | Goose | `aaif-goose/goose` | `v1.45.0` source/ACP target | `4dc0420f5704a92806c6628c8f0a3497d7a88759` | Minimal Actestra-built stdio ACP coding Worker under ADR-0024 | P5.0 accepted; P5.1 exact runner, lock, artifact admission, no-network initialize, and cleanup implemented locally; upstream binary rejected |
-| CrewAI | `crewAIInc/crewAI` | `1.15.8` evaluation snapshot | `e9caf1e1b89343bb833b5da6660faa91804a9dce` | First supervised planner-sidecar candidate | Metadata and license verified; not imported, installed, bundled, or selected as the production P6 pin |
+| CrewAI | `crewAIInc/crewAI` | `1.15.8` evaluation snapshot | `e9caf1e1b89343bb833b5da6660faa91804a9dce` | First supervised planner-sidecar candidate | Metadata and license verified; local generic supervisor is Actestra-owned test infrastructure, not CrewAI; no source/package is imported, installed, bundled, or selected as the production P6 pin |
 | Eigent | `eigent-ai/eigent` | `v1.0.2` reference snapshot | `e478094a9ff433132b3cf1928e4143338ddaab20` | Team product and acceptance reference | Metadata inspected; not imported, installed, bundled, or selected as a runtime |
 
 ## CI action pins
@@ -166,6 +166,9 @@ clarified before Actestra distributes AionCore-derived code or binaries.
   [ADR-0015](../architecture/decisions/0015-crewai-supervised-orchestration-sidecar.md).
 - Import status: none. No CrewAI package, source, lockfile, Python runtime, or
   binary is committed or distributed by Actestra.
+- Local P6 status: Actestra has a closed planner protocol and generic supervised
+  process boundary with a deterministic fixture. That code does not execute,
+  wrap, vendor, or prove CrewAI and does not change this upstream import status.
 - Production selection remains blocked on a fresh exact-version review,
   minimal dependency lock, telemetry and network proof, SBOM, `pip-audit`,
   protocol and recovery tests, and macOS, Windows, and Linux packaging

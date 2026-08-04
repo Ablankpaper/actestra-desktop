@@ -599,9 +599,15 @@ Artifact re-read, reference-only aggregation, denial, and whole-Team
 cancellation. The local Task 6 layer now adds the fixed Team request/event
 bridge, trusted-current-main-frame IPC, schema-15 Team CRUD and per-Team run
 listing, plus a main-owned provider that composes real plan admission and
-TeamOrchestrator execution. The downstream preload, route, and visible
-AionUI-native Team UI remain the next required layer, and no real CrewAI
-runtime is admitted or packaged.
+TeamOrchestrator execution. Local Tasks 7 and 8 add downstream patch 0014, the
+fixed preload provider, AionUI-native creation/list and `/team/:id` group-chat
+surfaces, member/role and General+Goose configuration, workspace/task input,
+messages, explainable plan/node/Worker/dependency/blocked state, controls,
+Artifacts, aggregation, and persistent activity recovery. These final local UI
+bytes are committed at `94e6699b4fc352084ebfa53539b42e2496207ad5` and remain
+unpushed. The final root gate, packaged target-app acceptance, push,
+exact-head CI, review/merge, merged-main CI, and real CrewAI admission remain
+open; no CrewAI runtime is imported or packaged and P6 is not complete.
 
 ### Deliverables
 

@@ -77,6 +77,14 @@ releases begin.
 - ADR-0015 and the P6 orchestration boundary: CrewAI is the first supervised
   planner-sidecar candidate, Actestra remains the authoritative Team state
   machine, and Eigent remains the Team interaction and acceptance reference.
+- Local P6 Team orchestration through separate schema-14 admitted plans and
+  schema-15 Team definitions/current heads/append-only revisions, an
+  Actestra-owned scheduler and generic supervised planner boundary, real
+  General+Goose routing, protected approvals, deterministic recovery, and
+  downstream patch 0014's AionUI-native Team/group-chat creation, state,
+  controls, Artifact, and aggregation surfaces. CrewAI and Eigent remain
+  unimported evaluation/reference inputs, and the final P6 acceptance gates
+  remain open.
 - ADR-0016 and the GW-P4.2 workload-persistence boundary: a separately built
   utility owns schemas 1 through 6, existing P3/F2/F3 operations, durable
   workspace grants, and immutable bounded UTF-8 content references.
