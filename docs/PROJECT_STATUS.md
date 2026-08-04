@@ -4,7 +4,7 @@ Last updated: 2026-08-04
 
 ## Current phase
 
-### P5.2 is accepted; P5.3 preserved AionUI coding journey is the current slice
+### P5.3 is accepted; bounded P6 team-plan admission is the current slice
 
 The containment foundation was developed from exact `origin/main`
 `071aa922c08dd9a139f0c11dee2aa0dadab02417` on branch
@@ -469,9 +469,44 @@ test files with 642 passing and 5 skipped tests, deterministic smoke, the
 98-source product boundary, the exact 1,766-file foundation with 27 routes and
 41 bridge domains, the 217-file downstream contract with 4 R0 invariants and
 80 reviewed source copies, and the
-61-main/3-preload/28-renderer-module production build. P5.3 final local gates
-are closed. Git delivery, review, exact-head CI, merge, merged-main CI,
-candidate, release, deployment, and user acceptance remain unclaimed.
+61-main/3-preload/28-renderer-module production build. Pull request 44 reached
+exact head `15a8e29b44a6684313f29a694f0d0615de95cf36`; exact-head CI
+30899489690 passed macOS arm64 foundation job 91960187584 and Goose runner
+admission job 91960187604. CodeRabbit supplied only its Free summary and
+walkthrough; GitHub records no submitted review or inline thread. The branch
+squash merged as `ee8425e39e201078cd64fe3af38355279ecf56de`, and exact
+merged-main CI 30900884248 passed Goose runner admission job 91964656475 and
+macOS arm64 foundation job 91964656542. The exact-head and merged-main trees
+both resolve to `e301a0acede51671b404daf11248788cdaba34d9`. P5.3 is accepted
+on `main`; candidate, release, deployment, and user acceptance remain
+unclaimed.
+
+The first P6 implementation slice starts from that exact merge on branch
+`codex/p6-team-plan-admission`. It adds an Actestra Core-owned protocol version
+1 request/candidate boundary plus a desktop-main planner port and admission
+service. Requests contain only a bounded goal, unique declared General/coding
+capabilities, classified context references, an Actestra correlation ID, and
+fixed node, depth, concurrency, and attempt budgets. Candidate records reject
+unknown authority fields, unsupported versions or capabilities, cycles,
+missing or duplicate dependencies, unbounded text, invalid UTF-8, excessive
+depth, width, nodes, or attempts, and the absence of General, coding, human
+feedback, or a parallel branch. Accepted candidates receive deterministic
+Actestra `TeamPlan`, node, and Task identities in a deeply frozen stable
+topological result.
+
+Desktop main normalizes and freezes the closed request before invoking the
+planner port, refuses pre-call and in-flight cancellation, sanitizes planner
+failures, and preserves Core admission error codes. The focused local set
+passes 2 files and 30 tests. The single final-byte root `bun run check` passes
+formatting over 225 files, zero-warning lint over 217 files, strict TypeScript,
+the Electron SQLite probe, 76 passing and 2 skipped test files with 672 passing
+and 5 skipped tests, deterministic smoke, the 100-source product boundary, the
+exact 1,766-file foundation with 27 routes and 41 bridge domains, the
+217-file downstream contract with 4 R0 invariants and 80 reviewed source
+copies, and the 62-main/3-preload/28-renderer-module production build. This
+slice does not import or run CrewAI/Python and adds no persistence, scheduler,
+Worker launch, renderer, bridge, route, Team UI, or packaged runtime dependency.
+It is not a P6 phase-completion claim.
 Detailed scope and rollback are recorded in
 [P5.2 Isolated Coding Capability](product/P5_ISOLATED_CODING_CAPABILITY.md).
 
@@ -2090,8 +2125,8 @@ Review closure validation at
 | P5.2 main-owned approval outcomes                  | Delivered on `main` through PR 41                                 | Exact head `917a95260d84f09aacf5038d92a5230d1781676d`; exact-head CI 30870425378; squash merge `7dfc4973021d68d5df0ded12fa218ecd42da9691`; merged-main CI 30871703449; persisted approve/deny outcomes, exact approval-snapshot binding, one-shot approved execution, denied no-execution projection, abort settlement, and explicit service forwarding; focused 18 passed/2 artifact-gated, recorded 68-file/601-test root gate, and materialized-native TypeScript plus generated 1/1 test pass; no durable normalized evidence, publish/Artifact flow, or phase acceptance in that delivery                                                                                                                                                                                                 |
 | P5.2 durable normalized coding evidence            | Delivered on `main` through PR 42                                 | Exact head `a20882abeb6caac3b4f230fde42a7e06965a0730`; exact-head CI 30876755457; squash merge `e064dc88e717cef093c866cdbc2692d23ed7dd03`; merged-main CI 30877711241 with Goose job 91892412815 and macOS job 91892412830; stable Actestra-owned stream/correlation identity, persist-before-open start, bounded evidence, review-blocked projection, response-loss-safe replay, and shared mutation barrier; Free CodeRabbit summary is not line-level review evidence; no publish/Artifact flow or phase acceptance in that delivery                                                                                                                                                                                                                                                        |
 | P5.2 publish and Artifact registration             | Accepted on `main` through PR 43                                  | Exact head `305a29d9b2b514865983ae9d8a23f877566bb7a5`; exact-head CI 30883055147; squash merge `9048fe2cc23819f596d8721adb8c544dcd0b786f`; merged-main CI 30884138218; main-only seventh publish capability remains outside Goose's six MCP tools; locked exact patch capture, metadata-only one-shot approval, drift denial, durable Artifact completion, ordered cleanup, 5 focused files/123 passed/2 artifact-gated skipped, recorded 68-file/618-test root gate, and 196-file downstream contract; rate-limited CodeRabbit status is not line-level review evidence; P5.2 accepted, not released or user-accepted                                                                                                                                                                      |
-| P5.3 preserved AionUI coding journey               | Final local gate passed; Git and remote gates open                 | Branch `codex/p5-aionui-coding-journey` from exact `9048fe2cc23819f596d8721adb8c544dcd0b786f`; R1 patch 0013; fixed main-owned Goose readiness, five main-frame intents, context-isolated preload, retained non-Team ACP selector, native permission/publish projection, and preserved native/Team paths; admitted-artifact test 1 file/2 tests passes real file-write and focused-test approvals, final assistant result, exact publish approval, available Artifact, source-checkout preservation, and independent in-flight prompt cancellation/cleanup; final root gate passes 74/2 files, 642/5 tests, the 98-source boundary, 217/4/80 downstream checks, and the 61/3/28 build; Git, review, exact-head CI, merge, and merged-main CI remain open                                                                                                  |
-| P6 orchestration boundary                          | Accepted architecture direction only                              | ADR-0015; CrewAI `1.15.8` at `e9caf1e1b89343bb833b5da6660faa91804a9dce` verified as the first supervised sidecar candidate; Eigent `v1.0.2` at `e478094a9ff433132b3cf1928e4143338ddaab20` retained as a reference; neither is imported, bundled, or implemented                                                                                                                                                                                                                                                                                                                                                                                                         |
+| P5.3 preserved AionUI coding journey               | Accepted on `main` through PR 44                                  | Exact head `15a8e29b44a6684313f29a694f0d0615de95cf36`; exact-head CI 30899489690 passes; squash merge `ee8425e39e201078cd64fe3af38355279ecf56de`; merged-main CI 30900884248 passes; exact-head and merged-main tree `e301a0acede51671b404daf11248788cdaba34d9`; R1 patch 0013 preserves native and Team paths while providing the fixed Goose journey, real approval/publish/cancel evidence, 74/2 files and 642/5 tests in the final root gate, 217/4/80 downstream checks, and the 61/3/28 build; Free CodeRabbit summary is not line-level review evidence; no candidate, release, deployment, or user-acceptance claim                                                                                                                                                 |
+| P6 bounded team-plan admission                     | Current local implementation slice                               | Branch `codex/p6-team-plan-admission` from exact `ee8425e39e201078cd64fe3af38355279ecf56de`; Core-owned protocol version 1 closes request/candidate fields, validates a 3-5-node General/coding/human-feedback graph and fixed budgets, maps deterministic Actestra plan/node/Task IDs, and deeply freezes the result; desktop main owns the cancellable, sanitized planner port/service; 2 focused files/30 tests and the recorded 76/2-file, 672/5-test root gate pass with the 100-source boundary, 217/4/80 downstream contract, and 62/3/28 build; CrewAI/Python, persistence, scheduling, Worker launch, bridge, renderer, Team UI, packaging, and P6 phase acceptance remain absent                                                                                                                                  |
 | Native AionUi source                               | Exact local desktop snapshot                                      | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Native preservation contract                       | Local pass                                                        | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | Native AionUi build and launch                     | Local pass                                                        | Frozen install, production build, isolated native Electron launch, and actual Guide screenshot pass                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -2230,11 +2265,16 @@ The ordered implementation index and P3 non-claims are in
    `9048fe2cc23819f596d8721adb8c544dcd0b786f`, and merged-main CI
    30884138218. Goose may not receive builtins, the original checkout, raw
    credentials, or a second UI.
-8. Complete P5.3 through the retained AionUI agent settings, selector, repair,
-   ACP conversation, permission, terminal, diff, test, and Artifact surfaces.
-   Require the artifact-gated real-Goose publish and cancellation journeys,
-   native compatibility proof, exact-head and merged-main CI, and source
-   checkout preservation before beginning CrewAI-assisted Team P6.
+8. Preserve P5.3 exact head `15a8e29b44a6684313f29a694f0d0615de95cf36`,
+   exact-head CI 30899489690, squash merge
+   `ee8425e39e201078cd64fe3af38355279ecf56de`, and merged-main CI
+   30900884248 together with the retained AionUI journey, real-Goose publish
+   and cancellation proof, native compatibility, and source-checkout
+   preservation.
+9. Continue P6 from the closed team-plan admission protocol. Persist an
+   accepted Actestra graph before scheduling, then add supervised sidecar
+   lifecycle and recovery in bounded vertical slices. Do not give a planner
+   process, worktree, credential, approval, tool, or durable-state authority.
 
 ## Open decisions
 
@@ -2247,8 +2287,10 @@ The ordered implementation index and P3 non-claims are in
 - Code-signing, notarization, update, and distribution accounts.
 - AionCore license clarification and accepted binary provenance before
   distribution.
-- CrewAI production version and rollback pin, minimal dependency lock, sidecar
-  protocol, vulnerability evidence, and cross-platform packaging strategy.
+- CrewAI production version and rollback pin, minimal dependency lock,
+  executable sidecar transport, vulnerability evidence, and cross-platform
+  packaging strategy. The Core plan-admission protocol does not settle those
+  runtime choices.
 - Cloud identity or sync scope, which remains outside the initial MVP unless
   promoted by a new product decision.
 
@@ -2344,10 +2386,11 @@ The ordered implementation index and P3 non-claims are in
   and merged-main CI 30871703449. Durable normalized evidence is delivered
   through PR 42. Publish/Artifact registration and P5.2 acceptance are closed
   through PR 43, squash merge `9048fe2cc23819f596d8721adb8c544dcd0b786f`,
-  and merged-main CI 30884138218. P5.3 now has a local retained-AionUI provider,
-  selector, permission, evidence, publish, and cancellation journey plus real
-  admitted-Goose proof and a passing final root gate; its Git/CI/merge gate is
-  not yet closed.
+  and merged-main CI 30884138218. P5.3 is accepted through PR 44, squash merge
+  `ee8425e39e201078cd64fe3af38355279ecf56de`, and merged-main CI
+  30900884248. The current P6 local slice proves only closed plan-candidate
+  admission and a main-owned planner port; it does not prove persistence,
+  scheduling, sidecar supervision, Worker execution, Team UI, or recovery.
 - F0 alone proves only that the original AionUi application can be preserved
   and run. F1, F2, F3.1, F3.2, and merged F3.3 add their separately recorded
   identity, shadow, narrow decision-authority, fixed-delivery audit, and

@@ -280,8 +280,7 @@ merged-main CI 30884138218. Both CI layers passed Goose runner admission and
 macOS arm64 foundation. CodeRabbit was rate-limited before review and left no
 submitted review or inline comment. P5.2 is accepted on that evidence.
 
-P5.3 is the current ordered slice on branch
-`codex/p5-aionui-coding-journey` from exact
+P5.3 was developed on branch `codex/p5-aionui-coding-journey` from exact
 `9048fe2cc23819f596d8721adb8c544dcd0b786f`. R1 downstream patch 0013 keeps
 AionUI as the only product UI while adding one fixed main-owned Goose readiness
 provider, retained Agent Settings/Repair states, five closed main-frame coding
@@ -301,9 +300,24 @@ source checkout clean and unchanged. The downstream contract passes
 and 3 files/8 tests pass. On the unchanged final production/test fingerprint,
 one complete root gate passes 74/2 test files, 642/5 tests, the 98-source
 boundary, exact 1,766-file/27-route/41-bridge foundation, the 217/4/80
-downstream contract, and the 61/3/28 build. P5.3 final local gates are closed;
-Git, review, exact-head CI, merge, and merged-main CI remain open. P6
-CrewAI/Team runtime work has not started.
+downstream contract, and the 61/3/28 build. Pull request 44 reached exact head
+`15a8e29b44a6684313f29a694f0d0615de95cf36`, passed exact-head CI
+30899489690, squash merged as `ee8425e39e201078cd64fe3af38355279ecf56de`,
+and passed exact merged-main CI 30900884248. P5.3 is accepted on that evidence.
+
+P6 is now the ordered phase. Its first local slice starts from that exact merge
+on branch `codex/p6-team-plan-admission`. Actestra Core closes and validates a
+versioned 3-5-node plan-candidate protocol, fixed depth/concurrency/attempt
+budgets, declared General/coding capabilities, classified context references,
+human feedback, and at least one parallel branch. It maps admitted candidates
+to deterministic Actestra plan, node, and Task identities. Desktop main owns a
+cancellable planner port that sends only the normalized, deeply frozen request,
+sanitizes planner failures, and returns only Core-admitted plans. Two focused
+files pass 30 tests. The single final-byte root gate passes 76/2 test files,
+672/5 tests, the 100-source product boundary, exact foundation and 217/4/80
+downstream contracts, and the 62/3/28 build. No CrewAI/Python runtime,
+persistence, scheduler, Worker launch, bridge, renderer, Team UI, or P6 phase
+acceptance is claimed.
 
 ## P0 — Project Foundation
 
@@ -557,6 +571,10 @@ slice previously described as P4.3/F3.1.
   the broad upstream CLI cannot be substituted silently.
 
 ## P6 — Multi-Agent Team Orchestration
+
+Current progress is limited to the closed plan-candidate admission and
+desktop-main planner-port boundary described above. The accepted plan is not
+yet persisted or schedulable, and no planner sidecar process exists.
 
 ### Deliverables
 
