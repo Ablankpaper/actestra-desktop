@@ -2,12 +2,13 @@ import {
   admitTeamPlanCandidate,
   normalizeTeamPlannerRequest,
   type AdmittedTeamPlan,
+  type TeamPlanCandidate,
   type TeamPlanPersistencePort,
   type TeamPlannerRequest,
 } from "../../core";
 
 export interface TeamPlannerPort {
-  propose(request: TeamPlannerRequest, signal: AbortSignal): Promise<unknown>;
+  propose(request: TeamPlannerRequest, signal: AbortSignal): Promise<TeamPlanCandidate>;
 }
 
 export type TeamPlanAdmissionServiceErrorCode = "planner-failed" | "cancelled";
@@ -50,7 +51,7 @@ export class TeamPlanAdmissionService {
       throw cancelledError();
     }
 
-    let candidate: unknown;
+    let candidate: TeamPlanCandidate;
     try {
       candidate = await this.#planner.propose(request, plannerSignal);
     } catch {

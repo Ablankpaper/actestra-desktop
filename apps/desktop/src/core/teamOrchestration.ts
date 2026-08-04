@@ -530,6 +530,10 @@ function parseCandidate(value: unknown): TeamPlanCandidate {
   });
 }
 
+export function normalizeTeamPlanCandidate(value: unknown): TeamPlanCandidate {
+  return parseCandidate(value);
+}
+
 function topologicalNodes(
   nodes: readonly TeamPlanCandidateNode[],
 ): readonly TeamPlanCandidateNode[] {

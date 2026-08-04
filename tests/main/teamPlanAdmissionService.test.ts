@@ -2,7 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
-import type { AdmittedTeamPlan, PersistAdmittedTeamPlanResult } from "../../apps/desktop/src/core";
+import {
+  normalizeTeamPlanCandidate,
+  type AdmittedTeamPlan,
+  type PersistAdmittedTeamPlanResult,
+  type TeamPlanCandidate,
+} from "../../apps/desktop/src/core";
 import { TeamPlanAdmissionService } from "../../apps/desktop/src/main/orchestration/teamPlanAdmissionService";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -64,9 +69,10 @@ const CANDIDATE = {
     },
   ],
 } as const;
+const NORMALIZED_CANDIDATE = normalizeTeamPlanCandidate(CANDIDATE);
 
 type PlannerPort = {
-  propose(request: unknown, signal: AbortSignal): Promise<unknown>;
+  propose(request: unknown, signal: AbortSignal): Promise<TeamPlanCandidate>;
 };
 
 type PersistencePort = {
@@ -111,7 +117,7 @@ describe("TeamPlanAdmissionService", () => {
         expect(Object.isFrozen(record.contextReferences)).toBe(true);
         expect(Object.isFrozen(record.limits)).toBe(true);
         expect(signal.aborted).toBe(false);
-        return CANDIDATE;
+        return NORMALIZED_CANDIDATE;
       }),
     };
     const plan = await createService(planner).propose(REQUEST);
@@ -137,9 +143,10 @@ describe("TeamPlanAdmissionService", () => {
         return { status: "stored" as const, plan };
       }),
     };
-    const proposal = createService({ propose: vi.fn(async () => CANDIDATE) }, persistence).propose(
-      REQUEST,
-    );
+    const proposal = createService(
+      { propose: vi.fn(async () => NORMALIZED_CANDIDATE) },
+      persistence,
+    ).propose(REQUEST);
 
     await vi.waitFor(() => {
       expect(persistence.persistAdmittedTeamPlan).toHaveBeenCalledTimes(1);
@@ -159,7 +166,7 @@ describe("TeamPlanAdmissionService", () => {
   });
 
   it("rejects an expanded request before the planner receives it", async () => {
-    const planner = { propose: vi.fn(async () => CANDIDATE) };
+    const planner = { propose: vi.fn(async () => NORMALIZED_CANDIDATE) };
     await expect(
       createService(planner).propose({ ...REQUEST, credential: "must-not-cross" }),
     ).rejects.toMatchObject({ name: "TeamPlanAdmissionError", code: "invalid-request" });
@@ -190,11 +197,11 @@ describe("TeamPlanAdmissionService", () => {
   });
 
   it("rejects a candidate returned after cancellation", async () => {
-    let resolveCandidate: ((candidate: unknown) => void) | undefined;
+    let resolveCandidate: ((candidate: TeamPlanCandidate) => void) | undefined;
     const planner = {
       propose: vi.fn(
         async () =>
-          new Promise<unknown>((resolve) => {
+          new Promise<TeamPlanCandidate>((resolve) => {
             resolveCandidate = resolve;
           }),
       ),
@@ -203,7 +210,7 @@ describe("TeamPlanAdmissionService", () => {
     const proposal = createService(planner).propose(REQUEST, controller.signal);
 
     controller.abort();
-    resolveCandidate?.(CANDIDATE);
+    resolveCandidate?.(NORMALIZED_CANDIDATE);
 
     await expect(proposal).rejects.toMatchObject({
       name: "TeamPlanAdmissionServiceError",
@@ -213,7 +220,13 @@ describe("TeamPlanAdmissionService", () => {
 
   it("preserves fixed Core admission failures returned by the planner boundary", async () => {
     const planner = {
-      propose: vi.fn(async () => ({ ...CANDIDATE, correlationId: "candidate-substitution" })),
+      propose: vi.fn(
+        async () =>
+          ({
+            ...NORMALIZED_CANDIDATE,
+            correlationId: "candidate-substitution",
+          }) as unknown as TeamPlanCandidate,
+      ),
     };
 
     await expect(createService(planner).propose(REQUEST)).rejects.toMatchObject({

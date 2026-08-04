@@ -590,8 +590,10 @@ slice previously described as P4.3/F3.1.
 ## P6 — Multi-Agent Team Orchestration
 
 Current progress includes the closed plan-candidate admission, desktop-main
-planner port, and schema-14 admitted-plan durability barrier described above.
-The accepted plan is not yet schedulable, and no planner sidecar process exists.
+planner port, schema-14 admitted-plan durability barrier, schema-15 Team run
+authority, and a local unpushed generic planner-sidecar protocol/supervisor.
+The accepted plan is not yet schedulable, and no real CrewAI runtime is admitted
+or packaged.
 
 ### Deliverables
 
