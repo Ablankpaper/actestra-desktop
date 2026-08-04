@@ -49,6 +49,7 @@ import {
   type WorkerState,
 } from "../../core";
 import type { ScopedNativeToolPlatform } from "../privileged/scopedNativeToolPlatform";
+import { withPersistenceMutationBarrier } from "../persistence/persistenceMutationBarrier";
 import { AgentAdapterSupervisor, type AgentAttemptSnapshot } from "./agentAdapterSupervisor";
 import { createAgentAttemptEvidence } from "./agentAttemptEvidenceCoordinator";
 import {
@@ -89,35 +90,10 @@ export interface GeneralWorkCoordinatorConfig {
   readonly unreplacedCrashDisposition?: "blocked" | "failed";
 }
 
-const persistenceReleaseBarriers = new WeakMap<ActestraPersistencePort, Promise<void>>();
-const ignorePriorReleaseFailure = (): void => undefined;
-
 function createsTaskOutputArtifact(tool: ReturnType<typeof toolId>): boolean {
   return (
     tool === TASK_OUTPUT_WRITE_TEXT_TOOL_ID || tool === TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID
   );
-}
-
-async function withPersistenceReleaseBarrier<Result>(
-  persistence: ActestraPersistencePort,
-  operation: () => Promise<Result>,
-): Promise<Result> {
-  const prior = persistenceReleaseBarriers.get(persistence) ?? Promise.resolve();
-  let release!: () => void;
-  const slot = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const tail = prior.catch(ignorePriorReleaseFailure).then(() => slot);
-  persistenceReleaseBarriers.set(persistence, tail);
-  await prior.catch(ignorePriorReleaseFailure);
-  try {
-    return await operation();
-  } finally {
-    release();
-    if (persistenceReleaseBarriers.get(persistence) === tail) {
-      persistenceReleaseBarriers.delete(persistence);
-    }
-  }
 }
 
 function defaultEventId(): EventId {
@@ -953,7 +929,7 @@ export class GeneralWorkCoordinator {
         "Only terminal-pending checkpoints can cross the release barrier",
       );
     }
-    return withPersistenceReleaseBarrier(this.config.persistence, async () => {
+    return withPersistenceMutationBarrier(this.config.persistence, async () => {
       const durable = await this.requireCheckpoint(checkpoint.attempt.sessionId);
       if (durable.phase === "finalized") {
         await supervisor?.dispose(durable.attempt.sessionId);

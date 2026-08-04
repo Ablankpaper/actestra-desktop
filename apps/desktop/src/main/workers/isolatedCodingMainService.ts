@@ -3,11 +3,15 @@ import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
   WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
+  approvalActorId,
   assertPersistWorkspaceGrantResult,
   assertWorkspaceGrant,
   ActestraPersistencePort,
   PrivilegedClock,
   type WorkspaceGrant,
+  type CorrelationId,
+  type EventId,
+  type EventStreamId,
   type SessionId,
   type TaskId,
   type WorkerId,
@@ -24,6 +28,10 @@ import {
   createIsolatedCodingWorktree,
   type IsolatedCodingWorktree,
 } from "./isolatedCodingWorktree";
+import {
+  deriveGooseCodingEvidenceIdentity,
+  GooseCodingEvidenceCoordinator,
+} from "./gooseCodingEvidenceCoordinator";
 import {
   createGooseCodingToolInvoker,
   type CreateGooseCodingToolInvokerOptions,
@@ -60,6 +68,7 @@ export interface CreateIsolatedCodingMainServiceOptions {
   readonly persistence: ActestraPersistencePort;
   readonly clock: PrivilegedClock;
   readonly managedRoot: string;
+  readonly newEventId?: () => EventId;
 }
 
 export interface OpenIsolatedCodingMainSessionOptions {
@@ -87,7 +96,10 @@ export interface OpenGooseCodingMainSessionOptions extends OpenIsolatedCodingMai
 }
 
 export interface GooseCodingMainSession
-  extends IsolatedCodingMainSession, GooseMcpSessionComposition {}
+  extends IsolatedCodingMainSession, GooseMcpSessionComposition {
+  readonly streamId: EventStreamId;
+  readonly correlationId: CorrelationId;
+}
 
 export interface IsolatedCodingMainServiceDependencies {
   createToolInvoker(options: CreateGooseCodingToolInvokerOptions): GooseMcpToolInvoker;
@@ -236,6 +248,8 @@ export function createIsolatedCodingMainService(
   const openings = new Set<Promise<IsolatedCodingMainSession>>();
   const gooseSessions = new Set<GooseCodingMainSession>();
   const gooseOpenings = new Set<Promise<GooseCodingMainSession>>();
+  const gooseOwnedWorktreeRoots = new Set<string>();
+  const pendingGooseOpeningEvidence = new Set<GooseCodingEvidenceCoordinator>();
   const pendingCleanups = new Set<PendingIsolatedCodingCleanup>();
   let accepting = true;
   let closed = false;
@@ -374,7 +388,28 @@ export function createIsolatedCodingMainService(
       commands: sessionOptions.commands,
       tests: sessionOptions.tests,
     });
+    let evidence: GooseCodingEvidenceCoordinator | undefined;
     try {
+      const evidenceIdentity = deriveGooseCodingEvidenceIdentity({
+        workspaceId: sessionOptions.workspaceId,
+        taskId: sessionOptions.taskId,
+        sessionId: sessionOptions.sessionId,
+        workerId: sessionOptions.workerId,
+      });
+      evidence = new GooseCodingEvidenceCoordinator({
+        persistence: options.persistence,
+        clock: options.clock,
+        workspaceId: sessionOptions.workspaceId,
+        taskId: sessionOptions.taskId,
+        sessionId: sessionOptions.sessionId,
+        workerId: sessionOptions.workerId,
+        identity: evidenceIdentity,
+        approvalService: codingSession.approvalService,
+        cancellationActorId: approvalActorId("actestra-coding-session-close"),
+        ...(options.newEventId === undefined ? {} : { newEventId: options.newEventId }),
+      });
+      await evidence.start();
+      const activeEvidence = evidence;
       const toolInvoker = dependencies.createToolInvoker({
         persistence: options.persistence,
         clock: options.clock,
@@ -382,6 +417,7 @@ export function createIsolatedCodingMainService(
         taskId: sessionOptions.taskId,
         sessionId: sessionOptions.sessionId,
         workerId: sessionOptions.workerId,
+        evidenceRecorder: activeEvidence,
         ...(sessionOptions.approvalDecisionHandler === undefined
           ? {}
           : { approvalDecisionHandler: sessionOptions.approvalDecisionHandler }),
@@ -405,7 +441,11 @@ export function createIsolatedCodingMainService(
       let exposed!: GooseCodingMainSession;
       let gooseClosed = false;
       let codingClosed = false;
+      let evidenceClosed = false;
       let sessionClosePromise: Promise<void> | undefined;
+      let admittedPromptOptions: GooseMcpSessionPromptOptions | undefined;
+      let rawPrompt: ReturnType<GooseMcpSessionComposition["prompt"]> | undefined;
+      let promptWithEvidence: ReturnType<GooseMcpSessionComposition["prompt"]> | undefined;
       exposed = Object.freeze({
         approvalService: codingSession.approvalService,
         policyEngine: codingSession.policyEngine,
@@ -419,12 +459,54 @@ export function createIsolatedCodingMainService(
         privateRoot: gooseSession.privateRoot,
         session: gooseSession.session,
         toolNames: gooseSession.toolNames,
-        prompt: (promptOptions: GooseMcpSessionPromptOptions) => gooseSession.prompt(promptOptions),
+        streamId: evidenceIdentity.streamId,
+        correlationId: evidenceIdentity.correlationId,
+        prompt(promptOptions: GooseMcpSessionPromptOptions) {
+          if (gooseClosed || codingClosed) {
+            return Promise.reject(
+              new IsolatedCodingMainServiceError(
+                "closed",
+                "Desktop-main Goose coding session is already closed",
+              ),
+            );
+          }
+          if (admittedPromptOptions === undefined) {
+            admittedPromptOptions = Object.freeze({ ...promptOptions });
+            rawPrompt = gooseSession.prompt(admittedPromptOptions);
+          } else if (!isDeepStrictEqual(admittedPromptOptions, promptOptions)) {
+            return Promise.reject(
+              new IsolatedCodingMainServiceError(
+                "invalid-options",
+                "A Goose prompt retry must use the exact original bounded input",
+              ),
+            );
+          }
+          if (promptWithEvidence === undefined) {
+            const current = rawPrompt!.then(
+              async (result) => {
+                await activeEvidence.completePrompt(result);
+                return result;
+              },
+              async (error: unknown) => {
+                await activeEvidence.failPrompt();
+                throw error;
+              },
+            );
+            promptWithEvidence = current;
+            void current.catch(() => {
+              if (promptWithEvidence === current) {
+                promptWithEvidence = undefined;
+              }
+            });
+          }
+          return promptWithEvidence;
+        },
         close(): Promise<void> {
-          if (gooseClosed && codingClosed) {
+          if (gooseClosed && codingClosed && evidenceClosed) {
             return Promise.resolve();
           }
           sessionClosePromise ??= (async () => {
+            await activeEvidence.cancel();
             const failures: unknown[] = [];
             if (!gooseClosed) {
               try {
@@ -438,6 +520,14 @@ export function createIsolatedCodingMainService(
               try {
                 await codingSession.close();
                 codingClosed = true;
+              } catch (error) {
+                failures.push(error);
+              }
+            }
+            if (gooseClosed && codingClosed && !evidenceClosed) {
+              try {
+                await activeEvidence.finishClose();
+                evidenceClosed = true;
               } catch (error) {
                 failures.push(error);
               }
@@ -457,6 +547,7 @@ export function createIsolatedCodingMainService(
           })()
             .then(() => {
               gooseSessions.delete(exposed);
+              gooseOwnedWorktreeRoots.delete(codingSession.worktreeRoot);
             })
             .catch((error: unknown) => {
               sessionClosePromise = undefined;
@@ -466,6 +557,7 @@ export function createIsolatedCodingMainService(
         },
       });
       gooseSessions.add(exposed);
+      gooseOwnedWorktreeRoots.add(codingSession.worktreeRoot);
       if (!accepting) {
         await exposed.close();
         throw new IsolatedCodingMainServiceError(
@@ -475,16 +567,28 @@ export function createIsolatedCodingMainService(
       }
       return exposed;
     } catch (error) {
+      const failures: unknown[] = [error];
+      if (evidence !== undefined) {
+        try {
+          await evidence.failOpen();
+        } catch (evidenceError) {
+          pendingGooseOpeningEvidence.add(evidence);
+          failures.push(evidenceError);
+        }
+      }
       try {
         await codingSession.close();
       } catch (cleanupError) {
+        failures.push(cleanupError);
+      }
+      if (failures.length > 1) {
         throw new IsolatedCodingMainServiceError(
           "cleanup-failed",
           "Goose session opening failed and isolated coding cleanup did not complete",
           {
             cause: new AggregateError(
-              [error, cleanupError],
-              "Goose session opening and worktree cleanup failed",
+              failures,
+              "Goose session opening, worktree cleanup, or terminal evidence failed",
             ),
           },
         );
@@ -551,9 +655,22 @@ export function createIsolatedCodingMainService(
           }
         }
         const sessionOutcomes = await Promise.allSettled(
-          [...sessions].map((session) => session.close()),
+          [...sessions]
+            .filter((session) => !gooseOwnedWorktreeRoots.has(session.worktreeRoot))
+            .map((session) => session.close()),
         );
         for (const outcome of sessionOutcomes) {
+          if (outcome.status === "rejected") {
+            failures.push(outcome.reason);
+          }
+        }
+        const evidenceOutcomes = await Promise.allSettled(
+          [...pendingGooseOpeningEvidence].map(async (evidence) => {
+            await evidence.failOpen();
+            pendingGooseOpeningEvidence.delete(evidence);
+          }),
+        );
+        for (const outcome of evidenceOutcomes) {
           if (outcome.status === "rejected") {
             failures.push(outcome.reason);
           }
