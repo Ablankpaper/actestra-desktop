@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { PersistenceUtilityService } from "../../apps/desktop/src/utility/persistence/persistenceUtilityService";
+import { CURRENT_CORE_SCHEMA_VERSION } from "../../apps/desktop/src/utility/persistence/sqliteMigrations";
 import { createAionUiScheduleRegistration } from "../fixtures/aionuiSchedule";
 
 const testDirectories: string[] = [];
@@ -38,7 +39,10 @@ describe("persistence utility schedule service", () => {
         operation: "open",
         payload: { userDataPath },
       }),
-    ).resolves.toMatchObject({ status: "ok", result: { schemaVersion: 13 } });
+    ).resolves.toMatchObject({
+      status: "ok",
+      result: { schemaVersion: CURRENT_CORE_SCHEMA_VERSION },
+    });
     await expect(
       service.handle({
         protocolVersion: 1,

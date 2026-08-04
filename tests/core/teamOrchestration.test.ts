@@ -169,6 +169,39 @@ describe("Actestra team-plan admission", () => {
     ).toBe(true);
   });
 
+  it("revalidates and freezes persisted plans while rejecting expansion and graph drift", async () => {
+    const plan = await core.admitTeamPlanCandidate(REQUEST, CANDIDATE);
+    const serialized = JSON.parse(JSON.stringify(plan)) as Record<string, unknown>;
+    const restored = core.normalizeAdmittedTeamPlan(serialized);
+
+    expect(restored).toEqual(plan);
+    expect(Object.isFrozen(restored)).toBe(true);
+    expect(Object.isFrozen(restored.nodes)).toBe(true);
+
+    expect(() => core.normalizeAdmittedTeamPlan({ ...serialized, scheduler: "external" })).toThrow(
+      expect.objectContaining({ code: "invalid-candidate" }),
+    );
+    const reordered = structuredClone(serialized) as { nodes: unknown[] };
+    [reordered.nodes[1], reordered.nodes[2]] = [reordered.nodes[2], reordered.nodes[1]];
+    expect(() => core.normalizeAdmittedTeamPlan(reordered)).toThrow(
+      expect.objectContaining({ code: "invalid-dependency" }),
+    );
+    const missingDependency = structuredClone(serialized) as {
+      nodes: Array<{ dependsOn: string[] }>;
+    };
+    missingDependency.nodes[3]!.dependsOn = [`team-node-${"f".repeat(64)}`];
+    expect(() => core.normalizeAdmittedTeamPlan(missingDependency)).toThrow(
+      expect.objectContaining({ code: "invalid-dependency" }),
+    );
+    const reorderedDependencies = structuredClone(serialized) as {
+      nodes: Array<{ dependsOn: string[] }>;
+    };
+    reorderedDependencies.nodes[3]!.dependsOn.reverse();
+    expect(() => core.normalizeAdmittedTeamPlan(reorderedDependencies)).toThrow(
+      expect.objectContaining({ code: "invalid-dependency" }),
+    );
+  });
+
   it.each([
     [
       "request credential",

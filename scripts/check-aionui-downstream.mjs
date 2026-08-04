@@ -115,7 +115,8 @@ function main() {
   if (
     overlay.schemaVersion !== 1 ||
     overlay.phase !== "P5-preserved-aionui-coding-journey" ||
-    !overlay.migration.strategy.includes("schema v13") ||
+    !overlay.migration.strategy.includes("schema v14") ||
+    !overlay.migration.strategy.includes("schemas v1-v13") ||
     !overlay.migration.rollback.includes("patch 0013") ||
     overlay.patches.at(-1)?.path !== "patches/0013-actestra-goose-native-agent.mjs" ||
     overlay.uiContract.layoutChangesAllowed !== false ||
@@ -813,7 +814,7 @@ function main() {
   requireText(
     path.join(outputRoot, "packages/desktop/src/actestra/utility/persistence/sqliteMigrations.ts"),
     [
-      "CURRENT_CORE_SCHEMA_VERSION = 13",
+      "CURRENT_CORE_SCHEMA_VERSION = 14",
       "aionui_shadow_evidence",
       "aionui_approval_decisions",
       "pending-delivery",
@@ -826,6 +827,8 @@ function main() {
       "office-document-artifact",
       "aionui-scheduled-general-work",
       "aionui_schedule_jobs",
+      "team-plan-authority",
+      "team_plans",
     ],
   );
   rejectText(
@@ -1045,8 +1048,8 @@ function main() {
     "assertGeneralWorkCheckpointTransition",
   ]);
   requireText(path.join(outputRoot, "tests/unit/actestra/persistenceUtilityClient.test.ts"), [
-    "schema v13 utility IPC",
-    "expect(client.schemaVersion).toBe(13)",
+    "schema v14 utility IPC",
+    "expect(client.schemaVersion).toBe(14)",
   ]);
   requireText(path.join(outputRoot, "tests/unit/actestra/generalWorkSmoke.test.ts"), [
     "prepare-writing-restart",

@@ -70,9 +70,11 @@ import {
   createCoreEventStreamState,
   eventStreamId,
   instant,
+  normalizeAdmittedTeamPlan,
   replayCoreEvents,
   sessionId,
   taskId,
+  teamPlanId,
   toolInputReference,
   toolOutputReference,
   toolRequestId,
@@ -81,6 +83,7 @@ import {
   workspaceGrantId,
   workspaceId,
   type ActestraPersistencePort,
+  type AdmittedTeamPlan,
   type ApprovalState,
   type AgentAttemptEvidence,
   type AppendPrivilegedAuditInput,
@@ -98,6 +101,7 @@ import {
   type GeneralWorkCheckpoint,
   type PersistGeneralWorkCheckpointResult,
   type PersistContentReferenceResult,
+  type PersistAdmittedTeamPlanResult,
   type PersistEvidenceResult,
   type PersistEventResult,
   type PersistWorkspaceGrantResult,
@@ -151,6 +155,10 @@ const CONTENT_REFERENCE_COLUMNS = `
 const GENERAL_WORK_CHECKPOINT_COLUMNS = `
   session_id, contract_version, phase, revision, workspace_id, task_id,
   worker_id, stream_id, created_at, updated_at, checkpoint_json
+`;
+const TEAM_PLAN_COLUMNS = `
+  plan_id, protocol_version, correlation_id, plan_version, node_count,
+  record_sha256, plan_json
 `;
 const AIONUI_GENERAL_WORK_JOURNEY_COLUMNS = `
   task_id, contract_version, conversation_hash, journey_kind, created_at
@@ -454,6 +462,35 @@ function parseStoredGeneralWorkCheckpoint(row: SqliteRow): GeneralWorkCheckpoint
   }
 
   return deepFreeze(value);
+}
+
+function parseStoredTeamPlan(row: SqliteRow): AdmittedTeamPlan {
+  const encoded = requiredString(row, "plan_json");
+  const digest = createHash("sha256").update(encoded).digest("hex");
+  if (requiredString(row, "record_sha256") !== digest) {
+    throw new PersistenceError("corrupt-database", "Persisted team-plan bytes failed integrity");
+  }
+  let plan: AdmittedTeamPlan;
+  try {
+    plan = normalizeAdmittedTeamPlan(JSON.parse(encoded));
+  } catch (error) {
+    throw new PersistenceError("corrupt-database", "Persisted team plan violates its contract", {
+      cause: error,
+    });
+  }
+  if (
+    requiredString(row, "plan_id") !== plan.planId ||
+    requiredNumber(row, "protocol_version") !== plan.protocolVersion ||
+    requiredString(row, "correlation_id") !== plan.correlationId ||
+    requiredNumber(row, "plan_version") !== plan.version ||
+    requiredNumber(row, "node_count") !== plan.nodes.length
+  ) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted team-plan projection does not match its canonical record",
+    );
+  }
+  return plan;
 }
 
 function parseStoredAionUiGeneralWorkLink(row: SqliteRow): AionUiGeneralWorkLink {
@@ -2025,6 +2062,95 @@ class SqliteCorePersistence implements ActestraPersistencePort {
         .all(limit),
     );
     return Object.freeze(rows.map(parseStoredGeneralWorkCheckpoint));
+  }
+
+  async persistAdmittedTeamPlan(plan: AdmittedTeamPlan): Promise<PersistAdmittedTeamPlanResult> {
+    const database = this.requireDatabase();
+    let stablePlan: AdmittedTeamPlan;
+    try {
+      stablePlan = normalizeAdmittedTeamPlan(JSON.parse(JSON.stringify(plan)));
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Admitted team plan is invalid", {
+        cause: error,
+      });
+    }
+
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const existingRows = asRows(
+        database
+          .prepare(
+            `SELECT ${TEAM_PLAN_COLUMNS}
+             FROM team_plans
+             WHERE plan_id = ? OR (correlation_id = ? AND plan_version = ?)`,
+          )
+          .all(stablePlan.planId, stablePlan.correlationId, stablePlan.version),
+      );
+      if (existingRows.length > 1) {
+        throw new PersistenceError(
+          "corrupt-database",
+          "Durable team-plan identities resolve to multiple records",
+        );
+      }
+      if (existingRows.length === 1) {
+        const existing = parseStoredTeamPlan(existingRows[0]!);
+        if (isDeepStrictEqual(existing, stablePlan)) {
+          database.exec("COMMIT");
+          return deepFreeze({ status: "duplicate", plan: existing });
+        }
+        throw new PersistenceError(
+          "team-plan-conflict",
+          "Team-plan identity conflicts with durable authority",
+        );
+      }
+
+      const encoded = JSON.stringify(stablePlan);
+      const recordSha256 = createHash("sha256").update(encoded).digest("hex");
+      database
+        .prepare(
+          `INSERT INTO team_plans (
+             plan_id, protocol_version, correlation_id, plan_version, node_count,
+             record_sha256, plan_json
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          stablePlan.planId,
+          stablePlan.protocolVersion,
+          stablePlan.correlationId,
+          stablePlan.version,
+          stablePlan.nodes.length,
+          recordSha256,
+          encoded,
+        );
+      database.exec("COMMIT");
+      return deepFreeze({ status: "stored", plan: stablePlan });
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) {
+        throw error;
+      }
+      throw new PersistenceError("corrupt-database", "Actestra could not persist the team plan", {
+        cause: error,
+      });
+    }
+  }
+
+  async getAdmittedTeamPlan(
+    planIdValue: ReturnType<typeof teamPlanId>,
+  ): Promise<AdmittedTeamPlan | null> {
+    const database = this.requireDatabase();
+    let stablePlanId: ReturnType<typeof teamPlanId>;
+    try {
+      stablePlanId = teamPlanId(planIdValue);
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Team-plan lookup is invalid", {
+        cause: error,
+      });
+    }
+    const row = database
+      .prepare(`SELECT ${TEAM_PLAN_COLUMNS} FROM team_plans WHERE plan_id = ?`)
+      .get(stablePlanId) as SqliteRow | undefined;
+    return row === undefined ? null : parseStoredTeamPlan(row);
   }
 
   async registerAionUiGeneralWorkJourney(

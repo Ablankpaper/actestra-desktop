@@ -305,8 +305,8 @@ downstream contract, and the 61/3/28 build. Pull request 44 reached exact head
 30899489690, squash merged as `ee8425e39e201078cd64fe3af38355279ecf56de`,
 and passed exact merged-main CI 30900884248. P5.3 is accepted on that evidence.
 
-P6 is now the ordered phase. Its first local slice starts from that exact merge
-on branch `codex/p6-team-plan-admission`. Actestra Core closes and validates a
+P6 is now the ordered phase. Its first slice started from that exact merge on
+branch `codex/p6-team-plan-admission`. Actestra Core closes and validates a
 versioned 3-5-node plan-candidate protocol, fixed depth/concurrency/attempt
 budgets, declared General/coding capabilities, classified context references,
 human feedback, and at least one parallel branch. It maps admitted candidates
@@ -320,12 +320,21 @@ the then-current 217/4/80 downstream contract, and the 62/3/28 build.
 Initial PR 45 head `59cf48fbbb45d78c803ab6691547b61878fc8eb3` used the sole
 exact-head run 30905371865. Root source/tests passed, but materialized TypeScript
 failed because the Core barrel export lacked a matching source-copy declaration;
-the still-running Goose job was cancelled after that failure. The local
-overlay-only correction passes the final 218/4/81 downstream contract, exact
-foundation, locked 3,177-package materialization, and exact CI TypeScript
-command. The correction has no exact-head CI evidence yet. No CrewAI/Python
-runtime, persistence, scheduler, Worker launch, bridge, renderer, Team UI, or
-P6 phase acceptance is claimed.
+the still-running Goose job was cancelled after that failure. The focused
+overlay correction reached exact head
+`a3d08a934160c1a5d61ff987ade29212bd3c0b05`, passed exact-head CI
+30906689796, squash merged as
+`30742934adde1e0944c4e8ced1f005452a1f3568`, and passed exact merged-main CI
+30907869824.
+
+The next slice starts from that exact merge on branch
+`codex/p6-team-plan-persistence`. Schema 14 persists the canonical admitted
+graph behind the supervised utility before desktop main returns it. Core
+revalidates reloaded records; plan and correlation/version identities are
+unique; canonical JSON digests expose disk drift; identical retries are
+idempotent; conflicting identities and substituted utility responses fail
+closed. No CrewAI/Python runtime, scheduler, state-machine execution, Worker
+launch, bridge, renderer, Team UI, or P6 phase acceptance is claimed.
 
 ## P0 — Project Foundation
 
@@ -580,9 +589,9 @@ slice previously described as P4.3/F3.1.
 
 ## P6 — Multi-Agent Team Orchestration
 
-Current progress is limited to the closed plan-candidate admission and
-desktop-main planner-port boundary described above. The accepted plan is not
-yet persisted or schedulable, and no planner sidecar process exists.
+Current progress includes the closed plan-candidate admission, desktop-main
+planner port, and schema-14 admitted-plan durability barrier described above.
+The accepted plan is not yet schedulable, and no planner sidecar process exists.
 
 ### Deliverables
 

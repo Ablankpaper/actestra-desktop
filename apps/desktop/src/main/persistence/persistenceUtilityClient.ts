@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import type {
   AionUiApprovalAuthoritySummary,
   AionUiApprovalDecisionRecord,
@@ -27,7 +28,9 @@ import type {
 import {
   CoreContractError,
   PersistenceError,
+  normalizeAdmittedTeamPlan,
   type ActestraPersistencePort,
+  type AdmittedTeamPlan,
   type AgentAttemptEvidence,
   type AppendPrivilegedAuditInput,
   type AuditRecord,
@@ -38,6 +41,7 @@ import {
   type GeneralWorkCheckpoint,
   type PersistGeneralWorkCheckpointResult,
   type PersistContentReferenceResult,
+  type PersistAdmittedTeamPlanResult,
   type PersistEvidenceResult,
   type PersistEventResult,
   type PersistWorkspaceGrantResult,
@@ -48,6 +52,7 @@ import {
   type WorkspaceGrant,
   type WorkspaceId,
   type SessionId,
+  type TeamPlanId,
 } from "../../core";
 import {
   PERSISTENCE_UTILITY_PROTOCOL_VERSION,
@@ -339,6 +344,27 @@ export class PersistenceUtilityClient implements ActestraPersistencePort {
     return this.invoke("list-recoverable-general-work-checkpoints", { limit });
   }
 
+  async persistAdmittedTeamPlan(plan: AdmittedTeamPlan): Promise<PersistAdmittedTeamPlanResult> {
+    const result = await this.invoke("persist-admitted-team-plan", { plan });
+    const stablePlan = this.normalizeTeamPlanResponse(result.plan);
+    if (!isDeepStrictEqual(stablePlan, plan)) {
+      throw this.failInvalidMessage("Persistence utility returned substituted team-plan bytes");
+    }
+    return Object.freeze({ status: result.status, plan: stablePlan });
+  }
+
+  async getAdmittedTeamPlan(planId: TeamPlanId): Promise<AdmittedTeamPlan | null> {
+    const plan = await this.invoke("get-admitted-team-plan", { planId });
+    if (plan === null) {
+      return null;
+    }
+    const stablePlan = this.normalizeTeamPlanResponse(plan);
+    if (stablePlan.planId !== planId) {
+      throw this.failInvalidMessage("Persistence utility substituted a team-plan lookup identity");
+    }
+    return stablePlan;
+  }
+
   async registerAionUiGeneralWorkJourney(
     registration: AionUiGeneralWorkRegistration,
   ): Promise<RegisterAionUiGeneralWorkJourneyResult> {
@@ -601,6 +627,23 @@ export class PersistenceUtilityClient implements ActestraPersistencePort {
         this.futureError ??
         new PersistenceUtilityError("unavailable", "Persistence utility is unavailable")
       );
+    }
+  }
+
+  private failInvalidMessage(message: string): PersistenceUtilityError {
+    const error = new PersistenceUtilityError("invalid-message", message);
+    this.fail(
+      error,
+      new PersistenceUtilityError("unavailable", "Persistence utility is unavailable"),
+    );
+    return error;
+  }
+
+  private normalizeTeamPlanResponse(value: unknown): AdmittedTeamPlan {
+    try {
+      return normalizeAdmittedTeamPlan(value);
+    } catch {
+      throw this.failInvalidMessage("Persistence utility returned an invalid team plan");
     }
   }
 

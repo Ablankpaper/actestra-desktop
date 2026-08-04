@@ -427,17 +427,25 @@ capabilities and classified context references, node/dependency integrity,
 depth, concurrency, attempt budgets, required General/coding/human-feedback
 nodes, and a parallel branch; then creates deterministic Actestra-owned plan,
 node, and Task identities. A desktop-main service sends only the normalized,
-deeply frozen request through a cancellable planner port, sanitizes planner
-failures, and returns only a Core-admitted plan. The slice does not persist or
-schedule the plan and adds no Python process, Worker launch, renderer, bridge,
-route, or Team UI. Its final local root gate passes 76 test files with 2
-skipped, 672 tests with 5 skipped, the 100-source product boundary, exact
-foundation and then-current 217/4/80 downstream contract, and the 62/3/28
-production build. PR 45 run 30905371865 exposed the missing
-`teamOrchestration.ts` source-copy declaration only when the generated native
-tree was type-checked. The local overlay-only correction passes the final
-218/4/81 downstream contract, locked materialization, and exact CI TypeScript
-command; it has no exact-head CI evidence yet.
+deeply frozen request through a cancellable planner port and sanitizes planner
+failures. Pull request 45 reached exact head
+`a3d08a934160c1a5d61ff987ade29212bd3c0b05`, passed exact-head CI
+30906689796, squash merged as
+`30742934adde1e0944c4e8ced1f005452a1f3568`, and passed exact merged-main CI
+30907869824.
+
+The next P6 slice adds durable admission authority before scheduling. Core
+revalidates exact fields, bounded text, identities, limits, canonical topology,
+and the required mixed-team envelope for every persisted or reloaded plan.
+Schema 14 adds one strict `team_plans` table with unique plan and
+correlation/version identities plus a SHA-256 digest over the canonical JSON.
+The supervised persistence utility exposes only closed persist and lookup
+operations; identical retries are idempotent, conflicting identities fail
+closed, reloaded plans are deeply frozen, and the client rejects substituted
+responses before closing the utility connection. Desktop main awaits the
+durability barrier before returning an admitted plan. This slice adds no
+scheduler, state-machine execution, Python or CrewAI process, Worker launch,
+renderer, bridge, route, or Team UI.
 
 CrewAI is the first P6 planner-sidecar candidate under
 [ADR-0015](decisions/0015-crewai-supervised-orchestration-sidecar.md). It runs

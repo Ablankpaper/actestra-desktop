@@ -49,6 +49,7 @@ import {
   CORE_CONTRACT_ERROR_CODES,
   PERSISTENCE_ERROR_CODES,
   assertAgentAttemptEvidence,
+  assertAdmittedTeamPlan,
   assertAppendPrivilegedAuditInput,
   assertAuditRecord,
   assertCoreEvent,
@@ -57,6 +58,7 @@ import {
   assertDomainGraph,
   assertGeneralWorkCheckpoint,
   assertPersistContentReferenceResult,
+  assertPersistAdmittedTeamPlanResult,
   assertPersistWorkspaceGrantResult,
   assertResolveContentReferenceInput,
   assertResolvedContentReference,
@@ -66,7 +68,9 @@ import {
   eventStreamId,
   instant,
   sessionId,
+  teamPlanId,
   workspaceId,
+  type AdmittedTeamPlan,
   type AgentAttemptEvidence,
   type AppendPrivilegedAuditInput,
   type AuditRecord,
@@ -78,6 +82,7 @@ import {
   type GeneralWorkCheckpoint,
   type PersistGeneralWorkCheckpointResult,
   type PersistContentReferenceResult,
+  type PersistAdmittedTeamPlanResult,
   type PersistEvidenceResult,
   type PersistEventResult,
   type PersistenceErrorCode,
@@ -89,6 +94,7 @@ import {
   type WorkspaceGrant,
   type WorkspaceId,
   type SessionId,
+  type TeamPlanId,
 } from "../core";
 
 export const PERSISTENCE_UTILITY_PROTOCOL_VERSION = 1 as const;
@@ -251,6 +257,18 @@ export interface PersistenceUtilityOperationMap {
     };
     readonly result: readonly GeneralWorkCheckpoint[];
   };
+  readonly "persist-admitted-team-plan": {
+    readonly request: {
+      readonly plan: AdmittedTeamPlan;
+    };
+    readonly result: PersistAdmittedTeamPlanResult;
+  };
+  readonly "get-admitted-team-plan": {
+    readonly request: {
+      readonly planId: TeamPlanId;
+    };
+    readonly result: AdmittedTeamPlan | null;
+  };
   readonly "list-aionui-general-work-links": {
     readonly request: {
       readonly conversationHash: string;
@@ -353,6 +371,8 @@ export const PERSISTENCE_UTILITY_OPERATIONS = [
   "persist-general-work-checkpoint",
   "get-general-work-checkpoint",
   "list-recoverable-general-work-checkpoints",
+  "persist-admitted-team-plan",
+  "get-admitted-team-plan",
   "list-aionui-general-work-links",
   "list-prepared-aionui-general-work-links",
   "register-aionui-general-work",
@@ -862,6 +882,19 @@ function assertRequestPayload(request: PersistenceUtilityRequest): void {
       assertExactKeys(payload, ["limit"], "list-recoverable-general-work-checkpoints request");
       assertBoundedLimit(payload.limit, 100, "list-recoverable-general-work-checkpoints limit");
       return;
+    case "persist-admitted-team-plan":
+      assertRecord(payload, "persist-admitted-team-plan request");
+      assertExactKeys(payload, ["plan"], "persist-admitted-team-plan request");
+      assertAdmittedTeamPlan(payload.plan);
+      return;
+    case "get-admitted-team-plan":
+      assertRecord(payload, "get-admitted-team-plan request");
+      assertExactKeys(payload, ["planId"], "get-admitted-team-plan request");
+      if (typeof payload.planId !== "string") {
+        throw new PersistenceUtilityProtocolError("get-admitted-team-plan planId is invalid");
+      }
+      teamPlanId(payload.planId);
+      return;
     case "list-aionui-general-work-links":
       assertRecord(payload, "list-aionui-general-work-links request");
       assertExactKeys(
@@ -1078,6 +1111,14 @@ function assertSuccessResult(operation: PersistenceUtilityOperation, result: unk
         );
       }
       result.forEach(assertGeneralWorkCheckpoint);
+      return;
+    case "persist-admitted-team-plan":
+      assertPersistAdmittedTeamPlanResult(result);
+      return;
+    case "get-admitted-team-plan":
+      if (result !== null) {
+        assertAdmittedTeamPlan(result);
+      }
       return;
     case "list-aionui-general-work-links":
       if (

@@ -34,14 +34,17 @@ describe("AionUi downstream path safety", () => {
     ).toThrow(/Downstream output/u);
   });
 
-  it("declares the P5 preserved coding journey over the retained schema-13 boundary", () => {
+  it("declares the preserved coding journey over the schema-14 team-plan boundary", () => {
     const repositoryRoot = path.resolve(import.meta.dirname, "../..");
     const overlay = JSON.parse(
       fs.readFileSync(path.join(repositoryRoot, "downstream/aionui-v2.1.41/overlay.json"), "utf8"),
     );
 
     expect(overlay.phase).toBe("P5-preserved-aionui-coding-journey");
-    expect(overlay.migration.strategy).toContain("schema v13");
+    expect(overlay.migration.strategy).toContain("schema v14");
+    expect(overlay.migration.strategy).toContain("schemas v1-v13");
+    expect(overlay.migration.strategy).toContain("team_plans");
+    expect(overlay.migration.rollback).toContain("schema v14");
     expect(overlay.migration.rollback).toContain("patch 0013");
     expect(overlay.migration.rollback).toContain("patch 0012");
     expect(overlay.patches.at(-1)?.path).toBe("patches/0013-actestra-goose-native-agent.mjs");

@@ -179,6 +179,10 @@ export class PersistenceUtilityService {
         return persistence.getGeneralWorkCheckpoint(request.payload.sessionId);
       case "list-recoverable-general-work-checkpoints":
         return persistence.listRecoverableGeneralWorkCheckpoints(request.payload.limit);
+      case "persist-admitted-team-plan":
+        return persistence.persistAdmittedTeamPlan(request.payload.plan);
+      case "get-admitted-team-plan":
+        return persistence.getAdmittedTeamPlan(request.payload.planId);
       case "register-aionui-general-work":
         return persistence.registerAionUiGeneralWorkJourney(request.payload.registration);
       case "list-aionui-general-work-links":

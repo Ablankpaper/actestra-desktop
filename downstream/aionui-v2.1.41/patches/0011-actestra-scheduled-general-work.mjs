@@ -1436,13 +1436,13 @@ contextBridge.exposeInMainWorld('electronAPI', {`,
 replaceOnce(
   "tests/unit/actestra/persistenceUtilityClient.test.ts",
   `  it('keeps AionUI shadow, approval, recovery, and journey authority behind schema v12 utility IPC', async () => {`,
-  `  it('keeps AionUI shadow, approval, recovery, journey, and schedule authority behind schema v13 utility IPC', async () => {`,
+  `  it('keeps AionUI shadow, approval, recovery, journey, schedule, and team-plan authority behind schema v14 utility IPC', async () => {`,
 );
 
 replaceOnce(
   "tests/unit/actestra/persistenceUtilityClient.test.ts",
   `    expect(client.schemaVersion).toBe(12);`,
-  `    expect(client.schemaVersion).toBe(13);`,
+  `    expect(client.schemaVersion).toBe(14);`,
 );
 
 replaceOnce(

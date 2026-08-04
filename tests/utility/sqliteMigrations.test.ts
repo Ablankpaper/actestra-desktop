@@ -60,7 +60,7 @@ describe("Actestra SQLite migrations", () => {
     expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
       fromVersion: 0,
       toVersion: CURRENT_CORE_SCHEMA_VERSION,
-      appliedVersions: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
+      appliedVersions: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
     });
     expect(pragmaNumber(database, "application_id")).toBe(ACTESTRA_SQLITE_APPLICATION_ID);
     expect(pragmaNumber(database, "user_version")).toBe(CURRENT_CORE_SCHEMA_VERSION);
@@ -121,7 +121,16 @@ describe("Actestra SQLite migrations", () => {
         version: 13,
         name: "aionui-scheduled-general-work",
       },
+      {
+        version: 14,
+        name: "team-plan-authority",
+      },
     ]);
+    expect(
+      database
+        .prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'team_plans'")
+        .get(),
+    ).toEqual({ name: "team_plans" });
   });
 
   it("performs a real 1 -> 2 migration without losing version 1 data", () => {
@@ -791,7 +800,9 @@ describe("Actestra SQLite migrations", () => {
         APPLIED_AT,
       );
 
-    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
+    expect(
+      migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 13), APPLIED_AT),
+    ).toEqual({
       fromVersion: 12,
       toVersion: 13,
       appliedVersions: [13],
@@ -854,6 +865,30 @@ describe("Actestra SQLite migrations", () => {
       "deleted_at_ms",
       "job_json",
     ]);
+  });
+
+  it("adds schema 14 team-plan authority without changing the schema 13 schedule table", () => {
+    const database = createDatabase();
+    migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 13), APPLIED_AT);
+    const scheduleSchema = database
+      .prepare("SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = ?")
+      .get("aionui_schedule_jobs");
+
+    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
+      fromVersion: 13,
+      toVersion: 14,
+      appliedVersions: [14],
+    });
+    expect(
+      database
+        .prepare("SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = ?")
+        .get("aionui_schedule_jobs"),
+    ).toEqual(scheduleSchema);
+    expect(
+      database
+        .prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name = ?")
+        .get("team_plans"),
+    ).toEqual({ name: "team_plans" });
   });
 
   it("rejects a future schema without changing its version", () => {

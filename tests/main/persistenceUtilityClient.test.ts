@@ -3,14 +3,23 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   collectAionUiHttpObservations,
   normalizeAionUiApprovalDecisionRequest,
   projectAionUiObservation,
 } from "../../apps/desktop/src/compatibility/aionui";
-import { instant, toolInputReference, workspaceGrantId } from "../../apps/desktop/src/core";
+import {
+  admitTeamPlanCandidate,
+  instant,
+  toolInputReference,
+  workspaceGrantId,
+  type AdmittedTeamPlan,
+  type PersistAdmittedTeamPlanResult,
+} from "../../apps/desktop/src/core";
 import { PersistenceUtilityError } from "../../apps/desktop/src/main/persistence/persistenceUtilityClient";
+import { resolveCoreDatabasePath } from "../../apps/desktop/src/utility/persistence/sqliteCorePersistence";
 import { createDomainGraph, FIXTURE_WORKSPACE_ID } from "../fixtures/core";
 import { createGeneralWorkCheckpoint } from "../fixtures/generalWorkRecovery";
 import { createAionUiGeneralWorkRegistration } from "../fixtures/aionuiGeneralWork";
@@ -18,6 +27,66 @@ import { createAionUiScheduleRegistration } from "../fixtures/aionuiSchedule";
 import { openTestPersistenceUtility } from "../fixtures/persistenceUtility";
 
 const testDirectories: string[] = [];
+
+const TEAM_PLAN_REQUEST = {
+  protocolVersion: 1,
+  correlationId: "correlation-persistence-team-plan",
+  planVersion: 1,
+  goal: "Persist one bounded mixed team plan before scheduling.",
+  workerCapabilities: ["general", "coding"],
+  contextReferences: [],
+  limits: {
+    maxNodes: 3,
+    maxDepth: 2,
+    maxConcurrency: 2,
+    maxTotalAttempts: 3,
+  },
+} as const;
+
+const TEAM_PLAN_CANDIDATE = {
+  protocolVersion: 1,
+  correlationId: TEAM_PLAN_REQUEST.correlationId,
+  planVersion: TEAM_PLAN_REQUEST.planVersion,
+  summary: "Run bounded General and coding work in parallel, then request feedback.",
+  nodes: [
+    {
+      candidateKey: "general",
+      title: "Prepare the bounded brief",
+      kind: "worker",
+      capability: "general",
+      dependsOn: [],
+      expectedArtifactKind: "document",
+      completionCriteria: "One bounded brief is available.",
+      risk: "low",
+      maxAttempts: 1,
+    },
+    {
+      candidateKey: "coding",
+      title: "Prepare the bounded patch",
+      kind: "worker",
+      capability: "coding",
+      dependsOn: [],
+      expectedArtifactKind: "file",
+      completionCriteria: "One reviewed patch is available.",
+      risk: "medium",
+      maxAttempts: 1,
+    },
+    {
+      candidateKey: "feedback",
+      title: "Request user feedback",
+      kind: "human-feedback",
+      dependsOn: ["general", "coding"],
+      completionCriteria: "The user accepts or rejects the bounded result.",
+      risk: "medium",
+    },
+  ],
+} as const;
+
+interface TeamPlanPersistenceClient {
+  persistAdmittedTeamPlan(plan: AdmittedTeamPlan): Promise<PersistAdmittedTeamPlanResult>;
+  getAdmittedTeamPlan(planId: string): Promise<AdmittedTeamPlan | null>;
+  close(): Promise<void>;
+}
 
 function createTestDirectory(): string {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-utility-client-test-"));
@@ -108,7 +177,7 @@ describe("persistence utility client", () => {
     const workspaceRoot = path.join(userDataPath, "fixture-workspace");
     fs.mkdirSync(workspaceRoot);
     const { client, transport } = await openTestPersistenceUtility(userDataPath);
-    expect(client.schemaVersion).toBe(13);
+    expect(client.schemaVersion).toBe(14);
     const graph = createDomainGraph();
     await client.replaceDomainGraph(graph);
     await expect(client.loadDomainGraph()).resolves.toEqual(graph);
@@ -195,6 +264,158 @@ describe("persistence utility client", () => {
     await expect(client.loadDomainGraph()).rejects.toMatchObject({
       code: "unavailable",
     });
+    await client.close();
+  });
+
+  it("persists an admitted team plan idempotently and restores it after reopening", async () => {
+    const userDataPath = createTestDirectory();
+    const plan = await admitTeamPlanCandidate(TEAM_PLAN_REQUEST, TEAM_PLAN_CANDIDATE);
+    const opened = await openTestPersistenceUtility(userDataPath);
+    const client = opened.client as unknown as TeamPlanPersistenceClient;
+
+    expect(client.persistAdmittedTeamPlan).toBeTypeOf("function");
+    expect(client.getAdmittedTeamPlan).toBeTypeOf("function");
+    await expect(client.persistAdmittedTeamPlan(plan)).resolves.toEqual({
+      status: "stored",
+      plan,
+    });
+    await expect(client.persistAdmittedTeamPlan(plan)).resolves.toEqual({
+      status: "duplicate",
+      plan,
+    });
+    await expect(client.getAdmittedTeamPlan(plan.planId)).resolves.toEqual(plan);
+    await client.close();
+
+    const reopened = await openTestPersistenceUtility(userDataPath);
+    const reopenedClient = reopened.client as unknown as TeamPlanPersistenceClient;
+    reopened.transport.transformNextResponse(
+      (response) => JSON.parse(JSON.stringify(response)) as unknown,
+    );
+    const restored = await reopenedClient.getAdmittedTeamPlan(plan.planId);
+    expect(restored).toEqual(plan);
+    expect(Object.isFrozen(restored)).toBe(true);
+    expect(restored?.nodes.every(Object.isFrozen)).toBe(true);
+    await reopenedClient.close();
+  });
+
+  it("rejects structurally valid team-plan bytes that drift from the durable record digest", async () => {
+    const userDataPath = createTestDirectory();
+    const plan = await admitTeamPlanCandidate(TEAM_PLAN_REQUEST, TEAM_PLAN_CANDIDATE);
+    const opened = await openTestPersistenceUtility(userDataPath);
+    const client = opened.client as unknown as TeamPlanPersistenceClient;
+    await client.persistAdmittedTeamPlan(plan);
+    await client.close();
+
+    const database = new DatabaseSync(resolveCoreDatabasePath(userDataPath));
+    const row = database
+      .prepare("SELECT plan_json FROM team_plans WHERE plan_id = ?")
+      .get(plan.planId) as { plan_json: string };
+    const drifted = JSON.parse(row.plan_json) as Record<string, unknown>;
+    drifted.summary = "A different but still structurally valid summary.";
+    database
+      .prepare("UPDATE team_plans SET plan_json = ? WHERE plan_id = ?")
+      .run(JSON.stringify(drifted), plan.planId);
+    database.close();
+
+    const reopened = await openTestPersistenceUtility(userDataPath);
+    const reopenedClient = reopened.client as unknown as TeamPlanPersistenceClient;
+    await expect(reopenedClient.getAdmittedTeamPlan(plan.planId)).rejects.toMatchObject({
+      name: "PersistenceError",
+      code: "corrupt-database",
+    });
+    await reopenedClient.close();
+  });
+
+  it("fails the utility client when a persisted team-plan response drifts from its request", async () => {
+    const userDataPath = createTestDirectory();
+    const plan = await admitTeamPlanCandidate(TEAM_PLAN_REQUEST, TEAM_PLAN_CANDIDATE);
+    const opened = await openTestPersistenceUtility(userDataPath);
+    const client = opened.client as unknown as TeamPlanPersistenceClient;
+    opened.transport.transformNextResponse((response) => {
+      if (
+        response.type !== "response" ||
+        response.status !== "ok" ||
+        response.operation !== "persist-admitted-team-plan"
+      ) {
+        throw new Error("Expected a successful team-plan persistence response");
+      }
+      return {
+        ...response,
+        result: {
+          ...response.result,
+          plan: {
+            ...response.result.plan,
+            summary: "A valid-looking but substituted response summary.",
+          },
+        },
+      };
+    });
+
+    await expect(client.persistAdmittedTeamPlan(plan)).rejects.toMatchObject({
+      name: "PersistenceUtilityError",
+      code: "invalid-message",
+    });
+    await expect(client.getAdmittedTeamPlan(plan.planId)).rejects.toMatchObject({
+      code: "unavailable",
+    });
+    await client.close();
+
+    const reopened = await openTestPersistenceUtility(userDataPath);
+    const reopenedClient = reopened.client as unknown as TeamPlanPersistenceClient;
+    await expect(reopenedClient.persistAdmittedTeamPlan(plan)).resolves.toMatchObject({
+      status: "duplicate",
+      plan,
+    });
+    await reopenedClient.close();
+  });
+
+  it("fails the utility client when a team-plan lookup response substitutes another identity", async () => {
+    const userDataPath = createTestDirectory();
+    const plan = await admitTeamPlanCandidate(TEAM_PLAN_REQUEST, TEAM_PLAN_CANDIDATE);
+    const substituted = await admitTeamPlanCandidate(TEAM_PLAN_REQUEST, {
+      ...TEAM_PLAN_CANDIDATE,
+      summary: "A different admitted candidate with another deterministic plan identity.",
+    });
+    const opened = await openTestPersistenceUtility(userDataPath);
+    const client = opened.client as unknown as TeamPlanPersistenceClient;
+    await client.persistAdmittedTeamPlan(plan);
+    opened.transport.transformNextResponse((response) => {
+      if (
+        response.type !== "response" ||
+        response.status !== "ok" ||
+        response.operation !== "get-admitted-team-plan"
+      ) {
+        throw new Error("Expected a successful team-plan lookup response");
+      }
+      return { ...response, result: substituted };
+    });
+
+    await expect(client.getAdmittedTeamPlan(plan.planId)).rejects.toMatchObject({
+      name: "PersistenceUtilityError",
+      code: "invalid-message",
+    });
+    await expect(client.getAdmittedTeamPlan(plan.planId)).rejects.toMatchObject({
+      code: "unavailable",
+    });
+    await client.close();
+  });
+
+  it("rejects a different admitted plan for the same durable correlation and version", async () => {
+    const userDataPath = createTestDirectory();
+    const plan = await admitTeamPlanCandidate(TEAM_PLAN_REQUEST, TEAM_PLAN_CANDIDATE);
+    const conflicting = await admitTeamPlanCandidate(TEAM_PLAN_REQUEST, {
+      ...TEAM_PLAN_CANDIDATE,
+      summary: "A conflicting candidate for the same authoritative request version.",
+    });
+    const opened = await openTestPersistenceUtility(userDataPath);
+    const client = opened.client as unknown as TeamPlanPersistenceClient;
+
+    await client.persistAdmittedTeamPlan(plan);
+    await expect(client.persistAdmittedTeamPlan(conflicting)).rejects.toMatchObject({
+      name: "PersistenceError",
+      code: "team-plan-conflict",
+    });
+    await expect(client.getAdmittedTeamPlan(plan.planId)).resolves.toEqual(plan);
     await client.close();
   });
 

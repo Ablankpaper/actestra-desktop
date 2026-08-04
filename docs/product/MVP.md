@@ -58,8 +58,9 @@ The first P6 boundary admits only a versioned 3-5-node candidate with fixed
 depth, concurrency, and attempt budgets, declared General/coding capabilities,
 classified context references, one human-feedback node, and a parallel branch.
 Actestra validates it and creates its own deterministic plan, node, and Task
-identities before any persistence or scheduling. This boundary does not itself
-add a CrewAI process or make an admitted candidate executable.
+identities, then persists the canonical admitted graph in its own schema-14
+authority before returning it for any later scheduling. This boundary does not
+itself add a CrewAI process or make an admitted candidate executable.
 
 ## MVP capabilities
 

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
+import type { AdmittedTeamPlan, PersistAdmittedTeamPlanResult } from "../../apps/desktop/src/core";
 import { TeamPlanAdmissionService } from "../../apps/desktop/src/main/orchestration/teamPlanAdmissionService";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -68,6 +69,10 @@ type PlannerPort = {
   propose(request: unknown, signal: AbortSignal): Promise<unknown>;
 };
 
+type PersistencePort = {
+  persistAdmittedTeamPlan(plan: AdmittedTeamPlan): Promise<PersistAdmittedTeamPlanResult>;
+};
+
 type AdmissionService = {
   propose(
     request: unknown,
@@ -78,11 +83,17 @@ type AdmissionService = {
   }>;
 };
 
-function createService(planner: PlannerPort): AdmissionService {
+function createService(
+  planner: PlannerPort,
+  persistence: PersistencePort = {
+    persistAdmittedTeamPlan: async (plan) => ({ status: "stored", plan }),
+  },
+): AdmissionService {
   const Service = TeamPlanAdmissionService as unknown as new (options: {
     readonly planner: PlannerPort;
+    readonly persistence: PersistencePort;
   }) => AdmissionService;
-  return new Service({ planner });
+  return new Service({ planner, persistence });
 }
 
 describe("TeamPlanAdmissionService", () => {
@@ -113,6 +124,38 @@ describe("TeamPlanAdmissionService", () => {
       "feedback",
     ]);
     expect(plan.nodes.every(({ taskId }) => /^task-team-[a-f0-9]{64}$/u.test(taskId))).toBe(true);
+  });
+
+  it("returns an admitted plan only after durable persistence completes", async () => {
+    let releasePersistence: (() => void) | undefined;
+    const persistenceGate = new Promise<void>((resolve) => {
+      releasePersistence = resolve;
+    });
+    const persistence = {
+      persistAdmittedTeamPlan: vi.fn(async (plan: AdmittedTeamPlan) => {
+        await persistenceGate;
+        return { status: "stored" as const, plan };
+      }),
+    };
+    const proposal = createService({ propose: vi.fn(async () => CANDIDATE) }, persistence).propose(
+      REQUEST,
+    );
+
+    await vi.waitFor(() => {
+      expect(persistence.persistAdmittedTeamPlan).toHaveBeenCalledTimes(1);
+    });
+    let returned = false;
+    void proposal.then(() => {
+      returned = true;
+    });
+    await Promise.resolve();
+    expect(returned).toBe(false);
+
+    releasePersistence?.();
+    await expect(proposal).resolves.toMatchObject({
+      correlationId: REQUEST.correlationId,
+      version: REQUEST.planVersion,
+    });
   });
 
   it("rejects an expanded request before the planner receives it", async () => {

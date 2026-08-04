@@ -139,6 +139,16 @@ export interface AdmittedTeamPlan {
   readonly nodes: readonly AdmittedTeamPlanNode[];
 }
 
+export interface PersistAdmittedTeamPlanResult {
+  readonly status: "stored" | "duplicate";
+  readonly plan: AdmittedTeamPlan;
+}
+
+export interface TeamPlanPersistencePort {
+  persistAdmittedTeamPlan(plan: AdmittedTeamPlan): Promise<PersistAdmittedTeamPlanResult>;
+  getAdmittedTeamPlan(planId: TeamPlanId): Promise<AdmittedTeamPlan | null>;
+}
+
 const REQUEST_KEYS = [
   "protocolVersion",
   "correlationId",
@@ -169,6 +179,39 @@ const WORKER_NODE_KEYS = [
   "maxAttempts",
 ] as const;
 const HUMAN_FEEDBACK_NODE_KEYS = [
+  "candidateKey",
+  "title",
+  "kind",
+  "dependsOn",
+  "completionCriteria",
+  "risk",
+] as const;
+const ADMITTED_PLAN_KEYS = [
+  "protocolVersion",
+  "planId",
+  "correlationId",
+  "version",
+  "goal",
+  "summary",
+  "limits",
+  "nodes",
+] as const;
+const ADMITTED_WORKER_NODE_KEYS = [
+  "nodeId",
+  "taskId",
+  "candidateKey",
+  "title",
+  "kind",
+  "capability",
+  "dependsOn",
+  "expectedArtifactKind",
+  "completionCriteria",
+  "risk",
+  "maxAttempts",
+] as const;
+const ADMITTED_HUMAN_FEEDBACK_NODE_KEYS = [
+  "nodeId",
+  "taskId",
   "candidateKey",
   "title",
   "kind",
@@ -663,12 +706,286 @@ async function sha256Hex(value: string): Promise<string> {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function teamPlanId(value: string): TeamPlanId {
-  return value as TeamPlanId;
+function requireDigestIdentifier(value: unknown, prefix: string, field: string): string {
+  if (
+    typeof value !== "string" ||
+    value.length !== prefix.length + 64 ||
+    !value.startsWith(prefix) ||
+    !/^[a-f0-9]{64}$/u.test(value.slice(prefix.length))
+  ) {
+    throw new TeamPlanAdmissionError(
+      "invalid-candidate",
+      `${field} must be an Actestra-owned digest identifier`,
+    );
+  }
+  return value;
+}
+
+export function teamPlanId(value: string): TeamPlanId {
+  return requireDigestIdentifier(value, "team-plan-", "Team plan id") as TeamPlanId;
 }
 
 function teamPlanNodeId(value: string): TeamPlanNodeId {
-  return value as TeamPlanNodeId;
+  return requireDigestIdentifier(value, "team-node-", "Team plan node id") as TeamPlanNodeId;
+}
+
+function parseAdmittedNode(value: unknown): AdmittedTeamPlanNode {
+  if (!isRecord(value) || !Array.isArray(value.dependsOn)) {
+    throw new TeamPlanAdmissionError("invalid-candidate", "Admitted team-plan node is invalid");
+  }
+  if (value.dependsOn.length > TEAM_PLAN_MAX_NODES) {
+    throw new TeamPlanAdmissionError(
+      "invalid-candidate",
+      "Admitted team-plan node contains too many dependencies",
+    );
+  }
+  const dependsOn = value.dependsOn.map((dependency) =>
+    teamPlanNodeId(requireDigestIdentifier(dependency, "team-node-", "Team plan dependency id")),
+  );
+  const base = {
+    nodeId: teamPlanNodeId(
+      requireDigestIdentifier(value.nodeId, "team-node-", "Team plan node id"),
+    ),
+    taskId: taskId(requireDigestIdentifier(value.taskId, "task-team-", "Team plan Task id")),
+    candidateKey: requireText(
+      value.candidateKey,
+      "Team candidate key",
+      TEAM_PLAN_MAX_IDENTIFIER_BYTES,
+      "invalid-candidate",
+    ),
+    title: requireText(
+      value.title,
+      "Team node title",
+      TEAM_PLAN_MAX_TITLE_BYTES,
+      "invalid-candidate",
+    ),
+    dependsOn: Object.freeze(dependsOn),
+    completionCriteria: requireText(
+      value.completionCriteria,
+      "Team completion criteria",
+      TEAM_PLAN_MAX_COMPLETION_CRITERIA_BYTES,
+      "invalid-candidate",
+    ),
+    risk: value.risk as TeamPlanRisk,
+  };
+  if (!TEAM_PLAN_RISK_LEVELS.includes(base.risk)) {
+    throw new TeamPlanAdmissionError("invalid-candidate", "Admitted team-plan risk is invalid");
+  }
+  if (value.kind === "human-feedback") {
+    if (!hasExactKeys(value, ADMITTED_HUMAN_FEEDBACK_NODE_KEYS)) {
+      throw new TeamPlanAdmissionError(
+        "invalid-candidate",
+        "Admitted human-feedback node contains an unknown field",
+      );
+    }
+    return Object.freeze({ ...base, kind: "human-feedback" });
+  }
+  if (
+    value.kind !== "worker" ||
+    !hasExactKeys(value, ADMITTED_WORKER_NODE_KEYS) ||
+    !TEAM_WORKER_CAPABILITIES.includes(value.capability as TeamWorkerCapability) ||
+    !["file", "document", "dataset", "directory", "other"].includes(
+      value.expectedArtifactKind as string,
+    )
+  ) {
+    throw new TeamPlanAdmissionError("invalid-candidate", "Admitted team-plan worker is invalid");
+  }
+  return Object.freeze({
+    ...base,
+    kind: "worker",
+    capability: value.capability as TeamWorkerCapability,
+    expectedArtifactKind: value.expectedArtifactKind as ArtifactKind,
+    maxAttempts: requireIntegerRange(
+      value.maxAttempts,
+      1,
+      TEAM_PLAN_MAX_NODE_ATTEMPTS,
+      "Team worker attempts",
+      "invalid-candidate",
+    ),
+  });
+}
+
+export function normalizeAdmittedTeamPlan(value: unknown): AdmittedTeamPlan {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ADMITTED_PLAN_KEYS) ||
+    !isRecord(value.limits) ||
+    !hasExactKeys(value.limits, LIMIT_KEYS) ||
+    !Array.isArray(value.nodes) ||
+    value.protocolVersion !== TEAM_PLANNER_PROTOCOL_VERSION
+  ) {
+    throw new TeamPlanAdmissionError("invalid-candidate", "Admitted team plan is invalid");
+  }
+  const limits = Object.freeze({
+    maxNodes: requireIntegerRange(
+      value.limits.maxNodes,
+      TEAM_PLAN_MIN_NODES,
+      TEAM_PLAN_MAX_NODES,
+      "Team maximum node count",
+      "invalid-candidate",
+    ),
+    maxDepth: requireIntegerRange(
+      value.limits.maxDepth,
+      2,
+      TEAM_PLAN_MAX_DEPTH,
+      "Team maximum depth",
+      "invalid-candidate",
+    ),
+    maxConcurrency: requireIntegerRange(
+      value.limits.maxConcurrency,
+      2,
+      TEAM_PLAN_MAX_CONCURRENCY,
+      "Team maximum concurrency",
+      "invalid-candidate",
+    ),
+    maxTotalAttempts: requireIntegerRange(
+      value.limits.maxTotalAttempts,
+      TEAM_PLAN_MIN_NODES,
+      TEAM_PLAN_MAX_TOTAL_ATTEMPTS,
+      "Team maximum attempts",
+      "invalid-candidate",
+    ),
+  });
+  if (
+    value.nodes.length < TEAM_PLAN_MIN_NODES ||
+    value.nodes.length > TEAM_PLAN_MAX_NODES ||
+    value.nodes.length > limits.maxNodes
+  ) {
+    throw new TeamPlanAdmissionError(
+      "limit-exceeded",
+      "Admitted team-plan node count exceeds its envelope",
+    );
+  }
+  const nodes = Object.freeze(value.nodes.map(parseAdmittedNode));
+  for (const identities of [
+    nodes.map(({ nodeId }) => nodeId),
+    nodes.map(({ taskId: nodeTaskId }) => nodeTaskId),
+    nodes.map(({ candidateKey }) => candidateKey),
+  ]) {
+    if (new Set(identities).size !== nodes.length) {
+      throw new TeamPlanAdmissionError(
+        "invalid-candidate",
+        "Admitted team-plan identities must be unique",
+      );
+    }
+  }
+
+  const nodeById = new Map(nodes.map((node) => [node.nodeId, node]));
+  const candidateNodes = nodes.map((node): TeamPlanCandidateNode => {
+    if (new Set(node.dependsOn).size !== node.dependsOn.length) {
+      throw new TeamPlanAdmissionError(
+        "invalid-dependency",
+        "Admitted team-plan dependency edges must be unique",
+      );
+    }
+    const dependencies = node.dependsOn.map((dependency) => {
+      const dependencyNode = nodeById.get(dependency);
+      if (dependencyNode === undefined || dependency === node.nodeId) {
+        throw new TeamPlanAdmissionError(
+          "invalid-dependency",
+          "Admitted team-plan dependency is missing or self-referential",
+        );
+      }
+      return dependencyNode.candidateKey;
+    });
+    if (
+      dependencies.some((dependency, index) => index > 0 && dependencies[index - 1]! > dependency)
+    ) {
+      throw new TeamPlanAdmissionError(
+        "invalid-dependency",
+        "Admitted team-plan dependencies must retain canonical order",
+      );
+    }
+    const base = {
+      candidateKey: node.candidateKey,
+      title: node.title,
+      dependsOn: Object.freeze(dependencies),
+      completionCriteria: node.completionCriteria,
+      risk: node.risk,
+    };
+    return node.kind === "human-feedback"
+      ? Object.freeze({ ...base, kind: "human-feedback" })
+      : Object.freeze({
+          ...base,
+          kind: "worker",
+          capability: node.capability,
+          expectedArtifactKind: node.expectedArtifactKind,
+          maxAttempts: node.maxAttempts,
+        });
+  });
+  const ordered = topologicalNodes(candidateNodes);
+  if (ordered.some((node, index) => node.candidateKey !== nodes[index]?.candidateKey)) {
+    throw new TeamPlanAdmissionError(
+      "invalid-dependency",
+      "Admitted team-plan nodes must retain canonical topological order",
+    );
+  }
+  const correlation = correlationId(
+    requireText(
+      value.correlationId,
+      "Team correlation id",
+      TEAM_PLAN_MAX_IDENTIFIER_BYTES,
+      "invalid-candidate",
+    ),
+  );
+  const version = requirePositiveInteger(value.version, "Team plan version", "invalid-candidate");
+  const goal = requireText(value.goal, "Team goal", TEAM_PLAN_MAX_GOAL_BYTES, "invalid-candidate");
+  validateCandidateEnvelope(
+    Object.freeze({
+      protocolVersion: TEAM_PLANNER_PROTOCOL_VERSION,
+      correlationId: correlation,
+      planVersion: version,
+      goal,
+      workerCapabilities: TEAM_WORKER_CAPABILITIES,
+      contextReferences: Object.freeze([]),
+      limits,
+    }),
+    Object.freeze({
+      protocolVersion: TEAM_PLANNER_PROTOCOL_VERSION,
+      correlationId: correlation,
+      planVersion: version,
+      summary: requireText(
+        value.summary,
+        "Team plan summary",
+        TEAM_PLAN_MAX_SUMMARY_BYTES,
+        "invalid-candidate",
+      ),
+      nodes: Object.freeze(candidateNodes),
+    }),
+    ordered,
+  );
+  return Object.freeze({
+    protocolVersion: TEAM_PLANNER_PROTOCOL_VERSION,
+    planId: teamPlanId(requireDigestIdentifier(value.planId, "team-plan-", "Team plan id")),
+    correlationId: correlation,
+    version,
+    goal,
+    summary: requireText(
+      value.summary,
+      "Team plan summary",
+      TEAM_PLAN_MAX_SUMMARY_BYTES,
+      "invalid-candidate",
+    ),
+    limits,
+    nodes,
+  });
+}
+
+export function assertAdmittedTeamPlan(value: unknown): asserts value is AdmittedTeamPlan {
+  normalizeAdmittedTeamPlan(value);
+}
+
+export function assertPersistAdmittedTeamPlanResult(
+  value: unknown,
+): asserts value is PersistAdmittedTeamPlanResult {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["status", "plan"]) ||
+    (value.status !== "stored" && value.status !== "duplicate")
+  ) {
+    throw new TeamPlanAdmissionError("invalid-candidate", "Persisted team-plan result is invalid");
+  }
+  assertAdmittedTeamPlan(value.plan);
 }
 
 export async function admitTeamPlanCandidate(

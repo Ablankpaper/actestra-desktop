@@ -3,7 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { PersistenceError } from "../../core";
 
 export const ACTESTRA_SQLITE_APPLICATION_ID = 1_095_980_114;
-export const CURRENT_CORE_SCHEMA_VERSION = 13;
+export const CURRENT_CORE_SCHEMA_VERSION = 14;
 
 export interface SqliteMigration {
   readonly version: number;
@@ -671,6 +671,32 @@ export const CORE_SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
       CREATE INDEX aionui_schedule_active_claim_idx
         ON aionui_schedule_jobs(active_claim)
         WHERE active_claim IS NOT NULL;
+    `,
+  },
+  {
+    version: 14,
+    name: "team-plan-authority",
+    sql: `
+      CREATE TABLE team_plans (
+        plan_id TEXT PRIMARY KEY CHECK (
+          length(plan_id) = 74 AND
+          substr(plan_id, 1, 10) = 'team-plan-' AND
+          substr(plan_id, 11) NOT GLOB '*[^0-9a-f]*'
+        ),
+        protocol_version INTEGER NOT NULL CHECK (protocol_version = 1),
+        correlation_id TEXT NOT NULL CHECK (length(correlation_id) BETWEEN 1 AND 128),
+        plan_version INTEGER NOT NULL CHECK (plan_version >= 1),
+        node_count INTEGER NOT NULL CHECK (node_count BETWEEN 3 AND 5),
+        record_sha256 TEXT NOT NULL CHECK (
+          length(record_sha256) = 64 AND
+          record_sha256 NOT GLOB '*[^0-9a-f]*'
+        ),
+        plan_json TEXT NOT NULL CHECK (length(plan_json) BETWEEN 1 AND 65536),
+        UNIQUE (correlation_id, plan_version)
+      ) STRICT;
+
+      CREATE INDEX team_plans_correlation_idx
+        ON team_plans(correlation_id, plan_version);
     `,
   },
 ] as const;
