@@ -35,6 +35,7 @@ const test = spawnSync(
     "tests/main/gooseMcpSessionComposition.test.ts",
     "tests/main/isolatedCodingMainService.test.ts",
     "tests/main/gooseRunnerIntegration.test.ts",
+    "tests/main/aionuiCodingJourneyRealGoose.test.ts",
   ],
   {
     cwd: repositoryRoot,

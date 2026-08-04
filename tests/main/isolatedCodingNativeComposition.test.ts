@@ -25,10 +25,10 @@ interface DownstreamOverlay {
 const repositoryRoot = path.resolve(import.meta.dirname, "../..");
 const overlayPath = path.join(repositoryRoot, "downstream/aionui-v2.1.41/overlay.json");
 
-describe("P5.2 native AionUI desktop-main composition", () => {
+describe("P5 native AionUI desktop-main composition", () => {
   it("declares the R1 main-only service patch and every required source copy", () => {
     const overlay = JSON.parse(fs.readFileSync(overlayPath, "utf8")) as DownstreamOverlay;
-    expect(overlay.phase).toBe("P5-isolated-coding-main-composition");
+    expect(overlay.phase).toBe("P5-preserved-aionui-coding-journey");
     expect(overlay.patches).toContainEqual(
       expect.objectContaining({
         path: "patches/0012-actestra-isolated-coding-main.mjs",

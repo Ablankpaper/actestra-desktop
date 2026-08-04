@@ -114,14 +114,14 @@ function main() {
 
   if (
     overlay.schemaVersion !== 1 ||
-    overlay.phase !== "P5-isolated-coding-main-composition" ||
+    overlay.phase !== "P5-preserved-aionui-coding-journey" ||
     !overlay.migration.strategy.includes("schema v13") ||
-    !overlay.migration.rollback.includes("patch 0012") ||
-    overlay.patches.at(-1)?.path !== "patches/0012-actestra-isolated-coding-main.mjs" ||
+    !overlay.migration.rollback.includes("patch 0013") ||
+    overlay.patches.at(-1)?.path !== "patches/0013-actestra-goose-native-agent.mjs" ||
     overlay.uiContract.layoutChangesAllowed !== false ||
     overlay.uiContract.featureEntryRemovalAllowed !== false
   ) {
-    throw new Error("Invalid P5 isolated-coding main-composition downstream overlay policy");
+    throw new Error("Invalid P5 preserved AionUI coding-journey downstream overlay policy");
   }
 
   for (const patch of overlay.patches) {
@@ -677,14 +677,17 @@ function main() {
     path.join(outputRoot, "packages/desktop/src/process/services/actestraShadowBridge.ts"),
     [
       "disposeScheduleBridge?.();",
+      "let codingJourneyCloseError: unknown;",
+      "await activeCodingJourney?.close();",
+      "codingJourneyService = null;",
       "let isolatedCodingCloseFailed = false;",
       "await activeIsolatedCoding?.close();",
       "isolatedCodingMainService = null;",
       "isolatedCodingCloseFailed = true;",
       "await activeSchedule?.close()",
       "await activeGeneralWork?.close()",
-      "if (isolatedCodingCloseFailed)",
-      "throw isolatedCodingCloseError;",
+      "if (codingJourneyCloseError !== undefined || isolatedCodingCloseFailed)",
+      "Actestra coding journey shutdown failed",
       "persistence = null;",
       "await activePersistence.close();",
     ],
@@ -1075,15 +1078,109 @@ function main() {
     "denies opening after close",
     "code: 'closed'",
   ]);
+  requireText(path.join(outputRoot, "tests/unit/actestra/codingAgentNativeWiring.test.ts"), [
+    "Actestra retained AionUI coding-agent wiring",
+    "AionUiCodingAgentService",
+    "actestraCodingAgent",
+    "ActestraCodingAgentRepairPanel",
+  ]);
+  requireText(path.join(outputRoot, "tests/unit/actestra/codingAgentClient.dom.test.ts"), [
+    "Actestra coding-agent renderer client",
+    "mergeActestraCodingAgent",
+    "probeActestraCodingManagedAgent",
+    "actestra-goose",
+  ]);
+  requireText(
+    path.join(outputRoot, "packages/desktop/src/actestra/compatibility/aionui/codingJourney.ts"),
+    [
+      "AIONUI_CODING_JOURNEY_CONTRACT_VERSION = 1",
+      "ACTESTRA_CODING_JOURNEY_SUBMIT_CHANNEL",
+      "ACTESTRA_CODING_JOURNEY_LIST_CHANNEL",
+      "ACTESTRA_CODING_JOURNEY_CANCEL_CHANNEL",
+      "ACTESTRA_CODING_JOURNEY_APPROVAL_DECISION_CHANNEL",
+      "ACTESTRA_CODING_JOURNEY_PUBLISH_DECISION_CHANNEL",
+    ],
+  );
+  requireText(
+    path.join(
+      outputRoot,
+      "packages/desktop/src/actestra/main/compatibility/aionuiCodingJourneyService.ts",
+    ),
+    [
+      "deriveAionUiCodingJourneyIdentities",
+      "awaitToolApprovalDecision",
+      "awaitPublishDecision",
+      'approvalActorId("actestra-aionui-coding-user")',
+      "return this.project(identities)",
+    ],
+  );
+  requireText(
+    path.join(
+      outputRoot,
+      "packages/desktop/src/actestra/main/compatibility/aionuiCodingJourneyBridgeService.ts",
+    ),
+    [
+      "AionUiCodingJourneyBridgeService",
+      "assertAionUiCodingJourneySubmitRequest",
+      "assertAionUiCodingJourneyBridgeResult",
+      "execution-failed",
+    ],
+  );
+  requireText(
+    path.join(
+      outputRoot,
+      "packages/desktop/src/renderer/pages/conversation/platforms/acp/AcpSendBox.tsx",
+    ),
+    [
+      "useActestraCodingJourney",
+      "actestraCodingJourneySelector",
+      "data-testid='actestra-coding-agent-selector'",
+      "Goose coding accepts text only",
+      "ipcBridge.acpConversation.sendMessage.invoke",
+      "ipcBridge.conversation.stop.invoke",
+    ],
+  );
+  requireText(
+    path.join(
+      outputRoot,
+      "packages/desktop/src/renderer/pages/conversation/Messages/acp/MessageAcpPermission.tsx",
+    ),
+    [
+      "readActestraCodingPermissionMetadata",
+      "decideActestraCodingJourneyApproval",
+      "decideActestraCodingJourneyPublish",
+      "conversation.confirmMessage.invoke",
+    ],
+  );
+  requireText(path.join(outputRoot, "tests/unit/actestra/codingJourneyClient.dom.test.ts"), [
+    "Actestra coding-journey renderer client",
+    "five fixed preload operations",
+    "agent-unavailable",
+    "execution-failed",
+  ]);
+  requireText(path.join(outputRoot, "tests/unit/actestra/codingJourneyHook.dom.test.tsx"), [
+    "Actestra retained AionUI coding-journey hook",
+    "projectActestraCodingJourneyMessages",
+    "submission-aionui-coding-",
+    "retained AionUI ACP SendBox",
+  ]);
+  requireText(path.join(outputRoot, "tests/unit/actestra/codingJourneyNativeWiring.test.ts"), [
+    "Actestra retained AionUI coding-journey wiring",
+    "main-frame-only",
+    "non-Team selector",
+    "MessageAcpToolCall",
+    "MessageAcpPermission",
+  ]);
 
   console.log(
-    `Verified Actestra P5 isolated-coding main-composition downstream overlay: ${changedFiles.size} declared files, ` +
+    `Verified Actestra P5 preserved AionUI coding-journey downstream overlay: ${changedFiles.size} declared files, ` +
       `${overlay.invariantFiles.length} R0 invariant files, ${overlay.sourceCopies.length} ` +
       "reviewed source copies, preserved AionUI surfaces, utility-owned persistence, shadow and " +
       "approval authority, workspace grants, bounded content references, AgentAdapter v2, and " +
       "the supervised General Worker, scoped native text tools, deterministic recovery, and " +
       "the preserved AionUI General Work and scheduled-task journeys plus the main-owned " +
-      "isolated-coding containment lifecycle present.",
+      "isolated-coding containment lifecycle, retained Goose Agent readiness, and the closed " +
+      "native ACP coding journey present.",
   );
 }
 

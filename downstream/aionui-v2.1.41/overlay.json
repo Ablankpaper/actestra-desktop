@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
-  "phase": "P5-isolated-coding-main-composition",
+  "phase": "P5-preserved-aionui-coding-journey",
   "upstream": {
     "tag": "v2.1.41",
     "commit": "2d8925fc67a97a20996fadcd2a0862b778b572ba",
     "manifestSha256": "252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f"
   },
-  "authorityOwner": "Actestra Core through durable AionUI journey links, schedule records and claims, General Work checkpoints, supervised persistence and Worker processes, the scoped desktop main-process tool gateway, and the main-owned isolated-coding session service",
+  "authorityOwner": "Actestra Core through durable AionUI journey links, schedule records and claims, General Work checkpoints, supervised persistence and Worker processes, the scoped desktop main-process tool gateway, the main-owned isolated-coding session service, the fixed Goose runner-readiness provider, and the closed retained-ACP coding-journey bridge",
   "classifications": ["R0", "R1", "R2"],
   "migration": {
-    "strategy": "Fresh Actestra profile v1; native AionUi profiles remain untouched. Forward-only schema v13 retains schemas v1-v12 exactly and adds the bounded aionui_schedule_jobs authority table, schedule-owned Workspace grants, main-owned timers and claims, missed/interrupted recovery state, and fixed existing-conversation /actestra execution through the accepted General Work journey. The retained /scheduled routes, dialog, detail/history, status, CRUD, pause/resume, Run Now, and four cron events use one fixed preload provider; cron operations never fall back to AionCore, and application resume recalculates Actestra timers without calling the upstream system-resume route. Schema v12 Office-document authority, all earlier journey kinds, shadow evidence, approval authority, workspace grants, bounded content references, terminal evidence, checkpoints, and journey links remain behind the same supervised Electron persistence utility. Renderer projections contain only bounded native-compatible schedule, task, status, incident, and Artifact metadata. No workspace root, content reference, private tool input, prompt audit metadata, timer, run claim, Worker identity, credential, shell, arbitrary network, Goose, CrewAI, second UI, or second state authority is added.",
-    "rollback": "Regenerate without patch 0012 to remove the main-owned isolated-coding session composition while retaining the accepted P5.2 library containment contracts. No coding session, renderer state, schema row, or frozen foundation file requires reversal. Regenerate without patch 0011 to restore the original AionUI cron provider wiring while retaining the accepted General Work and Office journeys. Existing schema v13 schedule rows and schedule-owned grants remain inert; use a fresh Actestra profile for a true data downgrade. Regenerate without patch 0010 to remove the preserved AionUI General Work journey bridge and /actestra SendBox intents while retaining GW-P4.5 recovery. The frozen AionUi foundation and native AionUi profiles stay byte-identical."
+    "strategy": "Fresh Actestra profile v1; native AionUi profiles remain untouched. Forward-only schema v13 retains schemas v1-v12 exactly and adds the bounded aionui_schedule_jobs authority table, schedule-owned Workspace grants, main-owned timers and claims, missed/interrupted recovery state, and fixed existing-conversation /actestra execution through the accepted General Work journey. P5.3 adds one fixed main-owned Goose runner-readiness provider plus five closed coding-journey intents. The retained Agent Settings and Repair routes receive only bounded readiness; the existing ACP SendBox selects the fixed Goose provider and projects bounded Actestra messages, permissions, tool calls, terminal/test summaries, diffs, review state, and Artifact labels through native message surfaces. Renderer requests contain only conversation, submission, Task, Approval, bounded prompt, decision, and cancellation data. They contain no repository root, model identifier, runner path, digest, environment, credential, actor authority, private root, worktree, content reference, or launch override. The retained /scheduled routes, dialog, detail/history, status, CRUD, pause/resume, Run Now, and four cron events use one fixed preload provider; cron operations never fall back to AionCore, and application resume recalculates Actestra timers without calling the upstream system-resume route. Schema v12 Office-document authority, all earlier journey kinds, shadow evidence, approval authority, workspace grants, bounded content references, terminal evidence, checkpoints, and journey links remain behind the same supervised Electron persistence utility. Renderer projections contain only bounded native-compatible schedule, task, status, incident, Artifact, coding-agent readiness, and coding-journey metadata. No workspace root, content reference, private tool input, prompt audit metadata, timer, run claim, Worker identity, credential, shell, arbitrary network, Goose UI, CrewAI, second UI, or second state authority is added.",
+    "rollback": "Regenerate without patch 0013 to remove the fixed Goose readiness row, probe, retained ACP selector, five coding-journey intents, and coding projection while retaining the accepted main-only P5.2 containment and publish services. Existing Actestra Tasks, events, approvals, and Artifacts remain authoritative and inert; no schema downgrade, native profile edit, or frozen-foundation change is required. Regenerate without patch 0012 to remove the main-owned isolated-coding session composition while retaining the accepted P5.2 library containment contracts. No coding session, renderer state, schema row, or frozen foundation file requires reversal. Regenerate without patch 0011 to restore the original AionUI cron provider wiring while retaining the accepted General Work and Office journeys. Existing schema v13 schedule rows and schedule-owned grants remain inert; use a fresh Actestra profile for a true data downgrade. Regenerate without patch 0010 to remove the preserved AionUI General Work journey bridge and /actestra SendBox intents while retaining GW-P4.5 recovery. The frozen AionUi foundation and native AionUi profiles stay byte-identical."
   },
   "uiContract": {
     "layoutChangesAllowed": false,
@@ -175,6 +175,22 @@
       ],
       "authorityOwner": "Actestra Core through the native desktop main persistence owner and isolated-coding session service",
       "rollback": "Regenerate without this patch. The accepted P5.2 library containment and Goose session helpers remain available but uncomposed; no renderer route, native AionUI profile, schema, or frozen foundation file is changed."
+    },
+    {
+      "path": "patches/0013-actestra-goose-native-agent.mjs",
+      "classification": ["R1"],
+      "domains": [
+        "fixed Goose managed-agent readiness",
+        "retained Agent Settings status and probe",
+        "retained Agent Repair unavailable state",
+        "retained ACP SendBox Goose selector",
+        "main-owned coding journey IPC",
+        "native ACP message, permission, tool, diff, test, and Artifact projection",
+        "main-frame IPC and fixed preload projection",
+        "runner artifact admission redaction"
+      ],
+      "authorityOwner": "Actestra Core through the desktop-main coding-agent and coding-journey services, exact Goose runner admission, durable DomainGraph and Core events, and closed main-frame intents",
+      "rollback": "Regenerate without this patch. The accepted P5.2 containment and publish services remain composed but are no longer projected into Agent Settings, Repair, or the retained ACP conversation; no schema, frozen foundation file, native profile, or coding worktree requires reversal."
     }
   ],
   "sourceCopies": [
@@ -267,6 +283,14 @@
       "destination": "packages/desktop/src/actestra/compatibility/aionui/approvalAuthority.ts"
     },
     {
+      "source": "apps/desktop/src/compatibility/aionui/codingAgent.ts",
+      "destination": "packages/desktop/src/actestra/compatibility/aionui/codingAgent.ts"
+    },
+    {
+      "source": "apps/desktop/src/compatibility/aionui/codingJourney.ts",
+      "destination": "packages/desktop/src/actestra/compatibility/aionui/codingJourney.ts"
+    },
+    {
       "source": "apps/desktop/src/compatibility/aionui/nativeObservations.ts",
       "destination": "packages/desktop/src/actestra/compatibility/aionui/nativeObservations.ts"
     },
@@ -285,6 +309,18 @@
     {
       "source": "apps/desktop/src/main/compatibility/aionuiApprovalReconciliationPolicyGate.ts",
       "destination": "packages/desktop/src/actestra/main/compatibility/aionuiApprovalReconciliationPolicyGate.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/compatibility/aionuiCodingAgentService.ts",
+      "destination": "packages/desktop/src/actestra/main/compatibility/aionuiCodingAgentService.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/compatibility/aionuiCodingJourneyBridgeService.ts",
+      "destination": "packages/desktop/src/actestra/main/compatibility/aionuiCodingJourneyBridgeService.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/compatibility/aionuiCodingJourneyService.ts",
+      "destination": "packages/desktop/src/actestra/main/compatibility/aionuiCodingJourneyService.ts"
     },
     {
       "source": "apps/desktop/src/main/compatibility/aionuiShadowProjectionService.ts",
@@ -527,6 +563,8 @@
     "packages/desktop/electron-builder.yml",
     "packages/desktop/electron.vite.config.ts",
     "packages/desktop/src/actestra/compatibility/aionui/approvalAuthority.ts",
+    "packages/desktop/src/actestra/compatibility/aionui/codingAgent.ts",
+    "packages/desktop/src/actestra/compatibility/aionui/codingJourney.ts",
     "packages/desktop/src/actestra/compatibility/aionui/generalWorkBridge.ts",
     "packages/desktop/src/actestra/compatibility/aionui/generalWorkIdentity.ts",
     "packages/desktop/src/actestra/compatibility/aionui/generalWorkJourney.ts",
@@ -553,6 +591,9 @@
     "packages/desktop/src/actestra/main/compatibility/aionuiApprovalAuthorityService.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiApprovalPolicyGate.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiApprovalReconciliationPolicyGate.ts",
+    "packages/desktop/src/actestra/main/compatibility/aionuiCodingAgentService.ts",
+    "packages/desktop/src/actestra/main/compatibility/aionuiCodingJourneyBridgeService.ts",
+    "packages/desktop/src/actestra/main/compatibility/aionuiCodingJourneyService.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiShadowProjectionService.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiGeneralWorkBridgeService.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiGeneralWorkJourneyService.ts",
@@ -602,6 +643,8 @@
     "packages/desktop/src/actestra/utility/worker/generalWorkerEntry.ts",
     "packages/desktop/src/actestra/utility/worker/generalWorkerService.ts",
     "packages/desktop/src/common/adapter/actestraApprovalAuthorityClient.ts",
+    "packages/desktop/src/common/adapter/actestraCodingAgentClient.ts",
+    "packages/desktop/src/common/adapter/actestraCodingJourneyClient.ts",
     "packages/desktop/src/common/adapter/actestraGeneralWorkClient.ts",
     "packages/desktop/src/common/adapter/actestraShadowPublisher.ts",
     "packages/desktop/src/common/adapter/httpBridge.ts",
@@ -638,19 +681,28 @@
     "packages/desktop/src/renderer/components/settings/SettingsModal/contents/AboutModalContent.tsx",
     "packages/desktop/src/renderer/components/settings/SettingsModal/contents/FeedbackReportModal.tsx",
     "packages/desktop/src/renderer/components/settings/useUpdateNotificationController.ts",
+    "packages/desktop/src/renderer/hooks/agent/useManagedAgents.ts",
     "packages/desktop/src/renderer/hooks/chat/actestraGeneralWorkProjection.ts",
+    "packages/desktop/src/renderer/hooks/chat/actestraCodingJourneyProjection.ts",
+    "packages/desktop/src/renderer/hooks/chat/useActestraCodingJourney.ts",
     "packages/desktop/src/renderer/hooks/chat/useActestraGeneralWork.ts",
     "packages/desktop/src/renderer/hooks/system/notification/useBrowserNotification.ts",
     "packages/desktop/src/renderer/hooks/system/notification/useDesktopTurnNotification.ts",
     "packages/desktop/src/renderer/index.html",
     "packages/desktop/src/renderer/main.tsx",
     "packages/desktop/src/renderer/pages/guid/components/QuickActionButtons.tsx",
+    "packages/desktop/src/renderer/pages/settings/AgentSettings/ActestraCodingAgentRepairPanel.tsx",
+    "packages/desktop/src/renderer/pages/settings/AgentSettings/AgentRepairPage.tsx",
+    "packages/desktop/src/renderer/pages/settings/AgentSettings/LocalAgents.tsx",
+    "packages/desktop/src/renderer/utils/model/agentTypes.ts",
     "packages/desktop/src/renderer/pages/conversation/Messages/components/ActestraGeneralWorkArtifactActions.tsx",
     "packages/desktop/src/renderer/pages/conversation/Messages/components/MessageTips.tsx",
+    "packages/desktop/src/renderer/pages/conversation/Messages/acp/MessageAcpPermission.tsx",
     "packages/desktop/src/renderer/pages/conversation/GroupedHistory/hooks/useConversationActions.ts",
     "packages/desktop/src/renderer/pages/conversation/Preview/components/PreviewPanel/PreviewPanel.tsx",
     "packages/desktop/src/renderer/pages/conversation/Preview/components/viewers/OfficeDocViewer.tsx",
     "packages/desktop/src/renderer/pages/conversation/Preview/context/PreviewContext.tsx",
+    "packages/desktop/src/renderer/pages/conversation/platforms/acp/AcpSendBox.tsx",
     "packages/desktop/src/renderer/pages/cron/ScheduledTasksPage/index.tsx",
     "packages/desktop/src/renderer/pages/cron/ScheduledTasksPage/CreateTaskDialog.tsx",
     "packages/desktop/src/renderer/services/feedback/submitFeedbackReport.ts",
@@ -682,6 +734,11 @@
     "tests/unit/actestra/approvalReconciliationPolicyGate.test.ts",
     "tests/unit/actestra/approvalAuthorityService.test.ts",
     "tests/unit/actestra/approvalNativeTransport.test.ts",
+    "tests/unit/actestra/codingAgentClient.dom.test.ts",
+    "tests/unit/actestra/codingAgentNativeWiring.test.ts",
+    "tests/unit/actestra/codingJourneyClient.dom.test.ts",
+    "tests/unit/actestra/codingJourneyHook.dom.test.tsx",
+    "tests/unit/actestra/codingJourneyNativeWiring.test.ts",
     "tests/unit/actestra/externalEffectIsolation.test.ts",
     "tests/unit/actestra/generalWorkClient.dom.test.ts",
     "tests/unit/actestra/generalWorkHook.dom.test.tsx",

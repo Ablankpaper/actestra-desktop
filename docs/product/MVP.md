@@ -64,6 +64,11 @@ aggregations without receiving direct tool or product authority.
 - General worker for file, research, and artifact tasks.
 - Exact-version Goose worker adapter for isolated repository and terminal tasks,
   backed by an admitted minimal runner artifact and fail-closed ACP handshake.
+- One retained-AionUI coding journey: fixed Goose readiness in Agent Settings
+  and Repair, a non-Team native/Goose ACP selector, text-only submission,
+  existing permission/terminal/diff/test message surfaces, explicit stop, exact
+  publish approval, and available Actestra Artifact projection. Native ACP and
+  Team paths remain available and Goose receives no separate application UI.
 - Small team orchestration with a leader, dependencies, parallel workers,
   retries, pause, cancel, and user handoff.
 - A separately supervised planner sidecar whose private state is disposable and

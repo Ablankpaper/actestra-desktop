@@ -1,4 +1,6 @@
 export * from "./approvalAuthority";
+export * from "./codingAgent";
+export * from "./codingJourney";
 export * from "./generalWorkJourney";
 export * from "./generalWorkIdentity";
 export * from "./generalWorkBridge";
