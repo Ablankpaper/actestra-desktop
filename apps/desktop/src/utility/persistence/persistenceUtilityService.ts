@@ -183,6 +183,18 @@ export class PersistenceUtilityService {
         return persistence.persistAdmittedTeamPlan(request.payload.plan);
       case "get-admitted-team-plan":
         return persistence.getAdmittedTeamPlan(request.payload.planId);
+      case "persist-team-definition":
+        return persistence.persistTeamDefinition(request.payload.team);
+      case "get-team-definition":
+        return persistence.getTeamDefinition(request.payload.teamId);
+      case "list-team-definitions":
+        return persistence.listTeamDefinitions(request.payload.limit);
+      case "persist-team-run-snapshot":
+        return persistence.persistTeamRunSnapshot(request.payload.snapshot);
+      case "get-team-run-snapshot":
+        return persistence.getTeamRunSnapshot(request.payload.runId);
+      case "list-recoverable-team-runs":
+        return persistence.listRecoverableTeamRuns(request.payload.limit);
       case "register-aionui-general-work":
         return persistence.registerAionUiGeneralWorkJourney(request.payload.registration);
       case "list-aionui-general-work-links":

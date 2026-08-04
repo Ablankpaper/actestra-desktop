@@ -630,7 +630,7 @@ function main() {
     "missed-occurrence",
     "schedule-smoke-interrupted-claim",
     "schedule-skill-unsupported",
-    "schema version 13",
+    "expectedPersistenceSchemaVersion = 15",
   ]);
   rejectText(path.join(repositoryRoot, "scripts/smoke-aionui-general-work.mjs"), [
     "Electron.app",
@@ -814,7 +814,7 @@ function main() {
   requireText(
     path.join(outputRoot, "packages/desktop/src/actestra/utility/persistence/sqliteMigrations.ts"),
     [
-      "CURRENT_CORE_SCHEMA_VERSION = 14",
+      "CURRENT_CORE_SCHEMA_VERSION = 15",
       "aionui_shadow_evidence",
       "aionui_approval_decisions",
       "pending-delivery",
@@ -1049,7 +1049,7 @@ function main() {
   ]);
   requireText(path.join(outputRoot, "tests/unit/actestra/persistenceUtilityClient.test.ts"), [
     "schema v14 utility IPC",
-    "expect(client.schemaVersion).toBe(14)",
+    "expect(client.schemaVersion).toBe(15)",
   ]);
   requireText(path.join(outputRoot, "tests/unit/actestra/generalWorkSmoke.test.ts"), [
     "prepare-writing-restart",

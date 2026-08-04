@@ -346,7 +346,10 @@ ADR-0010 and the
 migration:
 
 - AionUi routes, components, interaction design, and functional entries remain
-  the user-facing application;
+  the user-facing foundation. Preservation protects design and functional
+  continuity, but does not freeze every page or information architecture;
+  Actestra-native UI additions and adaptations require recorded R1/R2
+  downstream patches, retained compatibility, and rollback evidence;
 - its 41 bridge domains form the renderer compatibility contract;
 - Actestra adapters replace provider and authority behavior beneath that
   contract;
@@ -458,6 +461,15 @@ events, traces, and retries are disposable compatibility state.
 Eigent remains the reference for the user-visible Team experience and
 acceptance behavior; its separate application and complete runtime are not
 part of the Actestra process topology.
+
+P6 must expose the resulting authority as a complete AionUI-native Team/group
+chat rather than a hidden provider. The visible path covers Team creation and
+list, `/team/:id`, members/roles and General+Goose configuration, owned
+workspace/task input, messages, plan/node/Worker and dependency state,
+protected approvals, pause/cancel/retry/replace/handoff, Artifact/result
+aggregation, and restart recovery. It presents Actestra identity, authority
+source, current executor, blocked reason, and next valid action in the AionUI
+design language. No Goose or Eigent application UI enters the product.
 
 ### Agent workers
 

@@ -602,9 +602,14 @@ The accepted plan is not yet schedulable, and no planner sidecar process exists.
 - Evaluate CrewAI as a separately supervised planner, replanner, and result
   aggregation sidecar under ADR-0015. Validate every returned plan before it
   becomes authoritative or schedulable.
-- Map orchestration into the preserved AionUi Team creation, navigation, chat,
-  task/slot, worker-status, messaging, pause, cancel, rename, pin, and recovery
-  experience; do not add a separate Eigent application UI.
+- Build a complete AionUI-native Team/group-chat experience covering creation,
+  list, `/team/:id`, members and roles, General+Goose configuration, owned
+  workspace and task input, chat/messages, plan/node/Worker progress,
+  dependencies, approvals, controls, Artifacts, aggregation, and recovery.
+  AionUI v2.1.41 remains the design/component/navigation foundation, but page
+  and information-architecture evolution is allowed through recorded R1/R2
+  downstream patches with retention, compatibility, and rollback evidence; do
+  not add a separate Goose or Eigent application UI.
 - Dependency graph and ready/running/blocked/completed/failed/cancelled states.
 - Parallel general and coding workers.
 - Shared artifact references without shared uncontrolled working directories.
@@ -615,7 +620,11 @@ The accepted plan is not yet schedulable, and no planner sidecar process exists.
 
 - A representative mixed general-and-code fixture completes deterministically.
 - Dependency, partial failure, retry, cancellation, and aggregation tests pass.
-- The UI can explain what each worker is doing and why it is blocked.
+- A user can create, run, understand, and control the representative Team from
+  the visible AionUI-native journey. The UI identifies Actestra authority and
+  the current General or Goose executor, explains dependencies, approvals,
+  interruption and every blocked reason, offers only valid next actions, and
+  restores the same understandable state after restart.
 - CrewAI crash, cancellation, restart, or version mismatch leaves the Actestra
   graph recoverable and creates no orphan process or worker.
 

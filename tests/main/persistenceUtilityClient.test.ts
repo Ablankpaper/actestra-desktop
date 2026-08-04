@@ -17,6 +17,10 @@ import {
   workspaceGrantId,
   type AdmittedTeamPlan,
   type PersistAdmittedTeamPlanResult,
+  type TeamDefinition,
+  type TeamId,
+  type TeamRunId,
+  type TeamRunSnapshot,
 } from "../../apps/desktop/src/core";
 import { PersistenceUtilityError } from "../../apps/desktop/src/main/persistence/persistenceUtilityClient";
 import { resolveCoreDatabasePath } from "../../apps/desktop/src/utility/persistence/sqliteCorePersistence";
@@ -25,6 +29,7 @@ import { createGeneralWorkCheckpoint } from "../fixtures/generalWorkRecovery";
 import { createAionUiGeneralWorkRegistration } from "../fixtures/aionuiGeneralWork";
 import { createAionUiScheduleRegistration } from "../fixtures/aionuiSchedule";
 import { openTestPersistenceUtility } from "../fixtures/persistenceUtility";
+import { createTeamRunFixture } from "../fixtures/teamRun";
 
 const testDirectories: string[] = [];
 
@@ -86,6 +91,20 @@ interface TeamPlanPersistenceClient {
   persistAdmittedTeamPlan(plan: AdmittedTeamPlan): Promise<PersistAdmittedTeamPlanResult>;
   getAdmittedTeamPlan(planId: string): Promise<AdmittedTeamPlan | null>;
   close(): Promise<void>;
+}
+
+interface TeamRunPersistenceClient extends TeamPlanPersistenceClient {
+  persistTeamDefinition(
+    team: TeamDefinition,
+  ): Promise<{ readonly status: "stored" | "duplicate"; readonly team: TeamDefinition }>;
+  getTeamDefinition(teamId: TeamId): Promise<TeamDefinition | null>;
+  listTeamDefinitions(limit: number): Promise<readonly TeamDefinition[]>;
+  persistTeamRunSnapshot(snapshot: TeamRunSnapshot): Promise<{
+    readonly status: "stored" | "duplicate";
+    readonly snapshot: TeamRunSnapshot;
+  }>;
+  getTeamRunSnapshot(runId: TeamRunId): Promise<TeamRunSnapshot | null>;
+  listRecoverableTeamRuns(limit: number): Promise<readonly TeamRunSnapshot[]>;
 }
 
 function createTestDirectory(): string {
@@ -177,7 +196,7 @@ describe("persistence utility client", () => {
     const workspaceRoot = path.join(userDataPath, "fixture-workspace");
     fs.mkdirSync(workspaceRoot);
     const { client, transport } = await openTestPersistenceUtility(userDataPath);
-    expect(client.schemaVersion).toBe(14);
+    expect(client.schemaVersion).toBe(15);
     const graph = createDomainGraph();
     await client.replaceDomainGraph(graph);
     await expect(client.loadDomainGraph()).resolves.toEqual(graph);
@@ -296,6 +315,103 @@ describe("persistence utility client", () => {
     expect(Object.isFrozen(restored)).toBe(true);
     expect(restored?.nodes.every(Object.isFrozen)).toBe(true);
     await reopenedClient.close();
+  });
+
+  it("round-trips schema 15 Team definitions and run revisions after reopening", async () => {
+    const userDataPath = createTestDirectory();
+    const { plan, team, accepted } = await createTeamRunFixture("client-round-trip");
+    const opened = await openTestPersistenceUtility(userDataPath);
+    const client = opened.client as unknown as TeamRunPersistenceClient;
+    await client.persistAdmittedTeamPlan(plan);
+
+    await expect(client.persistTeamDefinition(team)).resolves.toEqual({
+      status: "stored",
+      team,
+    });
+    await expect(client.persistTeamRunSnapshot(accepted)).resolves.toEqual({
+      status: "stored",
+      snapshot: accepted,
+    });
+    await expect(client.getTeamDefinition(team.teamId)).resolves.toEqual(team);
+    await expect(client.getTeamRunSnapshot(accepted.runId)).resolves.toEqual(accepted);
+    await expect(client.listTeamDefinitions(100)).resolves.toEqual([team]);
+    await expect(client.listRecoverableTeamRuns(100)).resolves.toEqual([accepted]);
+    await client.close();
+
+    const reopened = await openTestPersistenceUtility(userDataPath);
+    const reopenedClient = reopened.client as unknown as TeamRunPersistenceClient;
+    const restored = await reopenedClient.getTeamRunSnapshot(accepted.runId);
+    expect(restored).toEqual(accepted);
+    expect(Object.isFrozen(restored)).toBe(true);
+    await reopenedClient.close();
+  });
+
+  it("fails closed when a Team definition persistence response substitutes authoritative bytes", async () => {
+    const userDataPath = createTestDirectory();
+    const { plan, team } = await createTeamRunFixture("client-substitution");
+    const opened = await openTestPersistenceUtility(userDataPath);
+    const client = opened.client as unknown as TeamRunPersistenceClient;
+    await client.persistAdmittedTeamPlan(plan);
+    opened.transport.transformNextResponse((response) => {
+      if (
+        response.type !== "response" ||
+        response.status !== "ok" ||
+        response.operation !== "persist-team-definition"
+      ) {
+        throw new Error("Expected a successful Team definition response");
+      }
+      return {
+        ...response,
+        result: {
+          ...response.result,
+          team: {
+            ...response.result.team,
+            name: "Substituted but structurally valid Team bytes",
+          },
+        },
+      };
+    });
+
+    await expect(client.persistTeamDefinition(team)).rejects.toMatchObject({
+      name: "PersistenceUtilityError",
+      code: "invalid-message",
+    });
+    await expect(client.getTeamDefinition(team.teamId)).rejects.toMatchObject({
+      code: "unavailable",
+    });
+    await client.close();
+  });
+
+  it("fails closed when a Team run lookup substitutes another run identity", async () => {
+    const userDataPath = createTestDirectory();
+    const first = await createTeamRunFixture("client-lookup-first");
+    const second = await createTeamRunFixture("client-lookup-second");
+    const opened = await openTestPersistenceUtility(userDataPath);
+    const client = opened.client as unknown as TeamRunPersistenceClient;
+    for (const fixture of [first, second]) {
+      await client.persistAdmittedTeamPlan(fixture.plan);
+      await client.persistTeamDefinition(fixture.team);
+      await client.persistTeamRunSnapshot(fixture.accepted);
+    }
+    opened.transport.transformNextResponse((response) => {
+      if (
+        response.type !== "response" ||
+        response.status !== "ok" ||
+        response.operation !== "get-team-run-snapshot"
+      ) {
+        throw new Error("Expected a successful Team run lookup response");
+      }
+      return { ...response, result: second.accepted };
+    });
+
+    await expect(client.getTeamRunSnapshot(first.accepted.runId)).rejects.toMatchObject({
+      name: "PersistenceUtilityError",
+      code: "invalid-message",
+    });
+    await expect(client.getTeamRunSnapshot(first.accepted.runId)).rejects.toMatchObject({
+      code: "unavailable",
+    });
+    await client.close();
   });
 
   it("rejects structurally valid team-plan bytes that drift from the durable record digest", async () => {

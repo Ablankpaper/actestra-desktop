@@ -10,8 +10,12 @@ agents without learning multiple tools or managing separate runtime state.
 
 The desktop experience starts from AionUi `v2.1.41`. Its original functional
 UI and functions are a preservation baseline, not a menu of optional visual
-references. Actestra changes providers and authority behind compatible
-boundaries.
+references. That baseline preserves the design language, component system,
+navigation foundation, mature interactions, and retained functions; it does
+not freeze every page or the information architecture. Actestra may add or
+adapt AionUI-native product surfaces through recorded R1/R2 downstream patches
+with retention, compatibility, and rollback evidence while changing providers
+and authority behind compatible boundaries.
 
 The product composition is AionUi for the visible desktop experience, Actestra
 Core for state and authority, Goose for professional coding execution, CrewAI
@@ -54,6 +58,16 @@ and aggregates the result into one deliverable. Actestra owns the graph and
 execution state; a supervised CrewAI sidecar may propose plans, replans, and
 aggregations without receiving direct tool or product authority.
 
+The visible P6 journey is a real AionUI-native Team/group chat, not a hidden
+Core or provider feature. A user can create and list Teams, open `/team/:id`,
+configure members, roles, General and Goose, choose an Actestra-owned workspace,
+enter tasks and messages, inspect plan/node/Worker progress and dependencies,
+understand protected approval and every blocked or recovered state, use
+pause/cancel/retry/replace/handoff controls, and open Artifact references and
+the aggregated result. The page makes Actestra identity, authority source,
+current executor, blocking reason, and next valid action explicit without
+exposing private Worker or audit data.
+
 The first P6 boundary admits only a versioned 3-5-node candidate with fixed
 depth, concurrency, and attempt budgets, declared General/coding capabilities,
 classified context references, one human-feedback node, and a parallel branch.
@@ -79,6 +93,10 @@ itself add a CrewAI process or make an admitted candidate executable.
   Team paths remain available and Goose receives no separate application UI.
 - Small team orchestration with a leader, dependencies, parallel workers,
   retries, pause, cancel, and user handoff.
+- One complete AionUI-native Team/group-chat journey covering creation, list,
+  `/team/:id`, member/role and General+Goose setup, workspace/task input,
+  messages, explainable plan/node/Worker state, dependencies, approvals,
+  controls, Artifacts, aggregation, and deterministic restart recovery.
 - A closed Actestra-owned plan-admission protocol that rejects expanded or
   over-budget candidates and maps accepted nodes to Actestra identities before
   they can become product state.

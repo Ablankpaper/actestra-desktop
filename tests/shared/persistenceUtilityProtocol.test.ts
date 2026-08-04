@@ -9,8 +9,76 @@ import {
 import { createGeneralWorkCheckpoint } from "../fixtures/generalWorkRecovery";
 import { createAionUiGeneralWorkRegistration } from "../fixtures/aionuiGeneralWork";
 import { createAionUiScheduleRegistration } from "../fixtures/aionuiSchedule";
+import { createTeamRunFixture } from "../fixtures/teamRun";
 
 describe("persistence utility protocol", () => {
+  it("accepts only the six closed schema 15 Team persistence operations", async () => {
+    const { team, accepted } = await createTeamRunFixture("protocol");
+    const requests = [
+      { operation: "persist-team-definition", payload: { team } },
+      { operation: "get-team-definition", payload: { teamId: team.teamId } },
+      { operation: "list-team-definitions", payload: { limit: 100 } },
+      { operation: "persist-team-run-snapshot", payload: { snapshot: accepted } },
+      { operation: "get-team-run-snapshot", payload: { runId: accepted.runId } },
+      { operation: "list-recoverable-team-runs", payload: { limit: 100 } },
+    ] as const;
+    for (const [index, request] of requests.entries()) {
+      expect(() =>
+        assertPersistenceUtilityRequest({
+          protocolVersion: 1,
+          type: "request",
+          requestId: `persistence-team-request-${String(index + 1)}`,
+          ...request,
+        }),
+      ).not.toThrow();
+    }
+
+    const responses = [
+      {
+        operation: "persist-team-definition",
+        result: { status: "stored", team },
+      },
+      { operation: "get-team-definition", result: team },
+      { operation: "list-team-definitions", result: [team] },
+      {
+        operation: "persist-team-run-snapshot",
+        result: { status: "stored", snapshot: accepted },
+      },
+      { operation: "get-team-run-snapshot", result: accepted },
+      { operation: "list-recoverable-team-runs", result: [accepted] },
+    ] as const;
+    for (const [index, response] of responses.entries()) {
+      expect(() =>
+        assertPersistenceUtilityMessage({
+          protocolVersion: 1,
+          type: "response",
+          requestId: `persistence-team-response-${String(index + 1)}`,
+          status: "ok",
+          ...response,
+        }),
+      ).not.toThrow();
+    }
+
+    for (const rejected of [
+      {
+        operation: "persist-team-definition",
+        payload: { team, rootPath: "/private/unowned" },
+      },
+      { operation: "list-team-definitions", payload: { limit: 101 } },
+      { operation: "get-team-run-snapshot", payload: { runId: "worker-owned-run" } },
+      { operation: "list-recoverable-team-runs", payload: { limit: 0 } },
+    ]) {
+      expect(() =>
+        assertPersistenceUtilityRequest({
+          protocolVersion: 1,
+          type: "request",
+          requestId: "persistence-team-request-rejected",
+          ...rejected,
+        }),
+      ).toThrow(PersistenceUtilityProtocolError);
+    }
+  });
+
   it("accepts exact ready, request, and operation-specific response envelopes", () => {
     expect(() =>
       assertPersistenceUtilityMessage(createPersistenceUtilityReadyMessage()),

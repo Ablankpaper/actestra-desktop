@@ -1,5 +1,6 @@
 // @vitest-environment node
 
+import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { PersistenceError } from "../../apps/desktop/src/core";
@@ -60,7 +61,7 @@ describe("Actestra SQLite migrations", () => {
     expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
       fromVersion: 0,
       toVersion: CURRENT_CORE_SCHEMA_VERSION,
-      appliedVersions: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+      appliedVersions: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
     });
     expect(pragmaNumber(database, "application_id")).toBe(ACTESTRA_SQLITE_APPLICATION_ID);
     expect(pragmaNumber(database, "user_version")).toBe(CURRENT_CORE_SCHEMA_VERSION);
@@ -124,6 +125,10 @@ describe("Actestra SQLite migrations", () => {
       {
         version: 14,
         name: "team-plan-authority",
+      },
+      {
+        version: 15,
+        name: "team-run-authority",
       },
     ]);
     expect(
@@ -874,7 +879,9 @@ describe("Actestra SQLite migrations", () => {
       .prepare("SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = ?")
       .get("aionui_schedule_jobs");
 
-    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
+    expect(
+      migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 14), APPLIED_AT),
+    ).toEqual({
       fromVersion: 13,
       toVersion: 14,
       appliedVersions: [14],
@@ -889,6 +896,56 @@ describe("Actestra SQLite migrations", () => {
         .prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name = ?")
         .get("team_plans"),
     ).toEqual({ name: "team_plans" });
+  });
+
+  it("adds schema 15 Team definitions, current heads, and append-only revisions without changing schema 14 plans", () => {
+    const database = createDatabase();
+    migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 14), APPLIED_AT);
+    const planId = `team-plan-${"a".repeat(64)}`;
+    const planJson = JSON.stringify({
+      protocolVersion: 1,
+      planId,
+      correlationId: "correlation-schema-14-preserved",
+      version: 1,
+      goal: "Preserve the canonical admitted plan while adding Team run durability.",
+      summary: "One schema 14 plan remains byte-identical.",
+      limits: { maxNodes: 3, maxDepth: 2, maxConcurrency: 2, maxTotalAttempts: 3 },
+      nodes: [],
+    });
+    const digest = createHash("sha256").update(planJson).digest("hex");
+    database
+      .prepare(
+        `INSERT INTO team_plans (
+           plan_id, protocol_version, correlation_id, plan_version, node_count,
+           record_sha256, plan_json
+         ) VALUES (?, 1, ?, 1, 3, ?, ?)`,
+      )
+      .run(planId, "correlation-schema-14-preserved", digest, planJson);
+
+    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
+      fromVersion: 14,
+      toVersion: 15,
+      appliedVersions: [15],
+    });
+    expect(
+      database
+        .prepare("SELECT plan_id, record_sha256, plan_json FROM team_plans WHERE plan_id = ?")
+        .get(planId),
+    ).toEqual({ plan_id: planId, record_sha256: digest, plan_json: planJson });
+    expect(
+      database
+        .prepare(
+          `SELECT name
+           FROM sqlite_schema
+           WHERE type = 'table' AND name IN ('team_definitions', 'team_runs', 'team_run_revisions')
+           ORDER BY name`,
+        )
+        .all(),
+    ).toEqual([
+      { name: "team_definitions" },
+      { name: "team_run_revisions" },
+      { name: "team_runs" },
+    ]);
   });
 
   it("rejects a future schema without changing its version", () => {

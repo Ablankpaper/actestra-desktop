@@ -48,6 +48,22 @@ change.
 - Build vertical slices behind stable interfaces.
 - Start product UI changes from the native AionUi foundation, not the legacy P2
   shell or a visual recreation.
+- AionUI v2.1.41 defines Actestra's design language, component system, mature
+  interaction patterns, and primary application shell; preservation does not
+  freeze existing pages, navigation, or information architecture
+  pixel-for-pixel. Build Actestra-owned, AionUI-native product surfaces when a
+  journey needs them. User-facing capabilities must not exist only in Core,
+  persistence, commands, or developer/debug entry points.
+- P6 must deliver one user-creatable, runnable, understandable, and controllable
+  Team/group-chat experience inside the same AionUI-first surface. It includes
+  creation, list, `/team/:id`, members and roles, General+Goose configuration,
+  workspace and task input, messages, plan/node/Worker state, dependencies and
+  blocked reasons, protected approvals, pause/cancel/retry/replace/handoff,
+  Artifacts, result aggregation, recovery, and clear explanations of the
+  authority source, current executor, and next valid action. AionUI-native
+  navigation, pages, panels, status cards, guidance, and explanatory copy are
+  allowed. Do not import a Goose or Eigent application UI, and do not defer the
+  Team UI to P7 or P8.
 - Preserve routes, bridge domains, workflows, and error states. If a provider
   is not ready, retain the entry and show an explicit isolated/unavailable
   state instead of deleting the feature.

@@ -59,16 +59,23 @@ import {
   assertGeneralWorkCheckpoint,
   assertPersistContentReferenceResult,
   assertPersistAdmittedTeamPlanResult,
+  assertPersistTeamDefinitionResult,
+  assertPersistTeamRunSnapshotResult,
   assertPersistWorkspaceGrantResult,
   assertResolveContentReferenceInput,
   assertResolvedContentReference,
   assertStoreContentReferenceInput,
+  assertTeamDefinition,
+  assertTeamRunSnapshot,
   assertWorkspaceGrant,
   correlationId,
   eventStreamId,
   instant,
   sessionId,
+  teamId,
   teamPlanId,
+  teamRunId,
+  TEAM_PERSISTENCE_MAX_RECORDS,
   workspaceId,
   type AdmittedTeamPlan,
   type AgentAttemptEvidence,
@@ -83,6 +90,8 @@ import {
   type PersistGeneralWorkCheckpointResult,
   type PersistContentReferenceResult,
   type PersistAdmittedTeamPlanResult,
+  type PersistTeamDefinitionResult,
+  type PersistTeamRunSnapshotResult,
   type PersistEvidenceResult,
   type PersistEventResult,
   type PersistenceErrorCode,
@@ -95,6 +104,10 @@ import {
   type WorkspaceId,
   type SessionId,
   type TeamPlanId,
+  type TeamDefinition,
+  type TeamId,
+  type TeamRunId,
+  type TeamRunSnapshot,
 } from "../core";
 
 export const PERSISTENCE_UTILITY_PROTOCOL_VERSION = 1 as const;
@@ -269,6 +282,42 @@ export interface PersistenceUtilityOperationMap {
     };
     readonly result: AdmittedTeamPlan | null;
   };
+  readonly "persist-team-definition": {
+    readonly request: {
+      readonly team: TeamDefinition;
+    };
+    readonly result: PersistTeamDefinitionResult;
+  };
+  readonly "get-team-definition": {
+    readonly request: {
+      readonly teamId: TeamId;
+    };
+    readonly result: TeamDefinition | null;
+  };
+  readonly "list-team-definitions": {
+    readonly request: {
+      readonly limit: number;
+    };
+    readonly result: readonly TeamDefinition[];
+  };
+  readonly "persist-team-run-snapshot": {
+    readonly request: {
+      readonly snapshot: TeamRunSnapshot;
+    };
+    readonly result: PersistTeamRunSnapshotResult;
+  };
+  readonly "get-team-run-snapshot": {
+    readonly request: {
+      readonly runId: TeamRunId;
+    };
+    readonly result: TeamRunSnapshot | null;
+  };
+  readonly "list-recoverable-team-runs": {
+    readonly request: {
+      readonly limit: number;
+    };
+    readonly result: readonly TeamRunSnapshot[];
+  };
   readonly "list-aionui-general-work-links": {
     readonly request: {
       readonly conversationHash: string;
@@ -373,6 +422,12 @@ export const PERSISTENCE_UTILITY_OPERATIONS = [
   "list-recoverable-general-work-checkpoints",
   "persist-admitted-team-plan",
   "get-admitted-team-plan",
+  "persist-team-definition",
+  "get-team-definition",
+  "list-team-definitions",
+  "persist-team-run-snapshot",
+  "get-team-run-snapshot",
+  "list-recoverable-team-runs",
   "list-aionui-general-work-links",
   "list-prepared-aionui-general-work-links",
   "register-aionui-general-work",
@@ -627,6 +682,14 @@ function assertAionUiGeneralWorkRegistrationResult(value: unknown): void {
 }
 
 function assertScheduleProtocolValue(assertion: () => void, label: string): void {
+  try {
+    assertion();
+  } catch (error) {
+    throw new PersistenceUtilityProtocolError(`${label} is invalid`, { cause: error });
+  }
+}
+
+function assertTeamProtocolValue(assertion: () => void, label: string): void {
   try {
     assertion();
   } catch (error) {
@@ -895,6 +958,59 @@ function assertRequestPayload(request: PersistenceUtilityRequest): void {
       }
       teamPlanId(payload.planId);
       return;
+    case "persist-team-definition":
+      assertRecord(payload, "persist-team-definition request");
+      assertExactKeys(payload, ["team"], "persist-team-definition request");
+      assertTeamProtocolValue(
+        () => assertTeamDefinition(payload.team),
+        "persist-team-definition team",
+      );
+      return;
+    case "get-team-definition":
+      assertRecord(payload, "get-team-definition request");
+      assertExactKeys(payload, ["teamId"], "get-team-definition request");
+      if (typeof payload.teamId !== "string") {
+        throw new PersistenceUtilityProtocolError("get-team-definition teamId is invalid");
+      }
+      assertTeamProtocolValue(() => teamId(payload.teamId as string), "get-team-definition teamId");
+      return;
+    case "list-team-definitions":
+      assertRecord(payload, "list-team-definitions request");
+      assertExactKeys(payload, ["limit"], "list-team-definitions request");
+      assertBoundedLimit(
+        payload.limit,
+        TEAM_PERSISTENCE_MAX_RECORDS,
+        "list-team-definitions limit",
+      );
+      return;
+    case "persist-team-run-snapshot":
+      assertRecord(payload, "persist-team-run-snapshot request");
+      assertExactKeys(payload, ["snapshot"], "persist-team-run-snapshot request");
+      assertTeamProtocolValue(
+        () => assertTeamRunSnapshot(payload.snapshot),
+        "persist-team-run-snapshot snapshot",
+      );
+      return;
+    case "get-team-run-snapshot":
+      assertRecord(payload, "get-team-run-snapshot request");
+      assertExactKeys(payload, ["runId"], "get-team-run-snapshot request");
+      if (typeof payload.runId !== "string") {
+        throw new PersistenceUtilityProtocolError("get-team-run-snapshot runId is invalid");
+      }
+      assertTeamProtocolValue(
+        () => teamRunId(payload.runId as string),
+        "get-team-run-snapshot runId",
+      );
+      return;
+    case "list-recoverable-team-runs":
+      assertRecord(payload, "list-recoverable-team-runs request");
+      assertExactKeys(payload, ["limit"], "list-recoverable-team-runs request");
+      assertBoundedLimit(
+        payload.limit,
+        TEAM_PERSISTENCE_MAX_RECORDS,
+        "list-recoverable-team-runs limit",
+      );
+      return;
     case "list-aionui-general-work-links":
       assertRecord(payload, "list-aionui-general-work-links request");
       assertExactKeys(
@@ -1119,6 +1235,50 @@ function assertSuccessResult(operation: PersistenceUtilityOperation, result: unk
       if (result !== null) {
         assertAdmittedTeamPlan(result);
       }
+      return;
+    case "persist-team-definition":
+      assertTeamProtocolValue(
+        () => assertPersistTeamDefinitionResult(result),
+        "persist-team-definition result",
+      );
+      return;
+    case "get-team-definition":
+      if (result !== null) {
+        assertTeamProtocolValue(() => assertTeamDefinition(result), "get-team-definition result");
+      }
+      return;
+    case "list-team-definitions":
+      if (!Array.isArray(result) || result.length > TEAM_PERSISTENCE_MAX_RECORDS) {
+        throw new PersistenceUtilityProtocolError("list-team-definitions result is invalid");
+      }
+      result.forEach((team) =>
+        assertTeamProtocolValue(() => assertTeamDefinition(team), "list-team-definitions result"),
+      );
+      return;
+    case "persist-team-run-snapshot":
+      assertTeamProtocolValue(
+        () => assertPersistTeamRunSnapshotResult(result),
+        "persist-team-run-snapshot result",
+      );
+      return;
+    case "get-team-run-snapshot":
+      if (result !== null) {
+        assertTeamProtocolValue(
+          () => assertTeamRunSnapshot(result),
+          "get-team-run-snapshot result",
+        );
+      }
+      return;
+    case "list-recoverable-team-runs":
+      if (!Array.isArray(result) || result.length > TEAM_PERSISTENCE_MAX_RECORDS) {
+        throw new PersistenceUtilityProtocolError("list-recoverable-team-runs result is invalid");
+      }
+      result.forEach((snapshot) =>
+        assertTeamProtocolValue(
+          () => assertTeamRunSnapshot(snapshot),
+          "list-recoverable-team-runs result",
+        ),
+      );
       return;
     case "list-aionui-general-work-links":
       if (

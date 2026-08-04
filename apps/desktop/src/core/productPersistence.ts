@@ -9,6 +9,7 @@ import type { PlatformEvidencePersistencePort } from "./platform";
 import type { GeneralWorkRecoveryPersistencePort } from "./generalWorkRecovery";
 import type { WorkloadPersistencePort } from "./workloadContent";
 import type { TeamPlanPersistencePort } from "./teamOrchestration";
+import type { TeamRunPersistencePort } from "./teamRun";
 
 export interface ActestraPersistencePort
   extends
@@ -20,4 +21,5 @@ export interface ActestraPersistencePort
     AionUiScheduledGeneralWorkPersistencePort,
     GeneralWorkRecoveryPersistencePort,
     WorkloadPersistencePort,
-    TeamPlanPersistencePort {}
+    TeamPlanPersistencePort,
+    TeamRunPersistencePort {}

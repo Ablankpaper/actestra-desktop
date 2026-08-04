@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { PersistenceUtilityService } from "../../apps/desktop/src/utility/persistence/persistenceUtilityService";
 import { CURRENT_CORE_SCHEMA_VERSION } from "../../apps/desktop/src/utility/persistence/sqliteMigrations";
 import { createAionUiScheduleRegistration } from "../fixtures/aionuiSchedule";
+import { createTeamRunFixture } from "../fixtures/teamRun";
 
 const testDirectories: string[] = [];
 
@@ -26,6 +27,58 @@ afterEach(() => {
 });
 
 describe("persistence utility schedule service", () => {
+  it("dispatches schema 15 Team definitions and append-only run snapshots", async () => {
+    const userDataPath = createTestDirectory();
+    const service = new PersistenceUtilityService();
+    const { plan, team, accepted } = await createTeamRunFixture("service");
+
+    await service.handle({
+      protocolVersion: 1,
+      type: "request",
+      requestId: "team-service-open",
+      operation: "open",
+      payload: { userDataPath },
+    });
+    await service.handle({
+      protocolVersion: 1,
+      type: "request",
+      requestId: "team-service-plan",
+      operation: "persist-admitted-team-plan",
+      payload: { plan },
+    });
+    await expect(
+      service.handle({
+        protocolVersion: 1,
+        type: "request",
+        requestId: "team-service-definition",
+        operation: "persist-team-definition",
+        payload: { team },
+      }),
+    ).resolves.toMatchObject({ status: "ok", result: { status: "stored", team } });
+    await expect(
+      service.handle({
+        protocolVersion: 1,
+        type: "request",
+        requestId: "team-service-run",
+        operation: "persist-team-run-snapshot",
+        payload: { snapshot: accepted },
+      }),
+    ).resolves.toMatchObject({
+      status: "ok",
+      result: { status: "stored", snapshot: accepted },
+    });
+    await expect(
+      service.handle({
+        protocolVersion: 1,
+        type: "request",
+        requestId: "team-service-recoverable",
+        operation: "list-recoverable-team-runs",
+        payload: { limit: 100 },
+      }),
+    ).resolves.toMatchObject({ status: "ok", result: [accepted] });
+    await service.shutdown();
+  });
+
   it("dispatches schedule state and preserves typed persistence errors", async () => {
     const userDataPath = createTestDirectory();
     const service = new PersistenceUtilityService();
