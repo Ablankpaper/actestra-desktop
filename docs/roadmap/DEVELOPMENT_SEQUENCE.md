@@ -200,10 +200,22 @@ automatic merged-main CI 30860137257 passed the macOS foundation job but failed
 the Goose job when one real-Git desktop-main integration test took 5.260 seconds
 under parallel runner load and crossed Vitest's implicit five-second unit-test
 deadline; the other 123 Goose tests passed. The correction gives only that
-integration test an explicit bounded deadline. The desktop-main coding service
-does not yet call the session helper; approval outcomes, durable normalized
-evidence, publish/Artifact flow, and P5.2 phase acceptance remain open. P6
-CrewAI/Team runtime work has not started.
+integration test an explicit bounded deadline. Pull request 39 reached exact
+head `38cbbaaedbb8e5955b96a6d7148841180e751e35`, passed exact-head CI
+30861770178, squash merged as
+`7e8732e264febff42fb3d451011b3b8e48caaff5`, and passed exact merged-main CI
+30862710547. The current desktop-main lifecycle starts from that merge. It
+creates the exact worktree/grant/Gateway before opening Goose, injects the
+main-owned tool invoker, waits for Goose openings during shutdown, rejects a
+close-winning open race, and always attempts Goose cleanup before grant
+revocation and worktree removal. Its affected local evidence passes 3 files and
+22 tests, ACP normalization 31 tests, root and native TypeScript, the 192-file/
+71-source-copy downstream contract, and the generated native test. Its single
+final-byte root gate passes 68 test files and 597 tests with 1 file and 1 test
+skipped, the 89-source boundary, frozen/downstream contracts, and the production
+build. Current-slice Git/PR/CI, approval outcomes, durable normalized evidence,
+publish/Artifact flow, and P5.2 phase acceptance remain open. P6 CrewAI/Team
+runtime work has not started.
 
 ## P0 — Project Foundation
 

@@ -169,11 +169,12 @@
       "domains": [
         "isolated coding worktree lifecycle",
         "closed coding Tool Gateway composition",
+        "authenticated Goose session lifecycle",
         "coding workspace grant persistence and revocation",
         "desktop-main shutdown ownership"
       ],
       "authorityOwner": "Actestra Core through the native desktop main persistence owner and isolated-coding session service",
-      "rollback": "Regenerate without this patch. The accepted P5.2 library containment remains available but uncomposed; no renderer route, native AionUI profile, schema, or frozen foundation file is changed."
+      "rollback": "Regenerate without this patch. The accepted P5.2 library containment and Goose session helpers remain available but uncomposed; no renderer route, native AionUI profile, schema, or frozen foundation file is changed."
     }
   ],
   "sourceCopies": [
@@ -346,6 +347,34 @@
       "destination": "packages/desktop/src/actestra/main/workers/generalWorkerProbe.ts"
     },
     {
+      "source": "apps/desktop/src/main/workers/gooseAcpHandshake.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/gooseAcpHandshake.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/workers/gooseCodingToolInvoker.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/gooseCodingToolInvoker.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/workers/gooseLoopbackModelServer.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/gooseLoopbackModelServer.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/workers/gooseMcpCapabilityServer.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/gooseMcpCapabilityServer.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/workers/gooseMcpSessionComposition.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/gooseMcpSessionComposition.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/workers/gooseRunnerArtifact.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/gooseRunnerArtifact.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/workers/gooseRunnerProcess.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/gooseRunnerProcess.ts"
+    },
+    {
       "source": "apps/desktop/src/main/workers/isolatedCodingMainService.ts",
       "destination": "packages/desktop/src/actestra/main/workers/isolatedCodingMainService.ts"
     },
@@ -404,6 +433,10 @@
     {
       "source": "apps/desktop/src/shared/generalWorkerProtocol.ts",
       "destination": "packages/desktop/src/actestra/shared/generalWorkerProtocol.ts"
+    },
+    {
+      "source": "apps/desktop/src/shared/gooseRunnerSource.json",
+      "destination": "packages/desktop/src/actestra/shared/gooseRunnerSource.json"
     },
     {
       "source": "apps/desktop/src/utility/persistence/persistenceUtilityEntry.ts",
@@ -519,6 +552,13 @@
     "packages/desktop/src/actestra/main/workers/generalWorkerProbe.ts",
     "packages/desktop/src/actestra/main/workers/generalWorkerProcessAdapter.ts",
     "packages/desktop/src/actestra/main/workers/generalWorkCoordinator.ts",
+    "packages/desktop/src/actestra/main/workers/gooseAcpHandshake.ts",
+    "packages/desktop/src/actestra/main/workers/gooseCodingToolInvoker.ts",
+    "packages/desktop/src/actestra/main/workers/gooseLoopbackModelServer.ts",
+    "packages/desktop/src/actestra/main/workers/gooseMcpCapabilityServer.ts",
+    "packages/desktop/src/actestra/main/workers/gooseMcpSessionComposition.ts",
+    "packages/desktop/src/actestra/main/workers/gooseRunnerArtifact.ts",
+    "packages/desktop/src/actestra/main/workers/gooseRunnerProcess.ts",
     "packages/desktop/src/actestra/main/workers/isolatedCodingMainService.ts",
     "packages/desktop/src/actestra/main/workers/isolatedCodingWorktree.ts",
     "packages/desktop/src/actestra/main/workers/scopedNativeToolCoordinator.ts",
@@ -534,6 +574,7 @@
     "packages/desktop/src/actestra/main/privileged/toolGateway.ts",
     "packages/desktop/src/actestra/shared/persistenceUtilityProtocol.ts",
     "packages/desktop/src/actestra/shared/generalWorkerProtocol.ts",
+    "packages/desktop/src/actestra/shared/gooseRunnerSource.json",
     "packages/desktop/src/actestra/utility/persistence/persistenceUtilityEntry.ts",
     "packages/desktop/src/actestra/utility/persistence/persistenceUtilityService.ts",
     "packages/desktop/src/actestra/utility/persistence/sqliteCorePersistence.ts",

@@ -8,6 +8,9 @@ import {
   ActestraPersistencePort,
   PrivilegedClock,
   type WorkspaceGrant,
+  type SessionId,
+  type TaskId,
+  type WorkerId,
   WorkspaceGrantId,
   WorkspaceId,
 } from "../../core";
@@ -21,6 +24,19 @@ import {
   createIsolatedCodingWorktree,
   type IsolatedCodingWorktree,
 } from "./isolatedCodingWorktree";
+import {
+  createGooseCodingToolInvoker,
+  type CreateGooseCodingToolInvokerOptions,
+} from "./gooseCodingToolInvoker";
+import {
+  openGooseMcpSessionComposition,
+  type GooseMcpSessionComposition,
+  type GooseMcpSessionPromptOptions,
+  type OpenGooseMcpSessionCompositionOptions,
+} from "./gooseMcpSessionComposition";
+import type { GooseMcpToolInvoker } from "./gooseMcpCapabilityServer";
+import type { GooseLoopbackModelInvoker } from "./gooseLoopbackModelServer";
+import type { AdmittedGooseRunnerArtifact } from "./gooseRunnerArtifact";
 
 export type IsolatedCodingMainServiceErrorCode =
   | "invalid-options"
@@ -56,9 +72,37 @@ export interface OpenIsolatedCodingMainSessionOptions {
 
 export type IsolatedCodingMainSession = ManagedIsolatedCodingToolPlatform;
 
+export interface OpenGooseCodingMainSessionOptions extends OpenIsolatedCodingMainSessionOptions {
+  readonly artifact: AdmittedGooseRunnerArtifact;
+  readonly privateRootParent: string;
+  readonly modelId: string;
+  readonly modelInvoker: GooseLoopbackModelInvoker;
+  readonly taskId: TaskId;
+  readonly sessionId: SessionId;
+  readonly workerId: WorkerId;
+  readonly handshakeTimeoutMs?: number;
+  readonly sessionTimeoutMs?: number;
+}
+
+export interface GooseCodingMainSession
+  extends IsolatedCodingMainSession, GooseMcpSessionComposition {}
+
+export interface IsolatedCodingMainServiceDependencies {
+  createToolInvoker(options: CreateGooseCodingToolInvokerOptions): GooseMcpToolInvoker;
+  openGooseSession(
+    options: OpenGooseMcpSessionCompositionOptions,
+  ): Promise<GooseMcpSessionComposition>;
+}
+
+const DEFAULT_DEPENDENCIES: IsolatedCodingMainServiceDependencies = Object.freeze({
+  createToolInvoker: createGooseCodingToolInvoker,
+  openGooseSession: openGooseMcpSessionComposition,
+});
+
 export interface IsolatedCodingMainService {
   readonly managedRoot: string;
   open(options: OpenIsolatedCodingMainSessionOptions): Promise<IsolatedCodingMainSession>;
+  openGoose(options: OpenGooseCodingMainSessionOptions): Promise<GooseCodingMainSession>;
   close(): Promise<void>;
 }
 
@@ -183,10 +227,13 @@ function createPendingCleanup(options: {
 
 export function createIsolatedCodingMainService(
   options: CreateIsolatedCodingMainServiceOptions,
+  dependencies: IsolatedCodingMainServiceDependencies = DEFAULT_DEPENDENCIES,
 ): IsolatedCodingMainService {
   assertManagedRootPath(options.managedRoot);
   const sessions = new Set<ManagedIsolatedCodingToolPlatform>();
   const openings = new Set<Promise<IsolatedCodingMainSession>>();
+  const gooseSessions = new Set<GooseCodingMainSession>();
+  const gooseOpenings = new Set<Promise<GooseCodingMainSession>>();
   const pendingCleanups = new Set<PendingIsolatedCodingCleanup>();
   let accepting = true;
   let closed = false;
@@ -314,16 +361,170 @@ export function createIsolatedCodingMainService(
     return opening;
   };
 
+  const openGooseOnce = async (
+    sessionOptions: OpenGooseCodingMainSessionOptions,
+  ): Promise<GooseCodingMainSession> => {
+    const codingSession = await open({
+      repositoryRoot: sessionOptions.repositoryRoot,
+      workspaceId: sessionOptions.workspaceId,
+      grantId: sessionOptions.grantId,
+      displayName: sessionOptions.displayName,
+      commands: sessionOptions.commands,
+      tests: sessionOptions.tests,
+    });
+    try {
+      const toolInvoker = dependencies.createToolInvoker({
+        persistence: options.persistence,
+        clock: options.clock,
+        session: codingSession,
+        taskId: sessionOptions.taskId,
+        sessionId: sessionOptions.sessionId,
+        workerId: sessionOptions.workerId,
+      });
+      const gooseSession = await dependencies.openGooseSession({
+        artifact: sessionOptions.artifact,
+        privateRootParent: sessionOptions.privateRootParent,
+        workspaceDirectory: codingSession.worktreeRoot,
+        modelId: sessionOptions.modelId,
+        modelInvoker: sessionOptions.modelInvoker,
+        toolInvoker,
+        commandIds: Object.freeze(Object.keys(sessionOptions.commands)),
+        testIds: Object.freeze(Object.keys(sessionOptions.tests)),
+        ...(sessionOptions.handshakeTimeoutMs === undefined
+          ? {}
+          : { handshakeTimeoutMs: sessionOptions.handshakeTimeoutMs }),
+        ...(sessionOptions.sessionTimeoutMs === undefined
+          ? {}
+          : { sessionTimeoutMs: sessionOptions.sessionTimeoutMs }),
+      });
+      let exposed!: GooseCodingMainSession;
+      let gooseClosed = false;
+      let codingClosed = false;
+      let sessionClosePromise: Promise<void> | undefined;
+      exposed = Object.freeze({
+        approvalService: codingSession.approvalService,
+        policyEngine: codingSession.policyEngine,
+        toolGateway: codingSession.toolGateway,
+        grant: codingSession.grant,
+        repositoryRoot: codingSession.repositoryRoot,
+        worktreeRoot: codingSession.worktreeRoot,
+        gitDirectory: codingSession.gitDirectory,
+        gitCommonDirectory: codingSession.gitCommonDirectory,
+        info: gooseSession.info,
+        privateRoot: gooseSession.privateRoot,
+        session: gooseSession.session,
+        toolNames: gooseSession.toolNames,
+        prompt: (promptOptions: GooseMcpSessionPromptOptions) => gooseSession.prompt(promptOptions),
+        close(): Promise<void> {
+          if (gooseClosed && codingClosed) {
+            return Promise.resolve();
+          }
+          sessionClosePromise ??= (async () => {
+            const failures: unknown[] = [];
+            if (!gooseClosed) {
+              try {
+                await gooseSession.close();
+                gooseClosed = true;
+              } catch (error) {
+                failures.push(error);
+              }
+            }
+            if (!codingClosed) {
+              try {
+                await codingSession.close();
+                codingClosed = true;
+              } catch (error) {
+                failures.push(error);
+              }
+            }
+            if (failures.length > 0) {
+              throw new IsolatedCodingMainServiceError(
+                "cleanup-failed",
+                "Goose and isolated coding session cleanup did not complete",
+                {
+                  cause: new AggregateError(
+                    failures,
+                    "One or more desktop-main Goose session cleanups failed",
+                  ),
+                },
+              );
+            }
+          })()
+            .then(() => {
+              gooseSessions.delete(exposed);
+            })
+            .catch((error: unknown) => {
+              sessionClosePromise = undefined;
+              throw error;
+            });
+          return sessionClosePromise;
+        },
+      });
+      gooseSessions.add(exposed);
+      if (!accepting) {
+        await exposed.close();
+        throw new IsolatedCodingMainServiceError(
+          "closed",
+          "Desktop-main isolated coding composition closed while opening Goose",
+        );
+      }
+      return exposed;
+    } catch (error) {
+      try {
+        await codingSession.close();
+      } catch (cleanupError) {
+        throw new IsolatedCodingMainServiceError(
+          "cleanup-failed",
+          "Goose session opening failed and isolated coding cleanup did not complete",
+          {
+            cause: new AggregateError(
+              [error, cleanupError],
+              "Goose session opening and worktree cleanup failed",
+            ),
+          },
+        );
+      }
+      if (error instanceof IsolatedCodingMainServiceError) {
+        throw error;
+      }
+      throw new IsolatedCodingMainServiceError(
+        "open-failed",
+        "Desktop-main Goose coding session failed to open",
+        { cause: error },
+      );
+    }
+  };
+
+  const openGoose = (
+    sessionOptions: OpenGooseCodingMainSessionOptions,
+  ): Promise<GooseCodingMainSession> => {
+    if (!accepting) {
+      return Promise.reject(
+        new IsolatedCodingMainServiceError(
+          "closed",
+          "Desktop-main isolated coding composition is closed",
+        ),
+      );
+    }
+    let opening: Promise<GooseCodingMainSession>;
+    opening = openGooseOnce(sessionOptions).finally(() => {
+      gooseOpenings.delete(opening);
+    });
+    gooseOpenings.add(opening);
+    return opening;
+  };
+
   return Object.freeze({
     managedRoot: options.managedRoot,
     open,
+    openGoose,
     close(): Promise<void> {
       if (closed) {
         return Promise.resolve();
       }
       accepting = false;
       closePromise ??= (async () => {
-        await Promise.allSettled(openings);
+        await Promise.allSettled([...openings, ...gooseOpenings]);
         const failures: unknown[] = [];
         const cleanupOutcomes = await Promise.allSettled(
           [...pendingCleanups].map(async (cleanup) => {
@@ -332,6 +533,14 @@ export function createIsolatedCodingMainService(
           }),
         );
         for (const outcome of cleanupOutcomes) {
+          if (outcome.status === "rejected") {
+            failures.push(outcome.reason);
+          }
+        }
+        const gooseSessionOutcomes = await Promise.allSettled(
+          [...gooseSessions].map((session) => session.close()),
+        );
+        for (const outcome of gooseSessionOutcomes) {
           if (outcome.status === "rejected") {
             failures.push(outcome.reason);
           }

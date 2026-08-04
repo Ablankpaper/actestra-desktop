@@ -36,6 +36,7 @@ describe("P5.2 native AionUI desktop-main composition", () => {
         domains: expect.arrayContaining([
           "isolated coding worktree lifecycle",
           "closed coding Tool Gateway composition",
+          "authenticated Goose session lifecycle",
         ]),
       }),
     );
@@ -55,9 +56,29 @@ describe("P5.2 native AionUI desktop-main composition", () => {
     expect(copies.get("apps/desktop/src/main/workers/isolatedCodingWorktree.ts")).toBe(
       "packages/desktop/src/actestra/main/workers/isolatedCodingWorktree.ts",
     );
+    for (const sourceName of [
+      "gooseAcpHandshake.ts",
+      "gooseCodingToolInvoker.ts",
+      "gooseLoopbackModelServer.ts",
+      "gooseMcpCapabilityServer.ts",
+      "gooseMcpSessionComposition.ts",
+      "gooseRunnerArtifact.ts",
+      "gooseRunnerProcess.ts",
+    ]) {
+      expect(copies.get(`apps/desktop/src/main/workers/${sourceName}`)).toBe(
+        `packages/desktop/src/actestra/main/workers/${sourceName}`,
+      );
+    }
+    expect(copies.get("apps/desktop/src/shared/gooseRunnerSource.json")).toBe(
+      "packages/desktop/src/actestra/shared/gooseRunnerSource.json",
+    );
 
     for (const destination of copies.values()) {
-      if (destination.includes("isolatedCoding")) {
+      if (
+        destination.includes("isolatedCoding") ||
+        destination.includes("goose") ||
+        destination.includes("Goose")
+      ) {
         expect(overlay.expectedChangedFiles).toContain(destination);
       }
     }
@@ -72,6 +93,7 @@ describe("P5.2 native AionUI desktop-main composition", () => {
     expect(source).toContain("createIsolatedCodingMainService");
     expect(source).toContain("getActestraIsolatedCodingMainService");
     expect(source).toContain("path.join(userDataPath, 'coding-worktrees')");
+    expect(source).toContain("expect(service.openGoose).toBeTypeOf('function')");
     expect(source).toContain(`  let isolatedCodingCloseFailed = false;
   let isolatedCodingCloseError: unknown;
   try {

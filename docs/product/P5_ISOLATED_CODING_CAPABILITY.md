@@ -30,10 +30,16 @@ delivered through pull request 38 at exact head
 The single automatic merged-main CI 30860137257 failed only when the first
 real-Git desktop-main integration test exceeded Vitest's implicit five-second
 unit-test deadline; the macOS foundation job and the other 123 Goose tests
-passed. This document records the closed worktree, Tool Gateway, main-owned
-lifecycle composition, bounded ACP session, authenticated MCP transport,
-bounded tool-call bridge, and current real Goose prompt/tool round trip. It is
-not P5.2 phase acceptance or a successful merged-main CI claim.
+passed. Pull request 39 corrected only that test deadline at exact head
+`38cbbaaedbb8e5955b96a6d7148841180e751e35`, passed exact-head CI
+30861770178, squash merged as
+`7e8732e264febff42fb3d451011b3b8e48caaff5`, and passed exact merged-main CI
+30862710547. The desktop-main Goose lifecycle starts from that merge on branch
+`codex/p5-goose-desktop-main-lifecycle` and is locally implemented. This
+document records the closed worktree, Tool Gateway, service-owned Goose session,
+bounded ACP session, authenticated MCP transport, bounded tool-call bridge, and
+real Goose prompt/tool round trip. It is not P5.2 phase acceptance or current-
+slice remote delivery evidence.
 
 ## Scope
 
@@ -60,9 +66,10 @@ explicit test-only option.
 Downstream patch 0012 composes that service only in the native AionUi Electron
 main persistence owner under the Actestra private profile's
 `coding-worktrees` directory. It provides a main-process getter but adds no
-preload or renderer exposure. The manifest copies the four reviewed coding main
-sources and adds one native lifecycle test. It adds no renderer route, bridge,
-or visual surface. The frozen AionUi source and R0 retention invariants remain
+preload or renderer exposure. The manifest copies the four containment sources,
+seven Goose session sources, and exact runner source pin and adds one native
+lifecycle test. It adds no renderer route, bridge, or visual surface. The frozen
+AionUi source and R0 retention invariants remain
 unchanged, and P5.3 remains the first user-visible coding journey.
 
 The admitted Goose connection sends exactly one `session/new` request per
@@ -157,6 +164,18 @@ provider credential from Goose. In the admitted real-runner proof, the first
 model result selects the authenticated Actestra file-read tool, Goose invokes it
 once through MCP, and the second model request contains the bounded tool result
 before returning the final assistant message and ACP usage.
+
+The desktop-main service now owns that composition through one `openGoose`
+operation. It first opens the existing isolated coding session, then creates the
+main-owned tool invoker from that exact grant and Actestra Task, Session, and
+Worker identifiers, and finally opens Goose against the worktree with only the
+snapshotted command/test identifiers. The returned session retains both the
+coding authority and bounded prompt surface. Normal and failed close always
+attempt Goose before grant revocation and worktree removal, aggregate failures
+in that order, and retry unfinished stages. Service shutdown waits for Goose
+openings; an opening that loses the shutdown race closes its Worker and coding
+authority before rejecting. A failed Goose opening plus failed worktree cleanup
+retains both causes and the managed session for shutdown retry.
 
 ## Authority and policy
 
@@ -299,6 +318,22 @@ deterministic smoke, the 89-source boundary, the exact 1,766-file frozen AionUi
 foundation, the 184-file downstream contract, and the
 58-main/3-preload/28-renderer-module production build.
 
+The current desktop-main lifecycle fingerprint passes 3 affected files and 22
+tests for exact worktree/invoker composition, service-owned shutdown, Goose-
+first close ordering, open/close race rejection, ordered failure aggregation,
+and failed-opening cleanup retry. The ACP normalization file remains green at
+31 tests after explicit type narrowing for AionUI's non-strict compiler mode.
+Root strict TypeScript passes. The downstream contract passes 192 declared
+files, 4 R0 invariants, and 71 reviewed source copies; a clean materialization
+installs 3,177 packages, passes native TypeScript, and passes the generated
+native composition test 1 file/1 test. The single final-byte root gate passes
+formatting over 204 files, zero-warning lint over 196 files, strict TypeScript,
+the Electron SQLite probe, 68 passing and 1 skipped test files with 597 passing
+and 1 skipped tests, deterministic smoke, the 89-source product boundary, the
+1,766-file frozen foundation, the 192-file downstream contract, and the
+58-main/3-preload/28-renderer-module production build. Review, Git, PR,
+exact-head CI, and merged-main CI remain pending.
+
 One committed CodeRabbit review covered all 12 changed files and raised six
 findings. The shutdown/deferred-invocation race and fixed `/tmp` fixture were
 confirmed and remediated. The regression test's red phase proved the old path
@@ -371,27 +406,53 @@ The branch squash merged as `d933546454e63a2d836e728f1b93980cb4a7c0ac`.
 The single automatic merged-main CI 30853499159 passed macOS arm64 foundation
 job 91818968991 and Goose runner admission job 91818969025.
 
+Pull request 38 reached exact head
+`cc773081ba448266951a3b2ac3654831022118fc`. Exact-head CI 30859115162
+passed macOS arm64 foundation job 91836946596 and Goose runner admission job
+91836946628. CodeRabbit did not start a review because its quota was exhausted;
+GitHub records no submitted review or inline review thread. The branch squash
+merged as `a6280dd38eacdbada9db159c4784110ec8e42770`. Its single automatic
+merged-main CI 30860137257 passed macOS arm64 foundation job 91840096925 but
+failed Goose runner admission job 91840096947 only when one real-Git test
+crossed Vitest's implicit five-second deadline; that SHA was not rerun.
+
+Pull request 39 delivered the bounded test deadline at exact head
+`38cbbaaedbb8e5955b96a6d7148841180e751e35`. Exact-head CI 30861770178
+passed macOS arm64 foundation job 91845074323 and Goose runner admission job
+91845074258. CodeRabbit again did not start a review because its quota was
+exhausted; GitHub records no submitted review or inline review thread. The
+branch squash merged as `7e8732e264febff42fb3d451011b3b8e48caaff5`.
+Exact merged-main CI 30862710547 passed macOS arm64 foundation job 91847939794
+and Goose runner admission job 91847939858. This closes the timeout correction,
+not P5.2 phase acceptance.
+
 ## Remaining P5.2 work and non-claims
 
 The closed capability foundation is composed into desktop main, the Goose
 adapter has a bounded `session/new` declaration and cleanup contract, the
-authenticated MCP transport and tool-call bridge are delivered, and the current
-main-process helper adds the authenticated model proxy and a real bounded
-Goose-generated prompt/tool round trip. The desktop-main coding service does not
-yet call that helper. Approval continuation and denial projection, durable
-normalized Task/Session evidence, publish, and Artifact registration required
-by ADR-0024 have not been proved. The current real-runner evidence is a contained
-coding-session contract, not the desktop-main or retained-AionUI product journey.
-This slice also adds no renderer projection, AionUi journey, candidate, release,
+authenticated MCP transport, tool-call bridge, and prompt loop are delivered.
+The desktop-main coding service now calls that helper on the current local
+branch and owns its complete worktree/Worker cleanup order. Approval continuation
+and denial projection, durable normalized Task/Session evidence, publish, and
+Artifact registration required by ADR-0024 have not been proved. The current
+real-runner evidence and local desktop-main composition remain a contained
+coding-session contract, not the retained-AionUI product journey. This slice
+also adds no renderer projection, AionUi journey, candidate, release,
 deployment, P5.3 work, CrewAI sidecar, Eigent runtime, or P6 behavior.
 
-P5.2 can be accepted only after the helper is composed into the desktop-main
-coding lifecycle and the remaining approval outcomes, durable normalized
-evidence, publish, and Artifact boundaries are implemented or the accepted
-architecture is explicitly revised, followed by the complete local, review,
-exact-head CI, and merged-main gates.
+P5.2 can be accepted only after this lifecycle is remotely delivered and the
+remaining approval outcomes, durable normalized evidence, publish, and Artifact
+boundaries are implemented or the accepted architecture is explicitly revised,
+followed by the complete local, review, exact-head CI, and merged-main gates.
 
 ## Rollback
+
+Rollback of the current desktop-main lifecycle removes `openGoose`, its
+service-owned opening/session tracking, the seven Goose TypeScript and runner-
+pin source copies, the native `openGoose` assertion, and focused lifecycle tests
+together. The delivered prompt helper and earlier desktop containment service
+then remain separate at exact merge
+`7e8732e264febff42fb3d451011b3b8e48caaff5`.
 
 Rollback of the current inference/prompt slice removes the authenticated chat
 completion route, bound model invoker, bounded ACP prompt/updates, private
@@ -416,8 +477,9 @@ Rollback of the ACP slice removes the bounded session method, its runner
 lifecycle wrapper, and focused fixtures while leaving the accepted initialize
 handshake and desktop-main containment composition intact. Rollback of the
 composition removes downstream patch 0012, the main service,
-its four source-copy declarations, and its focused tests while leaving the
-delivered containment foundation inert and available. Rolling back the full
+its remaining four containment source-copy declarations, and its focused tests
+while leaving the delivered containment foundation inert and available. Rolling
+back the full
 foundation additionally removes the isolated coding contract, worktree,
 Gateway platform, executor, core export, and focused tests together. No schema,
 frozen upstream source, native AionUi profile, release artifact, or migration

@@ -26,9 +26,15 @@ import { openTestPersistenceUtility } from "../fixtures/persistenceUtility";
 import { DeterministicAgentClock } from "../../apps/desktop/src/main/workers/deterministicFakeAgentAdapter";
 import {
   createIsolatedCodingMainService,
+  type IsolatedCodingMainServiceDependencies,
   type IsolatedCodingMainService,
 } from "../../apps/desktop/src/main/workers/isolatedCodingMainService";
 import { createGooseCodingToolInvoker } from "../../apps/desktop/src/main/workers/gooseCodingToolInvoker";
+import type {
+  GooseMcpSessionComposition,
+  OpenGooseMcpSessionCompositionOptions,
+} from "../../apps/desktop/src/main/workers/gooseMcpSessionComposition";
+import type { AdmittedGooseRunnerArtifact } from "../../apps/desktop/src/main/workers/gooseRunnerArtifact";
 import type { PersistenceUtilityClient } from "../../apps/desktop/src/main/persistence/persistenceUtilityClient";
 
 const execFileAsync = promisify(execFile);
@@ -39,6 +45,28 @@ const GIT_ENVIRONMENT = Object.freeze({
   LC_ALL: "C",
   PATH: "/usr/bin:/bin",
 });
+
+const GOOSE_ARTIFACT = Object.freeze({
+  directory: "/tmp/actestra-goose-artifact",
+  executablePath: "/tmp/actestra-goose-artifact/actestra-goose-runner",
+  executableSha256: "1".repeat(64),
+  executableSize: 1,
+  targetTriple: "aarch64-apple-darwin",
+  gooseCommit: "4dc0420f5704a92806c6628c8f0a3497d7a88759",
+  gooseVersion: "1.45.0",
+  manifestPath: "/tmp/actestra-goose-artifact/actestra-goose-runner.manifest.json",
+  manifestSha256: "2".repeat(64),
+} satisfies AdmittedGooseRunnerArtifact);
+
+const GOOSE_INFO = Object.freeze({
+  protocolVersion: 1,
+  agentName: "goose",
+  agentVersion: "1.45.0",
+  loadSession: true,
+  prompt: Object.freeze({ image: true, audio: false, embeddedContext: true }),
+  mcp: Object.freeze({ http: true, sse: false, acp: false }),
+  session: Object.freeze({ list: true, close: true }),
+} as const);
 
 interface MainServiceFixture {
   readonly root: string;
@@ -128,7 +156,10 @@ function graph(ids: MainServiceFixture["ids"], now: ReturnType<typeof instant>):
   };
 }
 
-async function openFixture(suffix: string): Promise<MainServiceFixture> {
+async function openFixture(
+  suffix: string,
+  dependencies?: IsolatedCodingMainServiceDependencies,
+): Promise<MainServiceFixture> {
   const root = fs.realpathSync(
     fs.mkdtempSync(path.join(os.tmpdir(), "actestra-coding-main-service-test-")),
   );
@@ -154,11 +185,14 @@ async function openFixture(suffix: string): Promise<MainServiceFixture> {
     workerId: workerId(`worker-coding-main-${suffix}`),
   };
   await persistence.replaceDomainGraph(graph(ids, clock.now()));
-  const service = createIsolatedCodingMainService({
-    persistence,
-    clock,
-    managedRoot,
-  });
+  const service = createIsolatedCodingMainService(
+    {
+      persistence,
+      clock,
+      managedRoot,
+    },
+    dependencies,
+  );
   const fixture = {
     root,
     repositoryRoot,
@@ -183,6 +217,381 @@ afterEach(async () => {
 });
 
 describe("P5.2 desktop-main isolated coding composition", () => {
+  it("owns the Goose session over the exact isolated coding worktree lifecycle", async () => {
+    let fixture!: MainServiceFixture;
+    let invokerOptions:
+      | Parameters<IsolatedCodingMainServiceDependencies["createToolInvoker"]>[0]
+      | undefined;
+    let compositionOptions: OpenGooseMcpSessionCompositionOptions | undefined;
+    const events: string[] = [];
+    const toolInvoker = async () =>
+      Object.freeze({
+        isError: false,
+        content: JSON.stringify({ contractVersion: 1, type: "desktop-main-test" }),
+      });
+    fixture = await openFixture("goose-lifecycle", {
+      createToolInvoker(options) {
+        invokerOptions = options;
+        return toolInvoker;
+      },
+      async openGooseSession(options) {
+        compositionOptions = options;
+        return Object.freeze({
+          info: GOOSE_INFO,
+          privateRoot: path.join(fixture.root, "goose-private", "attempt-1"),
+          session: Object.freeze({
+            sessionId: "goose-desktop-main-session",
+            setupNotificationKinds: Object.freeze([]),
+          }),
+          toolNames: Object.freeze([]),
+          async prompt() {
+            return Object.freeze({ stopReason: "end_turn", updates: Object.freeze([]) });
+          },
+          async close() {
+            events.push("goose:close");
+            await expect(
+              fixture.persistence.getActiveWorkspaceGrant(fixture.ids.workspaceId),
+            ).resolves.not.toBeNull();
+            expect(fs.existsSync(options.workspaceDirectory)).toBe(true);
+          },
+        });
+      },
+    });
+    const modelInvoker = async () =>
+      Object.freeze({
+        type: "message" as const,
+        text: "desktop-main model result",
+        usage: Object.freeze({ promptTokens: 4, completionTokens: 2 }),
+      });
+
+    const opened = await fixture.service.openGoose({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-goose-lifecycle"),
+      displayName: "P5.2 desktop-main Goose lifecycle",
+      commands: {
+        "git.status": Object.freeze({ executablePath: "/usr/bin/git", args: ["status"] }),
+      },
+      tests: {
+        "test.unit": Object.freeze({ executablePath: "/usr/bin/true", args: [] }),
+      },
+      artifact: GOOSE_ARTIFACT,
+      privateRootParent: path.join(fixture.root, "goose-private"),
+      modelId: "actestra-desktop-main-model",
+      modelInvoker,
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+    });
+
+    expect(invokerOptions).toMatchObject({
+      persistence: fixture.persistence,
+      clock: fixture.clock,
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+    });
+    expect(invokerOptions?.session.worktreeRoot).toBe(opened.worktreeRoot);
+    expect(compositionOptions).toMatchObject({
+      artifact: GOOSE_ARTIFACT,
+      privateRootParent: path.join(fixture.root, "goose-private"),
+      workspaceDirectory: opened.worktreeRoot,
+      modelId: "actestra-desktop-main-model",
+      modelInvoker,
+      toolInvoker,
+      commandIds: ["git.status"],
+      testIds: ["test.unit"],
+    });
+    expect(opened.session.sessionId).toBe("goose-desktop-main-session");
+
+    const worktreeRoot = opened.worktreeRoot;
+    await fixture.service.close();
+
+    expect(events).toEqual(["goose:close"]);
+    await expect(fs.promises.stat(worktreeRoot)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(
+      fixture.persistence.getActiveWorkspaceGrant(fixture.ids.workspaceId),
+    ).resolves.toBeNull();
+    expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
+  }, 15_000);
+
+  it("waits for a Goose opening and closes it when desktop-main shutdown wins", async () => {
+    let fixture!: MainServiceFixture;
+    const compositionStarted = deferred<OpenGooseMcpSessionCompositionOptions>();
+    const releaseComposition = deferred<GooseMcpSessionComposition>();
+    const events: string[] = [];
+    let grantActiveAtGooseClose = false;
+    let worktreePresentAtGooseClose = false;
+    fixture = await openFixture("goose-open-close-race", {
+      createToolInvoker() {
+        return async () =>
+          Object.freeze({
+            isError: false,
+            content: JSON.stringify({ contractVersion: 1, type: "desktop-main-race" }),
+          });
+      },
+      openGooseSession(options) {
+        compositionStarted.resolve(options);
+        return releaseComposition.promise;
+      },
+    });
+    const modelInvoker = async () =>
+      Object.freeze({
+        type: "message" as const,
+        text: "desktop-main race result",
+        usage: Object.freeze({ promptTokens: 4, completionTokens: 2 }),
+      });
+
+    const opening = fixture.service.openGoose({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-goose-open-close-race"),
+      displayName: "P5.2 desktop-main Goose open-close race",
+      commands: {},
+      tests: {},
+      artifact: GOOSE_ARTIFACT,
+      privateRootParent: path.join(fixture.root, "goose-private"),
+      modelId: "actestra-desktop-main-model",
+      modelInvoker,
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+    });
+    const compositionOptions = await compositionStarted.promise;
+    let closeSettled = false;
+    const closing = fixture.service.close().then(() => {
+      closeSettled = true;
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const settledBeforeComposition = closeSettled;
+
+    releaseComposition.resolve(
+      Object.freeze({
+        info: GOOSE_INFO,
+        privateRoot: path.join(fixture.root, "goose-private", "attempt-race"),
+        session: Object.freeze({
+          sessionId: "goose-desktop-main-race",
+          setupNotificationKinds: Object.freeze([]),
+        }),
+        toolNames: Object.freeze([]),
+        async prompt() {
+          return Object.freeze({ stopReason: "end_turn", updates: Object.freeze([]) });
+        },
+        async close() {
+          events.push("goose:close");
+          grantActiveAtGooseClose =
+            (await fixture.persistence.getActiveWorkspaceGrant(fixture.ids.workspaceId)) !== null;
+          worktreePresentAtGooseClose = fs.existsSync(compositionOptions.workspaceDirectory);
+        },
+      }),
+    );
+    const openingOutcome = await opening.then(
+      (value) => ({ status: "fulfilled" as const, value }),
+      (reason: unknown) => ({ status: "rejected" as const, reason }),
+    );
+    if (openingOutcome.status === "fulfilled") {
+      await openingOutcome.value.close();
+    }
+    await closing;
+
+    expect(settledBeforeComposition).toBe(false);
+    expect(openingOutcome).toMatchObject({
+      status: "rejected",
+      reason: { name: "IsolatedCodingMainServiceError", code: "closed" },
+    });
+    expect(events).toEqual(["goose:close"]);
+    expect(grantActiveAtGooseClose).toBe(true);
+    expect(worktreePresentAtGooseClose).toBe(true);
+    await expect(
+      fixture.persistence.getActiveWorkspaceGrant(fixture.ids.workspaceId),
+    ).resolves.toBeNull();
+    expect(fs.readdirSync(fixture.managedRoot)).toEqual([]);
+  }, 15_000);
+
+  it("aggregates Goose and worktree cleanup failures in lifecycle order and retries", async () => {
+    let fixture!: MainServiceFixture;
+    const events: string[] = [];
+    const gooseFailure = new Error("injected Goose cleanup failure");
+    const grantFailure = new Error("injected grant cleanup failure");
+    let gooseCloseAttempts = 0;
+    fixture = await openFixture("goose-cleanup-retry", {
+      createToolInvoker() {
+        return async () =>
+          Object.freeze({
+            isError: false,
+            content: JSON.stringify({ contractVersion: 1, type: "desktop-main-cleanup" }),
+          });
+      },
+      async openGooseSession() {
+        return Object.freeze({
+          info: GOOSE_INFO,
+          privateRoot: path.join(fixture.root, "goose-private", "attempt-cleanup"),
+          session: Object.freeze({
+            sessionId: "goose-desktop-main-cleanup",
+            setupNotificationKinds: Object.freeze([]),
+          }),
+          toolNames: Object.freeze([]),
+          async prompt() {
+            return Object.freeze({ stopReason: "end_turn", updates: Object.freeze([]) });
+          },
+          async close() {
+            gooseCloseAttempts += 1;
+            events.push(`goose:close:${gooseCloseAttempts}`);
+            if (gooseCloseAttempts === 1) {
+              throw gooseFailure;
+            }
+          },
+        });
+      },
+    });
+    const opened = await fixture.service.openGoose({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-goose-cleanup-retry"),
+      displayName: "P5.2 desktop-main Goose cleanup retry",
+      commands: {},
+      tests: {},
+      artifact: GOOSE_ARTIFACT,
+      privateRootParent: path.join(fixture.root, "goose-private"),
+      modelId: "actestra-desktop-main-model",
+      modelInvoker: async () =>
+        Object.freeze({
+          type: "message" as const,
+          text: "desktop-main cleanup result",
+          usage: Object.freeze({ promptTokens: 4, completionTokens: 2 }),
+        }),
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+    });
+    const persistWorkspaceGrant = fixture.persistence.persistWorkspaceGrant.bind(
+      fixture.persistence,
+    );
+    vi.spyOn(fixture.persistence, "persistWorkspaceGrant")
+      .mockImplementationOnce(async () => {
+        events.push("grant:revoke:1");
+        throw grantFailure;
+      })
+      .mockImplementation(async (grant) => {
+        events.push("grant:revoke:2");
+        return persistWorkspaceGrant(grant);
+      });
+
+    const failure = await opened.close().catch((error: unknown) => error);
+
+    expect(events).toEqual(["goose:close:1", "grant:revoke:1"]);
+    expect(failure).toMatchObject({
+      name: "IsolatedCodingMainServiceError",
+      code: "cleanup-failed",
+    });
+    if (!(failure instanceof Error)) {
+      throw new Error("Expected a desktop-main Goose cleanup error");
+    }
+    expect(failure.cause).toBeInstanceOf(AggregateError);
+    expect((failure.cause as AggregateError).errors).toHaveLength(2);
+    expect((failure.cause as AggregateError).errors[0]).toBe(gooseFailure);
+    expect((failure.cause as AggregateError).errors[1]).toMatchObject({
+      name: "IsolatedCodingToolLifecycleError",
+      code: "cleanup-failed",
+    });
+    await expect(
+      fixture.persistence.getActiveWorkspaceGrant(fixture.ids.workspaceId),
+    ).resolves.not.toBeNull();
+    expect(fs.existsSync(opened.worktreeRoot)).toBe(true);
+
+    await opened.close();
+
+    expect(events).toEqual(["goose:close:1", "grant:revoke:1", "goose:close:2", "grant:revoke:2"]);
+    await expect(
+      fixture.persistence.getActiveWorkspaceGrant(fixture.ids.workspaceId),
+    ).resolves.toBeNull();
+    await expect(fs.promises.stat(opened.worktreeRoot)).rejects.toMatchObject({ code: "ENOENT" });
+  }, 15_000);
+
+  it("retains Goose opening and worktree cleanup failures for shutdown retry", async () => {
+    const gooseOpeningFailure = new Error("injected Goose opening failure");
+    const grantCleanupFailure = new Error("injected failed-opening grant cleanup");
+    const events: string[] = [];
+    const fixture = await openFixture("goose-opening-cleanup-retry", {
+      createToolInvoker() {
+        return async () =>
+          Object.freeze({
+            isError: false,
+            content: JSON.stringify({ contractVersion: 1, type: "desktop-main-opening" }),
+          });
+      },
+      async openGooseSession() {
+        events.push("goose:open");
+        throw gooseOpeningFailure;
+      },
+    });
+    const persistWorkspaceGrant = fixture.persistence.persistWorkspaceGrant.bind(
+      fixture.persistence,
+    );
+    let rejectedRevocation = false;
+    vi.spyOn(fixture.persistence, "persistWorkspaceGrant").mockImplementation(async (grant) => {
+      if (grant.state === "revoked" && !rejectedRevocation) {
+        rejectedRevocation = true;
+        events.push("grant:revoke:1");
+        throw grantCleanupFailure;
+      }
+      if (grant.state === "revoked") {
+        events.push("grant:revoke:2");
+      }
+      return persistWorkspaceGrant(grant);
+    });
+
+    const failure = await fixture.service
+      .openGoose({
+        repositoryRoot: fixture.repositoryRoot,
+        workspaceId: fixture.ids.workspaceId,
+        grantId: workspaceGrantId("grant-coding-main-goose-opening-cleanup-retry"),
+        displayName: "P5.2 desktop-main Goose opening cleanup retry",
+        commands: {},
+        tests: {},
+        artifact: GOOSE_ARTIFACT,
+        privateRootParent: path.join(fixture.root, "goose-private"),
+        modelId: "actestra-desktop-main-model",
+        modelInvoker: async () =>
+          Object.freeze({
+            type: "message" as const,
+            text: "desktop-main opening result",
+            usage: Object.freeze({ promptTokens: 4, completionTokens: 2 }),
+          }),
+        taskId: fixture.ids.taskId,
+        sessionId: fixture.ids.sessionId,
+        workerId: fixture.ids.workerId,
+      })
+      .catch((error: unknown) => error);
+
+    expect(events).toEqual(["goose:open", "grant:revoke:1"]);
+    expect(failure).toMatchObject({
+      name: "IsolatedCodingMainServiceError",
+      code: "cleanup-failed",
+    });
+    if (!(failure instanceof Error)) {
+      throw new Error("Expected a desktop-main Goose opening cleanup error");
+    }
+    expect(failure.cause).toBeInstanceOf(AggregateError);
+    expect((failure.cause as AggregateError).errors).toHaveLength(2);
+    expect((failure.cause as AggregateError).errors[0]).toBe(gooseOpeningFailure);
+    expect((failure.cause as AggregateError).errors[1]).toMatchObject({
+      name: "IsolatedCodingToolLifecycleError",
+      code: "cleanup-failed",
+    });
+    const activeGrant = await fixture.persistence.getActiveWorkspaceGrant(fixture.ids.workspaceId);
+    expect(activeGrant).not.toBeNull();
+    expect(fs.existsSync(activeGrant!.rootPath)).toBe(true);
+
+    await fixture.service.close();
+
+    expect(events).toEqual(["goose:open", "grant:revoke:1", "grant:revoke:2"]);
+    await expect(
+      fixture.persistence.getActiveWorkspaceGrant(fixture.ids.workspaceId),
+    ).resolves.toBeNull();
+    await expect(fs.promises.stat(activeGrant!.rootPath)).rejects.toMatchObject({ code: "ENOENT" });
+  }, 15_000);
+
   it("routes one MCP file read through the durable Tool Gateway owner", async () => {
     const fixture = await openFixture("goose-mcp-read");
     const session = await fixture.service.open({
