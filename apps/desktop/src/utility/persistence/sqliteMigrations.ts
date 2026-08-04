@@ -714,6 +714,7 @@ export const CORE_SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
           record_sha256 NOT GLOB '*[^0-9a-f]*'
         ),
         updated_at TEXT NOT NULL CHECK (length(updated_at) = 24),
+        removed_at TEXT CHECK (removed_at IS NULL OR length(removed_at) = 24),
         team_json TEXT NOT NULL CHECK (length(team_json) BETWEEN 1 AND 65536)
       ) STRICT;
 
@@ -750,7 +751,8 @@ export const CORE_SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
       ) STRICT;
 
       CREATE INDEX team_definitions_updated_idx
-        ON team_definitions(updated_at, team_id);
+        ON team_definitions(updated_at, team_id)
+        WHERE removed_at IS NULL;
       CREATE INDEX team_runs_team_updated_idx
         ON team_runs(team_id, updated_at, run_id);
       CREATE INDEX team_runs_recoverable_idx

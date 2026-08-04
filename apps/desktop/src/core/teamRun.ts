@@ -203,6 +203,16 @@ export interface PersistTeamDefinitionResult {
   readonly team: TeamDefinition;
 }
 
+export interface ReplaceTeamDefinitionResult {
+  readonly status: "stored" | "duplicate";
+  readonly team: TeamDefinition;
+}
+
+export interface RemoveTeamDefinitionResult {
+  readonly status: "removed" | "duplicate";
+  readonly teamId: TeamId;
+}
+
 export interface PersistTeamRunSnapshotResult {
   readonly status: "stored" | "duplicate";
   readonly snapshot: TeamRunSnapshot;
@@ -212,9 +222,18 @@ export interface TeamRunPersistencePort {
   persistTeamDefinition(team: TeamDefinition): Promise<PersistTeamDefinitionResult>;
   getTeamDefinition(teamId: TeamId): Promise<TeamDefinition | null>;
   listTeamDefinitions(limit: number): Promise<readonly TeamDefinition[]>;
+  replaceTeamDefinition(
+    expected: TeamDefinition,
+    replacement: TeamDefinition,
+  ): Promise<ReplaceTeamDefinitionResult>;
+  removeTeamDefinition(
+    expected: TeamDefinition,
+    removedAt: Instant,
+  ): Promise<RemoveTeamDefinitionResult>;
   persistTeamRunSnapshot(snapshot: TeamRunSnapshot): Promise<PersistTeamRunSnapshotResult>;
   getTeamRunSnapshot(runId: TeamRunId): Promise<TeamRunSnapshot | null>;
   listRecoverableTeamRuns(limit: number): Promise<readonly TeamRunSnapshot[]>;
+  listTeamRunsForTeam(teamId: TeamId, limit: number): Promise<readonly TeamRunSnapshot[]>;
 }
 
 export type TeamRunCommand =
@@ -537,7 +556,8 @@ export function normalizeTeamDefinition(value: unknown): TeamDefinition {
     !hasExactKeys(value, TEAM_DEFINITION_KEYS) ||
     value.contractVersion !== TEAM_RUN_CONTRACT_VERSION ||
     !Array.isArray(value.members) ||
-    value.members.length !== TEAM_MIN_MEMBERS
+    value.members.length < TEAM_MIN_MEMBERS ||
+    value.members.length > TEAM_MAX_MEMBERS
   ) {
     throw new TeamRunContractError("invalid-record", "Team definition is invalid");
   }
@@ -932,6 +952,32 @@ export function assertPersistTeamDefinitionResult(
     throw new TeamRunContractError("invalid-record", "Persisted Team definition result is invalid");
   }
   assertTeamDefinition(value.team);
+}
+
+export function assertReplaceTeamDefinitionResult(
+  value: unknown,
+): asserts value is ReplaceTeamDefinitionResult {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["status", "team"]) ||
+    (value.status !== "stored" && value.status !== "duplicate")
+  ) {
+    throw new TeamRunContractError("invalid-record", "Replaced Team definition result is invalid");
+  }
+  assertTeamDefinition(value.team);
+}
+
+export function assertRemoveTeamDefinitionResult(
+  value: unknown,
+): asserts value is RemoveTeamDefinitionResult {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["status", "teamId"]) ||
+    (value.status !== "removed" && value.status !== "duplicate")
+  ) {
+    throw new TeamRunContractError("invalid-record", "Removed Team definition result is invalid");
+  }
+  teamId(String(value.teamId));
 }
 
 export function assertPersistTeamRunSnapshotResult(

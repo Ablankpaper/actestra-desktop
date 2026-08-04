@@ -28,12 +28,21 @@ interface TeamRunPersistence {
   ): Promise<{ readonly status: "stored" | "duplicate"; readonly team: TeamDefinition }>;
   getTeamDefinition(teamId: TeamId): Promise<TeamDefinition | null>;
   listTeamDefinitions(limit: number): Promise<readonly TeamDefinition[]>;
+  replaceTeamDefinition(
+    expected: TeamDefinition,
+    replacement: TeamDefinition,
+  ): Promise<{ readonly status: "stored" | "duplicate"; readonly team: TeamDefinition }>;
+  removeTeamDefinition(
+    expected: TeamDefinition,
+    removedAt: ReturnType<typeof instant>,
+  ): Promise<{ readonly status: "removed" | "duplicate"; readonly teamId: TeamId }>;
   persistTeamRunSnapshot(snapshot: TeamRunSnapshot): Promise<{
     readonly status: "stored" | "duplicate";
     readonly snapshot: TeamRunSnapshot;
   }>;
   getTeamRunSnapshot(runId: TeamRunId): Promise<TeamRunSnapshot | null>;
   listRecoverableTeamRuns(limit: number): Promise<readonly TeamRunSnapshot[]>;
+  listTeamRunsForTeam(teamId: TeamId, limit: number): Promise<readonly TeamRunSnapshot[]>;
 }
 
 const testDirectories: string[] = [];
@@ -84,6 +93,90 @@ describe("schema 15 Team run persistence", () => {
       code: "team-definition-conflict",
     });
     await expect(teamPersistence.getTeamDefinition(team.teamId)).resolves.toEqual(team);
+    await persistence.close();
+  });
+
+  it("CAS-updates two-to-five-member Teams, protects active runs, lists heads, and soft-removes terminal Teams", async () => {
+    const userDataPath = createTestDirectory();
+    const { plan, team, accepted } = await createTeamRunFixture("definition-lifecycle");
+    const persistence = openSqliteCorePersistence(userDataPath);
+    const teamPersistence = persistence as unknown as TeamRunPersistence;
+    await persistence.persistAdmittedTeamPlan(plan);
+    await teamPersistence.persistTeamDefinition(team);
+
+    const expanded = normalizeTeamDefinition({
+      ...team,
+      name: "Expanded durable Team",
+      members: [
+        ...team.members,
+        {
+          memberId: `team-member-${"9".repeat(64)}`,
+          role: "teammate",
+          capability: "general",
+          displayName: "General researcher",
+        },
+      ],
+      updatedAt: "2026-08-04T01:00:02.000Z",
+    });
+    expect(expanded.members).toHaveLength(3);
+    await expect(teamPersistence.replaceTeamDefinition(team, expanded)).resolves.toEqual({
+      status: "stored",
+      team: expanded,
+    });
+    await expect(teamPersistence.replaceTeamDefinition(team, expanded)).resolves.toEqual({
+      status: "duplicate",
+      team: expanded,
+    });
+
+    const staleReplacement = normalizeTeamDefinition({
+      ...expanded,
+      name: "Stale Team replacement",
+      updatedAt: "2026-08-04T01:00:03.000Z",
+    });
+    await expect(
+      teamPersistence.replaceTeamDefinition(team, staleReplacement),
+    ).rejects.toMatchObject({ code: "team-definition-conflict" });
+
+    const acceptedForExpandedTeam = accepted;
+    await teamPersistence.persistTeamRunSnapshot(acceptedForExpandedTeam);
+    const activeReplacement = normalizeTeamDefinition({
+      ...expanded,
+      name: "Must not replace an active Team",
+      updatedAt: "2026-08-04T01:00:05.000Z",
+    });
+    await expect(
+      teamPersistence.replaceTeamDefinition(expanded, activeReplacement),
+    ).rejects.toMatchObject({ code: "team-definition-conflict" });
+
+    const cancelled = transitionTeamRun(acceptedForExpandedTeam, {
+      type: "cancel-run",
+      reason: "Close the run before editing or removing its Team.",
+      occurredAt: instant("2026-08-04T01:00:05.000Z"),
+    });
+    await teamPersistence.persistTeamRunSnapshot(cancelled);
+    await expect(teamPersistence.listTeamRunsForTeam(team.teamId, 10)).resolves.toEqual([
+      cancelled,
+    ]);
+    await expect(
+      teamPersistence.replaceTeamDefinition(expanded, activeReplacement),
+    ).resolves.toEqual({ status: "stored", team: activeReplacement });
+
+    await expect(
+      teamPersistence.removeTeamDefinition(activeReplacement, instant("2026-08-04T01:00:06.000Z")),
+    ).resolves.toEqual({ status: "removed", teamId: team.teamId });
+    await expect(teamPersistence.getTeamDefinition(team.teamId)).resolves.toBeNull();
+    await expect(teamPersistence.listTeamDefinitions(10)).resolves.toEqual([]);
+    await expect(
+      teamPersistence.removeTeamDefinition(activeReplacement, instant("2026-08-04T01:00:07.000Z")),
+    ).resolves.toEqual({ status: "duplicate", teamId: team.teamId });
+
+    const database = new DatabaseSync(resolveCoreDatabasePath(userDataPath));
+    expect(
+      database
+        .prepare("SELECT team_id, removed_at FROM team_definitions WHERE team_id = ?")
+        .get(team.teamId),
+    ).toEqual({ team_id: team.teamId, removed_at: "2026-08-04T01:00:06.000Z" });
+    database.close();
     await persistence.close();
   });
 

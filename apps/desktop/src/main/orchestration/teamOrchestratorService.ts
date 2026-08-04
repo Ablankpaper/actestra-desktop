@@ -32,7 +32,14 @@ import {
   type TeamPlannerAggregateResult,
 } from "../../shared/teamPlannerSidecarProtocol";
 
-export interface TeamOrchestratorPersistencePort extends TeamRunPersistencePort {
+export interface TeamOrchestratorPersistencePort extends Pick<
+  TeamRunPersistencePort,
+  | "persistTeamDefinition"
+  | "getTeamDefinition"
+  | "persistTeamRunSnapshot"
+  | "getTeamRunSnapshot"
+  | "listRecoverableTeamRuns"
+> {
   getAdmittedTeamPlan(planId: TeamPlanId): Promise<AdmittedTeamPlan | null>;
 }
 

@@ -13,7 +13,9 @@ import {
 import {
   admitTeamPlanCandidate,
   instant,
+  normalizeTeamDefinition,
   toolInputReference,
+  transitionTeamRun,
   workspaceGrantId,
   type AdmittedTeamPlan,
   type PersistAdmittedTeamPlanResult,
@@ -99,12 +101,21 @@ interface TeamRunPersistenceClient extends TeamPlanPersistenceClient {
   ): Promise<{ readonly status: "stored" | "duplicate"; readonly team: TeamDefinition }>;
   getTeamDefinition(teamId: TeamId): Promise<TeamDefinition | null>;
   listTeamDefinitions(limit: number): Promise<readonly TeamDefinition[]>;
+  replaceTeamDefinition(
+    expected: TeamDefinition,
+    replacement: TeamDefinition,
+  ): Promise<{ readonly status: "stored" | "duplicate"; readonly team: TeamDefinition }>;
+  removeTeamDefinition(
+    expected: TeamDefinition,
+    removedAt: ReturnType<typeof instant>,
+  ): Promise<{ readonly status: "removed" | "duplicate"; readonly teamId: TeamId }>;
   persistTeamRunSnapshot(snapshot: TeamRunSnapshot): Promise<{
     readonly status: "stored" | "duplicate";
     readonly snapshot: TeamRunSnapshot;
   }>;
   getTeamRunSnapshot(runId: TeamRunId): Promise<TeamRunSnapshot | null>;
   listRecoverableTeamRuns(limit: number): Promise<readonly TeamRunSnapshot[]>;
+  listTeamRunsForTeam(teamId: TeamId, limit: number): Promise<readonly TeamRunSnapshot[]>;
 }
 
 function createTestDirectory(): string {
@@ -328,20 +339,40 @@ describe("persistence utility client", () => {
       status: "stored",
       team,
     });
+    const replacement = normalizeTeamDefinition({
+      ...team,
+      name: "Client replacement Team",
+      updatedAt: "2026-08-04T01:00:02.000Z",
+    });
+    await expect(client.replaceTeamDefinition(team, replacement)).resolves.toEqual({
+      status: "stored",
+      team: replacement,
+    });
     await expect(client.persistTeamRunSnapshot(accepted)).resolves.toEqual({
       status: "stored",
       snapshot: accepted,
     });
-    await expect(client.getTeamDefinition(team.teamId)).resolves.toEqual(team);
+    await expect(client.getTeamDefinition(team.teamId)).resolves.toEqual(replacement);
     await expect(client.getTeamRunSnapshot(accepted.runId)).resolves.toEqual(accepted);
-    await expect(client.listTeamDefinitions(100)).resolves.toEqual([team]);
+    await expect(client.listTeamDefinitions(100)).resolves.toEqual([replacement]);
     await expect(client.listRecoverableTeamRuns(100)).resolves.toEqual([accepted]);
+    await expect(client.listTeamRunsForTeam(team.teamId, 100)).resolves.toEqual([accepted]);
+    const cancelled = transitionTeamRun(accepted, {
+      type: "cancel-run",
+      reason: "Close the client fixture before Team removal.",
+      occurredAt: instant("2026-08-04T01:00:03.000Z"),
+    });
+    await client.persistTeamRunSnapshot(cancelled);
+    await expect(
+      client.removeTeamDefinition(replacement, instant("2026-08-04T01:00:04.000Z")),
+    ).resolves.toEqual({ status: "removed", teamId: team.teamId });
+    await expect(client.getTeamDefinition(team.teamId)).resolves.toBeNull();
     await client.close();
 
     const reopened = await openTestPersistenceUtility(userDataPath);
     const reopenedClient = reopened.client as unknown as TeamRunPersistenceClient;
     const restored = await reopenedClient.getTeamRunSnapshot(accepted.runId);
-    expect(restored).toEqual(accepted);
+    expect(restored).toEqual(cancelled);
     expect(Object.isFrozen(restored)).toBe(true);
     await reopenedClient.close();
   });

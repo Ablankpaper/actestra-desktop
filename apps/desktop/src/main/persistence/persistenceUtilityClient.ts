@@ -41,11 +41,14 @@ import {
   type DomainGraph,
   type EventStreamId,
   type GeneralWorkCheckpoint,
+  type Instant,
   type PersistGeneralWorkCheckpointResult,
   type PersistContentReferenceResult,
   type PersistAdmittedTeamPlanResult,
   type PersistTeamDefinitionResult,
   type PersistTeamRunSnapshotResult,
+  type RemoveTeamDefinitionResult,
+  type ReplaceTeamDefinitionResult,
   type PersistEvidenceResult,
   type PersistEventResult,
   type PersistWorkspaceGrantResult,
@@ -406,6 +409,33 @@ export class PersistenceUtilityClient implements ActestraPersistencePort {
     return Object.freeze(teams);
   }
 
+  async replaceTeamDefinition(
+    expected: TeamDefinition,
+    replacement: TeamDefinition,
+  ): Promise<ReplaceTeamDefinitionResult> {
+    const result = await this.invoke("replace-team-definition", { expected, replacement });
+    const stableTeam = this.normalizeTeamDefinitionResponse(result.team);
+    if (!isDeepStrictEqual(stableTeam, replacement)) {
+      throw this.failInvalidMessage(
+        "Persistence utility returned substituted Team replacement bytes",
+      );
+    }
+    return Object.freeze({ status: result.status, team: stableTeam });
+  }
+
+  async removeTeamDefinition(
+    expected: TeamDefinition,
+    removedAt: Instant,
+  ): Promise<RemoveTeamDefinitionResult> {
+    const result = await this.invoke("remove-team-definition", { expected, removedAt });
+    if (result.teamId !== expected.teamId) {
+      throw this.failInvalidMessage(
+        "Persistence utility substituted a removed Team definition identity",
+      );
+    }
+    return Object.freeze({ status: result.status, teamId: result.teamId });
+  }
+
   async persistTeamRunSnapshot(snapshot: TeamRunSnapshot): Promise<PersistTeamRunSnapshotResult> {
     const result = await this.invoke("persist-team-run-snapshot", { snapshot });
     const stableSnapshot = this.normalizeTeamRunResponse(result.snapshot);
@@ -434,6 +464,19 @@ export class PersistenceUtilityClient implements ActestraPersistencePort {
       snapshots.some(({ status }) => ["completed", "failed", "cancelled"].includes(status))
     ) {
       throw this.failInvalidMessage("Persistence utility returned invalid recoverable Team runs");
+    }
+    return Object.freeze(snapshots);
+  }
+
+  async listTeamRunsForTeam(teamId: TeamId, limit: number): Promise<readonly TeamRunSnapshot[]> {
+    const snapshots = (await this.invoke("list-team-runs-for-team", { teamId, limit })).map(
+      (snapshot) => this.normalizeTeamRunResponse(snapshot),
+    );
+    if (
+      new Set(snapshots.map(({ runId }) => runId)).size !== snapshots.length ||
+      snapshots.some((snapshot) => snapshot.teamId !== teamId)
+    ) {
+      throw this.failInvalidMessage("Persistence utility returned invalid Team run heads");
     }
     return Object.freeze(snapshots);
   }

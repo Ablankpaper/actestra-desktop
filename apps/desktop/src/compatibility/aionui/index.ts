@@ -9,3 +9,4 @@ export * from "./scheduleContract";
 export * from "./scheduledGeneralWork";
 export * from "./scheduleBridge";
 export * from "./shadowProjection";
+export * from "./teamBridge";

@@ -462,6 +462,15 @@ Eigent remains the reference for the user-visible Team experience and
 acceptance behavior; its separate application and complete runtime are not
 part of the Actestra process topology.
 
+The local Task 6 provider adds a closed AionUI Team request/event contract and
+trusted-current-main-frame IPC. Main owns Team identity and two-to-five-member
+CAS updates, active-run mutation exclusion, soft removal, plan admission,
+orchestrator controls, and the projection of schema-15 run authority into
+native Team DTOs. Only Actestra Workspace references and the fixed General and
+Goose assistants cross the renderer boundary; runtime, model, path, plan, node,
+Approval, Worker, and persistence authority remain in main/Core. This provider
+is not yet exposed by a downstream preload or visible Team page.
+
 P6 must expose the resulting authority as a complete AionUI-native Team/group
 chat rather than a hidden provider. The visible path covers Team creation and
 list, `/team/:id`, members/roles and General+Goose configuration, owned

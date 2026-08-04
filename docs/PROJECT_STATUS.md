@@ -661,8 +661,30 @@ The final Task 5 router/orchestrator closure passes 2 files and 19 tests; the
 admitted-artifact mixed closure passes 1 file and 4 tests. Strict TypeScript and
 the targeted 17-path format and zero-warning lint checks pass. The admitted
 runner artifact is local test evidence, not a candidate or release. There is
-still no fixed Team bridge, renderer/preload route, AionUI Team UI, real CrewAI
-admission, package acceptance, push, Actions run, or P6 completion claim.
+no renderer/preload route, AionUI Team UI, real CrewAI admission, package
+acceptance, push, Actions run, or P6 completion claim in that checkpoint.
+
+The local Task 6 layer now adds the fixed `actestra:team-request-v1` and
+`actestra:team-event-v1` contracts, validates the retained native Team routes,
+and exposes them only through a trusted current-main-frame IPC boundary. The
+renderer can select only Actestra-owned Workspace references, fixed General and
+Goose assistants, and the closed plan-mode Team controls; it cannot select a
+runtime, model, filesystem path, Worker, plan, node, Approval identity, or
+durable state. Invalid provider DTOs and events are contained before renderer
+delivery, and private failure text is replaced with a bounded fixed envelope.
+
+Schema 15 Team definitions now support two-to-five-member CAS updates, active-
+run mutation exclusion, durable soft removal, safe duplicate retries, and
+current run-head listing through the closed persistence utility and fail-closed
+main client. The main-owned `AionUiTeamService` composes those operations with
+the real plan-admission service and TeamOrchestrator: a focused integration
+creates a Team, admits a user message as a durable plan, starts General and
+Goose in parallel, projects Actestra authority/current executor/valid controls,
+pauses the coding node, and cancels the whole Team while aborting both Worker
+signals. The affected nine-file closure passes 72 tests; strict TypeScript and
+targeted 18-path formatting and zero-warning lint pass. No downstream AionUI
+patch, preload exposure, visible `/team/:id` page, packaged journey, push,
+Actions run, or P6 completion is claimed.
 
 The owner has clarified the remaining P6 product gate: AionUI v2.1.41 is the
 sole design language, component system, navigation foundation, and visible
@@ -2299,7 +2321,8 @@ Review closure validation at
 | P6 admitted plan and Team run durability           | Local committed checkpoint in the unpushed PR 46 batch            | Local commit `ae2d4b98a05ef9f89b30e8cd3734f46d38d50345`; schema 14 remains the canonical admitted `team_plans` authority; schema 15 separately adds immutable Team definitions, current run heads, append-only revisions, Core transitions, CAS persistence, digest validation, recoverable-run listing, and fail-closed utility/client identity checks; revision 1 is reconstructed from the canonical plan and Team, while every N+1 revision must replay as one allowed Core transition or deterministic recovery; Team run 13/13, the earlier persistence/protocol 58/58, and final changed Core/persistence 17/17 tests pass; smoke harness, targeted format/lint, and strict TypeScript pass; no second root gate or Actions run; production planner provider, real mixed Worker execution, real AionUI-native Team/group-chat creation/run/explain/control UI, real CrewAI admission, and P6 acceptance remain absent |
 | P6 generic planner-sidecar boundary                | Local implementation in the unpushed PR 46 batch                  | Closed typed `propose` and reference-only `aggregate` protocol; exact engine/version handshake; closed environment and telemetry/network-denial policy variables; bounded serialized JSONL; sanitized failure; timeout/abort/crash/close process-group cleanup; 3 focused files/19 tests plus targeted format, zero-warning lint, and strict TypeScript; deterministic fixture only, with no real CrewAI admission, OS network-sandbox proof, mixed Workers, Team UI, packaging, or P6 acceptance |
 | P6 Team scheduler/control/recovery                 | Local implementation in the unpushed PR 46 batch                  | Actestra-owned persisted Core transitions; per-run serialization; persist-before-observe/effect; bounded parallel roots; dependency and Artifact gating; separate protected Approval and workflow feedback; pause/resume/retry/replace/handoff; child/whole cancel; reference-only aggregation; close cleanup; deterministic interrupted recovery; 3 focused files/31 tests, explicit-path format, zero-warning lint, and strict TypeScript; the scheduler contract is now composed through the separately recorded real mixed journey, but Team UI, push, CI, and P6 acceptance remain absent |
-| P6 real General+Goose Team composition            | Local uncommitted implementation in the unpushed PR 46 batch      | Deterministic Team bindings route admitted nodes through the real General Work and admitted Goose coding journeys; protected write/test/publish approvals persist before effect and acknowledgement; completed Artifacts are re-read from Actestra persistence and aggregated only by reference; focused router/orchestrator 2 files/19 tests and real mixed 1 file/4 tests pass, including denial, whole-Team cancellation, no orphan process/worktree, and unchanged clean source-checkout evidence; no fixed Team bridge, renderer/preload route, AionUI-native Team/group-chat UI, real CrewAI admission, package, push, CI, or P6 acceptance |
+| P6 real General+Goose Team composition            | Local committed checkpoint in the unpushed PR 46 batch            | Local commit `d5b9759a67889fb9651c5c134ead182d0274f432`; deterministic Team bindings route admitted nodes through the real General Work and admitted Goose coding journeys; protected write/test/publish approvals persist before effect and acknowledgement; completed Artifacts are re-read from Actestra persistence and aggregated only by reference; focused router/orchestrator 2 files/19 tests and real mixed 1 file/4 tests pass, including denial, whole-Team cancellation, no orphan process/worktree, and unchanged clean source-checkout evidence; no renderer/preload route, AionUI-native Team/group-chat UI, real CrewAI admission, package, push, CI, or P6 acceptance |
+| P6 AionUI Team main provider and bridge           | Local implementation in the unpushed PR 46 batch                  | Fixed request/event contracts and trusted-main-frame IPC; schema-15 two-to-five-member Team CAS, active-run exclusion, soft removal, duplicate retry and per-Team run-head listing through utility/client; main provider composes real plan admission and TeamOrchestrator, projects authority/executor/blocked/next-action state, and proves persisted creation, General+Goose parallel start, pause, whole-Team cancel and Worker abort; 9 focused files/72 tests, strict TypeScript, targeted formatting and zero-warning lint pass; no downstream patch, preload exposure, visible Team UI, package, push, CI, or P6 acceptance |
 | Native AionUi source                               | Exact local desktop snapshot                                      | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Native preservation contract                       | Local pass                                                        | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | Native AionUi build and launch                     | Local pass                                                        | Frozen install, production build, isolated native Electron launch, and actual Guide screenshot pass                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -2447,14 +2470,15 @@ The ordered implementation index and P3 non-claims are in
 9. Keep schema-14 admitted-plan authority, schema-15 Team run authority, the
    generic non-authoritative planner protocol/supervisor, the Actestra-owned
    scheduler/control/recovery service, and the locally proven real
-   General+Goose composition in the same unpushed P6 batch. Next add the fixed
-   Team bridge and deliver the user-visible AionUI-native Team/group-chat
-   creation, execution, explainability, control, Artifact, and recovery journey
-   in P6 with explicit R1/R2 compatibility and rollback evidence; do not defer
-   it as later polish or admit a real CrewAI provider before its independent
-   gates pass. Push only after the complete Team capability stabilizes. Do not
-   give a planner process, renderer, worktree, credential, approval, tool, or
-   durable-state authority.
+   General+Goose composition, fixed Team bridge, schema-15 Team CRUD, and
+   main-owned Team provider in the same unpushed P6 batch. Next expose that
+   provider through the recorded downstream patch and deliver the visible
+   AionUI-native Team/group-chat creation, execution, explainability, control,
+   Artifact, and recovery journey with explicit R1/R2 compatibility and
+   rollback evidence; do not defer it as later polish or admit a real CrewAI
+   provider before its independent gates pass. Push only after the complete
+   Team capability stabilizes. Do not give a planner process, renderer,
+   worktree, credential, approval, tool, or durable-state authority.
 
 ## Open decisions
 

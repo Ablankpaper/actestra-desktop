@@ -110,6 +110,8 @@ import {
   type PersistAdmittedTeamPlanResult,
   type PersistTeamDefinitionResult,
   type PersistTeamRunSnapshotResult,
+  type RemoveTeamDefinitionResult,
+  type ReplaceTeamDefinitionResult,
   type PersistEvidenceResult,
   type PersistEventResult,
   type PersistWorkspaceGrantResult,
@@ -171,7 +173,7 @@ const TEAM_PLAN_COLUMNS = `
   record_sha256, plan_json
 `;
 const TEAM_DEFINITION_COLUMNS = `
-  team_id, record_sha256, updated_at, team_json
+  team_id, record_sha256, updated_at, removed_at, team_json
 `;
 const TEAM_RUN_COLUMNS = `
   run_id, team_id, plan_id, revision, status, updated_at,
@@ -644,6 +646,22 @@ function assertTeamPersistenceLimit(limit: number, field: string): void {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
     throw new PersistenceError("invalid-record", `${field} must be between 1 and 100`);
   }
+}
+
+function hasNonTerminalTeamRun(
+  database: DatabaseSync,
+  teamIdValue: ReturnType<typeof teamId>,
+): boolean {
+  return (
+    database
+      .prepare(
+        `SELECT run_id
+         FROM team_runs
+         WHERE team_id = ? AND status NOT IN ('completed', 'failed', 'cancelled')
+         LIMIT 1`,
+      )
+      .get(teamIdValue) !== undefined
+  );
 }
 
 function parseStoredAionUiGeneralWorkLink(row: SqliteRow): AionUiGeneralWorkLink {
@@ -2323,7 +2341,10 @@ class SqliteCorePersistence implements ActestraPersistencePort {
         .get(stableTeam.teamId) as SqliteRow | undefined;
       if (existingRow !== undefined) {
         const existing = parseStoredTeamDefinition(existingRow);
-        if (isDeepStrictEqual(existing, stableTeam)) {
+        if (
+          optionalString(existingRow, "removed_at") === undefined &&
+          isDeepStrictEqual(existing, stableTeam)
+        ) {
           database.exec("COMMIT");
           return deepFreeze({ status: "duplicate", team: existing });
         }
@@ -2364,7 +2385,11 @@ class SqliteCorePersistence implements ActestraPersistencePort {
       });
     }
     const row = database
-      .prepare(`SELECT ${TEAM_DEFINITION_COLUMNS} FROM team_definitions WHERE team_id = ?`)
+      .prepare(
+        `SELECT ${TEAM_DEFINITION_COLUMNS}
+         FROM team_definitions
+         WHERE team_id = ? AND removed_at IS NULL`,
+      )
       .get(stableTeamId) as SqliteRow | undefined;
     return row === undefined ? null : parseStoredTeamDefinition(row);
   }
@@ -2377,12 +2402,171 @@ class SqliteCorePersistence implements ActestraPersistencePort {
         .prepare(
           `SELECT ${TEAM_DEFINITION_COLUMNS}
            FROM team_definitions
+           WHERE removed_at IS NULL
            ORDER BY updated_at, team_id
            LIMIT ?`,
         )
         .all(limit),
     );
     return Object.freeze(rows.map(parseStoredTeamDefinition));
+  }
+
+  async replaceTeamDefinition(
+    expectedValue: TeamDefinition,
+    replacementValue: TeamDefinition,
+  ): Promise<ReplaceTeamDefinitionResult> {
+    const database = this.requireDatabase();
+    let expected: TeamDefinition;
+    let replacement: TeamDefinition;
+    try {
+      expected = normalizeTeamDefinition(JSON.parse(JSON.stringify(expectedValue)));
+      replacement = normalizeTeamDefinition(JSON.parse(JSON.stringify(replacementValue)));
+      if (
+        replacement.teamId !== expected.teamId ||
+        replacement.workspaceId !== expected.workspaceId ||
+        replacement.createdAt !== expected.createdAt ||
+        compareInstants(replacement.updatedAt, expected.updatedAt) <= 0
+      ) {
+        throw new Error("Team replacement must preserve identity and advance its revision time");
+      }
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Team definition replacement is invalid", {
+        cause: error,
+      });
+    }
+
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const row = database
+        .prepare(`SELECT ${TEAM_DEFINITION_COLUMNS} FROM team_definitions WHERE team_id = ?`)
+        .get(expected.teamId) as SqliteRow | undefined;
+      if (row === undefined || optionalString(row, "removed_at") !== undefined) {
+        throw new PersistenceError(
+          "team-definition-conflict",
+          "Team definition is missing or removed",
+        );
+      }
+      const current = parseStoredTeamDefinition(row);
+      if (isDeepStrictEqual(current, replacement)) {
+        database.exec("COMMIT");
+        return deepFreeze({ status: "duplicate", team: current });
+      }
+      if (
+        !isDeepStrictEqual(current, expected) ||
+        hasNonTerminalTeamRun(database, expected.teamId)
+      ) {
+        throw new PersistenceError(
+          "team-definition-conflict",
+          "Team definition changed or has an active run",
+        );
+      }
+
+      const encoded = JSON.stringify(replacement);
+      const digest = createHash("sha256").update(encoded).digest("hex");
+      const update = database
+        .prepare(
+          `UPDATE team_definitions
+           SET record_sha256 = ?, updated_at = ?, team_json = ?
+           WHERE team_id = ? AND record_sha256 = ? AND removed_at IS NULL`,
+        )
+        .run(
+          digest,
+          replacement.updatedAt,
+          encoded,
+          expected.teamId,
+          requiredString(row, "record_sha256"),
+        );
+      if (update.changes !== 1) {
+        throw new PersistenceError(
+          "team-definition-conflict",
+          "Team definition replacement lost its compare-and-swap",
+        );
+      }
+      database.exec("COMMIT");
+      return deepFreeze({ status: "stored", team: replacement });
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) throw error;
+      throw new PersistenceError(
+        "corrupt-database",
+        "Actestra could not replace the Team definition",
+        { cause: error },
+      );
+    }
+  }
+
+  async removeTeamDefinition(
+    expectedValue: TeamDefinition,
+    removedAtValue: ReturnType<typeof instant>,
+  ): Promise<RemoveTeamDefinitionResult> {
+    const database = this.requireDatabase();
+    let expected: TeamDefinition;
+    let removedAt: ReturnType<typeof instant>;
+    try {
+      expected = normalizeTeamDefinition(JSON.parse(JSON.stringify(expectedValue)));
+      removedAt = instant(removedAtValue);
+      if (compareInstants(removedAt, expected.updatedAt) < 0) {
+        throw new Error("Team removal cannot precede its current definition");
+      }
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Team definition removal is invalid", {
+        cause: error,
+      });
+    }
+
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const row = database
+        .prepare(`SELECT ${TEAM_DEFINITION_COLUMNS} FROM team_definitions WHERE team_id = ?`)
+        .get(expected.teamId) as SqliteRow | undefined;
+      if (row === undefined) {
+        throw new PersistenceError("team-definition-conflict", "Team definition is missing");
+      }
+      const current = parseStoredTeamDefinition(row);
+      const existingRemoval = optionalString(row, "removed_at");
+      if (existingRemoval !== undefined) {
+        if (!isDeepStrictEqual(current, expected)) {
+          throw new PersistenceError(
+            "team-definition-conflict",
+            "Removed Team definition conflicts with the expected bytes",
+          );
+        }
+        database.exec("COMMIT");
+        return deepFreeze({ status: "duplicate", teamId: expected.teamId });
+      }
+      if (
+        !isDeepStrictEqual(current, expected) ||
+        hasNonTerminalTeamRun(database, expected.teamId)
+      ) {
+        throw new PersistenceError(
+          "team-definition-conflict",
+          "Team definition changed or has an active run",
+        );
+      }
+      const update = database
+        .prepare(
+          `UPDATE team_definitions
+           SET removed_at = ?
+           WHERE team_id = ? AND record_sha256 = ? AND removed_at IS NULL`,
+        )
+        .run(removedAt, expected.teamId, requiredString(row, "record_sha256"));
+      if (update.changes !== 1) {
+        throw new PersistenceError(
+          "team-definition-conflict",
+          "Team definition removal lost its compare-and-swap",
+        );
+      }
+      database.exec("COMMIT");
+      return deepFreeze({ status: "removed", teamId: expected.teamId });
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) throw error;
+      throw new PersistenceError(
+        "corrupt-database",
+        "Actestra could not remove the Team definition",
+        { cause: error },
+      );
+    }
   }
 
   async persistTeamRunSnapshot(
@@ -2405,7 +2589,11 @@ class SqliteCorePersistence implements ActestraPersistencePort {
       const planRow = database
         .prepare(`SELECT ${TEAM_PLAN_COLUMNS} FROM team_plans WHERE plan_id = ?`)
         .get(stableSnapshot.planId) as SqliteRow | undefined;
-      if (teamRow === undefined || planRow === undefined) {
+      if (
+        teamRow === undefined ||
+        optionalString(teamRow, "removed_at") !== undefined ||
+        planRow === undefined
+      ) {
         throw new PersistenceError(
           "team-run-conflict",
           "Team run references missing Team definition or admitted plan authority",
@@ -2546,6 +2734,43 @@ class SqliteCorePersistence implements ActestraPersistencePort {
         const validated = loadStoredTeamRunHead(database, snapshot.runId);
         if (validated === null) {
           throw new PersistenceError("corrupt-database", "Recoverable Team run disappeared");
+        }
+        return validated;
+      }),
+    );
+  }
+
+  async listTeamRunsForTeam(
+    teamIdValue: ReturnType<typeof teamId>,
+    limit: number,
+  ): Promise<readonly TeamRunSnapshot[]> {
+    const database = this.requireDatabase();
+    let stableTeamId: ReturnType<typeof teamId>;
+    try {
+      stableTeamId = teamId(teamIdValue);
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Team run list identity is invalid", {
+        cause: error,
+      });
+    }
+    assertTeamPersistenceLimit(limit, "Team run list limit");
+    const rows = asRows(
+      database
+        .prepare(
+          `SELECT ${TEAM_RUN_COLUMNS}
+           FROM team_runs
+           WHERE team_id = ?
+           ORDER BY updated_at DESC, run_id
+           LIMIT ?`,
+        )
+        .all(stableTeamId, limit),
+    );
+    return Object.freeze(
+      rows.map((row) => {
+        const snapshot = parseStoredTeamRunHead(row);
+        const validated = loadStoredTeamRunHead(database, snapshot.runId);
+        if (validated === null) {
+          throw new PersistenceError("corrupt-database", "Team run head disappeared");
         }
         return validated;
       }),

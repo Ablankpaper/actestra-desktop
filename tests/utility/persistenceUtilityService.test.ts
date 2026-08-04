@@ -8,6 +8,7 @@ import { PersistenceUtilityService } from "../../apps/desktop/src/utility/persis
 import { CURRENT_CORE_SCHEMA_VERSION } from "../../apps/desktop/src/utility/persistence/sqliteMigrations";
 import { createAionUiScheduleRegistration } from "../fixtures/aionuiSchedule";
 import { createTeamRunFixture } from "../fixtures/teamRun";
+import { instant, normalizeTeamDefinition, transitionTeamRun } from "../../apps/desktop/src/core";
 
 const testDirectories: string[] = [];
 
@@ -55,6 +56,20 @@ describe("persistence utility schedule service", () => {
         payload: { team },
       }),
     ).resolves.toMatchObject({ status: "ok", result: { status: "stored", team } });
+    const replacement = normalizeTeamDefinition({
+      ...team,
+      name: "Service replacement Team",
+      updatedAt: "2026-08-04T01:00:02.000Z",
+    });
+    await expect(
+      service.handle({
+        protocolVersion: 1,
+        type: "request",
+        requestId: "team-service-definition-replace",
+        operation: "replace-team-definition",
+        payload: { expected: team, replacement },
+      }),
+    ).resolves.toMatchObject({ status: "ok", result: { status: "stored", team: replacement } });
     await expect(
       service.handle({
         protocolVersion: 1,
@@ -76,6 +91,39 @@ describe("persistence utility schedule service", () => {
         payload: { limit: 100 },
       }),
     ).resolves.toMatchObject({ status: "ok", result: [accepted] });
+    await expect(
+      service.handle({
+        protocolVersion: 1,
+        type: "request",
+        requestId: "team-service-runs",
+        operation: "list-team-runs-for-team",
+        payload: { teamId: team.teamId, limit: 100 },
+      }),
+    ).resolves.toMatchObject({ status: "ok", result: [accepted] });
+    const cancelled = transitionTeamRun(accepted, {
+      type: "cancel-run",
+      reason: "Close the service fixture before Team removal.",
+      occurredAt: instant("2026-08-04T01:00:03.000Z"),
+    });
+    await service.handle({
+      protocolVersion: 1,
+      type: "request",
+      requestId: "team-service-run-cancelled",
+      operation: "persist-team-run-snapshot",
+      payload: { snapshot: cancelled },
+    });
+    await expect(
+      service.handle({
+        protocolVersion: 1,
+        type: "request",
+        requestId: "team-service-definition-remove",
+        operation: "remove-team-definition",
+        payload: { expected: replacement, removedAt: "2026-08-04T01:00:04.000Z" },
+      }),
+    ).resolves.toMatchObject({
+      status: "ok",
+      result: { status: "removed", teamId: team.teamId },
+    });
     await service.shutdown();
   });
 

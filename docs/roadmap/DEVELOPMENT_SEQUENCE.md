@@ -596,8 +596,12 @@ local unpushed Actestra-owned scheduler/control/recovery service. The current
 local Task 5 layer composes that scheduler with the real General Work journey
 and admitted Goose coding journey, including protected approvals, durable
 Artifact re-read, reference-only aggregation, denial, and whole-Team
-cancellation. No fixed AionUI Team provider or visible Team UI exists yet, and
-no real CrewAI runtime is admitted or packaged.
+cancellation. The local Task 6 layer now adds the fixed Team request/event
+bridge, trusted-current-main-frame IPC, schema-15 Team CRUD and per-Team run
+listing, plus a main-owned provider that composes real plan admission and
+TeamOrchestrator execution. The downstream preload, route, and visible
+AionUI-native Team UI remain the next required layer, and no real CrewAI
+runtime is admitted or packaged.
 
 ### Deliverables
 
