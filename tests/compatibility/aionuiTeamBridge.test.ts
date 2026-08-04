@@ -381,6 +381,15 @@ describe("AionUI-native Actestra Team bridge contract", () => {
           session_generation: "schema-15-revision-4",
           active_run: runEvent,
           slot_work: slotWork,
+          activities: [
+            {
+              id: `team-message-${"4".repeat(64)}`,
+              author: "You",
+              content: "Prepare the bounded Team result.",
+              tone: "user",
+              occurred_at: 1_785_883_200_000,
+            },
+          ],
         },
       },
       {

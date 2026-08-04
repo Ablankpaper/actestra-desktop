@@ -1,19 +1,19 @@
 {
   "schemaVersion": 1,
-  "phase": "P5-preserved-aionui-coding-journey",
+  "phase": "P6-aionui-native-team-work",
   "upstream": {
     "tag": "v2.1.41",
     "commit": "2d8925fc67a97a20996fadcd2a0862b778b572ba",
     "manifestSha256": "252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f"
   },
-  "authorityOwner": "Actestra Core through durable admitted Team-plan authority, AionUI journey links, schedule records and claims, General Work checkpoints, supervised persistence and Worker processes, the scoped desktop main-process tool gateway, the main-owned isolated-coding session service, the fixed Goose runner-readiness provider, and the closed retained-ACP coding-journey bridge",
+  "authorityOwner": "Actestra Core through separate schema-14 admitted-plan and schema-15 Team-run authority, the main-owned TeamOrchestrator, durable AionUI journey links, schedule records and claims, General Work checkpoints, supervised persistence and Worker processes, the scoped desktop main-process tool gateway, the main-owned isolated-coding session service, the fixed Goose runner-readiness provider, and the closed AionUI-native Team provider",
   "classifications": ["R0", "R1", "R2"],
   "migration": {
-    "strategy": "Fresh Actestra profile v1; native AionUi profiles remain untouched. Forward-only schema v14 retains schemas v1-v13 exactly, including the bounded aionui_schedule_jobs authority table, schedule-owned Workspace grants, main-owned timers and claims, missed/interrupted recovery state, and fixed existing-conversation /actestra execution through the accepted General Work journey. Schema v14 adds the bounded team_plans authority table for canonical admitted graphs, deterministic Actestra plan, node, and Task identities, record-digest verification, idempotent retry, and correlation/version conflict denial before scheduling. P5.3 adds one fixed main-owned Goose runner-readiness provider plus five closed coding-journey intents. The retained Agent Settings and Repair routes receive only bounded readiness; the existing ACP SendBox selects the fixed Goose provider and projects bounded Actestra messages, permissions, tool calls, terminal/test summaries, diffs, review state, and Artifact labels through native message surfaces. Renderer requests contain only conversation, submission, Task, Approval, bounded prompt, decision, and cancellation data. They contain no repository root, model identifier, runner path, digest, environment, credential, actor authority, private root, worktree, content reference, or launch override. The retained /scheduled routes, dialog, detail/history, status, CRUD, pause/resume, Run Now, and four cron events use one fixed preload provider; cron operations never fall back to AionCore, and application resume recalculates Actestra timers without calling the upstream system-resume route. Schema v12 Office-document authority, all earlier journey kinds, shadow evidence, approval authority, workspace grants, bounded content references, terminal evidence, checkpoints, and journey links remain behind the same supervised Electron persistence utility. Renderer projections contain only bounded native-compatible schedule, task, status, incident, Artifact, coding-agent readiness, and coding-journey metadata. No workspace root, content reference, private tool input, prompt audit metadata, timer, run claim, Worker identity, credential, shell, arbitrary network, Goose UI, CrewAI, second UI, or second state authority is added.",
-    "rollback": "Remove the P6 team-plan persistence source changes to return to schema v13 behavior. Existing schema v14 team-plan rows remain inert; use a fresh Actestra profile for a true data downgrade. Regenerate without patch 0013 to remove the fixed Goose readiness row, probe, retained ACP selector, five coding-journey intents, and coding projection while retaining the accepted main-only P5.2 containment and publish services. Existing Actestra Tasks, events, approvals, and Artifacts remain authoritative and inert; no native profile edit or frozen-foundation change is required. Regenerate without patch 0012 to remove the main-owned isolated-coding session composition while retaining the accepted P5.2 library containment contracts. No coding session, renderer state, or frozen foundation file requires reversal. Regenerate without patch 0011 to restore the original AionUI cron provider wiring while retaining the accepted General Work and Office journeys. Existing schema v13 schedule rows and schedule-owned grants remain inert. Regenerate without patch 0010 to remove the preserved AionUI General Work journey bridge and /actestra SendBox intents while retaining GW-P4.5 recovery. The frozen AionUi foundation and native AionUi profiles stay byte-identical."
+    "strategy": "Fresh Actestra profile v1; native AionUi profiles remain untouched. Forward-only schema v14 retains schemas v1-v13 exactly, including the bounded aionui_schedule_jobs authority table, schedule-owned Workspace grants, main-owned timers and claims, missed/interrupted recovery state, and fixed existing-conversation /actestra execution through the accepted General Work journey. Schema v14 adds only the bounded team_plans authority table for canonical admitted graphs, deterministic Actestra plan, node, and Task identities, record-digest verification, idempotent retry, and correlation/version conflict denial before scheduling. Forward-only schema v15 leaves schema v14 team_plans unchanged and separately adds team_definitions, team_runs, and append-only team_run_revisions for canonical Team identity, the current durable run head, deterministic transition replay, cancellation, recovery, and result references. Patch 0014 exposes this authority through one fixed main-frame Team request/event provider and AionUI-native creation, list, /team/:id, group-chat, plan/node/Worker state, dependencies, blocked explanations, protected approvals, pause/cancel/retry/replace/handoff controls, Artifacts, aggregation, and recovered-state guidance. The renderer receives only bounded Team DTOs, Actestra Workspace references, messages, explanations, valid actions, and Artifact references; it receives no filesystem path, private prompt, audit identifier, Worker/process identifier, credential, model/runtime override, or durable-state authority. The retained Agent Settings, ACP coding journey, Scheduled Tasks, General Work, Office, preview, navigation, loading, empty, and error behaviors remain available through their recorded R0/R1/R2 contracts. AionUI v2.1.41 remains the sole application shell and design system. No Goose, Eigent, or CrewAI application UI or complete runtime, no AionCore fallback for Team requests, and no second state authority is added.",
+    "rollback": "Regenerate without patch 0014 to remove the Actestra Team preload provider, desktop-main composition, Team client, AionUI-native Team creation/workspace pages, controls, and materialized Team tests while retaining patch 0013 and the accepted P5 coding journey. Remove the schema v15 source changes to stop new Team definition/run/revision writes; existing schema v15 team_definitions, team_runs, and team_run_revisions remain inert, and a fresh Actestra profile is required for a true data downgrade. Existing schema v14 team_plans remain canonical and are not rewritten by schema v15. Regenerate without patch 0013 to remove the fixed Goose readiness row, probe, retained ACP selector, five coding-journey intents, and coding projection while retaining the accepted main-only P5.2 containment and publish services. Existing Actestra Tasks, events, approvals, and Artifacts remain authoritative and inert; no native profile edit or frozen-foundation change is required. Regenerate without patch 0012 to remove the main-owned isolated-coding session composition while retaining the accepted P5.2 library containment contracts. No coding session, renderer state, or frozen foundation file requires reversal. Regenerate without patch 0011 to restore the original AionUI cron provider wiring while retaining the accepted General Work and Office journeys. Existing schema v13 schedule rows and schedule-owned grants remain inert. Regenerate without patch 0010 to remove the preserved AionUI General Work journey bridge and /actestra SendBox intents while retaining GW-P4.5 recovery. The frozen AionUi foundation and native AionUi profiles stay byte-identical."
   },
   "uiContract": {
-    "layoutChangesAllowed": false,
+    "layoutChangesAllowed": true,
     "identityTokenChangesAllowed": true,
     "featureEntryRemovalAllowed": false,
     "goldenEvidence": "docs/evidence/aionui-v2.1.41-native-foundation-macos-arm64.png"
@@ -191,6 +191,19 @@
       ],
       "authorityOwner": "Actestra Core through the desktop-main coding-agent and coding-journey services, exact Goose runner admission, durable DomainGraph and Core events, and closed main-frame intents",
       "rollback": "Regenerate without this patch. The accepted P5.2 containment and publish services remain composed but are no longer projected into Agent Settings, Repair, or the retained ACP conversation; no schema, frozen foundation file, native profile, or coding worktree requires reversal."
+    },
+    {
+      "path": "patches/0014-actestra-team-work.mjs",
+      "classification": ["R1", "R2"],
+      "domains": [
+        "AionUI Team provider",
+        "Team creation and group chat",
+        "Team plan and Worker explainability",
+        "Team controls and Artifact aggregation",
+        "Team restart recovery"
+      ],
+      "authorityOwner": "Actestra Core through schema-14 admitted plans, schema-15 Team definitions and run revisions, the main-owned TeamOrchestrator, protected policy/Approval/audit boundaries, and the fixed current-main-frame Team provider",
+      "rollback": "Regenerate without patch 0014. The native AionUI Team route, sidebar entry, DTOs, event names, original provider page, and frozen foundation remain available; schema v15 Team rows stay inert and require no native-profile mutation."
     }
   ],
   "sourceCopies": [
@@ -247,6 +260,10 @@
       "destination": "packages/desktop/src/actestra/core/teamOrchestration.ts"
     },
     {
+      "source": "apps/desktop/src/core/teamRun.ts",
+      "destination": "packages/desktop/src/actestra/core/teamRun.ts"
+    },
+    {
       "source": "apps/desktop/src/core/workloadContent.ts",
       "destination": "packages/desktop/src/actestra/core/workloadContent.ts"
     },
@@ -281,6 +298,10 @@
     {
       "source": "apps/desktop/src/compatibility/aionui/scheduledGeneralWork.ts",
       "destination": "packages/desktop/src/actestra/compatibility/aionui/scheduledGeneralWork.ts"
+    },
+    {
+      "source": "apps/desktop/src/compatibility/aionui/teamBridge.ts",
+      "destination": "packages/desktop/src/actestra/compatibility/aionui/teamBridge.ts"
     },
     {
       "source": "apps/desktop/src/compatibility/aionui/approvalAuthority.ts",
@@ -349,6 +370,30 @@
     {
       "source": "apps/desktop/src/main/compatibility/aionuiScheduleService.ts",
       "destination": "packages/desktop/src/actestra/main/compatibility/aionuiScheduleService.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/compatibility/aionuiTeamBridgeService.ts",
+      "destination": "packages/desktop/src/actestra/main/compatibility/aionuiTeamBridgeService.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/compatibility/aionuiTeamService.ts",
+      "destination": "packages/desktop/src/actestra/main/compatibility/aionuiTeamService.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/orchestration/teamJourneyWorkerRouter.ts",
+      "destination": "packages/desktop/src/actestra/main/orchestration/teamJourneyWorkerRouter.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/orchestration/teamOrchestratorService.ts",
+      "destination": "packages/desktop/src/actestra/main/orchestration/teamOrchestratorService.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/orchestration/teamPlanAdmissionService.ts",
+      "destination": "packages/desktop/src/actestra/main/orchestration/teamPlanAdmissionService.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/orchestration/teamPlannerSidecarProcess.ts",
+      "destination": "packages/desktop/src/actestra/main/orchestration/teamPlannerSidecarProcess.ts"
     },
     {
       "source": "apps/desktop/src/main/persistence/electronPersistenceUtility.ts",
@@ -483,6 +528,10 @@
       "destination": "packages/desktop/src/actestra/main/privileged/toolGateway.ts"
     },
     {
+      "source": "apps/desktop/src/main/privileged/approvalAuditEvidence.ts",
+      "destination": "packages/desktop/src/actestra/main/privileged/approvalAuditEvidence.ts"
+    },
+    {
       "source": "apps/desktop/src/shared/persistenceUtilityProtocol.ts",
       "destination": "packages/desktop/src/actestra/shared/persistenceUtilityProtocol.ts"
     },
@@ -493,6 +542,10 @@
     {
       "source": "apps/desktop/src/shared/gooseRunnerSource.json",
       "destination": "packages/desktop/src/actestra/shared/gooseRunnerSource.json"
+    },
+    {
+      "source": "apps/desktop/src/shared/teamPlannerSidecarProtocol.ts",
+      "destination": "packages/desktop/src/actestra/shared/teamPlannerSidecarProtocol.ts"
     },
     {
       "source": "apps/desktop/src/utility/persistence/persistenceUtilityEntry.ts",
@@ -577,6 +630,7 @@
     "packages/desktop/src/actestra/compatibility/aionui/scheduleContract.ts",
     "packages/desktop/src/actestra/compatibility/aionui/scheduleBridge.ts",
     "packages/desktop/src/actestra/compatibility/aionui/scheduledGeneralWork.ts",
+    "packages/desktop/src/actestra/compatibility/aionui/teamBridge.ts",
     "packages/desktop/src/actestra/compatibility/aionui/shadowProjection.ts",
     "packages/desktop/src/actestra/core/agentAdapter.ts",
     "packages/desktop/src/actestra/core/domain.ts",
@@ -591,6 +645,7 @@
     "packages/desktop/src/actestra/core/privilegedServices.ts",
     "packages/desktop/src/actestra/core/scopedNativeTools.ts",
     "packages/desktop/src/actestra/core/teamOrchestration.ts",
+    "packages/desktop/src/actestra/core/teamRun.ts",
     "packages/desktop/src/actestra/core/workloadContent.ts",
     "packages/desktop/src/actestra/core/writingArtifact.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiApprovalAuthorityService.ts",
@@ -605,6 +660,12 @@
     "packages/desktop/src/actestra/main/compatibility/aionuiGeneralWorkNativeContext.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiScheduleBridgeService.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiScheduleService.ts",
+    "packages/desktop/src/actestra/main/compatibility/aionuiTeamBridgeService.ts",
+    "packages/desktop/src/actestra/main/compatibility/aionuiTeamService.ts",
+    "packages/desktop/src/actestra/main/orchestration/teamJourneyWorkerRouter.ts",
+    "packages/desktop/src/actestra/main/orchestration/teamOrchestratorService.ts",
+    "packages/desktop/src/actestra/main/orchestration/teamPlanAdmissionService.ts",
+    "packages/desktop/src/actestra/main/orchestration/teamPlannerSidecarProcess.ts",
     "packages/desktop/src/actestra/main/persistence/electronPersistenceUtility.ts",
     "packages/desktop/src/actestra/main/persistence/persistenceUtilityClient.ts",
     "packages/desktop/src/actestra/main/persistence/persistenceMutationBarrier.ts",
@@ -628,6 +689,7 @@
     "packages/desktop/src/actestra/main/workers/isolatedCodingPatch.ts",
     "packages/desktop/src/actestra/main/workers/isolatedCodingWorktree.ts",
     "packages/desktop/src/actestra/main/workers/scopedNativeToolCoordinator.ts",
+    "packages/desktop/src/actestra/main/privileged/approvalAuditEvidence.ts",
     "packages/desktop/src/actestra/main/privileged/deterministicPolicyEngine.ts",
     "packages/desktop/src/actestra/main/privileged/inMemoryApprovalService.ts",
     "packages/desktop/src/actestra/main/privileged/isolatedCodingToolExecutor.ts",
@@ -641,6 +703,7 @@
     "packages/desktop/src/actestra/shared/persistenceUtilityProtocol.ts",
     "packages/desktop/src/actestra/shared/generalWorkerProtocol.ts",
     "packages/desktop/src/actestra/shared/gooseRunnerSource.json",
+    "packages/desktop/src/actestra/shared/teamPlannerSidecarProtocol.ts",
     "packages/desktop/src/actestra/utility/persistence/persistenceUtilityEntry.ts",
     "packages/desktop/src/actestra/utility/persistence/persistenceUtilityService.ts",
     "packages/desktop/src/actestra/utility/persistence/sqliteCorePersistence.ts",
@@ -652,6 +715,7 @@
     "packages/desktop/src/common/adapter/actestraCodingJourneyClient.ts",
     "packages/desktop/src/common/adapter/actestraGeneralWorkClient.ts",
     "packages/desktop/src/common/adapter/actestraShadowPublisher.ts",
+    "packages/desktop/src/common/adapter/actestraTeamClient.ts",
     "packages/desktop/src/common/adapter/httpBridge.ts",
     "packages/desktop/src/common/api/ClientFactory.ts",
     "packages/desktop/src/common/config/actestraApprovalAuthorityContract.ts",
@@ -670,6 +734,7 @@
     "packages/desktop/src/process/services/actestraGeneralWorkSmoke.ts",
     "packages/desktop/src/process/services/autoUpdaterService.ts",
     "packages/desktop/src/process/services/actestraShadowBridge.ts",
+    "packages/desktop/src/process/services/actestraTeamComposition.ts",
     "packages/desktop/src/process/services/i18n/index.ts",
     "packages/desktop/src/process/services/installerLastFailure.ts",
     "packages/desktop/src/process/utils/actestraProfile.ts",
@@ -710,6 +775,11 @@
     "packages/desktop/src/renderer/pages/conversation/platforms/acp/AcpSendBox.tsx",
     "packages/desktop/src/renderer/pages/cron/ScheduledTasksPage/index.tsx",
     "packages/desktop/src/renderer/pages/cron/ScheduledTasksPage/CreateTaskDialog.tsx",
+    "packages/desktop/src/renderer/pages/team/TeamPage.tsx",
+    "packages/desktop/src/renderer/pages/team/components/ActestraTeamCreateModal.tsx",
+    "packages/desktop/src/renderer/pages/team/components/ActestraTeamWorkspace.tsx",
+    "packages/desktop/src/renderer/pages/team/components/TeamCreateModal.tsx",
+    "packages/desktop/src/renderer/pages/team/hooks/useTeamList.ts",
     "packages/desktop/src/renderer/services/feedback/submitFeedbackReport.ts",
     "packages/desktop/src/renderer/services/i18n/index.ts",
     "packages/desktop/src/renderer/utils/platform.ts",
@@ -758,6 +828,7 @@
     "tests/unit/actestra/productBoundary.test.ts",
     "tests/unit/actestra/scheduleNativeWiring.test.ts",
     "tests/unit/actestra/scheduleSmoke.test.ts",
+    "tests/unit/actestra/teamNativeWiring.test.ts",
     "tests/unit/previews/PreviewContext.dom.test.tsx",
     "tests/unit/actestra/persistenceUtilityClient.test.ts",
     "tests/unit/actestra/shadowPersistence.test.ts",
@@ -774,6 +845,7 @@
     "tests/unit/renderer/conversation/SendBoxCronPrefill.dom.test.tsx",
     "tests/unit/renderer/conversation/useConversationActionsCron.dom.test.ts",
     "tests/unit/renderer/cron/CreateTaskDialog.dom.test.tsx",
+    "tests/unit/renderer/team/ActestraTeamWorkspace.dom.test.tsx",
     "tests/unit/common-adapter/httpBridge.test.ts",
     "tests/unit/renderer/layout/LayoutSiderBrandHome.dom.test.tsx",
     "tests/unit/renderer/useDesktopTurnNotification.dom.test.tsx",

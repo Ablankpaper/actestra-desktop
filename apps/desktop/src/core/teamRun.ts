@@ -1029,9 +1029,9 @@ export function createTeamRunSnapshot(
         status: "pending",
         blockedReason: "dependency",
         blockedExplanation: "Waiting for admitted dependencies.",
-        protectedApproval: null,
-        workflowFeedback: null,
-        summary: null,
+        protectedApproval: null as TeamProtectedApprovalReference | null,
+        workflowFeedback: null as TeamWorkflowFeedback | null,
+        summary: null as string | null,
         attempts: [],
         artifacts: [],
       } as const;

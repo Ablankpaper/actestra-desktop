@@ -8,6 +8,7 @@ import {
   type AionUiTeamEvent,
   type AionUiTeamMemberInput,
   type NativeAionUiTeam,
+  type NativeAionUiTeamActivity,
   type NativeAionUiTeamArtifactReference,
   type NativeAionUiTeamAssistant,
   type NativeAionUiTeamNodeView,
@@ -21,6 +22,7 @@ import {
   compareInstants,
   correlationId,
   instant,
+  normalizeAdmittedTeamPlan,
   normalizeTeamDefinition,
   teamId,
   teamMemberId,
@@ -52,6 +54,7 @@ export interface AionUiTeamPersistencePort extends Pick<
   | "listTeamDefinitions"
   | "replaceTeamDefinition"
   | "removeTeamDefinition"
+  | "getAdmittedTeamPlan"
   | "listTeamRunsForTeam"
 > {}
 
@@ -129,6 +132,10 @@ function assistantId(member: TeamMember): NativeAionUiTeamAssistant["assistant_i
 
 function actionId(nodeId: TeamPlanNodeId): string {
   return `team-action-${digest(nodeId)}`;
+}
+
+function teamMessageId(snapshot: TeamRunSnapshot, content: string): string {
+  return `team-message-${digest(`${snapshot.runId}:${snapshot.planId}:${content}`)}`;
 }
 
 function assignedMember(team: TeamDefinition, node: TeamRunNode): TeamMember {
@@ -789,7 +796,7 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
     const started = await this.#orchestrator.start(accepted.runId, instant(this.#now()));
     return Object.freeze({
       enqueue_status: "accepted",
-      message_id: `team-message-${digest(`${started.runId}:${plan.planId}:${content}`)}`,
+      message_id: teamMessageId(started, content),
       run: projectRunEvent(team, started, "user_message"),
     });
   }
@@ -988,16 +995,57 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
     return projectNativeTeam(team, await this.#latestRun(team.teamId));
   }
 
-  #projectRunState(
+  async #projectRunState(
     team: TeamDefinition,
     snapshot: TeamRunSnapshot | null,
-  ): NativeAionUiTeamRunState {
+  ): Promise<NativeAionUiTeamRunState> {
     return Object.freeze({
       session_generation:
         snapshot === null ? null : `schema-15-revision-${String(snapshot.revision)}`,
       active_run: snapshot === null ? null : projectRunEvent(team, snapshot, "system_lifecycle"),
       slot_work: Object.freeze(team.members.map((member) => projectSlot(team, snapshot, member))),
+      activities: snapshot === null ? Object.freeze([]) : await this.#projectActivities(snapshot),
     });
+  }
+
+  async #projectActivities(
+    snapshot: TeamRunSnapshot,
+  ): Promise<readonly NativeAionUiTeamActivity[]> {
+    const planValue = await this.#persistence.getAdmittedTeamPlan(snapshot.planId);
+    if (planValue === null) {
+      throw new AionUiTeamBridgePortError(
+        "team-execution-failed",
+        "Team run has no authoritative admitted plan",
+      );
+    }
+    const plan = normalizeAdmittedTeamPlan(JSON.parse(JSON.stringify(planValue)));
+    const userActivity: NativeAionUiTeamActivity = Object.freeze({
+      id: teamMessageId(snapshot, plan.goal),
+      author: "You",
+      content: plan.goal,
+      tone: "user",
+      occurred_at: toMillis(snapshot.createdAt),
+    });
+    const workerActivities = snapshot.nodes
+      .flatMap((node): readonly NativeAionUiTeamActivity[] => {
+        if (node.kind !== "worker" || node.summary === null) return [];
+        const occurredAt = node.attempts.at(-1)?.updatedAt ?? snapshot.updatedAt;
+        const artifactCount = node.artifacts.length;
+        return [
+          Object.freeze({
+            id: `team-activity-${digest(`${snapshot.runId}:${node.nodeId}:${occurredAt}:${String(artifactCount)}`)}`,
+            author: node.capability === "general" ? "General Worker" : "Goose",
+            content: `${node.title} completed with ${String(artifactCount)} durable Artifact ${artifactCount === 1 ? "reference" : "references"}.`,
+            tone: "worker",
+            occurred_at: toMillis(occurredAt),
+          }),
+        ];
+      })
+      .sort(
+        (left, right) =>
+          left.occurred_at - right.occurred_at || left.id.localeCompare(right.id, "en"),
+      );
+    return Object.freeze([userActivity, ...workerActivities]);
   }
 
   async #assertNoActiveRun(teamIdValue: TeamDefinition["teamId"]): Promise<void> {

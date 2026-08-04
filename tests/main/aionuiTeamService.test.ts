@@ -5,9 +5,11 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  artifactId,
   instant,
   normalizeTeamPlannerRequest,
   taskId,
+  teamRunId,
   type Instant,
   type TeamPlanCandidate,
 } from "../../apps/desktop/src/core";
@@ -250,5 +252,99 @@ describe("AionUiTeamService", () => {
     service.close();
     await orchestrator.close();
     await persistence.close();
+  });
+
+  it("rebuilds durable Team chat activity from admitted-plan and run-revision authority", async () => {
+    const directory = createTestDirectory();
+    const persistence = openSqliteCorePersistence(directory);
+    const now = clock();
+    const planner = { propose: vi.fn(async (request: unknown) => candidateFor(request)) };
+    const admission = new TeamPlanAdmissionService({ planner, persistence });
+    const worker: TeamWorkerExecutionPort = {
+      taskIdFor: ({ nodeId, attemptNumber }) =>
+        taskId(`task-team-chat-${nodeId.slice(-12)}-${String(attemptNumber)}`),
+      execute: vi.fn(
+        async (input): Promise<TeamWorkerExecutionResult> => ({
+          status: "completed",
+          summary: `${input.capability} private output at /private/worker-root.`,
+          artifacts: [
+            {
+              artifactId: artifactId(`artifact-team-chat-${input.capability}`),
+              taskId: input.workerTaskId,
+              kind: input.expectedArtifactKind,
+            },
+          ],
+        }),
+      ),
+      prepareApprovalDecision: vi.fn(),
+      commitApprovalDecision: vi.fn(),
+      pause: vi.fn(async () => {}),
+      resume: vi.fn(async () => {}),
+      cancel: vi.fn(async () => {}),
+    };
+    const aggregator: TeamResultAggregationPort = {
+      aggregate: vi.fn(async () => ({ summary: "Unused", artifacts: [] })),
+    };
+    const orchestrator = new TeamOrchestratorService({ persistence, worker, aggregator, now });
+    const service = new AionUiTeamService({
+      persistence,
+      admission,
+      orchestrator,
+      now,
+      createDigest: () => "3".repeat(64),
+    });
+    const created = requireNativeTeam(await service.dispatch(createRoute));
+    const goal = "Prepare a durable Team brief and matching isolated code change.";
+    const acknowledgement = (await service.dispatch({
+      kind: "send-message",
+      teamId: created.id,
+      content: goal,
+    })) as NativeAionUiTeamRunAck;
+    await orchestrator.waitForIdle(teamRunId(acknowledgement.run.team_run_id));
+
+    service.close();
+    await orchestrator.close();
+    await persistence.close();
+
+    const reopenedPersistence = openSqliteCorePersistence(directory);
+    const reopened = new AionUiTeamService({
+      persistence: reopenedPersistence,
+      admission: null,
+      orchestrator: null,
+      now: clock(),
+      createDigest: () => "4".repeat(64),
+    });
+    const recovered = (await reopened.dispatch({
+      kind: "run-state",
+      teamId: created.id,
+    })) as NativeAionUiTeamRunState;
+
+    const activities = (recovered as unknown as { readonly activities?: readonly unknown[] })
+      .activities;
+    expect(activities).toBeDefined();
+    expect(activities?.[0]).toMatchObject({
+      id: acknowledgement.message_id,
+      author: "You",
+      content: goal,
+      tone: "user",
+    });
+    expect(activities?.slice(1)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          author: "General Worker",
+          content: "Prepare the bounded brief completed with 1 durable Artifact reference.",
+          tone: "worker",
+        }),
+        expect.objectContaining({
+          author: "Goose",
+          content: "Prepare the bounded patch completed with 1 durable Artifact reference.",
+          tone: "worker",
+        }),
+      ]),
+    );
+    expect(JSON.stringify(recovered)).not.toContain("/private/");
+
+    reopened.close();
+    await reopenedPersistence.close();
   });
 });

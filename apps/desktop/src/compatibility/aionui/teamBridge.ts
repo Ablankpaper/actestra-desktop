@@ -199,10 +199,19 @@ export interface NativeAionUiTeamRunEvent {
   }>;
 }
 
+export interface NativeAionUiTeamActivity {
+  readonly id: string;
+  readonly author: "You" | "General Worker" | "Goose";
+  readonly content: string;
+  readonly tone: "user" | "worker";
+  readonly occurred_at: number;
+}
+
 export interface NativeAionUiTeamRunState {
   readonly session_generation: string | null;
   readonly active_run: NativeAionUiTeamRunEvent | null;
   readonly slot_work: readonly NativeAionUiTeamSlotWork[];
+  readonly activities: readonly NativeAionUiTeamActivity[];
 }
 
 export interface NativeAionUiTeamRunAck {
@@ -1006,7 +1015,7 @@ function assertSuccessData(value: unknown): asserts value is AionUiTeamBridgeSuc
   if (Object.hasOwn(value, "session_generation")) {
     assertExactKeys(
       value,
-      ["session_generation", "active_run", "slot_work"],
+      ["session_generation", "active_run", "slot_work", "activities"],
       "Native AionUI Team run state",
     );
     if (value.session_generation !== null) {
@@ -1016,6 +1025,29 @@ function assertSuccessData(value: unknown): asserts value is AionUiTeamBridgeSuc
     if (!Array.isArray(value.slot_work))
       throw new Error("Native AionUI Team slot state is invalid");
     value.slot_work.forEach(assertSlotWork);
+    if (!Array.isArray(value.activities) || value.activities.length > 6) {
+      throw new Error("Native AionUI Team activity is invalid");
+    }
+    value.activities.forEach((activity) => {
+      if (!isRecord(activity)) throw new Error("Native AionUI Team activity is invalid");
+      assertExactKeys(
+        activity,
+        ["id", "author", "content", "tone", "occurred_at"],
+        "Native AionUI Team activity",
+      );
+      if (
+        typeof activity.id !== "string" ||
+        !/^team-(?:message|activity)-[a-f0-9]{64}$/u.test(activity.id) ||
+        !["You", "General Worker", "Goose"].includes(String(activity.author)) ||
+        !["user", "worker"].includes(String(activity.tone)) ||
+        (activity.tone === "user" && activity.author !== "You") ||
+        (activity.tone === "worker" && activity.author === "You")
+      ) {
+        throw new Error("Native AionUI Team activity fields are invalid");
+      }
+      assertText(activity.content, "Native AionUI Team activity content", MAX_MESSAGE_BYTES);
+      assertCounter(activity.occurred_at, "Native AionUI Team activity instant");
+    });
     return;
   }
   if (Object.hasOwn(value, "enqueue_status")) {

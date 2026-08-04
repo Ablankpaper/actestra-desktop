@@ -86,7 +86,12 @@ function teamPort() {
     dispatch: vi.fn(async (route: AionUiTeamBridgeRoute): Promise<AionUiTeamBridgeSuccessData> => {
       if (route.kind === "list") return [team];
       if (route.kind === "run-state") {
-        return { session_generation: null, active_run: null, slot_work: [] } as const;
+        return {
+          session_generation: null,
+          active_run: null,
+          slot_work: [],
+          activities: [],
+        } as const;
       }
       return team;
     }),
@@ -154,7 +159,7 @@ describe("AionUiTeamBridgeService", () => {
     ).resolves.toEqual({
       contractVersion: 1,
       status: 200,
-      data: { session_generation: null, active_run: null, slot_work: [] },
+      data: { session_generation: null, active_run: null, slot_work: [], activities: [] },
     });
     await bridge.handle({
       contractVersion: 1,

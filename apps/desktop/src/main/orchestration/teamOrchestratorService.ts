@@ -598,8 +598,8 @@ export class TeamOrchestratorService {
         return operation();
       });
     const tail = current.then(
-      () => undefined,
-      () => undefined,
+      (): undefined => undefined,
+      (): undefined => undefined,
     );
     this.#locks.set(stableRunId, tail);
     void tail.finally(() => {

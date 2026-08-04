@@ -299,8 +299,8 @@ export class TeamPlannerSidecarProcess {
       return operation();
     });
     this.#requestTail = queued.then(
-      () => undefined,
-      () => undefined,
+      (): undefined => undefined,
+      (): undefined => undefined,
     );
     return queued;
   }
