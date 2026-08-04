@@ -728,11 +728,34 @@ closure passes 20 files and 135 tests. Root and materialized-AionUI strict
 TypeScript pass. The downstream checker passes 237 declared paths, 4 R0
 invariants, and 91 source copies; exact-path formatting and zero-warning lint
 pass. These are local focused and compatibility results, not the batch's final
-root gate or package acceptance. No push or Actions run has occurred after
-remote head `e529e4c572209e61cc4ca3660e25bfe35fd2ce24`; pull request 46 still
-points at that old head. Real CrewAI admission, the single final root gate,
-package/target-app acceptance, final audit, push, exact-head CI, review/merge,
-merged-main CI, and P6 phase acceptance remain open.
+root gate or package acceptance.
+
+The single P6-batch `bun run check` was then executed on frozen head
+`06fdea77994dd223fb0aff6f2c26582a01545a82`, tree
+`29cfb11a12f0b3688e0b7f4bbe04d660ec078086`. Formatting over 248 files,
+zero-warning lint over 240 files, strict TypeScript, and the Electron
+37.10.3/Node.js 22.21.1/SQLite 3.50.4 probe passed. The test layer reached 84
+passing and 2 skipped files with 747 passing and 8 skipped tests, then stopped
+at three static-contract failures: four new AionUI Team compatibility files
+were absent from the exact product-boundary allowlist, and two historical P5
+tests incorrectly froze the global downstream phase and patch 0013's final
+position.
+
+Correction commit `292e1da6d89aac8876c6add87bf423ac28fcde28`
+adds only those four declared compatibility paths and makes the P5 regression
+tests assert retained patch presence rather than the repository's current
+highest phase. The exact failed closure now passes 3 files and 12 tests;
+targeted formatting and zero-warning lint pass. The complete root gate is not
+repeated because the batch budget was one attempt. The revised 57-file
+production/test/overlay fingerprint is
+`62a48df1a60ab54cde5dfac80f4ed56a2a4baf650203aa6a49291a90c1e56d39`;
+the unique exact-head CI is the remaining full-gate evidence.
+
+No push or Actions run has occurred after remote head
+`e529e4c572209e61cc4ca3660e25bfe35fd2ce24`; pull request 46 still points at
+that old head. Real CrewAI admission, package/target-app acceptance, final
+audit, push, exact-head CI, review/merge, merged-main CI, and P6 phase
+acceptance remain open.
 
 P4's phase acceptance record reached pull request 25 at exact head
 `c461fb06bdebd4bf6f55d39741a21dcb6980b3ff` and squash merged as current
@@ -2356,7 +2379,7 @@ Review closure validation at
 | P6 Team scheduler/control/recovery                 | Local implementation in the unpushed PR 46 batch                  | Actestra-owned persisted Core transitions; per-run serialization; persist-before-observe/effect; bounded parallel roots; dependency and Artifact gating; separate protected Approval and workflow feedback; pause/resume/retry/replace/handoff; child/whole cancel; reference-only aggregation; close cleanup; deterministic interrupted recovery; 3 focused files/31 tests, explicit-path format, zero-warning lint, and strict TypeScript; the scheduler contract is now composed through the separately recorded real mixed journey, but Team UI, push, CI, and P6 acceptance remain absent |
 | P6 real General+Goose Team composition            | Local committed checkpoint in the unpushed PR 46 batch            | Local commit `d5b9759a67889fb9651c5c134ead182d0274f432`; deterministic Team bindings route admitted nodes through the real General Work and admitted Goose coding journeys; protected write/test/publish approvals persist before effect and acknowledgement; completed Artifacts are re-read from Actestra persistence and aggregated only by reference; focused router/orchestrator 2 files/19 tests and real mixed 1 file/4 tests pass, including denial, whole-Team cancellation, no orphan process/worktree, and unchanged clean source-checkout evidence; later local Tasks 6-8 add the renderer/preload and Team UI, while real CrewAI admission, package, push, CI, and P6 acceptance remain absent |
 | P6 AionUI Team main provider and bridge           | Local committed checkpoint in the unpushed PR 46 batch            | Local commit `65adbf334bbaa7a318a7c8c2a5bfbd1a0b3bf0a8`; fixed request/event contracts and trusted-main-frame IPC; schema-15 two-to-five-member Team CAS, active-run exclusion, soft removal, duplicate retry and per-Team run-head listing through utility/client; main provider composes real plan admission and TeamOrchestrator, projects authority/executor/blocked/next-action state, and proves persisted creation, General+Goose parallel start, pause, whole-Team cancel and Worker abort; 9 focused files/72 tests, strict TypeScript, targeted formatting and zero-warning lint pass; patch 0014 now exposes this provider in the later local checkpoint, but no package, push, CI, or P6 acceptance is claimed |
-| P6 AionUI-native Team journey and recovery        | Local committed checkpoint in the unpushed PR 46 batch            | Local commit `94e6699b4fc352084ebfa53539b42e2496207ad5`; R1/R2 patch 0014 adds the fixed preload/provider, creation/list, `/team/:id`, group chat, members/roles, General+Goose, Workspace/task input, explainable run/dependency/blocked state, approvals, pause/cancel/retry/replace/handoff, Artifacts, aggregation, and persistent activity recovery without editing the frozen foundation or exposing private Worker summaries; final focused 4 files/14 tests, type-correction 3/36, Team DOM 1/4, earlier native closure 20/135, root/materialized strict TypeScript, exact format, zero-warning lint, and 237-path/4-R0/91-source downstream checks pass; no final root gate, package, push, Actions, real CrewAI admission, review/merge, or P6 acceptance |
+| P6 AionUI-native Team journey and recovery        | Local committed checkpoint in the unpushed PR 46 batch            | Local commit `94e6699b4fc352084ebfa53539b42e2496207ad5`; R1/R2 patch 0014 adds the fixed preload/provider, creation/list, `/team/:id`, group chat, members/roles, General+Goose, Workspace/task input, explainable run/dependency/blocked state, approvals, pause/cancel/retry/replace/handoff, Artifacts, aggregation, and persistent activity recovery without editing the frozen foundation or exposing private Worker summaries; final focused 4 files/14 tests, type-correction 3/36, Team DOM 1/4, earlier native closure 20/135, root/materialized strict TypeScript, exact format, zero-warning lint, and 237-path/4-R0/91-source downstream checks pass; the sole root gate passed format/lint/type/SQLite then exposed three static guards, corrected at `292e1da` with focused 3/12 green; no repeated full local gate, package, push, Actions, real CrewAI admission, review/merge, or P6 acceptance |
 | Native AionUi source                               | Exact local desktop snapshot                                      | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Native preservation contract                       | Local pass                                                        | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | Native AionUi build and launch                     | Local pass                                                        | Frozen install, production build, isolated native Electron launch, and actual Guide screenshot pass                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
