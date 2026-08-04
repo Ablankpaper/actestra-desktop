@@ -4,12 +4,10 @@
 
 The P5.2 containment foundation was developed on branch
 `feat/p5-isolated-coding-capability` from exact `main` baseline
-`071aa922c08dd9a139f0c11dee2aa0dadab02417` and delivered through pull request
-31. The desktop-main composition slice reached exact final head
+`071aa922c08dd9a139f0c11dee2aa0dadab02417` and delivered through pull request 31. The desktop-main composition slice reached exact final head
 `5c4dade91d279e6a6f7d4c2daad1ebe972e47b98`, passed exact-head CI
 30817462671, squash merged as
-`f55b5550c6ac189f09536061a70e8c8c7299c4f4`, and passed exact merged-main CI
-30818949121. The ACP `session/new` lifecycle slice starts from that merge and is
+`f55b5550c6ac189f09536061a70e8c8c7299c4f4`, and passed exact merged-main CI 30818949121. The ACP `session/new` lifecycle slice starts from that merge and is
 delivered on `main` through pull request 33 and squash merge
 `c5f498e926adac484694dab6d2f05b9822cc0b12`; exact remote evidence is recorded
 below. Pull request 34 records that closure in the source-of-truth documents and
@@ -18,8 +16,7 @@ MCP transport is delivered through pull request 35 and squash merge
 `8a31bafc1cd322744189fc4ed1e68f769225c999`. The authenticated readiness
 composition is delivered through pull request 36 at exact head
 `5fe78bfaf2982556af975d23bc904d10b77a1f29`, squash merge
-`08e6fefcd87721fbe4f21eee73f9ba6c52a638c0`, and exact merged-main CI
-30845006202. The authenticated MCP tool-call slice is delivered through pull
+`08e6fefcd87721fbe4f21eee73f9ba6c52a638c0`, and exact merged-main CI 30845006202. The authenticated MCP tool-call slice is delivered through pull
 request 37 at exact head `84b0550495717343b75ca2540cb7c191ab65b12a`,
 squash merge `d933546454e63a2d836e728f1b93980cb4a7c0ac`, and exact
 merged-main CI 30853499159. The authenticated inference and prompt loop starts
@@ -33,13 +30,14 @@ unit-test deadline; the macOS foundation job and the other 123 Goose tests
 passed. Pull request 39 corrected only that test deadline at exact head
 `38cbbaaedbb8e5955b96a6d7148841180e751e35`, passed exact-head CI
 30861770178, squash merged as
-`7e8732e264febff42fb3d451011b3b8e48caaff5`, and passed exact merged-main CI
-30862710547. The desktop-main Goose lifecycle starts from that merge on branch
-`codex/p5-goose-desktop-main-lifecycle` and is locally implemented. This
+`7e8732e264febff42fb3d451011b3b8e48caaff5`, and passed exact merged-main CI 30862710547. The desktop-main Goose lifecycle was delivered through pull request
+40 at exact head `c35f8c37c14dedaa980dfbb539f16fc21379be8a`, squash merge
+`1909033977576d94f6983f9c911b8e0a866a59de`, and exact merged-main CI 30866691199. The main-owned approval-outcome slice starts from that merge on
+branch `codex/p5-goose-approval-outcomes` and is locally implemented. This
 document records the closed worktree, Tool Gateway, service-owned Goose session,
-bounded ACP session, authenticated MCP transport, bounded tool-call bridge, and
-real Goose prompt/tool round trip. It is not P5.2 phase acceptance or current-
-slice remote delivery evidence.
+bounded ACP session, authenticated MCP transport, bounded tool-call bridge,
+real Goose prompt/tool round trip, and local approved/denied outcome projection.
+It is not P5.2 phase acceptance or current-slice remote delivery evidence.
 
 ## Scope
 
@@ -152,9 +150,18 @@ Session, and Worker identities, generates fresh Tool Gateway request and input
 reference identifiers, persists the exact versioned input owner, invokes the
 existing policy/approval/audit/executor path, and resolves only the matching
 durable output reference. Goose session and tool-call identifiers remain
-correlation metadata and never become authority. An approval-required result
-does not execute the protected operation and returns only a bounded generic MCP
-error; approval continuation and denial projection remain later work.
+correlation metadata and never become authority. Without an explicit main-owned
+decision handler, an approval-required result does not execute and retains the
+bounded `approval-required` projection. With that handler, only a validated
+`approved` or `denied` decision plus Actestra actor identifier is accepted. The
+approval service persists the terminal resolution before any result is returned.
+Approved execution re-enters the Tool Gateway with the same operation and
+one-shot approval identifier; denial returns bounded `approval-denied` evidence
+without execution. The resolved snapshot must preserve the exact approval ID,
+operation, policy revision, request time, expiry, state, and actor. An aborted
+or invalid decision fails closed. The handler receives only the immutable
+approval snapshot, Goose correlation metadata, and abort signal, not raw tool
+input, credentials, or the source checkout.
 
 The caller also supplies the model invoker. It receives only the bound Actestra
 session identifier, selected model identifier, bounded Goose request, and an
@@ -168,8 +175,9 @@ before returning the final assistant message and ACP usage.
 The desktop-main service now owns that composition through one `openGoose`
 operation. It first opens the existing isolated coding session, then creates the
 main-owned tool invoker from that exact grant and Actestra Task, Session, and
-Worker identifiers, and finally opens Goose against the worktree with only the
-snapshotted command/test identifiers. The returned session retains both the
+Worker identifiers, forwards only the caller-supplied main approval-decision
+handler, and finally opens Goose against the worktree with only the snapshotted
+command/test identifiers. The returned session retains both the
 coding authority and bounded prompt surface. Normal and failed close always
 attempt Goose before grant revocation and worktree removal, aggregate failures
 in that order, and retry unfinished stages. Service shutdown waits for Goose
@@ -332,7 +340,28 @@ the Electron SQLite probe, 68 passing and 1 skipped test files with 597 passing
 and 1 skipped tests, deterministic smoke, the 89-source product boundary, the
 1,766-file frozen foundation, the 192-file downstream contract, and the
 58-main/3-preload/28-renderer-module production build. Review, Git, PR,
-exact-head CI, and merged-main CI remain pending.
+exact-head CI, and merged-main CI for those lifecycle bytes are recorded under
+pull request 40 below.
+
+The current approval-outcome focused file passes 18 tests with 2 real-runner
+tests skipped locally because no admitted artifact environment is supplied. Its
+red/green evidence covers approved execution only after persistent resolution,
+denial without execution, explicit desktop-main forwarding, abort of a handler
+that never settles, and rejection of a resolved snapshot whose policy revision
+drifts from the pending request. The approved and denied real-Goose tests are
+already part of `scripts/test-goose-runner.mjs`; with CI's admitted artifact
+they require the second model request to observe `file-written` or
+`approval-denied`, the ACP tool update to normalize as completed or failed, the
+expected durable audit count, and the original checkout to remain unchanged.
+No local runner build was repeated during focused iteration. After the final
+production/test bytes stabilized, the single root gate passed formatting over
+204 files, zero-warning lint over 196 files, strict TypeScript, the Electron
+SQLite probe, 68 passing and 1 skipped test files with 601 passing and 3 skipped
+tests, deterministic smoke, the 89-source product boundary, the exact 1,766-file
+frozen foundation, the 192-file downstream contract, and the
+58-main/3-preload/28-renderer-module production build. The installed
+materialized-native tree passed TypeScript and its generated composition test 1
+file/1 test.
 
 One committed CodeRabbit review covered all 12 changed files and raised six
 findings. The shutdown/deferred-invocation race and fixed `/tmp` fixture were
@@ -418,36 +447,53 @@ crossed Vitest's implicit five-second deadline; that SHA was not rerun.
 
 Pull request 39 delivered the bounded test deadline at exact head
 `38cbbaaedbb8e5955b96a6d7148841180e751e35`. Exact-head CI 30861770178
-passed macOS arm64 foundation job 91845074323 and Goose runner admission job
-91845074258. CodeRabbit again did not start a review because its quota was
+passed macOS arm64 foundation job 91845074323 and Goose runner admission job 91845074258. CodeRabbit again did not start a review because its quota was
 exhausted; GitHub records no submitted review or inline review thread. The
 branch squash merged as `7e8732e264febff42fb3d451011b3b8e48caaff5`.
 Exact merged-main CI 30862710547 passed macOS arm64 foundation job 91847939794
 and Goose runner admission job 91847939858. This closes the timeout correction,
 not P5.2 phase acceptance.
 
+Pull request 40 delivered the desktop-main Goose lifecycle at exact head
+`c35f8c37c14dedaa980dfbb539f16fc21379be8a`. Exact-head CI 30865837496
+passed macOS arm64 foundation job 91857370003 and Goose runner admission job 91857370054. CodeRabbit returned a successful status without starting a review
+because its quota was exhausted; GitHub records no submitted review or inline
+review thread, so that status is not line-level review evidence. The branch
+squash merged as `1909033977576d94f6983f9c911b8e0a866a59de`. Exact
+merged-main CI 30866691199 passed macOS arm64 foundation job 91859998038 and
+Goose runner admission job 91859998109. This closes remote delivery of the
+lifecycle composition, not P5.2 phase acceptance.
+
 ## Remaining P5.2 work and non-claims
 
 The closed capability foundation is composed into desktop main, the Goose
 adapter has a bounded `session/new` declaration and cleanup contract, the
 authenticated MCP transport, tool-call bridge, and prompt loop are delivered.
-The desktop-main coding service now calls that helper on the current local
-branch and owns its complete worktree/Worker cleanup order. Approval continuation
-and denial projection, durable normalized Task/Session evidence, publish, and
-Artifact registration required by ADR-0024 have not been proved. The current
-real-runner evidence and local desktop-main composition remain a contained
-coding-session contract, not the retained-AionUI product journey. This slice
-also adds no renderer projection, AionUi journey, candidate, release,
-deployment, P5.3 work, CrewAI sidecar, Eigent runtime, or P6 behavior.
+The delivered desktop-main coding service calls that helper and owns its
+complete worktree/Worker cleanup order. Approval continuation and denial
+projection are proved on the current local branch, including artifact-gated real
+Goose coverage, but are not yet remotely delivered. Durable normalized
+Task/Session evidence, publish, and Artifact registration required by ADR-0024
+remain unproved. The current contained coding-session contract is not the
+retained-AionUI product journey. This slice also adds no renderer projection,
+AionUi journey, candidate, release, deployment, P5.3 work, CrewAI sidecar,
+Eigent runtime, or P6 behavior.
 
-P5.2 can be accepted only after this lifecycle is remotely delivered and the
-remaining approval outcomes, durable normalized evidence, publish, and Artifact
-boundaries are implemented or the accepted architecture is explicitly revised,
-followed by the complete local, review, exact-head CI, and merged-main gates.
+P5.2 can be accepted only after the approval outcomes are remotely delivered
+and the remaining durable normalized evidence, publish, and Artifact boundaries
+are implemented or the accepted architecture is explicitly revised, followed
+by the complete local, review, exact-head CI, and merged-main gates.
 
 ## Rollback
 
-Rollback of the current desktop-main lifecycle removes `openGoose`, its
+Rollback of the current approval-outcome slice removes the optional
+main-decision handler contract and forwarding, approval resolution/re-entry,
+denial projection, and focused plus real-runner outcome tests together. The
+delivered desktop-main lifecycle then retains its explicit
+`approval-required` fail-closed result at exact merge
+`1909033977576d94f6983f9c911b8e0a866a59de`.
+
+Rollback of the delivered desktop-main lifecycle removes `openGoose`, its
 service-owned opening/session tracking, the seven Goose TypeScript and runner-
 pin source copies, the native `openGoose` assertion, and focused lifecycle tests
 together. The delivered prompt helper and earlier desktop containment service

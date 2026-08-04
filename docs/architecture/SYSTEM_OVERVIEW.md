@@ -756,13 +756,35 @@ materialized native TypeScript and its generated main-only composition test pass
 There is still no preload, renderer, route, schema, or frozen-foundation change.
 The final root gate passes 68 test files and 597 tests with one file and one test
 skipped, the 89-source boundary, both foundation contracts, and the production
-build.
+build. Pull request 40 delivered that lifecycle at exact head
+`c35f8c37c14dedaa980dfbb539f16fc21379be8a`, exact-head CI 30865837496,
+squash merge `1909033977576d94f6983f9c911b8e0a866a59de`, and passing
+merged-main CI 30866691199.
+
+The current approval-outcome slice keeps the default invoker fail closed at
+`approval-required` unless desktop main supplies one explicit decision handler.
+The handler receives only an immutable Actestra approval snapshot, Goose
+correlation identifiers, and the abort signal. An approved or denied outcome is
+persisted through the Actestra approval service first. Approved execution then
+re-enters the Tool Gateway with the original protected operation and same
+one-shot approval ID; denial returns bounded `approval-denied` evidence without
+calling the executor. The returned resolution must match the pending approval's
+ID, operation, policy revision, request time, expiry, decision state, and actor.
+Abort or malformed evidence fails closed. The focused file passes 18 tests with
+2 admitted-artifact real-Goose approval tests skipped locally; the existing
+Goose CI script selects them when its exact artifact environment is present.
+The single root gate on the final production/test bytes passes 68 test files and
+601 tests with 1 file and 3 tests skipped, the 89-source product boundary, the
+1,766-file frozen foundation, the 192-file downstream contract, strict types,
+smoke, and the 58-main/3-preload/28-renderer-module production build. The
+installed materialized-native tree passes TypeScript and its generated
+composition test.
 
 This composition is still not P5.2 acceptance. The contained real Goose
-prompt/tool loop and local desktop-main lifecycle are proved, but current-slice
-remote delivery, approval continuation and denial projection, durable normalized
-Task/Session evidence, publish, and Artifact registration are not. No retained-
-AionUI coding journey is claimed.
+prompt/tool loop and desktop-main lifecycle are remotely delivered, and approval
+outcomes are locally proved, but current-slice remote delivery, durable
+normalized Task/Session evidence, publish, and Artifact registration remain
+open. No retained-AionUI coding journey is claimed.
 
 ## Event contract
 
