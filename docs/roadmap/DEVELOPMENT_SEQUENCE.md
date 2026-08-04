@@ -29,7 +29,7 @@ features are implemented.
 | P7    | Security and reliability hardening                       | P4-P6             |
 | P8    | Cross-platform internal beta                             | P7                |
 
-Current execution state on 2026-08-03: native-fusion slices F0 through F3.3,
+Current execution state on 2026-08-04: native-fusion slices F0 through F3.3,
 general-work through GW-P4.6, and the representative workspace-file, bounded
 local-research, writing, Office-document, and schedule extensions are accepted
 on `main`. Office reached exact final PR head
@@ -204,7 +204,7 @@ integration test an explicit bounded deadline. Pull request 39 reached exact
 head `38cbbaaedbb8e5955b96a6d7148841180e751e35`, passed exact-head CI
 30861770178, squash merged as
 `7e8732e264febff42fb3d451011b3b8e48caaff5`, and passed exact merged-main CI
-30862710547. The current desktop-main lifecycle starts from that merge. It
+30862710547. The desktop-main lifecycle starts from that merge. It
 creates the exact worktree/grant/Gateway before opening Goose, injects the
 main-owned tool invoker, waits for Goose openings during shutdown, rejects a
 close-winning open race, and always attempts Goose cleanup before grant
@@ -213,7 +213,21 @@ revocation and worktree removal. Its affected local evidence passes 3 files and
 71-source-copy downstream contract, and the generated native test. Its single
 final-byte root gate passes 68 test files and 597 tests with 1 file and 1 test
 skipped, the 89-source boundary, frozen/downstream contracts, and the production
-build. Current-slice Git/PR/CI, approval outcomes, durable normalized evidence,
+build. Pull request 40 reached exact head
+`c35f8c37c14dedaa980dfbb539f16fc21379be8a`, passed exact-head CI
+30865837496, squash merged as
+`1909033977576d94f6983f9c911b8e0a866a59de`, and passed exact merged-main CI 30866691199. The approval-outcome slice starts from that merge. It keeps the
+default `approval-required` result fail closed, accepts only an explicit
+main-owned approved or denied decision plus Actestra actor, persists that
+terminal resolution first, executes an approval only through the same operation
+and one-shot approval ID, and projects denial without execution. Abort and any
+approval snapshot drift fail closed. The current focused file passes 18 tests
+with 2 real-Goose tests skipped locally because the admitted artifact environment
+is absent; the existing Goose CI gate selects both. The single final-production/
+test-byte root gate passes 68 test files and 601 tests with 1 file and 3 tests
+skipped, the 89-source boundary, frozen/downstream contracts, strict types,
+smoke, and the production build; materialized-native TypeScript and its generated
+composition test also pass. Current-slice Git/PR/CI, durable normalized evidence,
 publish/Artifact flow, and P5.2 phase acceptance remain open. P6 CrewAI/Team
 runtime work has not started.
 

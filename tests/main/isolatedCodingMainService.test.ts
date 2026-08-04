@@ -11,7 +11,9 @@ import {
   CODING_FILE_WRITE_TOOL_ID,
   PRIVILEGED_CONTRACT_VERSION,
   WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
+  approvalActorId,
   instant,
+  policyRevision,
   sessionId,
   taskId,
   toolInputReference,
@@ -20,6 +22,7 @@ import {
   workspaceGrantId,
   workspaceId,
   type DomainGraph,
+  type ApprovalRequestSnapshot,
   type ProtectedOperation,
 } from "../../apps/desktop/src/core";
 import { openTestPersistenceUtility } from "../fixtures/persistenceUtility";
@@ -34,7 +37,11 @@ import type {
   GooseMcpSessionComposition,
   OpenGooseMcpSessionCompositionOptions,
 } from "../../apps/desktop/src/main/workers/gooseMcpSessionComposition";
-import type { AdmittedGooseRunnerArtifact } from "../../apps/desktop/src/main/workers/gooseRunnerArtifact";
+import {
+  admitGooseRunnerArtifact,
+  type AdmittedGooseRunnerArtifact,
+} from "../../apps/desktop/src/main/workers/gooseRunnerArtifact";
+import type { GooseLoopbackModelInvocation } from "../../apps/desktop/src/main/workers/gooseLoopbackModelServer";
 import type { PersistenceUtilityClient } from "../../apps/desktop/src/main/persistence/persistenceUtilityClient";
 
 const execFileAsync = promisify(execFile);
@@ -67,6 +74,15 @@ const GOOSE_INFO = Object.freeze({
   mcp: Object.freeze({ http: true, sse: false, acp: false }),
   session: Object.freeze({ list: true, close: true }),
 } as const);
+
+const REAL_GOOSE_ARTIFACT_DIRECTORY = process.env.ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIR;
+const REAL_GOOSE_MANIFEST_SHA256 = process.env.ACTESTRA_GOOSE_RUNNER_MANIFEST_SHA256;
+const REAL_GOOSE_TARGET_TRIPLE =
+  process.platform === "darwin" && process.arch === "arm64"
+    ? "aarch64-apple-darwin"
+    : process.platform === "darwin" && process.arch === "x64"
+      ? "x86_64-apple-darwin"
+      : undefined;
 
 interface MainServiceFixture {
   readonly root: string;
@@ -263,6 +279,11 @@ describe("P5.2 desktop-main isolated coding composition", () => {
         text: "desktop-main model result",
         usage: Object.freeze({ promptTokens: 4, completionTokens: 2 }),
       });
+    const approvalDecisionHandler = async () =>
+      Object.freeze({
+        decision: "approved" as const,
+        actorId: approvalActorId("local-user"),
+      });
 
     const opened = await fixture.service.openGoose({
       repositoryRoot: fixture.repositoryRoot,
@@ -279,6 +300,7 @@ describe("P5.2 desktop-main isolated coding composition", () => {
       privateRootParent: path.join(fixture.root, "goose-private"),
       modelId: "actestra-desktop-main-model",
       modelInvoker,
+      approvalDecisionHandler,
       taskId: fixture.ids.taskId,
       sessionId: fixture.ids.sessionId,
       workerId: fixture.ids.workerId,
@@ -290,6 +312,7 @@ describe("P5.2 desktop-main isolated coding composition", () => {
       taskId: fixture.ids.taskId,
       sessionId: fixture.ids.sessionId,
       workerId: fixture.ids.workerId,
+      approvalDecisionHandler,
     });
     expect(invokerOptions?.session.worktreeRoot).toBe(opened.worktreeRoot);
     expect(compositionOptions).toMatchObject({
@@ -676,6 +699,270 @@ describe("P5.2 desktop-main isolated coding composition", () => {
     expect(await runGit(fixture.repositoryRoot, "status", "--porcelain=v1")).toBe("");
   });
 
+  it("continues one MCP file write only after the main-owned approval is persisted", async () => {
+    const fixture = await openFixture("goose-mcp-approved");
+    const session = await fixture.service.open({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-goose-mcp-approved"),
+      displayName: "P5.2 Goose MCP approved worktree",
+      commands: {},
+      tests: {},
+    });
+    let approvalRequest:
+      | Readonly<{
+          approval: ApprovalRequestSnapshot;
+          sessionId: string;
+          toolCallRequestId: string;
+          signal: AbortSignal;
+        }>
+      | undefined;
+    const actorId = approvalActorId("local-user");
+    const invokeTool = createGooseCodingToolInvoker({
+      persistence: fixture.persistence,
+      clock: fixture.clock,
+      session,
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+      newToolRequestId: () => toolRequestId("request-coding-main-goose-mcp-approved"),
+      newToolInputReference: () => toolInputReference("input-coding-main-goose-mcp-approved"),
+      async approvalDecisionHandler(request) {
+        approvalRequest = request;
+        expect(fs.readFileSync(path.join(session.worktreeRoot, "answer.txt"), "utf8")).toBe(
+          "before\n",
+        );
+        return Object.freeze({ decision: "approved" as const, actorId });
+      },
+    });
+
+    const result = await invokeTool({
+      sessionId: "goose-session-approved",
+      toolCallRequestId: "model-tool-call-approved",
+      toolId: CODING_FILE_WRITE_TOOL_ID,
+      input: Object.freeze({
+        contractVersion: 1,
+        relativePath: "answer.txt",
+        content: "after approval\n",
+      }),
+      signal: new AbortController().signal,
+    });
+
+    expect(approvalRequest).toMatchObject({
+      sessionId: "goose-session-approved",
+      toolCallRequestId: "model-tool-call-approved",
+      approval: {
+        state: "pending",
+        operation: {
+          requestId: "request-coding-main-goose-mcp-approved",
+          inputRef: "input-coding-main-goose-mcp-approved",
+          toolId: CODING_FILE_WRITE_TOOL_ID,
+        },
+      },
+    });
+    expect(result).toEqual({
+      isError: false,
+      content: JSON.stringify({
+        contractVersion: 1,
+        type: "file-written",
+        relativePath: "answer.txt",
+        byteLength: Buffer.byteLength("after approval\n", "utf8"),
+      }),
+    });
+    const approval = await session.approvalService.get(approvalRequest!.approval.approvalId);
+    expect(approval).toMatchObject({
+      state: "approved",
+      resolvedBy: actorId,
+      consumedAt: fixture.clock.now(),
+    });
+    await expect(fixture.persistence.summarizePrivilegedAudit()).resolves.toEqual({
+      recordCount: 7,
+      lastSequence: 7,
+    });
+    expect(fs.readFileSync(path.join(session.worktreeRoot, "answer.txt"), "utf8")).toBe(
+      "after approval\n",
+    );
+    expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
+    expect(await runGit(fixture.repositoryRoot, "status", "--porcelain=v1")).toBe("");
+  });
+
+  it("fails closed when approval resolution returns a different policy snapshot", async () => {
+    const fixture = await openFixture("goose-mcp-approval-mismatch");
+    const session = await fixture.service.open({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-goose-mcp-approval-mismatch"),
+      displayName: "P5.2 Goose MCP approval mismatch worktree",
+      commands: {},
+      tests: {},
+    });
+    const resolveApproval = session.approvalService.resolve.bind(session.approvalService);
+    vi.spyOn(session.approvalService, "resolve").mockImplementationOnce(
+      async (approvalId, decision, actorId) => {
+        const resolved = await resolveApproval(approvalId, decision, actorId);
+        return Object.freeze({
+          ...resolved,
+          policyRevision: policyRevision("policy-p5-isolated-coding-mismatched"),
+        });
+      },
+    );
+    const actorId = approvalActorId("local-user");
+    const invokeTool = createGooseCodingToolInvoker({
+      persistence: fixture.persistence,
+      clock: fixture.clock,
+      session,
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+      newToolRequestId: () => toolRequestId("request-coding-main-goose-mcp-approval-mismatch"),
+      newToolInputReference: () =>
+        toolInputReference("input-coding-main-goose-mcp-approval-mismatch"),
+      async approvalDecisionHandler() {
+        return Object.freeze({ decision: "approved" as const, actorId });
+      },
+    });
+
+    await expect(
+      invokeTool({
+        sessionId: "goose-session-approval-mismatch",
+        toolCallRequestId: "model-tool-call-approval-mismatch",
+        toolId: CODING_FILE_WRITE_TOOL_ID,
+        input: Object.freeze({
+          contractVersion: 1,
+          relativePath: "answer.txt",
+          content: "must not be written\n",
+        }),
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toMatchObject({
+      name: "GooseCodingToolInvokerError",
+      code: "invalid-config",
+    });
+    expect(fs.readFileSync(path.join(session.worktreeRoot, "answer.txt"), "utf8")).toBe("before\n");
+    expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
+    expect(await runGit(fixture.repositoryRoot, "status", "--porcelain=v1")).toBe("");
+  });
+
+  it("projects a persisted denial back to Goose without executing the MCP file write", async () => {
+    const fixture = await openFixture("goose-mcp-denied");
+    const session = await fixture.service.open({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-goose-mcp-denied"),
+      displayName: "P5.2 Goose MCP denied worktree",
+      commands: {},
+      tests: {},
+    });
+    let approvalRequest: ApprovalRequestSnapshot | undefined;
+    const actorId = approvalActorId("local-user");
+    const invokeTool = createGooseCodingToolInvoker({
+      persistence: fixture.persistence,
+      clock: fixture.clock,
+      session,
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+      newToolRequestId: () => toolRequestId("request-coding-main-goose-mcp-denied"),
+      newToolInputReference: () => toolInputReference("input-coding-main-goose-mcp-denied"),
+      async approvalDecisionHandler(request) {
+        approvalRequest = request.approval;
+        return Object.freeze({ decision: "denied" as const, actorId });
+      },
+    });
+
+    const result = await invokeTool({
+      sessionId: "goose-session-denied",
+      toolCallRequestId: "model-tool-call-denied",
+      toolId: CODING_FILE_WRITE_TOOL_ID,
+      input: Object.freeze({
+        contractVersion: 1,
+        relativePath: "answer.txt",
+        content: "must not be written\n",
+      }),
+      signal: new AbortController().signal,
+    });
+
+    expect(result).toEqual({
+      isError: true,
+      content: JSON.stringify({ contractVersion: 1, type: "approval-denied" }),
+    });
+    const approval = await session.approvalService.get(approvalRequest!.approvalId);
+    expect(approval).toMatchObject({
+      state: "denied",
+      resolvedBy: actorId,
+    });
+    expect(approval).not.toHaveProperty("consumedAt");
+    await expect(fixture.persistence.summarizePrivilegedAudit()).resolves.toEqual({
+      recordCount: 3,
+      lastSequence: 3,
+    });
+    expect(fs.readFileSync(path.join(session.worktreeRoot, "answer.txt"), "utf8")).toBe("before\n");
+    expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
+    expect(await runGit(fixture.repositoryRoot, "status", "--porcelain=v1")).toBe("");
+  });
+
+  it("aborts an unresolved main-owned approval decision without executing the MCP file write", async () => {
+    const fixture = await openFixture("goose-mcp-approval-abort");
+    const session = await fixture.service.open({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-goose-mcp-approval-abort"),
+      displayName: "P5.2 Goose MCP approval abort worktree",
+      commands: {},
+      tests: {},
+    });
+    const decisionStarted = deferred<void>();
+    const invokeTool = createGooseCodingToolInvoker({
+      persistence: fixture.persistence,
+      clock: fixture.clock,
+      session,
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+      newToolRequestId: () => toolRequestId("request-coding-main-goose-mcp-approval-abort"),
+      newToolInputReference: () => toolInputReference("input-coding-main-goose-mcp-approval-abort"),
+      async approvalDecisionHandler() {
+        decisionStarted.resolve();
+        return new Promise<never>(() => undefined);
+      },
+    });
+    const controller = new AbortController();
+    let invocationOutcome:
+      | Readonly<{ status: "fulfilled"; value: unknown }>
+      | Readonly<{ status: "rejected"; reason: unknown }>
+      | undefined;
+    void invokeTool({
+      sessionId: "goose-session-approval-abort",
+      toolCallRequestId: "model-tool-call-approval-abort",
+      toolId: CODING_FILE_WRITE_TOOL_ID,
+      input: Object.freeze({
+        contractVersion: 1,
+        relativePath: "answer.txt",
+        content: "must not be written\n",
+      }),
+      signal: controller.signal,
+    }).then(
+      (value) => {
+        invocationOutcome = Object.freeze({ status: "fulfilled", value });
+      },
+      (reason: unknown) => {
+        invocationOutcome = Object.freeze({ status: "rejected", reason });
+      },
+    );
+    await decisionStarted.promise;
+
+    controller.abort("approval-request-cancelled");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(invocationOutcome).toMatchObject({
+      status: "rejected",
+      reason: { name: "GooseCodingToolInvokerError", code: "gateway-failed" },
+    });
+    expect(fs.readFileSync(path.join(session.worktreeRoot, "answer.txt"), "utf8")).toBe("before\n");
+    expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
+    expect(await runGit(fixture.repositoryRoot, "status", "--porcelain=v1")).toBe("");
+  });
+
   it("persists one exact worktree grant before exposing the closed Tool Gateway", async () => {
     const fixture = await openFixture("open");
     const grantId = workspaceGrantId("grant-coding-main-open");
@@ -1027,4 +1314,196 @@ describe("P5.2 desktop-main isolated coding composition", () => {
     ).resolves.toBeNull();
     expect(fs.readdirSync(fixture.managedRoot)).toEqual([]);
   });
+});
+
+describe.skipIf(
+  REAL_GOOSE_ARTIFACT_DIRECTORY === undefined ||
+    REAL_GOOSE_MANIFEST_SHA256 === undefined ||
+    REAL_GOOSE_TARGET_TRIPLE === undefined,
+)("P5.2 real Goose desktop-main approval outcomes", () => {
+  it("continues the real Goose prompt after the main-owned approval is consumed", async () => {
+    const artifact = await admitGooseRunnerArtifact(REAL_GOOSE_ARTIFACT_DIRECTORY!, {
+      expectedTargetTriple: REAL_GOOSE_TARGET_TRIPLE!,
+      trustedManifestSha256: REAL_GOOSE_MANIFEST_SHA256!,
+    });
+    const fixture = await openFixture("real-goose-approved");
+    const privateRootParent = path.join(fixture.root, "goose-private");
+    fs.mkdirSync(privateRootParent, { mode: 0o700 });
+    const modelInvocations: GooseLoopbackModelInvocation[] = [];
+    const actorId = approvalActorId("local-user");
+    let approvalRequest: ApprovalRequestSnapshot | undefined;
+    const opened = await fixture.service.openGoose({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-real-goose-approved"),
+      displayName: "P5.2 real Goose approved worktree",
+      commands: {
+        "format-check": Object.freeze({ executablePath: "/usr/bin/true", args: [] }),
+      },
+      tests: {
+        "focused-tests": Object.freeze({ executablePath: "/usr/bin/true", args: [] }),
+      },
+      artifact,
+      privateRootParent,
+      modelId: "actestra-loopback-approval-integration",
+      async modelInvoker(invocation) {
+        modelInvocations.push(invocation);
+        if (modelInvocations.length === 1) {
+          return Object.freeze({
+            type: "tool-call" as const,
+            callId: "call-actestra-approved-1",
+            name: `actestra-capability-proxy__${CODING_FILE_WRITE_TOOL_ID}`,
+            arguments: Object.freeze({
+              contractVersion: 1,
+              relativePath: "answer.txt",
+              content: "real Goose approved\n",
+            }),
+            usage: Object.freeze({ promptTokens: 31, completionTokens: 7 }),
+          });
+        }
+        if (modelInvocations.length === 2) {
+          return Object.freeze({
+            type: "message" as const,
+            text: "approved integration final answer",
+            usage: Object.freeze({ promptTokens: 47, completionTokens: 4 }),
+          });
+        }
+        throw new Error("Goose exceeded the admitted approved integration exchange");
+      },
+      async approvalDecisionHandler(request) {
+        approvalRequest = request.approval;
+        return Object.freeze({ decision: "approved" as const, actorId });
+      },
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+      handshakeTimeoutMs: 20_000,
+      sessionTimeoutMs: 30_000,
+    });
+    try {
+      const prompt = await opened.prompt({
+        text: "Write answer.txt through the approved Actestra capability.",
+        timeoutMs: 30_000,
+      });
+
+      expect(prompt.stopReason).toBe("end_turn");
+      expect(prompt.updates).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: "tool_call" }),
+          expect.objectContaining({ type: "tool_call_update", status: "completed" }),
+          expect.objectContaining({
+            type: "agent_message_chunk",
+            text: "approved integration final answer",
+          }),
+        ]),
+      );
+      expect(JSON.stringify(modelInvocations[1]!.request)).toContain("file-written");
+      const approval = await opened.approvalService.get(approvalRequest!.approvalId);
+      expect(approval).toMatchObject({ state: "approved", resolvedBy: actorId });
+      expect(approval).toHaveProperty("consumedAt");
+      await expect(fixture.persistence.summarizePrivilegedAudit()).resolves.toEqual({
+        recordCount: 7,
+        lastSequence: 7,
+      });
+      expect(fs.readFileSync(path.join(opened.worktreeRoot, "answer.txt"), "utf8")).toBe(
+        "real Goose approved\n",
+      );
+      expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
+    } finally {
+      await opened.close();
+    }
+  }, 60_000);
+
+  it("projects a main-owned denial through the real Goose prompt without executing", async () => {
+    const artifact = await admitGooseRunnerArtifact(REAL_GOOSE_ARTIFACT_DIRECTORY!, {
+      expectedTargetTriple: REAL_GOOSE_TARGET_TRIPLE!,
+      trustedManifestSha256: REAL_GOOSE_MANIFEST_SHA256!,
+    });
+    const fixture = await openFixture("real-goose-denied");
+    const privateRootParent = path.join(fixture.root, "goose-private");
+    fs.mkdirSync(privateRootParent, { mode: 0o700 });
+    const modelInvocations: GooseLoopbackModelInvocation[] = [];
+    const actorId = approvalActorId("local-user");
+    let approvalRequest: ApprovalRequestSnapshot | undefined;
+    const opened = await fixture.service.openGoose({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-real-goose-denied"),
+      displayName: "P5.2 real Goose denied worktree",
+      commands: {
+        "format-check": Object.freeze({ executablePath: "/usr/bin/true", args: [] }),
+      },
+      tests: {
+        "focused-tests": Object.freeze({ executablePath: "/usr/bin/true", args: [] }),
+      },
+      artifact,
+      privateRootParent,
+      modelId: "actestra-loopback-denial-integration",
+      async modelInvoker(invocation) {
+        modelInvocations.push(invocation);
+        if (modelInvocations.length === 1) {
+          return Object.freeze({
+            type: "tool-call" as const,
+            callId: "call-actestra-denied-1",
+            name: `actestra-capability-proxy__${CODING_FILE_WRITE_TOOL_ID}`,
+            arguments: Object.freeze({
+              contractVersion: 1,
+              relativePath: "answer.txt",
+              content: "must not be written\n",
+            }),
+            usage: Object.freeze({ promptTokens: 31, completionTokens: 7 }),
+          });
+        }
+        if (modelInvocations.length === 2) {
+          return Object.freeze({
+            type: "message" as const,
+            text: "denied integration final answer",
+            usage: Object.freeze({ promptTokens: 47, completionTokens: 4 }),
+          });
+        }
+        throw new Error("Goose exceeded the admitted denied integration exchange");
+      },
+      async approvalDecisionHandler(request) {
+        approvalRequest = request.approval;
+        return Object.freeze({ decision: "denied" as const, actorId });
+      },
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+      handshakeTimeoutMs: 20_000,
+      sessionTimeoutMs: 30_000,
+    });
+    try {
+      const prompt = await opened.prompt({
+        text: "Attempt answer.txt through the Actestra capability and respect denial.",
+        timeoutMs: 30_000,
+      });
+
+      expect(prompt.stopReason).toBe("end_turn");
+      expect(prompt.updates).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: "tool_call" }),
+          expect.objectContaining({ type: "tool_call_update", status: "failed" }),
+          expect.objectContaining({
+            type: "agent_message_chunk",
+            text: "denied integration final answer",
+          }),
+        ]),
+      );
+      expect(JSON.stringify(modelInvocations[1]!.request)).toContain("approval-denied");
+      const approval = await opened.approvalService.get(approvalRequest!.approvalId);
+      expect(approval).toMatchObject({ state: "denied", resolvedBy: actorId });
+      expect(approval).not.toHaveProperty("consumedAt");
+      await expect(fixture.persistence.summarizePrivilegedAudit()).resolves.toEqual({
+        recordCount: 3,
+        lastSequence: 3,
+      });
+      expect(fs.readFileSync(path.join(opened.worktreeRoot, "answer.txt"), "utf8")).toBe(
+        "before\n",
+      );
+      expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
+    } finally {
+      await opened.close();
+    }
+  }, 60_000);
 });

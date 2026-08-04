@@ -3,6 +3,8 @@ import { isDeepStrictEqual } from "node:util";
 import {
   PRIVILEGED_CONTRACT_VERSION,
   WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
+  approvalActorId,
+  assertApprovalRequestSnapshot,
   assertPersistContentReferenceResult,
   assertResolvedContentReference,
   assertStoreContentReferenceInput,
@@ -16,12 +18,15 @@ import {
   toolRequestId,
   workerId,
   type ActestraPersistencePort,
+  type ApprovalActorId,
+  type ApprovalRequestSnapshot,
   type PrivilegedClock,
   type ProtectedOperation,
   type SessionId,
   type TaskId,
   type ToolInputReference,
   type ToolRequestId,
+  type UserApprovalDecision,
   type WorkerId,
 } from "../../core";
 import type { IsolatedCodingMainSession } from "./isolatedCodingMainService";
@@ -55,9 +60,26 @@ export interface CreateGooseCodingToolInvokerOptions {
   readonly taskId: TaskId;
   readonly sessionId: SessionId;
   readonly workerId: WorkerId;
+  readonly approvalDecisionHandler?: GooseCodingApprovalDecisionHandler;
   readonly newToolRequestId?: () => ToolRequestId;
   readonly newToolInputReference?: () => ToolInputReference;
 }
+
+export interface GooseCodingApprovalDecisionRequest {
+  readonly approval: ApprovalRequestSnapshot;
+  readonly sessionId: string;
+  readonly toolCallRequestId: string;
+  readonly signal: AbortSignal;
+}
+
+export interface GooseCodingApprovalDecision {
+  readonly decision: Exclude<UserApprovalDecision, "cancelled">;
+  readonly actorId: ApprovalActorId;
+}
+
+export type GooseCodingApprovalDecisionHandler = (
+  request: GooseCodingApprovalDecisionRequest,
+) => Promise<GooseCodingApprovalDecision>;
 
 function identifier(prefix: string): string {
   return `${prefix}-${randomUUID()}`;
@@ -82,6 +104,7 @@ function assertOptions(options: CreateGooseCodingToolInvokerOptions): void {
     "taskId",
     "sessionId",
     "workerId",
+    "approvalDecisionHandler",
     "newToolRequestId",
     "newToolInputReference",
   ]);
@@ -97,6 +120,8 @@ function assertOptions(options: CreateGooseCodingToolInvokerOptions): void {
     typeof options.persistence?.resolveContentReference !== "function" ||
     typeof options.clock?.now !== "function" ||
     typeof options.session?.toolGateway?.invoke !== "function" ||
+    (options.approvalDecisionHandler !== undefined &&
+      typeof options.approvalDecisionHandler !== "function") ||
     (options.newToolRequestId !== undefined && typeof options.newToolRequestId !== "function") ||
     (options.newToolInputReference !== undefined &&
       typeof options.newToolInputReference !== "function")
@@ -118,6 +143,53 @@ function assertOptions(options: CreateGooseCodingToolInvokerOptions): void {
     options.session.worktreeRoot !== options.session.grant.rootPath
   ) {
     throw invalidConfig("Goose coding Tool Gateway invoker requires one exact active grant");
+  }
+}
+
+function normalizeApprovalDecision(value: unknown): GooseCodingApprovalDecision {
+  if (
+    !isRecord(value) ||
+    Reflect.ownKeys(value).length !== 2 ||
+    !Object.hasOwn(value, "decision") ||
+    !Object.hasOwn(value, "actorId") ||
+    (value.decision !== "approved" && value.decision !== "denied") ||
+    typeof value.actorId !== "string"
+  ) {
+    throw invalidConfig("Goose coding approval decision is invalid");
+  }
+  let actorId: ApprovalActorId;
+  try {
+    actorId = approvalActorId(value.actorId);
+  } catch (error) {
+    throw invalidConfig("Goose coding approval actor is invalid", error);
+  }
+  return Object.freeze({ decision: value.decision, actorId });
+}
+
+async function awaitApprovalDecision(
+  handler: GooseCodingApprovalDecisionHandler,
+  request: GooseCodingApprovalDecisionRequest,
+): Promise<GooseCodingApprovalDecision> {
+  const aborted = (): GooseCodingToolInvokerError =>
+    new GooseCodingToolInvokerError(
+      "gateway-failed",
+      "Goose coding approval was cancelled before a decision was returned",
+    );
+  if (request.signal.aborted) {
+    throw aborted();
+  }
+  let rejectOnAbort!: (error: GooseCodingToolInvokerError) => void;
+  const abortPromise = new Promise<never>((_resolve, reject) => {
+    rejectOnAbort = reject;
+  });
+  const onAbort = (): void => rejectOnAbort(aborted());
+  request.signal.addEventListener("abort", onAbort, { once: true });
+  try {
+    return normalizeApprovalDecision(
+      await Promise.race([Promise.resolve().then(() => handler(request)), abortPromise]),
+    );
+  } finally {
+    request.signal.removeEventListener("abort", onAbort);
   }
 }
 
@@ -158,6 +230,13 @@ function approvalRequiredResult(): GooseMcpToolInvocationResult {
   return Object.freeze({
     isError: true,
     content: JSON.stringify({ contractVersion: 1, type: "approval-required" }),
+  });
+}
+
+function approvalDeniedResult(): GooseMcpToolInvocationResult {
+  return Object.freeze({
+    isError: true,
+    content: JSON.stringify({ contractVersion: 1, type: "approval-denied" }),
   });
 }
 
@@ -273,7 +352,60 @@ export function createGooseCodingToolInvoker(
       );
     }
     if (gatewayResult.status === "approval-required") {
-      return approvalRequiredResult();
+      if (options.approvalDecisionHandler === undefined) {
+        return approvalRequiredResult();
+      }
+      try {
+        const decision = await awaitApprovalDecision(
+          options.approvalDecisionHandler,
+          Object.freeze({
+            approval: gatewayResult.approval,
+            sessionId: call.sessionId,
+            toolCallRequestId: call.toolCallRequestId,
+            signal: call.signal,
+          }),
+        );
+        const resolvedApproval = await options.session.approvalService.resolve(
+          gatewayResult.approval.approvalId,
+          decision.decision,
+          decision.actorId,
+        );
+        assertApprovalRequestSnapshot(resolvedApproval);
+        if (
+          resolvedApproval.approvalId !== gatewayResult.approval.approvalId ||
+          resolvedApproval.policyRevision !== gatewayResult.approval.policyRevision ||
+          resolvedApproval.requestedAt !== gatewayResult.approval.requestedAt ||
+          resolvedApproval.expiresAt !== gatewayResult.approval.expiresAt ||
+          resolvedApproval.state !== decision.decision ||
+          resolvedApproval.resolvedBy !== decision.actorId ||
+          !isDeepStrictEqual(resolvedApproval.operation, operation)
+        ) {
+          throw invalidConfig("Goose coding approval resolution returned mismatched evidence");
+        }
+        if (decision.decision !== "approved") {
+          return approvalDeniedResult();
+        }
+        gatewayResult = await options.session.toolGateway.invoke(
+          operation,
+          resolvedApproval.approvalId,
+          { signal: call.signal },
+        );
+      } catch (error) {
+        if (error instanceof GooseCodingToolInvokerError) {
+          throw error;
+        }
+        throw new GooseCodingToolInvokerError(
+          "gateway-failed",
+          "Goose coding approval could not be resolved inside the Tool Gateway",
+          { cause: error },
+        );
+      }
+      if (gatewayResult.status === "approval-required") {
+        throw new GooseCodingToolInvokerError(
+          "gateway-failed",
+          "Approved Goose coding operation did not consume its one-shot approval",
+        );
+      }
     }
     if (gatewayResult.result.outputRef === undefined) {
       return Object.freeze({

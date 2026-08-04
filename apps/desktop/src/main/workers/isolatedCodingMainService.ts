@@ -27,6 +27,7 @@ import {
 import {
   createGooseCodingToolInvoker,
   type CreateGooseCodingToolInvokerOptions,
+  type GooseCodingApprovalDecisionHandler,
 } from "./gooseCodingToolInvoker";
 import {
   openGooseMcpSessionComposition,
@@ -80,6 +81,7 @@ export interface OpenGooseCodingMainSessionOptions extends OpenIsolatedCodingMai
   readonly taskId: TaskId;
   readonly sessionId: SessionId;
   readonly workerId: WorkerId;
+  readonly approvalDecisionHandler?: GooseCodingApprovalDecisionHandler;
   readonly handshakeTimeoutMs?: number;
   readonly sessionTimeoutMs?: number;
 }
@@ -380,6 +382,9 @@ export function createIsolatedCodingMainService(
         taskId: sessionOptions.taskId,
         sessionId: sessionOptions.sessionId,
         workerId: sessionOptions.workerId,
+        ...(sessionOptions.approvalDecisionHandler === undefined
+          ? {}
+          : { approvalDecisionHandler: sessionOptions.approvalDecisionHandler }),
       });
       const gooseSession = await dependencies.openGooseSession({
         artifact: sessionOptions.artifact,
