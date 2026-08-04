@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import {
   compareInstants,
   createTeamRunSnapshot,
@@ -47,11 +46,19 @@ export interface TeamWorkerExecutionInput {
   readonly taskId: TaskId;
   readonly workerTaskId: TaskId;
   readonly attemptId: TeamAttemptId;
+  readonly attemptNumber: number;
   readonly candidateKey: string;
   readonly title: string;
   readonly capability: TeamWorkerCapability;
   readonly completionCriteria: string;
   readonly expectedArtifactKind: TeamArtifactReference["kind"];
+}
+
+export interface TeamWorkerTaskIdentityInput {
+  readonly runId: ReturnType<typeof teamRunId>;
+  readonly nodeId: TeamPlanNodeId;
+  readonly attemptNumber: number;
+  readonly capability: TeamWorkerCapability;
 }
 
 export type TeamWorkerExecutionResult =
@@ -65,8 +72,46 @@ export type TeamWorkerExecutionResult =
       readonly incidentCode: string;
     };
 
+export interface TeamWorkerApprovalRequiredEvidence {
+  readonly runId: ReturnType<typeof teamRunId>;
+  readonly nodeId: TeamPlanNodeId;
+  readonly attemptId: TeamAttemptId;
+  readonly approvalId: ApprovalId;
+  readonly policyAuditRecordId: AuditRecordId;
+  readonly requestAuditRecordId: AuditRecordId;
+  readonly reason: string;
+}
+
+export interface TeamWorkerExecutionObserver {
+  approvalRequired(evidence: TeamWorkerApprovalRequiredEvidence): Promise<void>;
+}
+
+export interface TeamWorkerApprovalDecisionEvidence {
+  readonly decisionAuditRecordId: AuditRecordId;
+}
+
+export interface TeamWorkerApprovalOutcomeEvidence {
+  readonly outcomeAuditRecordId: AuditRecordId;
+}
+
 export interface TeamWorkerExecutionPort {
-  execute(input: TeamWorkerExecutionInput, signal: AbortSignal): Promise<TeamWorkerExecutionResult>;
+  taskIdFor(input: TeamWorkerTaskIdentityInput): TaskId;
+  execute(
+    input: TeamWorkerExecutionInput,
+    signal: AbortSignal,
+    observer?: TeamWorkerExecutionObserver,
+  ): Promise<TeamWorkerExecutionResult>;
+  prepareApprovalDecision(
+    attemptId: TeamAttemptId,
+    approvalId: ApprovalId,
+    decision: "approved" | "denied",
+  ): Promise<TeamWorkerApprovalDecisionEvidence>;
+  commitApprovalDecision(
+    attemptId: TeamAttemptId,
+    approvalId: ApprovalId,
+    decision: "approved" | "denied",
+    persistOutcome: (evidence: TeamWorkerApprovalOutcomeEvidence) => Promise<void>,
+  ): Promise<void>;
   pause(attemptId: TeamAttemptId, reason: string): Promise<void>;
   resume(attemptId: TeamAttemptId): Promise<void>;
   cancel(attemptId: TeamAttemptId, reason: string): Promise<void>;
@@ -127,7 +172,7 @@ export interface TeamNodeControlInput {
   readonly occurredAt: Instant;
 }
 
-export interface BlockTeamNodeForApprovalInput {
+interface BlockTeamNodeForApprovalInput {
   readonly runId: ReturnType<typeof teamRunId>;
   readonly nodeId: TeamPlanNodeId;
   readonly attemptId: TeamAttemptId;
@@ -143,8 +188,6 @@ export interface DecideTeamNodeApprovalInput {
   readonly nodeId: TeamPlanNodeId;
   readonly approvalId: ApprovalId;
   readonly decision: "approved" | "denied";
-  readonly decisionAuditRecordId: AuditRecordId;
-  readonly outcomeAuditRecordId: AuditRecordId;
   readonly occurredAt: Instant;
 }
 
@@ -176,17 +219,6 @@ function serviceError(
 
 function snapshotsMatch(left: TeamRunSnapshot, right: TeamRunSnapshot): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
-}
-
-function deterministicWorkerTaskId(
-  runIdValue: ReturnType<typeof teamRunId>,
-  nodeId: TeamPlanNodeId,
-  attemptNumber: number,
-): TaskId {
-  const digest = createHash("sha256")
-    .update(`${runIdValue}\u0000${nodeId}\u0000${String(attemptNumber)}`)
-    .digest("hex");
-  return taskId(`task-team-worker-${digest}`);
 }
 
 export class TeamOrchestratorService {
@@ -287,7 +319,7 @@ export class TeamOrchestratorService {
     });
   }
 
-  async blockForApproval(input: BlockTeamNodeForApprovalInput): Promise<TeamRunSnapshot> {
+  async #blockForApproval(input: BlockTeamNodeForApprovalInput): Promise<TeamRunSnapshot> {
     const stableRunId = teamRunId(input.runId);
     return this.#mutate(stableRunId, async () => {
       const active = this.#requireActiveWorker(stableRunId, input.nodeId);
@@ -295,6 +327,7 @@ export class TeamOrchestratorService {
         throw serviceError("invalid-request", "The Team approval block uses a stale attempt");
       }
       const snapshot = await this.#requireRun(stableRunId);
+      const requestedAt = instant(input.occurredAt);
       return this.#persistSnapshot(
         transitionTeamRun(snapshot, {
           type: "block-node",
@@ -304,7 +337,8 @@ export class TeamOrchestratorService {
           policyAuditRecordId: input.policyAuditRecordId,
           requestAuditRecordId: input.requestAuditRecordId,
           reason: input.reason,
-          occurredAt: instant(input.occurredAt),
+          occurredAt:
+            compareInstants(requestedAt, snapshot.updatedAt) < 0 ? snapshot.updatedAt : requestedAt,
         }),
       );
     });
@@ -314,30 +348,59 @@ export class TeamOrchestratorService {
     const stableRunId = teamRunId(input.runId);
     return this.#mutate(stableRunId, async () => {
       const active = this.#requireActiveWorker(stableRunId, input.nodeId);
+      const approvalEvidence = await this.#worker.prepareApprovalDecision(
+        active.input.attemptId,
+        input.approvalId,
+        input.decision,
+      );
       let snapshot = await this.#requireRun(stableRunId);
       snapshot = await this.#persistSnapshot(
         transitionTeamRun(snapshot, {
-          type: "resolve-node-approval",
+          type: "request-node-approval-decision",
           nodeId: input.nodeId,
           approvalId: input.approvalId,
           decision: input.decision,
-          decisionAuditRecordId: input.decisionAuditRecordId,
-          outcomeAuditRecordId: input.outcomeAuditRecordId,
+          decisionAuditRecordId: approvalEvidence.decisionAuditRecordId,
           occurredAt: instant(input.occurredAt),
         }),
       );
+      let resolved: TeamRunSnapshot | undefined;
       try {
-        if (input.decision === "approved") {
-          await this.#worker.resume(active.input.attemptId);
-        } else {
+        await this.#worker.commitApprovalDecision(
+          active.input.attemptId,
+          input.approvalId,
+          input.decision,
+          async ({ outcomeAuditRecordId }) => {
+            if (resolved !== undefined) {
+              throw serviceError("worker-failed", "The Team Worker repeated one Approval outcome");
+            }
+            resolved = await this.#persistSnapshot(
+              transitionTeamRun(snapshot, {
+                type: "resolve-node-approval",
+                nodeId: input.nodeId,
+                approvalId: input.approvalId,
+                outcomeAuditRecordId,
+                occurredAt: this.#nextInstant(snapshot.updatedAt),
+              }),
+            );
+          },
+        );
+        if (resolved === undefined) {
+          throw serviceError(
+            "worker-failed",
+            "The Team Worker did not return one Approval outcome",
+          );
+        }
+        if (input.decision === "denied") {
           active.controller.abort();
           await this.#worker.cancel(active.input.attemptId, "The protected operation was denied");
           this.#activeWorkersFor(stableRunId).delete(input.nodeId);
         }
-      } catch {
+      } catch (error) {
+        if (error instanceof TeamOrchestratorServiceError) throw error;
         throw serviceError("worker-failed", "The Team Worker approval control failed");
       }
-      return snapshot;
+      return resolved;
     });
   }
 
@@ -579,10 +642,16 @@ export class TeamOrchestratorService {
           !active.has(candidate.nodeId),
       );
       if (node === undefined || node.kind !== "worker") break;
-      const workerTaskId = deterministicWorkerTaskId(
-        snapshot.runId,
-        node.nodeId,
-        node.attempts.length + 1,
+      const attemptNumber = node.attempts.length + 1;
+      const workerTaskId = taskId(
+        this.#worker.taskIdFor(
+          Object.freeze({
+            runId: snapshot.runId,
+            nodeId: node.nodeId,
+            attemptNumber,
+            capability: node.capability,
+          }),
+        ),
       );
       snapshot = await this.#persistSnapshot(
         transitionTeamRun(snapshot, {
@@ -607,6 +676,7 @@ export class TeamOrchestratorService {
         taskId: startedNode.taskId,
         workerTaskId: attempt.workerTaskId,
         attemptId: attempt.attemptId,
+        attemptNumber: attempt.attemptNumber,
         candidateKey: startedNode.candidateKey,
         title: startedNode.title,
         capability: startedNode.capability,
@@ -623,7 +693,28 @@ export class TeamOrchestratorService {
   #launchWorker(input: TeamWorkerExecutionInput, controller: AbortController): void {
     let execution: Promise<TeamWorkerExecutionResult>;
     try {
-      execution = this.#worker.execute(input, controller.signal);
+      execution = this.#worker.execute(
+        input,
+        controller.signal,
+        Object.freeze({
+          approvalRequired: async (evidence: TeamWorkerApprovalRequiredEvidence) => {
+            if (
+              evidence.runId !== input.runId ||
+              evidence.nodeId !== input.nodeId ||
+              evidence.attemptId !== input.attemptId
+            ) {
+              throw serviceError(
+                "worker-failed",
+                "The Team Worker Approval signal changed attempt authority",
+              );
+            }
+            await this.#blockForApproval({
+              ...evidence,
+              occurredAt: this.#now(),
+            });
+          },
+        }),
+      );
     } catch {
       execution = Promise.reject(new Error("Team Worker launch failed"));
     }

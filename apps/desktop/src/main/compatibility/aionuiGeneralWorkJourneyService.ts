@@ -137,6 +137,20 @@ function identitiesFor(conversationHash: string, submissionId: string): JourneyI
   return identitiesForDigest(digest);
 }
 
+export function deriveAionUiGeneralWorkJourneyTaskId(
+  nativeConversationId: string,
+  submissionId: string,
+): ReturnType<typeof taskId> {
+  assertAionUiGeneralWorkIntent({
+    contractVersion: AIONUI_GENERAL_WORK_CONTRACT_VERSION,
+    nativeConversationId,
+    submissionId,
+    prompt: "Derive one bounded Actestra Team journey identity.",
+  });
+  return identitiesFor(hashAionUiGeneralWorkConversation(nativeConversationId), submissionId)
+    .taskId;
+}
+
 function identitiesForDigest(digest: string): JourneyIdentities {
   if (!/^[a-f0-9]{64}$/u.test(digest)) {
     throw new Error("AionUI general-work task identity has no recoverable digest");

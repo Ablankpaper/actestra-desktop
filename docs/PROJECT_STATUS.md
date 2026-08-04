@@ -1,10 +1,10 @@
 # Project Status
 
-Last updated: 2026-08-04
+Last updated: 2026-08-05
 
 ## Current phase
 
-### P6 team-plan admission is accepted; durable plan authority is the current slice
+### P6 team-plan admission is accepted; the Team orchestration batch remains local
 
 The containment foundation was developed from exact `origin/main`
 `071aa922c08dd9a139f0c11dee2aa0dadab02417` on branch
@@ -633,6 +633,36 @@ The final focused closure passes 3 files and 31 tests; explicit-path format,
 zero-warning lint, and strict TypeScript pass. The Worker port is still a
 deterministic fixture: no real General+Goose router, mixed journey, AionUI Team
 provider/UI, package, push, Actions run, or P6 acceptance is claimed.
+
+The local, unpushed Task 5 layer routes the scheduler through the real
+`AionUiGeneralWorkJourneyService` and the admitted isolated Goose coding
+journey. Deterministic run/node/attempt bindings produce main-owned General and
+coding Task identities; the scheduler supplies no root, model, runner,
+commands, credential, or approval actor. Each journey must finish in Actestra
+persistence, and its available Artifact must match the admitted kind before a
+reference can return to the Team state machine. A real integration RED exposed
+that the router incorrectly passed the General projection limit `100` to the
+coding service whose closed maximum is `50`; the corrected router lets each
+journey apply its own authoritative default.
+
+The real mixed fixture uses the writing General Worker service plus the exact
+locally built and admitted `aarch64-apple-darwin` Goose runner manifest
+`7444e12e4e218cfd4d4d8f9ae253dee12b9b1930b5546849498790277328b9df`.
+General and Goose are active in parallel. Goose file-write, focused-test, and
+publish operations each block on distinct real policy, ApprovalService, audit,
+and persist-before-effect/outcome evidence. The completed run aggregates only
+the two durable document/file Artifact references. Separate real cases prove a
+denied write never executes and whole-Team cancellation aborts the model,
+closes the General Worker, removes the coding worktree and private runner root,
+leaves one unchanged clean source checkout, and never aggregates a cancelled
+run.
+
+The final Task 5 router/orchestrator closure passes 2 files and 19 tests; the
+admitted-artifact mixed closure passes 1 file and 4 tests. Strict TypeScript and
+the targeted 17-path format and zero-warning lint checks pass. The admitted
+runner artifact is local test evidence, not a candidate or release. There is
+still no fixed Team bridge, renderer/preload route, AionUI Team UI, real CrewAI
+admission, package acceptance, push, Actions run, or P6 completion claim.
 
 The owner has clarified the remaining P6 product gate: AionUI v2.1.41 is the
 sole design language, component system, navigation foundation, and visible
@@ -2268,7 +2298,8 @@ Review closure validation at
 | P6 bounded team-plan admission                     | Accepted on `main` through PR 45                                  | Initial head `59cf48fbbb45d78c803ab6691547b61878fc8eb3` failed sole run 30905371865 only at the missing downstream source-copy declaration and was not rerun; corrected exact head `a3d08a934160c1a5d61ff987ade29212bd3c0b05`; exact-head CI 30906689796; squash merge `30742934adde1e0944c4e8ced1f005452a1f3568`; merged-main CI 30907869824; 2 focused files/30 tests and recorded 76/2-file, 672/5-test root gate; no submitted review or inline thread; no CrewAI/Python, persistence, scheduling, Worker launch, Team UI, packaging, or P6 phase acceptance |
 | P6 admitted plan and Team run durability           | Local committed checkpoint in the unpushed PR 46 batch            | Local commit `ae2d4b98a05ef9f89b30e8cd3734f46d38d50345`; schema 14 remains the canonical admitted `team_plans` authority; schema 15 separately adds immutable Team definitions, current run heads, append-only revisions, Core transitions, CAS persistence, digest validation, recoverable-run listing, and fail-closed utility/client identity checks; revision 1 is reconstructed from the canonical plan and Team, while every N+1 revision must replay as one allowed Core transition or deterministic recovery; Team run 13/13, the earlier persistence/protocol 58/58, and final changed Core/persistence 17/17 tests pass; smoke harness, targeted format/lint, and strict TypeScript pass; no second root gate or Actions run; production planner provider, real mixed Worker execution, real AionUI-native Team/group-chat creation/run/explain/control UI, real CrewAI admission, and P6 acceptance remain absent |
 | P6 generic planner-sidecar boundary                | Local implementation in the unpushed PR 46 batch                  | Closed typed `propose` and reference-only `aggregate` protocol; exact engine/version handshake; closed environment and telemetry/network-denial policy variables; bounded serialized JSONL; sanitized failure; timeout/abort/crash/close process-group cleanup; 3 focused files/19 tests plus targeted format, zero-warning lint, and strict TypeScript; deterministic fixture only, with no real CrewAI admission, OS network-sandbox proof, mixed Workers, Team UI, packaging, or P6 acceptance |
-| P6 Team scheduler/control/recovery                 | Local implementation in the unpushed PR 46 batch                  | Actestra-owned persisted Core transitions; per-run serialization; persist-before-observe/effect; bounded parallel roots; dependency and Artifact gating; separate protected Approval and workflow feedback; pause/resume/retry/replace/handoff; child/whole cancel; reference-only aggregation; close cleanup; deterministic interrupted recovery; 3 focused files/31 tests, explicit-path format, zero-warning lint, and strict TypeScript; deterministic Worker port only, with no real General+Goose mixed route, Team UI, push, CI, or P6 acceptance |
+| P6 Team scheduler/control/recovery                 | Local implementation in the unpushed PR 46 batch                  | Actestra-owned persisted Core transitions; per-run serialization; persist-before-observe/effect; bounded parallel roots; dependency and Artifact gating; separate protected Approval and workflow feedback; pause/resume/retry/replace/handoff; child/whole cancel; reference-only aggregation; close cleanup; deterministic interrupted recovery; 3 focused files/31 tests, explicit-path format, zero-warning lint, and strict TypeScript; the scheduler contract is now composed through the separately recorded real mixed journey, but Team UI, push, CI, and P6 acceptance remain absent |
+| P6 real General+Goose Team composition            | Local uncommitted implementation in the unpushed PR 46 batch      | Deterministic Team bindings route admitted nodes through the real General Work and admitted Goose coding journeys; protected write/test/publish approvals persist before effect and acknowledgement; completed Artifacts are re-read from Actestra persistence and aggregated only by reference; focused router/orchestrator 2 files/19 tests and real mixed 1 file/4 tests pass, including denial, whole-Team cancellation, no orphan process/worktree, and unchanged clean source-checkout evidence; no fixed Team bridge, renderer/preload route, AionUI-native Team/group-chat UI, real CrewAI admission, package, push, CI, or P6 acceptance |
 | Native AionUi source                               | Exact local desktop snapshot                                      | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Native preservation contract                       | Local pass                                                        | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | Native AionUi build and launch                     | Local pass                                                        | Frozen install, production build, isolated native Electron launch, and actual Guide screenshot pass                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -2414,15 +2445,16 @@ The ordered implementation index and P3 non-claims are in
    and cancellation proof, native compatibility, and source-checkout
    preservation.
 9. Keep schema-14 admitted-plan authority, schema-15 Team run authority, the
-   generic non-authoritative planner protocol/supervisor, and the Actestra-owned
-   scheduler/control/recovery service in the same unpushed P6 batch. Next route
-   admitted nodes through the real General and Goose journeys before admitting
-   any real CrewAI provider. Deliver the user-visible AionUI-native
-   Team/group-chat creation, execution, explainability, control, Artifact, and
-   recovery journey in P6 with explicit R1/R2 compatibility and rollback
-   evidence; do not defer it as later polish. Push only after the complete Team
-   capability stabilizes. Do not give a planner process, renderer, worktree,
-   credential, approval, tool, or durable-state authority.
+   generic non-authoritative planner protocol/supervisor, the Actestra-owned
+   scheduler/control/recovery service, and the locally proven real
+   General+Goose composition in the same unpushed P6 batch. Next add the fixed
+   Team bridge and deliver the user-visible AionUI-native Team/group-chat
+   creation, execution, explainability, control, Artifact, and recovery journey
+   in P6 with explicit R1/R2 compatibility and rollback evidence; do not defer
+   it as later polish or admit a real CrewAI provider before its independent
+   gates pass. Push only after the complete Team capability stabilizes. Do not
+   give a planner process, renderer, worktree, credential, approval, tool, or
+   durable-state authority.
 
 ## Open decisions
 
@@ -2538,9 +2570,13 @@ The ordered implementation index and P3 non-claims are in
   `ee8425e39e201078cd64fe3af38355279ecf56de`, and merged-main CI
   30900884248. P6 admission is accepted through PR 45 and exact merge
   `30742934adde1e0944c4e8ced1f005452a1f3568`. The current local batch proves
-  schema-14 admitted-plan persistence plus schema-15 Team run state and
-  revision durability, but not scheduler effects, sidecar supervision, mixed
-  Worker execution, Team UI, or process/worktree recovery.
+  schema-14 admitted-plan persistence, schema-15 Team run state and revision
+  durability, generic sidecar supervision, Actestra-owned scheduler effects,
+  real General+Goose mixed execution, protected approval ordering,
+  reference-only aggregation, whole-Team cancellation, and bounded
+  process/worktree cleanup. It does not prove a fixed Team bridge, renderer or
+  preload route, AionUI-native Team UI, real CrewAI admission, packaging,
+  pushed CI, or P6 acceptance.
 - F0 alone proves only that the original AionUi application can be preserved
   and run. F1, F2, F3.1, F3.2, and merged F3.3 add their separately recorded
   identity, shadow, narrow decision-authority, fixed-delivery audit, and

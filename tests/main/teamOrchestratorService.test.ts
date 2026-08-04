@@ -23,8 +23,10 @@ import {
   type TeamOrchestratorPersistencePort,
   type TeamResultAggregationPort,
   type TeamWorkerExecutionInput,
+  type TeamWorkerExecutionObserver,
   type TeamWorkerExecutionPort,
   type TeamWorkerExecutionResult,
+  type TeamWorkerTaskIdentityInput,
 } from "../../apps/desktop/src/main/orchestration/teamOrchestratorService";
 import type {
   TeamPlannerAggregatePayload,
@@ -39,6 +41,9 @@ type LogEntry =
   | { readonly type: "aggregate"; readonly revision: number }
   | { readonly type: "pause-worker"; readonly attemptId: TeamAttemptId }
   | { readonly type: "resume-worker"; readonly attemptId: TeamAttemptId }
+  | { readonly type: "prepare-approval"; readonly attemptId: TeamAttemptId }
+  | { readonly type: "commit-approval"; readonly attemptId: TeamAttemptId }
+  | { readonly type: "release-approval"; readonly attemptId: TeamAttemptId }
   | { readonly type: "cancel-worker"; readonly attemptId: TeamAttemptId };
 
 class MemoryTeamOrchestratorPersistence implements TeamOrchestratorPersistencePort {
@@ -112,6 +117,7 @@ class MemoryTeamOrchestratorPersistence implements TeamOrchestratorPersistencePo
 interface PendingWorker {
   readonly input: TeamWorkerExecutionInput;
   readonly signal: AbortSignal;
+  readonly observer?: TeamWorkerExecutionObserver;
   readonly resolve: (result: TeamWorkerExecutionResult) => void;
   readonly reject: (error: Error) => void;
 }
@@ -119,15 +125,39 @@ interface PendingWorker {
 class ControlledWorker implements TeamWorkerExecutionPort {
   readonly pending = new Map<string, PendingWorker>();
   failCancellation = false;
-  readonly execute = vi.fn((input: TeamWorkerExecutionInput, signal: AbortSignal) => {
-    this.log.push({
-      type: "execute",
-      candidateKey: input.candidateKey,
-      revision: input.runRevision,
+  readonly taskIdFor = vi.fn((input: TeamWorkerTaskIdentityInput) =>
+    taskId(
+      `task-team-worker-${input.nodeId.slice("team-node-".length)}-${String(input.attemptNumber)}`,
+    ),
+  );
+  readonly execute = vi.fn(
+    (
+      input: TeamWorkerExecutionInput,
+      signal: AbortSignal,
+      observer?: TeamWorkerExecutionObserver,
+    ) => {
+      this.log.push({
+        type: "execute",
+        candidateKey: input.candidateKey,
+        revision: input.runRevision,
+      });
+      return new Promise<TeamWorkerExecutionResult>((resolve, reject) => {
+        this.pending.set(input.candidateKey, { input, signal, observer, resolve, reject });
+      });
+    },
+  );
+  readonly prepareApprovalDecision = vi.fn(async (attemptId: TeamAttemptId) => {
+    this.log.push({ type: "prepare-approval", attemptId });
+    return Object.freeze({
+      decisionAuditRecordId: auditRecordId("audit-team-orchestrator-decision"),
     });
-    return new Promise<TeamWorkerExecutionResult>((resolve, reject) => {
-      this.pending.set(input.candidateKey, { input, signal, resolve, reject });
+  });
+  readonly commitApprovalDecision = vi.fn(async (attemptId, _approvalId, _decision, persist) => {
+    this.log.push({ type: "commit-approval", attemptId });
+    await persist({
+      outcomeAuditRecordId: auditRecordId("audit-team-orchestrator-outcome"),
     });
+    this.log.push({ type: "release-approval", attemptId });
   });
   readonly pause = vi.fn(async (attemptId: TeamAttemptId) => {
     this.log.push({ type: "pause-worker", attemptId });
@@ -141,6 +171,22 @@ class ControlledWorker implements TeamWorkerExecutionPort {
   });
 
   constructor(private readonly log: LogEntry[]) {}
+
+  async requireApproval(candidateKey: string): Promise<void> {
+    const pending = this.pending.get(candidateKey);
+    if (pending?.observer === undefined) {
+      throw new Error(`Missing Approval observer for Worker ${candidateKey}`);
+    }
+    await pending.observer.approvalRequired({
+      runId: pending.input.runId,
+      nodeId: pending.input.nodeId,
+      attemptId: pending.input.attemptId,
+      approvalId: approvalId("approval-team-orchestrator-protected"),
+      policyAuditRecordId: auditRecordId("audit-team-orchestrator-policy"),
+      requestAuditRecordId: auditRecordId("audit-team-orchestrator-request"),
+      reason: "Waiting for the protected operation decision.",
+    });
+  }
 
   complete(candidateKey: string): void {
     const pending = this.pending.get(candidateKey);
@@ -396,15 +442,15 @@ describe("TeamOrchestratorService", () => {
       revision: resumed.revision,
     });
 
-    await service.blockForApproval({
-      runId: accepted.runId,
-      nodeId: general.nodeId,
-      attemptId: general.attemptId,
-      approvalId: approvalId("approval-team-orchestrator-protected"),
-      policyAuditRecordId: auditRecordId("audit-team-orchestrator-policy"),
-      requestAuditRecordId: auditRecordId("audit-team-orchestrator-request"),
-      reason: "Waiting for the protected operation decision.",
-      occurredAt: instant("2026-08-04T02:14:00.000Z"),
+    await worker.requireApproval("general");
+    const blocked = await service.get(accepted.runId);
+    expect(blocked.nodes.find(({ nodeId }) => nodeId === general.nodeId)).toMatchObject({
+      status: "approval-blocked",
+      protectedApproval: {
+        approvalId: "approval-team-orchestrator-protected",
+        policyAuditRecordId: "audit-team-orchestrator-policy",
+        requestAuditRecordId: "audit-team-orchestrator-request",
+      },
     });
     worker.resume.mockClear();
     const beforeDecisionLogLength = log.length;
@@ -413,18 +459,134 @@ describe("TeamOrchestratorService", () => {
       nodeId: general.nodeId,
       approvalId: approvalId("approval-team-orchestrator-protected"),
       decision: "approved",
-      decisionAuditRecordId: auditRecordId("audit-team-orchestrator-decision"),
-      outcomeAuditRecordId: auditRecordId("audit-team-orchestrator-outcome"),
       occurredAt: instant("2026-08-04T02:15:00.000Z"),
     });
-    expect(worker.resume).toHaveBeenCalledWith(general.attemptId);
+    expect(worker.prepareApprovalDecision).toHaveBeenCalledWith(
+      general.attemptId,
+      approvalId("approval-team-orchestrator-protected"),
+      "approved",
+    );
+    expect(worker.commitApprovalDecision).toHaveBeenCalledWith(
+      general.attemptId,
+      approvalId("approval-team-orchestrator-protected"),
+      "approved",
+      expect.any(Function),
+    );
+    expect(worker.resume).not.toHaveBeenCalled();
     const decisionLog = log.slice(beforeDecisionLogLength);
-    expect(decisionLog[0]).toEqual({
+    expect(decisionLog).toEqual([
+      { type: "prepare-approval", attemptId: general.attemptId },
+      {
+        type: "persist-run",
+        runId: accepted.runId,
+        revision: approved.revision - 1,
+      },
+      { type: "commit-approval", attemptId: general.attemptId },
+      {
+        type: "persist-run",
+        runId: accepted.runId,
+        revision: approved.revision,
+      },
+      { type: "release-approval", attemptId: general.attemptId },
+    ]);
+    expect(approved.nodes.find(({ nodeId }) => nodeId === general.nodeId)).toMatchObject({
+      status: "running",
+      protectedApproval: {
+        decision: "approved",
+        decisionAuditRecordId: "audit-team-orchestrator-decision",
+        outcomeAuditRecordId: "audit-team-orchestrator-outcome",
+      },
+    });
+    expect(log).toContainEqual({
       type: "persist-run",
       runId: accepted.runId,
-      revision: approved.revision,
+      revision: blocked.revision,
     });
-    expect(decisionLog[1]).toEqual({ type: "resume-worker", attemptId: general.attemptId });
+    await service.close();
+  });
+
+  it("persists a denied protected Approval outcome before cancelling its Worker", async () => {
+    const { accepted, aggregator, log, service, worker } = await setup("approval-denied");
+    await service.start(accepted.runId, instant("2026-08-04T02:11:00.000Z"));
+    const general = worker.pending.get("general")!.input;
+    const generalExecution = worker.pending.get("general")!;
+
+    await worker.requireApproval("general");
+    const blocked = await service.get(accepted.runId);
+    expect(blocked.nodes.find(({ nodeId }) => nodeId === general.nodeId)).toMatchObject({
+      status: "approval-blocked",
+      protectedApproval: {
+        approvalId: "approval-team-orchestrator-protected",
+        decision: null,
+        decisionAuditRecordId: null,
+        outcomeAuditRecordId: null,
+      },
+    });
+
+    const beforeDecisionLogLength = log.length;
+    const denied = await service.decideApproval({
+      runId: accepted.runId,
+      nodeId: general.nodeId,
+      approvalId: approvalId("approval-team-orchestrator-protected"),
+      decision: "denied",
+      occurredAt: instant("2026-08-04T02:15:00.000Z"),
+    });
+
+    expect(denied.nodes.find(({ nodeId }) => nodeId === general.nodeId)).toMatchObject({
+      status: "failed",
+      blockedReason: "attempt-failed",
+      blockedExplanation: "The protected operation was denied.",
+      attempts: [expect.objectContaining({ attemptId: general.attemptId, status: "failed" })],
+      protectedApproval: {
+        approvalId: "approval-team-orchestrator-protected",
+        decision: "denied",
+        decisionAuditRecordId: "audit-team-orchestrator-decision",
+        outcomeAuditRecordId: "audit-team-orchestrator-outcome",
+      },
+    });
+    expect(generalExecution.signal.aborted).toBe(true);
+    expect(worker.prepareApprovalDecision).toHaveBeenCalledWith(
+      general.attemptId,
+      approvalId("approval-team-orchestrator-protected"),
+      "denied",
+    );
+    expect(worker.commitApprovalDecision).toHaveBeenCalledWith(
+      general.attemptId,
+      approvalId("approval-team-orchestrator-protected"),
+      "denied",
+      expect.any(Function),
+    );
+    expect(worker.cancel).toHaveBeenCalledWith(
+      general.attemptId,
+      "The protected operation was denied",
+    );
+    expect(worker.execute).toHaveBeenCalledTimes(2);
+    expect(aggregator.aggregate).not.toHaveBeenCalled();
+
+    const decisionLog = log.slice(beforeDecisionLogLength);
+    const cancelIndex = decisionLog.findIndex(({ type }) => type === "cancel-worker");
+    expect(cancelIndex).toBeGreaterThan(-1);
+    expect(decisionLog.slice(0, cancelIndex)).toContainEqual({
+      type: "persist-run",
+      runId: accepted.runId,
+      revision: denied.revision,
+    });
+    expect(decisionLog.slice(0, cancelIndex)).toEqual([
+      { type: "prepare-approval", attemptId: general.attemptId },
+      {
+        type: "persist-run",
+        runId: accepted.runId,
+        revision: denied.revision - 1,
+      },
+      { type: "commit-approval", attemptId: general.attemptId },
+      {
+        type: "persist-run",
+        runId: accepted.runId,
+        revision: denied.revision,
+      },
+      { type: "release-approval", attemptId: general.attemptId },
+    ]);
+
     await service.close();
   });
 

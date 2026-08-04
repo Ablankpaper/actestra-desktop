@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { promisify } from "node:util";
+import { isDeepStrictEqual, promisify } from "node:util";
 import {
   AIONUI_CODING_JOURNEY_CONTRACT_VERSION,
   assertAionUiCodingJourneyProjection,
@@ -35,6 +35,8 @@ import {
   workspaceId,
   type ActestraPersistencePort,
   type AgentClock,
+  type ApprovalId,
+  type AuditRecordId,
   type ApprovalRequestSnapshot,
   type CoreEvent,
   type DomainGraph,
@@ -67,6 +69,7 @@ import type { AdmittedGooseRunnerArtifact } from "../workers/gooseRunnerArtifact
 
 const execFileAsync = promisify(execFile);
 const MAX_TITLE_BYTES = 512;
+const TEAM_APPROVAL_ACTOR_ID = approvalActorId("actestra-team-owner");
 
 interface CodingJourneyIdentities {
   readonly conversationHash: string;
@@ -117,6 +120,32 @@ interface PendingPublishApproval {
   readonly decision: Promise<GooseCodingPublishDecision>;
   resolve(value: GooseCodingPublishDecision): void;
   reject(error: Error): void;
+}
+
+export interface AionUiCodingTeamApprovalEvidence {
+  readonly approvalId: ApprovalId;
+  readonly policyAuditRecordId: AuditRecordId;
+  readonly requestAuditRecordId: AuditRecordId;
+  readonly reason: string;
+}
+
+export interface AionUiCodingTeamApprovalDecisionEvidence {
+  readonly decisionAuditRecordId: AuditRecordId;
+}
+
+export interface AionUiCodingTeamApprovalOutcomeEvidence {
+  readonly outcomeAuditRecordId: AuditRecordId;
+}
+
+export type AionUiCodingTeamApprovalObserver = (
+  evidence: AionUiCodingTeamApprovalEvidence,
+) => void | Promise<void>;
+
+interface PreparedTeamApprovalDecision {
+  readonly approvalId: ApprovalId;
+  readonly decision: AionUiCodingJourneyDecision;
+  readonly actorId: ReturnType<typeof approvalActorId>;
+  readonly decisionAuditRecordId: AuditRecordId;
 }
 
 export class AionUiCodingJourneyServiceError extends Error {
@@ -185,6 +214,27 @@ function identitiesForTask(conversationHash: string, taskIdValue: TaskId): Codin
     workerId: workerId(`worker-aionui-coding-${digest}`),
     grantId: workspaceGrantId(`grant-aionui-coding-${digest}`),
   });
+}
+
+function identitiesForWorkspaceTask(
+  workspaceIdValue: string,
+  taskIdValue: TaskId,
+): CodingJourneyIdentities {
+  const prefix = "workspace-aionui-coding-";
+  if (!workspaceIdValue.startsWith(prefix)) {
+    throw new AionUiCodingJourneyServiceError(
+      "task-not-owned",
+      "The requested coding workspace identity is invalid",
+    );
+  }
+  const conversationHash = workspaceIdValue.slice(prefix.length);
+  if (!/^[a-f0-9]{64}$/u.test(conversationHash)) {
+    throw new AionUiCodingJourneyServiceError(
+      "task-not-owned",
+      "The requested coding conversation identity is invalid",
+    );
+  }
+  return identitiesForTask(conversationHash, taskIdValue);
 }
 
 function toolPresentationForId(toolIdValue: string): Readonly<{
@@ -532,6 +582,8 @@ export class AionUiCodingJourneyService {
   private readonly activeJourneys = new Map<string, ActiveCodingJourney>();
   private readonly pendingToolApprovals = new Map<string, PendingToolApproval>();
   private readonly pendingPublishApprovals = new Map<string, PendingPublishApproval>();
+  private readonly approvalObservers = new Map<TaskId, Set<AionUiCodingTeamApprovalObserver>>();
+  private readonly preparedTeamApprovalDecisions = new Map<TaskId, PreparedTeamApprovalDecision>();
   private readonly journeyFailures = new Map<string, unknown>();
 
   constructor(private readonly config: AionUiCodingJourneyServiceConfig) {}
@@ -615,6 +667,162 @@ export class AionUiCodingJourneyService {
     );
     await Promise.resolve();
     return this.project(identities);
+  }
+
+  observeApproval(taskIdValue: string, observer: AionUiCodingTeamApprovalObserver): () => void {
+    const stableTaskId = taskId(taskIdValue);
+    if (typeof observer !== "function") {
+      throw new AionUiCodingJourneyServiceError(
+        "approval-not-pending",
+        "Team coding approval observer is invalid",
+      );
+    }
+    let observers = this.approvalObservers.get(stableTaskId);
+    if (observers === undefined) {
+      observers = new Set();
+      this.approvalObservers.set(stableTaskId, observers);
+    }
+    observers.add(observer);
+    const pending = this.#pendingTeamApproval(stableTaskId);
+    if (pending !== undefined) {
+      void this.#notifyApprovalObserver(stableTaskId, pending.approval, observer).catch((error) => {
+        pending.reject(
+          error instanceof Error
+            ? error
+            : new AionUiCodingJourneyServiceError(
+                "execution-failed",
+                "Team approval observer failed",
+              ),
+        );
+      });
+    }
+    return () => {
+      const retained = this.approvalObservers.get(stableTaskId);
+      retained?.delete(observer);
+      if (retained?.size === 0) this.approvalObservers.delete(stableTaskId);
+    };
+  }
+
+  async prepareTeamApprovalDecision(
+    taskIdValue: string,
+    approvalIdValue: string,
+    decision: AionUiCodingJourneyDecision,
+  ): Promise<AionUiCodingTeamApprovalDecisionEvidence> {
+    const stableTaskId = taskId(taskIdValue);
+    const stableApprovalId = approvalId(approvalIdValue);
+    if (decision !== "approved" && decision !== "denied") {
+      throw new AionUiCodingJourneyServiceError(
+        "approval-not-pending",
+        "Team coding approval decision is invalid",
+      );
+    }
+    const pending = this.#requirePendingTeamApproval(stableTaskId, stableApprovalId);
+    const existing = this.preparedTeamApprovalDecisions.get(stableTaskId);
+    if (existing !== undefined) {
+      if (existing.approvalId !== stableApprovalId || existing.decision !== decision) {
+        throw new AionUiCodingJourneyServiceError(
+          "approval-not-pending",
+          "Team coding approval decision conflicts with the recorded decision",
+        );
+      }
+      return Object.freeze({ decisionAuditRecordId: existing.decisionAuditRecordId });
+    }
+    const session = this.#requireActiveSession(stableTaskId);
+    const decisionAuditRecordId = await session.approvalAuditEvidence.recordDecision(
+      pending.approval,
+      decision,
+      TEAM_APPROVAL_ACTOR_ID,
+    );
+    this.preparedTeamApprovalDecisions.set(
+      stableTaskId,
+      Object.freeze({
+        approvalId: stableApprovalId,
+        decision,
+        actorId: TEAM_APPROVAL_ACTOR_ID,
+        decisionAuditRecordId,
+      }),
+    );
+    return Object.freeze({ decisionAuditRecordId });
+  }
+
+  async commitTeamApprovalDecision(
+    taskIdValue: string,
+    approvalIdValue: string,
+    decision: AionUiCodingJourneyDecision,
+    persistOutcome: (evidence: AionUiCodingTeamApprovalOutcomeEvidence) => Promise<void>,
+  ): Promise<AionUiCodingJourneyProjection> {
+    const stableTaskId = taskId(taskIdValue);
+    const stableApprovalId = approvalId(approvalIdValue);
+    if (
+      (decision !== "approved" && decision !== "denied") ||
+      typeof persistOutcome !== "function"
+    ) {
+      throw new AionUiCodingJourneyServiceError(
+        "approval-not-pending",
+        "Team coding approval outcome request is invalid",
+      );
+    }
+    const pending = this.#requirePendingTeamApproval(stableTaskId, stableApprovalId);
+    const prepared = this.preparedTeamApprovalDecisions.get(stableTaskId);
+    if (
+      prepared === undefined ||
+      prepared.approvalId !== stableApprovalId ||
+      prepared.decision !== decision ||
+      prepared.actorId !== TEAM_APPROVAL_ACTOR_ID
+    ) {
+      throw new AionUiCodingJourneyServiceError(
+        "approval-not-pending",
+        "Team coding approval outcome has no matching persisted decision",
+      );
+    }
+    const session = this.#requireActiveSession(stableTaskId);
+    let resolved: ApprovalRequestSnapshot;
+    try {
+      resolved = await session.approvalService.resolve(
+        stableApprovalId,
+        decision,
+        TEAM_APPROVAL_ACTOR_ID,
+      );
+    } catch (error) {
+      const committed = await session.approvalService.get(stableApprovalId);
+      if (
+        committed === undefined ||
+        !this.#matchesTeamApprovalResolution(
+          committed,
+          pending.approval,
+          decision,
+          TEAM_APPROVAL_ACTOR_ID,
+        )
+      ) {
+        throw error;
+      }
+      resolved = committed;
+    }
+    if (
+      !this.#matchesTeamApprovalResolution(
+        resolved,
+        pending.approval,
+        decision,
+        TEAM_APPROVAL_ACTOR_ID,
+      )
+    ) {
+      throw new AionUiCodingJourneyServiceError(
+        "execution-failed",
+        "Team coding ApprovalService returned mismatched resolution evidence",
+      );
+    }
+    const outcomeAuditRecordId = session.approvalAuditEvidence.resolution(
+      pending.approval,
+      decision,
+      TEAM_APPROVAL_ACTOR_ID,
+    );
+    await persistOutcome(Object.freeze({ outcomeAuditRecordId }));
+    pending.resolve(Object.freeze({ decision, actorId: TEAM_APPROVAL_ACTOR_ID }));
+    this.preparedTeamApprovalDecisions.delete(stableTaskId);
+    await Promise.resolve();
+    return this.project(
+      identitiesForWorkspaceTask(pending.approval.operation.workspaceId, stableTaskId),
+    );
   }
 
   async decidePublish(
@@ -797,12 +1005,15 @@ export class AionUiCodingJourneyService {
     };
     request.signal.addEventListener("abort", onAbort, { once: true });
     this.pendingToolApprovals.set(taskIdValue, pending);
-    return decision.finally(() => {
-      request.signal.removeEventListener("abort", onAbort);
-      if (this.pendingToolApprovals.get(taskIdValue) === pending) {
-        this.pendingToolApprovals.delete(taskIdValue);
-      }
-    });
+    return this.#notifyTeamApproval(taskIdValue, pending.approval)
+      .then(() => decision)
+      .finally(() => {
+        request.signal.removeEventListener("abort", onAbort);
+        if (this.pendingToolApprovals.get(taskIdValue) === pending) {
+          this.pendingToolApprovals.delete(taskIdValue);
+        }
+        this.preparedTeamApprovalDecisions.delete(taskIdValue);
+      });
   }
 
   private awaitPublishDecision(
@@ -861,12 +1072,15 @@ export class AionUiCodingJourneyService {
     };
     request.signal.addEventListener("abort", onAbort, { once: true });
     this.pendingPublishApprovals.set(taskIdValue, pending);
-    return decision.finally(() => {
-      request.signal.removeEventListener("abort", onAbort);
-      if (this.pendingPublishApprovals.get(taskIdValue) === pending) {
-        this.pendingPublishApprovals.delete(taskIdValue);
-      }
-    });
+    return this.#notifyTeamApproval(taskIdValue, pending.approval)
+      .then(() => decision)
+      .finally(() => {
+        request.signal.removeEventListener("abort", onAbort);
+        if (this.pendingPublishApprovals.get(taskIdValue) === pending) {
+          this.pendingPublishApprovals.delete(taskIdValue);
+        }
+        this.preparedTeamApprovalDecisions.delete(taskIdValue);
+      });
   }
 
   async waitForIdle(taskIdValue?: string): Promise<void> {
@@ -889,6 +1103,91 @@ export class AionUiCodingJourneyService {
     const active = [...this.activeJourneys.values()];
     await Promise.allSettled(active.map(({ session }) => session.close()));
     await Promise.allSettled(active.map(({ completion }) => completion));
+    this.approvalObservers.clear();
+    this.preparedTeamApprovalDecisions.clear();
+  }
+
+  #pendingTeamApproval(
+    taskIdValue: TaskId,
+  ): PendingToolApproval | PendingPublishApproval | undefined {
+    return (
+      this.pendingToolApprovals.get(taskIdValue) ?? this.pendingPublishApprovals.get(taskIdValue)
+    );
+  }
+
+  #requirePendingTeamApproval(
+    taskIdValue: TaskId,
+    approvalIdValue: ApprovalId,
+  ): PendingToolApproval | PendingPublishApproval {
+    const pending = this.#pendingTeamApproval(taskIdValue);
+    if (
+      pending === undefined ||
+      pending.approval.approvalId !== approvalIdValue ||
+      pending.signal.aborted
+    ) {
+      throw new AionUiCodingJourneyServiceError(
+        "approval-not-pending",
+        "The requested Team coding approval is not pending",
+      );
+    }
+    return pending;
+  }
+
+  #requireActiveSession(taskIdValue: TaskId): GooseCodingMainSession {
+    const session = this.activeJourneys.get(taskIdValue)?.session;
+    if (session === undefined) {
+      throw new AionUiCodingJourneyServiceError(
+        "task-conflict",
+        "The Team coding approval has no active isolated Goose session",
+      );
+    }
+    return session;
+  }
+
+  async #notifyApprovalObserver(
+    taskIdValue: TaskId,
+    approval: ApprovalRequestSnapshot,
+    observer: AionUiCodingTeamApprovalObserver,
+  ): Promise<void> {
+    const session = this.#requireActiveSession(taskIdValue);
+    const evidence = session.approvalAuditEvidence.pending(approval);
+    await observer(
+      Object.freeze({
+        approvalId: approval.approvalId,
+        policyAuditRecordId: evidence.policyAuditRecordId,
+        requestAuditRecordId: evidence.requestAuditRecordId,
+        reason: approval.operation.summary,
+      }),
+    );
+  }
+
+  async #notifyTeamApproval(taskIdValue: TaskId, approval: ApprovalRequestSnapshot): Promise<void> {
+    const observers = [...(this.approvalObservers.get(taskIdValue) ?? [])];
+    await Promise.all(
+      observers.map((observer) => this.#notifyApprovalObserver(taskIdValue, approval, observer)),
+    );
+  }
+
+  #matchesTeamApprovalResolution(
+    resolved: ApprovalRequestSnapshot,
+    pending: ApprovalRequestSnapshot,
+    decision: "approved" | "denied",
+    actorId: ReturnType<typeof approvalActorId>,
+  ): boolean {
+    try {
+      assertApprovalRequestSnapshot(resolved);
+    } catch {
+      return false;
+    }
+    return (
+      resolved.approvalId === pending.approvalId &&
+      resolved.policyRevision === pending.policyRevision &&
+      resolved.requestedAt === pending.requestedAt &&
+      resolved.expiresAt === pending.expiresAt &&
+      resolved.state === decision &&
+      resolved.resolvedBy === actorId &&
+      isDeepStrictEqual(resolved.operation, pending.operation)
+    );
   }
 
   private async submitOnce(

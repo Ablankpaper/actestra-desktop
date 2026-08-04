@@ -15,6 +15,7 @@ import {
   REQUIRED_REDACTION_BY_EVENT_TYPE,
   approvalId,
   artifactId,
+  auditRecordId,
   eventId,
   instant,
   policyRevision,
@@ -23,7 +24,10 @@ import {
   type ApprovalRequestSnapshot,
   type CoreEvent,
 } from "../../apps/desktop/src/core";
-import { AionUiCodingJourneyService } from "../../apps/desktop/src/main/compatibility/aionuiCodingJourneyService";
+import {
+  AionUiCodingJourneyService,
+  deriveAionUiCodingJourneyIdentities,
+} from "../../apps/desktop/src/main/compatibility/aionuiCodingJourneyService";
 import { DeterministicAgentClock } from "../../apps/desktop/src/main/workers/deterministicFakeAgentAdapter";
 import { deriveGooseCodingEvidenceIdentity } from "../../apps/desktop/src/main/workers/gooseCodingEvidenceCoordinator";
 import { createIsolatedCodingMainService } from "../../apps/desktop/src/main/workers/isolatedCodingMainService";
@@ -249,7 +253,7 @@ describe("AionUiCodingJourneyService", () => {
     expect(closeGoose).toHaveBeenCalledTimes(1);
   });
 
-  it("pauses a tool approval in main and accepts only the matching conversation decision", async () => {
+  it("holds a Team tool approval until real audit outcome is persisted before Goose resumes", async () => {
     const fixture = await createRepositoryFixture();
     const persistence = (await openTestPersistenceUtility(fixture.root)).client;
     persistenceClients.push(persistence);
@@ -258,6 +262,7 @@ describe("AionUiCodingJourneyService", () => {
       | Readonly<{ decision: "approved" | "denied"; actorId: string }>
       | undefined;
     let pendingApproval: ApprovalRequestSnapshot | undefined;
+    const order: string[] = [];
     const openGoose = vi.fn(async (options: OpenGooseCodingMainSessionOptions) => {
       const prompt = vi.fn(async () => {
         const requestedAt = clock.now();
@@ -317,6 +322,7 @@ describe("AionUiCodingJourneyService", () => {
           toolCallRequestId: "tool-call-native-approval",
           signal: new AbortController().signal,
         });
+        order.push("goose-resumed");
         const decidedGraph = await persistence.loadDomainGraph();
         await persistence.replaceDomainGraph({
           ...decidedGraph,
@@ -341,10 +347,38 @@ describe("AionUiCodingJourneyService", () => {
         });
         return Object.freeze({ stopReason: "cancelled" as const, updates: Object.freeze([]) });
       });
+      const approvalService = Object.freeze({
+        authorize: vi.fn(),
+        get: vi.fn(async () => undefined),
+        resolve: vi.fn(async (_approvalId, decision, actorId) => {
+          order.push("approval-resolved");
+          return Object.freeze({
+            ...pendingApproval!,
+            state: decision,
+            resolvedAt: clock.now(),
+            resolvedBy: actorId,
+          });
+        }),
+      });
+      const approvalAuditEvidence = Object.freeze({
+        pending: vi.fn(() =>
+          Object.freeze({
+            policyAuditRecordId: auditRecordId("audit-team-coding-policy"),
+            requestAuditRecordId: auditRecordId("audit-team-coding-request"),
+          }),
+        ),
+        recordDecision: vi.fn(async () => {
+          order.push("decision-audited");
+          return auditRecordId("audit-team-coding-decision");
+        }),
+        resolution: vi.fn(() => auditRecordId("audit-team-coding-outcome")),
+      });
       return Object.freeze({
         prompt,
         publish: vi.fn(),
         close: vi.fn(async () => undefined),
+        approvalService,
+        approvalAuditEvidence,
       }) as unknown as GooseCodingMainSession;
     });
     const mainService = Object.freeze({
@@ -376,10 +410,19 @@ describe("AionUiCodingJourneyService", () => {
       tests: {},
     });
     const nativeConversationId = "native-coding-approval-conversation";
+    const submissionId = "submission-coding-approval-1";
+    const expectedTaskId = deriveAionUiCodingJourneyIdentities(
+      nativeConversationId,
+      submissionId,
+    ).taskId;
+    const approvalObserved = vi.fn(async () => {
+      order.push("team-block-persisted");
+    });
+    const stopObserving = service.observeApproval(expectedTaskId, approvalObserved);
     const submitted = await service.submit({
       contractVersion: 1,
       nativeConversationId,
-      submissionId: "submission-coding-approval-1",
+      submissionId,
       prompt: "Edit the isolated fixture file.",
     });
 
@@ -398,6 +441,12 @@ describe("AionUiCodingJourneyService", () => {
         },
       });
     });
+    expect(approvalObserved).toHaveBeenCalledWith({
+      approvalId: pendingApproval!.approvalId,
+      policyAuditRecordId: "audit-team-coding-policy",
+      requestAuditRecordId: "audit-team-coding-request",
+      reason: "Edit the isolated fixture file",
+    });
     await expect(
       service.decideApproval(
         "different-native-conversation",
@@ -406,18 +455,37 @@ describe("AionUiCodingJourneyService", () => {
         "approved",
       ),
     ).rejects.toMatchObject({ code: "task-not-owned" });
-    await service.decideApproval(
-      nativeConversationId,
+    await expect(
+      service.prepareTeamApprovalDecision(
+        submitted.taskId,
+        pendingApproval!.approvalId,
+        "approved",
+      ),
+    ).resolves.toEqual({ decisionAuditRecordId: "audit-team-coding-decision" });
+    expect(receivedDecision).toBeUndefined();
+    await service.commitTeamApprovalDecision(
       submitted.taskId,
       pendingApproval!.approvalId,
       "approved",
+      async ({ outcomeAuditRecordId }) => {
+        expect(outcomeAuditRecordId).toBe("audit-team-coding-outcome");
+        order.push("team-outcome-persisted");
+      },
     );
     await service.waitForIdle(submitted.taskId);
 
     expect(receivedDecision).toEqual({
       decision: "approved",
-      actorId: "actestra-aionui-coding-user",
+      actorId: "actestra-team-owner",
     });
+    expect(order).toEqual([
+      "team-block-persisted",
+      "decision-audited",
+      "approval-resolved",
+      "team-outcome-persisted",
+      "goose-resumed",
+    ]);
+    stopObserving();
     expect(openGoose).toHaveBeenCalledTimes(1);
     const [cancelled] = await service.list(nativeConversationId);
     expect(cancelled).toEqual(

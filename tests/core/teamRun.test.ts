@@ -476,14 +476,33 @@ describe("Actestra Team run authority", () => {
       }),
     ).toThrow(expect.objectContaining({ code: "invalid-transition" }));
 
-    const approved = core.transitionTeamRun(blocked, {
-      type: "resolve-node-approval",
+    const decisionRecorded = core.transitionTeamRun(blocked, {
+      type: "request-node-approval-decision",
       nodeId: checks.nodeId,
       approvalId,
       decision: "approved",
       decisionAuditRecordId: core.auditRecordId("audit-team-protected-decision"),
-      outcomeAuditRecordId: core.auditRecordId("audit-team-protected-outcome"),
       occurredAt: core.instant("2026-08-04T01:00:05.000Z"),
+    });
+
+    expect(decisionRecorded.nodes.find(({ nodeId }) => nodeId === checks.nodeId)).toMatchObject({
+      status: "approval-blocked",
+      blockedReason: "protected-approval",
+      attempts: [{ attemptId: attempt.attemptId, status: "blocked" }],
+      protectedApproval: {
+        approvalId,
+        decision: "approved",
+        decisionAuditRecordId: "audit-team-protected-decision",
+        outcomeAuditRecordId: null,
+      },
+    });
+
+    const approved = core.transitionTeamRun(decisionRecorded, {
+      type: "resolve-node-approval",
+      nodeId: checks.nodeId,
+      approvalId,
+      outcomeAuditRecordId: core.auditRecordId("audit-team-protected-outcome"),
+      occurredAt: core.instant("2026-08-04T01:00:06.000Z"),
     });
 
     expect(approved.nodes.find(({ nodeId }) => nodeId === checks.nodeId)).toMatchObject({

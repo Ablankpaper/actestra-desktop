@@ -592,9 +592,12 @@ slice previously described as P4.3/F3.1.
 Current progress includes the closed plan-candidate admission, desktop-main
 planner port, schema-14 admitted-plan durability barrier, schema-15 Team run
 authority, a local unpushed generic planner-sidecar protocol/supervisor, and a
-local unpushed Actestra-owned scheduler/control/recovery service. The scheduler
-is not yet composed with the real General and Goose journeys, and no real
-CrewAI runtime is admitted or packaged.
+local unpushed Actestra-owned scheduler/control/recovery service. The current
+local Task 5 layer composes that scheduler with the real General Work journey
+and admitted Goose coding journey, including protected approvals, durable
+Artifact re-read, reference-only aggregation, denial, and whole-Team
+cancellation. No fixed AionUI Team provider or visible Team UI exists yet, and
+no real CrewAI runtime is admitted or packaged.
 
 ### Deliverables
 

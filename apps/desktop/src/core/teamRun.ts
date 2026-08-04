@@ -236,11 +236,17 @@ export type TeamRunCommand =
       readonly occurredAt: Instant;
     }
   | {
-      readonly type: "resolve-node-approval";
+      readonly type: "request-node-approval-decision";
       readonly nodeId: TeamPlanNodeId;
       readonly approvalId: ApprovalId;
       readonly decision: "approved" | "denied";
       readonly decisionAuditRecordId: AuditRecordId;
+      readonly occurredAt: Instant;
+    }
+  | {
+      readonly type: "resolve-node-approval";
+      readonly nodeId: TeamPlanNodeId;
+      readonly approvalId: ApprovalId;
       readonly outcomeAuditRecordId: AuditRecordId;
       readonly occurredAt: Instant;
     }
@@ -679,7 +685,7 @@ function parseProtectedApproval(value: unknown): TeamProtectedApprovalReference 
     (value.decision !== null && value.decision !== "approved" && value.decision !== "denied") ||
     (value.decision === null
       ? value.decisionAuditRecordId !== null || value.outcomeAuditRecordId !== null
-      : value.decisionAuditRecordId === null || value.outcomeAuditRecordId === null)
+      : value.decisionAuditRecordId === null)
   ) {
     throw new TeamRunContractError(
       "invalid-record",
@@ -1080,20 +1086,24 @@ function appendNodeRevisionCandidates(
         occurredAt,
       });
     }
-    if (
-      approval.decision !== null &&
-      approval.decisionAuditRecordId !== null &&
-      approval.outcomeAuditRecordId !== null
-    ) {
+    if (approval.decision !== null && approval.decisionAuditRecordId !== null) {
       candidates.push({
-        type: "resolve-node-approval",
+        type: "request-node-approval-decision",
         nodeId: node.nodeId,
         approvalId: approval.approvalId,
         decision: approval.decision,
         decisionAuditRecordId: approval.decisionAuditRecordId,
-        outcomeAuditRecordId: approval.outcomeAuditRecordId,
         occurredAt,
       });
+      if (approval.outcomeAuditRecordId !== null) {
+        candidates.push({
+          type: "resolve-node-approval",
+          nodeId: node.nodeId,
+          approvalId: approval.approvalId,
+          outcomeAuditRecordId: approval.outcomeAuditRecordId,
+          occurredAt,
+        });
+      }
     }
   }
 
@@ -1452,7 +1462,7 @@ function blockNode(snapshot: TeamRunSnapshot, command: Record<string, unknown>):
   });
 }
 
-function resolveNodeApproval(
+function requestNodeApprovalDecision(
   snapshot: TeamRunSnapshot,
   command: Record<string, unknown>,
 ): TeamRunSnapshot {
@@ -1463,7 +1473,6 @@ function resolveNodeApproval(
       "approvalId",
       "decision",
       "decisionAuditRecordId",
-      "outcomeAuditRecordId",
       "occurredAt",
     ]) ||
     (command.decision !== "approved" && command.decision !== "denied")
@@ -1491,6 +1500,58 @@ function resolveNodeApproval(
     );
   }
   const decision = command.decision;
+  const nextNode = Object.freeze({
+    ...node,
+    protectedApproval: Object.freeze({
+      ...reference,
+      decision,
+      decisionAuditRecordId: auditRecordId(String(command.decisionAuditRecordId)),
+    }),
+  });
+  const nodes = snapshot.nodes.map((candidate) =>
+    candidate.nodeId === nextNode.nodeId ? nextNode : candidate,
+  );
+  return normalizeTeamRunSnapshot({
+    ...snapshot,
+    revision: snapshot.revision + 1,
+    status: deriveRunStatus(nodes),
+    nodes,
+    updatedAt: occurredAt,
+  });
+}
+
+function resolveNodeApproval(
+  snapshot: TeamRunSnapshot,
+  command: Record<string, unknown>,
+): TeamRunSnapshot {
+  if (
+    !hasExactKeys(command, ["type", "nodeId", "approvalId", "outcomeAuditRecordId", "occurredAt"])
+  ) {
+    throw new TeamRunContractError("invalid-transition", "Protected Approval outcome is invalid");
+  }
+  const occurredAt = commandTime(command, snapshot);
+  const node = requireRunNode(snapshot, command.nodeId);
+  const reference = node.protectedApproval;
+  const stableApprovalId = approvalId(String(command.approvalId));
+  const attempt = node.attempts.at(-1);
+  if (
+    node.kind !== "worker" ||
+    node.status !== "approval-blocked" ||
+    node.blockedReason !== "protected-approval" ||
+    reference === null ||
+    reference.approvalId !== stableApprovalId ||
+    reference.decision === null ||
+    reference.decisionAuditRecordId === null ||
+    reference.outcomeAuditRecordId !== null ||
+    attempt?.status !== "blocked" ||
+    attempt.approvalId !== stableApprovalId
+  ) {
+    throw new TeamRunContractError(
+      "invalid-transition",
+      "Protected Approval outcome does not match a recorded decision",
+    );
+  }
+  const decision = reference.decision;
   const nextAttempt = Object.freeze({
     ...attempt,
     status: decision === "approved" ? ("running" as const) : ("failed" as const),
@@ -1503,8 +1564,6 @@ function resolveNodeApproval(
     blockedExplanation: decision === "approved" ? null : "The protected operation was denied.",
     protectedApproval: Object.freeze({
       ...reference,
-      decision,
-      decisionAuditRecordId: auditRecordId(String(command.decisionAuditRecordId)),
       outcomeAuditRecordId: auditRecordId(String(command.outcomeAuditRecordId)),
     }),
     attempts: Object.freeze(
@@ -2085,6 +2144,8 @@ export function transitionTeamRun(
       return completeNode(snapshot, command);
     case "block-node":
       return blockNode(snapshot, command);
+    case "request-node-approval-decision":
+      return requestNodeApprovalDecision(snapshot, command);
     case "resolve-node-approval":
       return resolveNodeApproval(snapshot, command);
     case "resolve-human-feedback":
