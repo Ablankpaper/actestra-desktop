@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  CODING_ARTIFACT_PUBLISH_TOOL_ID,
   CODING_DIFF_TOOL_ID,
   CODING_FILE_READ_TOOL_ID,
   CODING_FILE_WRITE_TOOL_ID,
@@ -185,6 +186,14 @@ export function isolatedCodingPolicySnapshot(): PolicySnapshot {
       resourceKinds: Object.freeze(["repository"]),
       credentialUse: "none",
       toolIds: Object.freeze([CODING_TEST_TOOL_ID]),
+    } satisfies PolicyRule),
+    Object.freeze({
+      id: policyRuleId("rule-p5-coding-artifact-publish-approval"),
+      effect: "require-approval",
+      actions: Object.freeze(["publish.execute"]),
+      resourceKinds: Object.freeze(["repository"]),
+      credentialUse: "none",
+      toolIds: Object.freeze([CODING_ARTIFACT_PUBLISH_TOOL_ID]),
     } satisfies PolicyRule),
   ]);
   return Object.freeze({

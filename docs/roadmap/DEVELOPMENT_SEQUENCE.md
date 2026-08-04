@@ -251,10 +251,30 @@ passes formatting over 206 files, zero-warning lint over 198 files, strict
 TypeScript, the Electron SQLite probe, 68 passing and 1 skipped test files with
 613 passing and 3 skipped tests, deterministic smoke, the 91-source product
 boundary, frozen/downstream contracts, and the
-59-main/3-preload/28-renderer-module production build.
+59-main/3-preload/28-renderer-module production build. Pull request 42 delivered
+that evidence at exact head `a20882abeb6caac3b4f230fde42a7e06965a0730`,
+exact-head CI 30876755457, squash merge
+`e064dc88e717cef093c866cdbc2692d23ed7dd03`, and passing merged-main CI
+30877711241.
 
-Current-slice Git/PR/CI, publish/Artifact flow, and P5.2 phase acceptance remain
-open. P6 CrewAI/Team runtime work has not started.
+The current publish/Artifact slice starts from that exact merge. A main-only
+seventh Tool Gateway capability captures a locked, at-most-1-MiB binary patch
+across tracked, staged, unstaged, and bounded untracked paths without changing
+the real Git index. It remains outside Goose's six MCP tools. The one-shot
+approval handler receives only base commit, byte length, and SHA-256. Approved
+execution re-captures and rejects drift before durable output, event, Artifact,
+Task, Session, and Worker projection writes; cleanup then closes Goose, grant,
+and worktree in order. Denial and drift retain blocked review and the source
+checkout remains unchanged.
+
+The current final production fingerprint passes 5 focused files with 123 tests
+passed and 2 admitted-artifact tests skipped. Its single complete root gate
+passes 68 test files and 618 tests with 1 file and 3 tests skipped, the
+93-source boundary, exact foundation, 196-file/75-source-copy downstream
+contract, strict types, smoke, and the 59/3/28-module production build.
+
+Current-slice Git/PR/review/CI and P5.2 phase acceptance remain open. P5.3 and
+P6 CrewAI/Team runtime work have not started.
 
 ## P0 — Project Foundation
 
@@ -489,8 +509,9 @@ slice previously described as P4.3/F3.1.
    audit all supply the required independent proof.
 3. **P5.2 — isolated coding capability:** create one fixture Git worktree and
    route only closed file, terminal, Git, diff, and test capabilities through
-   the Actestra gateway, with denial, approval, failure, cancellation, and
-   process cleanup evidence.
+   the Actestra gateway, then register one approved main-captured patch as an
+   Actestra Artifact, with denial, approval, drift, failure, cancellation, and
+   process cleanup evidence. Publish remains outside the Goose MCP tool list.
 4. **P5.3 — preserved AionUI coding journey:** project the accepted events and
    artifacts into the retained agent settings, selector, repair, ACP
    conversation, permission, terminal, diff, and test surfaces, then run the
@@ -499,7 +520,8 @@ slice previously described as P4.3/F3.1.
 ### Exit gate
 
 - A repository fixture can be modified, tested, reviewed, and cancelled without
-  writing to the source checkout or bypassing approvals.
+  writing to the source checkout or bypassing approvals; an approved patch can
+  become an Actestra Artifact only after exact re-capture.
 - Unsupported Goose versions fail with a clear, non-destructive error.
 - The admitted runner's source pin, feature set, lock, executable digest,
   license, SBOM, binary audit, network policy, and process cleanup all agree;

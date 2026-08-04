@@ -17,12 +17,15 @@ import {
   sessionId,
   taskId,
   toolInputReference,
+  toolOutputReference,
   toolRequestId,
   workerId,
   workspaceGrantId,
   workspaceId,
   type DomainGraph,
+  type Artifact,
   type ApprovalRequestSnapshot,
+  type ContentReferenceMetadata,
   type ProtectedOperation,
 } from "../../apps/desktop/src/core";
 import { openTestPersistenceUtility } from "../fixtures/persistenceUtility";
@@ -34,6 +37,7 @@ import {
 } from "../../apps/desktop/src/main/workers/isolatedCodingMainService";
 import { createGooseCodingToolInvoker } from "../../apps/desktop/src/main/workers/gooseCodingToolInvoker";
 import { deriveGooseCodingEvidenceIdentity } from "../../apps/desktop/src/main/workers/gooseCodingEvidenceCoordinator";
+import { captureIsolatedCodingPatch } from "../../apps/desktop/src/main/workers/isolatedCodingPatch";
 import type {
   GooseMcpSessionComposition,
   OpenGooseMcpSessionCompositionOptions,
@@ -481,6 +485,549 @@ describe("P5.2 desktop-main isolated coding composition", () => {
     await expect(fs.promises.stat(worktreeRoot)).rejects.toMatchObject({ code: "ENOENT" });
     expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
     expect(await runGit(fixture.repositoryRoot, "status", "--porcelain=v1")).toBe("");
+  }, 15_000);
+
+  it("publishes one approved coding patch as an Actestra Artifact before cleanup", async () => {
+    let fixture!: MainServiceFixture;
+    let graphObservedAtGooseClose: DomainGraph | undefined;
+    let publishSnapshot:
+      | {
+          readonly baseCommit: string;
+          readonly patchByteLength: number;
+          readonly patchSha256: string;
+        }
+      | undefined;
+    let publishDecisionCalls = 0;
+    fixture = await openFixture("goose-publish-artifact", {
+      createToolInvoker(options) {
+        return createGooseCodingToolInvoker(options);
+      },
+      async openGooseSession() {
+        return Object.freeze({
+          info: GOOSE_INFO,
+          privateRoot: path.join(fixture.root, "goose-private", "attempt-publish-artifact"),
+          session: Object.freeze({
+            sessionId: "goose-desktop-main-publish-artifact",
+            setupNotificationKinds: Object.freeze([]),
+          }),
+          toolNames: Object.freeze([]),
+          async prompt() {
+            return Object.freeze({ stopReason: "end_turn" as const, updates: Object.freeze([]) });
+          },
+          async close() {
+            graphObservedAtGooseClose = await fixture.persistence.loadDomainGraph();
+          },
+        });
+      },
+    });
+    const baseCommit = await runGit(fixture.repositoryRoot, "rev-parse", "HEAD");
+    const opened = await fixture.service.openGoose({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-publish-artifact"),
+      displayName: "P5.2 approved coding Artifact publish",
+      commands: {},
+      tests: {},
+      artifact: GOOSE_ARTIFACT,
+      privateRootParent: path.join(fixture.root, "goose-private"),
+      modelId: "actestra-desktop-main-model",
+      modelInvoker: async () =>
+        Object.freeze({
+          type: "message" as const,
+          text: "desktop-main publish result",
+          usage: Object.freeze({ promptTokens: 3, completionTokens: 2 }),
+        }),
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+    });
+    fs.writeFileSync(path.join(opened.worktreeRoot, "answer.txt"), "staged\n", "utf8");
+    await runGit(opened.worktreeRoot, "add", "--", "answer.txt");
+    fs.writeFileSync(path.join(opened.worktreeRoot, "answer.txt"), "after\n", "utf8");
+    fs.writeFileSync(
+      path.join(opened.worktreeRoot, "new-note.txt"),
+      "new artifact input\n",
+      "utf8",
+    );
+    await opened.prompt({ text: "Prepare the isolated coding change for review." });
+
+    const publish = Reflect.get(opened, "publish");
+    expect(publish).toBeTypeOf("function");
+    const publishOptions = {
+      async decisionHandler(request: {
+        readonly approval: ApprovalRequestSnapshot;
+        readonly snapshot: {
+          readonly baseCommit: string;
+          readonly patchByteLength: number;
+          readonly patchSha256: string;
+        };
+        readonly signal: AbortSignal;
+      }) {
+        publishDecisionCalls += 1;
+        expect(Object.keys(request).sort()).toEqual(["approval", "signal", "snapshot"]);
+        expect(request.approval).toMatchObject({
+          state: "pending",
+          operation: {
+            workspaceId: fixture.ids.workspaceId,
+            taskId: fixture.ids.taskId,
+            sessionId: fixture.ids.sessionId,
+            workerId: fixture.ids.workerId,
+            toolId: "actestra.coding.artifact.publish",
+            action: "publish.execute",
+            resourceKind: "repository",
+          },
+        });
+        expect(request.signal.aborted).toBe(false);
+        expect(request.snapshot).toMatchObject({ baseCommit });
+        expect(request.snapshot).not.toHaveProperty("patch");
+        expect(await runGit(opened.worktreeRoot, "diff", "--cached", "--name-only")).toBe(
+          "answer.txt",
+        );
+        publishSnapshot = request.snapshot;
+        return Object.freeze({
+          decision: "approved" as const,
+          actorId: approvalActorId("local-publish-reviewer"),
+        });
+      },
+    };
+    const result = await (
+      publish as (options: {
+        readonly decisionHandler: (request: {
+          readonly approval: ApprovalRequestSnapshot;
+          readonly snapshot: {
+            readonly baseCommit: string;
+            readonly patchByteLength: number;
+            readonly patchSha256: string;
+          };
+          readonly signal: AbortSignal;
+        }) => Promise<{
+          readonly decision: "approved" | "denied";
+          readonly actorId: ReturnType<typeof approvalActorId>;
+        }>;
+      }) => Promise<{
+        readonly status: "published";
+        readonly baseCommit: string;
+        readonly artifact: Artifact;
+        readonly output: ContentReferenceMetadata;
+      }>
+    )(publishOptions);
+
+    expect(result).toMatchObject({
+      status: "published",
+      baseCommit,
+      artifact: {
+        workspaceId: fixture.ids.workspaceId,
+        taskId: fixture.ids.taskId,
+        sessionId: fixture.ids.sessionId,
+        kind: "file",
+        label: "Actestra coding patch",
+        state: "available",
+      },
+      output: {
+        kind: "tool-output",
+        classification: "task-content",
+        mediaType: "text/plain; charset=utf-8",
+      },
+    });
+    expect(result.artifact.id).toMatch(/^artifact-coding-[a-f0-9]{64}$/u);
+    expect(result.output.reference).toMatch(/^coding-publish-output-[a-f0-9]{64}$/u);
+    expect(result.output.owner).toMatchObject({
+      workspaceId: fixture.ids.workspaceId,
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+      grantId: opened.grant.grantId,
+    });
+    expect(result.output.sha256).toBe(publishSnapshot?.patchSha256);
+    expect(result.output.byteLength).toBe(publishSnapshot?.patchByteLength);
+    const publishedContent = await fixture.persistence.resolveContentReference({
+      contractVersion: WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
+      reference: toolOutputReference(result.output.reference),
+      kind: "tool-output",
+      owner: result.output.owner,
+      resolvedAt: fixture.clock.now(),
+      consume: false,
+    });
+    expect(publishedContent.content).toContain("diff --git a/answer.txt b/answer.txt");
+    expect(publishedContent.content).toContain("-before");
+    expect(publishedContent.content).toContain("+after");
+    expect(publishedContent.content).toContain("diff --git a/new-note.txt b/new-note.txt");
+    expect(publishedContent.content).toContain("+new artifact input");
+
+    const events = await fixture.persistence.replayEvents(opened.streamId);
+    expect(events.map((event) => event.type)).toEqual([
+      "task.started",
+      "task.updated",
+      "task.updated",
+      "tool.requested",
+      "approval.required",
+      "task.updated",
+      "worker.blocked",
+      "approval.resolved",
+      "task.updated",
+      "tool.started",
+      "tool.completed",
+      "artifact.created",
+      "task.completed",
+    ]);
+    expect(events.at(-2)).toMatchObject({
+      type: "artifact.created",
+      payload: {
+        artifactId: result.artifact.id,
+        kind: "file",
+        label: "Actestra coding patch",
+      },
+    });
+    expect(events.at(-1)).toMatchObject({
+      type: "task.completed",
+      payload: { from: "running", to: "completed" },
+    });
+    expect(graphObservedAtGooseClose).toMatchObject({
+      tasks: [{ id: fixture.ids.taskId, state: "completed" }],
+      sessions: [{ id: fixture.ids.sessionId, state: "completed" }],
+      workers: [{ id: fixture.ids.workerId, state: "stopping" }],
+      artifacts: [{ id: result.artifact.id, state: "available" }],
+    });
+    const graphAfterPublish = await fixture.persistence.loadDomainGraph();
+    expect(graphAfterPublish).toMatchObject({
+      tasks: [{ id: fixture.ids.taskId, state: "completed" }],
+      sessions: [{ id: fixture.ids.sessionId, state: "completed" }],
+      workers: [{ id: fixture.ids.workerId, state: "stopped" }],
+      artifacts: [result.artifact],
+    });
+    expect(graphAfterPublish.tasks[0]?.activeSessionId).toBeUndefined();
+    await expect(fs.promises.stat(opened.worktreeRoot)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(
+      fixture.persistence.getActiveWorkspaceGrant(fixture.ids.workspaceId),
+    ).resolves.toBeNull();
+    expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
+    expect(await runGit(fixture.repositoryRoot, "status", "--porcelain=v1")).toBe("");
+    const replayed = await opened.publish(publishOptions);
+    expect(replayed).toEqual(result);
+    expect(publishDecisionCalls).toBe(1);
+    await opened.close();
+    expect(
+      (await fixture.persistence.replayEvents(opened.streamId)).map(({ type }) => type),
+    ).not.toContain("task.cancelled");
+  }, 15_000);
+
+  it("rejects executable Git configuration while capturing a publish patch", async () => {
+    let fixture!: MainServiceFixture;
+    fixture = await openFixture("goose-publish-config-denied", {
+      createToolInvoker(options) {
+        return createGooseCodingToolInvoker(options);
+      },
+      async openGooseSession() {
+        return Object.freeze({
+          info: GOOSE_INFO,
+          privateRoot: path.join(fixture.root, "goose-private", "attempt-publish-config-denied"),
+          session: Object.freeze({
+            sessionId: "goose-desktop-main-publish-config-denied",
+            setupNotificationKinds: Object.freeze([]),
+          }),
+          toolNames: Object.freeze([]),
+          async prompt() {
+            return Object.freeze({ stopReason: "end_turn" as const, updates: Object.freeze([]) });
+          },
+          async close() {},
+        });
+      },
+    });
+    const opened = await fixture.service.openGoose({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-publish-config-denied"),
+      displayName: "P5.2 rejected coding Artifact filter configuration",
+      commands: {},
+      tests: {},
+      artifact: GOOSE_ARTIFACT,
+      privateRootParent: path.join(fixture.root, "goose-private"),
+      modelId: "actestra-desktop-main-model",
+      modelInvoker: async () =>
+        Object.freeze({
+          type: "message" as const,
+          text: "desktop-main publish configuration denial",
+          usage: Object.freeze({ promptTokens: 2, completionTokens: 2 }),
+        }),
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+    });
+    fs.writeFileSync(path.join(opened.worktreeRoot, "answer.txt"), "filtered\n", "utf8");
+    await runGit(
+      opened.worktreeRoot,
+      "config",
+      "--local",
+      "filter.actestra-publish.process",
+      "/usr/bin/false",
+    );
+    try {
+      await expect(
+        captureIsolatedCodingPatch({
+          worktreeRoot: opened.worktreeRoot,
+          gitDirectory: opened.gitDirectory,
+          gitCommonDirectory: opened.gitCommonDirectory,
+        }),
+      ).rejects.toMatchObject({
+        name: "IsolatedCodingPatchError",
+        code: "repository-config-denied",
+      });
+    } finally {
+      await runGit(
+        opened.worktreeRoot,
+        "config",
+        "--local",
+        "--unset-all",
+        "filter.actestra-publish.process",
+      );
+    }
+    expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
+    await opened.close();
+  }, 15_000);
+
+  it("keeps the reviewed worktree blocked when the user denies Artifact publish", async () => {
+    let fixture!: MainServiceFixture;
+    fixture = await openFixture("goose-publish-denied", {
+      createToolInvoker(options) {
+        return createGooseCodingToolInvoker(options);
+      },
+      async openGooseSession() {
+        return Object.freeze({
+          info: GOOSE_INFO,
+          privateRoot: path.join(fixture.root, "goose-private", "attempt-publish-denied"),
+          session: Object.freeze({
+            sessionId: "goose-desktop-main-publish-denied",
+            setupNotificationKinds: Object.freeze([]),
+          }),
+          toolNames: Object.freeze([]),
+          async prompt() {
+            return Object.freeze({ stopReason: "end_turn" as const, updates: Object.freeze([]) });
+          },
+          async close() {},
+        });
+      },
+    });
+    const opened = await fixture.service.openGoose({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-publish-denied"),
+      displayName: "P5.2 denied coding Artifact publish",
+      commands: {},
+      tests: {},
+      artifact: GOOSE_ARTIFACT,
+      privateRootParent: path.join(fixture.root, "goose-private"),
+      modelId: "actestra-desktop-main-model",
+      modelInvoker: async () =>
+        Object.freeze({
+          type: "message" as const,
+          text: "desktop-main publish denial",
+          usage: Object.freeze({ promptTokens: 2, completionTokens: 1 }),
+        }),
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+    });
+    fs.writeFileSync(path.join(opened.worktreeRoot, "answer.txt"), "denied\n", "utf8");
+    await opened.prompt({ text: "Prepare a change that will not be published." });
+
+    const result = await opened.publish({
+      async decisionHandler() {
+        return Object.freeze({
+          decision: "denied" as const,
+          actorId: approvalActorId("local-publish-reviewer"),
+        });
+      },
+    });
+
+    expect(result).toMatchObject({ status: "denied", approval: { state: "denied" } });
+    const reviewedGraph = await fixture.persistence.loadDomainGraph();
+    expect(reviewedGraph).toMatchObject({
+      tasks: [{ id: fixture.ids.taskId, state: "blocked" }],
+      sessions: [{ id: fixture.ids.sessionId, state: "blocked" }],
+      workers: [{ id: fixture.ids.workerId, state: "ready" }],
+      artifacts: [],
+    });
+    expect(fs.existsSync(opened.worktreeRoot)).toBe(true);
+    await expect(
+      fixture.persistence.getActiveWorkspaceGrant(fixture.ids.workspaceId),
+    ).resolves.toMatchObject({ state: "active", rootPath: opened.worktreeRoot });
+    const events = await fixture.persistence.replayEvents(opened.streamId);
+    expect(events.slice(-2).map(({ type }) => type)).toEqual(["tool.failed", "task.updated"]);
+    expect(events.at(-1)).toMatchObject({
+      payload: {
+        from: "running",
+        to: "blocked",
+        reason: "coding-publish-denied",
+      },
+    });
+    expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
+
+    await opened.close();
+    await expect(fs.promises.stat(opened.worktreeRoot)).rejects.toMatchObject({ code: "ENOENT" });
+  }, 15_000);
+
+  it("rejects a worktree change after approval and returns to blocked review", async () => {
+    let fixture!: MainServiceFixture;
+    fixture = await openFixture("goose-publish-snapshot-drift", {
+      createToolInvoker(options) {
+        return createGooseCodingToolInvoker(options);
+      },
+      async openGooseSession() {
+        return Object.freeze({
+          info: GOOSE_INFO,
+          privateRoot: path.join(fixture.root, "goose-private", "attempt-publish-snapshot-drift"),
+          session: Object.freeze({
+            sessionId: "goose-desktop-main-publish-snapshot-drift",
+            setupNotificationKinds: Object.freeze([]),
+          }),
+          toolNames: Object.freeze([]),
+          async prompt() {
+            return Object.freeze({ stopReason: "end_turn" as const, updates: Object.freeze([]) });
+          },
+          async close() {},
+        });
+      },
+    });
+    const opened = await fixture.service.openGoose({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-publish-snapshot-drift"),
+      displayName: "P5.2 drifted coding Artifact publish",
+      commands: {},
+      tests: {},
+      artifact: GOOSE_ARTIFACT,
+      privateRootParent: path.join(fixture.root, "goose-private"),
+      modelId: "actestra-desktop-main-model",
+      modelInvoker: async () =>
+        Object.freeze({
+          type: "message" as const,
+          text: "desktop-main publish snapshot drift",
+          usage: Object.freeze({ promptTokens: 2, completionTokens: 2 }),
+        }),
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+    });
+    const changedFile = path.join(opened.worktreeRoot, "answer.txt");
+    fs.writeFileSync(changedFile, "first reviewed change\n", "utf8");
+    await opened.prompt({ text: "Prepare one reviewed change." });
+
+    await expect(
+      opened.publish({
+        async decisionHandler() {
+          fs.writeFileSync(changedFile, "changed after approval snapshot\n", "utf8");
+          return Object.freeze({
+            decision: "approved" as const,
+            actorId: approvalActorId("local-publish-reviewer"),
+          });
+        },
+      }),
+    ).rejects.toMatchObject({
+      name: "GooseCodingArtifactPublisherError",
+      code: "gateway-failed",
+    });
+    const graphAfterDrift = await fixture.persistence.loadDomainGraph();
+    expect(graphAfterDrift).toMatchObject({
+      tasks: [{ id: fixture.ids.taskId, state: "blocked" }],
+      sessions: [{ id: fixture.ids.sessionId, state: "blocked" }],
+      workers: [{ id: fixture.ids.workerId, state: "ready" }],
+      artifacts: [],
+    });
+    expect(fs.existsSync(opened.worktreeRoot)).toBe(true);
+    const events = await fixture.persistence.replayEvents(opened.streamId);
+    expect(events.slice(-2).map(({ type }) => type)).toEqual(["tool.failed", "task.updated"]);
+    expect(events.at(-1)).toMatchObject({
+      payload: {
+        from: "running",
+        to: "blocked",
+        reason: "coding-publish-snapshot-changed",
+      },
+    });
+    expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
+
+    await opened.close();
+    await expect(fs.promises.stat(opened.worktreeRoot)).rejects.toMatchObject({ code: "ENOENT" });
+  }, 15_000);
+
+  it("recovers a committed publish output when its persistence response is lost", async () => {
+    let fixture!: MainServiceFixture;
+    fixture = await openFixture("goose-publish-output-response-loss", {
+      createToolInvoker(options) {
+        return createGooseCodingToolInvoker(options);
+      },
+      async openGooseSession() {
+        return Object.freeze({
+          info: GOOSE_INFO,
+          privateRoot: path.join(
+            fixture.root,
+            "goose-private",
+            "attempt-publish-output-response-loss",
+          ),
+          session: Object.freeze({
+            sessionId: "goose-desktop-main-publish-output-response-loss",
+            setupNotificationKinds: Object.freeze([]),
+          }),
+          toolNames: Object.freeze([]),
+          async prompt() {
+            return Object.freeze({ stopReason: "end_turn" as const, updates: Object.freeze([]) });
+          },
+          async close() {},
+        });
+      },
+    });
+    const opened = await fixture.service.openGoose({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-publish-output-response-loss"),
+      displayName: "P5.2 response-loss coding Artifact publish",
+      commands: {},
+      tests: {},
+      artifact: GOOSE_ARTIFACT,
+      privateRootParent: path.join(fixture.root, "goose-private"),
+      modelId: "actestra-desktop-main-model",
+      modelInvoker: async () =>
+        Object.freeze({
+          type: "message" as const,
+          text: "desktop-main publish response loss",
+          usage: Object.freeze({ promptTokens: 2, completionTokens: 2 }),
+        }),
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+    });
+    fs.writeFileSync(path.join(opened.worktreeRoot, "answer.txt"), "response lost\n", "utf8");
+    await opened.prompt({ text: "Prepare a response-loss-safe coding patch." });
+    const storeContentReference = fixture.persistence.storeContentReference.bind(
+      fixture.persistence,
+    );
+    let publishOutputStores = 0;
+    vi.spyOn(fixture.persistence, "storeContentReference").mockImplementation(async (input) => {
+      const result = await storeContentReference(input);
+      if (input.kind === "tool-output" && input.reference.startsWith("coding-publish-output-")) {
+        publishOutputStores += 1;
+        throw new Error("Injected committed publish-output response loss");
+      }
+      return result;
+    });
+
+    const result = await opened.publish({
+      async decisionHandler() {
+        return Object.freeze({
+          decision: "approved" as const,
+          actorId: approvalActorId("local-publish-reviewer"),
+        });
+      },
+    });
+
+    expect(result.status).toBe("published");
+    expect(publishOutputStores).toBe(1);
+    const graphAfterPublish = await fixture.persistence.loadDomainGraph();
+    expect(graphAfterPublish.artifacts).toHaveLength(1);
+    expect(graphAfterPublish.tasks[0]?.state).toBe("completed");
+    const events = await fixture.persistence.replayEvents(opened.streamId);
+    expect(events.filter(({ type }) => type === "artifact.created")).toHaveLength(1);
+    expect(events.filter(({ type }) => type === "task.completed")).toHaveLength(1);
+    expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
   }, 15_000);
 
   it("persists approval and tool evidence before an approved result returns to Goose", async () => {

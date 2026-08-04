@@ -785,7 +785,7 @@ Pull request 41 delivered those approval outcomes at exact head
 squash merge `7dfc4973021d68d5df0ded12fa218ecd42da9691`, and passing
 merged-main CI 30871703449.
 
-The current durable-evidence slice keeps Actestra Core authoritative across the
+The delivered durable-evidence slice keeps Actestra Core authoritative across the
 real Goose prompt/tool loop. Electron main derives one stable SHA-256 stream and
 correlation identity from the exact Actestra Workspace, Task, Session, and
 Worker, writes `task.started` before Goose opening, and normalizes only bounded
@@ -819,13 +819,45 @@ The final-byte root gate passes formatting over 206 files, zero-warning lint
 over 198 files, strict TypeScript, the Electron SQLite probe, 68 passing and 1
 skipped test files with 613 passing and 3 skipped tests, deterministic smoke,
 the 91-source product boundary, the exact 1,766-file foundation, the downstream
-contract, and the 59-main/3-preload/28-renderer-module production build. Git and
-remote evidence remain pending for this branch.
+contract, and the 59-main/3-preload/28-renderer-module production build. Pull
+request 42 delivered those bytes at exact head
+`a20882abeb6caac3b4f230fde42a7e06965a0730`, exact-head CI 30876755457,
+squash merge `e064dc88e717cef093c866cdbc2692d23ed7dd03`, and merged-main CI
+30877711241.
+
+The current main-only publish boundary starts only from the blocked review
+projection. It captures a maximum 1 MiB base-to-worktree binary patch across
+tracked, staged, unstaged, and bounded untracked paths. A private temporary Git
+index admits untracked content without modifying the real index. Common and
+worktree configuration locks cover executable filter/include denial, exact Git
+binding, inventory, and capture. The source checkout remains outside the target.
+
+`actestra.coding.artifact.publish` is registered only in Electron main's
+existing Tool Gateway executor. The Goose MCP list and ACP discovery remain the
+same six file, terminal, Git, diff, and test tools. Main stores the patch under
+an exact Actestra content reference; the approval handler receives only base
+commit, byte length, SHA-256, approval metadata, and an abort signal. Approved
+execution re-captures and byte-verifies the worktree before consuming the
+one-shot approval.
+
+Output content, `tool.started`, `tool.completed`, `artifact.created`, one
+available file `Artifact`, and completed Task/Session plus stopping Worker state
+are durable before Goose, grant, and worktree cleanup. Denial or post-approval
+drift records bounded failure evidence, restores blocked/blocked/ready, and
+retains the worktree. Stable derived references make one in-process completed
+publish replay-safe without another approval or duplicate event.
+
+The current final production fingerprint passes 5 focused files with 123 tests
+passed and 2 admitted-artifact tests skipped, plus one complete root gate: 68
+passing and 1 skipped test files with 618 passing and 3 skipped tests, the
+93-source product boundary, exact frozen foundation, the 196-file downstream
+contract with 4 R0 invariants and 75 source copies, strict types, smoke, and the
+59-main/3-preload/28-renderer-module build.
 
 This composition is still not P5.2 acceptance. The contained real Goose
-prompt/tool loop, desktop-main lifecycle, and approval outcomes are remotely
-delivered; durable normalized Task/Session evidence is locally proved. Current-
-slice remote delivery plus publish and Artifact registration remain open. No
+prompt/tool loop, desktop-main lifecycle, approval outcomes, and durable
+normalized evidence are remotely delivered; publish and Artifact registration
+are locally proved but await current-slice Git/review/CI/merge closure. No
 retained-AionUI coding journey is claimed.
 
 ## Event contract

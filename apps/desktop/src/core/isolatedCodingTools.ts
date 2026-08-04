@@ -1,13 +1,18 @@
 import {
   toolId,
+  toolInputReference,
+  toolOutputReference,
   type ProtectedAction,
   type ProtectedResourceKind,
   type ToolId,
+  type ToolInputReference,
+  type ToolOutputReference,
 } from "./privilegedServices";
 import { assertPortableRelativePath } from "./scopedNativeTools";
 
 export const ISOLATED_CODING_TOOL_INPUT_CONTRACT_VERSION = 1 as const;
 export const MAX_ISOLATED_CODING_TEXT_BYTES = 65_536;
+export const MAX_ISOLATED_CODING_PATCH_BYTES = 1024 * 1024;
 
 export const CODING_FILE_READ_TOOL_ID = toolId("actestra.coding.file.read-text");
 export const CODING_FILE_WRITE_TOOL_ID = toolId("actestra.coding.file.write-text");
@@ -15,6 +20,7 @@ export const CODING_TERMINAL_TOOL_ID = toolId("actestra.coding.terminal.run");
 export const CODING_GIT_TOOL_ID = toolId("actestra.coding.git.inspect");
 export const CODING_DIFF_TOOL_ID = toolId("actestra.coding.diff.inspect");
 export const CODING_TEST_TOOL_ID = toolId("actestra.coding.test.run");
+export const CODING_ARTIFACT_PUBLISH_TOOL_ID = toolId("actestra.coding.artifact.publish");
 
 export const CODING_TOOL_IDS = Object.freeze([
   CODING_FILE_READ_TOOL_ID,
@@ -25,11 +31,17 @@ export const CODING_TOOL_IDS = Object.freeze([
   CODING_TEST_TOOL_ID,
 ] as const);
 
+export const REGISTERED_ISOLATED_CODING_TOOL_IDS = Object.freeze([
+  ...CODING_TOOL_IDS,
+  CODING_ARTIFACT_PUBLISH_TOOL_ID,
+] as const);
+
 export type IsolatedCodingToolId = (typeof CODING_TOOL_IDS)[number];
+export type RegisteredIsolatedCodingToolId = (typeof REGISTERED_ISOLATED_CODING_TOOL_IDS)[number];
 export type IsolatedCodingGitQuery = "status" | "head";
 
 export interface IsolatedCodingToolDefinition {
-  readonly toolId: IsolatedCodingToolId;
+  readonly toolId: RegisteredIsolatedCodingToolId;
   readonly action: ProtectedAction;
   readonly resourceKind: ProtectedResourceKind;
   readonly timeoutMs: number;
@@ -66,13 +78,23 @@ export interface CodingTestInput {
   readonly testId: string;
 }
 
+export interface CodingArtifactPublishInput {
+  readonly contractVersion: typeof ISOLATED_CODING_TOOL_INPUT_CONTRACT_VERSION;
+  readonly baseCommit: string;
+  readonly patchReference: ToolInputReference;
+  readonly patchByteLength: number;
+  readonly patchSha256: string;
+  readonly outputReference: ToolOutputReference;
+}
+
 export type IsolatedCodingToolInput =
   | CodingFileReadInput
   | CodingFileWriteInput
   | CodingTerminalInput
   | CodingGitInput
   | CodingDiffInput
-  | CodingTestInput;
+  | CodingTestInput
+  | CodingArtifactPublishInput;
 
 export type IsolatedCodingToolContractErrorCode = "invalid-input" | "unsupported-tool";
 
@@ -123,6 +145,12 @@ const DEFINITIONS: Readonly<Record<string, IsolatedCodingToolDefinition>> = Obje
     action: "shell.execute",
     resourceKind: "repository",
     timeoutMs: 60_000,
+  }),
+  [CODING_ARTIFACT_PUBLISH_TOOL_ID]: Object.freeze({
+    toolId: CODING_ARTIFACT_PUBLISH_TOOL_ID,
+    action: "publish.execute",
+    resourceKind: "repository",
+    timeoutMs: 5_000,
   }),
 });
 
@@ -305,6 +333,75 @@ export function parseCodingToolInput(
       return {
         contractVersion: ISOLATED_CODING_TOOL_INPUT_CONTRACT_VERSION,
         testId: value.testId,
+      };
+    case CODING_ARTIFACT_PUBLISH_TOOL_ID:
+      assertExactKeys(value, [
+        "contractVersion",
+        "baseCommit",
+        "patchReference",
+        "patchByteLength",
+        "patchSha256",
+        "outputReference",
+      ]);
+      if (typeof value.baseCommit !== "string" || !/^[a-f0-9]{40,64}$/u.test(value.baseCommit)) {
+        throw new IsolatedCodingToolContractError(
+          "invalid-input",
+          "Coding publish baseCommit must be a full Git object identifier",
+        );
+      }
+      if (typeof value.patchReference !== "string") {
+        throw new IsolatedCodingToolContractError(
+          "invalid-input",
+          "Coding publish patchReference must be an identifier",
+        );
+      }
+      try {
+        toolInputReference(value.patchReference);
+      } catch (error) {
+        throw new IsolatedCodingToolContractError(
+          "invalid-input",
+          "Coding publish patchReference is invalid",
+          { cause: error },
+        );
+      }
+      if (
+        !Number.isSafeInteger(value.patchByteLength) ||
+        (value.patchByteLength as number) < 1 ||
+        (value.patchByteLength as number) > MAX_ISOLATED_CODING_PATCH_BYTES
+      ) {
+        throw new IsolatedCodingToolContractError(
+          "invalid-input",
+          `Coding publish patchByteLength must be between 1 and ${MAX_ISOLATED_CODING_PATCH_BYTES}`,
+        );
+      }
+      if (typeof value.patchSha256 !== "string" || !/^[a-f0-9]{64}$/u.test(value.patchSha256)) {
+        throw new IsolatedCodingToolContractError(
+          "invalid-input",
+          "Coding publish patchSha256 must be a SHA-256 digest",
+        );
+      }
+      if (typeof value.outputReference !== "string") {
+        throw new IsolatedCodingToolContractError(
+          "invalid-input",
+          "Coding publish outputReference must be an identifier",
+        );
+      }
+      try {
+        toolOutputReference(value.outputReference);
+      } catch (error) {
+        throw new IsolatedCodingToolContractError(
+          "invalid-input",
+          "Coding publish outputReference is invalid",
+          { cause: error },
+        );
+      }
+      return {
+        contractVersion: ISOLATED_CODING_TOOL_INPUT_CONTRACT_VERSION,
+        baseCommit: value.baseCommit,
+        patchReference: value.patchReference as ToolInputReference,
+        patchByteLength: value.patchByteLength as number,
+        patchSha256: value.patchSha256,
+        outputReference: value.outputReference as ToolOutputReference,
       };
     default:
       throw new IsolatedCodingToolContractError(

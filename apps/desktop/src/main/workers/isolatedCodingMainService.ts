@@ -33,6 +33,11 @@ import {
   GooseCodingEvidenceCoordinator,
 } from "./gooseCodingEvidenceCoordinator";
 import {
+  createGooseCodingArtifactPublisher,
+  type GooseCodingPublishOptions,
+  type GooseCodingPublishResult,
+} from "./gooseCodingArtifactPublisher";
+import {
   createGooseCodingToolInvoker,
   type CreateGooseCodingToolInvokerOptions,
   type GooseCodingApprovalDecisionHandler,
@@ -99,6 +104,7 @@ export interface GooseCodingMainSession
   extends IsolatedCodingMainSession, GooseMcpSessionComposition {
   readonly streamId: EventStreamId;
   readonly correlationId: CorrelationId;
+  publish(options: GooseCodingPublishOptions): Promise<GooseCodingPublishResult>;
 }
 
 export interface IsolatedCodingMainServiceDependencies {
@@ -410,6 +416,20 @@ export function createIsolatedCodingMainService(
       });
       await evidence.start();
       const activeEvidence = evidence;
+      const artifactPublisher = createGooseCodingArtifactPublisher({
+        persistence: options.persistence,
+        clock: options.clock,
+        grant: codingSession.grant,
+        worktreeRoot: codingSession.worktreeRoot,
+        gitDirectory: codingSession.gitDirectory,
+        gitCommonDirectory: codingSession.gitCommonDirectory,
+        taskId: sessionOptions.taskId,
+        sessionId: sessionOptions.sessionId,
+        workerId: sessionOptions.workerId,
+        toolGateway: codingSession.toolGateway,
+        approvalService: codingSession.approvalService,
+        evidence: activeEvidence,
+      });
       const toolInvoker = dependencies.createToolInvoker({
         persistence: options.persistence,
         clock: options.clock,
@@ -446,6 +466,10 @@ export function createIsolatedCodingMainService(
       let admittedPromptOptions: GooseMcpSessionPromptOptions | undefined;
       let rawPrompt: ReturnType<GooseMcpSessionComposition["prompt"]> | undefined;
       let promptWithEvidence: ReturnType<GooseMcpSessionComposition["prompt"]> | undefined;
+      let publishController: AbortController | undefined;
+      let publishFinished = false;
+      let admittedPublishOptions: GooseCodingPublishOptions | undefined;
+      let publishPromise: Promise<GooseCodingPublishResult> | undefined;
       exposed = Object.freeze({
         approvalService: codingSession.approvalService,
         policyEngine: codingSession.policyEngine,
@@ -501,11 +525,61 @@ export function createIsolatedCodingMainService(
           }
           return promptWithEvidence;
         },
+        publish(publishOptions: GooseCodingPublishOptions): Promise<GooseCodingPublishResult> {
+          if (publishPromise !== undefined) {
+            if (admittedPublishOptions?.decisionHandler !== publishOptions.decisionHandler) {
+              return Promise.reject(
+                new IsolatedCodingMainServiceError(
+                  "invalid-options",
+                  "A Coding Artifact publish retry must use the original decision handler",
+                ),
+              );
+            }
+            return publishPromise;
+          }
+          if (gooseClosed || codingClosed) {
+            return Promise.reject(
+              new IsolatedCodingMainServiceError(
+                "closed",
+                "Desktop-main Goose coding session is already closed",
+              ),
+            );
+          }
+          if (promptWithEvidence === undefined) {
+            return Promise.reject(
+              new IsolatedCodingMainServiceError(
+                "invalid-options",
+                "Coding Artifact publish requires completed prompt review evidence",
+              ),
+            );
+          }
+          admittedPublishOptions = Object.freeze({ ...publishOptions });
+          publishController ??= new AbortController();
+          publishPromise ??= artifactPublisher
+            .publish(admittedPublishOptions, publishController.signal)
+            .then(async (result) => {
+              publishFinished = true;
+              if (result.status === "published") {
+                await exposed.close();
+              }
+              return result;
+            })
+            .catch((error: unknown) => {
+              publishPromise = undefined;
+              admittedPublishOptions = undefined;
+              publishController = undefined;
+              throw error;
+            });
+          return publishPromise;
+        },
         close(): Promise<void> {
           if (gooseClosed && codingClosed && evidenceClosed) {
             return Promise.resolve();
           }
           sessionClosePromise ??= (async () => {
+            if (!publishFinished && publishController !== undefined) {
+              publishController.abort("coding-session-closed");
+            }
             await activeEvidence.cancel();
             const failures: unknown[] = [];
             if (!gooseClosed) {

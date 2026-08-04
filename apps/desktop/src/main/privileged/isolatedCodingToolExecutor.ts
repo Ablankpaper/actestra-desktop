@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
@@ -7,24 +7,28 @@ import process from "node:process";
 import { promisify } from "node:util";
 import {
   CODING_DIFF_TOOL_ID,
+  CODING_ARTIFACT_PUBLISH_TOOL_ID,
   CODING_FILE_READ_TOOL_ID,
   CODING_FILE_WRITE_TOOL_ID,
   CODING_GIT_TOOL_ID,
   CODING_TERMINAL_TOOL_ID,
   CODING_TEST_TOOL_ID,
-  CODING_TOOL_IDS,
+  REGISTERED_ISOLATED_CODING_TOOL_IDS,
   MAX_ISOLATED_CODING_TEXT_BYTES,
   PRIVILEGED_CONTRACT_VERSION,
   ProtectedToolExecutionError,
   WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
   assertAuthorizationGrant,
+  assertPersistContentReferenceResult,
   assertProtectedOperation,
+  assertResolvedContentReference,
   authorizationMatchesOperation,
   codingToolDefinition,
   instant,
   parseCodingToolInput,
   toolId,
   toolOutputReference,
+  type CodingArtifactPublishInput,
   type CodingFileReadInput,
   type CodingFileWriteInput,
   type CodingGitInput,
@@ -43,6 +47,7 @@ import {
   type WorkspaceGrant,
 } from "../../core";
 import type { IsolatedCodingProcessDefinition } from "./isolatedCodingToolPlatform";
+import { captureIsolatedCodingPatch } from "../workers/isolatedCodingPatch";
 
 const execFileAsync = promisify(execFile);
 const GIT_EXECUTABLE = "/usr/bin/git";
@@ -969,6 +974,90 @@ async function storeOutput(
   return outputRef;
 }
 
+async function storePublishedPatch(
+  config: IsolatedCodingToolExecutorConfig,
+  owner: ContentReferenceOwner,
+  input: CodingArtifactPublishInput,
+  patch: string,
+  signal: AbortSignal,
+): Promise<ToolOutputReference> {
+  throwIfCancelled(signal);
+  let stored;
+  try {
+    stored = await config.persistence.storeContentReference({
+      contractVersion: WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
+      reference: input.outputReference,
+      kind: "tool-output",
+      owner,
+      classification: "task-content",
+      mediaType: "text/plain; charset=utf-8",
+      content: patch,
+      createdAt: config.clock.now(),
+    });
+    assertPersistContentReferenceResult(stored);
+  } catch (error) {
+    let committedMatches = false;
+    try {
+      const committed = await config.persistence.resolveContentReference({
+        contractVersion: WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
+        reference: input.outputReference,
+        kind: "tool-output",
+        owner,
+        resolvedAt: config.clock.now(),
+        consume: false,
+      });
+      assertResolvedContentReference(committed);
+      committedMatches =
+        committed.content === patch &&
+        committed.metadata.reference === input.outputReference &&
+        committed.metadata.kind === "tool-output" &&
+        committed.metadata.owner.workspaceId === owner.workspaceId &&
+        committed.metadata.owner.taskId === owner.taskId &&
+        committed.metadata.owner.sessionId === owner.sessionId &&
+        committed.metadata.owner.workerId === owner.workerId &&
+        committed.metadata.owner.requestId === owner.requestId &&
+        committed.metadata.owner.grantId === owner.grantId &&
+        committed.metadata.classification === "task-content" &&
+        committed.metadata.mediaType === "text/plain; charset=utf-8" &&
+        committed.metadata.byteLength === input.patchByteLength &&
+        committed.metadata.sha256 === input.patchSha256;
+    } catch {
+      // Preserve the original store failure when its exact commit cannot be proven.
+    }
+    if (committedMatches) {
+      throwIfCancelled(signal, true);
+      return input.outputReference;
+    }
+    throw executionError(
+      "output-reference-unavailable",
+      "Coding publish output evidence could not be persisted",
+      { cause: error, mayHaveExecuted: true },
+    );
+  }
+  if (
+    stored.metadata.reference !== input.outputReference ||
+    stored.metadata.kind !== "tool-output" ||
+    stored.metadata.owner.workspaceId !== owner.workspaceId ||
+    stored.metadata.owner.taskId !== owner.taskId ||
+    stored.metadata.owner.sessionId !== owner.sessionId ||
+    stored.metadata.owner.workerId !== owner.workerId ||
+    stored.metadata.owner.requestId !== owner.requestId ||
+    stored.metadata.owner.grantId !== owner.grantId ||
+    stored.metadata.classification !== "task-content" ||
+    stored.metadata.mediaType !== "text/plain; charset=utf-8" ||
+    stored.metadata.byteLength !== input.patchByteLength ||
+    stored.metadata.sha256 !== input.patchSha256
+  ) {
+    throw executionError(
+      "output-reference-unavailable",
+      "Coding publish output persistence returned mismatched evidence",
+      { mayHaveExecuted: true },
+    );
+  }
+  throwIfCancelled(signal, true);
+  return input.outputReference;
+}
+
 function ownerFor(request: ToolExecutionRequest, grant: WorkspaceGrant): ContentReferenceOwner {
   return Object.freeze({
     workspaceId: request.operation.workspaceId,
@@ -991,7 +1080,7 @@ export class IsolatedCodingToolExecutor implements ProtectedToolExecutor {
       tests: snapshotProcessRegistry(config.tests, "test"),
     });
     this.manifests = new Map(
-      CODING_TOOL_IDS.map((registeredTool) => {
+      REGISTERED_ISOLATED_CODING_TOOL_IDS.map((registeredTool) => {
         const definition = codingToolDefinition(registeredTool);
         return [
           registeredTool,
@@ -1148,6 +1237,70 @@ export class IsolatedCodingToolExecutor implements ProtectedToolExecutor {
           );
           output = { contractVersion: 1, type: "diff", output: diff };
           break;
+        }
+        case CODING_ARTIFACT_PUBLISH_TOOL_ID: {
+          const publishInput = input as CodingArtifactPublishInput;
+          const publishPatch = await this.config.persistence
+            .resolveContentReference({
+              contractVersion: WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
+              reference: publishInput.patchReference,
+              kind: "tool-input",
+              owner,
+              resolvedAt: this.now(),
+              consume: true,
+            })
+            .catch((error: unknown) => {
+              throw executionError(
+                "input-ownership-denied",
+                "Coding publish patch is unavailable for this exact request owner",
+                { cause: error },
+              );
+            });
+          assertResolvedContentReference(publishPatch);
+          if (
+            publishPatch.metadata.reference !== publishInput.patchReference ||
+            publishPatch.metadata.kind !== "tool-input" ||
+            publishPatch.metadata.owner.workspaceId !== owner.workspaceId ||
+            publishPatch.metadata.owner.taskId !== owner.taskId ||
+            publishPatch.metadata.owner.sessionId !== owner.sessionId ||
+            publishPatch.metadata.owner.workerId !== owner.workerId ||
+            publishPatch.metadata.owner.requestId !== owner.requestId ||
+            publishPatch.metadata.owner.grantId !== owner.grantId ||
+            publishPatch.metadata.classification !== "task-content" ||
+            publishPatch.metadata.mediaType !== "text/plain; charset=utf-8" ||
+            publishPatch.metadata.byteLength !== publishInput.patchByteLength ||
+            publishPatch.metadata.sha256 !== publishInput.patchSha256
+          ) {
+            throw executionError(
+              "input-ownership-denied",
+              "Coding publish patch persistence returned mismatched evidence",
+            );
+          }
+          const snapshot = await captureIsolatedCodingPatch({
+            worktreeRoot: this.config.worktreeRoot,
+            gitDirectory: this.config.gitDirectory,
+            gitCommonDirectory: this.config.gitCommonDirectory,
+          });
+          if (
+            snapshot.baseCommit !== publishInput.baseCommit ||
+            snapshot.patch !== publishPatch.content ||
+            snapshot.patchSha256 !== publishInput.patchSha256 ||
+            createHash("sha256").update(publishPatch.content, "utf8").digest("hex") !==
+              publishInput.patchSha256
+          ) {
+            throw executionError(
+              "publish-snapshot-changed",
+              "Coding worktree changed after the publish approval snapshot",
+            );
+          }
+          const outputRef = await storePublishedPatch(
+            this.config,
+            owner,
+            publishInput,
+            publishPatch.content,
+            cancellation.signal,
+          );
+          return Object.freeze({ status: "succeeded", outputRef });
         }
         case CODING_TERMINAL_TOOL_ID: {
           const terminalInput = input as CodingTerminalInput;

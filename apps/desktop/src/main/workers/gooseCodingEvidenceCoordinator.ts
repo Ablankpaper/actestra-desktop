@@ -17,6 +17,7 @@ import {
   eventStreamId,
   instant,
   type ActestraPersistencePort,
+  type Artifact,
   type Approval,
   type ApprovalActorId,
   type ApprovalRequestSnapshot,
@@ -146,6 +147,8 @@ export class GooseCodingEvidenceCoordinator implements GooseCodingToolEvidenceRe
   >();
   private readonly pendingApprovals = new Map<ToolRequestId, ApprovalRequestSnapshot>();
   private readonly approvalCancellationPrepared = new Set<ToolRequestId>();
+  private publishOperation: ProtectedOperation | undefined;
+  private publishedArtifact: Artifact | undefined;
 
   constructor(private readonly config: GooseCodingEvidenceCoordinatorConfig) {
     this.newEventId = config.newEventId ?? defaultEventId;
@@ -166,6 +169,57 @@ export class GooseCodingEvidenceCoordinator implements GooseCodingToolEvidenceRe
         this.startPrepared = true;
       }
       await this.flushEvents();
+    });
+  }
+
+  beginPublish(operation: ProtectedOperation): Promise<void> {
+    return this.serialize(async () => {
+      this.requireOperation(operation);
+      if (
+        operation.action !== "publish.execute" ||
+        operation.resourceKind !== "repository" ||
+        this.requireTaskState() !== "blocked" ||
+        this.projection.sessionState !== "blocked" ||
+        this.projection.workerState !== "ready"
+      ) {
+        throw new GooseCodingEvidenceError(
+          "invalid-state",
+          "Coding Artifact publish requires the exact blocked review projection",
+        );
+      }
+      if (this.publishOperation === undefined) {
+        if (this.toolStates.has(operation.requestId)) {
+          throw new GooseCodingEvidenceError(
+            "invalid-state",
+            "Coding Artifact publish requires one fresh protected operation",
+          );
+        }
+        this.queueEvent("task.updated", {
+          from: "blocked",
+          to: "running",
+          reason: "coding-publish-requested",
+        });
+        this.queueEvent("tool.requested", {
+          requestId: operation.requestId,
+          toolName: operation.toolId,
+          summary: operation.summary,
+        });
+        this.toolStates.set(operation.requestId, "requested");
+        this.publishOperation = operation;
+      } else if (!isDeepStrictEqual(this.publishOperation, operation)) {
+        throw new GooseCodingEvidenceError(
+          "invalid-evidence",
+          "Coding Artifact publish retry changed the protected operation",
+        );
+      }
+      await this.flushEvents();
+      await this.reconcileProjection(
+        Object.freeze({
+          taskState: "running",
+          sessionState: "running",
+          workerState: "busy",
+        }),
+      );
     });
   }
 
@@ -301,6 +355,133 @@ export class GooseCodingEvidenceCoordinator implements GooseCodingToolEvidenceRe
       this.queueEvent("tool.completed", { requestId: operation.requestId, summary });
       this.toolStates.set(operation.requestId, "terminal");
       await this.flushEvents();
+    });
+  }
+
+  completePublishedArtifact(operation: ProtectedOperation, artifact: Artifact): Promise<void> {
+    return this.serialize(async () => {
+      this.requireOperation(operation);
+      if (
+        !isDeepStrictEqual(this.publishOperation, operation) ||
+        this.toolStates.get(operation.requestId) !== "approval-resolved" ||
+        this.requireTaskState() !== "running" ||
+        artifact.workspaceId !== this.config.workspaceId ||
+        artifact.taskId !== this.config.taskId ||
+        artifact.sessionId !== this.config.sessionId ||
+        artifact.kind !== "file" ||
+        artifact.label !== "Actestra coding patch" ||
+        artifact.state !== "available"
+      ) {
+        throw new GooseCodingEvidenceError(
+          "invalid-evidence",
+          "Coding Artifact publish completion does not match the approved review operation",
+        );
+      }
+      if (this.publishedArtifact === undefined) {
+        this.queueEvent("tool.started", { requestId: operation.requestId });
+        this.queueEvent("tool.completed", {
+          requestId: operation.requestId,
+          summary: "The approved coding patch was persisted as an Actestra Artifact.",
+        });
+        this.queueEvent("artifact.created", {
+          artifactId: artifact.id,
+          kind: artifact.kind,
+          label: artifact.label,
+        });
+        this.queueEvent("task.completed", {
+          from: "running",
+          to: "completed",
+        });
+        this.toolStates.set(operation.requestId, "terminal");
+        this.publishedArtifact = Object.freeze({ ...artifact });
+      } else if (!isDeepStrictEqual(this.publishedArtifact, artifact)) {
+        throw new GooseCodingEvidenceError(
+          "invalid-evidence",
+          "Coding Artifact publish retry changed the Artifact registration",
+        );
+      }
+      await this.flushEvents();
+      await this.reconcileProjection(
+        Object.freeze({
+          taskState: "completed",
+          sessionState: "completed",
+          workerState: "stopping",
+        }),
+        undefined,
+        this.publishedArtifact,
+      );
+    });
+  }
+
+  completeDeniedPublish(operation: ProtectedOperation): Promise<void> {
+    return this.serialize(async () => {
+      this.requireOperation(operation);
+      if (
+        !isDeepStrictEqual(this.publishOperation, operation) ||
+        this.toolStates.get(operation.requestId) !== "approval-resolved" ||
+        this.requireTaskState() !== "running"
+      ) {
+        throw new GooseCodingEvidenceError(
+          "invalid-state",
+          "Denied Coding Artifact publish does not match the active review operation",
+        );
+      }
+      this.queueEvent("tool.failed", {
+        requestId: operation.requestId,
+        errorCode: "approval-denied",
+        message: "The user denied the coding Artifact publish operation.",
+        mayHaveExecuted: false,
+      });
+      this.queueEvent("task.updated", {
+        from: "running",
+        to: "blocked",
+        reason: "coding-publish-denied",
+      });
+      this.toolStates.set(operation.requestId, "terminal");
+      await this.flushEvents();
+      await this.reconcileProjection(
+        Object.freeze({
+          taskState: "blocked",
+          sessionState: "blocked",
+          workerState: "ready",
+        }),
+      );
+    });
+  }
+
+  completeInvalidatedPublish(operation: ProtectedOperation): Promise<void> {
+    return this.serialize(async () => {
+      this.requireOperation(operation);
+      if (
+        !isDeepStrictEqual(this.publishOperation, operation) ||
+        this.toolStates.get(operation.requestId) !== "approval-resolved" ||
+        this.requireTaskState() !== "running"
+      ) {
+        throw new GooseCodingEvidenceError(
+          "invalid-state",
+          "Invalidated Coding Artifact publish does not match the active review operation",
+        );
+      }
+      this.queueEvent("tool.failed", {
+        requestId: operation.requestId,
+        errorCode: "publish-snapshot-changed",
+        message: "The coding worktree changed after the approved publish snapshot.",
+        mayHaveExecuted: false,
+      });
+      this.queueEvent("task.updated", {
+        from: "running",
+        to: "blocked",
+        reason: "coding-publish-snapshot-changed",
+      });
+      this.toolStates.set(operation.requestId, "terminal");
+      await this.flushEvents();
+      await this.reconcileProjection(
+        Object.freeze({
+          taskState: "blocked",
+          sessionState: "blocked",
+          workerState: "ready",
+        }),
+      );
     });
   }
 
@@ -699,6 +880,7 @@ export class GooseCodingEvidenceCoordinator implements GooseCodingToolEvidenceRe
   private async reconcileProjection(
     target: DomainProjection,
     approval?: ApprovalRequestSnapshot,
+    artifact?: Artifact,
   ): Promise<void> {
     await withPersistenceMutationBarrier(this.config.persistence, async () => {
       const graph = await this.config.persistence.loadDomainGraph();
@@ -743,7 +925,31 @@ export class GooseCodingEvidenceCoordinator implements GooseCodingToolEvidenceRe
           );
         }
       }
-      if (!isDeepStrictEqual(current, target) || nextApprovals !== graph.approvals) {
+      const existingArtifact =
+        artifact === undefined
+          ? undefined
+          : graph.artifacts.find((candidate) => candidate.id === artifact.id);
+      if (
+        artifact !== undefined &&
+        (graph.artifacts.some(
+          (candidate) => candidate.taskId === this.config.taskId && candidate.id !== artifact.id,
+        ) ||
+          (existingArtifact !== undefined && !isDeepStrictEqual(existingArtifact, artifact)))
+      ) {
+        throw new GooseCodingEvidenceError(
+          "identity-mismatch",
+          "Coding Artifact publish conflicts with authoritative Artifact metadata",
+        );
+      }
+      const nextArtifacts =
+        artifact === undefined || existingArtifact !== undefined
+          ? graph.artifacts
+          : [...graph.artifacts, artifact];
+      if (
+        !isDeepStrictEqual(current, target) ||
+        nextApprovals !== graph.approvals ||
+        nextArtifacts !== graph.artifacts
+      ) {
         if (!isDeepStrictEqual(current, this.projection)) {
           throw new GooseCodingEvidenceError(
             "invalid-state",
@@ -794,6 +1000,7 @@ export class GooseCodingEvidenceCoordinator implements GooseCodingToolEvidenceRe
               : worker,
           ),
           approvals: nextApprovals,
+          artifacts: nextArtifacts,
         };
         assertDomainGraph(next);
         try {
@@ -805,6 +1012,7 @@ export class GooseCodingEvidenceCoordinator implements GooseCodingToolEvidenceRe
               await this.config.persistence.loadDomainGraph(),
               target,
               targetApproval,
+              artifact,
             );
           } catch {
             // Preserve the original write failure when its commit cannot be proven.
@@ -822,6 +1030,7 @@ export class GooseCodingEvidenceCoordinator implements GooseCodingToolEvidenceRe
     graph: Awaited<ReturnType<ActestraPersistencePort["loadDomainGraph"]>>,
     target: DomainProjection,
     approval?: Approval,
+    artifact?: Artifact,
   ): boolean {
     const records = this.requireRecords(graph);
     if (
@@ -832,11 +1041,16 @@ export class GooseCodingEvidenceCoordinator implements GooseCodingToolEvidenceRe
       return false;
     }
     return (
-      approval === undefined ||
-      isDeepStrictEqual(
-        graph.approvals.find(({ id }) => id === approval.id),
-        approval,
-      )
+      (approval === undefined ||
+        isDeepStrictEqual(
+          graph.approvals.find(({ id }) => id === approval.id),
+          approval,
+        )) &&
+      (artifact === undefined ||
+        isDeepStrictEqual(
+          graph.artifacts.find(({ id }) => id === artifact.id),
+          artifact,
+        ))
     );
   }
 
