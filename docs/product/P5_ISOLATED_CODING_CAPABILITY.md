@@ -37,13 +37,17 @@ passed. Pull request 39 corrected only that test deadline at exact head
 request 41 at exact head `917a95260d84f09aacf5038d92a5230d1781676d`,
 exact-head CI 30870425378, squash merge
 `7dfc4973021d68d5df0ded12fa218ecd42da9691`, and exact merged-main CI
-30871703449. The durable normalized-evidence slice starts from that merge on
-branch `codex/p5-goose-durable-evidence` and is locally implemented. This
+30871703449. The durable normalized-evidence slice was delivered through pull
+request 42 at exact head `a20882abeb6caac3b4f230fde42a7e06965a0730`,
+exact-head CI 30876755457, squash merge
+`e064dc88e717cef093c866cdbc2692d23ed7dd03`, and exact merged-main CI
+30877711241. The publish and Artifact-registration slice starts from that merge
+on branch `codex/p5-goose-publish-artifact` and is locally implemented. This
 document records the closed worktree, Tool Gateway, service-owned Goose session,
 bounded ACP session, authenticated MCP transport, bounded tool-call bridge,
-real Goose prompt/tool round trip, approved/denied outcome projection, and
-Actestra-owned attempt evidence. It is not P5.2 phase acceptance or current-
-slice remote delivery evidence.
+real Goose prompt/tool round trip, approved/denied outcome projection,
+Actestra-owned attempt evidence, and main-owned publish boundary. It is not
+P5.2 phase acceptance or current-slice remote delivery evidence.
 
 ## Scope
 
@@ -221,6 +225,43 @@ second time. The General Work release coordinator and coding evidence
 coordinator share one weakly keyed persistence mutation barrier, so load/replace
 cycles against the same Actestra persistence owner cannot overwrite each other.
 
+After that blocked review state, desktop main alone exposes one bounded
+`publish` method. The method captures a canonical binary patch from the exact
+base commit through the current isolated worktree, including tracked, staged,
+unstaged, and at most 256 untracked paths. It uses a private temporary Git index
+only when untracked files are present, leaves the real index unchanged, and
+bounds the complete patch to 1 MiB. Common and worktree Git configuration locks
+cover the executable-filter/include check, binding verification, untracked
+inventory, private-index preparation, and patch read. The same hook, fsmonitor,
+global/system configuration, external-diff, and text-conversion denials remain
+active.
+
+The seventh registered executor capability is
+`actestra.coding.artifact.publish`, but `CODING_TOOL_IDS`, MCP `tools/list`,
+ACP discovery, and Goose tool-call parsing remain exactly six tools. Goose
+cannot request publish. Main persists the patch in its own content reference
+and sends the decision handler only the immutable approval snapshot, base
+commit, byte length, SHA-256, and abort signal. No patch content enters
+approval, event, or audit metadata.
+
+Approval is required for every material publish. After one approved decision,
+the executor consumes the exact request-owned patch reference, re-captures the
+worktree under the same locks, and rejects any base, byte, or digest drift
+before storing the output reference. The publisher verifies the durable output,
+then persists `tool.started`, `tool.completed`, `artifact.created`, and
+`task.completed` plus one available file `Artifact` and completed Task/Session
+projection. Only then does desktop main close Goose, revoke the grant, remove
+the worktree, and mark the Worker stopped. A denial or changed snapshot records
+bounded failure evidence, restores blocked/blocked/ready review state, and
+retains the worktree. The source checkout is unchanged in every outcome.
+
+Request, input, patch, output, and Artifact identifiers derive from the exact
+Actestra ownership tuple, grant, base commit, and patch digest. A repeated
+in-process call returns the same completed result without another approval,
+output, Artifact, or event. A committed output-store response loss is verified
+by exact content, owner, classification, byte length, and SHA-256 before the
+flow continues.
+
 ## Authority and policy
 
 The Worker supplies only a versioned tool input and, for terminal or test, one
@@ -236,6 +277,7 @@ and output reference.
 | Git | allow and audit | fixed `status` or `rev-parse HEAD` query |
 | Diff | allow and audit | fixed no-ext-diff and no-textconv query |
 | Test | one-shot approval | one snapshotted main-process registry entry |
+| Publish Artifact | one-shot approval | exact main-captured patch and Actestra-owned output/Artifact registration |
 
 All inputs and outputs use durable content references with the exact workspace,
 task, session, Worker, request, and grant owner. No coding tool accepts a raw
@@ -399,7 +441,7 @@ frozen foundation, the 192-file downstream contract, and the
 materialized-native tree passed TypeScript and its generated composition test 1
 file/1 test.
 
-The current durable-evidence fingerprint passes the two affected coordinator
+The delivered durable-evidence fingerprint passes the two affected coordinator
 files with 44 tests passed and 2 admitted-artifact tests skipped. Its red/green
 coverage proves stable Actestra stream identity, persist-before-open start,
 bounded assistant/tool/approval evidence, review-blocked projection, approved
@@ -419,6 +461,20 @@ skipped test files with 613 passing and 3 skipped tests, deterministic smoke,
 the 91-source product boundary, the exact 1,766-file frozen foundation, the
 194-file downstream contract, and the 59-main/3-preload/28-renderer-module
 production build.
+
+The current publish/Artifact fingerprint passes 5 affected files with 123 tests
+passed and 2 admitted-artifact tests skipped. Its coverage proves tracked,
+staged, unstaged, and untracked patch capture without changing the real index;
+configuration-lock and executable-filter denial; metadata-only approval;
+approved durable output, Artifact, completion, and cleanup ordering; denial and
+post-approval drift retention; committed output-response-loss recovery; stable
+result replay; and source-checkout preservation. The one final-production-byte
+root gate passes formatting over 208 files, zero-warning lint over 200 files,
+strict TypeScript, the Electron SQLite probe, 68 passing and 1 skipped test
+files with 618 passing and 3 skipped tests, deterministic smoke, the 93-source
+product boundary, the exact 1,766-file foundation, the 196-file downstream
+contract with 4 R0 invariants and 75 reviewed source copies, and the
+59-main/3-preload/28-renderer-module production build.
 
 One committed CodeRabbit review covered all 12 changed files and raised six
 findings. The shutdown/deferred-invocation race and fixed `/tmp` fixture were
@@ -529,6 +585,16 @@ merged-main CI 30871703449 passed. The owner had explicitly resumed remote
 progress before merge. This closes approval-outcome delivery, not durable
 evidence, publish/Artifact, or P5.2 phase acceptance.
 
+Pull request 42 delivered durable normalized coding evidence at exact head
+`a20882abeb6caac3b4f230fde42a7e06965a0730`. Exact-head CI 30876755457
+passed. The branch squash merged as
+`e064dc88e717cef093c866cdbc2692d23ed7dd03`, and the single exact
+merged-main CI 30877711241 passed Goose runner admission job 91892412815 and
+macOS arm64 foundation job 91892412830. CodeRabbit supplied only its Free
+summary and walkthrough; GitHub records no submitted review or inline thread,
+so the successful status is not line-level review evidence. This closes durable
+evidence delivery, not publish/Artifact or P5.2 phase acceptance.
+
 ## Remaining P5.2 work and non-claims
 
 The closed capability foundation is composed into desktop main, the Goose
@@ -537,21 +603,29 @@ authenticated MCP transport, tool-call bridge, and prompt loop are delivered.
 The delivered desktop-main coding service calls that helper and owns its
 complete worktree/Worker cleanup order. Approval continuation and denial
 projection are remotely delivered with artifact-gated real Goose coverage.
-Durable normalized Task/Session/Worker/Approval evidence is locally proved but
-not yet remotely delivered. Publish and Artifact registration required by
-ADR-0024 remain unproved. The current contained coding-session contract is not
+Durable normalized Task/Session/Worker/Approval evidence is remotely delivered.
+Publish and Artifact registration required by ADR-0024 pass the complete local
+gate on the current branch but have no Git, review, exact-head CI, merge, or
+merged-main evidence yet. The current contained coding-session contract is not
 the retained-AionUI product journey. This slice also adds no renderer
 projection, AionUi journey, candidate, release, deployment, P5.3 work, CrewAI
 sidecar, Eigent runtime, or P6 behavior.
 
-P5.2 can be accepted only after durable normalized evidence is remotely
-delivered and the remaining publish and Artifact boundaries are implemented or
-the accepted architecture is explicitly revised, followed by the complete
-local, review, exact-head CI, and merged-main gates.
+P5.2 can be accepted only after the current publish and Artifact bytes complete
+review, exact-head CI, merge, and merged-main CI without changing the admitted
+boundary. P5.3 remains ordered after that acceptance.
 
 ## Rollback
 
-Rollback of the current durable-evidence slice removes the evidence coordinator,
+Rollback of the current publish/Artifact slice removes the main-only seventh
+executor manifest and policy rule, patch-capture module, publisher, evidence
+completion and Artifact projection, service `publish` method, their two
+downstream source copies, and focused tests together. The delivered durable
+evidence then remains at exact merge
+`e064dc88e717cef093c866cdbc2692d23ed7dd03` with successful prompt completion
+blocked for review and close performing cancellation cleanup.
+
+Rollback of the delivered durable-evidence slice removes the evidence coordinator,
 shared persistence mutation barrier, stable stream/correlation fields, invoker
 recorder callbacks, pending-approval cancellation, normalized prompt/failure/
 close projection, their two downstream source copies, and focused tests

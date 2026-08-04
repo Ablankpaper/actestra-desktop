@@ -195,7 +195,7 @@ async function acquireRepositoryConfigurationLocks(
   };
 }
 
-async function withRepositoryConfigurationLocks<T>(
+export async function withRepositoryConfigurationLocks<T>(
   gitCommonDirectory: string,
   repositoryGitDirectory: string,
   operation: () => Promise<T>,
@@ -223,7 +223,7 @@ async function withRepositoryConfigurationLocks<T>(
   return result as T;
 }
 
-async function requireClosedRepositoryConfiguration(
+export async function requireClosedRepositoryConfiguration(
   repositoryRoot: string,
   environment: Readonly<Record<string, string>>,
 ): Promise<void> {

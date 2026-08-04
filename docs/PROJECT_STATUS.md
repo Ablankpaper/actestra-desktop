@@ -4,7 +4,7 @@ Last updated: 2026-08-04
 
 ## Current phase
 
-### P5.1 is accepted; P5.2 durable normalized coding evidence is the current slice
+### P5.1 is accepted; P5.2 publish and Artifact registration is the current slice
 
 The containment foundation was developed from exact `origin/main`
 `071aa922c08dd9a139f0c11dee2aa0dadab02417` on branch
@@ -383,14 +383,45 @@ gate passes formatting over 206 files, zero-warning lint over 198 files, strict
 TypeScript, the Electron SQLite probe, 68 passing and 1 skipped test files with
 613 passing and 3 skipped tests, deterministic smoke, the 91-source product
 boundary, the exact 1,766-file foundation, the downstream contract, and the
-59-main/3-preload/28-renderer-module production build. Git, PR, review, and CI
-evidence for this slice remain pending. It adds no schema, preload, renderer,
-route, frozen-foundation, credential, original-checkout, publish, or Artifact
-authority.
+59-main/3-preload/28-renderer-module production build. Pull request 42 reached
+exact head `a20882abeb6caac3b4f230fde42a7e06965a0730`, passed exact-head CI
+30876755457, squash merged as `e064dc88e717cef093c866cdbc2692d23ed7dd03`,
+and passed the single exact merged-main CI 30877711241: Goose runner admission
+job 91892412815 and macOS arm64 foundation job 91892412830. CodeRabbit supplied
+only its Free summary and walkthrough; GitHub records no submitted review or
+inline thread, so that status is not line-level review evidence.
 
-This evidence does not accept P5.2. Approval outcomes are remotely delivered
-and durable normalized Task/Session evidence is locally proved, but current-
-slice remote delivery plus publish and Artifact registration remain open. P5.3,
+The publish and Artifact-registration slice starts from that exact merge on
+branch `codex/p5-goose-publish-artifact`. It adds one main-only
+`actestra.coding.artifact.publish` capability without adding it to Goose's six
+MCP tools. Main captures one base-to-worktree binary patch across tracked,
+staged, unstaged, and untracked paths with a private temporary index, a 1 MiB
+bound, exact Git binding, and common plus worktree configuration locks. The
+real index remains unchanged, executable filter/include configuration fails
+closed, and the source checkout is never a target.
+
+The approval surface receives only the base commit, patch byte length, and
+SHA-256. The patch stays in an Actestra-owned content reference. An approved
+operation re-captures the worktree and requires an exact match before the same
+one-shot approval enters the Tool Gateway. Output content, normalized events,
+the `Artifact` record, and completed Task/Session state are durable before
+Goose, grant, and worktree cleanup. Denial or post-approval drift returns to
+blocked review and retains the worktree. Exact derived request, input, patch,
+output, and Artifact identifiers make in-process response replay idempotent
+without a second approval or duplicate event.
+
+The affected final fingerprint passes 5 focused files with 123 tests passed
+and 2 admitted-artifact tests skipped. The one final-production-byte
+`bun run check` passes formatting over 208 files, zero-warning lint over 200
+files, strict TypeScript, the Electron SQLite probe, 68 passing and 1 skipped
+test files with 618 passing and 3 skipped tests, deterministic smoke, the
+93-source product boundary, the exact 1,766-file foundation, the 196-file
+downstream contract with 4 R0 invariants and 75 reviewed source copies, and the
+59-main/3-preload/28-renderer-module production build.
+
+This evidence does not yet accept P5.2. Durable normalized evidence is remotely
+delivered and publish/Artifact registration is locally proved, but current-
+slice Git, review, exact-head CI, merge, and merged-main CI remain open. P5.3,
 P6, candidate, release, deployment, and user acceptance also remain unclaimed.
 Git delivery and CI evidence stay separate from phase acceptance. Detailed
 scope and rollback are recorded in
@@ -2009,7 +2040,8 @@ Review closure validation at
 | P5.2 authenticated inference/prompt loop          | Delivered on `main` through PR 39                                | Prompt exact head `cc773081ba448266951a3b2ac3654831022118fc`; exact-head CI 30859115162; squash merge `a6280dd38eacdbada9db159c4784110ec8e42770`; merged-main CI 30860137257 failed only the Goose job when one real-Git test crossed the implicit 5-second limit and was not rerun; bounded-deadline correction exact head `38cbbaaedbb8e5955b96a6d7148841180e751e35`; exact-head CI 30861770178; squash merge `7e8732e264febff42fb3d451011b3b8e48caaff5`; merged-main CI 30862710547 passes both jobs; no submitted review or inline thread; no desktop-main composition, approval outcome projection, durable normalized evidence, publish/Artifact flow, or phase acceptance |
 | P5.2 desktop-main Goose lifecycle                  | Delivered on `main` through PR 40                                 | Exact head `c35f8c37c14dedaa980dfbb539f16fc21379be8a`; exact-head CI 30865837496; squash merge `1909033977576d94f6983f9c911b8e0a866a59de`; merged-main CI 30866691199; service-owned worktree/grant/Gateway/invoker/Goose opening, prompt, close ordering, close-race rejection, failure aggregation, and cleanup retry; no submitted review or inline thread; no approval outcomes, durable normalized evidence, publish/Artifact flow, or phase acceptance in that delivery                                                                                                                                                                                                                                                                                                                  |
 | P5.2 main-owned approval outcomes                  | Delivered on `main` through PR 41                                 | Exact head `917a95260d84f09aacf5038d92a5230d1781676d`; exact-head CI 30870425378; squash merge `7dfc4973021d68d5df0ded12fa218ecd42da9691`; merged-main CI 30871703449; persisted approve/deny outcomes, exact approval-snapshot binding, one-shot approved execution, denied no-execution projection, abort settlement, and explicit service forwarding; focused 18 passed/2 artifact-gated, recorded 68-file/601-test root gate, and materialized-native TypeScript plus generated 1/1 test pass; no durable normalized evidence, publish/Artifact flow, or phase acceptance in that delivery                                                                                                                                                                                                 |
-| P5.2 durable normalized coding evidence            | Complete local root and native gates pass                         | Branch `codex/p5-goose-durable-evidence` from exact `7dfc4973021d68d5df0ded12fa218ecd42da9691`; stable Actestra-owned stream/correlation identity; persist-before-open `task.started`; bounded assistant/tool/approval/failure/cancellation evidence; review-blocked projection; pending-approval cancellation; sanitized opening/prompt failure; response-loss-safe replay; shared General Work/coding mutation barrier; 2 focused files with 44 passed/2 artifact-gated skipped; 68-file/613-test final root gate; 194-file downstream contract; materialized-native TypeScript and generated 1/1 test pass; Git/PR/review/CI, publish/Artifact flow, and phase acceptance remain pending                                                                                                                           |
+| P5.2 durable normalized coding evidence            | Delivered on `main` through PR 42                                 | Exact head `a20882abeb6caac3b4f230fde42a7e06965a0730`; exact-head CI 30876755457; squash merge `e064dc88e717cef093c866cdbc2692d23ed7dd03`; merged-main CI 30877711241 with Goose job 91892412815 and macOS job 91892412830; stable Actestra-owned stream/correlation identity, persist-before-open start, bounded evidence, review-blocked projection, response-loss-safe replay, and shared mutation barrier; Free CodeRabbit summary is not line-level review evidence; no publish/Artifact flow or phase acceptance in that delivery                                                                                                                                                                                                                                                        |
+| P5.2 publish and Artifact registration             | Complete local root gate passes                                   | Branch `codex/p5-goose-publish-artifact` from exact `e064dc88e717cef093c866cdbc2692d23ed7dd03`; main-only seventh publish capability remains outside Goose's six MCP tools; locked exact patch capture with tracked/staged/unstaged/untracked coverage and private index; metadata-only one-shot approval; drift denial; durable output, events, Artifact, completion, and ordered cleanup; 5 focused files with 123 passed/2 artifact-gated skipped; final root gate 68 files/618 tests with 1 file/3 tests skipped; 196-file downstream contract; Git/PR/review/CI and P5.2 acceptance remain pending                                                                                                                                                                                        |
 | P6 orchestration boundary                          | Accepted architecture direction only                              | ADR-0015; CrewAI `1.15.8` at `e9caf1e1b89343bb833b5da6660faa91804a9dce` verified as the first supervised sidecar candidate; Eigent `v1.0.2` at `e478094a9ff433132b3cf1928e4143338ddaab20` retained as a reference; neither is imported, bundled, or implemented                                                                                                                                                                                                                                                                                                                                                                                                         |
 | Native AionUi source                               | Exact local desktop snapshot                                      | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Native preservation contract                       | Local pass                                                        | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |

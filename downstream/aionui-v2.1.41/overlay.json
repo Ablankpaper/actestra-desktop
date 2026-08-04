@@ -359,6 +359,10 @@
       "destination": "packages/desktop/src/actestra/main/workers/gooseCodingToolInvoker.ts"
     },
     {
+      "source": "apps/desktop/src/main/workers/gooseCodingArtifactPublisher.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/gooseCodingArtifactPublisher.ts"
+    },
+    {
       "source": "apps/desktop/src/main/workers/gooseCodingEvidenceCoordinator.ts",
       "destination": "packages/desktop/src/actestra/main/workers/gooseCodingEvidenceCoordinator.ts"
     },
@@ -385,6 +389,10 @@
     {
       "source": "apps/desktop/src/main/workers/isolatedCodingMainService.ts",
       "destination": "packages/desktop/src/actestra/main/workers/isolatedCodingMainService.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/workers/isolatedCodingPatch.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/isolatedCodingPatch.ts"
     },
     {
       "source": "apps/desktop/src/main/workers/isolatedCodingWorktree.ts",
@@ -563,6 +571,7 @@
     "packages/desktop/src/actestra/main/workers/generalWorkCoordinator.ts",
     "packages/desktop/src/actestra/main/workers/gooseAcpHandshake.ts",
     "packages/desktop/src/actestra/main/workers/gooseCodingToolInvoker.ts",
+    "packages/desktop/src/actestra/main/workers/gooseCodingArtifactPublisher.ts",
     "packages/desktop/src/actestra/main/workers/gooseCodingEvidenceCoordinator.ts",
     "packages/desktop/src/actestra/main/workers/gooseLoopbackModelServer.ts",
     "packages/desktop/src/actestra/main/workers/gooseMcpCapabilityServer.ts",
@@ -570,6 +579,7 @@
     "packages/desktop/src/actestra/main/workers/gooseRunnerArtifact.ts",
     "packages/desktop/src/actestra/main/workers/gooseRunnerProcess.ts",
     "packages/desktop/src/actestra/main/workers/isolatedCodingMainService.ts",
+    "packages/desktop/src/actestra/main/workers/isolatedCodingPatch.ts",
     "packages/desktop/src/actestra/main/workers/isolatedCodingWorktree.ts",
     "packages/desktop/src/actestra/main/workers/scopedNativeToolCoordinator.ts",
     "packages/desktop/src/actestra/main/privileged/deterministicPolicyEngine.ts",
