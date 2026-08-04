@@ -607,6 +607,67 @@ describe("Actestra Team run authority", () => {
     ).toThrow(expect.objectContaining({ code: "attempt-limit" }));
   });
 
+  it("cancels one active node and replays its bounded retry transition", () => {
+    let snapshot = startRun();
+    snapshot = completeWorker(
+      snapshot,
+      "research",
+      "research-child-cancel",
+      "2026-08-04T01:00:03.000Z",
+      "2026-08-04T01:00:04.000Z",
+    );
+    const implementation = snapshot.nodes.find(
+      ({ candidateKey }) => candidateKey === "implementation",
+    )!;
+    const running = core.transitionTeamRun(snapshot, {
+      type: "start-node",
+      nodeId: implementation.nodeId,
+      workerTaskId: core.taskId("task-team-worker-child-cancel-1"),
+      occurredAt: core.instant("2026-08-04T01:00:05.000Z"),
+    });
+    const cancelled = core.transitionTeamRun(running, {
+      type: "cancel-node",
+      nodeId: implementation.nodeId,
+      reason: "Cancel only this bounded coding node.",
+      occurredAt: core.instant("2026-08-04T01:00:06.000Z"),
+    });
+
+    expect(cancelled.status).toBe("running");
+    expect(cancelled.nodes.find(({ nodeId }) => nodeId === implementation.nodeId)).toMatchObject({
+      status: "cancelled",
+      blockedReason: "cancelled",
+      blockedExplanation: "Cancel only this bounded coding node.",
+      attempts: [{ status: "cancelled" }],
+    });
+    expect(() => core.assertTeamRunRevisionTransition(running, cancelled)).not.toThrow();
+
+    const ready = core.transitionTeamRun(cancelled, {
+      type: "retry-node",
+      nodeId: implementation.nodeId,
+      reason: "Retry the explicitly cancelled coding node.",
+      occurredAt: core.instant("2026-08-04T01:00:07.000Z"),
+    });
+    expect(ready.nodes.find(({ nodeId }) => nodeId === implementation.nodeId)).toMatchObject({
+      status: "ready",
+      blockedReason: null,
+      attempts: [{ status: "cancelled" }],
+    });
+    expect(() => core.assertTeamRunRevisionTransition(cancelled, ready)).not.toThrow();
+
+    const restarted = core.transitionTeamRun(ready, {
+      type: "start-node",
+      nodeId: implementation.nodeId,
+      workerTaskId: core.taskId("task-team-worker-child-cancel-2"),
+      occurredAt: core.instant("2026-08-04T01:00:08.000Z"),
+    });
+    expect(
+      restarted.nodes.find(({ nodeId }) => nodeId === implementation.nodeId)?.attempts,
+    ).toMatchObject([
+      { attemptNumber: 1, status: "cancelled" },
+      { attemptNumber: 2, status: "running" },
+    ]);
+  });
+
   it("replaces an active Worker and supports a bounded manual handoff", () => {
     let snapshot = startRun();
     snapshot = completeWorker(

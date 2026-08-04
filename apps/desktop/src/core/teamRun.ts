@@ -76,6 +76,7 @@ export type TeamNodeBlockedReason =
   | "human-feedback"
   | "protected-approval"
   | "attempt-failed"
+  | "cancelled"
   | "paused"
   | "handoff"
   | "interrupted";
@@ -271,7 +272,8 @@ export type TeamRunCommand =
         | "resume-node"
         | "retry-node"
         | "replace-node"
-        | "request-handoff";
+        | "request-handoff"
+        | "cancel-node";
       readonly nodeId: TeamPlanNodeId;
       readonly reason: string;
       readonly occurredAt: Instant;
@@ -402,6 +404,7 @@ const TEAM_NODE_BLOCKED_REASONS: readonly TeamNodeBlockedReason[] = [
   "human-feedback",
   "protected-approval",
   "attempt-failed",
+  "cancelled",
   "paused",
   "handoff",
   "interrupted",
@@ -1106,6 +1109,14 @@ function appendNodeRevisionCandidates(
       occurredAt,
     });
   }
+  if (node.status === "cancelled" && node.blockedReason === "cancelled") {
+    candidates.push({
+      type: "cancel-node",
+      nodeId: node.nodeId,
+      reason: node.blockedExplanation ?? "The bounded Worker node was cancelled.",
+      occurredAt,
+    });
+  }
   if (node.summary !== null && node.artifacts.length > 0) {
     candidates.push({
       type: "complete-handoff",
@@ -1229,6 +1240,7 @@ function deriveRunStatus(nodes: readonly TeamRunNode[]): TeamRunStatus {
         status === "approval-blocked" ||
         status === "handoff-required" ||
         status === "failed" ||
+        status === "cancelled" ||
         status === "paused",
     )
   ) {
@@ -1728,11 +1740,19 @@ function failNode(snapshot: TeamRunSnapshot, command: Record<string, unknown>): 
 
 function retryNode(snapshot: TeamRunSnapshot, command: Record<string, unknown>): TeamRunSnapshot {
   const { node, occurredAt } = requireReasonCommand(snapshot, command);
-  if (node.kind !== "worker" || node.status !== "failed") {
-    throw new TeamRunContractError("invalid-transition", "Only a failed Worker node can retry");
+  if (node.kind !== "worker" || (node.status !== "failed" && node.status !== "cancelled")) {
+    throw new TeamRunContractError(
+      "invalid-transition",
+      "Only a failed or cancelled Worker node can retry",
+    );
   }
   const attempt = node.attempts.at(-1);
-  if (attempt === undefined || (attempt.status !== "failed" && attempt.status !== "interrupted")) {
+  if (
+    attempt === undefined ||
+    (attempt.status !== "failed" &&
+      attempt.status !== "interrupted" &&
+      attempt.status !== "cancelled")
+  ) {
     throw new TeamRunContractError(
       "invalid-transition",
       "The failed node has no retryable attempt",
@@ -1748,6 +1768,43 @@ function retryNode(snapshot: TeamRunSnapshot, command: Record<string, unknown>):
   });
   const nodes = snapshot.nodes.map((candidate) =>
     candidate.nodeId === readyNode.nodeId ? readyNode : candidate,
+  );
+  return normalizeTeamRunSnapshot({
+    ...snapshot,
+    revision: snapshot.revision + 1,
+    status: deriveRunStatus(nodes),
+    nodes,
+    updatedAt: occurredAt,
+  });
+}
+
+function cancelNode(snapshot: TeamRunSnapshot, command: Record<string, unknown>): TeamRunSnapshot {
+  const { node, reason, occurredAt } = requireReasonCommand(snapshot, command);
+  const attempt = requireLatestWorkerAttempt(
+    node,
+    ["running", "blocked", "paused"],
+    "Only an active Worker attempt can be cancelled",
+  );
+  if (node.kind !== "worker" || !["running", "approval-blocked", "paused"].includes(node.status)) {
+    throw new TeamRunContractError(
+      "invalid-transition",
+      "Only an active Worker node can be cancelled",
+    );
+  }
+  const cancelledAttempt = Object.freeze({
+    ...attempt,
+    status: "cancelled" as const,
+    updatedAt: occurredAt,
+  });
+  const cancelledNode = Object.freeze({
+    ...node,
+    status: "cancelled" as const,
+    blockedReason: "cancelled" as const,
+    blockedExplanation: reason,
+    attempts: replaceAttempt(node, cancelledAttempt),
+  });
+  const nodes = snapshot.nodes.map((candidate) =>
+    candidate.nodeId === cancelledNode.nodeId ? cancelledNode : candidate,
   );
   return normalizeTeamRunSnapshot({
     ...snapshot,
@@ -2044,6 +2101,8 @@ export function transitionTeamRun(
       return replaceNode(snapshot, command);
     case "request-handoff":
       return requestHandoff(snapshot, command);
+    case "cancel-node":
+      return cancelNode(snapshot, command);
     case "complete-handoff":
       return completeHandoff(snapshot, command);
     case "cancel-run":

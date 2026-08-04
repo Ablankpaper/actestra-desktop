@@ -591,9 +591,10 @@ slice previously described as P4.3/F3.1.
 
 Current progress includes the closed plan-candidate admission, desktop-main
 planner port, schema-14 admitted-plan durability barrier, schema-15 Team run
-authority, and a local unpushed generic planner-sidecar protocol/supervisor.
-The accepted plan is not yet schedulable, and no real CrewAI runtime is admitted
-or packaged.
+authority, a local unpushed generic planner-sidecar protocol/supervisor, and a
+local unpushed Actestra-owned scheduler/control/recovery service. The scheduler
+is not yet composed with the real General and Goose journeys, and no real
+CrewAI runtime is admitted or packaged.
 
 ### Deliverables
 

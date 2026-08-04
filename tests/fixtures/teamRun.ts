@@ -10,7 +10,19 @@ function digest(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-export async function createTeamRunFixture(suffix = "fixture") {
+export interface TeamRunFixtureOptions {
+  readonly generalMaxAttempts?: number;
+  readonly codingMaxAttempts?: number;
+  readonly maxTotalAttempts?: number;
+}
+
+export async function createTeamRunFixture(
+  suffix = "fixture",
+  options: TeamRunFixtureOptions = {},
+) {
+  const generalMaxAttempts = options.generalMaxAttempts ?? 1;
+  const codingMaxAttempts = options.codingMaxAttempts ?? 1;
+  const maxTotalAttempts = options.maxTotalAttempts ?? 3;
   const request = {
     protocolVersion: 1,
     correlationId: `correlation-team-run-${suffix}`,
@@ -22,7 +34,7 @@ export async function createTeamRunFixture(suffix = "fixture") {
       maxNodes: 3,
       maxDepth: 2,
       maxConcurrency: 2,
-      maxTotalAttempts: 3,
+      maxTotalAttempts,
     },
   } as const;
   const plan = await admitTeamPlanCandidate(request, {
@@ -40,7 +52,7 @@ export async function createTeamRunFixture(suffix = "fixture") {
         expectedArtifactKind: "document",
         completionCriteria: "One bounded brief is available.",
         risk: "low",
-        maxAttempts: 1,
+        maxAttempts: generalMaxAttempts,
       },
       {
         candidateKey: "coding",
@@ -51,7 +63,7 @@ export async function createTeamRunFixture(suffix = "fixture") {
         expectedArtifactKind: "file",
         completionCriteria: "One reviewed patch is available.",
         risk: "medium",
-        maxAttempts: 1,
+        maxAttempts: codingMaxAttempts,
       },
       {
         candidateKey: "feedback",
