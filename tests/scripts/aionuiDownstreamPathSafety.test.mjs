@@ -34,16 +34,17 @@ describe("AionUi downstream path safety", () => {
     ).toThrow(/Downstream output/u);
   });
 
-  it("declares the P5 isolated-coding composition over the retained schema-13 boundary", () => {
+  it("declares the P5 preserved coding journey over the retained schema-13 boundary", () => {
     const repositoryRoot = path.resolve(import.meta.dirname, "../..");
     const overlay = JSON.parse(
       fs.readFileSync(path.join(repositoryRoot, "downstream/aionui-v2.1.41/overlay.json"), "utf8"),
     );
 
-    expect(overlay.phase).toBe("P5-isolated-coding-main-composition");
+    expect(overlay.phase).toBe("P5-preserved-aionui-coding-journey");
     expect(overlay.migration.strategy).toContain("schema v13");
+    expect(overlay.migration.rollback).toContain("patch 0013");
     expect(overlay.migration.rollback).toContain("patch 0012");
-    expect(overlay.patches.at(-1)?.path).toBe("patches/0012-actestra-isolated-coding-main.mjs");
+    expect(overlay.patches.at(-1)?.path).toBe("patches/0013-actestra-goose-native-agent.mjs");
     expect(overlay.expectedChangedFiles).toEqual(
       expect.arrayContaining([
         "packages/desktop/src/renderer/pages/conversation/GroupedHistory/hooks/useConversationActions.ts",
@@ -54,6 +55,10 @@ describe("AionUi downstream path safety", () => {
         "packages/desktop/src/actestra/main/privileged/isolatedCodingToolExecutor.ts",
         "packages/desktop/src/actestra/main/privileged/isolatedCodingToolPlatform.ts",
         "tests/unit/actestra/isolatedCodingMainComposition.test.ts",
+        "packages/desktop/src/actestra/compatibility/aionui/codingAgent.ts",
+        "packages/desktop/src/actestra/compatibility/aionui/codingJourney.ts",
+        "packages/desktop/src/actestra/main/compatibility/aionuiCodingJourneyService.ts",
+        "tests/unit/actestra/codingJourneyNativeWiring.test.ts",
       ]),
     );
     expect(overlay.sourceCopies).toEqual(
@@ -75,6 +80,15 @@ describe("AionUi downstream path safety", () => {
           source: "apps/desktop/src/main/privileged/isolatedCodingToolPlatform.ts",
           destination:
             "packages/desktop/src/actestra/main/privileged/isolatedCodingToolPlatform.ts",
+        },
+        {
+          source: "apps/desktop/src/compatibility/aionui/codingJourney.ts",
+          destination: "packages/desktop/src/actestra/compatibility/aionui/codingJourney.ts",
+        },
+        {
+          source: "apps/desktop/src/main/compatibility/aionuiCodingJourneyService.ts",
+          destination:
+            "packages/desktop/src/actestra/main/compatibility/aionuiCodingJourneyService.ts",
         },
       ]),
     );

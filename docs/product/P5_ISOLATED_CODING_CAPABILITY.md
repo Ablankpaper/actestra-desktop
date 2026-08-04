@@ -41,13 +41,18 @@ exact-head CI 30870425378, squash merge
 request 42 at exact head `a20882abeb6caac3b4f230fde42a7e06965a0730`,
 exact-head CI 30876755457, squash merge
 `e064dc88e717cef093c866cdbc2692d23ed7dd03`, and exact merged-main CI
-30877711241. The publish and Artifact-registration slice starts from that merge
-on branch `codex/p5-goose-publish-artifact` and is locally implemented. This
-document records the closed worktree, Tool Gateway, service-owned Goose session,
-bounded ACP session, authenticated MCP transport, bounded tool-call bridge,
-real Goose prompt/tool round trip, approved/denied outcome projection,
-Actestra-owned attempt evidence, and main-owned publish boundary. It is not
-P5.2 phase acceptance or current-slice remote delivery evidence.
+30877711241. Pull request 43 delivered the publish and Artifact-registration
+slice at exact head `305a29d9b2b514865983ae9d8a23f877566bb7a5`, exact-head CI
+30883055147, squash merge `9048fe2cc23819f596d8721adb8c544dcd0b786f`,
+and exact merged-main CI 30884138218. P5.2 is accepted on that merge.
+
+P5.3 starts from exact `9048fe2cc23819f596d8721adb8c544dcd0b786f` on
+branch `codex/p5-aionui-coding-journey`. This document records the closed
+worktree, Tool Gateway, service-owned Goose session, bounded ACP session,
+authenticated MCP transport, bounded tool-call bridge, real Goose prompt/tool
+round trip, approved/denied outcome projection, Actestra-owned attempt evidence,
+main-owned publish boundary, and the current retained-AionUI journey. P5.3 local
+and remote exit evidence remains separate from the accepted P5.2 gate.
 
 ## Scope
 
@@ -74,12 +79,29 @@ explicit test-only option.
 Downstream patch 0012 composes that service only in the native AionUi Electron
 main persistence owner under the Actestra private profile's
 `coding-worktrees` directory. It provides a main-process getter but adds no
-preload or renderer exposure. The current manifest copies the four containment
-sources, eight Goose session/evidence sources, the shared persistence mutation
-barrier, and exact runner source pin and adds one native lifecycle test. It adds
-no renderer route, bridge, or visual surface. The frozen AionUi source and R0
-retention invariants remain
-unchanged, and P5.3 remains the first user-visible coding journey.
+preload or renderer exposure. The accepted P5.2 manifest copies the containment,
+Goose session/evidence, publish, shared persistence-mutation, and exact runner
+sources into native main. The frozen AionUi source and R0 retention invariants
+remain unchanged.
+
+P5.3 adds downstream patch `0013-actestra-goose-native-agent.mjs` as an R1
+provider change over the retained native surface. Electron main owns a fixed
+Goose managed-agent readiness row, Agent Settings probe, Repair unavailable
+state, five main-frame-only journey operations, exact runner admission, native
+Git-root resolution, and the complete existing P5.2 service. A separate
+context-isolated preload object exposes only submit, list, cancel, tool-decision,
+and publish-decision operations; it exposes no generic IPC, repository path,
+runner path, manifest digest, worktree, content reference, credential, process,
+shell, or filesystem authority.
+
+The native non-Team ACP SendBox retains its existing send and stop paths and
+adds one fixed native/Goose selector. Team mode is unchanged. A Goose submission
+accepts text only and explicitly rejects attachments. The existing native
+permission component routes only exact closed Actestra metadata to tool or
+publish decisions; every ordinary AionUI confirmation continues through the
+native route. Assistant messages, tool state, terminal/test summaries, diffs,
+review state, and Artifact labels appear through existing ACP message surfaces,
+without another route, window, application shell, or Goose UI.
 
 The admitted Goose connection sends exactly one `session/new` request per
 process. It declares an absolute coding workspace and one Actestra capability
@@ -476,6 +498,35 @@ product boundary, the exact 1,766-file foundation, the 196-file downstream
 contract with 4 R0 invariants and 75 reviewed source copies, and the
 59-main/3-preload/28-renderer-module production build.
 
+The current P5.3 affected root set passes 7 files and 26 tests. That count
+includes 1 admitted-artifact file and 2 tests against the exact locally admitted
+macOS arm64 runner manifest. Real Goose first requests the closed file-write
+tool and pauses for the retained permission decision, then requests the main-
+registered `focused-test` and pauses again. After both approvals, its final
+assistant result is projected before the main-only publish operation exposes
+the exact base commit, patch byte length, and SHA-256. An approved publish
+produces one available Actestra Artifact and removes the Worker private root,
+active grant, and isolated worktree. The source checkout keeps the same HEAD,
+clean status, and original file bytes. The second test holds one real model
+request in flight, cancels through the retained journey, observes the model
+abort, and proves the same source-preserving cleanup without a publish.
+
+Root strict TypeScript, affected zero-warning lint and format, patch syntax,
+documentation links, and whitespace checks pass. The P5.3 downstream contract
+passes 217 declared files, 4 R0 invariants, and 80 reviewed source copies. The
+materialized native application passes strict TypeScript and 3 files/8 focused
+tests using an existing dependency tree whose `bun.lock` SHA-256 exactly matches
+the generated tree.
+
+On the unchanged final production/test fingerprint, one complete root
+`bun run check` passes formatting over 221 files, zero-warning lint over 213
+files, strict TypeScript, the Electron SQLite probe, 74 passing and 2 skipped
+test files with 642 passing and 5 skipped tests, deterministic smoke, the
+98-source product boundary, the exact 1,766-file foundation with 27 routes and
+41 bridge domains, the 217/4/80 downstream contract, and the
+61-main/3-preload/28-renderer-module production build. This closes the P5.3
+final local gate on those production and test bytes.
+
 One committed CodeRabbit review covered all 12 changed files and raised six
 findings. The shutdown/deferred-invocation race and fixed `/tmp` fixture were
 confirmed and remediated. The regression test's red phase proved the old path
@@ -595,7 +646,18 @@ summary and walkthrough; GitHub records no submitted review or inline thread,
 so the successful status is not line-level review evidence. This closes durable
 evidence delivery, not publish/Artifact or P5.2 phase acceptance.
 
-## Remaining P5.2 work and non-claims
+Pull request 43 delivered publish and Artifact registration at exact head
+`305a29d9b2b514865983ae9d8a23f877566bb7a5`. Exact-head CI 30883055147
+passed Goose runner admission job 91908308668 and macOS arm64 foundation job
+91908308735. CodeRabbit selected all 14 changed files but did not start a review
+because its quota was exhausted; GitHub records no submitted review or inline
+comment. The branch squash merged as
+`9048fe2cc23819f596d8721adb8c544dcd0b786f`. Exact merged-main CI
+30884138218 passed macOS arm64 foundation job 91911549623 and Goose runner
+admission job 91911549665. This accepts P5.2; it is not P5.3, candidate,
+release, deployment, or user-acceptance evidence.
+
+## P5.2 acceptance and remaining P5.3 work
 
 The closed capability foundation is composed into desktop main, the Goose
 adapter has a bounded `session/new` declaration and cleanup contract, the
@@ -603,21 +665,31 @@ authenticated MCP transport, tool-call bridge, and prompt loop are delivered.
 The delivered desktop-main coding service calls that helper and owns its
 complete worktree/Worker cleanup order. Approval continuation and denial
 projection are remotely delivered with artifact-gated real Goose coverage.
-Durable normalized Task/Session/Worker/Approval evidence is remotely delivered.
-Publish and Artifact registration required by ADR-0024 pass the complete local
-gate on the current branch but have no Git, review, exact-head CI, merge, or
-merged-main evidence yet. The current contained coding-session contract is not
-the retained-AionUI product journey. This slice also adds no renderer
-projection, AionUi journey, candidate, release, deployment, P5.3 work, CrewAI
-sidecar, Eigent runtime, or P6 behavior.
+Durable normalized Task/Session/Worker/Approval evidence and publish/Artifact
+registration are remotely delivered. P5.2 is accepted through exact squash
+merge `9048fe2cc23819f596d8721adb8c544dcd0b786f` and merged-main CI
+30884138218.
 
-P5.2 can be accepted only after the current publish and Artifact bytes complete
-review, exact-head CI, merge, and merged-main CI without changing the admitted
-boundary. P5.3 remains ordered after that acceptance.
+The current P5.3 branch maps that accepted capability into the retained AionUI
+managed-agent, settings, repair, selector, ACP conversation, permission,
+terminal, diff, test, review, cancellation, and Artifact surfaces. Its
+artifact-gated real-Goose publish and cancellation journeys pass locally. The
+final local gate passes on stable bytes. Git delivery, review, exact-head CI,
+merge, and exact merged-main CI remain open. No candidate, release, deployment,
+user acceptance, CrewAI sidecar, Eigent runtime, or P6 behavior is claimed.
 
 ## Rollback
 
-Rollback of the current publish/Artifact slice removes the main-only seventh
+Rollback of the current P5.3 slice regenerates the native application without
+patch 0013 and removes the fixed Goose readiness provider, five coding-journey
+IPC handlers, dedicated preload API, retained ACP selector, hook/client,
+Actestra-only permission routing, source copies, and native compatibility tests.
+The accepted P5.2 main-only service, durable events, approvals, worktrees, and
+Artifacts remain authoritative but are no longer exposed through the retained
+AionUI journey. No schema downgrade, frozen-foundation edit, native-profile
+mutation, or source-checkout change is required.
+
+Rollback of the accepted publish/Artifact slice removes the main-only seventh
 executor manifest and policy rule, patch-capture module, publisher, evidence
 completion and Artifact projection, service `publish` method, their two
 downstream source copies, and focused tests together. The delivered durable

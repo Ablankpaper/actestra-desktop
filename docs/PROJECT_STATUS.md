@@ -4,7 +4,7 @@ Last updated: 2026-08-04
 
 ## Current phase
 
-### P5.1 is accepted; P5.2 publish and Artifact registration is the current slice
+### P5.2 is accepted; P5.3 preserved AionUI coding journey is the current slice
 
 The containment foundation was developed from exact `origin/main`
 `071aa922c08dd9a139f0c11dee2aa0dadab02417` on branch
@@ -419,12 +419,60 @@ test files with 618 passing and 3 skipped tests, deterministic smoke, the
 downstream contract with 4 R0 invariants and 75 reviewed source copies, and the
 59-main/3-preload/28-renderer-module production build.
 
-This evidence does not yet accept P5.2. Durable normalized evidence is remotely
-delivered and publish/Artifact registration is locally proved, but current-
-slice Git, review, exact-head CI, merge, and merged-main CI remain open. P5.3,
-P6, candidate, release, deployment, and user acceptance also remain unclaimed.
-Git delivery and CI evidence stay separate from phase acceptance. Detailed
-scope and rollback are recorded in
+Pull request 43 delivered the publish and Artifact-registration boundary at
+exact head `305a29d9b2b514865983ae9d8a23f877566bb7a5`. Exact-head CI
+30883055147 passed Goose runner admission job 91908308668 and macOS arm64
+foundation job 91908308735. CodeRabbit selected all 14 changed files but stopped
+before review because its quota was exhausted; GitHub records no submitted
+review or inline comment, so its successful status is not line-level review
+evidence. The branch squash merged as
+`9048fe2cc23819f596d8721adb8c544dcd0b786f`. The single automatic
+merged-main CI 30884138218 passed macOS arm64 foundation job 91911549623 and
+Goose runner admission job 91911549665. This closes the P5.2 phase gate: the
+source checkout remains unchanged, only the isolated worktree is modified and
+tested, approvals remain one-shot and main-owned, exact patch re-capture gates
+the available Actestra Artifact, and cleanup is durable and ordered.
+
+The P5.3 preserved-AionUI journey starts from that exact merge on branch
+`codex/p5-aionui-coding-journey`. Downstream patch
+`0013-actestra-goose-native-agent.mjs` is an R1 provider change; it does not edit
+the frozen foundation or add a Goose application UI. Electron main owns one
+fixed Goose readiness provider for retained Agent Settings and Repair, five
+main-frame-only coding-journey IPC intents, runner admission, canonical native
+Git-root resolution, deterministic Actestra identities, and bounded projection
+from durable Core state. A dedicated context-isolated preload API exposes only
+submit, list, cancel, tool-decision, and publish-decision operations.
+
+The retained non-Team ACP SendBox adds one fixed native/Goose selector. Native
+ACP send and stop behavior remains available, Team behavior is unchanged, and
+Goose submissions reject attachments rather than silently dropping them. Only
+closed Actestra coding metadata can route the native permission component to
+tool or publish decisions; ordinary native confirmations keep their existing
+path. Assistant text, tool status, terminal/test summaries, diffs, review state,
+and Artifact labels project into the existing AionUI conversation surfaces.
+The affected root set passes 7 files and 26 tests, including the admitted-
+artifact file's 2 real-Goose journeys. Real Goose receives a file-write
+approval, a registered focused-test approval, and the final assistant response
+before exact publish approval produces one available Artifact; a separate real
+in-flight prompt cancellation removes the Worker, grant, private root, and
+worktree. Both outcomes preserve the source checkout. Root strict TypeScript,
+affected zero-warning lint/format, patch syntax, documentation links, and
+whitespace checks pass. The downstream contract passes 217 declared files, 4 R0
+invariants, and 80 reviewed source copies. The materialized native application
+passes strict TypeScript and 3 files/8 focused tests without reinstalling its
+byte-identical locked dependency graph.
+
+On the unchanged final production/test fingerprint, one complete root
+`bun run check` passes formatting over 221 files, zero-warning lint over 213
+files, strict TypeScript, the Electron SQLite probe, 74 passing and 2 skipped
+test files with 642 passing and 5 skipped tests, deterministic smoke, the
+98-source product boundary, the exact 1,766-file foundation with 27 routes and
+41 bridge domains, the 217-file downstream contract with 4 R0 invariants and
+80 reviewed source copies, and the
+61-main/3-preload/28-renderer-module production build. P5.3 final local gates
+are closed. Git delivery, review, exact-head CI, merge, merged-main CI,
+candidate, release, deployment, and user acceptance remain unclaimed.
+Detailed scope and rollback are recorded in
 [P5.2 Isolated Coding Capability](product/P5_ISOLATED_CODING_CAPABILITY.md).
 
 P4's phase acceptance record reached pull request 25 at exact head
@@ -2041,7 +2089,8 @@ Review closure validation at
 | P5.2 desktop-main Goose lifecycle                  | Delivered on `main` through PR 40                                 | Exact head `c35f8c37c14dedaa980dfbb539f16fc21379be8a`; exact-head CI 30865837496; squash merge `1909033977576d94f6983f9c911b8e0a866a59de`; merged-main CI 30866691199; service-owned worktree/grant/Gateway/invoker/Goose opening, prompt, close ordering, close-race rejection, failure aggregation, and cleanup retry; no submitted review or inline thread; no approval outcomes, durable normalized evidence, publish/Artifact flow, or phase acceptance in that delivery                                                                                                                                                                                                                                                                                                                  |
 | P5.2 main-owned approval outcomes                  | Delivered on `main` through PR 41                                 | Exact head `917a95260d84f09aacf5038d92a5230d1781676d`; exact-head CI 30870425378; squash merge `7dfc4973021d68d5df0ded12fa218ecd42da9691`; merged-main CI 30871703449; persisted approve/deny outcomes, exact approval-snapshot binding, one-shot approved execution, denied no-execution projection, abort settlement, and explicit service forwarding; focused 18 passed/2 artifact-gated, recorded 68-file/601-test root gate, and materialized-native TypeScript plus generated 1/1 test pass; no durable normalized evidence, publish/Artifact flow, or phase acceptance in that delivery                                                                                                                                                                                                 |
 | P5.2 durable normalized coding evidence            | Delivered on `main` through PR 42                                 | Exact head `a20882abeb6caac3b4f230fde42a7e06965a0730`; exact-head CI 30876755457; squash merge `e064dc88e717cef093c866cdbc2692d23ed7dd03`; merged-main CI 30877711241 with Goose job 91892412815 and macOS job 91892412830; stable Actestra-owned stream/correlation identity, persist-before-open start, bounded evidence, review-blocked projection, response-loss-safe replay, and shared mutation barrier; Free CodeRabbit summary is not line-level review evidence; no publish/Artifact flow or phase acceptance in that delivery                                                                                                                                                                                                                                                        |
-| P5.2 publish and Artifact registration             | Complete local root gate passes                                   | Branch `codex/p5-goose-publish-artifact` from exact `e064dc88e717cef093c866cdbc2692d23ed7dd03`; main-only seventh publish capability remains outside Goose's six MCP tools; locked exact patch capture with tracked/staged/unstaged/untracked coverage and private index; metadata-only one-shot approval; drift denial; durable output, events, Artifact, completion, and ordered cleanup; 5 focused files with 123 passed/2 artifact-gated skipped; final root gate 68 files/618 tests with 1 file/3 tests skipped; 196-file downstream contract; Git/PR/review/CI and P5.2 acceptance remain pending                                                                                                                                                                                        |
+| P5.2 publish and Artifact registration             | Accepted on `main` through PR 43                                  | Exact head `305a29d9b2b514865983ae9d8a23f877566bb7a5`; exact-head CI 30883055147; squash merge `9048fe2cc23819f596d8721adb8c544dcd0b786f`; merged-main CI 30884138218; main-only seventh publish capability remains outside Goose's six MCP tools; locked exact patch capture, metadata-only one-shot approval, drift denial, durable Artifact completion, ordered cleanup, 5 focused files/123 passed/2 artifact-gated skipped, recorded 68-file/618-test root gate, and 196-file downstream contract; rate-limited CodeRabbit status is not line-level review evidence; P5.2 accepted, not released or user-accepted                                                                                                                                                                      |
+| P5.3 preserved AionUI coding journey               | Final local gate passed; Git and remote gates open                 | Branch `codex/p5-aionui-coding-journey` from exact `9048fe2cc23819f596d8721adb8c544dcd0b786f`; R1 patch 0013; fixed main-owned Goose readiness, five main-frame intents, context-isolated preload, retained non-Team ACP selector, native permission/publish projection, and preserved native/Team paths; admitted-artifact test 1 file/2 tests passes real file-write and focused-test approvals, final assistant result, exact publish approval, available Artifact, source-checkout preservation, and independent in-flight prompt cancellation/cleanup; final root gate passes 74/2 files, 642/5 tests, the 98-source boundary, 217/4/80 downstream checks, and the 61/3/28 build; Git, review, exact-head CI, merge, and merged-main CI remain open                                                                                                  |
 | P6 orchestration boundary                          | Accepted architecture direction only                              | ADR-0015; CrewAI `1.15.8` at `e9caf1e1b89343bb833b5da6660faa91804a9dce` verified as the first supervised sidecar candidate; Eigent `v1.0.2` at `e478094a9ff433132b3cf1928e4143338ddaab20` retained as a reference; neither is imported, bundled, or implemented                                                                                                                                                                                                                                                                                                                                                                                                         |
 | Native AionUi source                               | Exact local desktop snapshot                                      | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Native preservation contract                       | Local pass                                                        | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
@@ -2176,10 +2225,16 @@ The ordered implementation index and P3 non-claims are in
    30866691199. Preserve approval-outcome exact head
    `917a95260d84f09aacf5038d92a5230d1781676d`, exact-head CI 30870425378,
    merge `7dfc4973021d68d5df0ded12fa218ecd42da9691`, and merged-main CI
-   30871703449. Deliver the current durable normalized evidence with the same
-   bounded Actions budget, then continue into publish/Artifact. Goose may not
-   receive builtins, the original checkout, raw credentials, or a second UI.
-8. Keep P5.3 and CrewAI-assisted Team P6 ordered after an accepted P5.2 gate.
+   30871703449. Preserve durable-evidence PR 42 and publish/Artifact PR 43 exact
+   head `305a29d9b2b514865983ae9d8a23f877566bb7a5`, squash merge
+   `9048fe2cc23819f596d8721adb8c544dcd0b786f`, and merged-main CI
+   30884138218. Goose may not receive builtins, the original checkout, raw
+   credentials, or a second UI.
+8. Complete P5.3 through the retained AionUI agent settings, selector, repair,
+   ACP conversation, permission, terminal, diff, test, and Artifact surfaces.
+   Require the artifact-gated real-Goose publish and cancellation journeys,
+   native compatibility proof, exact-head and merged-main CI, and source
+   checkout preservation before beginning CrewAI-assisted Team P6.
 
 ## Open decisions
 
@@ -2286,9 +2341,13 @@ The ordered implementation index and P3 non-claims are in
   through exact merge `1909033977576d94f6983f9c911b8e0a866a59de` and
   merged-main CI 30866691199. Approval continuation and denial projection are
   delivered through exact merge `7dfc4973021d68d5df0ded12fa218ecd42da9691`
-  and merged-main CI 30871703449. Durable normalized attempt evidence passes the
-  current focused local gate but is not yet pushed. No publish/Artifact journey
-  or accepted P5.2 gate is claimed.
+  and merged-main CI 30871703449. Durable normalized evidence is delivered
+  through PR 42. Publish/Artifact registration and P5.2 acceptance are closed
+  through PR 43, squash merge `9048fe2cc23819f596d8721adb8c544dcd0b786f`,
+  and merged-main CI 30884138218. P5.3 now has a local retained-AionUI provider,
+  selector, permission, evidence, publish, and cancellation journey plus real
+  admitted-Goose proof and a passing final root gate; its Git/CI/merge gate is
+  not yet closed.
 - F0 alone proves only that the original AionUi application can be preserved
   and run. F1, F2, F3.1, F3.2, and merged F3.3 add their separately recorded
   identity, shadow, narrow decision-authority, fixed-delivery audit, and

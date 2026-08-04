@@ -94,7 +94,7 @@ Actestra-built minimal runner. P5.1 is accepted through PR 28, exact hotfix head
 `d313fb2ed65e4b010f777435953752818fbbfae4`, and merged-main CI 30700441312.
 It admits the exact runner, applies ADR-0025's sole RSA metadata-only
 disposition, and proves strict initialize and deny-network cleanup without
-session or repository effects. P5.2 is the current ordered slice. Its closed
+session or repository effects. P5.2 is accepted through PR 43; its closed
 worktree and six-capability foundation reached pull request 31 at exact final
 head `c10110b38e8714b831a6d6d0fc09aa8df4218b7c`, passed exact-head CI
 30808650150, squash merged as
@@ -257,7 +257,7 @@ exact-head CI 30876755457, squash merge
 `e064dc88e717cef093c866cdbc2692d23ed7dd03`, and passing merged-main CI
 30877711241.
 
-The current publish/Artifact slice starts from that exact merge. A main-only
+The publish/Artifact slice starts from that exact merge. A main-only
 seventh Tool Gateway capability captures a locked, at-most-1-MiB binary patch
 across tracked, staged, unstaged, and bounded untracked paths without changing
 the real Git index. It remains outside Goose's six MCP tools. The one-shot
@@ -267,14 +267,43 @@ Task, Session, and Worker projection writes; cleanup then closes Goose, grant,
 and worktree in order. Denial and drift retain blocked review and the source
 checkout remains unchanged.
 
-The current final production fingerprint passes 5 focused files with 123 tests
+Its final production fingerprint passes 5 focused files with 123 tests
 passed and 2 admitted-artifact tests skipped. Its single complete root gate
 passes 68 test files and 618 tests with 1 file and 3 tests skipped, the
 93-source boundary, exact foundation, 196-file/75-source-copy downstream
 contract, strict types, smoke, and the 59/3/28-module production build.
 
-Current-slice Git/PR/review/CI and P5.2 phase acceptance remain open. P5.3 and
-P6 CrewAI/Team runtime work have not started.
+Pull request 43 delivered that boundary at exact head
+`305a29d9b2b514865983ae9d8a23f877566bb7a5`, exact-head CI 30883055147,
+squash merge `9048fe2cc23819f596d8721adb8c544dcd0b786f`, and exact
+merged-main CI 30884138218. Both CI layers passed Goose runner admission and
+macOS arm64 foundation. CodeRabbit was rate-limited before review and left no
+submitted review or inline comment. P5.2 is accepted on that evidence.
+
+P5.3 is the current ordered slice on branch
+`codex/p5-aionui-coding-journey` from exact
+`9048fe2cc23819f596d8721adb8c544dcd0b786f`. R1 downstream patch 0013 keeps
+AionUI as the only product UI while adding one fixed main-owned Goose readiness
+provider, retained Agent Settings/Repair states, five closed main-frame coding
+intents, a context-isolated preload provider, a non-Team ACP selector, and
+native message, permission, terminal, diff, test, review, cancellation, and
+Artifact projections. Native ACP and Team paths remain unchanged, and coding
+attachments fail explicitly.
+
+The P5.3 affected root set passes 7 files and 26 tests; its artifact-gated file
+passes 2 journeys against real admitted Goose. One pauses for main-owned file-
+write and registered focused-test approvals, projects the final assistant
+result, then requires the exact main-captured patch approval before producing
+an available Artifact. The other cancels a real in-flight prompt. Both remove
+private Worker state, active grant, and the isolated worktree while keeping the
+source checkout clean and unchanged. The downstream contract passes
+217/4/80 declared/R0/source-copy checks, while materialized native TypeScript
+and 3 files/8 tests pass. On the unchanged final production/test fingerprint,
+one complete root gate passes 74/2 test files, 642/5 tests, the 98-source
+boundary, exact 1,766-file/27-route/41-bridge foundation, the 217/4/80
+downstream contract, and the 61/3/28 build. P5.3 final local gates are closed;
+Git, review, exact-head CI, merge, and merged-main CI remain open. P6
+CrewAI/Team runtime work has not started.
 
 ## P0 — Project Foundation
 

@@ -825,7 +825,7 @@ request 42 delivered those bytes at exact head
 squash merge `e064dc88e717cef093c866cdbc2692d23ed7dd03`, and merged-main CI
 30877711241.
 
-The current main-only publish boundary starts only from the blocked review
+The accepted main-only publish boundary starts only from the blocked review
 projection. It captures a maximum 1 MiB base-to-worktree binary patch across
 tracked, staged, unstaged, and bounded untracked paths. A private temporary Git
 index admits untracked content without modifying the real index. Common and
@@ -847,18 +847,53 @@ drift records bounded failure evidence, restores blocked/blocked/ready, and
 retains the worktree. Stable derived references make one in-process completed
 publish replay-safe without another approval or duplicate event.
 
-The current final production fingerprint passes 5 focused files with 123 tests
+Its final production fingerprint passes 5 focused files with 123 tests
 passed and 2 admitted-artifact tests skipped, plus one complete root gate: 68
 passing and 1 skipped test files with 618 passing and 3 skipped tests, the
 93-source product boundary, exact frozen foundation, the 196-file downstream
 contract with 4 R0 invariants and 75 source copies, strict types, smoke, and the
 59-main/3-preload/28-renderer-module build.
 
-This composition is still not P5.2 acceptance. The contained real Goose
-prompt/tool loop, desktop-main lifecycle, approval outcomes, and durable
-normalized evidence are remotely delivered; publish and Artifact registration
-are locally proved but await current-slice Git/review/CI/merge closure. No
-retained-AionUI coding journey is claimed.
+Pull request 43 delivered the boundary at exact head
+`305a29d9b2b514865983ae9d8a23f877566bb7a5`, exact-head CI 30883055147,
+squash merge `9048fe2cc23819f596d8721adb8c544dcd0b786f`, and merged-main CI
+30884138218. P5.2 is accepted on that exact composition.
+
+P5.3 adds one R1 downstream provider patch over the retained AionUI surface.
+Electron main owns the fixed Goose managed-agent identity and readiness state,
+runner admission, canonical native Git-root resolution, Task/Session/Worker
+registration, five closed journey operations, tool and publish decisions,
+cancellation, and projection from durable DomainGraph plus Core events. IPC is
+accepted only from the current main frame. A separate context-isolated preload
+object exposes the five fixed operations and no generic Electron or Node
+capability.
+
+The retained Agent Settings and Repair surfaces receive only bounded
+ready/unavailable metadata. The existing non-Team ACP SendBox receives one
+fixed native/Goose selector; native send and stop, Team behavior, routes, and
+layout remain intact. Goose accepts text-only submissions, so attachments fail
+explicitly. The existing permission component recognizes only closed Actestra
+metadata before routing a tool or publish decision; all ordinary native
+confirmations retain their original provider. Bounded assistant messages, tool
+state, terminal/test summaries, diffs, review state, cancellation, and Artifact
+labels render through the existing ACP message surfaces. There is no Goose
+window, route, updater, settings authority, private history, or second UI.
+
+The affected root set passes 7 files and 26 tests. Its artifact-gated
+integration runs real admitted Goose through this journey and proves separate
+main-owned approvals for an isolated file write and a registered focused test,
+final assistant projection, exact patch metadata at publish approval, available
+Artifact registration, and ordered Worker/grant/worktree cleanup while the
+source checkout stays byte- and Git-clean. A second real prompt remains in
+flight until the retained stop action cancels it and proves the same cleanup
+without publication. The downstream 217/4/80 contract, materialized native
+TypeScript, and 3 files/8 native focused tests also pass. On the unchanged final
+production/test fingerprint, one complete root `bun run check` passes 74
+passing and 2 skipped test files with 642 passing and 5 skipped tests, the
+98-source product boundary, the exact 1,766-file foundation with 27 routes and
+41 bridge domains, the 217/4/80 downstream contract, and the
+61-main/3-preload/28-renderer-module build. P5.3 final local gates are closed;
+Git, review, exact-head CI, merge, and merged-main CI remain open.
 
 ## Event contract
 
