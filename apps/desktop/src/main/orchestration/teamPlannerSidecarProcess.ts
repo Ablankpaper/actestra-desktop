@@ -29,6 +29,7 @@ export type TeamPlannerSidecarProcessErrorCode =
   | "cancelled"
   | "planner-failed"
   | "protocol-failed"
+  | "cleanup-failed"
   | "unavailable"
   | "closed";
 
@@ -143,25 +144,49 @@ function closedEnvironment(): NodeJS.ProcessEnv {
   };
 }
 
-function signalProcessGroup(child: ChildProcessWithoutNullStreams, signal: NodeJS.Signals): void {
-  if (child.pid === undefined) return;
+function signalProcessGroup(
+  child: ChildProcessWithoutNullStreams,
+  signal: NodeJS.Signals,
+): boolean {
+  if (child.pid === undefined) return false;
   if (process.platform !== "win32") {
     try {
       process.kill(-child.pid, signal);
-      return;
+      return true;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
+      if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+      throw error;
     }
   }
+  return child.kill(signal);
+}
+
+function processGroupIsAlive(child: ChildProcessWithoutNullStreams): boolean {
+  if (child.pid === undefined) return false;
   try {
-    child.kill(signal);
-  } catch {
-    // The process may have exited between the state check and the signal.
+    process.kill(-child.pid, 0);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+    throw error;
   }
 }
 
 function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function waitForProcessGroupExit(
+  child: ChildProcessWithoutNullStreams,
+  milliseconds: number,
+): Promise<boolean> {
+  const deadline = Date.now() + milliseconds;
+  while (processGroupIsAlive(child)) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return false;
+    await delay(Math.min(remaining, 10));
+  }
+  return true;
 }
 
 export class TeamPlannerSidecarProcess {
@@ -541,17 +566,35 @@ export class TeamPlannerSidecarProcess {
     if (this.#termination !== null) return this.#termination;
     this.#closing = true;
     this.#termination = (async () => {
-      this.#child.stdin.destroy();
-      if (!this.#exited) {
+      try {
+        this.#child.stdin.destroy();
+        if (await this.#waitForProcessTreeExit(this.#terminationGraceMs)) return;
         signalProcessGroup(this.#child, "SIGTERM");
-        await Promise.race([this.#exit, delay(this.#terminationGraceMs)]);
-      }
-      if (!this.#exited) {
+        if (await this.#waitForProcessTreeExit(this.#terminationGraceMs)) return;
         signalProcessGroup(this.#child, "SIGKILL");
-        await Promise.race([this.#exit, delay(this.#terminationGraceMs)]);
+        if (await this.#waitForProcessTreeExit(this.#terminationGraceMs)) return;
+      } catch {
+        throw processError(
+          "cleanup-failed",
+          "The supervised team planner process group could not be terminated",
+        );
       }
+      throw processError(
+        "cleanup-failed",
+        "The supervised team planner process group survived forced termination",
+      );
     })();
+    void this.#termination.catch(() => {});
     return this.#termination;
+  }
+
+  async #waitForProcessTreeExit(milliseconds: number): Promise<boolean> {
+    if (process.platform !== "win32") {
+      return waitForProcessGroupExit(this.#child, milliseconds);
+    }
+    if (this.#exited) return true;
+    await Promise.race([this.#exit, delay(milliseconds)]);
+    return this.#exited;
   }
 }
 

@@ -21,8 +21,17 @@ function writePidFile() {
   );
 }
 
-if (["timeout", "abort", "ignore-term"].includes(mode)) {
-  child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+if (["timeout", "abort", "ignore-term", "orphan-child"].includes(mode)) {
+  const childReadyFile = pidFile === undefined ? undefined : `${pidFile}.child-ready`;
+  const childSource =
+    mode === "orphan-child"
+      ? "const fs=require('node:fs'); process.on('SIGTERM', () => {}); fs.writeFileSync(process.argv[1], 'ready', 'utf8'); setInterval(() => {}, 1000)"
+      : "setInterval(() => {}, 1000)";
+  const childArguments =
+    childReadyFile === undefined || mode !== "orphan-child"
+      ? ["-e", childSource]
+      : ["-e", childSource, childReadyFile];
+  child = spawn(process.execPath, childArguments, {
     stdio: "ignore",
   });
 }
@@ -120,6 +129,9 @@ if (mode === "extra-stdout") {
 }
 
 const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+input.on("close", () => {
+  if (mode !== "ignore-term") process.exit(0);
+});
 input.on("line", (line) => {
   let request;
   try {
@@ -138,7 +150,7 @@ input.on("line", (line) => {
     process.stderr.write(`private-sidecar-trace /private/runtime pid=${process.pid}\n`);
     process.exit(9);
   }
-  if (mode === "timeout" || mode === "abort" || mode === "ignore-term") {
+  if (mode === "timeout" || mode === "abort" || mode === "ignore-term" || mode === "orphan-child") {
     return;
   }
   if (mode === "serial") {
@@ -169,6 +181,10 @@ if (mode === "ignore-term") {
   process.on("SIGTERM", () => {});
 }
 
+if (mode === "orphan-child") {
+  process.on("SIGTERM", () => process.exit(0));
+}
+
 process.on("exit", () => {
-  child?.kill("SIGKILL");
+  if (mode !== "orphan-child") child?.kill("SIGKILL");
 });
