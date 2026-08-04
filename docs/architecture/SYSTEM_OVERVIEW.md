@@ -599,8 +599,9 @@ sessions, and a remaining coding-cleanup error keeps the service and persistence
 available for retry after schedule/general cleanup. Production identifiers are
 main-generated; deterministic sources remain explicit test input. Downstream
 patch 0012 creates the service under the private profile's
-`coding-worktrees` root and provides only a main-process getter. Four reviewed
-coding sources are copied into the materialized native application; no preload,
+`coding-worktrees` root and provides only a main-process getter. The current
+manifest copies four containment sources, seven Goose session sources, and the
+exact runner source pin into the materialized native application; no preload,
 renderer bridge, route, state projection, or second UI is added.
 
 The admitted Goose connection now has a separate, bounded `session/new`
@@ -727,9 +728,39 @@ with 593 passing and 1 skipped tests, deterministic smoke, the 89-source
 boundary, frozen/downstream contracts, and the 58-main/3-preload/28-renderer-
 module production build.
 
-This composition is still not P5.2 acceptance. The desktop-main coding service
-does not yet call the session helper. The contained real Goose prompt/tool loop
-is proved, but approval continuation and denial projection, durable normalized
+Pull request 38 delivered that prompt loop at exact head
+`cc773081ba448266951a3b2ac3654831022118fc`, exact-head CI 30859115162, and
+squash merge `a6280dd38eacdbada9db159c4784110ec8e42770`. Its merged-main CI
+30860137257 passed the macOS job but failed the Goose job only when one real-Git
+test crossed Vitest's implicit five-second deadline; that SHA was not rerun.
+Pull request 39 delivered the bounded deadline at exact head
+`38cbbaaedbb8e5955b96a6d7148841180e751e35`, exact-head CI 30861770178,
+squash merge `7e8732e264febff42fb3d451011b3b8e48caaff5`, and passing merged-main
+CI 30862710547.
+
+The current desktop-main service composes the delivered helper only after it
+creates the isolated worktree, persists the active grant, and creates the
+main-owned Tool Gateway invoker bound to Actestra Task, Session, and Worker
+identity. Goose receives that worktree plus snapshotted command/test identifiers;
+it does not receive the original checkout or another authority path. The service
+tracks Goose openings and sessions separately from lower-level coding sessions.
+Shutdown waits for openings, closes Goose before grant revocation and worktree
+removal, aggregates failures in that order, and retains unfinished authority for
+retry. An opening that loses the close race closes both layers before returning
+`closed`.
+
+Downstream patch 0012 now materializes seven Goose TypeScript sources and the
+exact runner source pin in addition to the four containment sources. The
+192-file contract contains 71 reviewed source copies and four R0 invariants;
+materialized native TypeScript and its generated main-only composition test pass.
+There is still no preload, renderer, route, schema, or frozen-foundation change.
+The final root gate passes 68 test files and 597 tests with one file and one test
+skipped, the 89-source boundary, both foundation contracts, and the production
+build.
+
+This composition is still not P5.2 acceptance. The contained real Goose
+prompt/tool loop and local desktop-main lifecycle are proved, but current-slice
+remote delivery, approval continuation and denial projection, durable normalized
 Task/Session evidence, publish, and Artifact registration are not. No retained-
 AionUI coding journey is claimed.
 

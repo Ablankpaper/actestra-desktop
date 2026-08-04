@@ -183,6 +183,7 @@ describe('Actestra native isolated-coding main composition', () => {
       managedRoot: path.resolve(process.cwd(), '.actestra-coding-worktrees-test'),
     });
 
+    expect(service.openGoose).toBeTypeOf('function');
     await service.close();
 
     await expect(

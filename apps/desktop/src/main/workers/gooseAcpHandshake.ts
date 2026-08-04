@@ -944,8 +944,10 @@ function freezeJsonValue(value: unknown, depth = 0): GooseAcpJsonValue {
   if (depth > 32) {
     throw invalidSessionMessage("Goose prompt JSON value exceeds the admitted nesting depth");
   }
+  if (value === null) {
+    return null;
+  }
   if (
-    value === null ||
     typeof value === "boolean" ||
     typeof value === "string" ||
     (typeof value === "number" && Number.isFinite(value))
@@ -1064,7 +1066,7 @@ function normalizeToolCallContent(value: unknown): readonly GooseAcpToolCallCont
         return Object.freeze({
           type: "diff" as const,
           path: content.path,
-          ...(content.oldText === undefined ? {} : { oldText: content.oldText }),
+          ...(content.oldText === undefined ? {} : { oldText: content.oldText as string | null }),
           newText: content.newText,
         });
       }
@@ -1174,7 +1176,7 @@ function normalizePromptUpdate(value: unknown): GooseAcpPromptUpdate {
       throw invalidSessionMessage("Goose tool call fields are incompatible");
     }
     const optionalFields = {
-      ...(update.title === undefined ? {} : { title: update.title }),
+      ...(update.title === undefined ? {} : { title: update.title as string }),
       ...(update.kind === undefined ? {} : { kind: normalizeToolKind(update.kind) }),
       ...(update.status === undefined ? {} : { status: normalizeToolStatus(update.status) }),
       ...(update.content === undefined

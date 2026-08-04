@@ -223,10 +223,18 @@ function main() {
     }
   }
   for (const requiredCodingSourceCopy of [
+    "packages/desktop/src/actestra/main/workers/gooseAcpHandshake.ts",
+    "packages/desktop/src/actestra/main/workers/gooseCodingToolInvoker.ts",
+    "packages/desktop/src/actestra/main/workers/gooseLoopbackModelServer.ts",
+    "packages/desktop/src/actestra/main/workers/gooseMcpCapabilityServer.ts",
+    "packages/desktop/src/actestra/main/workers/gooseMcpSessionComposition.ts",
+    "packages/desktop/src/actestra/main/workers/gooseRunnerArtifact.ts",
+    "packages/desktop/src/actestra/main/workers/gooseRunnerProcess.ts",
     "packages/desktop/src/actestra/main/workers/isolatedCodingMainService.ts",
     "packages/desktop/src/actestra/main/workers/isolatedCodingWorktree.ts",
     "packages/desktop/src/actestra/main/privileged/isolatedCodingToolExecutor.ts",
     "packages/desktop/src/actestra/main/privileged/isolatedCodingToolPlatform.ts",
+    "packages/desktop/src/actestra/shared/gooseRunnerSource.json",
   ]) {
     if (!sourceCopyDestinations.has(requiredCodingSourceCopy)) {
       throw new Error(`Missing isolated-coding source copy: ${requiredCodingSourceCopy}`);
