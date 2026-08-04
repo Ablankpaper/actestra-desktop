@@ -323,9 +323,9 @@ failed because the Core barrel export lacked a matching source-copy declaration;
 the still-running Goose job was cancelled after that failure. The local
 overlay-only correction passes the final 218/4/81 downstream contract, exact
 foundation, locked 3,177-package materialization, and exact CI TypeScript
-command. It is not pushed because another exact-head run requires explicit
-authorization. No CrewAI/Python runtime, persistence, scheduler, Worker launch,
-bridge, renderer, Team UI, or P6 phase acceptance is claimed.
+command. The correction has no exact-head CI evidence yet. No CrewAI/Python
+runtime, persistence, scheduler, Worker launch, bridge, renderer, Team UI, or
+P6 phase acceptance is claimed.
 
 ## P0 — Project Foundation
 

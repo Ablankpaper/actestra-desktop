@@ -437,7 +437,7 @@ production build. PR 45 run 30905371865 exposed the missing
 `teamOrchestration.ts` source-copy declaration only when the generated native
 tree was type-checked. The local overlay-only correction passes the final
 218/4/81 downstream contract, locked materialization, and exact CI TypeScript
-command; it is not pushed and has no additional CI evidence.
+command; it has no exact-head CI evidence yet.
 
 CrewAI is the first P6 planner-sidecar candidate under
 [ADR-0015](decisions/0015-crewai-supervised-orchestration-sidecar.md). It runs
