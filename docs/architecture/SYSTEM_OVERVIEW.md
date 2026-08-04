@@ -420,6 +420,25 @@ The Actestra TeamOrchestrator owns the authoritative dependency graph, worker
 admission, attempt identity, budgets, approvals, artifacts, cancellation,
 replanning versions, and recovery state.
 
+The first P6 implementation slice establishes the non-authoritative planner
+boundary before any sidecar runtime is added. Actestra Core accepts only a
+versioned, bounded request and candidate shape; validates unique declared
+capabilities and classified context references, node/dependency integrity,
+depth, concurrency, attempt budgets, required General/coding/human-feedback
+nodes, and a parallel branch; then creates deterministic Actestra-owned plan,
+node, and Task identities. A desktop-main service sends only the normalized,
+deeply frozen request through a cancellable planner port, sanitizes planner
+failures, and returns only a Core-admitted plan. The slice does not persist or
+schedule the plan and adds no Python process, Worker launch, renderer, bridge,
+route, or Team UI. Its final local root gate passes 76 test files with 2
+skipped, 672 tests with 5 skipped, the 100-source product boundary, exact
+foundation and then-current 217/4/80 downstream contract, and the 62/3/28
+production build. PR 45 run 30905371865 exposed the missing
+`teamOrchestration.ts` source-copy declaration only when the generated native
+tree was type-checked. The local overlay-only correction passes the final
+218/4/81 downstream contract, locked materialization, and exact CI TypeScript
+command; it has no exact-head CI evidence yet.
+
 CrewAI is the first P6 planner-sidecar candidate under
 [ADR-0015](decisions/0015-crewai-supervised-orchestration-sidecar.md). It runs
 in a separately supervised Python process and may propose bounded plans,
@@ -892,8 +911,11 @@ production/test fingerprint, one complete root `bun run check` passes 74
 passing and 2 skipped test files with 642 passing and 5 skipped tests, the
 98-source product boundary, the exact 1,766-file foundation with 27 routes and
 41 bridge domains, the 217/4/80 downstream contract, and the
-61-main/3-preload/28-renderer-module build. P5.3 final local gates are closed;
-Git, review, exact-head CI, merge, and merged-main CI remain open.
+61-main/3-preload/28-renderer-module build. Pull request 44 reached exact head
+`15a8e29b44a6684313f29a694f0d0615de95cf36`, passed exact-head CI
+30899489690, squash merged as `ee8425e39e201078cd64fe3af38355279ecf56de`,
+and passed exact merged-main CI 30900884248. P5.3 is accepted on `main`; this is
+not candidate, release, deployment, or user-acceptance evidence.
 
 ## Event contract
 

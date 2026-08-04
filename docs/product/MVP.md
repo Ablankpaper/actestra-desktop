@@ -54,6 +54,13 @@ and aggregates the result into one deliverable. Actestra owns the graph and
 execution state; a supervised CrewAI sidecar may propose plans, replans, and
 aggregations without receiving direct tool or product authority.
 
+The first P6 boundary admits only a versioned 3-5-node candidate with fixed
+depth, concurrency, and attempt budgets, declared General/coding capabilities,
+classified context references, one human-feedback node, and a parallel branch.
+Actestra validates it and creates its own deterministic plan, node, and Task
+identities before any persistence or scheduling. This boundary does not itself
+add a CrewAI process or make an admitted candidate executable.
+
 ## MVP capabilities
 
 - The preserved AionUi desktop frame, Guide, navigation, conversation history,
@@ -71,6 +78,9 @@ aggregations without receiving direct tool or product authority.
   Team paths remain available and Goose receives no separate application UI.
 - Small team orchestration with a leader, dependencies, parallel workers,
   retries, pause, cancel, and user handoff.
+- A closed Actestra-owned plan-admission protocol that rejects expanded or
+  over-budget candidates and maps accepted nodes to Actestra identities before
+  they can become product state.
 - A separately supervised planner sidecar whose private state is disposable and
   whose plan candidates are validated and persisted by Actestra before use.
 - Unified events for messages, tool requests, approvals, artifacts, completion,
