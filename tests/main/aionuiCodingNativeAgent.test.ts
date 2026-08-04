@@ -16,7 +16,6 @@ interface OverlaySourceCopy {
 }
 
 interface DownstreamOverlay {
-  readonly phase: string;
   readonly patches: readonly OverlayPatch[];
   readonly sourceCopies: readonly OverlaySourceCopy[];
   readonly expectedChangedFiles: readonly string[];
@@ -32,8 +31,7 @@ const patchPath = path.join(
 describe("P5.3 retained AionUI Goose agent and coding journey", () => {
   it("declares one R1 downstream patch and the Actestra-owned journey source copies", () => {
     const overlay = JSON.parse(fs.readFileSync(overlayPath, "utf8")) as DownstreamOverlay;
-    expect(overlay.phase).toBe("P5-preserved-aionui-coding-journey");
-    expect(overlay.patches.at(-1)).toEqual(
+    expect(overlay.patches).toContainEqual(
       expect.objectContaining({
         path: "patches/0013-actestra-goose-native-agent.mjs",
         classification: ["R1"],

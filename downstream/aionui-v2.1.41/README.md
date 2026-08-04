@@ -76,6 +76,18 @@ Actestra development commands materialize a generated working tree under
   provider is unavailable; they never fall back to AionCore, and resume never
   calls AionCore's cron `system-resume` route. The renderer gains no workspace,
   timer, claim, Worker, tool, credential, or runtime authority.
+- Patch 0014 is an R1/R2 Team-provider and product-surface change. It routes
+  only `/api/teams` and declared Team events through the fixed
+  current-main-frame preload contract, keeps schema 14 admitted plans separate
+  from schema 15 Team definitions, current heads, and append-only revisions,
+  and projects only bounded Actestra-owned Team state. The AionUI-native
+  creation, list, `/team/:id`, group-chat, status, blocked explanation,
+  approval, control, Artifact, aggregation, and recovery surfaces may evolve
+  the original page while retaining AionUI v2.1.41 design, components,
+  navigation, loading, empty, and error behavior. Regenerating without patch
+  0014 removes the provider and Actestra Team surfaces; schema 15 rows remain
+  inert and the frozen foundation remains byte-identical. No Goose, Eigent, or
+  CrewAI application UI or runtime is imported by this patch.
 - Actestra-owned source files are copied into the generated tree through the
   declared `sourceCopies` contract and must remain byte-identical to their
   reviewed root sources.

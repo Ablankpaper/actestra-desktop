@@ -1,10 +1,10 @@
 # Project Status
 
-Last updated: 2026-08-04
+Last updated: 2026-08-05
 
 ## Current phase
 
-### P5.3 is accepted; bounded P6 team-plan admission is the current slice
+### P6 team-plan admission is accepted; the Team orchestration batch remains local
 
 The containment foundation was developed from exact `origin/main`
 `071aa922c08dd9a139f0c11dee2aa0dadab02417` on branch
@@ -481,7 +481,7 @@ both resolve to `e301a0acede51671b404daf11248788cdaba34d9`. P5.3 is accepted
 on `main`; candidate, release, deployment, and user acceptance remain
 unclaimed.
 
-The first P6 implementation slice starts from that exact merge on branch
+The first P6 implementation slice started from that exact merge on branch
 `codex/p6-team-plan-admission`. It adds an Actestra Core-owned protocol version
 1 request/candidate boundary plus a desktop-main planner port and admission
 service. Requests contain only a bounded goal, unique declared General/coding
@@ -514,17 +514,268 @@ already-running Goose job 91979102841 was cancelled after the deterministic
 macOS failure to stop further Actions consumption; the failed SHA is not
 rerun.
 
-The local overlay-only correction adds exactly that source copy and expected
-changed-file entry. It changes no production/test bytes and passes formatting,
-the exact 1,766-file foundation check, the corrected 218-file downstream
-contract with 4 R0 invariants and 81 reviewed source copies, a locked
-3,177-package materialized install, and the exact CI TypeScript command. The
-correction has no exact-head CI evidence yet.
-This slice does not import or run CrewAI/Python and adds no persistence,
-scheduler, Worker launch, renderer, bridge, route, Team UI, or packaged runtime
-dependency. It is not a P6 phase-completion claim.
-Detailed scope and rollback are recorded in
-[P5.2 Isolated Coding Capability](product/P5_ISOLATED_CODING_CAPABILITY.md).
+The overlay-only correction reached exact head
+`a3d08a934160c1a5d61ff987ade29212bd3c0b05`. Exact-head CI 30906689796
+passed Goose runner-admission job 91983312901 and macOS arm64 foundation job
+91983312925. GitHub records no submitted review or inline thread; CodeRabbit's
+successful status is not represented as line-level review evidence. The branch
+squash merged as `30742934adde1e0944c4e8ced1f005452a1f3568`; exact
+merged-main CI 30907869824 passed Goose job 91987128709 and macOS job
+91987128766. The bounded team-plan admission slice is accepted on `main`.
+
+The next P6 slice starts from that exact merge on branch
+`codex/p6-team-plan-persistence`. SQLite schema 14 adds one strict
+`team_plans` authority table. Actestra Core revalidates exact fields, bounded
+text, deterministic identifier shapes, limits, canonical dependency order and
+topology, and the required General/coding/human-feedback/parallel envelope.
+Plan and correlation/version identities are unique; the canonical JSON digest
+detects stored-byte drift; identical retries return `duplicate`; conflicting
+identities fail as `team-plan-conflict`; and reloaded records are deeply frozen.
+The persistence utility exposes only closed persist and lookup operations. Its
+client rejects substituted persisted bytes or lookup identities and fails the
+connection closed. Desktop main awaits the persistence barrier before
+returning an admitted plan.
+
+The focused P6 set passes 5 files and 64 tests. Strict TypeScript, targeted
+formatting, and zero-warning targeted lint pass. The slice's single permitted
+root-gate attempt passed formatting, lint, strict TypeScript, and the Electron
+SQLite probe, then reached 75 passing and 2 skipped files with 679 passing and
+5 skipped tests before one stale `schemaVersion: 13` assertion failed. The
+assertion now uses `CURRENT_CORE_SCHEMA_VERSION`; its focused utility-service
+test and narrow format/lint checks pass. The final overlay and cumulative patch
+bytes also pass the exact 1,766-file foundation check and the 218-file
+downstream contract with 4 R0 invariants and 81 reviewed source copies; all 63
+documentation links resolve. The complete root gate is deliberately not
+repeated; the exact-head CI remains the only final-byte full validation.
+This slice adds no scheduler, orchestration state-machine execution,
+CrewAI/Python process, Worker launch, renderer, bridge, route, Team UI, packaged
+runtime dependency, candidate, release, deployment, or P6 phase-completion
+claim.
+
+Pull request 46 reached exact pushed head
+`e529e4c572209e61cc4ca3660e25bfe35fd2ce24`. Its sole exact-head CI run
+30913054785 passed the root source, test, documentation, materialized-native
+TypeScript, identity-isolation, build, and package-boundary steps in macOS job
+92004255775, then failed the clean-profile target-app smoke with
+`prepare-schedule-restart did not leave exact schema version 13 schedule
+authority`. Production had correctly migrated the clean profile to schema 14;
+the external packaged-smoke contracts still hard-coded the previous schema 13
+value. Goose job 92004255657 was cancelled while building its artifact to stop
+further Actions consumption, so the overall run ended `cancelled`. The failed
+SHA is not rerun.
+
+The local, unpushed correction remains in the larger P6 Team Work batch. Its
+smoke constants now follow current schema 15 while preserving schema 14 as the
+unchanged admitted-plan authority. Schema 15 separately adds immutable Team
+definitions, current Team run heads, and append-only Team run revisions. The
+pure Core reducer owns dependency readiness, immutable attempts, workflow
+feedback versus protected-operation Approval references, pause/resume,
+failure/retry, replacement, handoff, whole-run cancellation, deterministic
+interruption recovery, and reference-only result aggregation.
+
+The Core Team run file passes 13 tests. The affected six-file persistence and
+protocol closure totals 58 tests: 57 passed in the combined run, and its sole
+stale schema-14 single-step migration expectation passed after its input was
+fixed to the first 14 migrations. The smoke harness, explicit-path formatting,
+zero-warning lint, and strict TypeScript pass.
+
+Final authority review then found that existence and contiguous-revision checks
+alone could still admit a structurally valid substituted first run or later
+state rewrite. A focused RED proved that a run with a noncanonical `runId` was
+stored. The corrected SQLite barrier now reconstructs revision 1 from the
+referenced canonical schema-14 plan and Team, including immutable node and
+limit bytes, and accepts every later revision only when one allowed Core
+transition or deterministic recovery reproduces it exactly. The focused test
+passes 1/1 after the correction; the final changed Core/persistence closure
+passes 2 files and 17 tests, explicit-path format and zero-warning lint pass,
+and strict TypeScript passes. No second root gate, packaged target-app smoke,
+push, or Actions run was performed. Pull request 46 remains open and unmerged;
+this work is not yet a scheduler, Worker execution, Team UI, CrewAI admission,
+or P6 completion claim.
+
+This durable-authority checkpoint is committed locally on
+`codex/p6-team-plan-persistence` as
+`ae2d4b98a05ef9f89b30e8cd3734f46d38d50345`. It is one unpushed internal
+checkpoint in the larger P6 batch, not an exact-head CI, merge, or acceptance
+state.
+
+The next local, unpushed Task 3 layer adds a closed version-1 planner-sidecar
+protocol plus a generic supervised JSON-lines process. `propose` accepts only a
+normalized `TeamPlannerRequest` and returns a typed `TeamPlanCandidate` for Core
+re-admission. `aggregate` receives only Actestra correlation/plan/run identity,
+revision, and bounded Artifact references, and its result must preserve the
+same ordered references exactly. The process accepts one request at a time,
+uses `shell: false`, a closed environment without inherited `HOME`, `PATH`, or
+parent secrets, explicit telemetry-disable and network-denial policy variables,
+bounded stdout/stderr handling, exact engine/protocol negotiation, sanitized
+errors, startup/request timeouts, caller cancellation, and TERM-to-KILL process
+group cleanup. The final focused closure passes 3 files and 19 tests; targeted
+format, zero-warning lint, and strict TypeScript pass.
+
+The deterministic process fixture is explicitly not CrewAI. This is not proof
+of an OS-enforced network sandbox, a real CrewAI runtime, exact Python locks,
+license/NOTICE/SBOM/`pip-audit`, cross-platform packaging, real mixed
+General+Goose work, Team UI, or P6 completion. The production planner provider
+remains unavailable until every ADR-0015 admission gate is satisfied.
+
+The local, unpushed Task 4 layer adds the Actestra-owned Team scheduler,
+control, subscription, and restart-recovery service over the schema-15 Core
+state machine. It persists every snapshot before notifying observers or
+launching, pausing, resuming, cancelling, replacing, handing off, or aggregating
+an effect; serializes mutations per run; starts two admitted dependency-free
+Workers within concurrency `2`; waits for durable Artifact references before
+opening feedback or aggregation; and retains protected Approval/audit
+references separately from workflow feedback. Child and whole-Team
+cancellation, retry with a new attempt, replace, handoff, concurrent stale
+control rejection, close cleanup, persisted cancellation despite cleanup
+failure, and deterministic running/paused-to-interrupted recovery are covered.
+The final focused closure passes 3 files and 31 tests; explicit-path format,
+zero-warning lint, and strict TypeScript pass. The Worker port is still a
+deterministic fixture: no real General+Goose router, mixed journey, AionUI Team
+provider/UI, package, push, Actions run, or P6 acceptance is claimed.
+
+The local, unpushed Task 5 layer routes the scheduler through the real
+`AionUiGeneralWorkJourneyService` and the admitted isolated Goose coding
+journey. Deterministic run/node/attempt bindings produce main-owned General and
+coding Task identities; the scheduler supplies no root, model, runner,
+commands, credential, or approval actor. Each journey must finish in Actestra
+persistence, and its available Artifact must match the admitted kind before a
+reference can return to the Team state machine. A real integration RED exposed
+that the router incorrectly passed the General projection limit `100` to the
+coding service whose closed maximum is `50`; the corrected router lets each
+journey apply its own authoritative default.
+
+The real mixed fixture uses the writing General Worker service plus the exact
+locally built and admitted `aarch64-apple-darwin` Goose runner manifest
+`7444e12e4e218cfd4d4d8f9ae253dee12b9b1930b5546849498790277328b9df`.
+General and Goose are active in parallel. Goose file-write, focused-test, and
+publish operations each block on distinct real policy, ApprovalService, audit,
+and persist-before-effect/outcome evidence. The completed run aggregates only
+the two durable document/file Artifact references. Separate real cases prove a
+denied write never executes and whole-Team cancellation aborts the model,
+closes the General Worker, removes the coding worktree and private runner root,
+leaves one unchanged clean source checkout, and never aggregates a cancelled
+run.
+
+The final Task 5 router/orchestrator closure passes 2 files and 19 tests; the
+admitted-artifact mixed closure passes 1 file and 4 tests. Strict TypeScript and
+the targeted 17-path format and zero-warning lint checks pass. The admitted
+runner artifact is local test evidence, not a candidate or release. That
+checkpoint did not yet include the renderer/preload route or AionUI Team UI;
+later local Tasks 6 through 8 now supply those layers. Real CrewAI admission,
+package acceptance, push, Actions run, and P6 completion remain absent.
+
+The local Task 6 layer now adds the fixed `actestra:team-request-v1` and
+`actestra:team-event-v1` contracts, validates the retained native Team routes,
+and exposes them only through a trusted current-main-frame IPC boundary. The
+renderer can select only Actestra-owned Workspace references, fixed General and
+Goose assistants, and the closed plan-mode Team controls; it cannot select a
+runtime, model, filesystem path, Worker, plan, node, Approval identity, or
+durable state. Invalid provider DTOs and events are contained before renderer
+delivery, and private failure text is replaced with a bounded fixed envelope.
+
+Schema 15 Team definitions now support two-to-five-member CAS updates, active-
+run mutation exclusion, durable soft removal, safe duplicate retries, and
+current run-head listing through the closed persistence utility and fail-closed
+main client. The main-owned `AionUiTeamService` composes those operations with
+the real plan-admission service and TeamOrchestrator: a focused integration
+creates a Team, admits a user message as a durable plan, starts General and
+Goose in parallel, projects Actestra authority/current executor/valid controls,
+pauses the coding node, and cancels the whole Team while aborting both Worker
+signals. The affected nine-file closure passes 72 tests; strict TypeScript and
+targeted 18-path formatting and zero-warning lint pass. No downstream AionUI
+patch, preload exposure, visible `/team/:id` page, packaged journey, push,
+Actions run, or P6 completion is claimed.
+
+The owner has clarified the remaining P6 product gate: AionUI v2.1.41 is the
+sole design language, component system, navigation foundation, and visible
+product surface, but its Team page and information architecture are not frozen.
+The same P6 batch must deliver a real AionUI-native Team/group-chat journey for
+creation, listing, `/team/:id`, member/role and General+Goose configuration,
+workspace and task input, messages, plan/node/Worker progress, dependencies and
+blocked reasons, protected approval, pause/cancel/retry/replace/handoff,
+Artifact/result aggregation, and restart recovery. Actestra identity,
+authoritative source, current executor, reason for blocking, and the next valid
+action must be visible through coherent AionUI-style guidance, cards, and
+controls. Each changed area requires recorded R1/R2 retention, compatibility,
+and rollback evidence. No Goose or Eigent application UI may be introduced.
+
+Local Tasks 7 and 8 are committed at
+`94e6699b4fc352084ebfa53539b42e2496207ad5`. Downstream patch 0014 keeps the
+frozen foundation byte-identical while exposing only `/api/teams` and declared
+Team events through the fixed preload/current-main-frame provider. It adds the
+AionUI-native Team creation/list and `/team/:id` group-chat surface, members and
+roles, fixed General+Goose configuration, Workspace/task input, messages,
+plan/node/Worker/dependency and blocked-state cards, protected approval,
+pause/cancel/retry/replace/handoff controls, Artifact references, aggregation,
+and restart guidance. The overlay records R1/R2 retention and rollback; the
+current contract has 237 declared paths, 4 R0 invariants, and 91 reviewed source
+copies.
+
+The final local recovery correction persists bounded Team activities in the
+native run projection. A user message is reconstructed from the canonical
+schema-14 admitted-plan goal, while Worker activities and Artifact references
+are reconstructed from schema-15 run revisions. Raw Worker summaries, private
+paths, audit identifiers, process details, plan internals, and persistence
+authority do not cross into the renderer. Reopening the same Team conversation
+restores user and Worker group-chat activity, and live teammate events remain
+filtered to that Team.
+
+On these final Task 7/8 bytes, the root focused closure passes 4 files and 14
+tests, the additional type-correction closure passes 3 files and 36 tests, the
+Team DOM closure passes 1 file and 4 tests, and the earlier native Task 7
+closure passes 20 files and 135 tests. Root and materialized-AionUI strict
+TypeScript pass. The downstream checker passes 237 declared paths, 4 R0
+invariants, and 91 source copies; exact-path formatting and zero-warning lint
+pass. These are local focused and compatibility results, not the batch's final
+root gate or package acceptance.
+
+The single P6-batch `bun run check` was then executed on frozen head
+`06fdea77994dd223fb0aff6f2c26582a01545a82`, tree
+`29cfb11a12f0b3688e0b7f4bbe04d660ec078086`. Formatting over 248 files,
+zero-warning lint over 240 files, strict TypeScript, and the Electron
+37.10.3/Node.js 22.21.1/SQLite 3.50.4 probe passed. The test layer reached 84
+passing and 2 skipped files with 747 passing and 8 skipped tests, then stopped
+at three static-contract failures: four new AionUI Team compatibility files
+were absent from the exact product-boundary allowlist, and two historical P5
+tests incorrectly froze the global downstream phase and patch 0013's final
+position.
+
+Correction commit `292e1da6d89aac8876c6add87bf423ac28fcde28`
+adds only those four declared compatibility paths and makes the P5 regression
+tests assert retained patch presence rather than the repository's current
+highest phase. The exact failed closure now passes 3 files and 12 tests;
+targeted formatting and zero-warning lint pass. The complete root gate is not
+repeated because the batch budget was one attempt.
+
+The final shutdown audit then found one reporting gap in
+`TeamOrchestratorService.close()`: it aborted and attempted cancellation for
+every active Worker but swallowed each cancellation failure, preventing the
+already-aggregating outer Team composition from reporting an incomplete
+cleanup. A focused RED proved the close incorrectly resolved. The correction
+still aborts and attempts every Worker, then throws one `worker-failed` error
+whose cause aggregates every rejected cancellation. The full affected test
+file passes 15 tests; exact two-path formatting and zero-warning lint pass. The
+outer desktop owner continues attempting Team planner, coding journey, isolated
+coding sessions/worktrees, schedule, and General Work cleanup in its recorded
+order, then retains persistence authority for a later close retry if any owned
+cleanup reports failure.
+
+That production/test byte change invalidates the earlier fingerprint without
+authorizing another root gate. The refreshed 57-file production/test/overlay
+content-manifest fingerprint, computed from sorted path plus SHA-256 rows, is
+`4e8c4a004f0ea573d091bd07d013be81fede7a7e6a7afeec39afd8227960c2e8`;
+the unique exact-head CI is the remaining final-byte full-gate evidence. The
+diff-scoped audit finds no frozen-foundation change, generated/package output,
+non-ordinary file mode, high-confidence secret, foreign-project content, or
+unresolved renderer, schema, approval-order, sidecar, rollback, source-checkout,
+or cleanup blocker.
+
+No push or Actions run has occurred after remote head
+`e529e4c572209e61cc4ca3660e25bfe35fd2ce24`; pull request 46 still points at
+that old head. Real CrewAI admission, package/target-app acceptance, final
+push, exact-head CI, review/merge, merged-main CI, and P6 phase
+acceptance remain open.
 
 P4's phase acceptance record reached pull request 25 at exact head
 `c461fb06bdebd4bf6f55d39741a21dcb6980b3ff` and squash merged as current
@@ -2142,7 +2393,13 @@ Review closure validation at
 | P5.2 durable normalized coding evidence            | Delivered on `main` through PR 42                                 | Exact head `a20882abeb6caac3b4f230fde42a7e06965a0730`; exact-head CI 30876755457; squash merge `e064dc88e717cef093c866cdbc2692d23ed7dd03`; merged-main CI 30877711241 with Goose job 91892412815 and macOS job 91892412830; stable Actestra-owned stream/correlation identity, persist-before-open start, bounded evidence, review-blocked projection, response-loss-safe replay, and shared mutation barrier; Free CodeRabbit summary is not line-level review evidence; no publish/Artifact flow or phase acceptance in that delivery                                                                                                                                                                                                                                                        |
 | P5.2 publish and Artifact registration             | Accepted on `main` through PR 43                                  | Exact head `305a29d9b2b514865983ae9d8a23f877566bb7a5`; exact-head CI 30883055147; squash merge `9048fe2cc23819f596d8721adb8c544dcd0b786f`; merged-main CI 30884138218; main-only seventh publish capability remains outside Goose's six MCP tools; locked exact patch capture, metadata-only one-shot approval, drift denial, durable Artifact completion, ordered cleanup, 5 focused files/123 passed/2 artifact-gated skipped, recorded 68-file/618-test root gate, and 196-file downstream contract; rate-limited CodeRabbit status is not line-level review evidence; P5.2 accepted, not released or user-accepted                                                                                                                                                                      |
 | P5.3 preserved AionUI coding journey               | Accepted on `main` through PR 44                                  | Exact head `15a8e29b44a6684313f29a694f0d0615de95cf36`; exact-head CI 30899489690 passes; squash merge `ee8425e39e201078cd64fe3af38355279ecf56de`; merged-main CI 30900884248 passes; exact-head and merged-main tree `e301a0acede51671b404daf11248788cdaba34d9`; R1 patch 0013 preserves native and Team paths while providing the fixed Goose journey, real approval/publish/cancel evidence, 74/2 files and 642/5 tests in the final root gate, 217/4/80 downstream checks, and the 61/3/28 build; Free CodeRabbit summary is not line-level review evidence; no candidate, release, deployment, or user-acceptance claim                                                                                                                                                 |
-| P6 bounded team-plan admission                     | Local correction validated; exact-head CI pending                  | Initial PR 45 head `59cf48fbbb45d78c803ab6691547b61878fc8eb3`; sole run 30905371865 passed root source/tests then failed macOS materialized TypeScript because `teamOrchestration.ts` was absent from the source-copy declaration; Goose job was cancelled after that failure and the SHA was not rerun; local correction changes only `overlay.json` and passes the 218/4/81 downstream contract, exact foundation, locked 3,177-package materialization, and exact CI TypeScript command; the correction has no exact-head CI evidence yet; 2 focused files/30 tests and the recorded 76/2-file, 672/5-test root gate pass; CrewAI/Python, persistence, scheduling, Worker launch, Team UI, packaging, and P6 acceptance remain absent                                                                                         |
+| P6 bounded team-plan admission                     | Accepted on `main` through PR 45                                  | Initial head `59cf48fbbb45d78c803ab6691547b61878fc8eb3` failed sole run 30905371865 only at the missing downstream source-copy declaration and was not rerun; corrected exact head `a3d08a934160c1a5d61ff987ade29212bd3c0b05`; exact-head CI 30906689796; squash merge `30742934adde1e0944c4e8ced1f005452a1f3568`; merged-main CI 30907869824; 2 focused files/30 tests and recorded 76/2-file, 672/5-test root gate; no submitted review or inline thread; no CrewAI/Python, persistence, scheduling, Worker launch, Team UI, packaging, or P6 phase acceptance |
+| P6 admitted plan and Team run durability           | Local committed checkpoint in the unpushed PR 46 batch            | Local commit `ae2d4b98a05ef9f89b30e8cd3734f46d38d50345`; schema 14 remains the canonical admitted `team_plans` authority; schema 15 separately adds immutable Team definitions, current run heads, append-only revisions, Core transitions, CAS persistence, digest validation, recoverable-run listing, and fail-closed utility/client identity checks; revision 1 is reconstructed from the canonical plan and Team, while every N+1 revision must replay as one allowed Core transition or deterministic recovery; Team run 13/13, the earlier persistence/protocol 58/58, and final changed Core/persistence 17/17 tests pass; smoke harness, targeted format/lint, and strict TypeScript pass; no second root gate or Actions run; production planner provider, real mixed Worker execution, real AionUI-native Team/group-chat creation/run/explain/control UI, real CrewAI admission, and P6 acceptance remain absent |
+| P6 generic planner-sidecar boundary                | Local implementation in the unpushed PR 46 batch                  | Closed typed `propose` and reference-only `aggregate` protocol; exact engine/version handshake; closed environment and telemetry/network-denial policy variables; bounded serialized JSONL; sanitized failure; timeout/abort/crash/close process-group cleanup; 3 focused files/19 tests plus targeted format, zero-warning lint, and strict TypeScript; deterministic fixture only, with no real CrewAI admission, OS network-sandbox proof, mixed Workers, Team UI, packaging, or P6 acceptance |
+| P6 Team scheduler/control/recovery                 | Local implementation in the unpushed PR 46 batch                  | Actestra-owned persisted Core transitions; per-run serialization; persist-before-observe/effect; bounded parallel roots; dependency and Artifact gating; separate protected Approval and workflow feedback; pause/resume/retry/replace/handoff; child/whole cancel; reference-only aggregation; close cleanup; deterministic interrupted recovery; 3 focused files/31 tests, explicit-path format, zero-warning lint, and strict TypeScript; the scheduler contract is now composed through the separately recorded real mixed journey, but Team UI, push, CI, and P6 acceptance remain absent |
+| P6 real General+Goose Team composition            | Local committed checkpoint in the unpushed PR 46 batch            | Local commit `d5b9759a67889fb9651c5c134ead182d0274f432`; deterministic Team bindings route admitted nodes through the real General Work and admitted Goose coding journeys; protected write/test/publish approvals persist before effect and acknowledgement; completed Artifacts are re-read from Actestra persistence and aggregated only by reference; focused router/orchestrator 2 files/19 tests and real mixed 1 file/4 tests pass, including denial, whole-Team cancellation, no orphan process/worktree, and unchanged clean source-checkout evidence; later local Tasks 6-8 add the renderer/preload and Team UI, while real CrewAI admission, package, push, CI, and P6 acceptance remain absent |
+| P6 AionUI Team main provider and bridge           | Local committed checkpoint in the unpushed PR 46 batch            | Local commit `65adbf334bbaa7a318a7c8c2a5bfbd1a0b3bf0a8`; fixed request/event contracts and trusted-main-frame IPC; schema-15 two-to-five-member Team CAS, active-run exclusion, soft removal, duplicate retry and per-Team run-head listing through utility/client; main provider composes real plan admission and TeamOrchestrator, projects authority/executor/blocked/next-action state, and proves persisted creation, General+Goose parallel start, pause, whole-Team cancel and Worker abort; 9 focused files/72 tests, strict TypeScript, targeted formatting and zero-warning lint pass; patch 0014 now exposes this provider in the later local checkpoint, but no package, push, CI, or P6 acceptance is claimed |
+| P6 AionUI-native Team journey and recovery        | Local committed checkpoint in the unpushed PR 46 batch            | Local commit `94e6699b4fc352084ebfa53539b42e2496207ad5`; R1/R2 patch 0014 adds the fixed preload/provider, creation/list, `/team/:id`, group chat, members/roles, General+Goose, Workspace/task input, explainable run/dependency/blocked state, approvals, pause/cancel/retry/replace/handoff, Artifacts, aggregation, and persistent activity recovery without editing the frozen foundation or exposing private Worker summaries; final focused 4 files/14 tests, type-correction 3/36, Team DOM 1/4, earlier native closure 20/135, root/materialized strict TypeScript, exact format, zero-warning lint, and 237-path/4-R0/91-source downstream checks pass; the sole root gate passed format/lint/type/SQLite then exposed three static guards, corrected at `292e1da` with focused 3/12 green; no repeated full local gate, package, push, Actions, real CrewAI admission, review/merge, or P6 acceptance |
 | Native AionUi source                               | Exact local desktop snapshot                                      | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Native preservation contract                       | Local pass                                                        | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | Native AionUi build and launch                     | Local pass                                                        | Frozen install, production build, isolated native Electron launch, and actual Guide screenshot pass                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -2287,10 +2544,16 @@ The ordered implementation index and P3 non-claims are in
    30900884248 together with the retained AionUI journey, real-Goose publish
    and cancellation proof, native compatibility, and source-checkout
    preservation.
-9. Continue P6 from the closed team-plan admission protocol. Persist an
-   accepted Actestra graph before scheduling, then add supervised sidecar
-   lifecycle and recovery in bounded vertical slices. Do not give a planner
-   process, worktree, credential, approval, tool, or durable-state authority.
+9. Keep schema-14 admitted-plan authority, schema-15 Team run authority, the
+   generic non-authoritative planner protocol/supervisor, the Actestra-owned
+   scheduler/control/recovery service, real General+Goose composition, fixed
+   Team bridge/provider, and patch 0014's visible AionUI-native Team/group-chat
+   creation, execution, explainability, control, Artifact, and recovery journey
+   in the same unpushed P6 batch. Freeze the final fingerprint, run the batch's
+   single root gate, complete package/target-app and final scope/security/review
+   audits, then push once for exact-head CI. Do not admit a real CrewAI provider
+   before its independent gates pass, and do not give a planner process,
+   renderer, worktree, credential, approval, tool, or durable-state authority.
 
 ## Open decisions
 
@@ -2326,15 +2589,16 @@ The ordered implementation index and P3 non-claims are in
   rate-limited before reviewing the final four-document status range. Its
   successful status is limit-handling evidence; exact final-head CI run
   30376696055 passed.
-- The current branch runs schemas 1 through 13 in the dedicated
-  persistence utility. The downstream main accepts one fixed
-  shadow-observation operation and one fixed desktop confirmation response
-  operation. F3.2 gates only that response's native delivery, while F3.3
-  separately gates only the boolean pending-state reconciliation read. The
-  accepted GW-P4.6 bridge additionally accepts strict submit/list/cancel/preview
-  intents and returns only redacted status or bounded owned content. It exposes
-  no renderer-selected filesystem path, generic protected operation, generic
-  tool transport, credential value, or worker control.
+- The current local branch runs schemas 1 through 15 in the dedicated
+  persistence utility. Schema 14 owns canonical admitted plans; schema 15
+  separately owns Team definitions, current run heads, and append-only
+  revisions. The downstream main retains the accepted shadow, confirmation,
+  General Work, coding, and schedule boundaries and locally adds one fixed Team
+  request/event provider. The provider returns only bounded Team DTOs,
+  explanations, valid actions, messages, and Artifact references. It exposes no
+  renderer-selected filesystem path, generic protected operation, generic tool
+  transport, credential value, Worker/process identifier, private summary, or
+  durable-state authority.
 - The P3.4 deterministic fake remains test infrastructure. Accepted GW-P4.3
   adds a real deterministic utility process and packaged-process probe.
   Accepted GW-P4.4 connects its blocked fixture to exactly two main-owned text
@@ -2404,9 +2668,18 @@ The ordered implementation index and P3 non-claims are in
   through PR 43, squash merge `9048fe2cc23819f596d8721adb8c544dcd0b786f`,
   and merged-main CI 30884138218. P5.3 is accepted through PR 44, squash merge
   `ee8425e39e201078cd64fe3af38355279ecf56de`, and merged-main CI
-  30900884248. The current P6 local slice proves only closed plan-candidate
-  admission and a main-owned planner port; it does not prove persistence,
-  scheduling, sidecar supervision, Worker execution, Team UI, or recovery.
+  30900884248. P6 admission is accepted through PR 45 and exact merge
+  `30742934adde1e0944c4e8ced1f005452a1f3568`. The current local batch proves
+  schema-14 admitted-plan persistence, schema-15 Team run state and revision
+  durability, generic sidecar supervision, Actestra-owned scheduler effects,
+  real General+Goose mixed execution, protected approval ordering,
+  reference-only aggregation, whole-Team cancellation, and bounded
+  process/worktree cleanup. Patch 0014 and local commit `94e6699` additionally
+  prove the fixed Team bridge/preload/provider, AionUI-native Team/group-chat
+  surface, controls, privacy projection, and persistent activity recovery under
+  focused native and DOM tests. The batch does not prove real CrewAI admission,
+  its final root/package/target-app gate, pushed CI, review/merge closure, or P6
+  acceptance.
 - F0 alone proves only that the original AionUi application can be preserved
   and run. F1, F2, F3.1, F3.2, and merged F3.3 add their separately recorded
   identity, shadow, narrow decision-authority, fixed-delivery audit, and

@@ -305,8 +305,8 @@ downstream contract, and the 61/3/28 build. Pull request 44 reached exact head
 30899489690, squash merged as `ee8425e39e201078cd64fe3af38355279ecf56de`,
 and passed exact merged-main CI 30900884248. P5.3 is accepted on that evidence.
 
-P6 is now the ordered phase. Its first local slice starts from that exact merge
-on branch `codex/p6-team-plan-admission`. Actestra Core closes and validates a
+P6 is now the ordered phase. Its first slice started from that exact merge on
+branch `codex/p6-team-plan-admission`. Actestra Core closes and validates a
 versioned 3-5-node plan-candidate protocol, fixed depth/concurrency/attempt
 budgets, declared General/coding capabilities, classified context references,
 human feedback, and at least one parallel branch. It maps admitted candidates
@@ -320,12 +320,21 @@ the then-current 217/4/80 downstream contract, and the 62/3/28 build.
 Initial PR 45 head `59cf48fbbb45d78c803ab6691547b61878fc8eb3` used the sole
 exact-head run 30905371865. Root source/tests passed, but materialized TypeScript
 failed because the Core barrel export lacked a matching source-copy declaration;
-the still-running Goose job was cancelled after that failure. The local
-overlay-only correction passes the final 218/4/81 downstream contract, exact
-foundation, locked 3,177-package materialization, and exact CI TypeScript
-command. The correction has no exact-head CI evidence yet. No CrewAI/Python
-runtime, persistence, scheduler, Worker launch, bridge, renderer, Team UI, or
-P6 phase acceptance is claimed.
+the still-running Goose job was cancelled after that failure. The focused
+overlay correction reached exact head
+`a3d08a934160c1a5d61ff987ade29212bd3c0b05`, passed exact-head CI
+30906689796, squash merged as
+`30742934adde1e0944c4e8ced1f005452a1f3568`, and passed exact merged-main CI
+30907869824.
+
+The next slice starts from that exact merge on branch
+`codex/p6-team-plan-persistence`. Schema 14 persists the canonical admitted
+graph behind the supervised utility before desktop main returns it. Core
+revalidates reloaded records; plan and correlation/version identities are
+unique; canonical JSON digests expose disk drift; identical retries are
+idempotent; conflicting identities and substituted utility responses fail
+closed. No CrewAI/Python runtime, scheduler, state-machine execution, Worker
+launch, bridge, renderer, Team UI, or P6 phase acceptance is claimed.
 
 ## P0 — Project Foundation
 
@@ -580,9 +589,25 @@ slice previously described as P4.3/F3.1.
 
 ## P6 — Multi-Agent Team Orchestration
 
-Current progress is limited to the closed plan-candidate admission and
-desktop-main planner-port boundary described above. The accepted plan is not
-yet persisted or schedulable, and no planner sidecar process exists.
+Current progress includes the closed plan-candidate admission, desktop-main
+planner port, schema-14 admitted-plan durability barrier, schema-15 Team run
+authority, a local unpushed generic planner-sidecar protocol/supervisor, and a
+local unpushed Actestra-owned scheduler/control/recovery service. The current
+local Task 5 layer composes that scheduler with the real General Work journey
+and admitted Goose coding journey, including protected approvals, durable
+Artifact re-read, reference-only aggregation, denial, and whole-Team
+cancellation. The local Task 6 layer now adds the fixed Team request/event
+bridge, trusted-current-main-frame IPC, schema-15 Team CRUD and per-Team run
+listing, plus a main-owned provider that composes real plan admission and
+TeamOrchestrator execution. Local Tasks 7 and 8 add downstream patch 0014, the
+fixed preload provider, AionUI-native creation/list and `/team/:id` group-chat
+surfaces, member/role and General+Goose configuration, workspace/task input,
+messages, explainable plan/node/Worker/dependency/blocked state, controls,
+Artifacts, aggregation, and persistent activity recovery. These final local UI
+bytes are committed at `94e6699b4fc352084ebfa53539b42e2496207ad5` and remain
+unpushed. The final root gate, packaged target-app acceptance, push,
+exact-head CI, review/merge, merged-main CI, and real CrewAI admission remain
+open; no CrewAI runtime is imported or packaged and P6 is not complete.
 
 ### Deliverables
 
@@ -593,9 +618,14 @@ yet persisted or schedulable, and no planner sidecar process exists.
 - Evaluate CrewAI as a separately supervised planner, replanner, and result
   aggregation sidecar under ADR-0015. Validate every returned plan before it
   becomes authoritative or schedulable.
-- Map orchestration into the preserved AionUi Team creation, navigation, chat,
-  task/slot, worker-status, messaging, pause, cancel, rename, pin, and recovery
-  experience; do not add a separate Eigent application UI.
+- Build a complete AionUI-native Team/group-chat experience covering creation,
+  list, `/team/:id`, members and roles, General+Goose configuration, owned
+  workspace and task input, chat/messages, plan/node/Worker progress,
+  dependencies, approvals, controls, Artifacts, aggregation, and recovery.
+  AionUI v2.1.41 remains the design/component/navigation foundation, but page
+  and information-architecture evolution is allowed through recorded R1/R2
+  downstream patches with retention, compatibility, and rollback evidence; do
+  not add a separate Goose or Eigent application UI.
 - Dependency graph and ready/running/blocked/completed/failed/cancelled states.
 - Parallel general and coding workers.
 - Shared artifact references without shared uncontrolled working directories.
@@ -606,7 +636,11 @@ yet persisted or schedulable, and no planner sidecar process exists.
 
 - A representative mixed general-and-code fixture completes deterministically.
 - Dependency, partial failure, retry, cancellation, and aggregation tests pass.
-- The UI can explain what each worker is doing and why it is blocked.
+- A user can create, run, understand, and control the representative Team from
+  the visible AionUI-native journey. The UI identifies Actestra authority and
+  the current General or Goose executor, explains dependencies, approvals,
+  interruption and every blocked reason, offers only valid next actions, and
+  restores the same understandable state after restart.
 - CrewAI crash, cancellation, restart, or version mismatch leaves the Actestra
   graph recoverable and creates no orphan process or worker.
 

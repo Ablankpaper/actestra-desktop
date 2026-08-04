@@ -3,7 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { PersistenceError } from "../../core";
 
 export const ACTESTRA_SQLITE_APPLICATION_ID = 1_095_980_114;
-export const CURRENT_CORE_SCHEMA_VERSION = 13;
+export const CURRENT_CORE_SCHEMA_VERSION = 15;
 
 export interface SqliteMigration {
   readonly version: number;
@@ -671,6 +671,93 @@ export const CORE_SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
       CREATE INDEX aionui_schedule_active_claim_idx
         ON aionui_schedule_jobs(active_claim)
         WHERE active_claim IS NOT NULL;
+    `,
+  },
+  {
+    version: 14,
+    name: "team-plan-authority",
+    sql: `
+      CREATE TABLE team_plans (
+        plan_id TEXT PRIMARY KEY CHECK (
+          length(plan_id) = 74 AND
+          substr(plan_id, 1, 10) = 'team-plan-' AND
+          substr(plan_id, 11) NOT GLOB '*[^0-9a-f]*'
+        ),
+        protocol_version INTEGER NOT NULL CHECK (protocol_version = 1),
+        correlation_id TEXT NOT NULL CHECK (length(correlation_id) BETWEEN 1 AND 128),
+        plan_version INTEGER NOT NULL CHECK (plan_version >= 1),
+        node_count INTEGER NOT NULL CHECK (node_count BETWEEN 3 AND 5),
+        record_sha256 TEXT NOT NULL CHECK (
+          length(record_sha256) = 64 AND
+          record_sha256 NOT GLOB '*[^0-9a-f]*'
+        ),
+        plan_json TEXT NOT NULL CHECK (length(plan_json) BETWEEN 1 AND 65536),
+        UNIQUE (correlation_id, plan_version)
+      ) STRICT;
+
+      CREATE INDEX team_plans_correlation_idx
+        ON team_plans(correlation_id, plan_version);
+    `,
+  },
+  {
+    version: 15,
+    name: "team-run-authority",
+    sql: `
+      CREATE TABLE team_definitions (
+        team_id TEXT PRIMARY KEY CHECK (
+          length(team_id) = 69 AND
+          substr(team_id, 1, 5) = 'team-' AND
+          substr(team_id, 6) NOT GLOB '*[^0-9a-f]*'
+        ),
+        record_sha256 TEXT NOT NULL CHECK (
+          length(record_sha256) = 64 AND
+          record_sha256 NOT GLOB '*[^0-9a-f]*'
+        ),
+        updated_at TEXT NOT NULL CHECK (length(updated_at) = 24),
+        removed_at TEXT CHECK (removed_at IS NULL OR length(removed_at) = 24),
+        team_json TEXT NOT NULL CHECK (length(team_json) BETWEEN 1 AND 65536)
+      ) STRICT;
+
+      CREATE TABLE team_runs (
+        run_id TEXT PRIMARY KEY CHECK (
+          length(run_id) = 73 AND
+          substr(run_id, 1, 9) = 'team-run-' AND
+          substr(run_id, 10) NOT GLOB '*[^0-9a-f]*'
+        ),
+        team_id TEXT NOT NULL REFERENCES team_definitions(team_id) ON DELETE RESTRICT,
+        plan_id TEXT NOT NULL REFERENCES team_plans(plan_id) ON DELETE RESTRICT,
+        revision INTEGER NOT NULL CHECK (revision >= 1),
+        status TEXT NOT NULL CHECK (
+          status IN ('accepted', 'running', 'paused', 'blocked', 'completed', 'failed', 'cancelled')
+        ),
+        updated_at TEXT NOT NULL CHECK (length(updated_at) = 24),
+        record_sha256 TEXT NOT NULL CHECK (
+          length(record_sha256) = 64 AND
+          record_sha256 NOT GLOB '*[^0-9a-f]*'
+        ),
+        snapshot_json TEXT NOT NULL CHECK (length(snapshot_json) BETWEEN 1 AND 262144)
+      ) STRICT;
+
+      CREATE TABLE team_run_revisions (
+        run_id TEXT NOT NULL REFERENCES team_runs(run_id) ON DELETE CASCADE,
+        revision INTEGER NOT NULL CHECK (revision >= 1),
+        occurred_at TEXT NOT NULL CHECK (length(occurred_at) = 24),
+        record_sha256 TEXT NOT NULL CHECK (
+          length(record_sha256) = 64 AND
+          record_sha256 NOT GLOB '*[^0-9a-f]*'
+        ),
+        snapshot_json TEXT NOT NULL CHECK (length(snapshot_json) BETWEEN 1 AND 262144),
+        PRIMARY KEY (run_id, revision)
+      ) STRICT;
+
+      CREATE INDEX team_definitions_updated_idx
+        ON team_definitions(updated_at, team_id)
+        WHERE removed_at IS NULL;
+      CREATE INDEX team_runs_team_updated_idx
+        ON team_runs(team_id, updated_at, run_id);
+      CREATE INDEX team_runs_recoverable_idx
+        ON team_runs(status, updated_at, run_id)
+        WHERE status NOT IN ('completed', 'failed', 'cancelled');
     `,
   },
 ] as const;

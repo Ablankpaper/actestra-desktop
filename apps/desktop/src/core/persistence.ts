@@ -23,6 +23,9 @@ export const PERSISTENCE_ERROR_CODES = [
   "general-work-journey-conflict",
   "schedule-conflict",
   "schedule-limit",
+  "team-plan-conflict",
+  "team-definition-conflict",
+  "team-run-conflict",
 ] as const;
 
 export type PersistenceErrorCode = (typeof PERSISTENCE_ERROR_CODES)[number];

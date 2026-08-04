@@ -52,14 +52,18 @@ function assert(condition, message) {
 try {
   const packagedSmokeSource = fs.readFileSync(smokeScript, "utf8");
   assert(
-    packagedSmokeSource.includes("const expectedPersistenceSchemaVersion = 13;"),
-    "Packaged shell smoke must validate the current schema 13 database",
+    packagedSmokeSource.includes("const expectedPersistenceSchemaVersion = 15;"),
+    "Packaged shell smoke must validate the current schema 15 database",
   );
 
   const generalWorkSmokeSource = fs.readFileSync(generalWorkSmokeScript, "utf8");
   assert(
     generalWorkSmokeSource.includes("const startupTimeoutMs = 60_000;"),
     "General Work target-app smoke must keep a bounded one-minute startup deadline",
+  );
+  assert(
+    generalWorkSmokeSource.includes("const expectedPersistenceSchemaVersion = 15;"),
+    "General Work target-app smoke must validate the current schema 15 database",
   );
   assert(
     generalWorkSmokeSource.includes('"actestra-input.txt"') &&
@@ -116,9 +120,8 @@ try {
   assert(
     generalWorkSmokeSource.includes('"actestra-research.txt"') &&
       generalWorkSmokeSource.includes("local-research-artifact") &&
-      generalWorkSmokeSource.includes('"research.md"') &&
-      generalWorkSmokeSource.includes("schema version 13"),
-    "General Work target-app smoke must exercise the bounded local-research journey on schema 13",
+      generalWorkSmokeSource.includes('"research.md"'),
+    "General Work target-app smoke must exercise the bounded local-research journey",
   );
   assert(
     generalWorkSmokeSource.includes('"prepare-writing-restart"') &&
@@ -150,8 +153,8 @@ try {
       generalWorkSmokeSource.includes("schedule-smoke-interrupted-claim") &&
       generalWorkSmokeSource.includes("schedule-skill-unsupported") &&
       generalWorkSmokeSource.includes("ACTESTRA_RENDERER_PROVIDER_SMOKE_READY") &&
-      generalWorkSmokeSource.includes("schema version 13"),
-    "General Work target-app smoke must prove schema-13 scheduling and one renderer provider request",
+      generalWorkSmokeSource.includes("schema-${expectedPersistenceSchemaVersion}"),
+    "General Work target-app smoke must prove current-schema scheduling and one renderer provider request",
   );
 
   const scheduledGeneralWorkPatchSource = fs.readFileSync(scheduledGeneralWorkPatch, "utf8");
@@ -266,7 +269,7 @@ const database = new DatabaseSync(path.join(stateDirectory, "actestra.sqlite3"))
 database.exec(\`
   CREATE TABLE workspace_grants (id TEXT PRIMARY KEY) STRICT;
   CREATE TABLE content_references (id TEXT PRIMARY KEY) STRICT;
-  PRAGMA user_version = 13;
+  PRAGMA user_version = 15;
 \`);
 database.close();
 console.log("ACTESTRA_PERSISTENCE_UTILITY_READY");

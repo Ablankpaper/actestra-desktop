@@ -61,18 +61,26 @@ import {
   assertDomainGraph,
   assertGeneralWorkCheckpoint,
   assertGeneralWorkCheckpointTransition,
+  assertInitialTeamRunSnapshot,
   assertIdempotentCoreEventDelivery,
   assertResolveContentReferenceInput,
   assertStoreContentReferenceInput,
+  assertTeamRunRevisionTransition,
   assertWorkspaceGrant,
   auditRecordId,
   compareInstants,
   createCoreEventStreamState,
   eventStreamId,
   instant,
+  normalizeAdmittedTeamPlan,
+  normalizeTeamDefinition,
+  normalizeTeamRunSnapshot,
   replayCoreEvents,
   sessionId,
   taskId,
+  teamId,
+  teamPlanId,
+  teamRunId,
   toolInputReference,
   toolOutputReference,
   toolRequestId,
@@ -81,6 +89,7 @@ import {
   workspaceGrantId,
   workspaceId,
   type ActestraPersistencePort,
+  type AdmittedTeamPlan,
   type ApprovalState,
   type AgentAttemptEvidence,
   type AppendPrivilegedAuditInput,
@@ -98,6 +107,11 @@ import {
   type GeneralWorkCheckpoint,
   type PersistGeneralWorkCheckpointResult,
   type PersistContentReferenceResult,
+  type PersistAdmittedTeamPlanResult,
+  type PersistTeamDefinitionResult,
+  type PersistTeamRunSnapshotResult,
+  type RemoveTeamDefinitionResult,
+  type ReplaceTeamDefinitionResult,
   type PersistEvidenceResult,
   type PersistEventResult,
   type PersistWorkspaceGrantResult,
@@ -107,6 +121,8 @@ import {
   type SessionState,
   type StoreContentReferenceInput,
   type TaskState,
+  type TeamDefinition,
+  type TeamRunSnapshot,
   type WorkerState,
   type WorkspaceGrant,
   type WorkspaceState,
@@ -151,6 +167,20 @@ const CONTENT_REFERENCE_COLUMNS = `
 const GENERAL_WORK_CHECKPOINT_COLUMNS = `
   session_id, contract_version, phase, revision, workspace_id, task_id,
   worker_id, stream_id, created_at, updated_at, checkpoint_json
+`;
+const TEAM_PLAN_COLUMNS = `
+  plan_id, protocol_version, correlation_id, plan_version, node_count,
+  record_sha256, plan_json
+`;
+const TEAM_DEFINITION_COLUMNS = `
+  team_id, record_sha256, updated_at, removed_at, team_json
+`;
+const TEAM_RUN_COLUMNS = `
+  run_id, team_id, plan_id, revision, status, updated_at,
+  record_sha256, snapshot_json
+`;
+const TEAM_RUN_REVISION_COLUMNS = `
+  run_id, revision, occurred_at, record_sha256, snapshot_json
 `;
 const AIONUI_GENERAL_WORK_JOURNEY_COLUMNS = `
   task_id, contract_version, conversation_hash, journey_kind, created_at
@@ -454,6 +484,184 @@ function parseStoredGeneralWorkCheckpoint(row: SqliteRow): GeneralWorkCheckpoint
   }
 
   return deepFreeze(value);
+}
+
+function parseStoredTeamPlan(row: SqliteRow): AdmittedTeamPlan {
+  const encoded = requiredString(row, "plan_json");
+  const digest = createHash("sha256").update(encoded).digest("hex");
+  if (requiredString(row, "record_sha256") !== digest) {
+    throw new PersistenceError("corrupt-database", "Persisted team-plan bytes failed integrity");
+  }
+  let plan: AdmittedTeamPlan;
+  try {
+    plan = normalizeAdmittedTeamPlan(JSON.parse(encoded));
+  } catch (error) {
+    throw new PersistenceError("corrupt-database", "Persisted team plan violates its contract", {
+      cause: error,
+    });
+  }
+  if (
+    requiredString(row, "plan_id") !== plan.planId ||
+    requiredNumber(row, "protocol_version") !== plan.protocolVersion ||
+    requiredString(row, "correlation_id") !== plan.correlationId ||
+    requiredNumber(row, "plan_version") !== plan.version ||
+    requiredNumber(row, "node_count") !== plan.nodes.length
+  ) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted team-plan projection does not match its canonical record",
+    );
+  }
+  return plan;
+}
+
+function parseStoredTeamDefinition(row: SqliteRow): TeamDefinition {
+  const encoded = requiredString(row, "team_json");
+  const digest = createHash("sha256").update(encoded).digest("hex");
+  if (requiredString(row, "record_sha256") !== digest) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted Team definition bytes failed integrity",
+    );
+  }
+  let team: TeamDefinition;
+  try {
+    team = normalizeTeamDefinition(JSON.parse(encoded));
+  } catch (error) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted Team definition violates its contract",
+      {
+        cause: error,
+      },
+    );
+  }
+  if (
+    requiredString(row, "team_id") !== team.teamId ||
+    requiredString(row, "updated_at") !== team.updatedAt
+  ) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted Team definition projection does not match its canonical record",
+    );
+  }
+  return team;
+}
+
+function parseStoredTeamRunHead(row: SqliteRow): TeamRunSnapshot {
+  const encoded = requiredString(row, "snapshot_json");
+  const digest = createHash("sha256").update(encoded).digest("hex");
+  if (requiredString(row, "record_sha256") !== digest) {
+    throw new PersistenceError("corrupt-database", "Persisted Team run bytes failed integrity");
+  }
+  let snapshot: TeamRunSnapshot;
+  try {
+    snapshot = normalizeTeamRunSnapshot(JSON.parse(encoded));
+  } catch (error) {
+    throw new PersistenceError("corrupt-database", "Persisted Team run violates its contract", {
+      cause: error,
+    });
+  }
+  if (
+    requiredString(row, "run_id") !== snapshot.runId ||
+    requiredString(row, "team_id") !== snapshot.teamId ||
+    requiredString(row, "plan_id") !== snapshot.planId ||
+    requiredNumber(row, "revision") !== snapshot.revision ||
+    requiredString(row, "status") !== snapshot.status ||
+    requiredString(row, "updated_at") !== snapshot.updatedAt
+  ) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted Team run projection does not match its canonical snapshot",
+    );
+  }
+  return snapshot;
+}
+
+function parseStoredTeamRunRevision(row: SqliteRow): TeamRunSnapshot {
+  const encoded = requiredString(row, "snapshot_json");
+  const digest = createHash("sha256").update(encoded).digest("hex");
+  if (requiredString(row, "record_sha256") !== digest) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted Team run revision bytes failed integrity",
+    );
+  }
+  let snapshot: TeamRunSnapshot;
+  try {
+    snapshot = normalizeTeamRunSnapshot(JSON.parse(encoded));
+  } catch (error) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted Team run revision violates its contract",
+      { cause: error },
+    );
+  }
+  if (
+    requiredString(row, "run_id") !== snapshot.runId ||
+    requiredNumber(row, "revision") !== snapshot.revision ||
+    requiredString(row, "occurred_at") !== snapshot.updatedAt
+  ) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted Team run revision projection does not match its canonical snapshot",
+    );
+  }
+  return snapshot;
+}
+
+function loadStoredTeamRunHead(
+  database: DatabaseSync,
+  runIdValue: ReturnType<typeof teamRunId>,
+): TeamRunSnapshot | null {
+  const row = database
+    .prepare(`SELECT ${TEAM_RUN_COLUMNS} FROM team_runs WHERE run_id = ?`)
+    .get(runIdValue) as SqliteRow | undefined;
+  if (row === undefined) return null;
+  const snapshot = parseStoredTeamRunHead(row);
+  const revisionRow = database
+    .prepare(
+      `SELECT ${TEAM_RUN_REVISION_COLUMNS}
+       FROM team_run_revisions
+       WHERE run_id = ? AND revision = ?`,
+    )
+    .get(snapshot.runId, snapshot.revision) as SqliteRow | undefined;
+  if (revisionRow === undefined) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Current Team run head has no matching append-only revision",
+    );
+  }
+  const revision = parseStoredTeamRunRevision(revisionRow);
+  if (!isDeepStrictEqual(revision, snapshot)) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Current Team run head conflicts with its append-only revision",
+    );
+  }
+  return snapshot;
+}
+
+function assertTeamPersistenceLimit(limit: number, field: string): void {
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+    throw new PersistenceError("invalid-record", `${field} must be between 1 and 100`);
+  }
+}
+
+function hasNonTerminalTeamRun(
+  database: DatabaseSync,
+  teamIdValue: ReturnType<typeof teamId>,
+): boolean {
+  return (
+    database
+      .prepare(
+        `SELECT run_id
+         FROM team_runs
+         WHERE team_id = ? AND status NOT IN ('completed', 'failed', 'cancelled')
+         LIMIT 1`,
+      )
+      .get(teamIdValue) !== undefined
+  );
 }
 
 function parseStoredAionUiGeneralWorkLink(row: SqliteRow): AionUiGeneralWorkLink {
@@ -2025,6 +2233,548 @@ class SqliteCorePersistence implements ActestraPersistencePort {
         .all(limit),
     );
     return Object.freeze(rows.map(parseStoredGeneralWorkCheckpoint));
+  }
+
+  async persistAdmittedTeamPlan(plan: AdmittedTeamPlan): Promise<PersistAdmittedTeamPlanResult> {
+    const database = this.requireDatabase();
+    let stablePlan: AdmittedTeamPlan;
+    try {
+      stablePlan = normalizeAdmittedTeamPlan(JSON.parse(JSON.stringify(plan)));
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Admitted team plan is invalid", {
+        cause: error,
+      });
+    }
+
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const existingRows = asRows(
+        database
+          .prepare(
+            `SELECT ${TEAM_PLAN_COLUMNS}
+             FROM team_plans
+             WHERE plan_id = ? OR (correlation_id = ? AND plan_version = ?)`,
+          )
+          .all(stablePlan.planId, stablePlan.correlationId, stablePlan.version),
+      );
+      if (existingRows.length > 1) {
+        throw new PersistenceError(
+          "corrupt-database",
+          "Durable team-plan identities resolve to multiple records",
+        );
+      }
+      if (existingRows.length === 1) {
+        const existing = parseStoredTeamPlan(existingRows[0]!);
+        if (isDeepStrictEqual(existing, stablePlan)) {
+          database.exec("COMMIT");
+          return deepFreeze({ status: "duplicate", plan: existing });
+        }
+        throw new PersistenceError(
+          "team-plan-conflict",
+          "Team-plan identity conflicts with durable authority",
+        );
+      }
+
+      const encoded = JSON.stringify(stablePlan);
+      const recordSha256 = createHash("sha256").update(encoded).digest("hex");
+      database
+        .prepare(
+          `INSERT INTO team_plans (
+             plan_id, protocol_version, correlation_id, plan_version, node_count,
+             record_sha256, plan_json
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          stablePlan.planId,
+          stablePlan.protocolVersion,
+          stablePlan.correlationId,
+          stablePlan.version,
+          stablePlan.nodes.length,
+          recordSha256,
+          encoded,
+        );
+      database.exec("COMMIT");
+      return deepFreeze({ status: "stored", plan: stablePlan });
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) {
+        throw error;
+      }
+      throw new PersistenceError("corrupt-database", "Actestra could not persist the team plan", {
+        cause: error,
+      });
+    }
+  }
+
+  async getAdmittedTeamPlan(
+    planIdValue: ReturnType<typeof teamPlanId>,
+  ): Promise<AdmittedTeamPlan | null> {
+    const database = this.requireDatabase();
+    let stablePlanId: ReturnType<typeof teamPlanId>;
+    try {
+      stablePlanId = teamPlanId(planIdValue);
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Team-plan lookup is invalid", {
+        cause: error,
+      });
+    }
+    const row = database
+      .prepare(`SELECT ${TEAM_PLAN_COLUMNS} FROM team_plans WHERE plan_id = ?`)
+      .get(stablePlanId) as SqliteRow | undefined;
+    return row === undefined ? null : parseStoredTeamPlan(row);
+  }
+
+  async persistTeamDefinition(teamValue: TeamDefinition): Promise<PersistTeamDefinitionResult> {
+    const database = this.requireDatabase();
+    let stableTeam: TeamDefinition;
+    try {
+      stableTeam = normalizeTeamDefinition(JSON.parse(JSON.stringify(teamValue)));
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Team definition is invalid", {
+        cause: error,
+      });
+    }
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const existingRow = database
+        .prepare(`SELECT ${TEAM_DEFINITION_COLUMNS} FROM team_definitions WHERE team_id = ?`)
+        .get(stableTeam.teamId) as SqliteRow | undefined;
+      if (existingRow !== undefined) {
+        const existing = parseStoredTeamDefinition(existingRow);
+        if (
+          optionalString(existingRow, "removed_at") === undefined &&
+          isDeepStrictEqual(existing, stableTeam)
+        ) {
+          database.exec("COMMIT");
+          return deepFreeze({ status: "duplicate", team: existing });
+        }
+        throw new PersistenceError(
+          "team-definition-conflict",
+          "Team definition identity conflicts with durable authority",
+        );
+      }
+      const encoded = JSON.stringify(stableTeam);
+      const digest = createHash("sha256").update(encoded).digest("hex");
+      database
+        .prepare(
+          `INSERT INTO team_definitions (team_id, record_sha256, updated_at, team_json)
+           VALUES (?, ?, ?, ?)`,
+        )
+        .run(stableTeam.teamId, digest, stableTeam.updatedAt, encoded);
+      database.exec("COMMIT");
+      return deepFreeze({ status: "stored", team: stableTeam });
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) throw error;
+      throw new PersistenceError(
+        "corrupt-database",
+        "Actestra could not persist the Team definition",
+        { cause: error },
+      );
+    }
+  }
+
+  async getTeamDefinition(teamIdValue: ReturnType<typeof teamId>): Promise<TeamDefinition | null> {
+    const database = this.requireDatabase();
+    let stableTeamId: ReturnType<typeof teamId>;
+    try {
+      stableTeamId = teamId(teamIdValue);
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Team definition lookup is invalid", {
+        cause: error,
+      });
+    }
+    const row = database
+      .prepare(
+        `SELECT ${TEAM_DEFINITION_COLUMNS}
+         FROM team_definitions
+         WHERE team_id = ? AND removed_at IS NULL`,
+      )
+      .get(stableTeamId) as SqliteRow | undefined;
+    return row === undefined ? null : parseStoredTeamDefinition(row);
+  }
+
+  async listTeamDefinitions(limit: number): Promise<readonly TeamDefinition[]> {
+    const database = this.requireDatabase();
+    assertTeamPersistenceLimit(limit, "Team definition list limit");
+    const rows = asRows(
+      database
+        .prepare(
+          `SELECT ${TEAM_DEFINITION_COLUMNS}
+           FROM team_definitions
+           WHERE removed_at IS NULL
+           ORDER BY updated_at, team_id
+           LIMIT ?`,
+        )
+        .all(limit),
+    );
+    return Object.freeze(rows.map(parseStoredTeamDefinition));
+  }
+
+  async replaceTeamDefinition(
+    expectedValue: TeamDefinition,
+    replacementValue: TeamDefinition,
+  ): Promise<ReplaceTeamDefinitionResult> {
+    const database = this.requireDatabase();
+    let expected: TeamDefinition;
+    let replacement: TeamDefinition;
+    try {
+      expected = normalizeTeamDefinition(JSON.parse(JSON.stringify(expectedValue)));
+      replacement = normalizeTeamDefinition(JSON.parse(JSON.stringify(replacementValue)));
+      if (
+        replacement.teamId !== expected.teamId ||
+        replacement.workspaceId !== expected.workspaceId ||
+        replacement.createdAt !== expected.createdAt ||
+        compareInstants(replacement.updatedAt, expected.updatedAt) <= 0
+      ) {
+        throw new Error("Team replacement must preserve identity and advance its revision time");
+      }
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Team definition replacement is invalid", {
+        cause: error,
+      });
+    }
+
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const row = database
+        .prepare(`SELECT ${TEAM_DEFINITION_COLUMNS} FROM team_definitions WHERE team_id = ?`)
+        .get(expected.teamId) as SqliteRow | undefined;
+      if (row === undefined || optionalString(row, "removed_at") !== undefined) {
+        throw new PersistenceError(
+          "team-definition-conflict",
+          "Team definition is missing or removed",
+        );
+      }
+      const current = parseStoredTeamDefinition(row);
+      if (isDeepStrictEqual(current, replacement)) {
+        database.exec("COMMIT");
+        return deepFreeze({ status: "duplicate", team: current });
+      }
+      if (
+        !isDeepStrictEqual(current, expected) ||
+        hasNonTerminalTeamRun(database, expected.teamId)
+      ) {
+        throw new PersistenceError(
+          "team-definition-conflict",
+          "Team definition changed or has an active run",
+        );
+      }
+
+      const encoded = JSON.stringify(replacement);
+      const digest = createHash("sha256").update(encoded).digest("hex");
+      const update = database
+        .prepare(
+          `UPDATE team_definitions
+           SET record_sha256 = ?, updated_at = ?, team_json = ?
+           WHERE team_id = ? AND record_sha256 = ? AND removed_at IS NULL`,
+        )
+        .run(
+          digest,
+          replacement.updatedAt,
+          encoded,
+          expected.teamId,
+          requiredString(row, "record_sha256"),
+        );
+      if (update.changes !== 1) {
+        throw new PersistenceError(
+          "team-definition-conflict",
+          "Team definition replacement lost its compare-and-swap",
+        );
+      }
+      database.exec("COMMIT");
+      return deepFreeze({ status: "stored", team: replacement });
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) throw error;
+      throw new PersistenceError(
+        "corrupt-database",
+        "Actestra could not replace the Team definition",
+        { cause: error },
+      );
+    }
+  }
+
+  async removeTeamDefinition(
+    expectedValue: TeamDefinition,
+    removedAtValue: ReturnType<typeof instant>,
+  ): Promise<RemoveTeamDefinitionResult> {
+    const database = this.requireDatabase();
+    let expected: TeamDefinition;
+    let removedAt: ReturnType<typeof instant>;
+    try {
+      expected = normalizeTeamDefinition(JSON.parse(JSON.stringify(expectedValue)));
+      removedAt = instant(removedAtValue);
+      if (compareInstants(removedAt, expected.updatedAt) < 0) {
+        throw new Error("Team removal cannot precede its current definition");
+      }
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Team definition removal is invalid", {
+        cause: error,
+      });
+    }
+
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const row = database
+        .prepare(`SELECT ${TEAM_DEFINITION_COLUMNS} FROM team_definitions WHERE team_id = ?`)
+        .get(expected.teamId) as SqliteRow | undefined;
+      if (row === undefined) {
+        throw new PersistenceError("team-definition-conflict", "Team definition is missing");
+      }
+      const current = parseStoredTeamDefinition(row);
+      const existingRemoval = optionalString(row, "removed_at");
+      if (existingRemoval !== undefined) {
+        if (!isDeepStrictEqual(current, expected)) {
+          throw new PersistenceError(
+            "team-definition-conflict",
+            "Removed Team definition conflicts with the expected bytes",
+          );
+        }
+        database.exec("COMMIT");
+        return deepFreeze({ status: "duplicate", teamId: expected.teamId });
+      }
+      if (
+        !isDeepStrictEqual(current, expected) ||
+        hasNonTerminalTeamRun(database, expected.teamId)
+      ) {
+        throw new PersistenceError(
+          "team-definition-conflict",
+          "Team definition changed or has an active run",
+        );
+      }
+      const update = database
+        .prepare(
+          `UPDATE team_definitions
+           SET removed_at = ?
+           WHERE team_id = ? AND record_sha256 = ? AND removed_at IS NULL`,
+        )
+        .run(removedAt, expected.teamId, requiredString(row, "record_sha256"));
+      if (update.changes !== 1) {
+        throw new PersistenceError(
+          "team-definition-conflict",
+          "Team definition removal lost its compare-and-swap",
+        );
+      }
+      database.exec("COMMIT");
+      return deepFreeze({ status: "removed", teamId: expected.teamId });
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) throw error;
+      throw new PersistenceError(
+        "corrupt-database",
+        "Actestra could not remove the Team definition",
+        { cause: error },
+      );
+    }
+  }
+
+  async persistTeamRunSnapshot(
+    snapshotValue: TeamRunSnapshot,
+  ): Promise<PersistTeamRunSnapshotResult> {
+    const database = this.requireDatabase();
+    let stableSnapshot: TeamRunSnapshot;
+    try {
+      stableSnapshot = normalizeTeamRunSnapshot(JSON.parse(JSON.stringify(snapshotValue)));
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Team run snapshot is invalid", {
+        cause: error,
+      });
+    }
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const teamRow = database
+        .prepare(`SELECT ${TEAM_DEFINITION_COLUMNS} FROM team_definitions WHERE team_id = ?`)
+        .get(stableSnapshot.teamId) as SqliteRow | undefined;
+      const planRow = database
+        .prepare(`SELECT ${TEAM_PLAN_COLUMNS} FROM team_plans WHERE plan_id = ?`)
+        .get(stableSnapshot.planId) as SqliteRow | undefined;
+      if (
+        teamRow === undefined ||
+        optionalString(teamRow, "removed_at") !== undefined ||
+        planRow === undefined
+      ) {
+        throw new PersistenceError(
+          "team-run-conflict",
+          "Team run references missing Team definition or admitted plan authority",
+        );
+      }
+      const team = parseStoredTeamDefinition(teamRow);
+      const plan = parseStoredTeamPlan(planRow);
+
+      const existing = loadStoredTeamRunHead(database, stableSnapshot.runId);
+      if (existing !== null && isDeepStrictEqual(existing, stableSnapshot)) {
+        database.exec("COMMIT");
+        return deepFreeze({ status: "duplicate", snapshot: existing });
+      }
+      if (
+        (existing === null && stableSnapshot.revision !== 1) ||
+        (existing !== null &&
+          (stableSnapshot.teamId !== existing.teamId ||
+            stableSnapshot.planId !== existing.planId ||
+            stableSnapshot.createdAt !== existing.createdAt ||
+            stableSnapshot.revision !== existing.revision + 1 ||
+            compareInstants(stableSnapshot.updatedAt, existing.updatedAt) < 0))
+      ) {
+        throw new PersistenceError(
+          "team-run-conflict",
+          "Team run revision conflicts with durable authority",
+        );
+      }
+      try {
+        if (existing === null) {
+          assertInitialTeamRunSnapshot(plan, team, stableSnapshot);
+        } else {
+          assertTeamRunRevisionTransition(existing, stableSnapshot);
+        }
+      } catch (error) {
+        throw new PersistenceError(
+          "team-run-conflict",
+          "Team run bytes do not follow canonical Core authority",
+          { cause: error },
+        );
+      }
+
+      const encoded = JSON.stringify(stableSnapshot);
+      const digest = createHash("sha256").update(encoded).digest("hex");
+      if (existing === null) {
+        database
+          .prepare(
+            `INSERT INTO team_runs (
+               run_id, team_id, plan_id, revision, status, updated_at,
+               record_sha256, snapshot_json
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            stableSnapshot.runId,
+            stableSnapshot.teamId,
+            stableSnapshot.planId,
+            stableSnapshot.revision,
+            stableSnapshot.status,
+            stableSnapshot.updatedAt,
+            digest,
+            encoded,
+          );
+      } else {
+        const update = database
+          .prepare(
+            `UPDATE team_runs
+             SET revision = ?, status = ?, updated_at = ?, record_sha256 = ?, snapshot_json = ?
+             WHERE run_id = ? AND revision = ?`,
+          )
+          .run(
+            stableSnapshot.revision,
+            stableSnapshot.status,
+            stableSnapshot.updatedAt,
+            digest,
+            encoded,
+            stableSnapshot.runId,
+            existing.revision,
+          );
+        if (update.changes !== 1) {
+          throw new PersistenceError("team-run-conflict", "Team run revision changed concurrently");
+        }
+      }
+      database
+        .prepare(
+          `INSERT INTO team_run_revisions (
+             run_id, revision, occurred_at, record_sha256, snapshot_json
+           ) VALUES (?, ?, ?, ?, ?)`,
+        )
+        .run(
+          stableSnapshot.runId,
+          stableSnapshot.revision,
+          stableSnapshot.updatedAt,
+          digest,
+          encoded,
+        );
+      database.exec("COMMIT");
+      return deepFreeze({ status: "stored", snapshot: stableSnapshot });
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) throw error;
+      throw new PersistenceError("corrupt-database", "Actestra could not persist the Team run", {
+        cause: error,
+      });
+    }
+  }
+
+  async getTeamRunSnapshot(
+    runIdValue: ReturnType<typeof teamRunId>,
+  ): Promise<TeamRunSnapshot | null> {
+    const database = this.requireDatabase();
+    let stableRunId: ReturnType<typeof teamRunId>;
+    try {
+      stableRunId = teamRunId(runIdValue);
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Team run lookup is invalid", {
+        cause: error,
+      });
+    }
+    return loadStoredTeamRunHead(database, stableRunId);
+  }
+
+  async listRecoverableTeamRuns(limit: number): Promise<readonly TeamRunSnapshot[]> {
+    const database = this.requireDatabase();
+    assertTeamPersistenceLimit(limit, "Recoverable Team run limit");
+    const rows = asRows(
+      database
+        .prepare(
+          `SELECT ${TEAM_RUN_COLUMNS}
+           FROM team_runs
+           WHERE status NOT IN ('completed', 'failed', 'cancelled')
+           ORDER BY updated_at, run_id
+           LIMIT ?`,
+        )
+        .all(limit),
+    );
+    return Object.freeze(
+      rows.map((row) => {
+        const snapshot = parseStoredTeamRunHead(row);
+        const validated = loadStoredTeamRunHead(database, snapshot.runId);
+        if (validated === null) {
+          throw new PersistenceError("corrupt-database", "Recoverable Team run disappeared");
+        }
+        return validated;
+      }),
+    );
+  }
+
+  async listTeamRunsForTeam(
+    teamIdValue: ReturnType<typeof teamId>,
+    limit: number,
+  ): Promise<readonly TeamRunSnapshot[]> {
+    const database = this.requireDatabase();
+    let stableTeamId: ReturnType<typeof teamId>;
+    try {
+      stableTeamId = teamId(teamIdValue);
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Team run list identity is invalid", {
+        cause: error,
+      });
+    }
+    assertTeamPersistenceLimit(limit, "Team run list limit");
+    const rows = asRows(
+      database
+        .prepare(
+          `SELECT ${TEAM_RUN_COLUMNS}
+           FROM team_runs
+           WHERE team_id = ?
+           ORDER BY updated_at DESC, run_id
+           LIMIT ?`,
+        )
+        .all(stableTeamId, limit),
+    );
+    return Object.freeze(
+      rows.map((row) => {
+        const snapshot = parseStoredTeamRunHead(row);
+        const validated = loadStoredTeamRunHead(database, snapshot.runId);
+        if (validated === null) {
+          throw new PersistenceError("corrupt-database", "Team run head disappeared");
+        }
+        return validated;
+      }),
+    );
   }
 
   async registerAionUiGeneralWorkJourney(

@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import type {
   AionUiApprovalAuthoritySummary,
   AionUiApprovalDecisionRecord,
@@ -27,7 +28,11 @@ import type {
 import {
   CoreContractError,
   PersistenceError,
+  normalizeAdmittedTeamPlan,
+  normalizeTeamDefinition,
+  normalizeTeamRunSnapshot,
   type ActestraPersistencePort,
+  type AdmittedTeamPlan,
   type AgentAttemptEvidence,
   type AppendPrivilegedAuditInput,
   type AuditRecord,
@@ -36,8 +41,14 @@ import {
   type DomainGraph,
   type EventStreamId,
   type GeneralWorkCheckpoint,
+  type Instant,
   type PersistGeneralWorkCheckpointResult,
   type PersistContentReferenceResult,
+  type PersistAdmittedTeamPlanResult,
+  type PersistTeamDefinitionResult,
+  type PersistTeamRunSnapshotResult,
+  type RemoveTeamDefinitionResult,
+  type ReplaceTeamDefinitionResult,
   type PersistEvidenceResult,
   type PersistEventResult,
   type PersistWorkspaceGrantResult,
@@ -48,6 +59,11 @@ import {
   type WorkspaceGrant,
   type WorkspaceId,
   type SessionId,
+  type TeamPlanId,
+  type TeamDefinition,
+  type TeamId,
+  type TeamRunId,
+  type TeamRunSnapshot,
 } from "../../core";
 import {
   PERSISTENCE_UTILITY_PROTOCOL_VERSION,
@@ -339,6 +355,132 @@ export class PersistenceUtilityClient implements ActestraPersistencePort {
     return this.invoke("list-recoverable-general-work-checkpoints", { limit });
   }
 
+  async persistAdmittedTeamPlan(plan: AdmittedTeamPlan): Promise<PersistAdmittedTeamPlanResult> {
+    const result = await this.invoke("persist-admitted-team-plan", { plan });
+    const stablePlan = this.normalizeTeamPlanResponse(result.plan);
+    if (!isDeepStrictEqual(stablePlan, plan)) {
+      throw this.failInvalidMessage("Persistence utility returned substituted team-plan bytes");
+    }
+    return Object.freeze({ status: result.status, plan: stablePlan });
+  }
+
+  async getAdmittedTeamPlan(planId: TeamPlanId): Promise<AdmittedTeamPlan | null> {
+    const plan = await this.invoke("get-admitted-team-plan", { planId });
+    if (plan === null) {
+      return null;
+    }
+    const stablePlan = this.normalizeTeamPlanResponse(plan);
+    if (stablePlan.planId !== planId) {
+      throw this.failInvalidMessage("Persistence utility substituted a team-plan lookup identity");
+    }
+    return stablePlan;
+  }
+
+  async persistTeamDefinition(team: TeamDefinition): Promise<PersistTeamDefinitionResult> {
+    const result = await this.invoke("persist-team-definition", { team });
+    const stableTeam = this.normalizeTeamDefinitionResponse(result.team);
+    if (!isDeepStrictEqual(stableTeam, team)) {
+      throw this.failInvalidMessage(
+        "Persistence utility returned substituted Team definition bytes",
+      );
+    }
+    return Object.freeze({ status: result.status, team: stableTeam });
+  }
+
+  async getTeamDefinition(teamId: TeamId): Promise<TeamDefinition | null> {
+    const team = await this.invoke("get-team-definition", { teamId });
+    if (team === null) return null;
+    const stableTeam = this.normalizeTeamDefinitionResponse(team);
+    if (stableTeam.teamId !== teamId) {
+      throw this.failInvalidMessage(
+        "Persistence utility substituted a Team definition lookup identity",
+      );
+    }
+    return stableTeam;
+  }
+
+  async listTeamDefinitions(limit: number): Promise<readonly TeamDefinition[]> {
+    const teams = (await this.invoke("list-team-definitions", { limit })).map((team) =>
+      this.normalizeTeamDefinitionResponse(team),
+    );
+    if (new Set(teams.map(({ teamId }) => teamId)).size !== teams.length) {
+      throw this.failInvalidMessage("Persistence utility returned duplicate Team definitions");
+    }
+    return Object.freeze(teams);
+  }
+
+  async replaceTeamDefinition(
+    expected: TeamDefinition,
+    replacement: TeamDefinition,
+  ): Promise<ReplaceTeamDefinitionResult> {
+    const result = await this.invoke("replace-team-definition", { expected, replacement });
+    const stableTeam = this.normalizeTeamDefinitionResponse(result.team);
+    if (!isDeepStrictEqual(stableTeam, replacement)) {
+      throw this.failInvalidMessage(
+        "Persistence utility returned substituted Team replacement bytes",
+      );
+    }
+    return Object.freeze({ status: result.status, team: stableTeam });
+  }
+
+  async removeTeamDefinition(
+    expected: TeamDefinition,
+    removedAt: Instant,
+  ): Promise<RemoveTeamDefinitionResult> {
+    const result = await this.invoke("remove-team-definition", { expected, removedAt });
+    if (result.teamId !== expected.teamId) {
+      throw this.failInvalidMessage(
+        "Persistence utility substituted a removed Team definition identity",
+      );
+    }
+    return Object.freeze({ status: result.status, teamId: result.teamId });
+  }
+
+  async persistTeamRunSnapshot(snapshot: TeamRunSnapshot): Promise<PersistTeamRunSnapshotResult> {
+    const result = await this.invoke("persist-team-run-snapshot", { snapshot });
+    const stableSnapshot = this.normalizeTeamRunResponse(result.snapshot);
+    if (!isDeepStrictEqual(stableSnapshot, snapshot)) {
+      throw this.failInvalidMessage("Persistence utility returned substituted Team run bytes");
+    }
+    return Object.freeze({ status: result.status, snapshot: stableSnapshot });
+  }
+
+  async getTeamRunSnapshot(runId: TeamRunId): Promise<TeamRunSnapshot | null> {
+    const snapshot = await this.invoke("get-team-run-snapshot", { runId });
+    if (snapshot === null) return null;
+    const stableSnapshot = this.normalizeTeamRunResponse(snapshot);
+    if (stableSnapshot.runId !== runId) {
+      throw this.failInvalidMessage("Persistence utility substituted a Team run lookup identity");
+    }
+    return stableSnapshot;
+  }
+
+  async listRecoverableTeamRuns(limit: number): Promise<readonly TeamRunSnapshot[]> {
+    const snapshots = (await this.invoke("list-recoverable-team-runs", { limit })).map((snapshot) =>
+      this.normalizeTeamRunResponse(snapshot),
+    );
+    if (
+      new Set(snapshots.map(({ runId }) => runId)).size !== snapshots.length ||
+      snapshots.some(({ status }) => ["completed", "failed", "cancelled"].includes(status))
+    ) {
+      throw this.failInvalidMessage("Persistence utility returned invalid recoverable Team runs");
+    }
+    return Object.freeze(snapshots);
+  }
+
+  async listTeamRunsForTeam(teamId: TeamId, limit: number): Promise<readonly TeamRunSnapshot[]> {
+    const snapshots = (await this.invoke("list-team-runs-for-team", { teamId, limit })).map(
+      (snapshot) => this.normalizeTeamRunResponse(snapshot),
+    );
+    if (
+      new Set(snapshots.map(({ runId }) => runId)).size !== snapshots.length ||
+      snapshots.some((snapshot) => snapshot.teamId !== teamId)
+    ) {
+      throw this.failInvalidMessage("Persistence utility returned invalid Team run heads");
+    }
+    return Object.freeze(snapshots);
+  }
+
   async registerAionUiGeneralWorkJourney(
     registration: AionUiGeneralWorkRegistration,
   ): Promise<RegisterAionUiGeneralWorkJourneyResult> {
@@ -601,6 +743,39 @@ export class PersistenceUtilityClient implements ActestraPersistencePort {
         this.futureError ??
         new PersistenceUtilityError("unavailable", "Persistence utility is unavailable")
       );
+    }
+  }
+
+  private failInvalidMessage(message: string): PersistenceUtilityError {
+    const error = new PersistenceUtilityError("invalid-message", message);
+    this.fail(
+      error,
+      new PersistenceUtilityError("unavailable", "Persistence utility is unavailable"),
+    );
+    return error;
+  }
+
+  private normalizeTeamPlanResponse(value: unknown): AdmittedTeamPlan {
+    try {
+      return normalizeAdmittedTeamPlan(value);
+    } catch {
+      throw this.failInvalidMessage("Persistence utility returned an invalid team plan");
+    }
+  }
+
+  private normalizeTeamDefinitionResponse(value: unknown): TeamDefinition {
+    try {
+      return normalizeTeamDefinition(value);
+    } catch {
+      throw this.failInvalidMessage("Persistence utility returned an invalid Team definition");
+    }
+  }
+
+  private normalizeTeamRunResponse(value: unknown): TeamRunSnapshot {
+    try {
+      return normalizeTeamRunSnapshot(value);
+    } catch {
+      throw this.failInvalidMessage("Persistence utility returned an invalid Team run snapshot");
     }
   }
 

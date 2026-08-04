@@ -330,6 +330,13 @@ export type AuditEvent =
       readonly actorId?: ApprovalActorId;
     }
   | {
+      readonly type: "approval.decision-recorded";
+      readonly context: PrivilegedAuditContext;
+      readonly approvalId: ApprovalId;
+      readonly decision: Exclude<UserApprovalDecision, "cancelled">;
+      readonly actorId: ApprovalActorId;
+    }
+  | {
       readonly type: "approval.consumed";
       readonly context: PrivilegedAuditContext;
       readonly approvalId: ApprovalId;
@@ -1223,6 +1230,7 @@ export function assertAuditEvent(value: unknown): asserts value is AuditEvent {
     [
       "policy.evaluated",
       "approval.requested",
+      "approval.decision-recorded",
       "approval.resolved",
       "approval.consumed",
       "credential.lease-issued",
@@ -1323,6 +1331,32 @@ export function assertAuditEvent(value: unknown): asserts value is AuditEvent {
           "Expired approvals have no actor and user decisions require one actor",
         );
       }
+      return;
+    case "approval.decision-recorded":
+      assertExactKeys(
+        value,
+        ["type", "context", "approvalId", "decision", "actorId"],
+        "invalid-audit",
+        "Approval decision audit event",
+      );
+      assertIdentifier(
+        value.approvalId,
+        approvalId,
+        "invalid-audit",
+        "Approval decision audit event.approvalId",
+      );
+      assertKnownValue(
+        value.decision,
+        ["approved", "denied"],
+        "invalid-audit",
+        "Approval decision audit event.decision",
+      );
+      assertIdentifier(
+        value.actorId,
+        approvalActorId,
+        "invalid-audit",
+        "Approval decision audit event.actorId",
+      );
       return;
     case "approval.consumed":
       assertExactKeys(

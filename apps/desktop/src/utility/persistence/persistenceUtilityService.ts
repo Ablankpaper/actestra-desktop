@@ -1,5 +1,10 @@
 import path from "node:path";
-import { CoreContractError, PersistenceError, type ActestraPersistencePort } from "../../core";
+import {
+  CoreContractError,
+  PersistenceError,
+  instant,
+  type ActestraPersistencePort,
+} from "../../core";
 import {
   assertPersistenceUtilityMessage,
   assertPersistenceUtilityRequest,
@@ -179,6 +184,34 @@ export class PersistenceUtilityService {
         return persistence.getGeneralWorkCheckpoint(request.payload.sessionId);
       case "list-recoverable-general-work-checkpoints":
         return persistence.listRecoverableGeneralWorkCheckpoints(request.payload.limit);
+      case "persist-admitted-team-plan":
+        return persistence.persistAdmittedTeamPlan(request.payload.plan);
+      case "get-admitted-team-plan":
+        return persistence.getAdmittedTeamPlan(request.payload.planId);
+      case "persist-team-definition":
+        return persistence.persistTeamDefinition(request.payload.team);
+      case "get-team-definition":
+        return persistence.getTeamDefinition(request.payload.teamId);
+      case "list-team-definitions":
+        return persistence.listTeamDefinitions(request.payload.limit);
+      case "replace-team-definition":
+        return persistence.replaceTeamDefinition(
+          request.payload.expected,
+          request.payload.replacement,
+        );
+      case "remove-team-definition":
+        return persistence.removeTeamDefinition(
+          request.payload.expected,
+          instant(request.payload.removedAt),
+        );
+      case "persist-team-run-snapshot":
+        return persistence.persistTeamRunSnapshot(request.payload.snapshot);
+      case "get-team-run-snapshot":
+        return persistence.getTeamRunSnapshot(request.payload.runId);
+      case "list-recoverable-team-runs":
+        return persistence.listRecoverableTeamRuns(request.payload.limit);
+      case "list-team-runs-for-team":
+        return persistence.listTeamRunsForTeam(request.payload.teamId, request.payload.limit);
       case "register-aionui-general-work":
         return persistence.registerAionUiGeneralWorkJourney(request.payload.registration);
       case "list-aionui-general-work-links":

@@ -2,11 +2,13 @@ import {
   admitTeamPlanCandidate,
   normalizeTeamPlannerRequest,
   type AdmittedTeamPlan,
+  type TeamPlanCandidate,
+  type TeamPlanPersistencePort,
   type TeamPlannerRequest,
 } from "../../core";
 
 export interface TeamPlannerPort {
-  propose(request: TeamPlannerRequest, signal: AbortSignal): Promise<unknown>;
+  propose(request: TeamPlannerRequest, signal: AbortSignal): Promise<TeamPlanCandidate>;
 }
 
 export type TeamPlanAdmissionServiceErrorCode = "planner-failed" | "cancelled";
@@ -23,6 +25,7 @@ export class TeamPlanAdmissionServiceError extends Error {
 
 export interface TeamPlanAdmissionServiceOptions {
   readonly planner: TeamPlannerPort;
+  readonly persistence: Pick<TeamPlanPersistencePort, "persistAdmittedTeamPlan">;
 }
 
 function cancelledError(): TeamPlanAdmissionServiceError {
@@ -34,9 +37,11 @@ function cancelledError(): TeamPlanAdmissionServiceError {
 
 export class TeamPlanAdmissionService {
   readonly #planner: TeamPlannerPort;
+  readonly #persistence: Pick<TeamPlanPersistencePort, "persistAdmittedTeamPlan">;
 
   constructor(options: TeamPlanAdmissionServiceOptions) {
     this.#planner = options.planner;
+    this.#persistence = options.persistence;
   }
 
   async propose(requestValue: unknown, signal?: AbortSignal): Promise<AdmittedTeamPlan> {
@@ -46,7 +51,7 @@ export class TeamPlanAdmissionService {
       throw cancelledError();
     }
 
-    let candidate: unknown;
+    let candidate: TeamPlanCandidate;
     try {
       candidate = await this.#planner.propose(request, plannerSignal);
     } catch {
@@ -66,6 +71,7 @@ export class TeamPlanAdmissionService {
     if (plannerSignal.aborted) {
       throw cancelledError();
     }
+    await this.#persistence.persistAdmittedTeamPlan(plan);
     return plan;
   }
 }

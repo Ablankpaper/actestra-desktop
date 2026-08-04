@@ -171,6 +171,36 @@ change must record:
 A time-boxed spike may run earlier, but spike code cannot become production
 architecture, claim P6 completion, or change product authority.
 
+## Implementation status
+
+As of 2026-08-05, the unpushed P6 batch on
+`codex/p6-team-plan-persistence` implements the Actestra-owned parts of this
+decision without admitting CrewAI:
+
+- a closed planner protocol and generic supervised JSON-lines process boundary
+  can propose a candidate or aggregate ordered Artifact references, but its
+  deterministic fixture is not CrewAI and the production planner provider
+  remains unavailable;
+- schema 14 remains the canonical admitted-plan durability barrier, while
+  schema 15 separately owns Team definitions, current run heads, and
+  append-only revisions;
+- the Actestra scheduler persists Core transitions before observation or
+  effects, routes real General and Goose work, keeps workflow feedback separate
+  from protected-operation Approval evidence, and owns control, cancellation,
+  cleanup, recovery, and reference-only aggregation;
+- downstream patch 0014 projects that authority into the sole AionUI-native
+  Team/group-chat surface through a fixed current-main-frame provider, with
+  creation, configuration, messages, explainable state, controls, Artifacts,
+  aggregation, and recovery behavior.
+
+No CrewAI source, package, Python lock, or runtime is imported, installed,
+bundled, or selected by that implementation. The exact version and rollback
+pin, locked dependencies, license/NOTICE/SBOM and `pip-audit` evidence,
+telemetry and network denial, packaging, rollback, and cross-platform smoke
+gates above remain mandatory. The generic supervisor and AionUI Team journey
+are therefore local P6 implementation evidence, not CrewAI admission, P6 phase
+acceptance, a candidate, or a release.
+
 ## Consequences
 
 ### Positive

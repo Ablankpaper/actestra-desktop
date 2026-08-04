@@ -430,11 +430,23 @@ describe("P5.2 isolated coding capability proxy", () => {
       throw new Error("Expected the coding write to require approval");
     }
 
+    expect(harness.platform.approvalAuditEvidence.pending(pending.approval)).toEqual({
+      policyAuditRecordId: "audit-coding-write-approval-1",
+      requestAuditRecordId: "audit-coding-write-approval-2",
+    });
+    const actorId = approvalActorId("local-user");
+    await expect(
+      harness.platform.approvalAuditEvidence.recordDecision(pending.approval, "approved", actorId),
+    ).resolves.toBe("audit-coding-write-approval-3");
+
     await harness.platform.approvalService.resolve(
       pending.approval.approvalId,
       "approved",
-      approvalActorId("local-user"),
+      actorId,
     );
+    expect(
+      harness.platform.approvalAuditEvidence.resolution(pending.approval, "approved", actorId),
+    ).toBe("audit-coding-write-approval-4");
     await expect(
       harness.platform.toolGateway.invoke(harness.operation, pending.approval.approvalId),
     ).resolves.toMatchObject({

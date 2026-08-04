@@ -29,6 +29,7 @@ const backendRuntimeReadyMarker = "startup: managed runtime background preparati
 const rendererProviderFailureMarker = "ACTESTRA_RENDERER_PROVIDER_SMOKE_FAILED ";
 const maximumOutputBytes = 2 * 1_024 * 1_024;
 const startupTimeoutMs = 60_000;
+const expectedPersistenceSchemaVersion = 15;
 const schedulePrompt = "/actestra Produce the scheduled Actestra artifact.";
 const scheduleRunNowName = "Schedule smoke run-now";
 const scheduleMissedName = "Schedule smoke missed";
@@ -363,8 +364,8 @@ function verifyPreparedProfile(profilePath, expected) {
     enableForeignKeyConstraints: true,
   });
   try {
-    if (databaseValue(database, "PRAGMA user_version") !== 13) {
-      fail("prepare-restart did not create schema version 13");
+    if (databaseValue(database, "PRAGMA user_version") !== expectedPersistenceSchemaVersion) {
+      fail(`prepare-restart did not create schema version ${expectedPersistenceSchemaVersion}`);
     }
     if (
       databaseValue(database, "SELECT COUNT(*) FROM aionui_general_work_journeys") !== 1 ||
@@ -397,7 +398,7 @@ function verifyTerminalProfile(profilePath, expected) {
       `SELECT COUNT(*) FROM core_events WHERE type = '${expected.eventType}'`,
     );
     if (
-      databaseValue(database, "PRAGMA user_version") !== 13 ||
+      databaseValue(database, "PRAGMA user_version") !== expectedPersistenceSchemaVersion ||
       databaseValue(database, "SELECT COUNT(*) FROM aionui_general_work_journeys") !== 1 ||
       databaseValue(
         database,
@@ -544,7 +545,7 @@ function verifyToolFailureProfile(profilePath, workspacePath) {
     const artifacts = database.prepare("SELECT * FROM artifacts ORDER BY id").all();
 
     if (
-      databaseValue(database, "PRAGMA user_version") !== 13 ||
+      databaseValue(database, "PRAGMA user_version") !== expectedPersistenceSchemaVersion ||
       journeys.length !== 1 ||
       journeys[0]?.journey_kind !== "workspace-file-artifact" ||
       workspaces.length !== 1 ||
@@ -797,7 +798,7 @@ function verifyWorkerCrashProfile(profilePath, workspacePath) {
       .all();
 
     if (
-      databaseValue(database, "PRAGMA user_version") !== 13 ||
+      databaseValue(database, "PRAGMA user_version") !== expectedPersistenceSchemaVersion ||
       journeys.length !== 1 ||
       journeys[0]?.journey_kind !== "prompt-artifact" ||
       workspaces.length !== 1 ||
@@ -964,7 +965,7 @@ function verifyPreparedScheduleProfile(profilePath) {
       )
       .all();
     if (
-      databaseValue(database, "PRAGMA user_version") !== 13 ||
+      databaseValue(database, "PRAGMA user_version") !== expectedPersistenceSchemaVersion ||
       databaseValue(database, "SELECT COUNT(*) FROM aionui_schedule_jobs") !== 3 ||
       databaseValue(database, "SELECT COUNT(*) FROM tasks") !== 0 ||
       databaseValue(database, "SELECT COUNT(*) FROM aionui_general_work_journeys") !== 0 ||
@@ -976,7 +977,9 @@ function verifyPreparedScheduleProfile(profilePath) {
       claimedRows[0]?.active_claim !== scheduleInterruptedClaim ||
       database.prepare("PRAGMA foreign_key_check").all().length !== 0
     ) {
-      fail("prepare-schedule-restart did not leave exact schema version 13 schedule authority");
+      fail(
+        `prepare-schedule-restart did not leave exact schema version ${expectedPersistenceSchemaVersion} schedule authority`,
+      );
     }
     const missed = database
       .prepare(
@@ -1537,7 +1540,7 @@ try {
 
   succeeded = true;
   console.info(
-    "Packaged target-app P4 representative-failure smoke passed: schema-13 run-now, missed and interrupted recovery, representative workspace-file, exact content-too-large failure and stable restart projection, externally killed Worker and stable crash recovery, writing and Office restart recovery, real DOCX and owned Word Preview, local research, workspace-grant denial, cancellation, finalized checkpoints, events, artifacts, privacy, and terminal evidence are exact.",
+    `Packaged target-app P4 representative-failure smoke passed: schema-${expectedPersistenceSchemaVersion} run-now, missed and interrupted recovery, representative workspace-file, exact content-too-large failure and stable restart projection, externally killed Worker and stable crash recovery, writing and Office restart recovery, real DOCX and owned Word Preview, local research, workspace-grant denial, cancellation, finalized checkpoints, events, artifacts, privacy, and terminal evidence are exact.`,
   );
 } catch (error) {
   console.error(

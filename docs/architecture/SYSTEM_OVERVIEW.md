@@ -10,10 +10,12 @@ journeys. P5.0 is accepted through PR 26 and merged-main CI 30691300690.
 ADR-0024 selects the exact Goose source and minimal stdio ACP boundary;
 ADR-0025 admits only the exact uncompiled RSA metadata finding. P5.1 builds and
 validates the runner and is accepted through its reviewed hotfix, exact-head CI,
-squash merge, and merged-main CI recorded in project status. It does not package
-the runner into the desktop product or create a coding session.
-CrewAI is accepted as the first P6 planner-sidecar candidate but is not
-implemented or packaged.
+squash merge, and merged-main CI recorded in project status. P5 is accepted on
+`main`. P6 plan admission is also accepted on `main`; the larger Team
+orchestration and AionUI-native Team journey are implemented only in the local,
+unpushed batch recorded in project status. A generic supervised planner
+boundary exists locally, but CrewAI itself is not imported, admitted, or
+packaged.
 
 ## Context
 
@@ -346,7 +348,10 @@ ADR-0010 and the
 migration:
 
 - AionUi routes, components, interaction design, and functional entries remain
-  the user-facing application;
+  the user-facing foundation. Preservation protects design and functional
+  continuity, but does not freeze every page or information architecture;
+  Actestra-native UI additions and adaptations require recorded R1/R2
+  downstream patches, retained compatibility, and rollback evidence;
 - its 41 bridge domains form the renderer compatibility contract;
 - Actestra adapters replace provider and authority behavior beneath that
   contract;
@@ -427,29 +432,71 @@ capabilities and classified context references, node/dependency integrity,
 depth, concurrency, attempt budgets, required General/coding/human-feedback
 nodes, and a parallel branch; then creates deterministic Actestra-owned plan,
 node, and Task identities. A desktop-main service sends only the normalized,
-deeply frozen request through a cancellable planner port, sanitizes planner
-failures, and returns only a Core-admitted plan. The slice does not persist or
-schedule the plan and adds no Python process, Worker launch, renderer, bridge,
-route, or Team UI. Its final local root gate passes 76 test files with 2
-skipped, 672 tests with 5 skipped, the 100-source product boundary, exact
-foundation and then-current 217/4/80 downstream contract, and the 62/3/28
-production build. PR 45 run 30905371865 exposed the missing
-`teamOrchestration.ts` source-copy declaration only when the generated native
-tree was type-checked. The local overlay-only correction passes the final
-218/4/81 downstream contract, locked materialization, and exact CI TypeScript
-command; it has no exact-head CI evidence yet.
+deeply frozen request through a cancellable planner port and sanitizes planner
+failures. Pull request 45 reached exact head
+`a3d08a934160c1a5d61ff987ade29212bd3c0b05`, passed exact-head CI
+30906689796, squash merged as
+`30742934adde1e0944c4e8ced1f005452a1f3568`, and passed exact merged-main CI
+30907869824.
+
+The current local P6 batch adds durable admission authority before scheduling.
+Core revalidates exact fields, bounded text, identities, limits, canonical
+topology,
+and the required mixed-team envelope for every persisted or reloaded plan.
+Schema 14 adds one strict `team_plans` table with unique plan and
+correlation/version identities plus a SHA-256 digest over the canonical JSON.
+The supervised persistence utility exposes only closed persist and lookup
+operations; identical retries are idempotent, conflicting identities fail
+closed, reloaded plans are deeply frozen, and the client rejects substituted
+responses before closing the utility connection. Desktop main awaits the
+durability barrier before returning an admitted plan. Schema 15 separately owns
+Team definitions, current run heads, and append-only run revisions; it does not
+rewrite schema 14 or make a planner authoritative. The main-owned scheduler
+then persists each Core transition before observation or effect and owns
+dependency readiness, controls, protected-approval blocking, workflow
+feedback, cancellation, cleanup, deterministic recovery, and reference-only
+aggregation. Real General and Goose nodes execute through their already
+accepted journeys.
 
 CrewAI is the first P6 planner-sidecar candidate under
-[ADR-0015](decisions/0015-crewai-supervised-orchestration-sidecar.md). It runs
-in a separately supervised Python process and may propose bounded plans,
-replans, worker-capability assignments, and result aggregations. It cannot
-create processes, worktrees, credentials, approvals, tools, authoritative
-identifiers, or durable product state. Its private memory, persistence,
-events, traces, and retries are disposable compatibility state.
+[ADR-0015](decisions/0015-crewai-supervised-orchestration-sidecar.md). If
+admitted, it will run in a separately supervised Python process and may propose
+bounded plans, replans, worker-capability assignments, and result aggregations.
+The current local generic supervisor proves the protocol and process boundary
+with a deterministic fixture; it is not CrewAI. Neither provider may create
+processes, worktrees, credentials, approvals, tools, authoritative identifiers,
+or durable product state. Private planner memory, persistence, events, traces,
+and retries remain disposable compatibility state.
 
 Eigent remains the reference for the user-visible Team experience and
 acceptance behavior; its separate application and complete runtime are not
 part of the Actestra process topology.
+
+Local Tasks 6 through 8 add a closed AionUI Team request/event contract,
+trusted-current-main-frame IPC, and downstream patch 0014. Main owns Team
+identity and two-to-five-member CAS updates, active-run mutation exclusion,
+soft removal, plan admission, orchestrator controls, and the projection of
+schema-15 run authority into native Team DTOs. The fixed preload provider
+routes only `/api/teams` and declared Team events; it fails closed instead of
+falling back to AionCore.
+
+The same AionUI-first surface now provides local Team creation and list,
+`/team/:id`, members/roles and General+Goose configuration, owned
+workspace/task input, group-chat messages, plan/node/Worker and dependency
+state, protected approvals, pause/cancel/retry/replace/handoff,
+Artifact/result aggregation, and restart recovery. It presents Actestra
+identity, authority source, current executor, blocked reason, and next valid
+action in the AionUI design language. User messages recover from the canonical
+schema-14 goal, while bounded Worker activity and Artifact references recover
+from schema-15 revisions. Raw Worker summaries, private paths, audit
+identifiers, process details, plan internals, and persistence authority do not
+cross into the renderer. No Goose or Eigent application UI enters the product.
+
+This provider and visible journey are local and unpushed. Their focused native,
+Core, TypeScript, downstream-contract, and DOM evidence is recorded in project
+status; the final root gate, package and target-app acceptance, push, exact-head
+CI, review/merge, merged-main CI, real CrewAI admission, and P6 phase acceptance
+remain open.
 
 ### Agent workers
 

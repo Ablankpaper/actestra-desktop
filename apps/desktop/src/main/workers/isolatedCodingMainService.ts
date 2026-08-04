@@ -321,6 +321,7 @@ export function createIsolatedCodingMainService(
       const stableManaged = managed;
       return Object.freeze({
         approvalService: stableManaged.approvalService,
+        approvalAuditEvidence: stableManaged.approvalAuditEvidence,
         policyEngine: stableManaged.policyEngine,
         toolGateway: stableManaged.toolGateway,
         grant: stableManaged.grant,
@@ -472,6 +473,7 @@ export function createIsolatedCodingMainService(
       let publishPromise: Promise<GooseCodingPublishResult> | undefined;
       exposed = Object.freeze({
         approvalService: codingSession.approvalService,
+        approvalAuditEvidence: codingSession.approvalAuditEvidence,
         policyEngine: codingSession.policyEngine,
         toolGateway: codingSession.toolGateway,
         grant: codingSession.grant,

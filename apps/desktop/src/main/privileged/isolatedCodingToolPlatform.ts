@@ -38,6 +38,7 @@ import {
   type WorkspaceGrant,
 } from "../../core";
 import type { IsolatedCodingWorktree } from "../workers/isolatedCodingWorktree";
+import { ApprovalAuditEvidenceTrail } from "./approvalAuditEvidence";
 import { DeterministicPolicyEngine } from "./deterministicPolicyEngine";
 import { InMemoryApprovalService } from "./inMemoryApprovalService";
 import { IsolatedCodingToolExecutor } from "./isolatedCodingToolExecutor";
@@ -79,6 +80,7 @@ export interface IsolatedCodingToolPlatformConfig {
 
 export interface IsolatedCodingToolPlatform {
   readonly approvalService: ApprovalService;
+  readonly approvalAuditEvidence: ApprovalAuditEvidenceTrail;
   readonly policyEngine: PolicyEngine;
   readonly executor: IsolatedCodingToolExecutor;
   readonly toolGateway: ToolGateway;
@@ -112,6 +114,7 @@ export interface ManageIsolatedCodingToolPlatformConfig {
 
 export interface ManagedIsolatedCodingToolPlatform {
   readonly approvalService: ApprovalService;
+  readonly approvalAuditEvidence: ApprovalAuditEvidenceTrail;
   readonly policyEngine: PolicyEngine;
   readonly toolGateway: ToolGateway;
   readonly grant: WorkspaceGrant;
@@ -367,6 +370,7 @@ export function manageIsolatedCodingToolPlatform(
 
   return Object.freeze({
     approvalService: config.platform.approvalService,
+    approvalAuditEvidence: config.platform.approvalAuditEvidence,
     policyEngine: config.platform.policyEngine,
     toolGateway: gateway,
     grant,
@@ -398,11 +402,12 @@ export function createIsolatedCodingToolPlatform(
   config: IsolatedCodingToolPlatformConfig,
 ): IsolatedCodingToolPlatform {
   const identifiers = config.identifiers ?? defaultIdentifiers();
-  const auditTrail = new PersistentAuditTrail({
+  const persistentAuditTrail = new PersistentAuditTrail({
     clock: config.clock,
     persistence: config.persistence,
     newRecordId: identifiers.newAuditRecordId,
   });
+  const auditTrail = new ApprovalAuditEvidenceTrail(persistentAuditTrail);
   const policyEngine = new DeterministicPolicyEngine(
     isolatedCodingPolicySnapshot(),
     config.clock,
@@ -442,6 +447,7 @@ export function createIsolatedCodingToolPlatform(
   });
   return Object.freeze({
     approvalService,
+    approvalAuditEvidence: auditTrail,
     policyEngine,
     executor,
     toolGateway,

@@ -36,6 +36,7 @@ const test = spawnSync(
     "tests/main/isolatedCodingMainService.test.ts",
     "tests/main/gooseRunnerIntegration.test.ts",
     "tests/main/aionuiCodingJourneyRealGoose.test.ts",
+    "tests/main/teamMixedJourney.test.ts",
   ],
   {
     cwd: repositoryRoot,
