@@ -332,6 +332,26 @@ describe("TeamOrchestratorService", () => {
     );
   });
 
+  it("reports close cancellation failures after attempting every active Worker", async () => {
+    const { accepted, service, worker } = await setup("close-worker-failure");
+    await service.start(accepted.runId, instant("2026-08-04T01:31:00.000Z"));
+    const active = [...worker.pending.values()];
+    worker.failCancellation = true;
+
+    await expect(service.close()).rejects.toMatchObject({
+      name: "TeamOrchestratorServiceError",
+      code: "worker-failed",
+      cause: expect.any(AggregateError),
+    });
+
+    expect(active).toHaveLength(2);
+    expect(active.every(({ signal }) => signal.aborted)).toBe(true);
+    expect(worker.cancel).toHaveBeenCalledTimes(active.length);
+    for (const { input } of active) {
+      expect(worker.cancel).toHaveBeenCalledWith(input.attemptId, "The Team orchestrator closed");
+    }
+  });
+
   it("launches two dependency-free Workers in parallel within the admitted limit", async () => {
     const { accepted, service, worker } = await setup("parallel");
     const started = await service.start(

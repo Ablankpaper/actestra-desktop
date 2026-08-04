@@ -746,15 +746,35 @@ adds only those four declared compatibility paths and makes the P5 regression
 tests assert retained patch presence rather than the repository's current
 highest phase. The exact failed closure now passes 3 files and 12 tests;
 targeted formatting and zero-warning lint pass. The complete root gate is not
-repeated because the batch budget was one attempt. The revised 57-file
-production/test/overlay fingerprint is
-`62a48df1a60ab54cde5dfac80f4ed56a2a4baf650203aa6a49291a90c1e56d39`;
-the unique exact-head CI is the remaining full-gate evidence.
+repeated because the batch budget was one attempt.
+
+The final shutdown audit then found one reporting gap in
+`TeamOrchestratorService.close()`: it aborted and attempted cancellation for
+every active Worker but swallowed each cancellation failure, preventing the
+already-aggregating outer Team composition from reporting an incomplete
+cleanup. A focused RED proved the close incorrectly resolved. The correction
+still aborts and attempts every Worker, then throws one `worker-failed` error
+whose cause aggregates every rejected cancellation. The full affected test
+file passes 15 tests; exact two-path formatting and zero-warning lint pass. The
+outer desktop owner continues attempting Team planner, coding journey, isolated
+coding sessions/worktrees, schedule, and General Work cleanup in its recorded
+order, then retains persistence authority for a later close retry if any owned
+cleanup reports failure.
+
+That production/test byte change invalidates the earlier fingerprint without
+authorizing another root gate. The refreshed 57-file production/test/overlay
+content-manifest fingerprint, computed from sorted path plus SHA-256 rows, is
+`4e8c4a004f0ea573d091bd07d013be81fede7a7e6a7afeec39afd8227960c2e8`;
+the unique exact-head CI is the remaining final-byte full-gate evidence. The
+diff-scoped audit finds no frozen-foundation change, generated/package output,
+non-ordinary file mode, high-confidence secret, foreign-project content, or
+unresolved renderer, schema, approval-order, sidecar, rollback, source-checkout,
+or cleanup blocker.
 
 No push or Actions run has occurred after remote head
 `e529e4c572209e61cc4ca3660e25bfe35fd2ce24`; pull request 46 still points at
 that old head. Real CrewAI admission, package/target-app acceptance, final
-audit, push, exact-head CI, review/merge, merged-main CI, and P6 phase
+push, exact-head CI, review/merge, merged-main CI, and P6 phase
 acceptance remain open.
 
 P4's phase acceptance record reached pull request 25 at exact head

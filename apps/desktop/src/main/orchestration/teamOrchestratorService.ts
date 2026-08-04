@@ -145,8 +145,9 @@ export class TeamOrchestratorServiceError extends Error {
   constructor(
     readonly code: TeamOrchestratorServiceErrorCode,
     message: string,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
     this.name = "TeamOrchestratorServiceError";
   }
 }
@@ -220,8 +221,9 @@ interface ActiveWorker {
 function serviceError(
   code: TeamOrchestratorServiceErrorCode,
   message: string,
+  options?: ErrorOptions,
 ): TeamOrchestratorServiceError {
-  return new TeamOrchestratorServiceError(code, message);
+  return new TeamOrchestratorServiceError(code, message, options);
 }
 
 function snapshotsMatch(left: TeamRunSnapshot, right: TeamRunSnapshot): boolean {
@@ -575,13 +577,19 @@ export class TeamOrchestratorService {
     for (const workers of this.#activeWorkers.values()) {
       for (const { input, controller } of workers.values()) {
         controller.abort();
-        cancellations.push(
-          this.#worker.cancel(input.attemptId, "The Team orchestrator closed").catch(() => {}),
-        );
+        cancellations.push(this.#worker.cancel(input.attemptId, "The Team orchestrator closed"));
       }
       workers.clear();
     }
-    await Promise.all(cancellations);
+    const outcomes = await Promise.allSettled(cancellations);
+    const failures = outcomes.flatMap((outcome) =>
+      outcome.status === "rejected" ? [outcome.reason] : [],
+    );
+    if (failures.length > 0) {
+      throw serviceError("worker-failed", "One or more Team Worker cleanups failed", {
+        cause: new AggregateError(failures, "Team Worker cancellation failed during shutdown"),
+      });
+    }
   }
 
   #mutate<Result>(
