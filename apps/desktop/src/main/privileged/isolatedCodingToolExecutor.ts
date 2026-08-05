@@ -728,6 +728,40 @@ function signalProcessGroup(
   }
 }
 
+function processGroupIsAlive(child: ChildProcessWithoutNullStreams): boolean {
+  if (child.pid === undefined) {
+    return false;
+  }
+  try {
+    process.kill(-child.pid, 0);
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ESRCH") {
+      return false;
+    }
+    if (code === "EPERM") {
+      return true;
+    }
+    throw error;
+  }
+}
+
+async function waitForProcessGroupExit(
+  child: ChildProcessWithoutNullStreams,
+  milliseconds: number,
+): Promise<boolean> {
+  const deadline = Date.now() + milliseconds;
+  while (processGroupIsAlive(child)) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      return false;
+    }
+    await new Promise((resolve) => setTimeout(resolve, Math.min(remaining, 10)));
+  }
+  return true;
+}
+
 async function runRegisteredProcess(
   root: string,
   repositoryRoot: string,
@@ -800,7 +834,6 @@ async function runRegisteredProcess(
     let terminationRequested = false;
     let forcedCleanupComplete = false;
     let settled = false;
-    let forceTimer: ReturnType<typeof setTimeout> | undefined;
 
     const settle = (): void => {
       if (
@@ -811,9 +844,6 @@ async function runRegisteredProcess(
         return;
       }
       settled = true;
-      if (forceTimer !== undefined) {
-        clearTimeout(forceTimer);
-      }
       signal.removeEventListener("abort", onAbort);
       if (terminalError?.errorCode === "process-cleanup-failed") {
         reject(terminalError);
@@ -865,35 +895,34 @@ async function runRegisteredProcess(
         return;
       }
       terminationRequested = true;
-      let groupPresent = true;
-      try {
-        groupPresent = signalProcessGroup(child, "SIGTERM");
-      } catch (error) {
-        terminalError = executionError(
-          "process-cleanup-failed",
-          "Coding process group could not be terminated",
-          { cause: error, mayHaveExecuted: true },
-        );
-      }
-      if (!groupPresent) {
-        forcedCleanupComplete = true;
-        settle();
-        return;
-      }
-      forceTimer = setTimeout(() => {
+      void (async () => {
         try {
-          signalProcessGroup(child, "SIGKILL");
+          const termSent = signalProcessGroup(child, "SIGTERM");
+          if (termSent && !(await waitForProcessGroupExit(child, PROCESS_TERMINATE_GRACE_MS))) {
+            const killSent = signalProcessGroup(child, "SIGKILL");
+            if (killSent && !(await waitForProcessGroupExit(child, PROCESS_TERMINATE_GRACE_MS))) {
+              throw executionError(
+                "process-cleanup-failed",
+                "Coding process group survived forced termination",
+                { mayHaveExecuted: true },
+              );
+            }
+          }
         } catch (error) {
-          terminalError = executionError(
-            "process-cleanup-failed",
-            "Coding process group could not be force terminated",
-            { cause: error, mayHaveExecuted: true },
-          );
+          terminalError =
+            error instanceof ProtectedToolExecutionError &&
+            error.errorCode === "process-cleanup-failed"
+              ? error
+              : executionError(
+                  "process-cleanup-failed",
+                  "Coding process group could not be terminated",
+                  { cause: error, mayHaveExecuted: true },
+                );
+        } finally {
+          forcedCleanupComplete = true;
+          settle();
         }
-        forcedCleanupComplete = true;
-        forceTimer = undefined;
-        settle();
-      }, PROCESS_TERMINATE_GRACE_MS);
+      })();
     };
     const onAbort = (): void => {
       terminate();
