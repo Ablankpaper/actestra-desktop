@@ -161,7 +161,10 @@ function signalProcessGroup(
   return child.kill(signal);
 }
 
-function processGroupIsAlive(child: ChildProcessWithoutNullStreams): boolean {
+function processGroupIsAlive(
+  child: ChildProcessWithoutNullStreams,
+  leaderHasExited: () => boolean,
+): boolean {
   if (child.pid === undefined) return false;
   try {
     process.kill(-child.pid, 0);
@@ -169,7 +172,12 @@ function processGroupIsAlive(child: ChildProcessWithoutNullStreams): boolean {
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === "ESRCH") return false;
-    if (code === "EPERM") return true;
+    if (code === "EPERM") {
+      // While the same-uid leader is present, a denied probe must stay fail closed.
+      // After it exits, EPERM can only identify a stale/reused group: any surviving
+      // supervised descendant would still be signalable by this process.
+      return !leaderHasExited();
+    }
     throw error;
   }
 }
@@ -181,9 +189,10 @@ function delay(milliseconds: number): Promise<void> {
 async function waitForProcessGroupExit(
   child: ChildProcessWithoutNullStreams,
   milliseconds: number,
+  leaderHasExited: () => boolean,
 ): Promise<boolean> {
   const deadline = Date.now() + milliseconds;
-  while (processGroupIsAlive(child)) {
+  while (processGroupIsAlive(child, leaderHasExited)) {
     const remaining = deadline - Date.now();
     if (remaining <= 0) return false;
     await delay(Math.min(remaining, 10));
@@ -592,7 +601,7 @@ export class TeamPlannerSidecarProcess {
 
   async #waitForProcessTreeExit(milliseconds: number): Promise<boolean> {
     if (process.platform !== "win32") {
-      return waitForProcessGroupExit(this.#child, milliseconds);
+      return waitForProcessGroupExit(this.#child, milliseconds, () => this.#exited);
     }
     if (this.#exited) return true;
     await Promise.race([this.#exit, delay(milliseconds)]);

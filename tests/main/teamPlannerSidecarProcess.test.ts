@@ -224,6 +224,29 @@ describe("Team planner sidecar process", () => {
     expect(injected).toBe(true);
   });
 
+  it("does not signal a stale process-group identity after the leader exits", async () => {
+    const sidecar = await TeamPlannerSidecarProcess.start(options("normal"));
+    const pids = await readFixturePids();
+    const originalKill = process.kill.bind(process);
+    let staleProbeObserved = false;
+    let staleSignalSent = false;
+    vi.spyOn(process, "kill").mockImplementation(((processId, signal) => {
+      if (processId !== -pids.processId) return originalKill(processId, signal);
+      try {
+        return originalKill(processId, signal);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+        if (signal === 0) staleProbeObserved = true;
+        else staleSignalSent = true;
+        throw Object.assign(new Error("stale process group is no longer owned"), { code: "EPERM" });
+      }
+    }) as typeof process.kill);
+
+    await expect(sidecar.close()).resolves.toBeUndefined();
+    expect(staleProbeObserved).toBe(true);
+    expect(staleSignalSent).toBe(false);
+  });
+
   it("uses a closed environment with telemetry and network policy disabled", async () => {
     const previous = process.env.ACTESTRA_TEST_PARENT_SECRET;
     process.env.ACTESTRA_TEST_PARENT_SECRET = "must-not-cross";
