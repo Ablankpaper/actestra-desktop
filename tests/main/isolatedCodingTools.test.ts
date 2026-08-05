@@ -986,6 +986,52 @@ describe("P5.2 isolated coding capability proxy", () => {
     });
   });
 
+  it("does not signal a vanished process group after TERM cleanup", async () => {
+    const harness = await openHarness("process-output-limit-term-exit", {
+      sourceFiles: {
+        "large-output.mjs": `process.stdout.write('x'.repeat(${String(
+          MAX_ISOLATED_CODING_TEXT_BYTES + 1,
+        )}));\n`,
+      },
+      commands: () => ({
+        large: { executablePath: process.execPath, args: ["large-output.mjs"] },
+      }),
+    });
+    const operation = operationFor(
+      harness,
+      "process-output-limit-term-exit-terminal",
+      CODING_TERMINAL_TOOL_ID,
+      "shell.execute",
+    );
+    await storeInput(harness, operation, { contractVersion: 1, commandId: "large" });
+
+    const originalKill = process.kill.bind(process);
+    let termSent = false;
+    let killSent = false;
+    vi.spyOn(process, "kill").mockImplementation(((processId, signal) => {
+      if (processId < 0 && signal === "SIGTERM") {
+        termSent = true;
+        return originalKill(processId, signal);
+      }
+      if (termSent && processId < 0 && signal === 0) {
+        throw Object.assign(new Error("process group exited after TERM"), { code: "ESRCH" });
+      }
+      if (termSent && processId < 0 && signal === "SIGKILL") {
+        killSent = true;
+        throw Object.assign(new Error("stale process group denied"), { code: "EPERM" });
+      }
+      return originalKill(processId, signal);
+    }) as typeof process.kill);
+
+    await expect(approveAndInvoke(harness, operation)).rejects.toMatchObject({
+      code: "tool-execution-failed",
+      mayHaveExecuted: true,
+      cause: { errorCode: "output-too-large", mayHaveExecuted: true },
+    });
+    expect(termSent).toBe(true);
+    expect(killSent).toBe(false);
+  });
+
   it("denies an unknown process registry identifier after approval", async () => {
     const harness = await openHarness("process-unknown");
     const operation = operationFor(
