@@ -137,6 +137,13 @@ cleanup semantics remain owned by the Actestra supervisor. CrewAI-internal
 retry cannot bypass Actestra attempt identity, budget, event, or audit rules.
 An incompatible version, protocol, or capability declaration fails closed.
 
+The Actestra-owned sidecar entrypoint must treat EOF on its supervisor control
+stdin as parent loss, stop every descendant it created, and exit. Explicit
+supervisor teardown is complete only after the whole process group is gone,
+not merely after its leader exits. Parent-death, caller-abort, graceful close,
+TERM-to-KILL escalation, and failed-test teardown are separate no-orphan
+admission cases; a green request/response test cannot substitute for them.
+
 ### First P6 vertical slice
 
 The first production candidate is limited to:

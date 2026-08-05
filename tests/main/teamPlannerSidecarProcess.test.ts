@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -10,6 +11,10 @@ import {
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const fixturePath = path.join(repositoryRoot, "tests/fixtures/teamPlannerSidecar.mjs");
+const supervisorExitFixturePath = path.join(
+  repositoryRoot,
+  "tests/fixtures/teamPlannerSupervisorExit.mjs",
+);
 const EXPECTED_ENGINE = {
   name: "actestra-deterministic-fixture",
   version: "1.0.0",
@@ -55,13 +60,19 @@ beforeEach(() => {
   temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-team-planner-test-"));
 });
 
-afterEach(() => {
+afterEach(async () => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
+  await cleanupFixtureProcesses();
   fs.rmSync(temporaryRoot, { recursive: true, force: true });
 });
 
 function pidFile(): string {
   return path.join(temporaryRoot, "fixture-pids.json");
+}
+
+function childReadyFile(): string {
+  return `${pidFile()}.child-ready`;
 }
 
 function options(
@@ -122,6 +133,51 @@ async function expectProcessesGone(processIds: readonly (number | null)[]): Prom
   );
 }
 
+function signalRecordedProcessGroup(processId: number, signal: NodeJS.Signals): void {
+  try {
+    if (process.platform === "win32") process.kill(processId, signal);
+    else process.kill(-processId, signal);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+  }
+}
+
+async function waitForProcessesGone(
+  processIds: readonly (number | null)[],
+  timeoutMs: number,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (processIds.some((processId) => processId !== null && processIsAlive(processId))) {
+    if (Date.now() >= deadline) return false;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return true;
+}
+
+async function cleanupFixtureProcesses(): Promise<void> {
+  if (!fs.existsSync(pidFile())) return;
+  const pids = JSON.parse(fs.readFileSync(pidFile(), "utf8")) as {
+    readonly processId: number;
+    readonly childProcessId: number | null;
+  };
+  const processIds = [pids.processId, pids.childProcessId];
+  if (await waitForProcessesGone(processIds, 100)) return;
+  signalRecordedProcessGroup(pids.processId, "SIGTERM");
+  if (!(await waitForProcessesGone(processIds, 100))) {
+    signalRecordedProcessGroup(pids.processId, "SIGKILL");
+  }
+  if (!(await waitForProcessesGone(processIds, 1_000))) {
+    throw new Error("Team planner fixture process group survived test teardown");
+  }
+}
+
+async function waitForExit(child: ReturnType<typeof spawn>): Promise<number | null> {
+  return new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", (code) => resolve(code));
+  });
+}
+
 describe("Team planner sidecar process", () => {
   it("negotiates the exact engine and executes typed propose and aggregate operations", async () => {
     const sidecar = await TeamPlannerSidecarProcess.start(options("normal"));
@@ -150,6 +206,22 @@ describe("Team planner sidecar process", () => {
     expect(first.correlationId).toBe(PLAN_REQUEST.correlationId);
     expect(second.correlationId).toBe(PLAN_REQUEST.correlationId);
     await sidecar.close();
+  });
+
+  it("treats a transient EPERM process-group probe as evidence the group is alive", async () => {
+    const sidecar = await TeamPlannerSidecarProcess.start(options("normal"));
+    const originalKill = process.kill.bind(process);
+    let injected = false;
+    vi.spyOn(process, "kill").mockImplementation(((processId, signal) => {
+      if (!injected && processId < 0 && signal === 0) {
+        injected = true;
+        throw Object.assign(new Error("process group probe denied"), { code: "EPERM" });
+      }
+      return originalKill(processId, signal);
+    }) as typeof process.kill);
+
+    await sidecar.close();
+    expect(injected).toBe(true);
   });
 
   it("uses a closed environment with telemetry and network policy disabled", async () => {
@@ -219,6 +291,30 @@ describe("Team planner sidecar process", () => {
       name: "TeamPlannerSidecarProcessError",
       code: "cancelled",
     });
+    await expectProcessesGone([pids.processId, pids.childProcessId]);
+  });
+
+  it("removes the sidecar process group when the supervisor parent exits", async () => {
+    const supervisor = spawn(
+      process.execPath,
+      [supervisorExitFixturePath, fixturePath, "abort", pidFile(), temporaryRoot],
+      {
+        cwd: temporaryRoot,
+        stdio: "ignore",
+        windowsHide: true,
+      },
+    );
+    await expect(waitForExit(supervisor)).resolves.toBe(0);
+    const pids = await readFixturePids();
+    await expectProcessesGone([pids.processId, pids.childProcessId]);
+  });
+
+  it("kills a surviving descendant after the sidecar leader exits during close", async () => {
+    const sidecar = await TeamPlannerSidecarProcess.start(options("orphan-child"));
+    const pids = await readFixturePids();
+    expect(pids.childProcessId).not.toBeNull();
+    await vi.waitFor(() => expect(fs.existsSync(childReadyFile())).toBe(true));
+    await sidecar.close();
     await expectProcessesGone([pids.processId, pids.childProcessId]);
   });
 
