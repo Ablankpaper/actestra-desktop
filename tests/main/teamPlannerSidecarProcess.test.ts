@@ -62,6 +62,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
   await cleanupFixtureProcesses();
   fs.rmSync(temporaryRoot, { recursive: true, force: true });
 });
@@ -205,6 +206,22 @@ describe("Team planner sidecar process", () => {
     expect(first.correlationId).toBe(PLAN_REQUEST.correlationId);
     expect(second.correlationId).toBe(PLAN_REQUEST.correlationId);
     await sidecar.close();
+  });
+
+  it("treats a transient EPERM process-group probe as evidence the group is alive", async () => {
+    const sidecar = await TeamPlannerSidecarProcess.start(options("normal"));
+    const originalKill = process.kill.bind(process);
+    let injected = false;
+    vi.spyOn(process, "kill").mockImplementation(((processId, signal) => {
+      if (!injected && processId < 0 && signal === 0) {
+        injected = true;
+        throw Object.assign(new Error("process group probe denied"), { code: "EPERM" });
+      }
+      return originalKill(processId, signal);
+    }) as typeof process.kill);
+
+    await sidecar.close();
+    expect(injected).toBe(true);
   });
 
   it("uses a closed environment with telemetry and network policy disabled", async () => {

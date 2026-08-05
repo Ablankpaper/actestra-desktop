@@ -167,7 +167,9 @@ function processGroupIsAlive(child: ChildProcessWithoutNullStreams): boolean {
     process.kill(-child.pid, 0);
     return true;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ESRCH") return false;
+    if (code === "EPERM") return true;
     throw error;
   }
 }
