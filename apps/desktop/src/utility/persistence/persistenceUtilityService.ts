@@ -188,6 +188,16 @@ export class PersistenceUtilityService {
         return persistence.persistAdmittedTeamPlan(request.payload.plan);
       case "get-admitted-team-plan":
         return persistence.getAdmittedTeamPlan(request.payload.planId);
+      case "persist-team-experience-binding":
+        return persistence.persistTeamExperienceBinding(request.payload.binding);
+      case "get-team-experience-binding":
+        return persistence.getTeamExperienceBinding(request.payload.teamId);
+      case "persist-standard-team-message-delivery":
+        return persistence.persistStandardTeamMessageDelivery(request.payload.delivery);
+      case "get-standard-team-message-delivery":
+        return persistence.getStandardTeamMessageDelivery(request.payload.deliveryId);
+      case "list-unresolved-standard-team-message-deliveries":
+        return persistence.listUnresolvedStandardTeamMessageDeliveries(request.payload.limit);
       case "persist-team-definition":
         return persistence.persistTeamDefinition(request.payload.team);
       case "get-team-definition":

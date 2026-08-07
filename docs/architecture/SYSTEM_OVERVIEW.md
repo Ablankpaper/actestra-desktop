@@ -451,7 +451,29 @@ closed, reloaded plans are deeply frozen, and the client rejects substituted
 responses before closing the utility connection. Desktop main awaits the
 durability barrier before returning an admitted plan. Schema 15 separately owns
 Team definitions, current run heads, and append-only run revisions; it does not
-rewrite schema 14 or make a planner authoritative. The main-owned scheduler
+rewrite schema 14 or make a planner authoritative.
+
+Forward-only schema 16 leaves the accepted schema-15 migration bytes unchanged.
+Its immutable `team_experience_bindings` table binds each Team identity exactly
+once to `standard` or `orchestrated`. Main binds an existing AionCore Team as
+standard on first list/get projection and a schema-15 Actestra Team definition
+as orchestrated; a cross-store identity or type conflict fails closed, and the
+binding survives restart.
+
+Forward-only schema 17 separately owns metadata-only standard-Team message
+delivery authority. Main persists `pending-effect` before the AionCore effect,
+records `effect-observed` only with a bounded provider message/run
+acknowledgement and observed run postcondition, and records `effect-uncertain`
+for an ambiguous outcome or interrupted startup. Same-nonce, same-digest
+retries replay only an observed durable acknowledgement; changed, pending,
+uncertain, or conflicting deliveries fail closed before another effect. Neither
+message content nor attachment paths are persisted.
+
+The root Main/Core Team bridge projects both experiences through this durable
+authority. Downstream AionUI wiring, Worker runtime admission, and Electron
+acceptance remain separate gates.
+
+The main-owned scheduler
 then persists each Core transition before observation or effect and owns
 dependency readiness, controls, protected-approval blocking, workflow
 feedback, cancellation, cleanup, deterministic recovery, and reference-only

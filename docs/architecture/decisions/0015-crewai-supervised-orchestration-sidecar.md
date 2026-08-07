@@ -180,8 +180,8 @@ architecture, claim P6 completion, or change product authority.
 
 ## Implementation status
 
-As of 2026-08-05, the unpushed P6 batch on
-`codex/p6-team-plan-persistence` implements the Actestra-owned parts of this
+As of 2026-08-07, the local P6 work on
+`codex/p6-aionui-team-acceptance` implements the Actestra-owned parts of this
 decision without admitting CrewAI:
 
 - a closed planner protocol and generic supervised JSON-lines process boundary
@@ -191,6 +191,16 @@ decision without admitting CrewAI:
 - schema 14 remains the canonical admitted-plan durability barrier, while
   schema 15 separately owns Team definitions, current run heads, and
   append-only revisions;
+- schema 16 immutably binds each Team identity to `standard` or
+  `orchestrated`; native Teams are Main-bound as standard, schema-15 Actestra
+  definitions are Main-bound as orchestrated, and conflicts fail closed;
+- schema 17 separately persists metadata-only standard-Team message delivery
+  intent before provider effect, records observed or uncertain outcomes, and
+  replays only a durable acknowledgement for the same bounded nonce and digest
+  without storing message content or attachment paths;
+- the root Main/Core Team bridge exposes one bounded standard/orchestrated
+  projection and keeps downstream wiring, Worker admission, and Electron
+  acceptance outside this checkpoint;
 - the Actestra scheduler persists Core transitions before observation or
   effects, routes real General and Goose work, keeps workflow feedback separate
   from protected-operation Approval evidence, and owns control, cancellation,

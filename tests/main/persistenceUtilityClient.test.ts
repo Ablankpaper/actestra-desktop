@@ -14,18 +14,23 @@ import {
   admitTeamPlanCandidate,
   instant,
   normalizeTeamDefinition,
+  normalizeTeamExperienceBinding,
+  normalizeStandardTeamMessageDelivery,
   toolInputReference,
   transitionTeamRun,
   workspaceGrantId,
   type AdmittedTeamPlan,
   type PersistAdmittedTeamPlanResult,
   type TeamDefinition,
+  type TeamExperienceBinding,
+  type StandardTeamMessageDelivery,
   type TeamId,
   type TeamRunId,
   type TeamRunSnapshot,
 } from "../../apps/desktop/src/core";
 import { PersistenceUtilityError } from "../../apps/desktop/src/main/persistence/persistenceUtilityClient";
 import { resolveCoreDatabasePath } from "../../apps/desktop/src/utility/persistence/sqliteCorePersistence";
+import { CURRENT_CORE_SCHEMA_VERSION } from "../../apps/desktop/src/utility/persistence/sqliteMigrations";
 import { createDomainGraph, FIXTURE_WORKSPACE_ID } from "../fixtures/core";
 import { createGeneralWorkCheckpoint } from "../fixtures/generalWorkRecovery";
 import { createAionUiGeneralWorkRegistration } from "../fixtures/aionuiGeneralWork";
@@ -96,6 +101,19 @@ interface TeamPlanPersistenceClient {
 }
 
 interface TeamRunPersistenceClient extends TeamPlanPersistenceClient {
+  persistTeamExperienceBinding(binding: TeamExperienceBinding): Promise<{
+    readonly status: "stored" | "duplicate";
+    readonly binding: TeamExperienceBinding;
+  }>;
+  getTeamExperienceBinding(teamId: string): Promise<TeamExperienceBinding | null>;
+  persistStandardTeamMessageDelivery(delivery: StandardTeamMessageDelivery): Promise<{
+    readonly status: "stored" | "duplicate";
+    readonly delivery: StandardTeamMessageDelivery;
+  }>;
+  getStandardTeamMessageDelivery(deliveryId: string): Promise<StandardTeamMessageDelivery | null>;
+  listUnresolvedStandardTeamMessageDeliveries(
+    limit: number,
+  ): Promise<readonly StandardTeamMessageDelivery[]>;
   persistTeamDefinition(
     team: TeamDefinition,
   ): Promise<{ readonly status: "stored" | "duplicate"; readonly team: TeamDefinition }>;
@@ -207,7 +225,7 @@ describe("persistence utility client", () => {
     const workspaceRoot = path.join(userDataPath, "fixture-workspace");
     fs.mkdirSync(workspaceRoot);
     const { client, transport } = await openTestPersistenceUtility(userDataPath);
-    expect(client.schemaVersion).toBe(15);
+    expect(client.schemaVersion).toBe(CURRENT_CORE_SCHEMA_VERSION);
     const graph = createDomainGraph();
     await client.replaceDomainGraph(graph);
     await expect(client.loadDomainGraph()).resolves.toEqual(graph);
@@ -375,6 +393,240 @@ describe("persistence utility client", () => {
     expect(restored).toEqual(cancelled);
     expect(Object.isFrozen(restored)).toBe(true);
     await reopenedClient.close();
+  });
+
+  it("round-trips the first immutable Team experience binding and accepts same-type retries", async () => {
+    const userDataPath = createTestDirectory();
+    const opened = await openTestPersistenceUtility(userDataPath);
+    const client = opened.client as unknown as TeamRunPersistenceClient;
+    const binding = normalizeTeamExperienceBinding({
+      contractVersion: 1,
+      teamId: "native-team-client-binding",
+      experience: "standard",
+      boundAt: "2026-08-06T02:15:00.000Z",
+    });
+
+    await expect(client.persistTeamExperienceBinding(binding)).resolves.toEqual({
+      status: "stored",
+      binding,
+    });
+    await expect(
+      client.persistTeamExperienceBinding(
+        normalizeTeamExperienceBinding({ ...binding, boundAt: "2026-08-06T02:16:00.000Z" }),
+      ),
+    ).resolves.toEqual({ status: "duplicate", binding });
+    await client.close();
+
+    const reopened = await openTestPersistenceUtility(userDataPath);
+    const reopenedClient = reopened.client as unknown as TeamRunPersistenceClient;
+    await expect(reopenedClient.getTeamExperienceBinding(binding.teamId)).resolves.toEqual(binding);
+    await reopenedClient.close();
+  });
+
+  it("round-trips metadata-only Standard Team message delivery authority through utility SQLite", async () => {
+    const userDataPath = createTestDirectory();
+    const delivery = normalizeStandardTeamMessageDelivery({
+      contractVersion: 1,
+      deliveryId: `standard-team-delivery-${"7".repeat(64)}`,
+      clientRequestNonce: `team-request-${"8".repeat(64)}`,
+      requestSha256: "9".repeat(64),
+      teamId: "native-team-client-message",
+      targetSlotId: null,
+      state: "pending-effect",
+      providerEnqueueStatus: null,
+      providerMessageId: null,
+      providerRunId: null,
+      createdAt: "2026-08-06T08:20:00.000Z",
+      updatedAt: "2026-08-06T08:20:00.000Z",
+    });
+    const opened = await openTestPersistenceUtility(userDataPath);
+    const client = opened.client as unknown as TeamRunPersistenceClient;
+
+    expect(client.persistStandardTeamMessageDelivery).toBeTypeOf("function");
+    expect(client.getStandardTeamMessageDelivery).toBeTypeOf("function");
+    await expect(client.persistStandardTeamMessageDelivery(delivery)).resolves.toEqual({
+      status: "stored",
+      delivery,
+    });
+    expect(client.listUnresolvedStandardTeamMessageDeliveries).toBeTypeOf("function");
+    await expect(client.listUnresolvedStandardTeamMessageDeliveries(100)).resolves.toEqual([
+      delivery,
+    ]);
+    const observed = normalizeStandardTeamMessageDelivery({
+      ...delivery,
+      state: "effect-observed",
+      providerEnqueueStatus: "queued",
+      providerMessageId: "native-message-client",
+      providerRunId: "native-run-client",
+      updatedAt: "2026-08-06T08:20:01.000Z",
+    });
+    await expect(client.persistStandardTeamMessageDelivery(observed)).resolves.toEqual({
+      status: "stored",
+      delivery: observed,
+    });
+    await expect(client.listUnresolvedStandardTeamMessageDeliveries(100)).resolves.toEqual([]);
+    await client.close();
+
+    const reopened = await openTestPersistenceUtility(userDataPath);
+    const reopenedClient = reopened.client as unknown as TeamRunPersistenceClient;
+    await expect(
+      reopenedClient.getStandardTeamMessageDelivery(delivery.deliveryId),
+    ).resolves.toEqual(observed);
+    await reopenedClient.close();
+  });
+
+  it("fails closed when a Standard Team delivery persistence response substitutes authoritative bytes", async () => {
+    const userDataPath = createTestDirectory();
+    const delivery = normalizeStandardTeamMessageDelivery({
+      contractVersion: 1,
+      deliveryId: `standard-team-delivery-${"a".repeat(64)}`,
+      clientRequestNonce: `team-request-${"b".repeat(64)}`,
+      requestSha256: "c".repeat(64),
+      teamId: "native-team-client-delivery-substitution",
+      targetSlotId: null,
+      state: "pending-effect",
+      providerEnqueueStatus: null,
+      providerMessageId: null,
+      providerRunId: null,
+      createdAt: "2026-08-06T08:30:00.000Z",
+      updatedAt: "2026-08-06T08:30:00.000Z",
+    });
+    const opened = await openTestPersistenceUtility(userDataPath);
+    const client = opened.client as unknown as TeamRunPersistenceClient;
+    opened.transport.transformNextResponse((response) => {
+      if (
+        response.type !== "response" ||
+        response.status !== "ok" ||
+        response.operation !== "persist-standard-team-message-delivery"
+      ) {
+        throw new Error("Expected a successful Standard Team delivery persistence response");
+      }
+      return {
+        ...response,
+        result: {
+          ...response.result,
+          delivery: {
+            ...response.result.delivery,
+            targetSlotId: "native-slot-substituted",
+            state: "effect-uncertain",
+            providerMessageId: "native-message-substituted",
+            providerRunId: "native-run-substituted",
+            createdAt: "2026-08-06T08:29:00.000Z",
+            updatedAt: "2026-08-06T08:31:00.000Z",
+          },
+        },
+      };
+    });
+
+    await expect(client.persistStandardTeamMessageDelivery(delivery)).rejects.toMatchObject({
+      name: "PersistenceUtilityError",
+      code: "invalid-message",
+    });
+    await expect(client.getStandardTeamMessageDelivery(delivery.deliveryId)).rejects.toMatchObject({
+      code: "unavailable",
+    });
+    await client.close();
+  });
+
+  it("fails closed when an unresolved Standard Team delivery list contains an observed item", async () => {
+    const userDataPath = createTestDirectory();
+    const delivery = normalizeStandardTeamMessageDelivery({
+      contractVersion: 1,
+      deliveryId: `standard-team-delivery-${"d".repeat(64)}`,
+      clientRequestNonce: `team-request-${"e".repeat(64)}`,
+      requestSha256: "f".repeat(64),
+      teamId: "native-team-client-unresolved-substitution",
+      targetSlotId: null,
+      state: "pending-effect",
+      providerEnqueueStatus: null,
+      providerMessageId: null,
+      providerRunId: null,
+      createdAt: "2026-08-06T08:40:00.000Z",
+      updatedAt: "2026-08-06T08:40:00.000Z",
+    });
+    const opened = await openTestPersistenceUtility(userDataPath);
+    const client = opened.client as unknown as TeamRunPersistenceClient;
+    await client.persistStandardTeamMessageDelivery(delivery);
+    opened.transport.transformNextResponse((response) => {
+      if (
+        response.type !== "response" ||
+        response.status !== "ok" ||
+        response.operation !== "list-unresolved-standard-team-message-deliveries"
+      ) {
+        throw new Error("Expected a successful unresolved Standard Team delivery list response");
+      }
+      return {
+        ...response,
+        result: response.result.map((candidate) => ({
+          ...candidate,
+          state: "effect-observed" as const,
+          providerEnqueueStatus: "accepted" as const,
+          providerMessageId: "native-message-observed",
+          providerRunId: "native-run-observed",
+        })),
+      };
+    });
+
+    await expect(client.listUnresolvedStandardTeamMessageDeliveries(100)).rejects.toMatchObject({
+      name: "PersistenceUtilityError",
+      code: "invalid-message",
+    });
+    await expect(client.getStandardTeamMessageDelivery(delivery.deliveryId)).rejects.toMatchObject({
+      code: "unavailable",
+    });
+    await client.close();
+  });
+
+  it("fails closed when an unresolved Standard Team delivery list exceeds its requested limit", async () => {
+    const userDataPath = createTestDirectory();
+    const delivery = normalizeStandardTeamMessageDelivery({
+      contractVersion: 1,
+      deliveryId: `standard-team-delivery-${"1".repeat(64)}`,
+      clientRequestNonce: `team-request-${"2".repeat(64)}`,
+      requestSha256: "3".repeat(64),
+      teamId: "native-team-client-unresolved-limit",
+      targetSlotId: null,
+      state: "pending-effect",
+      providerEnqueueStatus: null,
+      providerMessageId: null,
+      providerRunId: null,
+      createdAt: "2026-08-06T08:50:00.000Z",
+      updatedAt: "2026-08-06T08:50:00.000Z",
+    });
+    const opened = await openTestPersistenceUtility(userDataPath);
+    const client = opened.client as unknown as TeamRunPersistenceClient;
+    await client.persistStandardTeamMessageDelivery(delivery);
+    opened.transport.transformNextResponse((response) => {
+      if (
+        response.type !== "response" ||
+        response.status !== "ok" ||
+        response.operation !== "list-unresolved-standard-team-message-deliveries"
+      ) {
+        throw new Error("Expected a successful unresolved Standard Team delivery list response");
+      }
+      return {
+        ...response,
+        result: [
+          ...response.result,
+          {
+            ...response.result[0]!,
+            deliveryId: `standard-team-delivery-${"4".repeat(64)}`,
+            clientRequestNonce: `team-request-${"5".repeat(64)}`,
+            requestSha256: "6".repeat(64),
+            teamId: "native-team-client-unresolved-limit-substituted",
+          },
+        ],
+      };
+    });
+
+    await expect(client.listUnresolvedStandardTeamMessageDeliveries(1)).rejects.toMatchObject({
+      name: "PersistenceUtilityError",
+      code: "invalid-message",
+    });
+    await expect(client.getStandardTeamMessageDelivery(delivery.deliveryId)).rejects.toMatchObject({
+      code: "unavailable",
+    });
+    await client.close();
   });
 
   it("fails closed when a Team definition persistence response substitutes authoritative bytes", async () => {

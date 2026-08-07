@@ -59,6 +59,8 @@ import {
   assertGeneralWorkCheckpoint,
   assertPersistContentReferenceResult,
   assertPersistAdmittedTeamPlanResult,
+  assertPersistTeamExperienceBindingResult,
+  assertStandardTeamMessageDelivery,
   assertPersistTeamDefinitionResult,
   assertPersistTeamRunSnapshotResult,
   assertRemoveTeamDefinitionResult,
@@ -68,6 +70,7 @@ import {
   assertResolvedContentReference,
   assertStoreContentReferenceInput,
   assertTeamDefinition,
+  assertTeamExperienceBinding,
   assertTeamRunSnapshot,
   assertWorkspaceGrant,
   correlationId,
@@ -75,6 +78,7 @@ import {
   instant,
   sessionId,
   teamId,
+  teamExperienceId,
   teamPlanId,
   teamRunId,
   TEAM_PERSISTENCE_MAX_RECORDS,
@@ -93,6 +97,8 @@ import {
   type PersistContentReferenceResult,
   type PersistAdmittedTeamPlanResult,
   type PersistTeamDefinitionResult,
+  type PersistTeamExperienceBindingResult,
+  type PersistStandardTeamMessageDeliveryResult,
   type PersistTeamRunSnapshotResult,
   type RemoveTeamDefinitionResult,
   type ReplaceTeamDefinitionResult,
@@ -109,6 +115,8 @@ import {
   type SessionId,
   type TeamPlanId,
   type TeamDefinition,
+  type TeamExperienceBinding,
+  type StandardTeamMessageDelivery,
   type TeamId,
   type TeamRunId,
   type TeamRunSnapshot,
@@ -286,6 +294,36 @@ export interface PersistenceUtilityOperationMap {
     };
     readonly result: AdmittedTeamPlan | null;
   };
+  readonly "persist-team-experience-binding": {
+    readonly request: {
+      readonly binding: TeamExperienceBinding;
+    };
+    readonly result: PersistTeamExperienceBindingResult;
+  };
+  readonly "get-team-experience-binding": {
+    readonly request: {
+      readonly teamId: string;
+    };
+    readonly result: TeamExperienceBinding | null;
+  };
+  readonly "persist-standard-team-message-delivery": {
+    readonly request: {
+      readonly delivery: StandardTeamMessageDelivery;
+    };
+    readonly result: PersistStandardTeamMessageDeliveryResult;
+  };
+  readonly "get-standard-team-message-delivery": {
+    readonly request: {
+      readonly deliveryId: string;
+    };
+    readonly result: StandardTeamMessageDelivery | null;
+  };
+  readonly "list-unresolved-standard-team-message-deliveries": {
+    readonly request: {
+      readonly limit: number;
+    };
+    readonly result: readonly StandardTeamMessageDelivery[];
+  };
   readonly "persist-team-definition": {
     readonly request: {
       readonly team: TeamDefinition;
@@ -447,6 +485,11 @@ export const PERSISTENCE_UTILITY_OPERATIONS = [
   "list-recoverable-general-work-checkpoints",
   "persist-admitted-team-plan",
   "get-admitted-team-plan",
+  "persist-team-experience-binding",
+  "get-team-experience-binding",
+  "persist-standard-team-message-delivery",
+  "get-standard-team-message-delivery",
+  "list-unresolved-standard-team-message-deliveries",
   "persist-team-definition",
   "get-team-definition",
   "list-team-definitions",
@@ -986,6 +1029,58 @@ function assertRequestPayload(request: PersistenceUtilityRequest): void {
       }
       teamPlanId(payload.planId);
       return;
+    case "persist-team-experience-binding":
+      assertRecord(payload, "persist-team-experience-binding request");
+      assertExactKeys(payload, ["binding"], "persist-team-experience-binding request");
+      assertTeamProtocolValue(
+        () => assertTeamExperienceBinding(payload.binding),
+        "persist-team-experience-binding binding",
+      );
+      return;
+    case "get-team-experience-binding":
+      assertRecord(payload, "get-team-experience-binding request");
+      assertExactKeys(payload, ["teamId"], "get-team-experience-binding request");
+      if (typeof payload.teamId !== "string") {
+        throw new PersistenceUtilityProtocolError("get-team-experience-binding teamId is invalid");
+      }
+      assertTeamProtocolValue(
+        () => teamExperienceId(payload.teamId as string),
+        "get-team-experience-binding teamId",
+      );
+      return;
+    case "persist-standard-team-message-delivery":
+      assertRecord(payload, "persist-standard-team-message-delivery request");
+      assertExactKeys(payload, ["delivery"], "persist-standard-team-message-delivery request");
+      assertTeamProtocolValue(
+        () => assertStandardTeamMessageDelivery(payload.delivery),
+        "persist-standard-team-message-delivery delivery",
+      );
+      return;
+    case "get-standard-team-message-delivery":
+      assertRecord(payload, "get-standard-team-message-delivery request");
+      assertExactKeys(payload, ["deliveryId"], "get-standard-team-message-delivery request");
+      if (
+        typeof payload.deliveryId !== "string" ||
+        !/^standard-team-delivery-[a-f0-9]{64}$/u.test(payload.deliveryId)
+      ) {
+        throw new PersistenceUtilityProtocolError(
+          "get-standard-team-message-delivery deliveryId is invalid",
+        );
+      }
+      return;
+    case "list-unresolved-standard-team-message-deliveries":
+      assertRecord(payload, "list-unresolved-standard-team-message-deliveries request");
+      assertExactKeys(
+        payload,
+        ["limit"],
+        "list-unresolved-standard-team-message-deliveries request",
+      );
+      assertBoundedLimit(
+        payload.limit,
+        TEAM_PERSISTENCE_MAX_RECORDS,
+        "list-unresolved-standard-team-message-deliveries limit",
+      );
+      return;
     case "persist-team-definition":
       assertRecord(payload, "persist-team-definition request");
       assertExactKeys(payload, ["team"], "persist-team-definition request");
@@ -1300,6 +1395,58 @@ function assertSuccessResult(operation: PersistenceUtilityOperation, result: unk
       if (result !== null) {
         assertAdmittedTeamPlan(result);
       }
+      return;
+    case "persist-team-experience-binding":
+      assertTeamProtocolValue(
+        () => assertPersistTeamExperienceBindingResult(result),
+        "persist-team-experience-binding result",
+      );
+      return;
+    case "get-team-experience-binding":
+      if (result !== null) {
+        assertTeamProtocolValue(
+          () => assertTeamExperienceBinding(result),
+          "get-team-experience-binding result",
+        );
+      }
+      return;
+    case "persist-standard-team-message-delivery":
+      assertRecord(result, "persist-standard-team-message-delivery result");
+      assertExactKeys(
+        result,
+        ["status", "delivery"],
+        "persist-standard-team-message-delivery result",
+      );
+      if (result.status !== "stored" && result.status !== "duplicate") {
+        throw new PersistenceUtilityProtocolError(
+          "persist-standard-team-message-delivery status is invalid",
+        );
+      }
+      assertTeamProtocolValue(
+        () => assertStandardTeamMessageDelivery(result.delivery),
+        "persist-standard-team-message-delivery result",
+      );
+      return;
+    case "get-standard-team-message-delivery":
+      if (result !== null) {
+        assertTeamProtocolValue(
+          () => assertStandardTeamMessageDelivery(result),
+          "get-standard-team-message-delivery result",
+        );
+      }
+      return;
+    case "list-unresolved-standard-team-message-deliveries":
+      if (!Array.isArray(result) || result.length > TEAM_PERSISTENCE_MAX_RECORDS) {
+        throw new PersistenceUtilityProtocolError(
+          "list-unresolved-standard-team-message-deliveries result is invalid",
+        );
+      }
+      result.forEach((delivery) =>
+        assertTeamProtocolValue(
+          () => assertStandardTeamMessageDelivery(delivery),
+          "list-unresolved-standard-team-message-deliveries result",
+        ),
+      );
       return;
     case "persist-team-definition":
       assertTeamProtocolValue(

@@ -38,8 +38,10 @@ const ERROR_MESSAGES = Object.freeze({
   "team-not-found": "The Team does not exist",
   "team-conflict": "The Team conflicts with durable authority",
   "team-active": "The Team has an active run",
+  "team-model-unavailable": "The selected Team model is unavailable",
   "team-execution-failed": "The Team operation failed",
   "team-planner-unavailable": "The supervised Team planner is unavailable",
+  "team-worker-runtime-unavailable": "The required General and Goose Worker runtime is unavailable",
   "team-unavailable": "Actestra Team work is unavailable",
 } satisfies Readonly<Record<AionUiTeamBridgeErrorCode, string>>);
 
@@ -49,8 +51,10 @@ const ERROR_STATUS = Object.freeze({
   "team-not-found": 404,
   "team-conflict": 409,
   "team-active": 409,
+  "team-model-unavailable": 409,
   "team-execution-failed": 500,
   "team-planner-unavailable": 503,
+  "team-worker-runtime-unavailable": 503,
   "team-unavailable": 503,
 } satisfies Readonly<Record<AionUiTeamBridgeErrorCode, number>>);
 
@@ -81,8 +85,10 @@ function mappedFailure(error: unknown): AionUiTeamBridgeResponse {
       case "team-not-found":
       case "team-conflict":
       case "team-active":
+      case "team-model-unavailable":
       case "team-execution-failed":
       case "team-planner-unavailable":
+      case "team-worker-runtime-unavailable":
       case "team-unavailable":
         return aionUiTeamBridgeError(error.code);
     }

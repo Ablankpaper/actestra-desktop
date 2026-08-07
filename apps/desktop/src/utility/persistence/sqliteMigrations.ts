@@ -3,7 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { PersistenceError } from "../../core";
 
 export const ACTESTRA_SQLITE_APPLICATION_ID = 1_095_980_114;
-export const CURRENT_CORE_SCHEMA_VERSION = 15;
+export const CURRENT_CORE_SCHEMA_VERSION = 17;
 
 export interface SqliteMigration {
   readonly version: number;
@@ -758,6 +758,77 @@ export const CORE_SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
       CREATE INDEX team_runs_recoverable_idx
         ON team_runs(status, updated_at, run_id)
         WHERE status NOT IN ('completed', 'failed', 'cancelled');
+    `,
+  },
+  {
+    version: 16,
+    name: "team-experience-authority",
+    sql: `
+      CREATE TABLE team_experience_bindings (
+        team_id TEXT PRIMARY KEY CHECK (length(team_id) BETWEEN 1 AND 256),
+        contract_version INTEGER NOT NULL CHECK (contract_version = 1),
+        experience TEXT NOT NULL CHECK (experience IN ('standard', 'orchestrated')),
+        bound_at TEXT NOT NULL CHECK (length(bound_at) = 24),
+        record_sha256 TEXT NOT NULL CHECK (
+          length(record_sha256) = 64 AND
+          record_sha256 NOT GLOB '*[^0-9a-f]*'
+        ),
+        binding_json TEXT NOT NULL CHECK (length(binding_json) BETWEEN 1 AND 2048)
+      ) STRICT;
+
+      CREATE INDEX team_experience_bindings_experience_idx
+        ON team_experience_bindings(experience, bound_at, team_id);
+    `,
+  },
+  {
+    version: 17,
+    name: "standard-team-message-delivery-authority",
+    sql: `
+      CREATE TABLE standard_team_message_deliveries (
+        delivery_id TEXT PRIMARY KEY CHECK (
+          length(delivery_id) = 87 AND
+          substr(delivery_id, 1, 23) = 'standard-team-delivery-' AND
+          substr(delivery_id, 24) NOT GLOB '*[^0-9a-f]*'
+        ),
+        contract_version INTEGER NOT NULL CHECK (contract_version = 1),
+        client_request_nonce TEXT NOT NULL CHECK (
+          length(client_request_nonce) BETWEEN 1 AND 128
+        ),
+        request_sha256 TEXT NOT NULL CHECK (
+          length(request_sha256) = 64 AND
+          request_sha256 NOT GLOB '*[^0-9a-f]*'
+        ),
+        team_id TEXT NOT NULL CHECK (length(team_id) BETWEEN 1 AND 256),
+        target_slot_id TEXT CHECK (
+          target_slot_id IS NULL OR length(target_slot_id) BETWEEN 1 AND 256
+        ),
+        state TEXT NOT NULL CHECK (
+          state IN ('pending-effect', 'effect-observed', 'effect-uncertain')
+        ),
+        provider_enqueue_status TEXT CHECK (
+          provider_enqueue_status IS NULL OR
+          provider_enqueue_status IN ('accepted', 'queued', 'blocked_runtime_starting')
+        ),
+        provider_message_id TEXT CHECK (
+          provider_message_id IS NULL OR length(provider_message_id) BETWEEN 1 AND 256
+        ),
+        provider_run_id TEXT CHECK (
+          provider_run_id IS NULL OR length(provider_run_id) BETWEEN 1 AND 256
+        ),
+        created_at TEXT NOT NULL CHECK (length(created_at) = 24),
+        updated_at TEXT NOT NULL CHECK (length(updated_at) = 24),
+        delivery_json TEXT NOT NULL CHECK (length(delivery_json) BETWEEN 1 AND 8192),
+        CHECK (updated_at >= created_at),
+        CHECK (state <> 'pending-effect' OR (provider_enqueue_status IS NULL AND provider_message_id IS NULL AND provider_run_id IS NULL)),
+        CHECK (state <> 'effect-observed' OR (provider_enqueue_status IS NOT NULL AND provider_message_id IS NOT NULL AND provider_run_id IS NOT NULL)),
+        CHECK (state = 'effect-observed' OR provider_enqueue_status IS NULL)
+      ) STRICT;
+
+      CREATE UNIQUE INDEX standard_team_message_unresolved_target_idx
+        ON standard_team_message_deliveries(team_id, COALESCE(target_slot_id, ''))
+        WHERE state IN ('pending-effect', 'effect-uncertain');
+      CREATE INDEX standard_team_message_nonce_idx
+        ON standard_team_message_deliveries(team_id, target_slot_id, client_request_nonce);
     `,
   },
 ] as const;

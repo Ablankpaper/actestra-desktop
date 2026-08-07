@@ -78,9 +78,18 @@ itself add a CrewAI process or make an admitted candidate executable.
 
 Executable Team state remains separate from that admitted plan. Schema 15 owns
 the Team definition, current run snapshot, and append-only revisions used for
-scheduling, controls, recovery, and result references. The renderer receives a
-bounded AionUI-native projection of that authority; neither the UI nor a
-planner sidecar may write or reinterpret canonical Team state directly.
+scheduling, controls, recovery, and result references. Schema 16 separately
+binds each Team identity exactly once to `standard` or `orchestrated`; Main
+binds native AionUI Teams as standard and schema-15 Actestra definitions as
+orchestrated, and fails closed on identity or type conflicts.
+
+Schema 17 separately persists metadata-only standard-Team message delivery
+intent before provider effect and records observed or uncertain outcomes. A
+bounded nonce and request digest permit replay only of an observed durable
+acknowledgement; content and attachment paths never enter that authority.
+The renderer receives one bounded Main/Core projection and never infers Team
+type or delivery state; neither the UI nor a planner sidecar may write or
+reinterpret canonical Team state directly.
 
 ## MVP capabilities
 

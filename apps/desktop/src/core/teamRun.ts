@@ -39,10 +39,22 @@ export const TEAM_RUN_CONTRACT_VERSION = 1 as const;
 export const TEAM_MIN_MEMBERS = 2;
 export const TEAM_MAX_MEMBERS = 5;
 export const TEAM_MAX_NAME_BYTES = 256;
+export const TEAM_MAX_DESCRIPTION_BYTES = 2 * 1024;
 export const TEAM_MAX_DISPLAY_NAME_BYTES = 256;
 export const TEAM_PERSISTENCE_MAX_RECORDS = 100;
+export const TEAM_EXPERIENCE_BINDING_CONTRACT_VERSION = 1 as const;
+export const TEAM_EXPERIENCE_MAX_IDENTITY_BYTES = 256;
+export const STANDARD_TEAM_MESSAGE_DELIVERY_CONTRACT_VERSION = 1 as const;
+export const STANDARD_TEAM_MESSAGE_DELIVERY_MAX_NONCE_BYTES = 128;
+export const STANDARD_TEAM_MESSAGE_DELIVERY_MAX_ACK_BYTES = 256;
 
 export type TeamMemberRole = "leader" | "teammate";
+export type TeamExperience = "standard" | "orchestrated";
+export type StandardTeamMessageDeliveryState =
+  | "pending-effect"
+  | "effect-observed"
+  | "effect-uncertain";
+export type StandardTeamProviderEnqueueStatus = "accepted" | "queued" | "blocked_runtime_starting";
 export type TeamRunStatus =
   | "accepted"
   | "running"
@@ -107,12 +119,46 @@ export interface TeamMember {
 
 export interface TeamDefinition {
   readonly contractVersion: typeof TEAM_RUN_CONTRACT_VERSION;
+  readonly experience: "orchestrated";
   readonly teamId: TeamId;
   readonly name: string;
+  readonly description: string | null;
   readonly workspaceId: WorkspaceId;
   readonly members: readonly TeamMember[];
   readonly createdAt: Instant;
   readonly updatedAt: Instant;
+}
+
+export interface TeamExperienceBinding {
+  readonly contractVersion: typeof TEAM_EXPERIENCE_BINDING_CONTRACT_VERSION;
+  readonly teamId: string;
+  readonly experience: TeamExperience;
+  readonly boundAt: Instant;
+}
+
+export interface PersistTeamExperienceBindingResult {
+  readonly status: "stored" | "duplicate";
+  readonly binding: TeamExperienceBinding;
+}
+
+export interface StandardTeamMessageDelivery {
+  readonly contractVersion: typeof STANDARD_TEAM_MESSAGE_DELIVERY_CONTRACT_VERSION;
+  readonly deliveryId: string;
+  readonly clientRequestNonce: string;
+  readonly requestSha256: string;
+  readonly teamId: string;
+  readonly targetSlotId: string | null;
+  readonly state: StandardTeamMessageDeliveryState;
+  readonly providerEnqueueStatus: StandardTeamProviderEnqueueStatus | null;
+  readonly providerMessageId: string | null;
+  readonly providerRunId: string | null;
+  readonly createdAt: Instant;
+  readonly updatedAt: Instant;
+}
+
+export interface PersistStandardTeamMessageDeliveryResult {
+  readonly status: "stored" | "duplicate";
+  readonly delivery: StandardTeamMessageDelivery;
 }
 
 export interface TeamArtifactReference {
@@ -219,6 +265,17 @@ export interface PersistTeamRunSnapshotResult {
 }
 
 export interface TeamRunPersistencePort {
+  persistTeamExperienceBinding(
+    binding: TeamExperienceBinding,
+  ): Promise<PersistTeamExperienceBindingResult>;
+  getTeamExperienceBinding(teamId: string): Promise<TeamExperienceBinding | null>;
+  persistStandardTeamMessageDelivery(
+    delivery: StandardTeamMessageDelivery,
+  ): Promise<PersistStandardTeamMessageDeliveryResult>;
+  getStandardTeamMessageDelivery(deliveryId: string): Promise<StandardTeamMessageDelivery | null>;
+  listUnresolvedStandardTeamMessageDeliveries(
+    limit: number,
+  ): Promise<readonly StandardTeamMessageDelivery[]>;
   persistTeamDefinition(team: TeamDefinition): Promise<PersistTeamDefinitionResult>;
   getTeamDefinition(teamId: TeamId): Promise<TeamDefinition | null>;
   listTeamDefinitions(limit: number): Promise<readonly TeamDefinition[]>;
@@ -319,12 +376,49 @@ export type TeamRunCommand =
 
 const TEAM_DEFINITION_KEYS = [
   "contractVersion",
+  "experience",
   "teamId",
   "name",
+  "description",
   "workspaceId",
   "members",
   "createdAt",
   "updatedAt",
+] as const;
+const TEAM_EXPERIENCE_BINDING_KEYS = [
+  "contractVersion",
+  "teamId",
+  "experience",
+  "boundAt",
+] as const;
+const STANDARD_TEAM_MESSAGE_DELIVERY_KEYS = [
+  "contractVersion",
+  "deliveryId",
+  "clientRequestNonce",
+  "requestSha256",
+  "teamId",
+  "targetSlotId",
+  "state",
+  "providerEnqueueStatus",
+  "providerMessageId",
+  "providerRunId",
+  "createdAt",
+  "updatedAt",
+] as const;
+const STANDARD_TEAM_MESSAGE_DELIVERY_STATES: readonly StandardTeamMessageDeliveryState[] = [
+  "pending-effect",
+  "effect-observed",
+  "effect-uncertain",
+];
+const STANDARD_TEAM_PROVIDER_ENQUEUE_STATUSES: readonly StandardTeamProviderEnqueueStatus[] = [
+  "accepted",
+  "queued",
+  "blocked_runtime_starting",
+];
+const LEGACY_TEAM_DEFINITION_KEY_SETS = [
+  TEAM_DEFINITION_KEYS.filter((key) => key !== "description"),
+  TEAM_DEFINITION_KEYS.filter((key) => key !== "experience"),
+  TEAM_DEFINITION_KEYS.filter((key) => key !== "experience" && key !== "description"),
 ] as const;
 const TEAM_MEMBER_KEYS = ["memberId", "role", "capability", "displayName"] as const;
 const TEAM_RUN_KEYS = [
@@ -527,6 +621,10 @@ export function teamId(value: string): TeamId {
   return requireDigestIdentifier(value, "team-", "Team id") as TeamId;
 }
 
+export function teamExperienceId(value: string): string {
+  return requireText(value, "Team experience identity", TEAM_EXPERIENCE_MAX_IDENTITY_BYTES);
+}
+
 export function teamMemberId(value: string): TeamMemberId {
   return requireDigestIdentifier(value, "team-member-", "Team member id") as TeamMemberId;
 }
@@ -553,8 +651,10 @@ function teamPlanNodeId(value: unknown): TeamPlanNodeId {
 export function normalizeTeamDefinition(value: unknown): TeamDefinition {
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, TEAM_DEFINITION_KEYS) ||
+    (!hasExactKeys(value, TEAM_DEFINITION_KEYS) &&
+      !LEGACY_TEAM_DEFINITION_KEY_SETS.some((keys) => hasExactKeys(value, keys))) ||
     value.contractVersion !== TEAM_RUN_CONTRACT_VERSION ||
+    (Object.hasOwn(value, "experience") && value.experience !== "orchestrated") ||
     !Array.isArray(value.members) ||
     value.members.length < TEAM_MIN_MEMBERS ||
     value.members.length > TEAM_MAX_MEMBERS
@@ -598,13 +698,144 @@ export function normalizeTeamDefinition(value: unknown): TeamDefinition {
   }
   return deepFreeze({
     contractVersion: TEAM_RUN_CONTRACT_VERSION,
+    experience: "orchestrated",
     teamId: teamId(String(value.teamId)),
     name: requireText(value.name, "Team name", TEAM_MAX_NAME_BYTES),
+    description:
+      value.description === undefined || value.description === null
+        ? null
+        : requireText(value.description, "Team description", TEAM_MAX_DESCRIPTION_BYTES),
     workspaceId: workspaceId(String(value.workspaceId)),
     members,
     createdAt,
     updatedAt,
   });
+}
+
+export function normalizeTeamExperienceBinding(value: unknown): TeamExperienceBinding {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, TEAM_EXPERIENCE_BINDING_KEYS) ||
+    value.contractVersion !== TEAM_EXPERIENCE_BINDING_CONTRACT_VERSION ||
+    (value.experience !== "standard" && value.experience !== "orchestrated")
+  ) {
+    throw new TeamRunContractError("invalid-record", "Team experience binding is invalid");
+  }
+  return deepFreeze({
+    contractVersion: TEAM_EXPERIENCE_BINDING_CONTRACT_VERSION,
+    teamId: teamExperienceId(String(value.teamId)),
+    experience: value.experience,
+    boundAt: instant(String(value.boundAt)),
+  });
+}
+
+export function assertTeamExperienceBinding(
+  value: unknown,
+): asserts value is TeamExperienceBinding {
+  normalizeTeamExperienceBinding(value);
+}
+
+export function normalizeStandardTeamMessageDelivery(value: unknown): StandardTeamMessageDelivery {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, STANDARD_TEAM_MESSAGE_DELIVERY_KEYS) ||
+    value.contractVersion !== STANDARD_TEAM_MESSAGE_DELIVERY_CONTRACT_VERSION ||
+    !STANDARD_TEAM_MESSAGE_DELIVERY_STATES.includes(
+      value.state as StandardTeamMessageDeliveryState,
+    ) ||
+    !/^[a-f0-9]{64}$/u.test(String(value.requestSha256))
+  ) {
+    throw new TeamRunContractError("invalid-record", "Standard Team message delivery is invalid");
+  }
+  const providerEnqueueStatus =
+    value.providerEnqueueStatus === null
+      ? null
+      : STANDARD_TEAM_PROVIDER_ENQUEUE_STATUSES.includes(
+            value.providerEnqueueStatus as StandardTeamProviderEnqueueStatus,
+          )
+        ? (value.providerEnqueueStatus as StandardTeamProviderEnqueueStatus)
+        : (() => {
+            throw new TeamRunContractError(
+              "invalid-record",
+              "Standard Team provider enqueue status is invalid",
+            );
+          })();
+  const providerMessageId =
+    value.providerMessageId === null
+      ? null
+      : requireText(
+          value.providerMessageId,
+          "Standard Team provider message id",
+          STANDARD_TEAM_MESSAGE_DELIVERY_MAX_ACK_BYTES,
+        );
+  const providerRunId =
+    value.providerRunId === null
+      ? null
+      : requireText(
+          value.providerRunId,
+          "Standard Team provider run id",
+          STANDARD_TEAM_MESSAGE_DELIVERY_MAX_ACK_BYTES,
+        );
+  if (
+    value.state === "pending-effect" &&
+    (providerEnqueueStatus !== null || providerMessageId !== null || providerRunId !== null)
+  ) {
+    throw new TeamRunContractError(
+      "invalid-record",
+      "Pending Standard Team message delivery cannot contain a provider acknowledgement",
+    );
+  }
+  if (
+    value.state === "effect-observed" &&
+    (providerEnqueueStatus === null || providerMessageId === null || providerRunId === null)
+  ) {
+    throw new TeamRunContractError(
+      "invalid-record",
+      "Observed Standard Team message delivery requires a provider acknowledgement",
+    );
+  }
+  if (value.state !== "effect-observed" && providerEnqueueStatus !== null) {
+    throw new TeamRunContractError(
+      "invalid-record",
+      "Only an observed Standard Team message delivery can contain a provider enqueue status",
+    );
+  }
+  const createdAt = instant(String(value.createdAt));
+  const updatedAt = instant(String(value.updatedAt));
+  if (compareInstants(updatedAt, createdAt) < 0) {
+    throw new TeamRunContractError(
+      "invalid-record",
+      "Standard Team message delivery update cannot precede creation",
+    );
+  }
+  return deepFreeze({
+    contractVersion: STANDARD_TEAM_MESSAGE_DELIVERY_CONTRACT_VERSION,
+    deliveryId: requireDigestIdentifier(
+      value.deliveryId,
+      "standard-team-delivery-",
+      "Standard Team message delivery id",
+    ),
+    clientRequestNonce: requireText(
+      value.clientRequestNonce,
+      "Standard Team message client request nonce",
+      STANDARD_TEAM_MESSAGE_DELIVERY_MAX_NONCE_BYTES,
+    ),
+    requestSha256: String(value.requestSha256),
+    teamId: teamExperienceId(String(value.teamId)),
+    targetSlotId: value.targetSlotId === null ? null : teamExperienceId(String(value.targetSlotId)),
+    state: value.state as StandardTeamMessageDeliveryState,
+    providerEnqueueStatus,
+    providerMessageId,
+    providerRunId,
+    createdAt,
+    updatedAt,
+  });
+}
+
+export function assertStandardTeamMessageDelivery(
+  value: unknown,
+): asserts value is StandardTeamMessageDelivery {
+  normalizeStandardTeamMessageDelivery(value);
 }
 
 export function assertTeamDefinition(value: unknown): asserts value is TeamDefinition {
@@ -939,6 +1170,22 @@ export function normalizeTeamRunSnapshot(value: unknown): TeamRunSnapshot {
 
 export function assertTeamRunSnapshot(value: unknown): asserts value is TeamRunSnapshot {
   normalizeTeamRunSnapshot(value);
+}
+
+export function assertPersistTeamExperienceBindingResult(
+  value: unknown,
+): asserts value is PersistTeamExperienceBindingResult {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["status", "binding"]) ||
+    (value.status !== "stored" && value.status !== "duplicate")
+  ) {
+    throw new TeamRunContractError(
+      "invalid-record",
+      "Persisted Team experience binding result is invalid",
+    );
+  }
+  assertTeamExperienceBinding(value.binding);
 }
 
 export function assertPersistTeamDefinitionResult(

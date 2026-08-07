@@ -46,8 +46,10 @@ const workspaceId = "workspace-team-bridge-service";
 
 const team = Object.freeze({
   id: teamId,
+  experience: "orchestrated",
   user_id: "actestra-local-user",
   name: "Actestra delivery Team",
+  description: "Coordinate one bounded General and Goose delivery.",
   workspace: workspaceId,
   workspace_mode: "isolated",
   leader_assistant_id: leaderId,
@@ -85,9 +87,20 @@ function teamPort() {
   return {
     dispatch: vi.fn(async (route: AionUiTeamBridgeRoute): Promise<AionUiTeamBridgeSuccessData> => {
       if (route.kind === "list") return [team];
+      if (route.kind === "list-workspaces") {
+        return {
+          workspace_options: [{ workspace_id: workspaceId, display_name: "Launch workspace" }],
+        };
+      }
       if (route.kind === "run-state") {
         return {
           session_generation: null,
+          submission: {
+            availability: "unavailable",
+            blocked_reason: "planner-unavailable",
+            next_action: "restart-after-planner-admission",
+            authority_source: "actestra-main-runtime",
+          },
           active_run: null,
           slot_work: [],
           activities: [],
@@ -131,7 +144,9 @@ describe("AionUiTeamBridgeService", () => {
       method: "POST",
       path: "/api/teams",
       body: {
+        experience: "orchestrated",
         name: team.name,
+        description: team.description,
         workspace: workspaceId,
         agents: [
           {
@@ -149,6 +164,12 @@ describe("AionUiTeamBridgeService", () => {
         ],
       },
     });
+    await bridge.handle({
+      contractVersion: 1,
+      method: "GET",
+      path: "/api/teams/workspace-options",
+      body: undefined,
+    });
     await expect(
       bridge.handle({
         contractVersion: 1,
@@ -159,13 +180,27 @@ describe("AionUiTeamBridgeService", () => {
     ).resolves.toEqual({
       contractVersion: 1,
       status: 200,
-      data: { session_generation: null, active_run: null, slot_work: [], activities: [] },
+      data: {
+        session_generation: null,
+        submission: {
+          availability: "unavailable",
+          blocked_reason: "planner-unavailable",
+          next_action: "restart-after-planner-admission",
+          authority_source: "actestra-main-runtime",
+        },
+        active_run: null,
+        slot_work: [],
+        activities: [],
+      },
     });
     await bridge.handle({
       contractVersion: 1,
       method: "POST",
       path: `/api/teams/${teamId}/messages`,
-      body: { content: "Prepare the release brief and bounded code change." },
+      body: {
+        content: "Prepare the release brief and bounded code change.",
+        request_nonce: `team-request-${"9".repeat(64)}`,
+      },
     });
     const runId = `team-run-${"f".repeat(64)}`;
     await bridge.handle({
@@ -178,6 +213,7 @@ describe("AionUiTeamBridgeService", () => {
     expect(port.dispatch.mock.calls.map(([route]) => route.kind)).toEqual([
       "list",
       "create",
+      "list-workspaces",
       "run-state",
       "send-message",
       "pause-node",
@@ -198,6 +234,19 @@ describe("AionUiTeamBridgeService", () => {
       status: 503,
       code: "team-unavailable",
       message: "Actestra Team work is unavailable",
+    });
+
+    const modelUnavailable = teamPort();
+    modelUnavailable.dispatch.mockRejectedValueOnce(
+      new AionUiTeamBridgePortError("team-model-unavailable", "private model directory details"),
+    );
+    await expect(
+      new AionUiTeamBridgeService(modelUnavailable).handle(listRequest),
+    ).resolves.toEqual({
+      contractVersion: 1,
+      status: 409,
+      code: "team-model-unavailable",
+      message: "The selected Team model is unavailable",
     });
 
     const port = teamPort();

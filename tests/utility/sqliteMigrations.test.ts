@@ -61,7 +61,7 @@ describe("Actestra SQLite migrations", () => {
     expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
       fromVersion: 0,
       toVersion: CURRENT_CORE_SCHEMA_VERSION,
-      appliedVersions: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+      appliedVersions: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
     });
     expect(pragmaNumber(database, "application_id")).toBe(ACTESTRA_SQLITE_APPLICATION_ID);
     expect(pragmaNumber(database, "user_version")).toBe(CURRENT_CORE_SCHEMA_VERSION);
@@ -129,6 +129,14 @@ describe("Actestra SQLite migrations", () => {
       {
         version: 15,
         name: "team-run-authority",
+      },
+      {
+        version: 16,
+        name: "team-experience-authority",
+      },
+      {
+        version: 17,
+        name: "standard-team-message-delivery-authority",
       },
     ]);
     expect(
@@ -922,7 +930,9 @@ describe("Actestra SQLite migrations", () => {
       )
       .run(planId, "correlation-schema-14-preserved", digest, planJson);
 
-    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
+    expect(
+      migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 15), APPLIED_AT),
+    ).toEqual({
       fromVersion: 14,
       toVersion: 15,
       appliedVersions: [15],
@@ -946,6 +956,77 @@ describe("Actestra SQLite migrations", () => {
       { name: "team_run_revisions" },
       { name: "team_runs" },
     ]);
+  });
+
+  it("adds schema 16 Team experience authority without guessing existing Team types", () => {
+    const database = createDatabase();
+    migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 15), APPLIED_AT);
+
+    expect(
+      migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 16), APPLIED_AT),
+    ).toEqual({
+      fromVersion: 15,
+      toVersion: 16,
+      appliedVersions: [16],
+    });
+    expect(
+      database
+        .prepare(
+          "SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'team_experience_bindings'",
+        )
+        .get(),
+    ).toEqual({ name: "team_experience_bindings" });
+    expect(
+      database.prepare("SELECT COUNT(*) AS count FROM team_experience_bindings").get(),
+    ).toEqual({
+      count: 0,
+    });
+    expect(
+      database
+        .prepare(
+          "SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'team_definitions'",
+        )
+        .get(),
+    ).toEqual({ name: "team_definitions" });
+  });
+
+  it("adds schema 17 metadata-only standard Team message delivery authority", () => {
+    const database = createDatabase();
+    migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 16), APPLIED_AT);
+
+    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
+      fromVersion: 16,
+      toVersion: 17,
+      appliedVersions: [17],
+    });
+    expect(
+      database
+        .prepare(
+          "SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'standard_team_message_deliveries'",
+        )
+        .get(),
+    ).toEqual({ name: "standard_team_message_deliveries" });
+    const columns = database
+      .prepare("PRAGMA table_info(standard_team_message_deliveries)")
+      .all()
+      .map((row) => (row as { name: string }).name);
+    expect(columns).toEqual([
+      "delivery_id",
+      "contract_version",
+      "client_request_nonce",
+      "request_sha256",
+      "team_id",
+      "target_slot_id",
+      "state",
+      "provider_enqueue_status",
+      "provider_message_id",
+      "provider_run_id",
+      "created_at",
+      "updated_at",
+      "delivery_json",
+    ]);
+    expect(columns).not.toContain("content");
+    expect(columns).not.toContain("files");
   });
 
   it("rejects a future schema without changing its version", () => {

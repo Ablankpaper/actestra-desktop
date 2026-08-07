@@ -74,11 +74,14 @@ import {
   instant,
   normalizeAdmittedTeamPlan,
   normalizeTeamDefinition,
+  normalizeTeamExperienceBinding,
+  normalizeStandardTeamMessageDelivery,
   normalizeTeamRunSnapshot,
   replayCoreEvents,
   sessionId,
   taskId,
   teamId,
+  teamExperienceId,
   teamPlanId,
   teamRunId,
   toolInputReference,
@@ -109,6 +112,8 @@ import {
   type PersistContentReferenceResult,
   type PersistAdmittedTeamPlanResult,
   type PersistTeamDefinitionResult,
+  type PersistTeamExperienceBindingResult,
+  type PersistStandardTeamMessageDeliveryResult,
   type PersistTeamRunSnapshotResult,
   type RemoveTeamDefinitionResult,
   type ReplaceTeamDefinitionResult,
@@ -122,6 +127,8 @@ import {
   type StoreContentReferenceInput,
   type TaskState,
   type TeamDefinition,
+  type TeamExperienceBinding,
+  type StandardTeamMessageDelivery,
   type TeamRunSnapshot,
   type WorkerState,
   type WorkspaceGrant,
@@ -174,6 +181,14 @@ const TEAM_PLAN_COLUMNS = `
 `;
 const TEAM_DEFINITION_COLUMNS = `
   team_id, record_sha256, updated_at, removed_at, team_json
+`;
+const TEAM_EXPERIENCE_BINDING_COLUMNS = `
+  team_id, contract_version, experience, bound_at, record_sha256, binding_json
+`;
+const STANDARD_TEAM_MESSAGE_DELIVERY_COLUMNS = `
+  delivery_id, contract_version, client_request_nonce, request_sha256, team_id,
+  target_slot_id, state, provider_enqueue_status, provider_message_id,
+  provider_run_id, created_at, updated_at, delivery_json
 `;
 const TEAM_RUN_COLUMNS = `
   run_id, team_id, plan_id, revision, status, updated_at,
@@ -546,6 +561,78 @@ function parseStoredTeamDefinition(row: SqliteRow): TeamDefinition {
     );
   }
   return team;
+}
+
+function parseStoredTeamExperienceBinding(row: SqliteRow): TeamExperienceBinding {
+  const encoded = requiredString(row, "binding_json");
+  const digest = createHash("sha256").update(encoded).digest("hex");
+  if (requiredString(row, "record_sha256") !== digest) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted Team experience binding bytes failed integrity",
+    );
+  }
+  let binding: TeamExperienceBinding;
+  try {
+    binding = normalizeTeamExperienceBinding(JSON.parse(encoded));
+  } catch (error) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted Team experience binding violates its contract",
+      { cause: error },
+    );
+  }
+  if (
+    requiredString(row, "team_id") !== binding.teamId ||
+    requiredNumber(row, "contract_version") !== binding.contractVersion ||
+    requiredString(row, "experience") !== binding.experience ||
+    requiredString(row, "bound_at") !== binding.boundAt
+  ) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted Team experience projection does not match its canonical record",
+    );
+  }
+  return binding;
+}
+
+function parseStoredStandardTeamMessageDelivery(row: SqliteRow): StandardTeamMessageDelivery {
+  const encoded = requiredString(row, "delivery_json");
+  let delivery: StandardTeamMessageDelivery;
+  try {
+    delivery = normalizeStandardTeamMessageDelivery(JSON.parse(encoded));
+  } catch (error) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted Standard Team message delivery violates its contract",
+      { cause: error },
+    );
+  }
+  const nullable = (field: string): string | null => {
+    const value = row[field];
+    if (value === null) return null;
+    return requiredString(row, field);
+  };
+  if (
+    requiredString(row, "delivery_id") !== delivery.deliveryId ||
+    requiredNumber(row, "contract_version") !== delivery.contractVersion ||
+    requiredString(row, "client_request_nonce") !== delivery.clientRequestNonce ||
+    requiredString(row, "request_sha256") !== delivery.requestSha256 ||
+    requiredString(row, "team_id") !== delivery.teamId ||
+    nullable("target_slot_id") !== delivery.targetSlotId ||
+    requiredString(row, "state") !== delivery.state ||
+    nullable("provider_enqueue_status") !== delivery.providerEnqueueStatus ||
+    nullable("provider_message_id") !== delivery.providerMessageId ||
+    nullable("provider_run_id") !== delivery.providerRunId ||
+    requiredString(row, "created_at") !== delivery.createdAt ||
+    requiredString(row, "updated_at") !== delivery.updatedAt
+  ) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted Standard Team message delivery projection does not match its canonical record",
+    );
+  }
+  return delivery;
 }
 
 function parseStoredTeamRunHead(row: SqliteRow): TeamRunSnapshot {
@@ -2322,6 +2409,256 @@ class SqliteCorePersistence implements ActestraPersistencePort {
       .prepare(`SELECT ${TEAM_PLAN_COLUMNS} FROM team_plans WHERE plan_id = ?`)
       .get(stablePlanId) as SqliteRow | undefined;
     return row === undefined ? null : parseStoredTeamPlan(row);
+  }
+
+  async persistTeamExperienceBinding(
+    bindingValue: TeamExperienceBinding,
+  ): Promise<PersistTeamExperienceBindingResult> {
+    const database = this.requireDatabase();
+    let binding: TeamExperienceBinding;
+    try {
+      binding = normalizeTeamExperienceBinding(JSON.parse(JSON.stringify(bindingValue)));
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Team experience binding is invalid", {
+        cause: error,
+      });
+    }
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const row = database
+        .prepare(
+          `SELECT ${TEAM_EXPERIENCE_BINDING_COLUMNS}
+           FROM team_experience_bindings
+           WHERE team_id = ?`,
+        )
+        .get(binding.teamId) as SqliteRow | undefined;
+      if (row !== undefined) {
+        const existing = parseStoredTeamExperienceBinding(row);
+        if (existing.experience === binding.experience) {
+          database.exec("COMMIT");
+          return deepFreeze({ status: "duplicate", binding: existing });
+        }
+        throw new PersistenceError(
+          "team-experience-conflict",
+          "Team experience identity conflicts with durable authority",
+        );
+      }
+      const encoded = JSON.stringify(binding);
+      const digest = createHash("sha256").update(encoded).digest("hex");
+      database
+        .prepare(
+          `INSERT INTO team_experience_bindings (
+             team_id, contract_version, experience, bound_at, record_sha256, binding_json
+           ) VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          binding.teamId,
+          binding.contractVersion,
+          binding.experience,
+          binding.boundAt,
+          digest,
+          encoded,
+        );
+      database.exec("COMMIT");
+      return deepFreeze({ status: "stored", binding });
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) throw error;
+      throw new PersistenceError(
+        "corrupt-database",
+        "Actestra could not persist the Team experience binding",
+        { cause: error },
+      );
+    }
+  }
+
+  async getTeamExperienceBinding(teamIdValue: string): Promise<TeamExperienceBinding | null> {
+    const database = this.requireDatabase();
+    let stableTeamId: string;
+    try {
+      stableTeamId = teamExperienceId(teamIdValue);
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Team experience lookup is invalid", {
+        cause: error,
+      });
+    }
+    const row = database
+      .prepare(
+        `SELECT ${TEAM_EXPERIENCE_BINDING_COLUMNS}
+         FROM team_experience_bindings
+         WHERE team_id = ?`,
+      )
+      .get(stableTeamId) as SqliteRow | undefined;
+    return row === undefined ? null : parseStoredTeamExperienceBinding(row);
+  }
+
+  async persistStandardTeamMessageDelivery(
+    deliveryValue: StandardTeamMessageDelivery,
+  ): Promise<PersistStandardTeamMessageDeliveryResult> {
+    const database = this.requireDatabase();
+    let delivery: StandardTeamMessageDelivery;
+    try {
+      delivery = normalizeStandardTeamMessageDelivery(JSON.parse(JSON.stringify(deliveryValue)));
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Standard Team message delivery is invalid", {
+        cause: error,
+      });
+    }
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const existingRow = database
+        .prepare(
+          `SELECT ${STANDARD_TEAM_MESSAGE_DELIVERY_COLUMNS}
+           FROM standard_team_message_deliveries
+           WHERE delivery_id = ?`,
+        )
+        .get(delivery.deliveryId) as SqliteRow | undefined;
+      if (existingRow !== undefined) {
+        const existing = parseStoredStandardTeamMessageDelivery(existingRow);
+        const immutableMatches =
+          existing.clientRequestNonce === delivery.clientRequestNonce &&
+          existing.requestSha256 === delivery.requestSha256 &&
+          existing.teamId === delivery.teamId &&
+          existing.targetSlotId === delivery.targetSlotId &&
+          existing.createdAt === delivery.createdAt;
+        if (!immutableMatches) {
+          throw new PersistenceError(
+            "team-message-delivery-conflict",
+            "Standard Team message delivery identity conflicts with durable authority",
+          );
+        }
+        if (isDeepStrictEqual(existing, delivery)) {
+          database.exec("COMMIT");
+          return deepFreeze({ status: "duplicate", delivery: existing });
+        }
+        const legalTransition =
+          (existing.state === "pending-effect" || existing.state === "effect-uncertain") &&
+          (delivery.state === "effect-observed" || delivery.state === "effect-uncertain") &&
+          compareInstants(delivery.updatedAt, existing.updatedAt) >= 0;
+        if (!legalTransition) {
+          throw new PersistenceError(
+            "team-message-delivery-conflict",
+            "Standard Team message delivery transition conflicts with durable authority",
+          );
+        }
+        const encoded = JSON.stringify(delivery);
+        database
+          .prepare(
+            `UPDATE standard_team_message_deliveries
+             SET state = ?, provider_enqueue_status = ?, provider_message_id = ?, provider_run_id = ?, updated_at = ?, delivery_json = ?
+             WHERE delivery_id = ?`,
+          )
+          .run(
+            delivery.state,
+            delivery.providerEnqueueStatus,
+            delivery.providerMessageId,
+            delivery.providerRunId,
+            delivery.updatedAt,
+            encoded,
+            delivery.deliveryId,
+          );
+        database.exec("COMMIT");
+        return deepFreeze({ status: "stored", delivery });
+      }
+      if (delivery.state !== "pending-effect") {
+        throw new PersistenceError(
+          "team-message-delivery-conflict",
+          "A Standard Team message acknowledgement has no pending intent",
+        );
+      }
+      const unresolved = database
+        .prepare(
+          `SELECT delivery_id
+           FROM standard_team_message_deliveries
+           WHERE team_id = ? AND COALESCE(target_slot_id, '') = COALESCE(?, '')
+             AND state IN ('pending-effect', 'effect-uncertain')
+           LIMIT 1`,
+        )
+        .get(delivery.teamId, delivery.targetSlotId) as SqliteRow | undefined;
+      if (unresolved !== undefined) {
+        throw new PersistenceError(
+          "team-message-delivery-conflict",
+          "A previous Standard Team message delivery has an uncertain effect; refresh before sending again",
+        );
+      }
+      const encoded = JSON.stringify(delivery);
+      database
+        .prepare(
+          `INSERT INTO standard_team_message_deliveries (
+             delivery_id, contract_version, client_request_nonce, request_sha256,
+             team_id, target_slot_id, state, provider_enqueue_status, provider_message_id,
+             provider_run_id, created_at, updated_at, delivery_json
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          delivery.deliveryId,
+          delivery.contractVersion,
+          delivery.clientRequestNonce,
+          delivery.requestSha256,
+          delivery.teamId,
+          delivery.targetSlotId,
+          delivery.state,
+          delivery.providerEnqueueStatus,
+          delivery.providerMessageId,
+          delivery.providerRunId,
+          delivery.createdAt,
+          delivery.updatedAt,
+          encoded,
+        );
+      database.exec("COMMIT");
+      return deepFreeze({ status: "stored", delivery });
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) throw error;
+      throw new PersistenceError(
+        "corrupt-database",
+        "Actestra could not persist the Standard Team message delivery",
+        { cause: error },
+      );
+    }
+  }
+
+  async getStandardTeamMessageDelivery(
+    deliveryIdValue: string,
+  ): Promise<StandardTeamMessageDelivery | null> {
+    const database = this.requireDatabase();
+    if (
+      typeof deliveryIdValue !== "string" ||
+      !/^standard-team-delivery-[a-f0-9]{64}$/u.test(deliveryIdValue)
+    ) {
+      throw new PersistenceError(
+        "invalid-record",
+        "Standard Team message delivery lookup is invalid",
+      );
+    }
+    const row = database
+      .prepare(
+        `SELECT ${STANDARD_TEAM_MESSAGE_DELIVERY_COLUMNS}
+         FROM standard_team_message_deliveries
+         WHERE delivery_id = ?`,
+      )
+      .get(deliveryIdValue) as SqliteRow | undefined;
+    return row === undefined ? null : parseStoredStandardTeamMessageDelivery(row);
+  }
+
+  async listUnresolvedStandardTeamMessageDeliveries(
+    limit: number,
+  ): Promise<readonly StandardTeamMessageDelivery[]> {
+    const database = this.requireDatabase();
+    assertTeamPersistenceLimit(limit, "Standard Team message delivery limit");
+    return Object.freeze(
+      asRows(
+        database
+          .prepare(
+            `SELECT ${STANDARD_TEAM_MESSAGE_DELIVERY_COLUMNS}
+             FROM standard_team_message_deliveries
+             WHERE state IN ('pending-effect', 'effect-uncertain')
+             ORDER BY created_at, delivery_id
+             LIMIT ?`,
+          )
+          .all(limit),
+      ).map(parseStoredStandardTeamMessageDelivery),
+    );
   }
 
   async persistTeamDefinition(teamValue: TeamDefinition): Promise<PersistTeamDefinitionResult> {

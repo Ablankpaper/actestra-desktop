@@ -74,6 +74,20 @@ ledger remains 2/7. Activating a real provider/model still requires an explicit
 provider/model choice and authorized credential/network use. These current facts
 supersede the earlier historical null-startup notes retained below.
 
+The local B2 Team/Core/persistence checkpoint records forward-only schema 16
+immutable Team experience bindings, schema 17 metadata-only standard-Team
+message delivery authority, and the bounded root Main/Core projection for
+standard and orchestrated Teams. It persists intent before a provider message
+effect, replays only an observed durable acknowledgement for the same nonce and
+request digest, and keeps content and attachment paths out of persistence.
+Focused staged-tree evidence passes 9 test files with 177 tests, the
+deterministic smoke harness, root strict TypeScript, zero-warning lint, exact
+code/test changed-file formatting, documentation links, and cached diff
+checking. This is local root authority evidence only: the downstream Team
+patch/materialization, Worker runtime admission, real General+Goose mixed
+journey, fresh-profile Electron journey, Task 14, and P6 acceptance remain
+open. No push, PR, Actions/CI, release, or deployment is claimed.
+
 The A3 pre-B1 checkpoint scope used explicit command definitions.
 `git status --porcelain=v1 --untracked-files=all` reported 96 paths at the
 checkpoint: 61 modified, 8 deleted, and 27 untracked files. Before B1 staging,

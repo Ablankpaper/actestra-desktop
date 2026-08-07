@@ -605,7 +605,16 @@ surfaces, member/role and General+Goose configuration, workspace/task input,
 messages, explainable plan/node/Worker/dependency/blocked state, controls,
 Artifacts, aggregation, and persistent activity recovery. These final local UI
 bytes are committed at `94e6699b4fc352084ebfa53539b42e2496207ad5` and remain
-unpushed. The final root gate, packaged target-app acceptance, push,
+unpushed.
+
+The local B2 Team/Core/persistence checkpoint adds schema-16 immutable Team
+experience bindings, schema-17 metadata-only standard-Team message delivery,
+and one bounded Main/Core projection for standard and orchestrated Teams. The
+focused root staged tree proves the contracts, persistence, bridge, type, lint,
+format, and smoke boundaries. It does not include the pending downstream Team
+patch, Worker/runtime admission, a real Electron journey, or P6 acceptance.
+
+The final root gate, packaged target-app acceptance, push,
 exact-head CI, review/merge, merged-main CI, and real CrewAI admission remain
 open; no CrewAI runtime is imported or packaged and P6 is not complete.
 
@@ -626,6 +635,11 @@ open; no CrewAI runtime is imported or packaged and P6 is not complete.
   and information-architecture evolution is allowed through recorded R1/R2
   downstream patches with retention, compatibility, and rollback evidence; do
   not add a separate Goose or Eigent application UI.
+- Persist one Main/Core-owned Team experience binding and route by the Team's
+  own `standard` or `orchestrated` type; renderer guesses are not authority.
+- Persist standard-Team message delivery intent before provider effect, replay
+  only an observed durable acknowledgement, and fail closed on ambiguous or
+  interrupted effects without storing message content or attachment paths.
 - Dependency graph and ready/running/blocked/completed/failed/cancelled states.
 - Parallel general and coding workers.
 - Shared artifact references without shared uncontrolled working directories.
