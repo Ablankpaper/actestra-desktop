@@ -6,6 +6,107 @@ Last updated: 2026-08-08
 
 ### P6 planner cleanup is closed on merged main; real AionUI Team acceptance remains open
 
+On 2026-08-07 the owner authorized ADR-0026 and a local implementation slice for
+an Actestra-native planner. The local source now implements the exact engine
+`actestra-native-team-planner@1.0.0` as a separately supervised, no-tool,
+no-credential sidecar with a fixed three-node General/Goose-parallel plus
+human-feedback candidate. The trusted factory is locally GREEN: it accepts no
+caller-supplied launch fields, reads only the fixed packaged
+`actestra-team-planner.manifest.json` beside `actestra-team-planner.js`, and
+rechecks the exact engine, file name, byte size, and SHA-256 before spawn.
+Downstream materialization copies the production planner sources and declares
+one exact `actestra-team-planner` build entry; no fixture or local-Agent source
+enters the product graph. Fresh local evidence is the focused
+planner/coding/experience/router/Team-readiness set at 113/113 with the real
+local Goose artifact admitted against manifest SHA-256
+`7444e12e4e218cfd4d4d8f9ae253dee12b9b1930b5546849498790277328b9df`, the
+manifest/boundary/readiness/path-safety/product-
+entrypoint scripts at 13/13, root and materialized strict TypeScript,
+repository-wide format and zero-warning lint, and the three materialized native
+Team/coding wiring files at 14/14. Documentation links, the exact frozen AionUI
+foundation, the product boundary, and `git diff --check` also pass. The
+downstream overlay and contract now declare 320 `expectedChangedFiles` and 100
+exact `sourceCopies`. The materialized formatter keeps
+the root-owned Actestra source-copy convention explicit while AionUI-owned
+startup, composition, and wiring-test files retain the AionUI convention; the
+four-path materialized format check passes without changing generated files or
+weakening source-copy equality. The final bundled planner remains
+covered by an exact engine, SHA-256, and byte-size manifest written and
+reverified before pack-only return and electron-builder invocation.
+
+This GREEN result is limited to planner identity, trusted launch, source
+packaging, and wrapper-level abort, timeout, and explicit-close regression.
+The production entry is stdio-only and imports no child-process or dynamic
+execution API, so it cannot create native planner descendants; the deterministic
+fixture's self-spawned descendant is test-only and is not evidence against the
+production entry. The supervisor wrapper has no unused `PassThrough` or
+`parentLivenessFd` liveness wiring; its launch boundary is stdio-only. Complete
+process-group cleanup remains covered by the already merged generic supervisor
+evidence, while a packaged parent-death smoke is still required before release
+claims. The actual AionUI production entry now
+contains local startup wiring: `handleAppReady()` calls the zero-argument
+trusted factory and injects `configureActestraTeamRuntime({ planner })` before
+persistence startup; a failed factory produces the explicit
+`ACTESTRA_AIONUI_TEAM_PLANNER_UNAVAILABLE` marker and never falls back to a
+fixture. This is source/materialization evidence only. A real Electron launch,
+admitted General and Goose Worker runtimes, model binding, the mixed journey,
+and P6 acceptance remain open. The local composition distinguishes a missing
+planner from missing General/Goose runtime readiness: only all required Worker
+ports construct an orchestrator, while Main/Core projects
+`worker-runtime-unavailable` with `configure-worker-runtime`; the AionUI-native
+Team surface disables submission and explains that next action. The current
+orchestrated ledger remains 2/7. CrewAI and CLI providers remain outside this
+change; commit, push, PR, Actions, package, release, deployment, and user
+acceptance remain unclaimed.
+
+The Main-owned model JSON and broker sources, plus the General and Coding
+runtime-port sources, now exist locally and are included in those exact
+`sourceCopies`. `actestraGeneralWorkRuntime.ts` imports only the Main-owned model
+broker and has no Goose dependency. This is local source and downstream-contract
+evidence, not a configured runtime. Production startup still passes
+`modelBinding: null`; Team composition still passes `general: null`; and the
+downstream checker still rejects `general: journey`. Coding startup therefore
+has no admitted model binding, General still has no production composition port,
+and the planner continues to project `worker-runtime-unavailable` without
+constructing an orchestrator. The real General+Goose mixed journey, a fresh
+Electron journey, Task 14 and P6 acceptance remain open, and the orchestrated
+ledger remains 2/7. Activating a real provider/model still requires an explicit
+provider/model choice and authorized credential/network use. These current facts
+supersede the earlier historical null-startup notes retained below.
+
+The A3 pre-B1 checkpoint scope used explicit command definitions.
+`git status --porcelain=v1 --untracked-files=all` reported 96 paths at the
+checkpoint: 61 modified, 8 deleted, and 27 untracked files. Before B1 staging,
+the same expanded command reported 97 paths: 62 modified, 8 deleted, and 27
+untracked files. `git status --porcelain=v1` then reported 96 entries: 62
+modified, 8 deleted, and 26 untracked entries. That default view folds the two untracked files under
+`apps/desktop/src/main/model/` into one directory entry, while
+`git ls-files --others --exclude-standard` lists all 27 untracked files.
+`vitest.config.ts` was clean at the checkpoint and is now modified by the A2
+focused correction, which accounts for the one-path increase in the expanded
+view. Both status views had zero staged entries before B1 staging.
+
+A1 local focused evidence: `bun run test:smoke-harness` is GREEN. A2 local
+focused evidence is exactly `./node_modules/.bin/vitest run
+tests/scripts/aionuiProductEntrypoints.test.mjs`, with `Test Files 1 passed (1)`
+and `Tests 4 passed (4)`. The only companion files in this A2 check are
+`tests/scripts/aionuiProductEntrypoints.test.mjs` and `vitest.config.ts`; both
+pass `oxfmt --check`, and the same two-file scope passes `git diff --check`.
+These are local focused checks only, not broad product or acceptance evidence.
+`.codex-tmp`,
+`supervisedLocalAgentProvider`, and `localAgentCli` remain outside the product
+checkpoint: the latter two have no production consumer, and the temporary
+compiler cache is not product source. `foundation/` has no worktree change.
+
+A local safety incident is recorded separately. An A2 quality subtask
+mistakenly started CodeRabbit without a path filter and with include-untracked;
+it was interrupted. The CLI displayed authenticated and analyzing before a
+WebSocket error ended the run, but emitted no file count, upload event, or
+findings. Whether any data was uploaded cannot be confirmed. This run is not
+review evidence, and external review remains prohibited without new
+authorization. At the A3 pre-B1 checkpoint, no commit, push, PR, CI, or fresh
+Electron acceptance had occurred for these bytes.
+
 The containment foundation was developed from exact `origin/main`
 `071aa922c08dd9a139f0c11dee2aa0dadab02417` on branch
 `feat/p5-isolated-coding-capability`. It adds a detached Actestra-managed Git

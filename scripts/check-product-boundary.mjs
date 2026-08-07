@@ -3,11 +3,10 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { inspectGeneralWorkerModuleGraph } from "./general-worker-authority-rules.mjs";
-import { preloadPrivilegePatterns, rendererPrivilegePatterns } from "./product-boundary-rules.mjs";
+import { preloadPrivilegePatterns } from "./product-boundary-rules.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const productSourceRoot = path.join(repositoryRoot, "apps", "desktop", "src");
-const rendererRoot = path.join(productSourceRoot, "renderer");
 const preloadRoot = path.join(productSourceRoot, "preload");
 const mainRoot = path.join(productSourceRoot, "main");
 const generalWorkerRoot = path.join(productSourceRoot, "utility", "worker");
@@ -88,7 +87,6 @@ function reportPatternMatches(files, rules) {
 
 const sourceFiles = listFiles(productSourceRoot);
 const identityFindings = reportPatternMatches(sourceFiles, forbiddenProductPatterns);
-const rendererFindings = reportPatternMatches(listFiles(rendererRoot), rendererPrivilegePatterns);
 const preloadFindings = reportPatternMatches(listFiles(preloadRoot), preloadPrivilegePatterns);
 const mainPersistenceFindings = reportPatternMatches(listFiles(mainRoot), [
   {
@@ -108,7 +106,13 @@ const generalWorkerAuthorityFindings = generalWorkerGraph.findings;
 
 const packageJson = JSON.parse(fs.readFileSync(path.join(repositoryRoot, "package.json"), "utf8"));
 const builderConfiguration = fs.readFileSync(
-  path.join(repositoryRoot, "apps", "desktop", "electron-builder.yml"),
+  path.join(
+    repositoryRoot,
+    "downstream",
+    "aionui-v2.1.41",
+    "patches",
+    "0001-actestra-identity-and-isolation.mjs",
+  ),
   "utf8",
 );
 const entitlements = fs.readFileSync(
@@ -121,13 +125,13 @@ if (packageJson.name !== "actestra-desktop") {
   metadataFindings.push("package.json: package name must be actestra-desktop");
 }
 if (!builderConfiguration.includes("appId: com.bignormal.actestra")) {
-  metadataFindings.push("electron-builder.yml: missing Actestra bundle identifier");
+  metadataFindings.push("downstream identity patch: missing Actestra bundle identifier");
 }
 if (!builderConfiguration.includes("productName: Actestra")) {
-  metadataFindings.push("electron-builder.yml: missing Actestra product name");
+  metadataFindings.push("downstream identity patch: missing Actestra product name");
 }
 if (!builderConfiguration.includes("- actestra")) {
-  metadataFindings.push("electron-builder.yml: missing Actestra protocol scheme");
+  metadataFindings.push("downstream identity patch: missing Actestra protocol scheme");
 }
 
 const entitlementKeys = [...entitlements.matchAll(/<key>([^<]+)<\/key>/g)].map((match) => match[1]);
@@ -141,7 +145,6 @@ if (unexpectedEntitlements.length > 0) {
 
 const findings = [
   ...identityFindings,
-  ...rendererFindings,
   ...preloadFindings,
   ...mainPersistenceFindings,
   ...generalWorkerAuthorityFindings,
@@ -153,6 +156,6 @@ if (findings.length > 0) {
   process.exitCode = 1;
 } else {
   console.info(
-    `Actestra product-boundary check passed (${sourceFiles.length} source files; renderer remains unprivileged).`,
+    `Actestra product-boundary check passed (${sourceFiles.length} Actestra-owned source files; the product renderer is the reviewed downstream AionUI surface).`,
   );
 }
