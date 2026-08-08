@@ -24,6 +24,10 @@ logs/
 .tmp/
 tmp/
 
+# Local agent tooling
+.reasonix/
+reasonix.toml
+
 # JavaScript and Electron
 node_modules/
 .pnpm-store/
