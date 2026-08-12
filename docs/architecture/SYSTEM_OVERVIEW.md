@@ -562,12 +562,13 @@ from schema-15 revisions. Raw Worker summaries, private paths, audit
 identifiers, process details, plan internals, and persistence authority do not
 cross into the renderer. No Goose or Eigent application UI enters the product.
 
-This provider and visible journey are in the local delivery batch. Their focused native,
-Core, TypeScript, downstream-contract, DOM, complete root, packaged smoke, and
-real provider-backed Electron evidence is recorded in project status. The P6
-local development exit gate is closed; push, exact-head CI, review/merge,
-merged-main CI, formal signing, release, deployment, final user acceptance, and
-real CrewAI admission remain open.
+This provider and visible journey are integrated on `main` through P6 pull
+request 51. Their focused native, Core, TypeScript, downstream-contract, DOM,
+complete root, packaged smoke, real provider-backed Electron, exact-head CI,
+and merged-main CI evidence is recorded in project status. The P6
+development-delivery exit gate is accepted. Formal signing, release,
+deployment, cross-platform and final user acceptance, and real CrewAI admission
+remain open.
 
 ### Agent workers
 
