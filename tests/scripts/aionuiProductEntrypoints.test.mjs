@@ -46,6 +46,12 @@ describe("AionUI-first product entrypoints", () => {
     );
   });
 
+  it("installs the frozen downstream lockfile before packaging from a clean checkout", () => {
+    expect(packageJson.scripts["downstream:aionui:package"]).toBe(
+      "bun run downstream:aionui:install && bun run --cwd .actestra/aionui-v2.1.41 package",
+    );
+  });
+
   it("removes the legacy P2 renderer and its standalone product build chain", () => {
     for (const relativePath of legacyProductPaths) {
       expect(fs.existsSync(path.join(repositoryRoot, relativePath)), relativePath).toBe(false);

@@ -1,8 +1,53 @@
 # Project Status
 
-Last updated: 2026-08-12
+Last updated: 2026-08-13
 
 ## Current phase
+
+### 2026-08-13 current verification: exact-head CI packaging defect fixed locally
+
+The P6 delivery batch was pushed to
+`codex/p6-aionui-team-acceptance` at
+`f5056101ea77cada30a6dbc1913bb7d99a2460fb` and opened as pull request
+[#51](https://github.com/bignormal/actestra-desktop/pull/51). Its first
+exact-head CI run, `31618173046`, is not a passing delivery gate: the `macOS
+arm64 foundation` job `94186061728` failed during the root `bun run check`, so
+that SHA must not be merged.
+
+The complete job log narrows the failure to the final downstream package step.
+Formatting, zero-warning lint, strict types, Electron SQLite, all 1,178 tests,
+the smoke harness, product boundary, frozen-foundation check, and downstream
+overlay check passed first. The generated AionUI build then failed to load
+`@sentry/vite-plugin`. The root cause was a clean-checkout dependency gap:
+`downstream:aionui:package` materialized the frozen AionUI tree and built it
+without installing the dependency set declared by its own frozen `bun.lock`.
+Local runs had linked an already-installed `foundation/aionui-v2.1.41/node_modules`,
+which masked the missing prerequisite.
+
+The local follow-up changes the package entry point to run the existing
+`downstream:aionui:install` command before the build. This preserves the frozen
+source and lockfile and makes the normal package command self-contained on a
+clean checkout. A new entry-point regression failed against the old command and
+passes against the corrected command.
+
+Verified follow-up evidence on 2026-08-13:
+
+- focused entry-point regression: 1 file and 5 tests passed;
+- `bun run package`: EXIT 0 after materializing the reviewed overlay and
+  installing 3,177 packages from the frozen downstream lockfile; the Sentry
+  plugin was present and the Main, preload, and renderer bundles all built;
+- `bun run check`: EXIT 0; 111 test files passed, 2 skipped; 1,179 tests passed,
+  9 skipped; format, lint, typecheck, Electron SQLite, smoke harness, boundary,
+  frozen foundation, downstream overlay, frozen-lock dependency installation,
+  and package all passed;
+- `git diff --check` is clean, `foundation/` is unchanged, and the process scan
+  has no Actestra, AionCore, Goose, planner, or General Worker residue.
+
+This is a local repair of the first exact-head CI failure, not replacement CI
+evidence. The repair still requires a new commit and push, a fresh exact-head CI
+run with both jobs green, review disposition, merge, and one green merged-main
+CI run. No formal signing, release, deployment, production readiness, or final
+user acceptance is claimed.
 
 ### 2026-08-12 current verification: P6 local development acceptance complete
 

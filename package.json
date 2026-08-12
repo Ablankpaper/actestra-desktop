@@ -35,7 +35,7 @@
     "downstream:aionui:check": "node scripts/check-aionui-downstream.mjs",
     "downstream:aionui:install": "node scripts/materialize-aionui-downstream.mjs && bun install --cwd .actestra/aionui-v2.1.41 --frozen-lockfile",
     "downstream:aionui:test": "bun run downstream:aionui:materialize && bun run --cwd .actestra/aionui-v2.1.41 test",
-    "downstream:aionui:package": "bun run downstream:aionui:materialize && bun run --cwd .actestra/aionui-v2.1.41 package",
+    "downstream:aionui:package": "bun run downstream:aionui:install && bun run --cwd .actestra/aionui-v2.1.41 package",
     "downstream:aionui:preview": "bun run downstream:aionui:materialize && bun run --cwd .actestra/aionui-v2.1.41 preview",
     "downstream:aionui:dist:dir": "node scripts/build-aionui-dev-app.mjs",
     "downstream:aionui:dist:mac": "bun run downstream:aionui:materialize && bun run --cwd .actestra/aionui-v2.1.41 dist:mac -- --arm64",
