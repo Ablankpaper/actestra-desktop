@@ -229,7 +229,7 @@ export class ArtifactDeliveryService {
   async #awaitApplyCompletion(artifact: ArtifactId): Promise<void> {
     const completion = this.inFlight.get(artifact)?.completion;
     if (completion !== undefined) {
-      await completion.catch(() => undefined);
+      await completion.catch((): undefined => undefined);
     }
   }
 

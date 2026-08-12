@@ -66,6 +66,23 @@ exact-head CI run with both jobs green, review disposition, merge, and one green
 merged-main CI run. No formal signing, release, deployment, production
 readiness, or final user acceptance is claimed.
 
+The heap correction was committed and pushed as
+`69c9d2f639c06ee5a2f628575df68358e24adc0f`. Its exact-head CI run
+`31619997348` proves both earlier corrections: the complete `bun run check`,
+documentation links, and frozen-lock downstream install all passed. The next
+independent gate then exposed one root-versus-materialized TypeScript contract
+gap at `artifactDeliveryService.ts:232`: the root strict check accepted the
+Promise rejection handler, while the AionUI `noImplicitAny` check required its
+`undefined` return type to be explicit and failed with `TS7011`.
+
+The one-line local follow-up now matches the explicit rejection-handler pattern
+already used throughout the same Actestra modules. The exact materialized
+`bunx tsc --noEmit --pretty false` command moves from EXIT 2 to EXIT 0. The
+focused Artifact delivery suite passes 3 files and 26 tests, and root typecheck
+and formatting also pass. This is runtime-neutral type information; it does not
+change the accepted Provider, Electron, Artifact apply, or packaged smoke
+behavior. A new exact-head CI run is still required before merge.
+
 ### 2026-08-12 current verification: P6 local development acceptance complete
 
 The P6 delivery batch is maintained on branch
