@@ -579,7 +579,7 @@ slice previously described as P4.3/F3.1.
 
 ## P6 — Multi-Agent Team Orchestration
 
-### Current local gate (2026-08-12)
+### Accepted development-delivery gate (2026-08-13)
 
 The current development delivery slice has closed the coding delivery and
 General v1 implementation gates in source, focused tests, downstream
@@ -590,9 +590,13 @@ remains text-only with structured requirements admission and structured output
 validation. The mixed General+Goose acceptance exercised real model/tool
 execution, patch Artifact creation, separate workspace-apply approval, final
 human feedback, whole-Team cancellation, restart recovery, and no-orphan
-shutdown on the ad-hoc-signed development app. P6's local development exit gate
-is satisfied; push, exact-head CI, review/merge, merged-main CI, formal
-signing, release, deployment, and final user acceptance remain separate gates.
+shutdown on the ad-hoc-signed development app. Pull request 51 passed exact-head
+CI `31623674948` at
+`aef8d537be6409f4a0ce2d53299413b26155ed82`, squash merged as
+`1aefa46597d334b4fad48cf176fed1b166cdbacc`, and passed merged-main CI
+`31625296206`. P6's development-delivery exit gate is accepted. Formal signing,
+release, deployment, cross-platform acceptance, and final user acceptance
+remain separate P7/P8 or release gates.
 
 Current progress includes the closed plan-candidate admission, desktop-main
 planner port, schema-14 admitted-plan durability barrier, schema-15 Team run
@@ -618,15 +622,15 @@ schema-17 metadata-only standard-Team message delivery authority: Main persists
 the intent before the provider effect, replays only an observed durable
 acknowledgement for the same nonce and request digest, and fails closed on
 changed, pending, uncertain, or conflicting deliveries without persisting
-message content or attachment paths. The whole Task 14 batch remains local and
-unpushed; its pre-delivery history forked from
-`a3f23d6391a6f6c34f5a88cfa12e35b9665e5196`. ADR-0026 now authorizes a separate
+message content or attachment paths. The Task 14 batch is integrated on `main`
+through the P6 merge above; its pre-delivery history forked from
+`a3f23d6391a6f6c34f5a88cfa12e35b9665e5196`. ADR-0026 authorizes a separate
 Actestra-native planner v1 implementation with engine identity
 `actestra-native-team-planner@1.0.0`; the current development bundle packages
-and admits that exact planner. The final root gate and packaged target-app
-acceptance are GREEN locally. Push, exact-head CI, review/merge, merged-main CI,
-formal signing, release, deployment, and real CrewAI admission remain open; no
-CrewAI runtime is imported or packaged.
+and admits that exact planner. The final root gate, packaged target-app
+acceptance, exact-head CI, merge, and merged-main CI are GREEN. Formal signing,
+release, deployment, cross-platform acceptance, and real CrewAI admission
+remain open; no CrewAI runtime is imported or packaged.
 
 The same local batch retains Core/sidecar result adapters and persisted-grant
 workspace resolution, but deliberately removes the local-Agent provider/runtime
