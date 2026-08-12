@@ -238,6 +238,17 @@ function containsControlCharacter(value: string): boolean {
   });
 }
 
+function containsControlCharacterExceptLf(value: string): boolean {
+  return [...value].some((character) => {
+    const codePoint = character.codePointAt(0);
+    return (
+      codePoint !== undefined &&
+      codePoint !== 10 &&
+      (codePoint <= 31 || (codePoint >= 127 && codePoint <= 159))
+    );
+  });
+}
+
 function isRoundTrippableUtf8(value: string): boolean {
   return new TextDecoder().decode(new TextEncoder().encode(value)) === value;
 }
@@ -264,6 +275,29 @@ function requireText(
     throw new TeamPlanAdmissionError(
       code,
       `${field} must be normalized, unpadded, control-free UTF-8 text of at most ${maximumBytes} bytes`,
+    );
+  }
+  return value;
+}
+
+function requireMultilineText(
+  value: unknown,
+  field: string,
+  maximumBytes: number,
+  code: TeamPlanShapeErrorCode,
+): string {
+  if (
+    typeof value !== "string" ||
+    value.trim().length === 0 ||
+    value.trim() !== value ||
+    containsControlCharacterExceptLf(value) ||
+    !isRoundTrippableUtf8(value) ||
+    value.normalize("NFC") !== value ||
+    new TextEncoder().encode(value).byteLength > maximumBytes
+  ) {
+    throw new TeamPlanAdmissionError(
+      code,
+      `${field} must be normalized, unpadded UTF-8 text with LF-only line breaks of at most ${maximumBytes} bytes`,
     );
   }
   return value;
@@ -375,7 +409,12 @@ export function normalizeTeamPlannerRequest(value: unknown): TeamPlannerRequest 
       ),
     ),
     planVersion: requirePositiveInteger(value.planVersion, "Team plan version", "invalid-request"),
-    goal: requireText(value.goal, "Team goal", TEAM_PLAN_MAX_GOAL_BYTES, "invalid-request"),
+    goal: requireMultilineText(
+      value.goal,
+      "Team goal",
+      TEAM_PLAN_MAX_GOAL_BYTES,
+      "invalid-request",
+    ),
     workerCapabilities: Object.freeze(capabilities),
     contextReferences: Object.freeze(references),
     limits: Object.freeze({
@@ -933,7 +972,12 @@ export function normalizeAdmittedTeamPlan(value: unknown): AdmittedTeamPlan {
     ),
   );
   const version = requirePositiveInteger(value.version, "Team plan version", "invalid-candidate");
-  const goal = requireText(value.goal, "Team goal", TEAM_PLAN_MAX_GOAL_BYTES, "invalid-candidate");
+  const goal = requireMultilineText(
+    value.goal,
+    "Team goal",
+    TEAM_PLAN_MAX_GOAL_BYTES,
+    "invalid-candidate",
+  );
   validateCandidateEnvelope(
     Object.freeze({
       protocolVersion: TEAM_PLANNER_PROTOCOL_VERSION,

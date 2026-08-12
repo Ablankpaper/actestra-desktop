@@ -29,6 +29,7 @@ import {
   type ToolGateway,
   type UserApprovalDecision,
   type WorkerId,
+  type WorkspaceId,
   type WorkspaceGrant,
 } from "../../core";
 import {
@@ -40,7 +41,6 @@ import { GooseCodingEvidenceCoordinator } from "./gooseCodingEvidenceCoordinator
 export type GooseCodingArtifactPublisherErrorCode =
   | "invalid-config"
   | "invalid-decision"
-  | "no-changes"
   | "persistence-failed"
   | "gateway-failed";
 
@@ -92,9 +92,16 @@ export interface GooseCodingDeniedPublishResult {
   readonly approval: ApprovalRequestSnapshot;
 }
 
+/** A reviewed read-only attempt: the isolated worktree is unchanged, so there is nothing to approve. */
+export interface GooseCodingUnchangedPublishResult {
+  readonly status: "unchanged";
+  readonly baseCommit: string;
+}
+
 export type GooseCodingPublishResult =
   | GooseCodingPublishedArtifactResult
-  | GooseCodingDeniedPublishResult;
+  | GooseCodingDeniedPublishResult
+  | GooseCodingUnchangedPublishResult;
 
 export interface CreateGooseCodingArtifactPublisherOptions {
   readonly persistence: ActestraPersistencePort;
@@ -106,6 +113,7 @@ export interface CreateGooseCodingArtifactPublisherOptions {
   readonly taskId: TaskId;
   readonly sessionId: SessionId;
   readonly workerId: WorkerId;
+  readonly destinationWorkspaceId?: WorkspaceId;
   readonly toolGateway: ToolGateway;
   readonly approvalService: ApprovalService;
   readonly evidence: GooseCodingEvidenceCoordinator;
@@ -265,10 +273,8 @@ export function createGooseCodingArtifactPublisher(
           gitCommonDirectory: config.gitCommonDirectory,
         });
         if (snapshot.patchByteLength === 0) {
-          throw new GooseCodingArtifactPublisherError(
-            "no-changes",
-            "Coding Artifact publish requires a non-empty isolated worktree patch",
-          );
+          await config.evidence.completeReadOnlyReview();
+          return Object.freeze({ status: "unchanged", baseCommit: snapshot.baseCommit });
         }
         const digest = digestFor(config, snapshot);
         const requestId = toolRequestId(`request-coding-publish-${digest}`);
@@ -288,7 +294,8 @@ export function createGooseCodingArtifactPublisher(
           inputRef,
           action: "publish.execute",
           resourceKind: "repository",
-          summary: "Publish the approved isolated coding patch as an Actestra Artifact",
+          summary:
+            "Save the reviewed isolated coding patch as an Actestra Artifact. This does not modify the original workspace.",
           credentialRefs: Object.freeze([]),
           requestedAt,
         } satisfies ProtectedOperation);
@@ -474,7 +481,19 @@ export function createGooseCodingArtifactPublisher(
           createdAt: now,
           updatedAt: now,
         } satisfies Artifact);
-        await config.evidence.completePublishedArtifact(operation, artifact);
+        await config.evidence.completePublishedArtifact(operation, artifact, {
+          patchOwnerGrantId: config.grant.grantId,
+          destinationWorkspaceId: config.destinationWorkspaceId ?? null,
+          // The owner verified above is the only authority that can read this patch back, so the
+          // delivery carries it rather than letting a later read guess at a constant.
+          patchOwnerWorkerId: owner.workerId,
+          patchRequestId: owner.requestId,
+          patchReference: patchRef,
+          patchSha256: snapshot.patchSha256,
+          patchByteLength: snapshot.patchByteLength,
+          baseCommit: snapshot.baseCommit,
+          changedFileCount: snapshot.changedFileCount,
+        });
         return Object.freeze({
           status: "published",
           baseCommit: snapshot.baseCommit,

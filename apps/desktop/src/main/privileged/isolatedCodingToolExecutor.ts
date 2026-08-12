@@ -6,6 +6,7 @@ import path from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
 import {
+  ARTIFACT_APPLY_TOOL_DEFINITION,
   CODING_DIFF_TOOL_ID,
   CODING_ARTIFACT_PUBLISH_TOOL_ID,
   CODING_FILE_READ_TOOL_ID,
@@ -37,6 +38,8 @@ import {
   type ContentReferenceOwner,
   type IsolatedCodingToolDefinition,
   type PrivilegedClock,
+  type ProtectedAction,
+  type ProtectedResourceKind,
   type ProtectedToolExecutor,
   type ToolCapabilityManifest,
   type ToolExecutionRequest,
@@ -53,6 +56,7 @@ const execFileAsync = promisify(execFile);
 const GIT_EXECUTABLE = "/usr/bin/git";
 const SANDBOX_EXECUTABLE = "/usr/bin/sandbox-exec";
 const PROCESS_TERMINATE_GRACE_MS = 1_000;
+const STDERR_SIGNATURE_PROBE_BYTES = 4_096;
 const PROCESS_REGISTRY_ID_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const MACOS_DENIED_HOST_READ_ROOTS = Object.freeze([
   "/Users",
@@ -150,6 +154,53 @@ function executionError(
   options?: ErrorOptions & { readonly mayHaveExecuted?: boolean },
 ): ProtectedToolExecutionError {
   return new ProtectedToolExecutionError(errorCode, message, options);
+}
+
+/**
+ * Classify a failed process's stderr into one closed set of tokens.
+ *
+ * The audit sink is contractually redacted and stderr routinely carries workspace
+ * paths, branch names, and file contents, so the text itself can never be recorded.
+ * A signature token carries the one thing the exit code cannot: whether a non-zero
+ * exit was transient contention, a misconfigured workspace, or host exhaustion.
+ * Every branch returns a fixed literal, so no caller can widen this into a content leak.
+ */
+function classifyProcessStderr(stderr: Buffer): string {
+  if (stderr.byteLength === 0) {
+    return "none";
+  }
+  const probe = new TextDecoder("utf-8", { fatal: false })
+    .decode(stderr.subarray(0, STDERR_SIGNATURE_PROBE_BYTES))
+    .toLowerCase();
+  if (probe.includes(".lock")) {
+    return "git-lock-contention";
+  }
+  if (probe.includes("not a git repository")) {
+    return "git-not-a-repository";
+  }
+  if (probe.includes("dubious ownership")) {
+    return "git-dubious-ownership";
+  }
+  if (probe.includes("unknown revision") || probe.includes("bad revision")) {
+    return "git-bad-revision";
+  }
+  if (probe.includes("permission denied") || probe.includes("operation not permitted")) {
+    return "permission-denied";
+  }
+  if (
+    probe.includes("resource temporarily unavailable") ||
+    probe.includes("cannot allocate memory") ||
+    probe.includes("too many open files")
+  ) {
+    return "resource-exhausted";
+  }
+  if (probe.includes("fatal:")) {
+    return "git-fatal";
+  }
+  if (probe.includes("error:")) {
+    return "git-error";
+  }
+  return "unclassified";
 }
 
 function nodeErrorCode(error: unknown): string | undefined {
@@ -831,6 +882,7 @@ async function runRegisteredProcess(
     let stderr = Buffer.alloc(0);
     let terminalError: ProtectedToolExecutionError | undefined;
     let directCloseCode: number | null | undefined;
+    let directCloseSignal: NodeJS.Signals | null = null;
     let terminationRequested = false;
     let forcedCleanupComplete = false;
     let settled = false;
@@ -866,9 +918,14 @@ async function runRegisteredProcess(
       }
       if (directCloseCode !== 0) {
         reject(
-          executionError("process-exit-failed", "Coding process exited unsuccessfully", {
-            mayHaveExecuted: true,
-          }),
+          executionError(
+            "process-exit-failed",
+            // Metadata only: the audit sink is contractually redacted, so record the
+            // exit shape that distinguishes a signal kill from a real non-zero exit
+            // without copying stderr text, which routinely carries workspace paths.
+            `Coding process exited unsuccessfully (exitCode=${directCloseCode === null ? "none" : String(directCloseCode)}, signal=${directCloseSignal ?? "none"}, stderrBytes=${String(stderr.byteLength)}, stderrSignature=${classifyProcessStderr(stderr)})`,
+            { mayHaveExecuted: true },
+          ),
         );
         return;
       }
@@ -963,8 +1020,9 @@ async function runRegisteredProcess(
       });
       terminate();
     });
-    child.once("close", (code) => {
+    child.once("close", (code, signal) => {
       directCloseCode = code;
+      directCloseSignal = signal;
       terminate();
       settle();
     });
@@ -1108,22 +1166,31 @@ export class IsolatedCodingToolExecutor implements ProtectedToolExecutor {
       commands: snapshotProcessRegistry(config.commands, "command"),
       tests: snapshotProcessRegistry(config.tests, "test"),
     });
-    this.manifests = new Map(
-      REGISTERED_ISOLATED_CODING_TOOL_IDS.map((registeredTool) => {
-        const definition = codingToolDefinition(registeredTool);
-        return [
-          registeredTool,
-          Object.freeze({
-            contractVersion: PRIVILEGED_CONTRACT_VERSION,
-            toolId: registeredTool,
-            actions: Object.freeze([definition.action]),
-            resourceKinds: Object.freeze([definition.resourceKind]),
-            credentialUse: "forbidden",
-            timeoutMs: definition.timeoutMs,
-          } satisfies ToolCapabilityManifest),
-        ] as const;
-      }),
-    );
+    const manifestFor = (definition: {
+      readonly toolId: ToolId;
+      readonly action: ProtectedAction;
+      readonly resourceKind: ProtectedResourceKind;
+      readonly timeoutMs: number;
+    }): readonly [ToolId, ToolCapabilityManifest] =>
+      [
+        definition.toolId,
+        Object.freeze({
+          contractVersion: PRIVILEGED_CONTRACT_VERSION,
+          toolId: definition.toolId,
+          actions: Object.freeze([definition.action]),
+          resourceKinds: Object.freeze([definition.resourceKind]),
+          credentialUse: "forbidden",
+          timeoutMs: definition.timeoutMs,
+        } satisfies ToolCapabilityManifest),
+      ] as const;
+    this.manifests = new Map([
+      ...REGISTERED_ISOLATED_CODING_TOOL_IDS.map((registeredTool) =>
+        manifestFor(codingToolDefinition(registeredTool)),
+      ),
+      // Declared so the gateway can reach the apply approval rule. `execute` still refuses this
+      // tool, because Main applies the patch itself once the user approves.
+      manifestFor(ARTIFACT_APPLY_TOOL_DEFINITION),
+    ]);
   }
 
   async manifest(requestedTool: ToolId): Promise<ToolCapabilityManifest> {

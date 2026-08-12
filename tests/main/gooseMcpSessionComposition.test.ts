@@ -15,7 +15,11 @@ import type {
   GooseAcpToolDiscoveryOptions,
 } from "../../apps/desktop/src/main/workers/gooseAcpHandshake";
 import type { GooseMcpToolInvoker } from "../../apps/desktop/src/main/workers/gooseMcpCapabilityServer";
-import type { GooseLoopbackModelInvoker } from "../../apps/desktop/src/main/workers/gooseLoopbackModelServer";
+import {
+  startGooseLoopbackModelServer,
+  type GooseLoopbackModelInvoker,
+  type GooseLoopbackModelServer,
+} from "../../apps/desktop/src/main/workers/gooseLoopbackModelServer";
 
 const artifact = Object.freeze({
   directory: "/tmp/actestra-goose-artifact",
@@ -47,6 +51,24 @@ const runnerSession = Object.freeze({
 const runnerDiscovery = Object.freeze({
   toolNames: Object.freeze(CODING_TOOL_IDS.map((toolId) => `actestra-capability-proxy__${toolId}`)),
 });
+
+/**
+ * A loopback model server double. `refused`/`served` mimic the real counters so
+ * a composition can be driven through the refused-inference path.
+ */
+function modelServerDouble(
+  overrides: Partial<GooseLoopbackModelServer> = {},
+): GooseLoopbackModelServer {
+  return Object.freeze({
+    baseUrl: "http://127.0.0.1:43124/v1",
+    bindSession() {},
+    refusedInferenceCount: 0,
+    rejectedRequestCount: 0,
+    servedInferenceCount: 1,
+    async close() {},
+    ...overrides,
+  });
+}
 
 const toolInvoker: GooseMcpToolInvoker = async () =>
   Object.freeze({
@@ -92,12 +114,10 @@ describe("Goose MCP session composition", () => {
         modelLease = options.attemptLease;
         expect(options.modelId).toBe("actestra-caller-model");
         expect(options.invokeModel).toBe(modelInvoker);
-        return Object.freeze({
-          baseUrl: "http://127.0.0.1:43124/v1",
+        return modelServerDouble({
           bindSession(sessionId: string) {
             boundModelSessionId = sessionId;
           },
-          async close() {},
         });
       },
       async openRunnerHandshake(options) {
@@ -183,9 +203,7 @@ describe("Goose MCP session composition", () => {
         });
       },
       async startModelServer() {
-        return Object.freeze({
-          baseUrl: "http://127.0.0.1:43124/v1",
-          bindSession() {},
+        return modelServerDouble({
           async close() {
             events.push("model:close");
             throw modelFailure;
@@ -263,9 +281,7 @@ describe("Goose MCP session composition", () => {
       },
       async startModelServer() {
         events.push("model:start");
-        return Object.freeze({
-          baseUrl: "http://127.0.0.1:43124/v1",
-          bindSession() {},
+        return modelServerDouble({
           async close() {
             events.push("model:close");
           },
@@ -333,11 +349,7 @@ describe("Goose MCP session composition", () => {
         });
       },
       async startModelServer() {
-        return Object.freeze({
-          baseUrl: "http://127.0.0.1:43124/v1",
-          bindSession() {},
-          async close() {},
-        });
+        return modelServerDouble();
       },
       async openRunnerHandshake() {
         return Object.freeze({
@@ -396,11 +408,7 @@ describe("Goose MCP session composition", () => {
         });
       },
       async startModelServer() {
-        return Object.freeze({
-          baseUrl: "http://127.0.0.1:43124/v1",
-          bindSession() {},
-          async close() {},
-        });
+        return modelServerDouble();
       },
       async openRunnerHandshake() {
         return Object.freeze({
@@ -460,9 +468,7 @@ describe("Goose MCP session composition", () => {
         });
       },
       async startModelServer() {
-        return Object.freeze({
-          baseUrl: "http://127.0.0.1:43124/v1",
-          bindSession() {},
+        return modelServerDouble({
           async close() {
             events.push("model:close");
           },
@@ -510,4 +516,187 @@ describe("Goose MCP session composition", () => {
     });
     expect(events).toEqual(["runner:close", "mcp:close", "model:close"]);
   });
+
+  // Cross-layer regression. The layered tests each cover one hop, so this one
+  // drives a real loopback server over real HTTP: the broker refuses, Goose
+  // receives a content-free 400 and reports an ordinary `end_turn`, and the
+  // composition must still fail the turn instead of letting it publish as an
+  // unchanged read-only attempt.
+  it("fails the turn when a real loopback 400 leaves an end_turn with no served completion", async () => {
+    const openServers: GooseLoopbackModelServer[] = [];
+    let promptedText: string | undefined;
+    const dependencies: GooseMcpSessionCompositionDependencies = {
+      async startCapabilityServer() {
+        return Object.freeze({
+          url: "http://127.0.0.1:43123/mcp",
+          async waitForToolsList() {},
+          async close() {},
+        });
+      },
+      async startModelServer(options) {
+        const server = await startGooseLoopbackModelServer({
+          modelId: options.modelId,
+          attemptLease: options.attemptLease,
+          async invokeModel() {
+            throw new Error("AionCore model completion is unavailable");
+          },
+        });
+        openServers.push(server);
+        return server;
+      },
+      async openRunnerHandshake() {
+        return Object.freeze({
+          info: runnerInfo,
+          privateRoot: "/tmp/actestra-goose-attempt",
+          async openSession() {
+            return runnerSession;
+          },
+          async discoverTools() {
+            return runnerDiscovery;
+          },
+          // The real runner is replaced by an exact transcript of what it does
+          // with a refused turn: it calls the loopback endpoint, gets the 400,
+          // and reports a normal assistant turn.
+          async prompt(options: GooseAcpPromptOptions) {
+            promptedText = options.text;
+            const server = openServers[0]!;
+            const response = await fetch(`${server.baseUrl}/chat/completions`, {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                authorization: `Bearer ${modelLease!}`,
+                "agent-session-id": runnerSession.sessionId,
+              },
+              body: JSON.stringify({
+                model: "actestra-caller-model",
+                messages: [{ role: "user", content: options.text }],
+                stream: true,
+              }),
+            });
+            expect(response.status).toBe(400);
+            expect(await response.text()).toBe("");
+            return runnerPromptResult;
+          },
+          async close() {},
+        });
+      },
+    };
+
+    let modelLease: string | undefined;
+    const wrapped: GooseMcpSessionCompositionDependencies = {
+      ...dependencies,
+      async startModelServer(options) {
+        modelLease = options.attemptLease;
+        return dependencies.startModelServer(options);
+      },
+    };
+
+    const composition = await openGooseMcpSessionComposition(
+      {
+        artifact,
+        privateRootParent: path.resolve("/tmp/actestra-goose-attempts"),
+        workspaceDirectory: path.resolve("/tmp/actestra-worktree"),
+        modelId: "actestra-caller-model",
+        modelInvoker,
+        toolInvoker,
+        commandIds: Object.freeze(["git.status"]),
+        testIds: Object.freeze(["test.unit"]),
+      },
+      wrapped,
+    );
+
+    try {
+      await expect(composition.prompt({ text: "Read the README." })).rejects.toMatchObject({
+        name: "GooseMcpSessionCompositionError",
+        code: "model-completion-refused",
+      });
+      expect(promptedText).toBe("Read the README.");
+      const server = openServers[0]!;
+      expect(server.refusedInferenceCount).toBe(1);
+      expect(server.rejectedRequestCount).toBe(0);
+      expect(server.servedInferenceCount).toBe(0);
+    } finally {
+      await composition.close();
+    }
+  }, 15_000);
+
+  // A request Goose malformed fails the same turn, but attributing it to a
+  // model refusal would send the next repair at the wrong layer.
+  it("separates a malformed request from a model refusal", async () => {
+    const openServers: GooseLoopbackModelServer[] = [];
+    let modelLease: string | undefined;
+    const dependencies: GooseMcpSessionCompositionDependencies = {
+      async startCapabilityServer() {
+        return Object.freeze({
+          url: "http://127.0.0.1:43123/mcp",
+          async waitForToolsList() {},
+          async close() {},
+        });
+      },
+      async startModelServer(options) {
+        modelLease = options.attemptLease;
+        const server = await startGooseLoopbackModelServer({
+          modelId: options.modelId,
+          attemptLease: options.attemptLease,
+          invokeModel: modelInvoker,
+        });
+        openServers.push(server);
+        return server;
+      },
+      async openRunnerHandshake() {
+        return Object.freeze({
+          info: runnerInfo,
+          privateRoot: "/tmp/actestra-goose-attempt",
+          async openSession() {
+            return runnerSession;
+          },
+          async discoverTools() {
+            return runnerDiscovery;
+          },
+          async prompt() {
+            const server = openServers[0]!;
+            const response = await fetch(`${server.baseUrl}/chat/completions`, {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                authorization: `Bearer ${modelLease!}`,
+                "agent-session-id": runnerSession.sessionId,
+              },
+              body: "{ this is not valid json",
+            });
+            expect(response.status).toBe(400);
+            return runnerPromptResult;
+          },
+          async close() {},
+        });
+      },
+    };
+
+    const composition = await openGooseMcpSessionComposition(
+      {
+        artifact,
+        privateRootParent: path.resolve("/tmp/actestra-goose-attempts"),
+        workspaceDirectory: path.resolve("/tmp/actestra-worktree"),
+        modelId: "actestra-caller-model",
+        modelInvoker,
+        toolInvoker,
+        commandIds: Object.freeze(["git.status"]),
+        testIds: Object.freeze(["test.unit"]),
+      },
+      dependencies,
+    );
+
+    try {
+      await expect(composition.prompt({ text: "Read the README." })).rejects.toMatchObject({
+        name: "GooseMcpSessionCompositionError",
+        code: "model-request-rejected",
+      });
+      const server = openServers[0]!;
+      expect(server.rejectedRequestCount).toBe(1);
+      expect(server.refusedInferenceCount).toBe(0);
+      expect(server.servedInferenceCount).toBe(0);
+    } finally {
+      await composition.close();
+    }
+  }, 15_000);
 });

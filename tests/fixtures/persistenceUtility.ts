@@ -5,6 +5,7 @@ import {
   type PersistenceUtilityTransport,
 } from "../../apps/desktop/src/main/persistence/persistenceUtilityClient";
 import { PersistenceUtilityService } from "../../apps/desktop/src/utility/persistence/persistenceUtilityService";
+import { instant, type PrivilegedClock } from "../../apps/desktop/src/core";
 
 type MessageListener = (message: unknown) => void;
 type ErrorListener = () => void;
@@ -14,11 +15,18 @@ export class LoopbackPersistenceUtilityTransport implements PersistenceUtilityTr
   private readonly messageListeners = new Set<MessageListener>();
   private readonly errorListeners = new Set<ErrorListener>();
   private readonly exitListeners = new Set<ExitListener>();
-  private readonly service = new PersistenceUtilityService();
+  private readonly service: PersistenceUtilityService;
   private responseTransform: ((message: PersistenceUtilityMessage) => unknown) | null = null;
   private holdResponse = false;
   private droppedResponse = false;
   private exited = false;
+
+  constructor(clock?: PrivilegedClock) {
+    const defaultClock: PrivilegedClock = Object.freeze({
+      now: () => instant(new Date().toISOString()),
+    });
+    this.service = new PersistenceUtilityService(clock ?? defaultClock);
+  }
 
   postMessage(message: unknown): void {
     if (this.exited) {

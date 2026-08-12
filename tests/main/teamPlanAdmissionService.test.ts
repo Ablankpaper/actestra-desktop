@@ -9,6 +9,7 @@ import {
   type TeamPlanCandidate,
 } from "../../apps/desktop/src/core";
 import { TeamPlanAdmissionService } from "../../apps/desktop/src/main/orchestration/teamPlanAdmissionService";
+import { TeamPlannerSidecarProcessError } from "../../apps/desktop/src/main/orchestration/teamPlannerSidecarProcess";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const servicePath = path.join(
@@ -196,6 +197,35 @@ describe("TeamPlanAdmissionService", () => {
     expect(planner.propose).not.toHaveBeenCalled();
   });
 
+  it("classifies supervised planner timeout and protocol failures without leaking details", async () => {
+    for (const code of ["startup-timeout", "request-timeout"] as const) {
+      const planner = {
+        propose: vi.fn(async () => {
+          throw new TeamPlannerSidecarProcessError(code, "private sidecar path and timing");
+        }),
+      };
+      await expect(createService(planner).propose(REQUEST)).rejects.toMatchObject({
+        name: "TeamPlanAdmissionServiceError",
+        code: "planner-timeout",
+        message: "The supervised team planner timed out",
+      });
+    }
+
+    const planner = {
+      propose: vi.fn(async () => {
+        throw new TeamPlannerSidecarProcessError(
+          "protocol-failed",
+          "private malformed planner frame",
+        );
+      }),
+    };
+    await expect(createService(planner).propose(REQUEST)).rejects.toMatchObject({
+      name: "TeamPlanAdmissionServiceError",
+      code: "planner-invalid",
+      message: "The supervised team planner returned an invalid candidate",
+    });
+  });
+
   it("rejects a candidate returned after cancellation", async () => {
     let resolveCandidate: ((candidate: TeamPlanCandidate) => void) | undefined;
     const planner = {
@@ -218,7 +248,7 @@ describe("TeamPlanAdmissionService", () => {
     });
   });
 
-  it("preserves fixed Core admission failures returned by the planner boundary", async () => {
+  it("maps Core candidate admission failures to one bounded planner-invalid error", async () => {
     const planner = {
       propose: vi.fn(
         async () =>
@@ -230,8 +260,9 @@ describe("TeamPlanAdmissionService", () => {
     };
 
     await expect(createService(planner).propose(REQUEST)).rejects.toMatchObject({
-      name: "TeamPlanAdmissionError",
-      code: "candidate-mismatch",
+      name: "TeamPlanAdmissionServiceError",
+      code: "planner-invalid",
+      message: "The supervised team planner returned an invalid candidate",
     });
   });
 });

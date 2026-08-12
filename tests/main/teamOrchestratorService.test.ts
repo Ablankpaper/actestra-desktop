@@ -211,6 +211,13 @@ class ControlledWorker implements TeamWorkerExecutionPort {
     this.pending.delete(candidateKey);
     pending.resolve({ status: "failed", incidentCode });
   }
+
+  reject(candidateKey: string, error: Error): void {
+    const pending = this.pending.get(candidateKey);
+    if (pending === undefined) throw new Error(`Missing pending Worker ${candidateKey}`);
+    this.pending.delete(candidateKey);
+    pending.reject(error);
+  }
 }
 
 class ReferenceOnlyAggregator implements TeamResultAggregationPort {
@@ -353,7 +360,7 @@ describe("TeamOrchestratorService", () => {
   });
 
   it("launches two dependency-free Workers in parallel within the admitted limit", async () => {
-    const { accepted, service, worker } = await setup("parallel");
+    const { accepted, plan, service, worker } = await setup("parallel");
     const started = await service.start(
       teamRunId(accepted.runId),
       instant("2026-08-04T01:31:00.000Z"),
@@ -361,6 +368,9 @@ describe("TeamOrchestratorService", () => {
 
     expect(worker.execute).toHaveBeenCalledTimes(2);
     expect([...worker.pending.keys()].sort()).toEqual(["coding", "general"]);
+    for (const { input } of worker.pending.values()) {
+      expect(input).toMatchObject({ goal: plan.goal });
+    }
     expect(started.nodes.filter(({ status }) => status === "running")).toHaveLength(2);
     expect(started.limits.maxConcurrency).toBe(2);
     await service.close();
@@ -633,6 +643,82 @@ describe("TeamOrchestratorService", () => {
     const replacement = worker.pending.get("general")!.input;
     expect(replacement.attemptId).not.toBe(first.attemptId);
     expect(retried.nodes.find(({ nodeId }) => nodeId === first.nodeId)?.attempts).toHaveLength(2);
+    await service.close();
+  });
+
+  it("reports the specific rejection cause instead of one generic Worker incident", async () => {
+    const { accepted, service, worker } = await setup("rejection-cause");
+    await service.start(accepted.runId, instant("2026-08-04T02:11:00.000Z"));
+    const failing = worker.pending.get("coding")!.input;
+    worker.reject(
+      "coding",
+      Object.assign(new Error("bounded prompt deadline elapsed"), {
+        code: "worker-runtime-unavailable",
+        cause: Object.assign(new Error("no ACP activity"), { code: "prompt-timeout" }),
+      }),
+    );
+
+    await vi.waitFor(async () => {
+      expect(
+        (await service.get(accepted.runId)).nodes.find(({ nodeId }) => nodeId === failing.nodeId)
+          ?.status,
+      ).toBe("failed");
+    });
+    const node = (await service.get(accepted.runId)).nodes.find(
+      ({ nodeId }) => nodeId === failing.nodeId,
+    );
+    expect(node?.attempts.at(-1)?.incidentCode).toBe("prompt-timeout");
+    expect(node?.blockedExplanation).toContain("prompt-timeout");
+    await service.close();
+  });
+
+  it("keeps a General admission refusal legible instead of collapsing it to worker-execution-failed", async () => {
+    const { accepted, service, worker } = await setup("rejection-admission");
+    await service.start(accepted.runId, instant("2026-08-04T02:11:00.000Z"));
+    const failing = worker.pending.get("coding")!.input;
+    // Spec D: a refusal raised before any model turn must still name the reason the user can act on.
+    worker.reject(
+      "coding",
+      Object.assign(new Error("the supervised Team journey failed"), {
+        code: "journey-failed",
+        cause: Object.assign(new Error("General could not start"), {
+          code: "general-input-required",
+        }),
+      }),
+    );
+
+    await vi.waitFor(async () => {
+      expect(
+        (await service.get(accepted.runId)).nodes.find(({ nodeId }) => nodeId === failing.nodeId)
+          ?.status,
+      ).toBe("failed");
+    });
+    const node = (await service.get(accepted.runId)).nodes.find(
+      ({ nodeId }) => nodeId === failing.nodeId,
+    );
+    expect(node?.attempts.at(-1)?.incidentCode).toBe("general-input-required");
+    expect(node?.attempts.at(-1)?.incidentCode).not.toBe("invalid-state");
+    expect(node?.blockedExplanation).toContain("general-input-required");
+    await service.close();
+  });
+
+  it("falls back to the generic incident when a rejection carries no admitted code", async () => {
+    const { accepted, service, worker } = await setup("rejection-unknown");
+    await service.start(accepted.runId, instant("2026-08-04T02:11:00.000Z"));
+    const failing = worker.pending.get("coding")!.input;
+    worker.reject("coding", new Error("/private/tmp/secret-path denied for provider-secret"));
+
+    await vi.waitFor(async () => {
+      expect(
+        (await service.get(accepted.runId)).nodes.find(({ nodeId }) => nodeId === failing.nodeId)
+          ?.status,
+      ).toBe("failed");
+    });
+    const node = (await service.get(accepted.runId)).nodes.find(
+      ({ nodeId }) => nodeId === failing.nodeId,
+    );
+    expect(node?.attempts.at(-1)?.incidentCode).toBe("worker-execution-failed");
+    expect(node?.blockedExplanation).not.toContain("secret-path");
     await service.close();
   });
 

@@ -47,6 +47,27 @@ function replaceAll(relativePath, before, after, expectedCount) {
   write(relativePath, contents.split(before).join(after));
 }
 
+replaceOnce(
+  ".oxfmtrc.json",
+  `  "jsxSingleQuote": true,
+  "bracketSameLine": false
+}`,
+  `  "jsxSingleQuote": true,
+  "bracketSameLine": false,
+  "overrides": [
+    {
+      "files": ["packages/desktop/src/actestra/**/*.{js,jsx,ts,tsx,cjs,mjs}"],
+      "options": {
+        "singleQuote": false,
+        "jsxSingleQuote": false,
+        "printWidth": 100,
+        "trailingComma": "all"
+      }
+    }
+  ]
+}`,
+);
+
 writeNew(
   "packages/desktop/src/common/config/actestraProduct.ts",
   `/**
@@ -683,25 +704,18 @@ replaceOnce(
   "packages/desktop/src/index.ts",
   "import './process/utils/configureChromium';",
   `import './process/utils/configureChromium';
-import {
-  ACTESTRA_EXTERNAL_EFFECTS,
-  ACTESTRA_PRODUCT,
-  isUpstreamOfficialUrl,
-} from './common/config/actestraProduct';`,
+import { ACTESTRA_EXTERNAL_EFFECTS, isUpstreamOfficialUrl } from './common/config/actestraProduct';`,
 );
 replaceOnce(
   "packages/desktop/src/index.ts",
   "const isE2ETestMode = process.env.AIONUI_E2E_TEST === '1';",
-  `const isE2ETestMode =
-  process.env.ACTESTRA_E2E_TEST === '1' || process.env.AIONUI_E2E_TEST === '1';`,
+  `const isE2ETestMode = process.env.ACTESTRA_E2E_TEST === '1' || process.env.AIONUI_E2E_TEST === '1';`,
 );
 replaceOnce(
   "packages/desktop/src/index.ts",
   "const skipSingleInstanceLock = isE2ETestMode || process.env.AIONUI_MULTI_INSTANCE === '1';",
   `const skipSingleInstanceLock =
-  isE2ETestMode ||
-  process.env.ACTESTRA_MULTI_INSTANCE === '1' ||
-  process.env.AIONUI_MULTI_INSTANCE === '1';`,
+  isE2ETestMode || process.env.ACTESTRA_MULTI_INSTANCE === '1' || process.env.AIONUI_MULTI_INSTANCE === '1';`,
 );
 replaceOnce(
   "packages/desktop/src/index.ts",
@@ -743,9 +757,7 @@ replaceOnce(
   }`,
   `  if (!app.isPackaged && process.env.ACTESTRA_INSTALL_REACT_DEVTOOLS === '1') {
     try {
-      const { default: installExtension, REACT_DEVELOPER_TOOLS } = await import(
-        'electron-devtools-installer'
-      );
+      const { default: installExtension, REACT_DEVELOPER_TOOLS } = await import('electron-devtools-installer');
       await installExtension(REACT_DEVELOPER_TOOLS);
       console.log('[DevTools] React Developer Tools installed by explicit opt-in');
     } catch (e) {
@@ -756,16 +768,10 @@ replaceOnce(
 replaceOnce(
   "packages/desktop/src/index.ts",
   "    const allowRemote = resolveRemoteAccess(userConfigInfo.config, isRemoteMode);",
-  `    const requestedRemoteAccess = resolveRemoteAccess(
-      userConfigInfo.config,
-      isRemoteMode,
-    );
-    const allowRemote =
-      ACTESTRA_EXTERNAL_EFFECTS.publicListeners && requestedRemoteAccess;
+  `    const requestedRemoteAccess = resolveRemoteAccess(userConfigInfo.config, isRemoteMode);
+    const allowRemote = ACTESTRA_EXTERNAL_EFFECTS.publicListeners && requestedRemoteAccess;
     if (requestedRemoteAccess && !allowRemote) {
-      console.error(
-        '[Actestra] --remote is isolated until an owned public-listener policy is available',
-      );
+      console.error('[Actestra] --remote is isolated until an owned public-listener policy is available');
     }`,
 );
 replaceOnce(
@@ -1344,7 +1350,7 @@ replaceOnce(
   "packages/desktop/src/renderer/index.html",
   '    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />',
   `    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; form-action 'none'; connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:*; script-src 'self' 'sha256-7Idh1+UXw1EeqjvymdKlZx1+VizEn4fRq9vQ8CnrKbc=' 'sha256-7uv7xuYWXvoNaQH5U7+fTuUyKvspVEOexZFb545Nqo4='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' data: blob:; worker-src 'self' blob:; child-src 'self' blob:; frame-src 'self' data: blob:" />`,
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; form-action 'none'; connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:*; script-src 'self' 'sha256-7Idh1+UXw1EeqjvymdKlZx1+VizEn4fRq9vQ8CnrKbc=' 'sha256-7uv7xuYWXvoNaQH5U7+fTuUyKvspVEOexZFb545Nqo4='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http://127.0.0.1:*; font-src 'self' data:; media-src 'self' data: blob:; worker-src 'self' blob:; child-src 'self' blob:; frame-src 'self' data: blob:" />`,
 );
 replaceAll("packages/desktop/src/renderer/index.html", 'content="AionUi"', 'content="Actestra"', 2);
 replaceOnce(

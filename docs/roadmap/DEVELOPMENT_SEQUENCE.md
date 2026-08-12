@@ -77,8 +77,7 @@ native package and clean-profile smoke path. PR 20 squash merged as
 30660078199 passes. Its remote CodeRabbit output is a rate-limited summary, not
 line-level review evidence. Representative tool failure is accepted through
 exact final head `077f30bcfa3929959c971d08081092bbf976e2ee`, PR CI 30673687603,
-squash merge `c7c414c0c5a126b276fb02b372e02fff437e5f23`, and merged-main CI
-30673919260. Its CodeRabbit status is a rate-limited Free walkthrough rather
+squash merge `c7c414c0c5a126b276fb02b372e02fff437e5f23`, and merged-main CI 30673919260. Its CodeRabbit status is a rate-limited Free walkthrough rather
 than formal line-level review. Worker-crash/recovery is accepted through exact
 implementation `47ed445eab204c0998e44167455c062600158dd3`, final PR head
 `3593fac8db48a0cb149bb6c736374eeaccebe332`, PR CI 30687199671, squash merge
@@ -86,8 +85,7 @@ implementation `47ed445eab204c0998e44167455c062600158dd3`, final PR head
 Its completed local gates, packaged target-app evidence, manual review, and
 exact scope audits close the P4 exit gate. P5.0 is accepted through PR 26,
 exact head `e622f36e697b4e0be1037175267452e24cc180e3`, squash merge
-`b61dd3ea44a4c522ca0c15a84a01d8f76b335e4c`, and merged-main CI
-30691300690. ADR-0024 selects Goose `v1.45.0` at exact commit
+`b61dd3ea44a4c522ca0c15a84a01d8f76b335e4c`, and merged-main CI 30691300690. ADR-0024 selects Goose `v1.45.0` at exact commit
 `4dc0420f5704a92806c6628c8f0a3497d7a88759`, stdio ACP, and the
 Actestra-built minimal runner. P5.1 is accepted through PR 28, exact hotfix head
 `eed1623e9849b9f662f3dec690d02d7c85a693ef`, squash merge
@@ -98,15 +96,13 @@ session or repository effects. P5.2 is accepted through PR 43; its closed
 worktree and six-capability foundation reached pull request 31 at exact final
 head `c10110b38e8714b831a6d6d0fc09aa8df4218b7c`, passed exact-head CI
 30808650150, squash merged as
-`266e3857bed7d4c32b773f92deff676bf2144b15`, and passed exact merged-main CI
-30809931486. CodeRabbit was rate-limited before line-level review; its successful
+`266e3857bed7d4c32b773f92deff676bf2144b15`, and passed exact merged-main CI 30809931486. CodeRabbit was rate-limited before line-level review; its successful
 status and Free walkthrough are not review evidence.
 
 The desktop-main composition reached exact final head
 `5c4dade91d279e6a6f7d4c2daad1ebe972e47b98`, passed exact-head CI
 30817462671, squash merged as
-`f55b5550c6ac189f09536061a70e8c8c7299c4f4`, and passed exact merged-main CI
-30818949121. Its exact-head CodeRabbit re-review covered 12 changed files and
+`f55b5550c6ac189f09536061a70e8c8c7299c4f4`, and passed exact merged-main CI 30818949121. Its exact-head CodeRabbit re-review covered 12 changed files and
 reported 0 issues. The composition creates a main-owned lifecycle service,
 persists the exact active grant before exposing the Tool Gateway, tracks opening
 and cleanup races, and closes coding authority before persistence shutdown. The
@@ -131,8 +127,7 @@ walkthrough, with no submitted review or inline review thread. This remains
 fixture-backed protocol/lifecycle evidence, not a real Goose coding session.
 Pull request 34 changed only the four P5 source-of-truth documents, passed
 exact-head CI 30827073008, squash merged as
-`776d1e1c10d13f036a3318f7d3c193a7819443a2`, and passed exact merged-main CI
-30828549443.
+`776d1e1c10d13f036a3318f7d3c193a7819443a2`, and passed exact merged-main CI 30828549443.
 
 The random-port `127.0.0.1` MCP transport carries the opaque
 attempt lease, strict pinned Goose/MCP headers and initialization order, bounded
@@ -203,8 +198,7 @@ deadline; the other 123 Goose tests passed. The correction gives only that
 integration test an explicit bounded deadline. Pull request 39 reached exact
 head `38cbbaaedbb8e5955b96a6d7148841180e751e35`, passed exact-head CI
 30861770178, squash merged as
-`7e8732e264febff42fb3d451011b3b8e48caaff5`, and passed exact merged-main CI
-30862710547. The desktop-main lifecycle starts from that merge. It
+`7e8732e264febff42fb3d451011b3b8e48caaff5`, and passed exact merged-main CI 30862710547. The desktop-main lifecycle starts from that merge. It
 creates the exact worktree/grant/Gateway before opening Goose, injects the
 main-owned tool invoker, waits for Goose openings during shutdown, rejects a
 close-winning open race, and always attempts Goose cleanup before grant
@@ -254,8 +248,7 @@ boundary, frozen/downstream contracts, and the
 59-main/3-preload/28-renderer-module production build. Pull request 42 delivered
 that evidence at exact head `a20882abeb6caac3b4f230fde42a7e06965a0730`,
 exact-head CI 30876755457, squash merge
-`e064dc88e717cef093c866cdbc2692d23ed7dd03`, and passing merged-main CI
-30877711241.
+`e064dc88e717cef093c866cdbc2692d23ed7dd03`, and passing merged-main CI 30877711241.
 
 The publish/Artifact slice starts from that exact merge. A main-only
 seventh Tool Gateway capability captures a locked, at-most-1-MiB binary patch
@@ -324,8 +317,7 @@ the still-running Goose job was cancelled after that failure. The focused
 overlay correction reached exact head
 `a3d08a934160c1a5d61ff987ade29212bd3c0b05`, passed exact-head CI
 30906689796, squash merged as
-`30742934adde1e0944c4e8ced1f005452a1f3568`, and passed exact merged-main CI
-30907869824.
+`30742934adde1e0944c4e8ced1f005452a1f3568`, and passed exact merged-main CI 30907869824.
 
 The next slice starts from that exact merge on branch
 `codex/p6-team-plan-persistence`. Schema 14 persists the canonical admitted
@@ -510,15 +502,13 @@ slice previously described as P4.3/F3.1.
   `fd5524c7f0485923b2aa765df95b5ef0b14187e7` reached Ready pull request 22 at
   exact final head `077f30bcfa3929959c971d08081092bbf976e2ee`, passed PR CI
   30673687603, squash merged as
-  `c7c414c0c5a126b276fb02b372e02fff437e5f23`, and passed merged-main CI
-  30673919260. The separate Worker-crash/recovery implementation now has
+  `c7c414c0c5a126b276fb02b372e02fff437e5f23`, and passed merged-main CI 30673919260. The separate Worker-crash/recovery implementation now has
   focused local contracts for failed Task/Session, crashed Worker/Attempt,
   canonical event order, fail-closed missing evidence, and no-relaunch restart.
   Its complete final-byte gates, packaged target-app smoke, 14-file manual
   review, and exact scope audits pass. Exact final head
   `3593fac8db48a0cb149bb6c736374eeaccebe332` passed PR CI 30687199671, squash
-  merged as `80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`, and passed merged-main CI
-  30687433298. The P4 phase exit gate is accepted.
+  merged as `80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`, and passed merged-main CI 30687433298. The P4 phase exit gate is accepted.
 - Support scoped workspace reads and task-output writes through the preserved
   file, workspace, conversation, preview, and artifact surfaces.
 - Add representative file, research, writing, office-document, schedule,
@@ -589,10 +579,25 @@ slice previously described as P4.3/F3.1.
 
 ## P6 — Multi-Agent Team Orchestration
 
+### Current local gate (2026-08-12)
+
+The current development delivery slice has closed the coding delivery and
+General v1 implementation gates in source, focused tests, downstream
+materialization, packaged P4 smoke, and a real provider-backed Electron run.
+Coding now delivers an isolated-worktree patch Artifact and requires a second
+explicit approval before Main applies it to the original workspace. General
+remains text-only with structured requirements admission and structured output
+validation. The mixed General+Goose acceptance exercised real model/tool
+execution, patch Artifact creation, separate workspace-apply approval, final
+human feedback, whole-Team cancellation, restart recovery, and no-orphan
+shutdown on the ad-hoc-signed development app. P6's local development exit gate
+is satisfied; push, exact-head CI, review/merge, merged-main CI, formal
+signing, release, deployment, and final user acceptance remain separate gates.
+
 Current progress includes the closed plan-candidate admission, desktop-main
 planner port, schema-14 admitted-plan durability barrier, schema-15 Team run
-authority, a local unpushed generic planner-sidecar protocol/supervisor, and a
-local unpushed Actestra-owned scheduler/control/recovery service. The current
+authority, a local generic planner-sidecar protocol/supervisor, and a local
+Actestra-owned scheduler/control/recovery service. The current
 local Task 5 layer composes that scheduler with the real General Work journey
 and admitted Goose coding journey, including protected approvals, durable
 Artifact re-read, reference-only aggregation, denial, and whole-Team
@@ -603,20 +608,59 @@ TeamOrchestrator execution. Local Tasks 7 and 8 add downstream patch 0014, the
 fixed preload provider, AionUI-native creation/list and `/team/:id` group-chat
 surfaces, member/role and General+Goose configuration, workspace/task input,
 messages, explainable plan/node/Worker/dependency/blocked state, controls,
-Artifacts, aggregation, and persistent activity recovery. These final local UI
-bytes are committed at `94e6699b4fc352084ebfa53539b42e2496207ad5` and remain
-unpushed.
+Artifacts, aggregation, and persistent activity recovery. The current Task 14
+correction adds schema-16 immutable Team experience
+bindings and changes provider-active renderer list/get to consume one Main/Core
+projection instead of merging native and orchestrated lists or guessing missing
+types. Existing AionUI Teams migrate to `standard`; schema-15 Actestra Teams
+bind to `orchestrated`; conflicts fail closed. The same local batch adds
+schema-17 metadata-only standard-Team message delivery authority: Main persists
+the intent before the provider effect, replays only an observed durable
+acknowledgement for the same nonce and request digest, and fails closed on
+changed, pending, uncertain, or conflicting deliveries without persisting
+message content or attachment paths. The whole Task 14 batch remains local and
+unpushed; its pre-delivery history forked from
+`a3f23d6391a6f6c34f5a88cfa12e35b9665e5196`. ADR-0026 now authorizes a separate
+Actestra-native planner v1 implementation with engine identity
+`actestra-native-team-planner@1.0.0`; the current development bundle packages
+and admits that exact planner. The final root gate and packaged target-app
+acceptance are GREEN locally. Push, exact-head CI, review/merge, merged-main CI,
+formal signing, release, deployment, and real CrewAI admission remain open; no
+CrewAI runtime is imported or packaged.
 
-The local B2 Team/Core/persistence checkpoint adds schema-16 immutable Team
-experience bindings, schema-17 metadata-only standard-Team message delivery,
-and one bounded Main/Core projection for standard and orchestrated Teams. The
-focused root staged tree proves the contracts, persistence, bridge, type, lint,
-format, and smoke boundaries. It does not include the pending downstream Team
-patch, Worker/runtime admission, a real Electron journey, or P6 acceptance.
+The same local batch retains Core/sidecar result adapters and persisted-grant
+workspace resolution, but deliberately removes the local-Agent provider/runtime
+from the shipped downstream graph. Ordinary product startup does not import,
+construct, version-probe, help-probe, or invoke Claude or Codex and does not
+forward credentials. Manifest and native-wiring guards reject both provider
+source copies and startup runtime injection. A non-shipped evaluation prototype
+projects zero capabilities and rejects structured invocation before spawn; it
+is research evidence only. A future admitted provider still requires a safe
+credential-backed model proxy and pre-execution proof; script-based Codex has
+no equivalent native proof, and Claude `--bare` cannot reuse OAuth/Keychain.
+The admitted non-fixture General Worker, Goose runtime, and real mixed Team
+journey are now verified in the packaged development app. The current local
+ledger includes visible creation/configuration, execution, approval and
+feedback controls, Artifact aggregation/apply, cancellation, restart recovery,
+and no-orphan shutdown; planner-only evidence was not used as a substitute.
 
-The final root gate, packaged target-app acceptance, push,
-exact-head CI, review/merge, merged-main CI, and real CrewAI admission remain
-open; no CrewAI runtime is imported or packaged and P6 is not complete.
+The current local UI correction also projects live submission availability from
+Main before effect. When the admitted planner/orchestrator composition is absent,
+the closed run-state reports `planner-unavailable`, the Main-owned restart next
+action, and its runtime authority source. AionUI shows that state and blocks the
+task intent before calling the bridge; the POST route remains independently fail
+closed. Planner submit failures now retain a separate bounded invalid-plan or
+timeout category through Main, bridge, and localized AionUI recovery guidance.
+Control/approval, workflow-feedback, whole-Team cancel, and rename failures now
+use fixed localized inline guidance instead of exposing raw runtime messages.
+The renderer maps the closed Main blocked-reason enum to fixed English/Chinese
+explanations while keeping Main/Core as the reason authority. It also maps the
+closed run-status, assistant-status, node-state, and node-capability enums to
+fixed English/Chinese AionUI labels instead of displaying internal tokens. The
+focused Workspace DOM file passes 14 tests, materialized strict TypeScript
+passes, and the 293-file downstream contract guards that projection.
+This is explainability and invalid-intent containment, not planner admission or
+Team execution evidence.
 
 ### Deliverables
 
@@ -624,9 +668,13 @@ open; no CrewAI runtime is imported or packaged and P6 is not complete.
 - Keep an Actestra-owned TeamOrchestrator as the only authoritative dependency,
   attempt, budget, approval, artifact, cancellation, and recovery state
   machine.
-- Evaluate CrewAI as a separately supervised planner, replanner, and result
-  aggregation sidecar under ADR-0015. Validate every returned plan before it
-  becomes authoritative or schedulable.
+- Admit a capability-gated local provider under the 2026-08-06 ADR-0015
+  amendment only after tools, hooks, network, credentials, and arbitrary reads
+  are hard-blocked before execution and a non-renderer safe credential path is
+  proven. Keep Claude and Codex admission-disabled until then; post-hoc event
+  rejection is insufficient. Validate every provider result before it becomes
+  authoritative or schedulable. Keep real CrewAI behind its separate exact pin,
+  dependency, license, vulnerability, network, packaging, and rollback gates.
 - Build a complete AionUI-native Team/group-chat experience covering creation,
   list, `/team/:id`, members and roles, General+Goose configuration, owned
   workspace and task input, chat/messages, plan/node/Worker progress,
@@ -636,9 +684,11 @@ open; no CrewAI runtime is imported or packaged and P6 is not complete.
   downstream patches with retention, compatibility, and rollback evidence; do
   not add a separate Goose or Eigent application UI.
 - Persist one Main/Core-owned Team experience binding and route by the Team's
-  own `standard` or `orchestrated` type; renderer guesses are not authority.
-- Persist standard-Team message delivery intent before provider effect, replay
-  only an observed durable acknowledgement, and fail closed on ambiguous or
+  own `standard` or `orchestrated` type. Existing standard-Team features must
+  remain reachable while the Actestra provider is active; renderer-side ID,
+  workspace, or provider-availability guesses are not authority.
+- Persist standard-Team message delivery intent before provider effect, admit
+  only an observed provider acknowledgement, and fail closed on ambiguous or
   interrupted effects without storing message content or attachment paths.
 - Dependency graph and ready/running/blocked/completed/failed/cancelled states.
 - Parallel general and coding workers.
@@ -655,8 +705,10 @@ open; no CrewAI runtime is imported or packaged and P6 is not complete.
   the current General or Goose executor, explains dependencies, approvals,
   interruption and every blocked reason, offers only valid next actions, and
   restores the same understandable state after restart.
-- CrewAI crash, cancellation, restart, or version mismatch leaves the Actestra
-  graph recoverable and creates no orphan process or worker.
+- Provider crash, cancellation, restart, authentication failure, malformed
+  output, or version/capability mismatch leaves the Actestra graph recoverable
+  and creates no orphan process or Worker. The same gate applies again if real
+  CrewAI is admitted later.
 
 ## P7 — Security and Reliability Hardening
 

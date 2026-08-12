@@ -2,12 +2,18 @@ import {
   TEAM_MAX_DESCRIPTION_BYTES,
   TEAM_MAX_MEMBERS,
   TEAM_MAX_NAME_BYTES,
+  TEAM_PLAN_MAX_NODES,
   STANDARD_TEAM_MESSAGE_DELIVERY_MAX_NONCE_BYTES,
   teamExperienceId,
   teamId,
   teamMemberId,
   teamRunId,
   workspaceId,
+  ARTIFACT_DELIVERY_FAILURE_CODES,
+  ARTIFACT_DELIVERY_STATES,
+  type ArtifactDeliveryFailureCode,
+  type ArtifactDeliveryState,
+  type TeamModelSelection,
 } from "../../core";
 
 export const AIONUI_TEAM_BRIDGE_CONTRACT_VERSION = 1 as const;
@@ -18,6 +24,7 @@ export const ACTESTRA_TEAM_LOCAL_USER_ID = "actestra-local-user" as const;
 const MAX_PATH_BYTES = 4 * 1024;
 const MAX_MESSAGE_BYTES = 16 * 1024;
 const MAX_REASON_BYTES = 2 * 1024;
+const MAX_HANDOFF_CONTENT_BYTES = 4 * 1024;
 const MAX_EXPLANATION_BYTES = 4 * 1024;
 const MAX_SUMMARY_BYTES = 8 * 1024;
 const MAX_CONVERSATION_BYTES = 256;
@@ -25,6 +32,8 @@ const MAX_EVENT_TEXT_BYTES = 4 * 1024;
 const MAX_STANDARD_IDENTIFIER_BYTES = 256;
 const MAX_MODEL_IDENTIFIER_BYTES = 256;
 const MAX_TEAM_ATTACHMENTS = 32;
+/** One user goal plus, per worker node, a completion summary and at most one durable reply. */
+const MAX_TEAM_ACTIVITIES = 1 + 2 * TEAM_PLAN_MAX_NODES;
 const REQUEST_KEYS = ["contractVersion", "method", "path", "body"] as const;
 const FIXED_ASSISTANTS = ["actestra-general-worker", "actestra-goose-worker"] as const;
 const CONTROL_ACTIONS = [
@@ -36,6 +45,7 @@ const CONTROL_ACTIONS = [
   "retry",
   "replace",
   "handoff",
+  "revise",
 ] as const;
 
 export type AionUiTeamBridgeMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -55,6 +65,21 @@ export interface AionUiTeamMemberInput {
   readonly capability: AionUiTeamCapability;
 }
 
+export interface NativeAionUiTeamModelProviderOption {
+  readonly provider_id: string;
+  readonly name: string;
+  readonly model_ids: readonly string[];
+}
+
+export interface NativeAionUiTeamModelOptions {
+  readonly providers: readonly NativeAionUiTeamModelProviderOption[];
+}
+
+export interface NativeAionUiTeamModelSelection {
+  readonly provider_id: string;
+  readonly model_id: string;
+}
+
 export interface AionUiStandardTeamMemberIntent {
   readonly displayName: string;
   readonly role: AionUiTeamMemberRole;
@@ -64,14 +89,22 @@ export interface AionUiStandardTeamMemberIntent {
 
 export type AionUiTeamBridgeRoute =
   | Readonly<{ kind: "list" }>
+  | Readonly<{ kind: "model-options" }>
   | Readonly<{ kind: "list-workspaces" }>
   | Readonly<{ kind: "select-workspace" }>
+  | Readonly<{ kind: "get-model-selection"; teamId: string }>
+  | Readonly<{
+      kind: "update-model-selection";
+      teamId: string;
+      modelSelection: TeamModelSelection;
+    }>
   | Readonly<{
       kind: "create";
       experience: "orchestrated";
       name: string;
       description: string | null;
       workspaceId: string;
+      modelSelection: TeamModelSelection;
       members: readonly AionUiTeamMemberInput[];
     }>
   | Readonly<{
@@ -97,8 +130,16 @@ export type AionUiTeamBridgeRoute =
       conversationId: string;
       mode: string;
     }>
-  | Readonly<{ kind: "add-member"; teamId: string; member: AionUiTeamMemberInput }>
-  | Readonly<{ kind: "remove-member" | "attach-member"; teamId: string; slotId: string }>
+  | Readonly<{
+      kind: "add-member";
+      teamId: string;
+      member: AionUiTeamMemberInput;
+    }>
+  | Readonly<{
+      kind: "remove-member" | "attach-member";
+      teamId: string;
+      slotId: string;
+    }>
   | Readonly<{ kind: "config-options"; teamId: string; conversationId: string }>
   | Readonly<{
       kind: "set-config-option";
@@ -107,7 +148,12 @@ export type AionUiTeamBridgeRoute =
       optionId: string;
       value: string;
     }>
-  | Readonly<{ kind: "rename-member"; teamId: string; slotId: string; name: string }>
+  | Readonly<{
+      kind: "rename-member";
+      teamId: string;
+      slotId: string;
+      name: string;
+    }>
   | Readonly<{ kind: "rename-team"; teamId: string; name: string }>
   | Readonly<{
       kind: "send-message";
@@ -124,7 +170,12 @@ export type AionUiTeamBridgeRoute =
       files: readonly string[];
       requestNonce: string;
     }>
-  | Readonly<{ kind: "cancel-run"; teamId: string; runId: string; reason: string }>
+  | Readonly<{
+      kind: "cancel-run";
+      teamId: string;
+      runId: string;
+      reason: string;
+    }>
   | Readonly<{
       kind:
         | "cancel-node"
@@ -132,7 +183,8 @@ export type AionUiTeamBridgeRoute =
         | "resume-node"
         | "retry-node"
         | "replace-node"
-        | "handoff-node";
+        | "handoff-node"
+        | "revise-node";
       teamId: string;
       runId: string;
       slotId: string;
@@ -151,6 +203,13 @@ export type AionUiTeamBridgeRoute =
       runId: string;
       decision: "approved" | "denied";
       note: string;
+    }>
+  | Readonly<{
+      kind: "complete-handoff";
+      teamId: string;
+      runId: string;
+      slotId: string;
+      content: string;
     }>;
 
 export interface NativeAionUiTeamAssistant {
@@ -239,6 +298,21 @@ export interface NativeAionUiTeamArtifactReference {
   readonly artifact_id: string;
   readonly kind: "file" | "document" | "dataset" | "directory" | "other";
   readonly label: string;
+  /**
+   * Present only for a coding Artifact that produced a patch. It carries the same bounded delivery
+   * projection the non-Team surface receives, plus the deterministic conversation the apply is
+   * driven through, so one card serves both surfaces. Never a path, patch, or Git handle.
+   */
+  readonly delivery?: NativeAionUiTeamArtifactDelivery;
+}
+
+export interface NativeAionUiTeamArtifactDelivery {
+  readonly native_conversation_id: string;
+  readonly delivery_state: ArtifactDeliveryState;
+  readonly base_commit: string;
+  readonly changed_file_count: number;
+  readonly failure_code?: ArtifactDeliveryFailureCode;
+  readonly apply_approval_id?: string;
 }
 
 export interface NativeAionUiTeamNodeView {
@@ -253,6 +327,7 @@ export interface NativeAionUiTeamNodeView {
     | "blocked"
     | "paused"
     | "handoff-required"
+    | "revision-requested"
     | "completed"
     | "failed"
     | "cancelled";
@@ -281,6 +356,15 @@ export interface NativeAionUiTeamRunEvent {
     authority: "Actestra Core";
     authority_source: "schema-15-team-run";
     revision: number;
+    /** Core's exact run status, which the compatibility `status` field cannot express. */
+    core_status:
+      | "accepted"
+      | "running"
+      | "paused"
+      | "blocked"
+      | "completed"
+      | "failed"
+      | "cancelled";
     status_explanation: string;
     nodes: readonly NativeAionUiTeamNodeView[];
     result: Readonly<{
@@ -293,6 +377,9 @@ export interface NativeAionUiTeamRunEvent {
 export interface NativeAionUiTeamActivity {
   readonly id: string;
   readonly author: "You" | "General Worker" | "Goose";
+  /** The teammate slot this activity belongs to, so single-chat views can filter by slot
+   * instead of by the user-chosen display name, which never equals `author`. */
+  readonly slot_id: string | null;
   readonly content: string;
   readonly tone: "user" | "worker";
   readonly occurred_at: number;
@@ -375,6 +462,8 @@ export type AionUiTeamBridgeSuccessData =
   | readonly (NativeAionUiTeam | NativeAionUiStandardTeam)[]
   | NativeAionUiTeamWorkspaceOption
   | NativeAionUiTeamWorkspaceOptions
+  | NativeAionUiTeamModelOptions
+  | NativeAionUiTeamModelSelection
   | NativeAionUiTeamAssistant
   | NativeAionUiTeamRunState
   | NativeAionUiTeamRunAck
@@ -390,9 +479,11 @@ const ERROR_STATUS = Object.freeze({
   "team-conflict": 409,
   "team-active": 409,
   "team-model-unavailable": 409,
+  "team-planner-invalid": 422,
   "team-execution-failed": 500,
   "team-planner-unavailable": 503,
   "team-worker-runtime-unavailable": 503,
+  "team-planner-timeout": 504,
   "team-unavailable": 503,
 } as const);
 
@@ -400,7 +491,11 @@ export type AionUiTeamBridgeErrorCode = keyof typeof ERROR_STATUS;
 export type AionUiTeamBridgeErrorStatus = (typeof ERROR_STATUS)[AionUiTeamBridgeErrorCode];
 
 export type AionUiTeamBridgeResponse =
-  | Readonly<{ contractVersion: 1; status: 200; data: AionUiTeamBridgeSuccessData }>
+  | Readonly<{
+      contractVersion: 1;
+      status: 200;
+      data: AionUiTeamBridgeSuccessData;
+    }>
   | Readonly<{
       contractVersion: 1;
       status: AionUiTeamBridgeErrorStatus;
@@ -409,9 +504,15 @@ export type AionUiTeamBridgeResponse =
     }>;
 
 export type AionUiTeamEvent =
-  | Readonly<{ type: "team.created"; payload: Readonly<{ team_id: string; team_name: string }> }>
+  | Readonly<{
+      type: "team.created";
+      payload: Readonly<{ team_id: string; team_name: string }>;
+    }>
   | Readonly<{ type: "team.removed"; payload: Readonly<{ team_id: string }> }>
-  | Readonly<{ type: "team.renamed"; payload: Readonly<{ team_id: string; team_name: string }> }>
+  | Readonly<{
+      type: "team.renamed";
+      payload: Readonly<{ team_id: string; team_name: string }>;
+    }>
   | Readonly<{
       type: "team.listChanged";
       payload: Readonly<{
@@ -421,9 +522,15 @@ export type AionUiTeamEvent =
     }>
   | Readonly<{
       type: "team.agentSpawned";
-      payload: Readonly<{ team_id: string; assistant: NativeAionUiTeamAssistant }>;
+      payload: Readonly<{
+        team_id: string;
+        assistant: NativeAionUiTeamAssistant;
+      }>;
     }>
-  | Readonly<{ type: "team.agentRemoved"; payload: Readonly<{ team_id: string; slot_id: string }> }>
+  | Readonly<{
+      type: "team.agentRemoved";
+      payload: Readonly<{ team_id: string; slot_id: string }>;
+    }>
   | Readonly<{
       type: "team.agentRenamed";
       payload: Readonly<{ team_id: string; slot_id: string; name: string }>;
@@ -449,7 +556,10 @@ export type AionUiTeamEvent =
     }>
   | Readonly<{
       type: "team.slotWorkChanged";
-      payload: Readonly<{ team_id: string; slot_work: NativeAionUiTeamSlotWork }>;
+      payload: Readonly<{
+        team_id: string;
+        slot_work: NativeAionUiTeamSlotWork;
+      }>;
     }>;
 
 export type AionUiTeamEventHandler = (event: AionUiTeamEvent) => void;
@@ -480,11 +590,55 @@ function assertExactKeys(
   }
 }
 
+/**
+ * Like {@link assertExactKeys} but for a shape with optional members: every key present must be
+ * declared, so an undeclared key is still refused, and an absent optional one is not invented.
+ */
+function assertKeysWithin(
+  value: Record<string, unknown>,
+  allowed: readonly string[],
+  label: string,
+): void {
+  if (Object.keys(value).some((key) => !allowed.includes(key))) {
+    throw new Error(`${label} has an invalid shape`);
+  }
+}
+
 function hasControlCharacter(value: string): boolean {
   return [...value].some((character) => {
     const codePoint = character.codePointAt(0);
     return codePoint !== undefined && (codePoint <= 31 || (codePoint >= 127 && codePoint <= 159));
   });
+}
+
+/**
+ * Returns true if the value contains control characters other than LF (U+000A).
+ * Used for bounded multiline fields like Team message bodies where newlines are permitted.
+ */
+function hasControlCharacterExceptLF(value: string): boolean {
+  return [...value].some((character) => {
+    const codePoint = character.codePointAt(0);
+    if (codePoint === undefined) return false;
+    // Allow LF (10), reject all other C0 control (0-9, 11-31) and C1 control (127-159)
+    return (
+      codePoint <= 9 ||
+      (codePoint >= 11 && codePoint <= 31) ||
+      (codePoint >= 127 && codePoint <= 159)
+    );
+  });
+}
+
+/**
+ * Validates an absent-or-text field and returns it narrowed. Returning the value rather than
+ * asserting in place keeps the result a `string | null` under the downstream tree's non-strict
+ * config, where an assertion's narrowing is lost once the branches merge.
+ */
+function parseOptionalText(value: unknown, label: string, maximumBytes: number): string | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  assertText(value, label, maximumBytes);
+  return value;
 }
 
 function assertText(
@@ -503,6 +657,32 @@ function assertText(
   ) {
     throw new Error(`${label} is invalid`);
   }
+}
+
+/**
+ * Validates bounded multiline text (e.g., Team message bodies). Allows LF (U+000A) for line breaks
+ * but rejects other control characters, non-NFC, and leading/trailing whitespace. CRLF is normalized
+ * to LF at the boundary.
+ */
+function assertAndNormalizeMultilineText(
+  value: unknown,
+  label: string,
+  maximumBytes: number,
+): string {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`${label} is invalid`);
+  }
+  // Normalize CRLF to LF at the boundary
+  const normalized = value.replace(/\r\n/g, "\n");
+  if (
+    normalized.trim() !== normalized ||
+    normalized.normalize("NFC") !== normalized ||
+    hasControlCharacterExceptLF(normalized) ||
+    new TextEncoder().encode(normalized).byteLength > maximumBytes
+  ) {
+    throw new Error(`${label} is invalid`);
+  }
+  return normalized;
 }
 
 function assertModelIdentifier(value: unknown, label: string): asserts value is string {
@@ -640,6 +820,17 @@ function parseWorkspaceReference(value: unknown): string {
   return stableWorkspaceId;
 }
 
+function parseTeamModelSelection(value: unknown): TeamModelSelection {
+  if (!isRecord(value)) throw new Error("AionUI Team model selection is invalid");
+  assertExactKeys(value, ["provider_id", "model_id"], "AionUI Team model selection");
+  assertModelIdentifier(value.provider_id, "AionUI Team provider selection");
+  assertModelIdentifier(value.model_id, "AionUI Team model selection");
+  return Object.freeze({
+    providerId: value.provider_id,
+    modelId: value.model_id,
+  });
+}
+
 function parseCreateBody(
   value: unknown,
 ): Extract<AionUiTeamBridgeRoute, { kind: "create" | "create-standard" }> {
@@ -679,11 +870,14 @@ function parseCreateBody(
       members,
     });
   }
+  if (!Object.hasOwn(value, "model_selection")) {
+    throw new Error("AionUI Team model selection is required");
+  }
   assertExactKeys(
     value,
     Object.hasOwn(value, "description")
-      ? ["experience", "name", "description", "agents", "workspace"]
-      : ["experience", "name", "agents", "workspace"],
+      ? ["experience", "name", "description", "agents", "workspace", "model_selection"]
+      : ["experience", "name", "agents", "workspace", "model_selection"],
     "AionUI Team create body",
   );
   if (value.experience !== "orchestrated") {
@@ -704,17 +898,18 @@ function parseCreateBody(
   ) {
     throw new Error("AionUI Team requires one leader and General plus Goose capabilities");
   }
-  const description =
-    value.description === undefined || value.description === null ? null : value.description;
-  if (description !== null) {
-    assertText(description, "AionUI Team description", TEAM_MAX_DESCRIPTION_BYTES);
-  }
+  const description = parseOptionalText(
+    value.description,
+    "AionUI Team description",
+    TEAM_MAX_DESCRIPTION_BYTES,
+  );
   return Object.freeze({
     kind: "create",
     experience: "orchestrated",
     name: value.name,
     description,
     workspaceId: parseWorkspaceReference(value.workspace),
+    modelSelection: parseTeamModelSelection(value.model_selection),
     members,
   });
 }
@@ -736,7 +931,11 @@ function parseReasonBody(value: unknown): string {
 function parseMessageBody(
   value: unknown,
   label: string,
-): Readonly<{ content: string; files: readonly string[]; requestNonce: string }> {
+): Readonly<{
+  content: string;
+  files: readonly string[];
+  requestNonce: string;
+}> {
   if (!isRecord(value)) throw new Error(`${label} is invalid`);
   const hasFiles = Object.hasOwn(value, "files");
   assertExactKeys(
@@ -744,7 +943,11 @@ function parseMessageBody(
     hasFiles ? ["content", "files", "request_nonce"] : ["content", "request_nonce"],
     label,
   );
-  assertText(value.content, label, MAX_MESSAGE_BYTES);
+  const content = assertAndNormalizeMultilineText(
+    value.content,
+    `${label} content`,
+    MAX_MESSAGE_BYTES,
+  );
   assertText(
     value.request_nonce,
     `${label} request nonce`,
@@ -752,7 +955,7 @@ function parseMessageBody(
   );
   if (!hasFiles) {
     return Object.freeze({
-      content: value.content,
+      content,
       files: Object.freeze([]),
       requestNonce: value.request_nonce,
     });
@@ -766,7 +969,11 @@ function parseMessageBody(
       return file;
     }),
   );
-  return Object.freeze({ content: value.content, files, requestNonce: value.request_nonce });
+  return Object.freeze({
+    content,
+    files,
+    requestNonce: value.request_nonce,
+  });
 }
 
 function parseConfigOptionBody(value: unknown): string {
@@ -801,6 +1008,11 @@ function parseRoute(request: AionUiTeamBridgeRequest): AionUiTeamBridgeRoute {
     assertNoBody(request.body);
     if (request.method === "GET") return Object.freeze({ kind: "list-workspaces" });
     throw new Error("AionUI Team workspace route is unsupported");
+  }
+  if (segments.length === 3 && segments[2] === "model-options") {
+    assertNoBody(request.body);
+    if (request.method === "GET") return Object.freeze({ kind: "model-options" });
+    throw new Error("AionUI Team model options route is unsupported");
   }
   if (segments.length === 4 && segments[2] === "workspace-options" && segments[3] === "select") {
     assertNoBody(request.body);
@@ -839,6 +1051,23 @@ function parseRoute(request: AionUiTeamBridgeRequest): AionUiTeamBridgeRoute {
   }
   const resource = segments[3]!;
   if (segments.length === 4) {
+    if (resource === "model-selection") {
+      if (request.method === "GET") {
+        assertNoBody(request.body);
+        return Object.freeze({
+          kind: "get-model-selection",
+          teamId: stableTeam,
+        });
+      }
+      if (request.method === "PATCH") {
+        return Object.freeze({
+          kind: "update-model-selection",
+          teamId: stableTeam,
+          modelSelection: parseTeamModelSelection(request.body),
+        });
+      }
+      throw new Error("AionUI Team model selection route is unsupported");
+    }
     if (resource === "session") {
       assertNoBody(request.body);
       if (request.method === "POST")
@@ -902,7 +1131,11 @@ function parseRoute(request: AionUiTeamBridgeRequest): AionUiTeamBridgeRoute {
     assertNoBody(request.body);
     const conversationId = segments[4]!;
     assertText(conversationId, "AionUI Team conversation identity", MAX_CONVERSATION_BYTES);
-    return Object.freeze({ kind: "config-options", teamId: stableTeam, conversationId });
+    return Object.freeze({
+      kind: "config-options",
+      teamId: stableTeam,
+      conversationId,
+    });
   }
   if (
     resource === "conversations" &&
@@ -926,7 +1159,11 @@ function parseRoute(request: AionUiTeamBridgeRequest): AionUiTeamBridgeRoute {
     if (segments.length === 5) {
       if (request.method === "DELETE") {
         assertNoBody(request.body);
-        return Object.freeze({ kind: "remove-member", teamId: stableTeam, slotId });
+        return Object.freeze({
+          kind: "remove-member",
+          teamId: stableTeam,
+          slotId,
+        });
       }
       throw new Error("AionUI Team member route is unsupported");
     }
@@ -951,7 +1188,11 @@ function parseRoute(request: AionUiTeamBridgeRequest): AionUiTeamBridgeRoute {
     }
     if (segments[5] === "attach" && request.method === "POST") {
       assertNoBody(request.body);
-      return Object.freeze({ kind: "attach-member", teamId: stableTeam, slotId });
+      return Object.freeze({
+        kind: "attach-member",
+        teamId: stableTeam,
+        slotId,
+      });
     }
     throw new Error("AionUI Team member resource is unsupported");
   }
@@ -992,6 +1233,18 @@ function parseRoute(request: AionUiTeamBridgeRequest): AionUiTeamBridgeRoute {
           decision: parseDecision(request.body.decision),
         });
       }
+      if (action === "handoff-completion") {
+        if (!isRecord(request.body)) throw new Error("AionUI Team handoff body is invalid");
+        assertExactKeys(request.body, ["content"], "AionUI Team handoff body");
+        assertText(request.body.content, "AionUI Team handoff content", MAX_HANDOFF_CONTENT_BYTES);
+        return Object.freeze({
+          kind: "complete-handoff",
+          teamId: stableTeam,
+          runId: stableRun,
+          slotId,
+          content: request.body.content,
+        });
+      }
       const kinds = {
         cancel: "cancel-node",
         pause: "pause-node",
@@ -999,6 +1252,7 @@ function parseRoute(request: AionUiTeamBridgeRequest): AionUiTeamBridgeRoute {
         retry: "retry-node",
         replace: "replace-node",
         handoff: "handoff-node",
+        revise: "revise-node",
       } as const;
       const kind = kinds[action as keyof typeof kinds];
       if (kind !== undefined)
@@ -1233,6 +1487,7 @@ const SLOT_BLOCKED_REASONS = [
   "paused",
   "handoff",
   "interrupted",
+  "revision-requested",
 ] as const;
 
 function assertOptionalCounter(value: unknown, label: string): asserts value is number | null {
@@ -1391,14 +1646,67 @@ function assertSlotWork(value: unknown): asserts value is NativeAionUiTeamSlotWo
   if (value.team_run_id !== null) teamRunId(String(value.team_run_id));
 }
 
+function assertArtifactDelivery(value: unknown): asserts value is NativeAionUiTeamArtifactDelivery {
+  if (!isRecord(value)) throw new Error("Native AionUI Team Artifact delivery is invalid");
+  assertKeysWithin(
+    value,
+    [
+      "native_conversation_id",
+      "delivery_state",
+      "base_commit",
+      "changed_file_count",
+      "failure_code",
+      "apply_approval_id",
+    ],
+    "Native AionUI Team Artifact delivery",
+  );
+  assertText(
+    value.native_conversation_id,
+    "Native AionUI Team Artifact delivery conversation",
+    MAX_CONVERSATION_BYTES,
+  );
+  if (!ARTIFACT_DELIVERY_STATES.includes(String(value.delivery_state) as ArtifactDeliveryState)) {
+    throw new Error("Native AionUI Team Artifact delivery state is invalid");
+  }
+  if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(String(value.base_commit))) {
+    throw new Error("Native AionUI Team Artifact delivery base commit is invalid");
+  }
+  if (!Number.isSafeInteger(value.changed_file_count) || Number(value.changed_file_count) < 0) {
+    throw new Error("Native AionUI Team Artifact delivery changed file count is invalid");
+  }
+  if (
+    value.failure_code !== undefined &&
+    !ARTIFACT_DELIVERY_FAILURE_CODES.includes(
+      String(value.failure_code) as ArtifactDeliveryFailureCode,
+    )
+  ) {
+    throw new Error("Native AionUI Team Artifact delivery failure code is invalid");
+  }
+  if (value.apply_approval_id !== undefined) {
+    assertText(
+      value.apply_approval_id,
+      "Native AionUI Team Artifact delivery approval",
+      MAX_STANDARD_IDENTIFIER_BYTES,
+    );
+    if (value.delivery_state !== "applying") {
+      throw new Error("Native AionUI Team Artifact approval requires an applying delivery");
+    }
+  }
+}
+
 function assertArtifact(value: unknown): asserts value is NativeAionUiTeamArtifactReference {
   if (!isRecord(value)) throw new Error("Native AionUI Team Artifact is invalid");
-  assertExactKeys(value, ["artifact_id", "kind", "label"], "Native AionUI Team Artifact");
+  assertKeysWithin(
+    value,
+    ["artifact_id", "kind", "label", "delivery"],
+    "Native AionUI Team Artifact",
+  );
   assertText(value.artifact_id, "Native AionUI Team Artifact identity", 256);
   if (!["file", "document", "dataset", "directory", "other"].includes(String(value.kind))) {
     throw new Error("Native AionUI Team Artifact kind is invalid");
   }
   assertText(value.label, "Native AionUI Team Artifact label", TEAM_MAX_NAME_BYTES);
+  if (value.delivery !== undefined) assertArtifactDelivery(value.delivery);
 }
 
 const NODE_BLOCKED_REASONS = [
@@ -1410,6 +1718,7 @@ const NODE_BLOCKED_REASONS = [
   "paused",
   "handoff",
   "interrupted",
+  "revision-requested",
 ] as const;
 
 function assertNodeView(value: unknown): asserts value is NativeAionUiTeamNodeView {
@@ -1445,6 +1754,7 @@ function assertNodeView(value: unknown): asserts value is NativeAionUiTeamNodeVi
       "blocked",
       "paused",
       "handoff-required",
+      "revision-requested",
       "completed",
       "failed",
       "cancelled",
@@ -1531,12 +1841,23 @@ export function assertNativeAionUiTeamRunEvent(
   value.slot_work.forEach(assertSlotWork);
   assertExactKeys(
     value.actestra,
-    ["authority", "authority_source", "revision", "status_explanation", "nodes", "result"],
+    [
+      "authority",
+      "authority_source",
+      "revision",
+      "core_status",
+      "status_explanation",
+      "nodes",
+      "result",
+    ],
     "Native AionUI Actestra Team projection",
   );
   if (
     value.actestra.authority !== "Actestra Core" ||
     value.actestra.authority_source !== "schema-15-team-run" ||
+    !["accepted", "running", "paused", "blocked", "completed", "failed", "cancelled"].includes(
+      String(value.actestra.core_status),
+    ) ||
     !Array.isArray(value.actestra.nodes)
   ) {
     throw new Error("Native AionUI Team authority projection is invalid");
@@ -1654,6 +1975,47 @@ function assertSuccessData(value: unknown): asserts value is AionUiTeamBridgeSuc
     assertWorkspaceOption(value);
     return;
   }
+  if (Object.hasOwn(value, "provider_id") || Object.hasOwn(value, "model_id")) {
+    assertExactKeys(value, ["provider_id", "model_id"], "Native AionUI Team model selection");
+    assertModelIdentifier(value.provider_id, "Native AionUI Team provider selection");
+    assertModelIdentifier(value.model_id, "Native AionUI Team model selection");
+    return;
+  }
+  if (Object.hasOwn(value, "providers")) {
+    assertExactKeys(value, ["providers"], "Native AionUI Team model options");
+    if (!Array.isArray(value.providers) || value.providers.length > 64) {
+      throw new Error("Native AionUI Team model options are invalid");
+    }
+    const providerIds = new Set<string>();
+    for (const provider of value.providers) {
+      if (!isRecord(provider)) throw new Error("Native AionUI Team model provider is invalid");
+      assertExactKeys(
+        provider,
+        ["provider_id", "name", "model_ids"],
+        "Native AionUI Team model provider",
+      );
+      assertModelIdentifier(provider.provider_id, "Native AionUI Team model provider identity");
+      assertText(provider.name, "Native AionUI Team model provider name", 256);
+      if (
+        providerIds.has(provider.provider_id) ||
+        !Array.isArray(provider.model_ids) ||
+        provider.model_ids.length < 1 ||
+        provider.model_ids.length > 256
+      ) {
+        throw new Error("Native AionUI Team model provider is ambiguous");
+      }
+      providerIds.add(provider.provider_id);
+      const modelIds = new Set<string>();
+      for (const modelId of provider.model_ids) {
+        assertModelIdentifier(modelId, "Native AionUI Team model identity");
+        if (modelIds.has(modelId)) {
+          throw new Error("Native AionUI Team model identity is ambiguous");
+        }
+        modelIds.add(modelId);
+      }
+    }
+    return;
+  }
   if (Object.hasOwn(value, "conversation_id") && Object.hasOwn(value, "assistant_backend")) {
     assertAssistant(value);
     return;
@@ -1706,14 +2068,14 @@ function assertSuccessData(value: unknown): asserts value is AionUiTeamBridgeSuc
     if (!Array.isArray(value.slot_work))
       throw new Error("Native AionUI Team slot state is invalid");
     value.slot_work.forEach(assertSlotWork);
-    if (!Array.isArray(value.activities) || value.activities.length > 6) {
+    if (!Array.isArray(value.activities) || value.activities.length > MAX_TEAM_ACTIVITIES) {
       throw new Error("Native AionUI Team activity is invalid");
     }
     value.activities.forEach((activity) => {
       if (!isRecord(activity)) throw new Error("Native AionUI Team activity is invalid");
       assertExactKeys(
         activity,
-        ["id", "author", "content", "tone", "occurred_at"],
+        ["id", "author", "slot_id", "content", "tone", "occurred_at"],
         "Native AionUI Team activity",
       );
       if (
@@ -1722,11 +2084,17 @@ function assertSuccessData(value: unknown): asserts value is AionUiTeamBridgeSuc
         !["You", "General Worker", "Goose"].includes(String(activity.author)) ||
         !["user", "worker"].includes(String(activity.tone)) ||
         (activity.tone === "user" && activity.author !== "You") ||
-        (activity.tone === "worker" && activity.author === "You")
+        (activity.tone === "worker" && activity.author === "You") ||
+        (activity.tone === "user" && activity.slot_id !== null)
       ) {
         throw new Error("Native AionUI Team activity fields are invalid");
       }
-      assertText(activity.content, "Native AionUI Team activity content", MAX_MESSAGE_BYTES);
+      if (activity.slot_id !== null) teamMemberId(String(activity.slot_id));
+      assertAndNormalizeMultilineText(
+        activity.content,
+        "Native AionUI Team activity content",
+        MAX_MESSAGE_BYTES,
+      );
       assertCounter(activity.occurred_at, "Native AionUI Team activity instant");
     });
     return;

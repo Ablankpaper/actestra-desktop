@@ -15,6 +15,13 @@ import {
 } from "../../core/officeDocumentArtifact";
 import { TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID } from "../../core/scopedNativeTools";
 import { parseWritingArtifactBrief } from "../../core/writingArtifact";
+import type { GeneralCapabilityRequest } from "../../core/generalCapabilityAdmission";
+import {
+  GENERAL_DRAFT_REPAIR_ATTEMPT_LIMIT,
+  admitGeneralWritingRequest,
+  buildGeneralDraftRepairInstruction,
+  validateGeneralDraft,
+} from "../../core/generalDraftContract";
 
 type GeneralWorkerAttemptState =
   | "running"
@@ -34,7 +41,12 @@ interface GeneralWorkerAttempt {
   state: GeneralWorkerAttemptState;
   sequence: number;
   pendingCallId?: string;
+  pendingModelCallId?: string;
   awaitingWorkspaceContent?: boolean;
+  /** Counts repairs already spent, so the bound holds across the whole attempt and not per reply. */
+  draftRepairAttempts?: number;
+  /** Structured admission input, carried so a restart re-derives the same blocking reason. */
+  readonly requirements?: GeneralCapabilityRequest;
 }
 
 function localResearchArtifact(
@@ -166,6 +178,8 @@ export class GeneralWorkerService {
         return this.send(request);
       case "resolve-tool":
         return this.resolveTool(request);
+      case "resolve-model":
+        return this.resolveModel(request);
       case "cancel":
         return this.cancel(request);
       case "dispose":
@@ -222,6 +236,9 @@ export class GeneralWorkerService {
       executionMode: request.payload.executionMode,
       state: "running",
       sequence: 0,
+      ...(request.payload.requirements === undefined
+        ? {}
+        : { requirements: request.payload.requirements }),
     };
     this.attemptStarted = true;
     this.attempts.set(attempt.token, attempt);
@@ -349,6 +366,31 @@ export class GeneralWorkerService {
           }),
         );
         break;
+      case "model-writing-artifact": {
+        // Admission runs before any model turn, so a task General cannot perform is refused rather
+        // than sent to a model that would invent the material it lacks.
+        const admission = admitGeneralWritingRequest(attempt.requirements);
+        if (admission.admitted === false) {
+          attempt.state = "failed";
+          events.push(
+            this.event(attempt, {
+              type: "failed",
+              errorCode: admission.errorCode,
+              message: admission.message,
+            }),
+          );
+          break;
+        }
+        attempt.pendingModelCallId = "general-worker-model-writing-call";
+        events.push(
+          this.event(attempt, {
+            type: "model-requested",
+            callId: attempt.pendingModelCallId,
+            prompt: attempt.prompt,
+          }),
+        );
+        break;
+      }
     }
 
     return events;
@@ -358,7 +400,7 @@ export class GeneralWorkerService {
     request: Extract<GeneralWorkerRequest, { operation: "send" }>,
   ): readonly GeneralWorkerEventMessage[] {
     const attempt = this.requireAttempt(request.payload.attemptToken);
-    if (attempt.state !== "running") {
+    if (attempt.state !== "running" || attempt.pendingModelCallId !== undefined) {
       throw new GeneralWorkerServiceError(
         "invalid-state",
         "General Worker cannot receive input outside a running attempt",
@@ -495,6 +537,102 @@ export class GeneralWorkerService {
     return events;
   }
 
+  private resolveModel(
+    request: Extract<GeneralWorkerRequest, { operation: "resolve-model" }>,
+  ): readonly GeneralWorkerEventMessage[] {
+    const attempt = this.requireAttempt(request.payload.attemptToken);
+    if (
+      attempt.executionMode !== "model-writing-artifact" ||
+      attempt.state !== "running" ||
+      attempt.pendingModelCallId === undefined ||
+      attempt.pendingModelCallId !== request.payload.callId
+    ) {
+      throw new GeneralWorkerServiceError(
+        "invalid-state",
+        "General Worker has no matching Main model request",
+      );
+    }
+
+    attempt.pendingModelCallId = undefined;
+    if (request.payload.result.status === "failed") {
+      attempt.state = "failed";
+      return [
+        this.event(attempt, {
+          type: "failed",
+          errorCode: request.payload.result.errorCode,
+          message: request.payload.result.message,
+        }),
+      ];
+    }
+
+    const validation = validateGeneralDraft(request.payload.result.content);
+
+    if (validation.valid === false) {
+      const spent = attempt.draftRepairAttempts ?? 0;
+      if (spent < GENERAL_DRAFT_REPAIR_ATTEMPT_LIMIT) {
+        // One repair, naming only the broken rule. The malformed reply is never quoted back.
+        attempt.draftRepairAttempts = spent + 1;
+        attempt.pendingModelCallId = "general-worker-model-writing-repair-call";
+        return [
+          this.event(attempt, {
+            type: "message",
+            role: "system",
+            content: `The draft did not satisfy the contract (${validation.violatedRule}). Requesting one repair.`,
+          }),
+          this.event(attempt, {
+            type: "model-requested",
+            callId: attempt.pendingModelCallId,
+            prompt: buildGeneralDraftRepairInstruction(validation.violatedRule),
+          }),
+        ];
+      }
+      // The repair was already spent, so the attempt fails with the code for the rule it broke.
+      attempt.state = "failed";
+      return [
+        this.event(attempt, {
+          type: "failed",
+          errorCode: validation.errorCode,
+          message: validation.message,
+        }),
+      ];
+    }
+
+    if (validation.draft.status === "needs-input") {
+      // No artifact is written: a draft built around missing material is the outcome the contract
+      // exists to prevent. The surface reports what is missing instead of a finished-looking draft.
+      attempt.state = "failed";
+      return [
+        this.event(attempt, {
+          type: "failed",
+          errorCode: "general-input-required",
+          message: `${validation.draft.message} Missing: ${validation.draft.missingInputs.join(", ")}`,
+        }),
+      ];
+    }
+
+    attempt.state = "blocked";
+    attempt.pendingCallId = "general-worker-task-output-write-text-call";
+    return [
+      this.event(attempt, {
+        type: "message",
+        role: "assistant",
+        content: "Prepared one bounded model-authored writing draft.",
+      }),
+      this.event(attempt, {
+        type: "tool-requested",
+        callId: attempt.pendingCallId,
+        toolName: "actestra.task-output.write-text",
+        summary: "Create the bounded model-authored writing draft.",
+        input: Object.freeze({
+          contractVersion: 1,
+          relativePath: "draft.md",
+          mediaType: "text/markdown; charset=utf-8",
+          content: validation.draft.markdown,
+        }),
+      }),
+    ];
+  }
+
   private cancel(
     request: Extract<GeneralWorkerRequest, { operation: "cancel" }>,
   ): readonly GeneralWorkerEventMessage[] {
@@ -508,6 +646,7 @@ export class GeneralWorkerService {
       return [];
     }
     attempt.pendingCallId = undefined;
+    attempt.pendingModelCallId = undefined;
     attempt.state = "cancelled";
     return [
       this.event(attempt, {
@@ -522,6 +661,7 @@ export class GeneralWorkerService {
   ): readonly GeneralWorkerEventMessage[] {
     const attempt = this.requireAttempt(request.payload.attemptToken);
     attempt.pendingCallId = undefined;
+    attempt.pendingModelCallId = undefined;
     attempt.state = "disposed";
     this.attempts.delete(attempt.token);
     return [];

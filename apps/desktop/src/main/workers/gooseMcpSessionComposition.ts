@@ -9,6 +9,7 @@ import {
 } from "./gooseMcpCapabilityServer";
 import {
   ACTESTRA_GOOSE_MCP_EXTENSION_NAME,
+  type GooseAcpHumanDecisionGate,
   type GooseAcpInfo,
   type GooseAcpPromptResult,
   type GooseAcpSession,
@@ -46,6 +47,7 @@ export interface OpenGooseMcpSessionCompositionOptions {
 export interface GooseMcpSessionPromptOptions {
   readonly text: string;
   readonly timeoutMs?: number;
+  readonly humanDecisionGate?: GooseAcpHumanDecisionGate;
 }
 
 export interface GooseMcpSessionComposition {
@@ -57,7 +59,11 @@ export interface GooseMcpSessionComposition {
   close(): Promise<void>;
 }
 
-export type GooseMcpSessionCompositionErrorCode = "cleanup-failed" | "tool-discovery-mismatch";
+export type GooseMcpSessionCompositionErrorCode =
+  | "cleanup-failed"
+  | "model-completion-refused"
+  | "model-request-rejected"
+  | "tool-discovery-mismatch";
 
 export class GooseMcpSessionCompositionError extends Error {
   constructor(
@@ -238,12 +244,44 @@ export async function openGooseMcpSessionComposition(
     privateRoot: stableRunner.privateRoot,
     session,
     toolNames,
-    prompt(promptOptions: GooseMcpSessionPromptOptions): Promise<GooseAcpPromptResult> {
-      return stableRunner.prompt({
+    async prompt(promptOptions: GooseMcpSessionPromptOptions): Promise<GooseAcpPromptResult> {
+      const refusedBefore = stableModelServer.refusedInferenceCount;
+      const rejectedBefore = stableModelServer.rejectedRequestCount;
+      const servedBefore = stableModelServer.servedInferenceCount;
+      const result = await stableRunner.prompt({
         sessionId: session.sessionId,
         text: promptOptions.text,
         ...(promptOptions.timeoutMs === undefined ? {} : { timeoutMs: promptOptions.timeoutMs }),
+        ...(promptOptions.humanDecisionGate === undefined
+          ? {}
+          : { humanDecisionGate: promptOptions.humanDecisionGate }),
       });
+      // Goose reports a content-free 400 as an ordinary assistant turn, which
+      // would otherwise publish as an unchanged read-only attempt. Only a turn
+      // that failed without ever serving a completion is a failure; a 400 the
+      // model recovered from stays a reviewable result.
+      //
+      // The two causes carry distinct codes: the model contract was violated,
+      // or Goose sent a request Main could not read. Both fail the turn, but a
+      // durable record that names the wrong one misdirects the next repair.
+      if (
+        stableModelServer.servedInferenceCount === servedBefore &&
+        result.stopReason !== "cancelled"
+      ) {
+        if (stableModelServer.refusedInferenceCount > refusedBefore) {
+          throw new GooseMcpSessionCompositionError(
+            "model-completion-refused",
+            "Actestra refused every model completion in this Goose prompt turn",
+          );
+        }
+        if (stableModelServer.rejectedRequestCount > rejectedBefore) {
+          throw new GooseMcpSessionCompositionError(
+            "model-request-rejected",
+            "Actestra could not read any inference request in this Goose prompt turn",
+          );
+        }
+      }
+      return result;
     },
     close(): Promise<void> {
       closePromise ??= closeComposition(stableRunner, capabilityServer, stableModelServer);

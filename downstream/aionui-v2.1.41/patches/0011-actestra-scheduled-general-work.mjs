@@ -902,16 +902,14 @@ replaceOnce(
     await initializeActestraPersistenceUtility(app.getPath('userData'));
     if (
       process.env.ACTESTRA_E2E_TEST === '1' &&
-      process.env.ACTESTRA_GENERAL_WORK_SMOKE_SCENARIO !==
-        'recover-worker-crash'
+      process.env.ACTESTRA_GENERAL_WORK_SMOKE_SCENARIO !== 'recover-worker-crash'
     ) {`,
   `    await initializeProcess();
     await initializeActestraPersistenceUtility(app.getPath('userData'));
     registerActestraScheduleResumeBridge();
     if (
       process.env.ACTESTRA_E2E_TEST === '1' &&
-      process.env.ACTESTRA_GENERAL_WORK_SMOKE_SCENARIO !==
-        'recover-worker-crash'
+      process.env.ACTESTRA_GENERAL_WORK_SMOKE_SCENARIO !== 'recover-worker-crash'
     ) {`,
 );
 
@@ -979,7 +977,7 @@ replaceOnce(
               };
             },
           },
-    launchWorker: async ({ journeyKind, readRequestId, requestId }) => {`,
+    launchWorker: async ({ journeyKind, readRequestId, requestId, requirements }) => {`,
   `  const platform = nativeToolPlatform;
   const nativeContext =
     generalWorkSmokeConfig === null
@@ -1007,7 +1005,7 @@ replaceOnce(
     nativeTools: platform,
     clock: platform.clock,
     nativeContext,
-    launchWorker: async ({ journeyKind, readRequestId, requestId }) => {`,
+    launchWorker: async ({ journeyKind, readRequestId, requestId, requirements }) => {`,
 );
 
 replaceOnce(
@@ -1216,9 +1214,7 @@ replaceOnce(
           })
           .catch((error: unknown) => {
             const message = error instanceof Error ? error.message : 'unknown failure';
-            console.error(
-              'ACTESTRA_RENDERER_PROVIDER_SMOKE_FAILED ' + JSON.stringify({ message }),
-            );
+            console.error('ACTESTRA_RENDERER_PROVIDER_SMOKE_FAILED ' + JSON.stringify({ message }));
           });
       }
       showWindow();

@@ -113,6 +113,20 @@ describe("Actestra team-plan admission", () => {
     expect(Object.isFrozen(request.limits)).toBe(true);
   });
 
+  it("preserves bounded LF-delimited Team goals across planner admission", async () => {
+    const goal = "Prepare the General result.\nCreate the isolated coding patch.";
+
+    expect(core.normalizeTeamPlannerRequest({ ...REQUEST, goal }).goal).toBe(goal);
+    const admitted = await core.admitTeamPlanCandidate({ ...REQUEST, goal }, CANDIDATE);
+    expect(core.normalizeAdmittedTeamPlan(JSON.parse(JSON.stringify(admitted))).goal).toBe(goal);
+    expect(() =>
+      core.normalizeTeamPlannerRequest({
+        ...REQUEST,
+        goal: "Prepare the General result.\tCreate the isolated coding patch.",
+      }),
+    ).toThrow(expect.objectContaining({ code: "invalid-request" }));
+  });
+
   it("maps one bounded candidate into deterministic Actestra-owned identities", async () => {
     const admit = core.admitTeamPlanCandidate as unknown as (
       request: unknown,

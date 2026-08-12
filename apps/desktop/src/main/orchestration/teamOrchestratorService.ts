@@ -1,6 +1,7 @@
 import {
   compareInstants,
   createTeamRunSnapshot,
+  GENERAL_V1_CONTRACT_VERSION,
   instant,
   normalizeAdmittedTeamPlan,
   normalizeTeamDefinition,
@@ -23,6 +24,7 @@ import {
   type TeamRunSnapshot,
   type TeamWorkerCapability,
   type WorkspaceId,
+  type GeneralCapabilityRequest,
 } from "../../core";
 import type { AuditRecordId } from "../../core/privilegedServices";
 import {
@@ -47,6 +49,7 @@ export interface TeamWorkerExecutionInput {
   readonly runId: ReturnType<typeof teamRunId>;
   readonly runRevision: number;
   readonly planId: TeamPlanId;
+  readonly goal: AdmittedTeamPlan["goal"];
   readonly teamId: TeamDefinition["teamId"];
   readonly workspaceId: WorkspaceId;
   readonly nodeId: TeamPlanNodeId;
@@ -59,6 +62,8 @@ export interface TeamWorkerExecutionInput {
   readonly capability: TeamWorkerCapability;
   readonly completionCriteria: string;
   readonly expectedArtifactKind: TeamArtifactReference["kind"];
+  /** Structured General admission metadata; coding nodes must never carry this authority. */
+  readonly requirements?: GeneralCapabilityRequest;
 }
 
 export interface TeamWorkerTaskIdentityInput {
@@ -228,6 +233,31 @@ function serviceError(
 
 function snapshotsMatch(left: TeamRunSnapshot, right: TeamRunSnapshot): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
+}
+
+const FALLBACK_WORKER_INCIDENT_CODE = "worker-execution-failed";
+const MAX_WORKER_INCIDENT_CAUSE_DEPTH = 8;
+/** Admits identifier-shaped codes only, so no message, path, URL, or credential text can travel. */
+const WORKER_INCIDENT_CODE_PATTERN = /^[a-z][a-z0-9-]{0,62}$/u;
+
+/**
+ * Reports the most specific admitted `code` in the rejection cause chain, so the Team surface can
+ * separate a prompt timeout from a denial instead of collapsing every rejection into one incident.
+ */
+function workerIncidentCode(error: unknown): string {
+  let candidate: unknown = error;
+  let code = FALLBACK_WORKER_INCIDENT_CODE;
+  const visited = new Set<unknown>();
+  for (let depth = 0; depth < MAX_WORKER_INCIDENT_CAUSE_DEPTH; depth += 1) {
+    if (typeof candidate !== "object" || candidate === null || visited.has(candidate)) break;
+    visited.add(candidate);
+    const reported: unknown = (candidate as { readonly code?: unknown }).code;
+    if (typeof reported === "string" && WORKER_INCIDENT_CODE_PATTERN.test(reported)) {
+      code = reported;
+    }
+    candidate = (candidate as { readonly cause?: unknown }).cause;
+  }
+  return code;
 }
 
 export class TeamOrchestratorService {
@@ -476,6 +506,21 @@ export class TeamOrchestratorService {
     });
   }
 
+  async requestRevision(input: TeamNodeControlInput): Promise<TeamRunSnapshot> {
+    const stableRunId = teamRunId(input.runId);
+    return this.#mutate(stableRunId, async () => {
+      const snapshot = await this.#persistSnapshot(
+        transitionTeamRun(await this.#requireRun(stableRunId), {
+          type: "request-feedback-revision",
+          nodeId: input.nodeId,
+          reason: input.reason,
+          occurredAt: instant(input.occurredAt),
+        }),
+      );
+      return snapshot;
+    });
+  }
+
   async completeHandoff(input: CompleteTeamHandoffInput): Promise<TeamRunSnapshot> {
     const stableRunId = teamRunId(input.runId);
     return this.#mutate(stableRunId, async () => {
@@ -544,13 +589,17 @@ export class TeamOrchestratorService {
     });
   }
 
-  async recover(recoveredAtValue: Instant): Promise<readonly TeamRunSnapshot[]> {
+  async recover(
+    recoveredAtValue: Instant,
+    teamIdValue?: TeamDefinition["teamId"],
+  ): Promise<readonly TeamRunSnapshot[]> {
     this.#assertOpen();
     const recoveredAt = instant(recoveredAtValue);
     const recoverable = await this.#persistence.listRecoverableTeamRuns(100);
     const recovered: TeamRunSnapshot[] = [];
     for (const snapshotValue of recoverable) {
       const snapshot = normalizeTeamRunSnapshot(JSON.parse(JSON.stringify(snapshotValue)));
+      if (teamIdValue !== undefined && snapshot.teamId !== teamIdValue) continue;
       const next = recoverTeamRunSnapshot(snapshot, recoveredAt);
       recovered.push(snapshotsMatch(snapshot, next) ? snapshot : await this.#persistSnapshot(next));
     }
@@ -648,6 +697,11 @@ export class TeamOrchestratorService {
       throw serviceError("not-found", "The Team definition was not found");
     }
     const team = normalizeTeamDefinition(JSON.parse(JSON.stringify(teamValue)));
+    const planValue = await this.#persistence.getAdmittedTeamPlan(snapshot.planId);
+    if (planValue === null) {
+      throw serviceError("not-found", "The admitted Team plan was not found");
+    }
+    const plan = normalizeAdmittedTeamPlan(JSON.parse(JSON.stringify(planValue)));
     const active = this.#activeWorkersFor(snapshot.runId);
     while (active.size < snapshot.limits.maxConcurrency) {
       const node = snapshot.nodes.find(
@@ -685,6 +739,7 @@ export class TeamOrchestratorService {
         runId: snapshot.runId,
         runRevision: snapshot.revision,
         planId: snapshot.planId,
+        goal: plan.goal,
         teamId: snapshot.teamId,
         workspaceId: team.workspaceId,
         nodeId: startedNode.nodeId,
@@ -697,6 +752,17 @@ export class TeamOrchestratorService {
         capability: startedNode.capability,
         completionCriteria: startedNode.completionCriteria,
         expectedArtifactKind: startedNode.expectedArtifactKind,
+        ...(startedNode.capability === "general"
+          ? {
+              requirements: Object.freeze({
+                contractVersion: GENERAL_V1_CONTRACT_VERSION,
+                capabilities: Object.freeze(["text-generation"] as const),
+                contextReferences: Object.freeze(["inline-text"] as const),
+                inputRequirements: Object.freeze(["bounded-text"] as const),
+                completionCriteria: "json-envelope" as const,
+              }),
+            }
+          : {}),
       });
       const controller = new AbortController();
       active.set(startedNode.nodeId, { input, controller });
@@ -740,12 +806,12 @@ export class TeamOrchestratorService {
           await this.#settleWorker(input, result);
         });
       },
-      async () => {
+      async (error: unknown) => {
         if (this.#closed || controller.signal.aborted) return;
         await this.#mutate(input.runId, async () => {
           await this.#settleWorker(input, {
             status: "failed",
-            incidentCode: "worker-execution-failed",
+            incidentCode: workerIncidentCode(error),
           });
         });
       },

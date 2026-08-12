@@ -1,0 +1,244 @@
+import { constants as fsConstants } from "node:fs";
+import { access, chmod, lstat, mkdir, realpath } from "node:fs/promises";
+import path from "node:path";
+import type { ActestraMainModelInvoker } from "../model/actestraMainModelBroker";
+import type { AionUiCodingRunnerAdmission } from "../compatibility/aionuiCodingAgentService";
+import type { IsolatedCodingProcessDefinition } from "../privileged/isolatedCodingToolPlatform";
+import { admitGooseRunnerArtifact, type AdmittedGooseRunnerArtifact } from "./gooseRunnerArtifact";
+
+const GIT_EXECUTABLE = "/usr/bin/git";
+const MODEL_ID_PATTERN = /^[A-Za-z0-9]+(?:[._:/-][A-Za-z0-9]+)*$/;
+const SHA256_PATTERN = /^[a-f0-9]{64}$/;
+const TARGET_TRIPLE_PATTERN = /^[A-Za-z0-9_]+(?:-[A-Za-z0-9_]+)+$/;
+
+const COMMANDS: Readonly<Record<string, IsolatedCodingProcessDefinition>> = Object.freeze({
+  "git.status": Object.freeze({
+    executablePath: GIT_EXECUTABLE,
+    args: Object.freeze(["status", "--short", "--branch"]),
+  }),
+});
+
+const TESTS: Readonly<Record<string, IsolatedCodingProcessDefinition>> = Object.freeze({
+  "git.diff-check": Object.freeze({
+    executablePath: GIT_EXECUTABLE,
+    args: Object.freeze(["diff", "--check"]),
+  }),
+});
+
+export interface ActestraCodingModelBinding {
+  readonly modelId: string;
+  readonly invokeModel: ActestraMainModelInvoker;
+}
+
+export interface TrustedActestraCodingJourneyRuntime {
+  readonly runnerAdmission: AionUiCodingRunnerAdmission;
+  readonly admittedArtifact: AdmittedGooseRunnerArtifact;
+  readonly privateRootParent: string;
+  readonly modelId: string;
+  readonly modelInvoker: ActestraMainModelInvoker;
+  readonly commands: Readonly<Record<string, IsolatedCodingProcessDefinition>>;
+  readonly tests: Readonly<Record<string, IsolatedCodingProcessDefinition>>;
+}
+
+export interface StartTrustedActestraCodingJourneyRuntimeOptions {
+  readonly userDataPath: string;
+  readonly runnerAdmission: AionUiCodingRunnerAdmission | null;
+  readonly modelBinding: ActestraCodingModelBinding | null;
+}
+
+export interface ActestraCodingJourneyRuntimeDependencies {
+  readonly admitRunnerArtifact: typeof admitGooseRunnerArtifact;
+}
+
+const DEFAULT_DEPENDENCIES: ActestraCodingJourneyRuntimeDependencies = Object.freeze({
+  admitRunnerArtifact: admitGooseRunnerArtifact,
+});
+
+function nodeErrorCode(error: unknown): string | undefined {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "string"
+  ) {
+    return error.code;
+  }
+  return undefined;
+}
+
+function ownDataProperty(value: object, key: string): unknown | undefined {
+  const descriptor = Object.getOwnPropertyDescriptor(value, key);
+  return descriptor !== undefined && Object.prototype.hasOwnProperty.call(descriptor, "value")
+    ? descriptor.value
+    : undefined;
+}
+
+function snapshotModelBinding(
+  value: ActestraCodingModelBinding | null,
+): Readonly<ActestraCodingModelBinding> | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const keys = Reflect.ownKeys(value);
+  if (
+    keys.length !== 2 ||
+    keys.some((key) => typeof key !== "string" || !["modelId", "invokeModel"].includes(key))
+  ) {
+    return null;
+  }
+  const modelId = ownDataProperty(value, "modelId");
+  const invokeModel = ownDataProperty(value, "invokeModel");
+  if (
+    typeof modelId !== "string" ||
+    modelId.length < 1 ||
+    modelId.length > 256 ||
+    !MODEL_ID_PATTERN.test(modelId) ||
+    typeof invokeModel !== "function"
+  ) {
+    return null;
+  }
+  return Object.freeze({ modelId, invokeModel: invokeModel as ActestraMainModelInvoker });
+}
+
+function snapshotRunnerAdmission(
+  value: AionUiCodingRunnerAdmission | null,
+): Readonly<AionUiCodingRunnerAdmission> | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const keys = Reflect.ownKeys(value);
+  if (
+    keys.length !== 3 ||
+    keys.some(
+      (key) =>
+        typeof key !== "string" ||
+        !["directory", "trustedManifestSha256", "expectedTargetTriple"].includes(key),
+    )
+  ) {
+    return null;
+  }
+  const directory = ownDataProperty(value, "directory");
+  const trustedManifestSha256 = ownDataProperty(value, "trustedManifestSha256");
+  const expectedTargetTriple = ownDataProperty(value, "expectedTargetTriple");
+  if (
+    typeof directory !== "string" ||
+    !path.isAbsolute(directory) ||
+    path.resolve(directory) !== directory ||
+    path.parse(directory).root === directory ||
+    typeof trustedManifestSha256 !== "string" ||
+    !SHA256_PATTERN.test(trustedManifestSha256) ||
+    typeof expectedTargetTriple !== "string" ||
+    expectedTargetTriple.length > 128 ||
+    !TARGET_TRIPLE_PATTERN.test(expectedTargetTriple)
+  ) {
+    return null;
+  }
+  return Object.freeze({ directory, trustedManifestSha256, expectedTargetTriple });
+}
+
+export function resolveTrustedActestraCodingRunnerAdmission(
+  environment: NodeJS.ProcessEnv,
+): Readonly<AionUiCodingRunnerAdmission> | null {
+  const directory = environment.ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIRECTORY?.trim();
+  const trustedManifestSha256 = environment.ACTESTRA_GOOSE_RUNNER_MANIFEST_SHA256?.trim();
+  const expectedTargetTriple = environment.ACTESTRA_GOOSE_RUNNER_TARGET_TRIPLE?.trim();
+  if (!directory || !trustedManifestSha256 || !expectedTargetTriple) return null;
+  return snapshotRunnerAdmission({ directory, trustedManifestSha256, expectedTargetTriple });
+}
+
+async function canonicalUserDataPath(value: string): Promise<string | null> {
+  if (
+    typeof value !== "string" ||
+    !path.isAbsolute(value) ||
+    path.resolve(value) !== value ||
+    path.parse(value).root === value
+  ) {
+    return null;
+  }
+  const [metadata, canonical] = await Promise.all([lstat(value), realpath(value)]);
+  if (metadata.isSymbolicLink() || !metadata.isDirectory() || canonical !== value) return null;
+  return canonical;
+}
+
+function isInside(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return (
+    relative.length > 0 &&
+    relative !== ".." &&
+    !relative.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relative)
+  );
+}
+
+async function ensurePrivateRoot(userDataPath: string): Promise<string | null> {
+  const requested = path.join(userDataPath, "goose-private");
+  if (!isInside(userDataPath, requested)) return null;
+  try {
+    await mkdir(requested, { mode: 0o700 });
+  } catch (error) {
+    if (nodeErrorCode(error) !== "EEXIST") throw error;
+  }
+  const [metadata, canonical] = await Promise.all([lstat(requested), realpath(requested)]);
+  if (
+    metadata.isSymbolicLink() ||
+    !metadata.isDirectory() ||
+    canonical !== requested ||
+    !isInside(userDataPath, canonical)
+  ) {
+    return null;
+  }
+  await chmod(canonical, 0o700);
+  const secured = await lstat(canonical);
+  if (secured.isSymbolicLink() || !secured.isDirectory() || (secured.mode & 0o777) !== 0o700) {
+    return null;
+  }
+  return canonical;
+}
+
+async function hasCanonicalGitExecutable(): Promise<boolean> {
+  const [metadata, canonical] = await Promise.all([
+    lstat(GIT_EXECUTABLE),
+    realpath(GIT_EXECUTABLE),
+    access(GIT_EXECUTABLE, fsConstants.X_OK),
+  ]);
+  return metadata.isFile() && !metadata.isSymbolicLink() && canonical === GIT_EXECUTABLE;
+}
+
+function artifactMatchesAdmission(
+  artifact: AdmittedGooseRunnerArtifact,
+  admission: AionUiCodingRunnerAdmission,
+): boolean {
+  return (
+    typeof artifact === "object" &&
+    artifact !== null &&
+    artifact.manifestSha256 === admission.trustedManifestSha256 &&
+    artifact.targetTriple === admission.expectedTargetTriple
+  );
+}
+
+export async function startTrustedActestraCodingJourneyRuntime(
+  options: StartTrustedActestraCodingJourneyRuntimeOptions,
+  dependencies: ActestraCodingJourneyRuntimeDependencies = DEFAULT_DEPENDENCIES,
+): Promise<TrustedActestraCodingJourneyRuntime | null> {
+  try {
+    const modelBinding = snapshotModelBinding(options.modelBinding);
+    const runnerAdmission = snapshotRunnerAdmission(options.runnerAdmission);
+    if (modelBinding === null || runnerAdmission === null) return null;
+    const userDataPath = await canonicalUserDataPath(options.userDataPath);
+    if (userDataPath === null || !(await hasCanonicalGitExecutable())) return null;
+    const admittedArtifact = await dependencies.admitRunnerArtifact(runnerAdmission.directory, {
+      trustedManifestSha256: runnerAdmission.trustedManifestSha256,
+      expectedTargetTriple: runnerAdmission.expectedTargetTriple,
+    });
+    if (!artifactMatchesAdmission(admittedArtifact, runnerAdmission)) return null;
+    const privateRootParent = await ensurePrivateRoot(userDataPath);
+    if (privateRootParent === null) return null;
+    return Object.freeze({
+      runnerAdmission,
+      admittedArtifact,
+      privateRootParent,
+      modelId: modelBinding.modelId,
+      modelInvoker: modelBinding.invokeModel,
+      commands: COMMANDS,
+      tests: TESTS,
+    });
+  } catch {
+    return null;
+  }
+}

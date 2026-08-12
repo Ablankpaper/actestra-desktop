@@ -72,6 +72,8 @@ import {
   createCoreEventStreamState,
   eventStreamId,
   instant,
+  isArtifactDeliveryTransitionLegal,
+  normalizeArtifactDeliveryRecord,
   normalizeAdmittedTeamPlan,
   normalizeTeamDefinition,
   normalizeTeamExperienceBinding,
@@ -97,6 +99,8 @@ import {
   type AgentAttemptEvidence,
   type AppendPrivilegedAuditInput,
   type AuditRecord,
+  type ArtifactDeliveryRecord,
+  type ArtifactId,
   type ArtifactKind,
   type ArtifactState,
   type ContentReferenceKind,
@@ -108,6 +112,7 @@ import {
   type DomainGraph,
   type EventStreamId,
   type GeneralWorkCheckpoint,
+  type PersistArtifactDeliveryResult,
   type PersistGeneralWorkCheckpointResult,
   type PersistContentReferenceResult,
   type PersistAdmittedTeamPlanResult,
@@ -125,6 +130,7 @@ import {
   type ResolvedContentReference,
   type SessionState,
   type StoreContentReferenceInput,
+  type TaskId,
   type TaskState,
   type TeamDefinition,
   type TeamExperienceBinding,
@@ -190,6 +196,13 @@ const STANDARD_TEAM_MESSAGE_DELIVERY_COLUMNS = `
   target_slot_id, state, provider_enqueue_status, provider_message_id,
   provider_run_id, created_at, updated_at, delivery_json
 `;
+const ARTIFACT_DELIVERY_COLUMNS = `
+  artifact_id, contract_version, workspace_id, task_id, session_id, state,
+  patch_owner_grant_id, patch_owner_worker_id, patch_request_id,
+  destination_workspace_id, destination_grant_id, patch_reference, patch_sha256,
+  patch_byte_length, base_commit, changed_file_count, approval_id,
+  verified_head, failure_code, failure_message, created_at, updated_at
+`;
 const TEAM_RUN_COLUMNS = `
   run_id, team_id, plan_id, revision, status, updated_at,
   record_sha256, snapshot_json
@@ -198,7 +211,7 @@ const TEAM_RUN_REVISION_COLUMNS = `
   run_id, revision, occurred_at, record_sha256, snapshot_json
 `;
 const AIONUI_GENERAL_WORK_JOURNEY_COLUMNS = `
-  task_id, contract_version, conversation_hash, journey_kind, created_at
+  task_id, contract_version, conversation_hash, journey_kind, requirements_json, created_at
 `;
 const AIONUI_SCHEDULE_JOB_COLUMNS = `
   job_id, contract_version, conversation_hash, native_conversation_id,
@@ -635,6 +648,46 @@ function parseStoredStandardTeamMessageDelivery(row: SqliteRow): StandardTeamMes
   return delivery;
 }
 
+function parseStoredArtifactDelivery(row: SqliteRow): ArtifactDeliveryRecord {
+  const nullable = (field: string): string | null => {
+    const value = row[field];
+    if (value === null) return null;
+    return requiredString(row, field);
+  };
+  try {
+    return normalizeArtifactDeliveryRecord({
+      contractVersion: requiredNumber(row, "contract_version"),
+      artifactId: requiredString(row, "artifact_id"),
+      workspaceId: requiredString(row, "workspace_id"),
+      taskId: requiredString(row, "task_id"),
+      sessionId: nullable("session_id"),
+      state: requiredString(row, "state"),
+      patchOwnerGrantId: requiredString(row, "patch_owner_grant_id"),
+      patchOwnerWorkerId: nullable("patch_owner_worker_id"),
+      patchRequestId: nullable("patch_request_id"),
+      destinationGrantId: nullable("destination_grant_id"),
+      destinationWorkspaceId: nullable("destination_workspace_id"),
+      patchReference: requiredString(row, "patch_reference"),
+      patchSha256: requiredString(row, "patch_sha256"),
+      patchByteLength: requiredNumber(row, "patch_byte_length"),
+      baseCommit: requiredString(row, "base_commit"),
+      changedFileCount: requiredNumber(row, "changed_file_count"),
+      approvalId: nullable("approval_id"),
+      verifiedHead: nullable("verified_head"),
+      failureCode: nullable("failure_code"),
+      failureMessage: nullable("failure_message"),
+      createdAt: requiredString(row, "created_at"),
+      updatedAt: requiredString(row, "updated_at"),
+    });
+  } catch (error) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted Artifact delivery violates its contract",
+      { cause: error },
+    );
+  }
+}
+
 function parseStoredTeamRunHead(row: SqliteRow): TeamRunSnapshot {
   const encoded = requiredString(row, "snapshot_json");
   const digest = createHash("sha256").update(encoded).digest("hex");
@@ -752,11 +805,25 @@ function hasNonTerminalTeamRun(
 }
 
 function parseStoredAionUiGeneralWorkLink(row: SqliteRow): AionUiGeneralWorkLink {
+  const encodedRequirements = optionalString(row, "requirements_json");
+  let requirements: unknown;
+  if (encodedRequirements !== undefined) {
+    try {
+      requirements = JSON.parse(encodedRequirements);
+    } catch (error) {
+      throw new PersistenceError(
+        "corrupt-database",
+        "Persisted AionUI general-work requirements are not valid JSON",
+        { cause: error },
+      );
+    }
+  }
   const value: unknown = {
     contractVersion: requiredNumber(row, "contract_version"),
     conversationHash: requiredString(row, "conversation_hash"),
     taskId: requiredString(row, "task_id"),
     journeyKind: requiredString(row, "journey_kind"),
+    ...(requirements === undefined ? {} : { requirements }),
     createdAt: requiredString(row, "created_at"),
   };
   try {
@@ -1480,12 +1547,16 @@ export function resolveCoreDatabasePath(userDataPath: string): string {
   return path.join(userDataPath, STATE_DIRECTORY, CORE_DATABASE_FILENAME);
 }
 
+let persistenceInstanceCounter = 0;
+
 class SqliteCorePersistence implements ActestraPersistencePort {
   private database: DatabaseSync | null;
   private readonly streamStates = new Map<EventStreamId, CoreEventStreamState>();
+  private readonly instanceId: number;
 
   constructor(database: DatabaseSync) {
     this.database = database;
+    this.instanceId = ++persistenceInstanceCounter;
   }
 
   private requireDatabase(): DatabaseSync {
@@ -1668,18 +1739,104 @@ class SqliteCorePersistence implements ActestraPersistencePort {
     database.exec("PRAGMA defer_foreign_keys = ON");
 
     try {
-      database.exec(`
-        DELETE FROM approvals;
-        DELETE FROM artifacts;
-        DELETE FROM sessions;
-        DELETE FROM tasks;
-        DELETE FROM workers;
-        DELETE FROM workspaces;
-      `);
+      const nextArtifactIds = new Set(graph.artifacts.map((a) => a.id));
+
+      // Query artifacts that have delivery records - these must be preserved
+      const artifactsWithDeliveries = new Set(
+        (database.prepare("SELECT artifact_id FROM artifact_deliveries").all() as SqliteRow[]).map(
+          (row) => requiredString(row, "artifact_id"),
+        ),
+      );
+
+      // Query tasks, workspaces, AND sessions referenced by artifacts with deliveries
+      const entitiesToPreserve =
+        artifactsWithDeliveries.size > 0
+          ? (database
+              .prepare(`
+            SELECT DISTINCT task_id, workspace_id, session_id FROM artifacts
+            WHERE id IN (${Array.from(artifactsWithDeliveries)
+              .map(() => "?")
+              .join(",")})
+          `)
+              .all(...Array.from(artifactsWithDeliveries)) as SqliteRow[])
+          : [];
+
+      const tasksToPreserve = new Set(
+        entitiesToPreserve.map((row) => requiredString(row, "task_id")),
+      );
+      const workspacesToPreserve = new Set(
+        entitiesToPreserve.map((row) => requiredString(row, "workspace_id")),
+      );
+      const sessionsToPreserve = new Set(
+        entitiesToPreserve
+          .map((row) => optionalString(row, "session_id"))
+          .filter((id): id is string => id !== undefined),
+      );
+
+      // Delete entities, but preserve tasks, workspaces, and sessions that have artifacts with deliveries
+      database.exec("DELETE FROM approvals;");
+
+      if (sessionsToPreserve.size > 0) {
+        const deleteSession = database.prepare("DELETE FROM sessions WHERE id = ?");
+        const existingSessionIds = (
+          database.prepare("SELECT id FROM sessions").all() as SqliteRow[]
+        ).map((row) => requiredString(row, "id"));
+        for (const sessionId of existingSessionIds) {
+          if (!sessionsToPreserve.has(sessionId)) {
+            deleteSession.run(sessionId);
+          }
+        }
+      } else {
+        database.exec("DELETE FROM sessions;");
+      }
+
+      if (tasksToPreserve.size > 0) {
+        const deleteTask = database.prepare("DELETE FROM tasks WHERE id = ?");
+        const existingTaskIds = (database.prepare("SELECT id FROM tasks").all() as SqliteRow[]).map(
+          (row) => requiredString(row, "id"),
+        );
+        for (const taskId of existingTaskIds) {
+          if (!tasksToPreserve.has(taskId)) {
+            deleteTask.run(taskId);
+          }
+        }
+      } else {
+        database.exec("DELETE FROM tasks;");
+      }
+
+      database.exec("DELETE FROM workers;");
+
+      if (workspacesToPreserve.size > 0) {
+        const deleteWorkspace = database.prepare("DELETE FROM workspaces WHERE id = ?");
+        const existingWorkspaceIds = (
+          database.prepare("SELECT id FROM workspaces").all() as SqliteRow[]
+        ).map((row) => requiredString(row, "id"));
+        for (const workspaceId of existingWorkspaceIds) {
+          if (!workspacesToPreserve.has(workspaceId)) {
+            deleteWorkspace.run(workspaceId);
+          }
+        }
+      } else {
+        database.exec("DELETE FROM workspaces;");
+      }
+      const deleteArtifact = database.prepare("DELETE FROM artifacts WHERE id = ?");
+      const existingArtifactIds = (
+        database.prepare("SELECT id FROM artifacts").all() as SqliteRow[]
+      ).map((row) => artifactId(requiredString(row, "id")));
+      for (const existingId of existingArtifactIds) {
+        if (!nextArtifactIds.has(existingId) && !artifactsWithDeliveries.has(existingId)) {
+          deleteArtifact.run(existingId);
+        } else {
+        }
+      }
 
       const insertWorkspace = database.prepare(
         `INSERT INTO workspaces (id, name, state, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           name = excluded.name,
+           state = excluded.state,
+           updated_at = excluded.updated_at`,
       );
       for (const workspace of graph.workspaces) {
         insertWorkspace.run(
@@ -1710,7 +1867,12 @@ class SqliteCorePersistence implements ActestraPersistencePort {
       const insertTask = database.prepare(
         `INSERT INTO tasks (
            id, workspace_id, title, state, active_session_id, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, NULL, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, NULL, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           workspace_id = excluded.workspace_id,
+           title = excluded.title,
+           state = excluded.state,
+           updated_at = excluded.updated_at`,
       );
       for (const task of graph.tasks) {
         insertTask.run(
@@ -1726,7 +1888,13 @@ class SqliteCorePersistence implements ActestraPersistencePort {
       const insertSession = database.prepare(
         `INSERT INTO sessions (
            id, workspace_id, task_id, worker_id, state, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           workspace_id = excluded.workspace_id,
+           task_id = excluded.task_id,
+           worker_id = excluded.worker_id,
+           state = excluded.state,
+           updated_at = excluded.updated_at`,
       );
       for (const session of graph.sessions) {
         insertSession.run(
@@ -1772,7 +1940,16 @@ class SqliteCorePersistence implements ActestraPersistencePort {
       const insertArtifact = database.prepare(
         `INSERT INTO artifacts (
            id, workspace_id, task_id, session_id, kind, label, state, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           workspace_id = excluded.workspace_id,
+           task_id = excluded.task_id,
+           session_id = excluded.session_id,
+           kind = excluded.kind,
+           label = excluded.label,
+           state = excluded.state,
+           created_at = excluded.created_at,
+           updated_at = excluded.updated_at`,
       );
       for (const artifact of graph.artifacts) {
         insertArtifact.run(
@@ -2661,6 +2838,202 @@ class SqliteCorePersistence implements ActestraPersistencePort {
     );
   }
 
+  async persistArtifactDelivery(
+    deliveryValue: ArtifactDeliveryRecord,
+  ): Promise<PersistArtifactDeliveryResult> {
+    const database = this.requireDatabase();
+    let delivery: ArtifactDeliveryRecord;
+    try {
+      delivery = normalizeArtifactDeliveryRecord(JSON.parse(JSON.stringify(deliveryValue)));
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Artifact delivery record is invalid", {
+        cause: error,
+      });
+    }
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const artifactRow = database
+        .prepare(`SELECT workspace_id, task_id, session_id FROM artifacts WHERE id = ?`)
+        .get(delivery.artifactId) as SqliteRow | undefined;
+      if (artifactRow === undefined) {
+        throw new PersistenceError(
+          "domain-reference",
+          "An Artifact delivery requires its durable Artifact",
+        );
+      }
+      if (
+        requiredString(artifactRow, "workspace_id") !== delivery.workspaceId ||
+        requiredString(artifactRow, "task_id") !== delivery.taskId ||
+        (artifactRow.session_id === null ? null : requiredString(artifactRow, "session_id")) !==
+          delivery.sessionId
+      ) {
+        throw new PersistenceError(
+          "artifact-delivery-conflict",
+          "Artifact delivery ownership does not match the durable Artifact",
+        );
+      }
+      const existingRow = database
+        .prepare(
+          `SELECT ${ARTIFACT_DELIVERY_COLUMNS} FROM artifact_deliveries WHERE artifact_id = ?`,
+        )
+        .get(delivery.artifactId) as SqliteRow | undefined;
+      if (existingRow !== undefined) {
+        const existing = parseStoredArtifactDelivery(existingRow);
+        if (
+          existing.patchSha256 !== delivery.patchSha256 ||
+          existing.patchByteLength !== delivery.patchByteLength ||
+          existing.baseCommit !== delivery.baseCommit ||
+          existing.patchReference !== delivery.patchReference ||
+          existing.patchOwnerGrantId !== delivery.patchOwnerGrantId ||
+          existing.patchOwnerWorkerId !== delivery.patchOwnerWorkerId ||
+          existing.patchRequestId !== delivery.patchRequestId ||
+          existing.destinationWorkspaceId !== delivery.destinationWorkspaceId ||
+          existing.createdAt !== delivery.createdAt
+        ) {
+          throw new PersistenceError(
+            "artifact-delivery-conflict",
+            "Artifact delivery patch identity conflicts with durable authority",
+          );
+        }
+        // The destination grant authorizes the write into the user's own repository, so once it is
+        // recorded it can never be rebound to a different workspace.
+        if (
+          existing.destinationGrantId !== null &&
+          existing.destinationGrantId !== delivery.destinationGrantId
+        ) {
+          throw new PersistenceError(
+            "artifact-delivery-conflict",
+            "Artifact delivery destination grant cannot be rebound",
+          );
+        }
+        if (isDeepStrictEqual(existing, delivery)) {
+          database.exec("COMMIT");
+          return deepFreeze({ status: "duplicate", delivery: existing });
+        }
+        if (
+          !isArtifactDeliveryTransitionLegal(existing.state, delivery.state) ||
+          compareInstants(delivery.updatedAt, existing.updatedAt) < 0
+        ) {
+          throw new PersistenceError(
+            "artifact-delivery-conflict",
+            "Artifact delivery transition conflicts with durable authority",
+          );
+        }
+        database
+          .prepare(
+            `UPDATE artifact_deliveries
+             SET state = ?, changed_file_count = ?, destination_workspace_id = ?, destination_grant_id = ?, approval_id = ?,
+                 verified_head = ?, failure_code = ?, failure_message = ?, updated_at = ?
+             WHERE artifact_id = ?`,
+          )
+          .run(
+            delivery.state,
+            delivery.changedFileCount,
+            delivery.destinationWorkspaceId,
+            delivery.destinationGrantId,
+            delivery.approvalId,
+            delivery.verifiedHead,
+            delivery.failureCode,
+            delivery.failureMessage,
+            delivery.updatedAt,
+            delivery.artifactId,
+          );
+        database.exec("COMMIT");
+        return deepFreeze({ status: "stored", delivery });
+      }
+      if (delivery.state !== "pending") {
+        throw new PersistenceError(
+          "artifact-delivery-conflict",
+          "An Artifact delivery outcome has no pending delivery intent",
+        );
+      }
+      database
+        .prepare(
+          `INSERT INTO artifact_deliveries (
+             artifact_id, contract_version, workspace_id, task_id, session_id, state,
+             patch_owner_grant_id, patch_owner_worker_id, patch_request_id,
+             destination_workspace_id, destination_grant_id, patch_reference, patch_sha256,
+             patch_byte_length, base_commit, changed_file_count, approval_id,
+             verified_head, failure_code, failure_message, created_at, updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          delivery.artifactId,
+          delivery.contractVersion,
+          delivery.workspaceId,
+          delivery.taskId,
+          delivery.sessionId,
+          delivery.state,
+          delivery.patchOwnerGrantId,
+          delivery.patchOwnerWorkerId,
+          delivery.patchRequestId,
+          delivery.destinationWorkspaceId,
+          delivery.destinationGrantId,
+          delivery.patchReference,
+          delivery.patchSha256,
+          delivery.patchByteLength,
+          delivery.baseCommit,
+          delivery.changedFileCount,
+          delivery.approvalId,
+          delivery.verifiedHead,
+          delivery.failureCode,
+          delivery.failureMessage,
+          delivery.createdAt,
+          delivery.updatedAt,
+        );
+      database.exec("COMMIT");
+      return deepFreeze({ status: "stored", delivery });
+    } catch (error) {
+      rollback(database);
+      throw error;
+    }
+  }
+
+  async getArtifactDelivery(artifactIdValue: ArtifactId): Promise<ArtifactDeliveryRecord | null> {
+    const database = this.requireDatabase();
+    let identity: ArtifactId;
+    try {
+      identity = artifactId(String(artifactIdValue));
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Artifact delivery lookup is invalid", {
+        cause: error,
+      });
+    }
+    const row = database
+      .prepare(`SELECT ${ARTIFACT_DELIVERY_COLUMNS} FROM artifact_deliveries WHERE artifact_id = ?`)
+      .get(identity) as SqliteRow | undefined;
+    return row === undefined ? null : parseStoredArtifactDelivery(row);
+  }
+
+  async listArtifactDeliveriesForTask(
+    taskIdValue: TaskId,
+    limit: number,
+  ): Promise<readonly ArtifactDeliveryRecord[]> {
+    const database = this.requireDatabase();
+    assertTeamPersistenceLimit(limit, "Artifact delivery limit");
+    let identity: TaskId;
+    try {
+      identity = taskId(String(taskIdValue));
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Artifact delivery task lookup is invalid", {
+        cause: error,
+      });
+    }
+    return Object.freeze(
+      asRows(
+        database
+          .prepare(
+            `SELECT ${ARTIFACT_DELIVERY_COLUMNS}
+             FROM artifact_deliveries
+             WHERE task_id = ?
+             ORDER BY created_at, artifact_id
+             LIMIT ?`,
+          )
+          .all(identity, limit),
+      ).map(parseStoredArtifactDelivery),
+    );
+  }
+
   async persistTeamDefinition(teamValue: TeamDefinition): Promise<PersistTeamDefinitionResult> {
     const database = this.requireDatabase();
     let stableTeam: TeamDefinition;
@@ -3338,14 +3711,15 @@ class SqliteCorePersistence implements ActestraPersistencePort {
       database
         .prepare(
           `INSERT INTO aionui_general_work_journeys (
-             task_id, contract_version, conversation_hash, journey_kind, created_at
-           ) VALUES (?, ?, ?, ?, ?)`,
+             task_id, contract_version, conversation_hash, journey_kind, requirements_json, created_at
+           ) VALUES (?, ?, ?, ?, ?, ?)`,
         )
         .run(
           stable.link.taskId,
           stable.link.contractVersion,
           stable.link.conversationHash,
           stable.link.journeyKind,
+          stable.link.requirements === undefined ? null : JSON.stringify(stable.link.requirements),
           stable.link.createdAt,
         );
       verifyNoForeignKeyViolations(database);
@@ -3416,6 +3790,7 @@ class SqliteCorePersistence implements ActestraPersistencePort {
              journeys.contract_version,
              journeys.conversation_hash,
              journeys.journey_kind,
+             journeys.requirements_json,
              journeys.created_at
            FROM aionui_general_work_journeys AS journeys
            JOIN tasks ON tasks.id = journeys.task_id

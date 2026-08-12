@@ -18,9 +18,12 @@ with retention, compatibility, and rollback evidence while changing providers
 and authority behind compatible boundaries.
 
 The product composition is AionUi for the visible desktop experience, Actestra
-Core for state and authority, Goose for professional coding execution, CrewAI
-as the first supervised P6 orchestration candidate, and Eigent as the Team
-experience and acceptance reference.
+Core for state and authority, Goose for professional coding execution, the
+Actestra-native planner for the admitted P6 graph, a capability-gated
+local-Agent compatibility boundary as a separate provider evaluation, and
+Eigent as the Team experience and acceptance reference. Claude and Codex both
+remain admission-disabled until they have a pre-execution zero-tool and
+safe-credential boundary; CrewAI remains a separately gated later candidate.
 
 ## Target users
 
@@ -55,16 +58,31 @@ audit, and recovery boundaries.
 The user gives Actestra a complex goal. A leader creates a small dependency
 graph, assigns general or coding workers, exposes progress and approval nodes,
 and aggregates the result into one deliverable. Actestra owns the graph and
-execution state; a supervised CrewAI sidecar may propose plans, replans, and
-aggregations without receiving direct tool or product authority.
+execution state; an admitted supervised provider may propose plans, replans,
+and aggregations without receiving direct tool or product authority. The first
+evaluation is the local-Agent boundary under amended ADR-0015. Claude and Codex
+have no admitted planner, aggregation, or Goose capability until tools, hooks,
+network, credentials, and arbitrary reads are blocked before execution and a
+safe credential path is available. Real CrewAI requires separate admission.
+
+The current product startup does not ship, construct, probe, or invoke a local
+Claude/Codex planner provider. It uses the fixed Actestra-native planner and
+admits orchestrated execution only when Main can resolve the persisted
+provider/model selection plus both General and Goose Worker journeys. If any
+prerequisite is absent, Main projects that unavailability and its next action
+before task submission, and the AionUI page blocks the impossible intent
+without inventing readiness in the renderer. A non-shipped local-Agent provider
+prototype remains evaluation evidence only.
 
 The visible P6 journey is a real AionUI-native Team/group chat, not a hidden
-Core or provider feature. A user can create and list Teams, open `/team/:id`,
-configure members, roles, General and Goose, choose an Actestra-owned workspace,
-enter tasks and messages, inspect plan/node/Worker progress and dependencies,
-understand protected approval and every blocked or recovered state, use
-pause/cancel/retry/replace/handoff controls, and open Artifact references and
-the aggregated result. The page makes Actestra identity, authority source,
+Core or provider feature. The Team `+` asks the user to choose a standard Team
+or an Actestra orchestrated Team. Standard Teams retain the native AionUI
+assistant, member, model, workspace, chat, view, permission, scheduling, and
+sidebar experience. Orchestrated Teams use fixed General+Goose roles and the
+Actestra-owned plan, dependency, approval, control, Artifact, aggregation, and
+recovery surfaces. A user can create and list both types, open `/team/:id`,
+enter tasks and messages, and move between them without one experience
+replacing the other. The page makes Actestra identity, authority source,
 current executor, blocking reason, and next valid action explicit without
 exposing private Worker or audit data.
 
@@ -79,17 +97,12 @@ itself add a CrewAI process or make an admitted candidate executable.
 Executable Team state remains separate from that admitted plan. Schema 15 owns
 the Team definition, current run snapshot, and append-only revisions used for
 scheduling, controls, recovery, and result references. Schema 16 separately
-binds each Team identity exactly once to `standard` or `orchestrated`; Main
-binds native AionUI Teams as standard and schema-15 Actestra definitions as
-orchestrated, and fails closed on identity or type conflicts.
-
-Schema 17 separately persists metadata-only standard-Team message delivery
-intent before provider effect and records observed or uncertain outcomes. A
-bounded nonce and request digest permit replay only of an observed durable
-acknowledgement; content and attachment paths never enter that authority.
-The renderer receives one bounded Main/Core projection and never infers Team
-type or delivery state; neither the UI nor a planner sidecar may write or
-reinterpret canonical Team state directly.
+binds each Team identity exactly once to `standard` or `orchestrated`. Main
+migrates existing native AionUI Teams to `standard`, binds schema-15 Actestra
+Team definitions to `orchestrated`, and fails closed on conflicts. The renderer
+receives one bounded Main/Core projection and never infers Team type; neither
+the UI nor a planner sidecar may write or reinterpret canonical Team state
+directly.
 
 ## MVP capabilities
 
@@ -108,10 +121,12 @@ reinterpret canonical Team state directly.
   Team paths remain available and Goose receives no separate application UI.
 - Small team orchestration with a leader, dependencies, parallel workers,
   retries, pause, cancel, and user handoff.
-- One complete AionUI-native Team/group-chat journey covering creation, list,
-  `/team/:id`, member/role and General+Goose setup, workspace/task input,
-  messages, explainable plan/node/Worker state, dependencies, approvals,
-  controls, Artifacts, aggregation, and deterministic restart recovery.
+- One complete AionUI-native Team/group-chat journey with an explicit standard
+  versus orchestrated choice, retained native standard-Team capabilities, and
+  an Actestra orchestrated path covering creation, list, `/team/:id`,
+  member/role and General+Goose setup, workspace/task input, messages,
+  explainable plan/node/Worker state, dependencies, approvals, controls,
+  Artifacts, aggregation, and deterministic restart recovery.
 - A closed Actestra-owned plan-admission protocol that rejects expanded or
   over-budget candidates and maps accepted nodes to Actestra identities before
   they can become product state.
@@ -154,16 +169,16 @@ reinterpret canonical Team state directly.
 
 ## Safety baseline
 
-| Action | Default policy |
-| --- | --- |
-| Read within an approved workspace | Allowed and audited |
-| Create a new artifact in a task output area | Allowed and surfaced |
-| Modify existing user files | Confirmation required |
-| Delete or overwrite files | Confirmation required |
-| Execute shell commands | Scoped approval required |
-| Install software or change system settings | Explicit approval required |
-| Access credentials | Brokered; never exposed to the renderer or model text |
-| Send, publish, deploy, pay, or push | Confirmation for every material action |
+| Action                                      | Default policy                                        |
+| ------------------------------------------- | ----------------------------------------------------- |
+| Read within an approved workspace           | Allowed and audited                                   |
+| Create a new artifact in a task output area | Allowed and surfaced                                  |
+| Modify existing user files                  | Confirmation required                                 |
+| Delete or overwrite files                   | Confirmation required                                 |
+| Execute shell commands                      | Scoped approval required                              |
+| Install software or change system settings  | Explicit approval required                            |
+| Access credentials                          | Brokered; never exposed to the renderer or model text |
+| Send, publish, deploy, pay, or push         | Confirmation for every material action                |
 
 ## Internal-alpha success criteria
 

@@ -1,6 +1,10 @@
 import { assertAgentToolResult, type AgentToolResult } from "../core/agentAdapter";
 import { correlationId } from "../core/domain";
 import {
+  assertGeneralCapabilityRequest,
+  type GeneralCapabilityRequest,
+} from "../core/generalCapabilityAdmission";
+import {
   TASK_OUTPUT_WRITE_OFFICE_DOCUMENT_TOOL_ID,
   TASK_OUTPUT_WRITE_TEXT_TOOL_ID,
   parseScopedNativeToolInput,
@@ -8,14 +12,18 @@ import {
   type TaskOutputWriteTextInput,
 } from "../core/scopedNativeTools";
 
-export const GENERAL_WORKER_PROTOCOL_VERSION = 1 as const;
-export const GENERAL_WORKER_IMPLEMENTATION_VERSION = "0.1.0" as const;
+export const GENERAL_WORKER_PROTOCOL_VERSION = 2 as const;
+export const GENERAL_WORKER_IMPLEMENTATION_VERSION = "0.2.0" as const;
 export const GENERAL_WORKER_ROLE = "general-worker" as const;
-export const GENERAL_WORKER_CAPABILITIES = [
+export const GENERAL_WORKER_AGENT_CAPABILITIES = [
   "messages",
   "cancellation",
   "heartbeats",
   "tool-results",
+] as const;
+export const GENERAL_WORKER_CAPABILITIES = [
+  ...GENERAL_WORKER_AGENT_CAPABILITIES,
+  "model-requests",
 ] as const;
 export const GENERAL_WORKER_EXECUTION_MODES = [
   "no-tool-complete",
@@ -27,11 +35,13 @@ export const GENERAL_WORKER_EXECUTION_MODES = [
   "local-research-artifact-fixture",
   "writing-artifact-fixture",
   "office-document-artifact-fixture",
+  "model-writing-artifact",
 ] as const;
 export const MAX_GENERAL_WORKER_MESSAGE_BYTES = 256 * 1024;
 export const MAX_GENERAL_WORKER_PROMPT_BYTES = 64 * 1024;
 export const MAX_GENERAL_WORKER_SEND_CONTENT_BYTES = 64 * 1024;
 export const MAX_GENERAL_WORKER_PRIVATE_TOOL_INPUT_BYTES = 128 * 1024;
+export const MAX_GENERAL_WORKER_MODEL_OUTPUT_BYTES = 96 * 1024;
 
 export type GeneralWorkerCapability = (typeof GENERAL_WORKER_CAPABILITIES)[number];
 export type GeneralWorkerExecutionMode = (typeof GENERAL_WORKER_EXECUTION_MODES)[number];
@@ -39,6 +49,7 @@ export type GeneralWorkerOperation =
   | "start"
   | "send"
   | "resolve-tool"
+  | "resolve-model"
   | "cancel"
   | "dispose"
   | "close";
@@ -48,6 +59,22 @@ export type GeneralWorkerErrorCode =
   | "unknown-attempt"
   | "duplicate-attempt"
   | "unsupported-operation";
+export type GeneralWorkerModelErrorCode =
+  | "model-unavailable"
+  | "model-timeout"
+  | "model-invalid-result"
+  /** The provider answered without a usable completion, which is distinct from being unreachable. */
+  | "model-completion-refused";
+export type GeneralWorkerModelResult =
+  | Readonly<{
+      readonly status: "succeeded";
+      readonly content: string;
+    }>
+  | Readonly<{
+      readonly status: "failed";
+      readonly errorCode: GeneralWorkerModelErrorCode;
+      readonly message: string;
+    }>;
 
 export interface GeneralWorkerReadyMessage {
   readonly protocolVersion: typeof GENERAL_WORKER_PROTOCOL_VERSION;
@@ -73,6 +100,11 @@ export type GeneralWorkerRequest =
         readonly prompt: string;
         readonly entryState: "ready" | "blocked";
         readonly executionMode: GeneralWorkerExecutionMode;
+        /**
+         * Structured requirements the Planner recorded, used for pre-execution admission. Absent for
+         * a plain text turn; never derived from the prompt wording.
+         */
+        readonly requirements?: GeneralCapabilityRequest;
       };
     })
   | (GeneralWorkerRequestBase<"send"> & {
@@ -86,6 +118,13 @@ export type GeneralWorkerRequest =
         readonly attemptToken: string;
         readonly callId: string;
         readonly result: AgentToolResult;
+      };
+    })
+  | (GeneralWorkerRequestBase<"resolve-model"> & {
+      readonly payload: {
+        readonly attemptToken: string;
+        readonly callId: string;
+        readonly result: GeneralWorkerModelResult;
       };
     })
   | (GeneralWorkerRequestBase<"cancel"> & {
@@ -126,6 +165,11 @@ export type GeneralWorkerEventPayload =
       readonly type: "tool-result-accepted";
       readonly callId: string;
       readonly status: AgentToolResult["status"];
+    }
+  | {
+      readonly type: "model-requested";
+      readonly callId: string;
+      readonly prompt: string;
     }
   | {
       readonly type: "resumed";
@@ -189,6 +233,7 @@ const OPERATIONS: readonly GeneralWorkerOperation[] = [
   "start",
   "send",
   "resolve-tool",
+  "resolve-model",
   "cancel",
   "dispose",
   "close",
@@ -200,12 +245,19 @@ const ERROR_CODES: readonly GeneralWorkerErrorCode[] = [
   "duplicate-attempt",
   "unsupported-operation",
 ];
+const MODEL_ERROR_CODES: readonly GeneralWorkerModelErrorCode[] = [
+  "model-unavailable",
+  "model-timeout",
+  "model-invalid-result",
+  "model-completion-refused",
+];
 const EVENT_TYPES: readonly GeneralWorkerEventPayload["type"][] = [
   "started",
   "heartbeat",
   "message",
   "tool-requested",
   "tool-result-accepted",
+  "model-requested",
   "resumed",
   "completed",
   "failed",
@@ -316,7 +368,7 @@ export function assertGeneralWorkerRequest(value: unknown): asserts value is Gen
     case "start":
       assertExactKeys(
         value.payload,
-        ["attemptToken", "prompt", "entryState", "executionMode"],
+        ["attemptToken", "prompt", "entryState", "executionMode", "requirements"],
         "General Worker start payload",
       );
       assertIdentifier(value.payload.attemptToken, "General Worker start.attemptToken");
@@ -334,6 +386,9 @@ export function assertGeneralWorkerRequest(value: unknown): asserts value is Gen
         )
       ) {
         throw new Error("General Worker start.executionMode is unsupported");
+      }
+      if (value.payload.requirements !== undefined) {
+        assertGeneralCapabilityRequest(value.payload.requirements);
       }
       return;
     case "send":
@@ -353,6 +408,40 @@ export function assertGeneralWorkerRequest(value: unknown): asserts value is Gen
       assertIdentifier(value.payload.attemptToken, "General Worker resolve-tool.attemptToken");
       assertIdentifier(value.payload.callId, "General Worker resolve-tool.callId");
       assertAgentToolResult(value.payload.result);
+      return;
+    case "resolve-model":
+      assertExactKeys(
+        value.payload,
+        ["attemptToken", "callId", "result"],
+        "General Worker resolve-model payload",
+      );
+      assertIdentifier(value.payload.attemptToken, "General Worker resolve-model.attemptToken");
+      assertIdentifier(value.payload.callId, "General Worker resolve-model.callId");
+      assertRecord(value.payload.result, "General Worker resolve-model.result");
+      if (value.payload.result.status === "succeeded") {
+        assertExactKeys(value.payload.result, ["status", "content"], "General Worker model result");
+        assertString(value.payload.result.content, "General Worker model result.content", {
+          maximumBytes: MAX_GENERAL_WORKER_MODEL_OUTPUT_BYTES,
+        });
+        return;
+      }
+      if (value.payload.result.status !== "failed") {
+        throw new Error("General Worker model result.status is unsupported");
+      }
+      assertExactKeys(
+        value.payload.result,
+        ["status", "errorCode", "message"],
+        "General Worker model result",
+      );
+      if (
+        typeof value.payload.result.errorCode !== "string" ||
+        !MODEL_ERROR_CODES.includes(value.payload.result.errorCode as GeneralWorkerModelErrorCode)
+      ) {
+        throw new Error("General Worker model result.errorCode is unsupported");
+      }
+      assertString(value.payload.result.message, "General Worker model result.message", {
+        maximumBytes: 4 * 1024,
+      });
       return;
     case "cancel":
       assertExactKeys(value.payload, ["attemptToken", "reason"], "General Worker cancel payload");
@@ -447,6 +536,13 @@ function assertEventPayload(value: unknown): asserts value is GeneralWorkerEvent
       ) {
         throw new Error("General Worker tool-result-accepted.status is unsupported");
       }
+      return;
+    case "model-requested":
+      assertExactKeys(value, ["type", "callId", "prompt"], "General Worker model-requested event");
+      assertIdentifier(value.callId, "General Worker model-requested.callId");
+      assertString(value.prompt, "General Worker model-requested.prompt", {
+        maximumBytes: MAX_GENERAL_WORKER_PROMPT_BYTES,
+      });
       return;
     case "failed":
       assertExactKeys(value, ["type", "errorCode", "message"], "General Worker failed event");

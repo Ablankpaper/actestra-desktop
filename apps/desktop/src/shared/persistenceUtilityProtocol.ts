@@ -46,6 +46,7 @@ import {
   type StoredAionUiShadowEvidence,
 } from "../compatibility/aionui";
 import {
+  ARTIFACT_WORKSPACE_APPLICATOR_ERROR_CODES,
   CORE_CONTRACT_ERROR_CODES,
   PERSISTENCE_ERROR_CODES,
   assertAgentAttemptEvidence,
@@ -61,6 +62,7 @@ import {
   assertPersistAdmittedTeamPlanResult,
   assertPersistTeamExperienceBindingResult,
   assertStandardTeamMessageDelivery,
+  assertArtifactDeliveryRecord,
   assertPersistTeamDefinitionResult,
   assertPersistTeamRunSnapshotResult,
   assertRemoveTeamDefinitionResult,
@@ -86,6 +88,7 @@ import {
   type AdmittedTeamPlan,
   type AgentAttemptEvidence,
   type AppendPrivilegedAuditInput,
+  type ArtifactWorkspaceApplicatorErrorCode,
   type AuditRecord,
   type CoreContractErrorCode,
   type CoreEvent,
@@ -99,6 +102,8 @@ import {
   type PersistTeamDefinitionResult,
   type PersistTeamExperienceBindingResult,
   type PersistStandardTeamMessageDeliveryResult,
+  type PersistArtifactDeliveryResult,
+  type ArtifactDeliveryRecord,
   type PersistTeamRunSnapshotResult,
   type RemoveTeamDefinitionResult,
   type ReplaceTeamDefinitionResult,
@@ -324,6 +329,47 @@ export interface PersistenceUtilityOperationMap {
     };
     readonly result: readonly StandardTeamMessageDelivery[];
   };
+  readonly "persist-artifact-delivery": {
+    readonly request: {
+      readonly delivery: ArtifactDeliveryRecord;
+    };
+    readonly result: PersistArtifactDeliveryResult;
+  };
+  readonly "get-artifact-delivery": {
+    readonly request: {
+      readonly artifactId: string;
+    };
+    readonly result: ArtifactDeliveryRecord | null;
+  };
+  readonly "list-artifact-deliveries-for-task": {
+    readonly request: {
+      readonly taskId: string;
+      readonly limit: number;
+    };
+    readonly result: readonly ArtifactDeliveryRecord[];
+  };
+  readonly "get-artifact-patch-preview": {
+    readonly request: {
+      readonly artifactId: string;
+    };
+    readonly result: string;
+  };
+  readonly "get-artifact-patch-content": {
+    readonly request: {
+      readonly artifactId: string;
+    };
+    readonly result: string;
+  };
+  readonly "apply-artifact-to-workspace": {
+    readonly request: {
+      readonly artifactId: string;
+      readonly workspaceRoot: string;
+      readonly gitDirectory: string;
+    };
+    readonly result: {
+      readonly verifiedHead: string;
+    };
+  };
   readonly "persist-team-definition": {
     readonly request: {
       readonly team: TeamDefinition;
@@ -490,6 +536,12 @@ export const PERSISTENCE_UTILITY_OPERATIONS = [
   "persist-standard-team-message-delivery",
   "get-standard-team-message-delivery",
   "list-unresolved-standard-team-message-deliveries",
+  "persist-artifact-delivery",
+  "get-artifact-delivery",
+  "list-artifact-deliveries-for-task",
+  "get-artifact-patch-preview",
+  "get-artifact-patch-content",
+  "apply-artifact-to-workspace",
   "persist-team-definition",
   "get-team-definition",
   "list-team-definitions",
@@ -539,6 +591,11 @@ export type PersistenceUtilityErrorData =
   | {
       readonly domain: "utility";
       readonly code: "already-open" | "not-open" | "operation-failed";
+      readonly message: string;
+    }
+  | {
+      readonly domain: "artifact-applicator";
+      readonly code: ArtifactWorkspaceApplicatorErrorCode;
       readonly message: string;
     };
 
@@ -791,6 +848,17 @@ function assertErrorData(value: unknown): asserts value is PersistenceUtilityErr
     if (
       typeof value.code !== "string" ||
       !CORE_CONTRACT_ERROR_CODES.includes(value.code as CoreContractErrorCode)
+    ) {
+      throw new PersistenceUtilityProtocolError("Persistence utility error.code is invalid");
+    }
+    return;
+  }
+  if (value.domain === "artifact-applicator") {
+    if (
+      typeof value.code !== "string" ||
+      !ARTIFACT_WORKSPACE_APPLICATOR_ERROR_CODES.includes(
+        value.code as ArtifactWorkspaceApplicatorErrorCode,
+      )
     ) {
       throw new PersistenceUtilityProtocolError("Persistence utility error.code is invalid");
     }
@@ -1080,6 +1148,76 @@ function assertRequestPayload(request: PersistenceUtilityRequest): void {
         TEAM_PERSISTENCE_MAX_RECORDS,
         "list-unresolved-standard-team-message-deliveries limit",
       );
+      return;
+    case "persist-artifact-delivery":
+      assertRecord(payload, "persist-artifact-delivery request");
+      assertExactKeys(payload, ["delivery"], "persist-artifact-delivery request");
+      assertTeamProtocolValue(
+        () => assertArtifactDeliveryRecord(payload.delivery),
+        "persist-artifact-delivery delivery",
+      );
+      return;
+    case "get-artifact-delivery":
+      assertRecord(payload, "get-artifact-delivery request");
+      assertExactKeys(payload, ["artifactId"], "get-artifact-delivery request");
+      if (typeof payload.artifactId !== "string" || payload.artifactId.length === 0) {
+        throw new PersistenceUtilityProtocolError("get-artifact-delivery artifactId is invalid");
+      }
+      return;
+    case "list-artifact-deliveries-for-task":
+      assertRecord(payload, "list-artifact-deliveries-for-task request");
+      assertExactKeys(payload, ["taskId", "limit"], "list-artifact-deliveries-for-task request");
+      if (typeof payload.taskId !== "string" || payload.taskId.length === 0) {
+        throw new PersistenceUtilityProtocolError(
+          "list-artifact-deliveries-for-task taskId is invalid",
+        );
+      }
+      assertBoundedLimit(
+        payload.limit,
+        TEAM_PERSISTENCE_MAX_RECORDS,
+        "list-artifact-deliveries-for-task limit",
+      );
+      return;
+    case "get-artifact-patch-preview":
+      assertRecord(payload, "get-artifact-patch-preview request");
+      assertExactKeys(payload, ["artifactId"], "get-artifact-patch-preview request");
+      if (typeof payload.artifactId !== "string" || payload.artifactId.length === 0) {
+        throw new PersistenceUtilityProtocolError(
+          "get-artifact-patch-preview artifactId is invalid",
+        );
+      }
+      return;
+    case "get-artifact-patch-content":
+      assertRecord(payload, "get-artifact-patch-content request");
+      assertExactKeys(payload, ["artifactId"], "get-artifact-patch-content request");
+      if (typeof payload.artifactId !== "string" || payload.artifactId.length === 0) {
+        throw new PersistenceUtilityProtocolError(
+          "get-artifact-patch-content artifactId is invalid",
+        );
+      }
+      return;
+    case "apply-artifact-to-workspace":
+      assertRecord(payload, "apply-artifact-to-workspace request");
+      assertExactKeys(
+        payload,
+        ["artifactId", "workspaceRoot", "gitDirectory"],
+        "apply-artifact-to-workspace request",
+      );
+      if (typeof payload.artifactId !== "string" || payload.artifactId.length === 0) {
+        throw new PersistenceUtilityProtocolError(
+          "apply-artifact-to-workspace artifactId is invalid",
+        );
+      }
+      if (typeof payload.workspaceRoot !== "string" || payload.workspaceRoot.length === 0) {
+        throw new PersistenceUtilityProtocolError(
+          "apply-artifact-to-workspace workspaceRoot is invalid",
+        );
+      }
+      if (typeof payload.gitDirectory !== "string" || payload.gitDirectory.length === 0) {
+        throw new PersistenceUtilityProtocolError(
+          "apply-artifact-to-workspace gitDirectory is invalid",
+        );
+      }
       return;
     case "persist-team-definition":
       assertRecord(payload, "persist-team-definition request");
@@ -1448,6 +1586,38 @@ function assertSuccessResult(operation: PersistenceUtilityOperation, result: unk
         ),
       );
       return;
+    case "persist-artifact-delivery":
+      assertRecord(result, "persist-artifact-delivery result");
+      assertExactKeys(result, ["status", "delivery"], "persist-artifact-delivery result");
+      if (result.status !== "stored" && result.status !== "unchanged") {
+        throw new PersistenceUtilityProtocolError("persist-artifact-delivery status is invalid");
+      }
+      assertTeamProtocolValue(
+        () => assertArtifactDeliveryRecord(result.delivery),
+        "persist-artifact-delivery result",
+      );
+      return;
+    case "get-artifact-delivery":
+      if (result !== null) {
+        assertTeamProtocolValue(
+          () => assertArtifactDeliveryRecord(result),
+          "get-artifact-delivery result",
+        );
+      }
+      return;
+    case "list-artifact-deliveries-for-task":
+      if (!Array.isArray(result) || result.length > TEAM_PERSISTENCE_MAX_RECORDS) {
+        throw new PersistenceUtilityProtocolError(
+          "list-artifact-deliveries-for-task result is invalid",
+        );
+      }
+      result.forEach((delivery) =>
+        assertTeamProtocolValue(
+          () => assertArtifactDeliveryRecord(delivery),
+          "list-artifact-deliveries-for-task result",
+        ),
+      );
+      return;
     case "persist-team-definition":
       assertTeamProtocolValue(
         () => assertPersistTeamDefinitionResult(result),
@@ -1563,6 +1733,17 @@ function assertSuccessResult(operation: PersistenceUtilityOperation, result: unk
         () => assertAionUiScheduleCompletionResult(result),
         "complete-aionui-schedule-run result",
       );
+      return;
+    case "get-artifact-patch-preview":
+    case "get-artifact-patch-content":
+      if (typeof result !== "string") {
+        throw new Error(`${operation} result must be a string`);
+      }
+      return;
+    case "apply-artifact-to-workspace":
+      if (!isRecord(result) || typeof result.verifiedHead !== "string") {
+        throw new Error("apply-artifact-to-workspace result must have verifiedHead string");
+      }
       return;
     default:
       assertNeverOperation(operation);

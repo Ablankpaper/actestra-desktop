@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   AGENT_ADAPTER_PROTOCOL_VERSION,
   AgentAdapterError,
+  GENERAL_DRAFT_REPAIR_ATTEMPT_LIMIT,
   REQUIRED_REDACTION_BY_EVENT_TYPE,
   advanceCoreEventStreamState,
   assertAgentInput,
@@ -11,6 +12,7 @@ import {
   createCoreEventStreamState,
   eventId,
   instant,
+  isGeneralDraftRepairInstruction,
   toolRequestId,
   type AgentAdapter,
   type AgentApprovalDecision,
@@ -26,6 +28,7 @@ import {
   type CoreEventType,
   type EventId,
   type EventPayloadByType,
+  type GeneralCapabilityRequest,
   type Instant,
   type SessionId,
   type TaskState,
@@ -33,17 +36,22 @@ import {
   type UnsubscribeAgentSignals,
 } from "../../core";
 import {
-  GENERAL_WORKER_CAPABILITIES,
+  GENERAL_WORKER_AGENT_CAPABILITIES,
   GENERAL_WORKER_PROTOCOL_VERSION,
   assertGeneralWorkerMessage,
   assertGeneralWorkerRequest,
   type GeneralWorkerEventMessage,
   type GeneralWorkerExecutionMode,
+  type GeneralWorkerModelErrorCode,
   type GeneralWorkerOperation,
   type GeneralWorkerRequest,
   type GeneralWorkerResponse,
   type GeneralWorkerEventPayload,
 } from "../../shared/generalWorkerProtocol";
+import {
+  ActestraGeneralWorkModelError,
+  type TrustedActestraGeneralWorkRuntime,
+} from "./actestraGeneralWorkRuntime";
 
 export type GeneralWorkerProcessErrorCode =
   | "startup-timeout"
@@ -73,7 +81,14 @@ export interface GeneralWorkerProcessTransport {
 export interface GeneralWorkerProcessAdapterOptions {
   readonly startupTimeoutMs?: number;
   readonly requestTimeoutMs?: number;
+  readonly modelTimeoutMs?: number;
   readonly executionMode?: GeneralWorkerExecutionMode;
+  /**
+   * Structured requirements from the Planner. The Worker admits the attempt against these before it
+   * invokes a model, so an unmet requirement costs no provider call.
+   */
+  readonly requirements?: GeneralCapabilityRequest;
+  readonly modelRuntime?: TrustedActestraGeneralWorkRuntime;
   readonly newAttemptToken?: () => string;
   readonly newToolRequestId?: () => ToolRequestId;
   readonly newEventId?: () => EventId;
@@ -93,6 +108,25 @@ interface PendingToolCall {
   resolution?: AgentToolResult;
 }
 
+type ModelResult = Extract<
+  GeneralWorkerRequest,
+  { operation: "resolve-model" }
+>["payload"]["result"];
+
+interface PendingModelCall {
+  readonly callId: string;
+  readonly controller: AbortController;
+  readonly releasePromise: Promise<void>;
+  readonly release: () => void;
+  readonly rejectRelease: (error: Error) => void;
+  readonly completionPromise: Promise<void>;
+  readonly complete: () => void;
+  timeout?: ReturnType<typeof setTimeout>;
+  result?: ModelResult;
+}
+
+type ModelPhase = "idle" | "pending" | "consumed" | "resolved" | "aborted";
+
 interface ProcessAttempt {
   readonly request: AgentStartRequest;
   readonly attemptToken: string;
@@ -101,6 +135,11 @@ interface ProcessAttempt {
   coreState: CoreEventStreamState;
   readonly eventIds: Set<EventId>;
   pendingTool?: PendingToolCall;
+  pendingModel?: PendingModelCall;
+  modelAdmissionReleased: boolean;
+  modelPhase: ModelPhase;
+  /** Counts bounded repairs already granted, so spec C's limit holds across the whole attempt. */
+  modelRepairsSpent: number;
   acceptedToolResult?: AgentToolResult;
   terminal: boolean;
   disposed: boolean;
@@ -108,12 +147,13 @@ interface ProcessAttempt {
 
 const DEFAULT_STARTUP_TIMEOUT_MS = 10_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
+const DEFAULT_MODEL_TIMEOUT_MS = 60_000;
 const ADAPTER_KIND = "actestra.general-worker";
 
 const CAPABILITIES = Object.freeze({
   protocolVersion: AGENT_ADAPTER_PROTOCOL_VERSION,
   adapterKind: ADAPTER_KIND,
-  capabilities: Object.freeze([...GENERAL_WORKER_CAPABILITIES]),
+  capabilities: Object.freeze([...GENERAL_WORKER_AGENT_CAPABILITIES]),
   maxConcurrentSessions: 1,
   heartbeatIntervalMs: 1_000,
 }) satisfies AgentCapabilities;
@@ -139,6 +179,32 @@ function assertPositiveDuration(value: number, label: string): void {
   }
 }
 
+/**
+ * Maps a model failure onto the protocol code it carries, defaulting to unavailable for anything the
+ * runtime did not classify. The error's own type decides this, never its message text.
+ */
+function modelFailureResult(error: unknown): {
+  readonly status: "failed";
+  readonly errorCode: GeneralWorkerModelErrorCode;
+  readonly message: string;
+} {
+  if (error instanceof ActestraGeneralWorkModelError) {
+    return Object.freeze({
+      status: "failed" as const,
+      errorCode: error.code,
+      message:
+        error.code === "model-completion-refused"
+          ? "The admitted model returned no usable completion."
+          : "The admitted model is unavailable.",
+    });
+  }
+  return Object.freeze({
+    status: "failed" as const,
+    errorCode: "model-unavailable" as const,
+    message: "The admitted model is unavailable.",
+  });
+}
+
 export class GeneralWorkerProcessAdapter implements AgentAdapter {
   private readonly pending = new Map<string, PendingRequest>();
   private readonly subscribers = new Map<SessionId, Set<AgentSignalHandler>>();
@@ -146,7 +212,10 @@ export class GeneralWorkerProcessAdapter implements AgentAdapter {
   private readonly attemptsByToken = new Map<string, ProcessAttempt>();
   private readonly startupTimeoutMs: number;
   private readonly requestTimeoutMs: number;
+  private readonly modelTimeoutMs: number;
   private readonly executionMode: GeneralWorkerExecutionMode;
+  private readonly requirements: GeneralCapabilityRequest | undefined;
+  private readonly modelRuntime: TrustedActestraGeneralWorkRuntime | undefined;
   private readonly newAttemptToken: () => string;
   private readonly newToolRequestId: () => ToolRequestId;
   private readonly newEventId: () => EventId;
@@ -172,12 +241,22 @@ export class GeneralWorkerProcessAdapter implements AgentAdapter {
   ) {
     this.startupTimeoutMs = options.startupTimeoutMs ?? DEFAULT_STARTUP_TIMEOUT_MS;
     this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    this.modelTimeoutMs = options.modelTimeoutMs ?? DEFAULT_MODEL_TIMEOUT_MS;
     this.executionMode = options.executionMode ?? "no-tool-complete";
+    this.requirements = options.requirements;
+    this.modelRuntime = options.modelRuntime;
     this.newAttemptToken = options.newAttemptToken ?? defaultAttemptToken;
     this.newToolRequestId = options.newToolRequestId ?? defaultToolRequestId;
     this.newEventId = options.newEventId ?? defaultEventId;
     assertPositiveDuration(this.startupTimeoutMs, "General Worker startup timeout");
     assertPositiveDuration(this.requestTimeoutMs, "General Worker request timeout");
+    assertPositiveDuration(this.modelTimeoutMs, "General Worker model timeout");
+    if ((this.executionMode === "model-writing-artifact") !== (this.modelRuntime !== undefined)) {
+      throw new GeneralWorkerProcessError(
+        "operation-failed",
+        "General Worker model execution requires one admitted Main model runtime",
+      );
+    }
     instant(this.clock.now());
 
     this.startup = new Promise<void>((resolve, reject) => {
@@ -251,6 +330,9 @@ export class GeneralWorkerProcessAdapter implements AgentAdapter {
       nextControlSequence: 1,
       coreState: createCoreEventStreamState([]),
       eventIds: new Set(),
+      modelAdmissionReleased: false,
+      modelPhase: "idle",
+      modelRepairsSpent: 0,
       terminal: false,
       disposed: false,
     };
@@ -269,8 +351,12 @@ export class GeneralWorkerProcessAdapter implements AgentAdapter {
         prompt: request.initialPrompt,
         entryState: request.taskState,
         executionMode: this.executionMode,
+        ...(this.requirements === undefined ? {} : { requirements: this.requirements }),
       });
     } catch (error) {
+      attempt.disposed = true;
+      attempt.pendingTool = undefined;
+      this.abortPendingModel(attempt);
       this.attempts.delete(request.sessionId);
       this.attemptsByToken.delete(attemptToken);
       throw error;
@@ -326,10 +412,47 @@ export class GeneralWorkerProcessAdapter implements AgentAdapter {
         `General Worker session ${session} cannot receive input`,
       );
     }
+    if (attempt.pendingModel !== undefined) {
+      throw new AgentAdapterError(
+        "invalid-state",
+        `General Worker session ${session} is waiting for its Main model result`,
+      );
+    }
     await this.invoke("send", {
       attemptToken: attempt.attemptToken,
       content: input.content,
     });
+  }
+
+  /**
+   * Releases one pending model request after Main has persisted the attempt
+   * checkpoint. This is intentionally a concrete Main-side lifecycle port;
+   * it is not part of the external AgentAdapter worker contract.
+   */
+  async releaseModel(session: SessionId): Promise<void> {
+    this.assertAvailable();
+    const attempt = this.requireAttempt(session);
+    if (this.executionMode !== "model-writing-artifact") {
+      return;
+    }
+    if (attempt.terminal || attempt.disposed) {
+      throw new AgentAdapterError(
+        "invalid-state",
+        `General Worker session ${session} cannot release a terminal model request`,
+      );
+    }
+    attempt.modelAdmissionReleased = true;
+    // The Worker may ask for its one bounded repair inside the reply to the first result, so the model
+    // effect is not spent until no call is outstanding. Returning after the first call alone would
+    // hand the journey an attempt still mid-flight, which then has no tool request to act on. The
+    // repair budget bounds this at two turns, and an unchanged pending call ends the wait.
+    for (;;) {
+      const pendingModel = attempt.pendingModel;
+      if (pendingModel === undefined) return;
+      pendingModel.release();
+      await pendingModel.completionPromise;
+      if (attempt.pendingModel === pendingModel) return;
+    }
   }
 
   async approve(_requestId: ToolRequestId, _decision: AgentApprovalDecision): Promise<void> {
@@ -395,6 +518,7 @@ export class GeneralWorkerProcessAdapter implements AgentAdapter {
     if (attempt.terminal || attempt.disposed) {
       return;
     }
+    this.abortPendingModel(attempt);
     await this.invoke("cancel", {
       attemptToken: attempt.attemptToken,
       ...(reason === undefined ? {} : { reason }),
@@ -428,6 +552,7 @@ export class GeneralWorkerProcessAdapter implements AgentAdapter {
     }
     attempt.disposed = true;
     attempt.pendingTool = undefined;
+    this.abortPendingModel(attempt);
     if (!this.failed && !this.closed) {
       await this.invoke("dispose", {
         attemptToken: attempt.attemptToken,
@@ -453,6 +578,9 @@ export class GeneralWorkerProcessAdapter implements AgentAdapter {
       return;
     }
     this.closing = true;
+    for (const attempt of this.attempts.values()) {
+      this.abortPendingModel(attempt);
+    }
     if (!this.failed) {
       await this.invoke("close", {}).catch((): undefined => undefined);
     }
@@ -646,6 +774,12 @@ export class GeneralWorkerProcessAdapter implements AgentAdapter {
         return;
       case "message":
         this.requireTaskState(attempt, "running");
+        if (attempt.modelPhase === "pending") {
+          return this.protocolStateFailure(
+            attempt,
+            "General Worker emitted a message while its Main model request was pending",
+          );
+        }
         this.emitCoreEvent(attempt, "agent.message", {
           role: event.role,
           content: event.content,
@@ -653,7 +787,7 @@ export class GeneralWorkerProcessAdapter implements AgentAdapter {
         return;
       case "tool-requested": {
         this.requireTaskState(attempt, "running");
-        if (attempt.pendingTool !== undefined) {
+        if (attempt.pendingTool !== undefined || attempt.modelPhase === "pending") {
           return this.protocolStateFailure(
             attempt,
             "General Worker requested a second unresolved tool",
@@ -683,6 +817,77 @@ export class GeneralWorkerProcessAdapter implements AgentAdapter {
           type: "blocked",
           reason: "tool",
           requestId: requestIdValue,
+        });
+        return;
+      }
+      case "model-requested": {
+        this.requireTaskState(attempt, "running");
+        const initial =
+          attempt.modelPhase === "idle" &&
+          attempt.pendingModel === undefined &&
+          event.prompt === attempt.request.initialPrompt;
+        // Spec C allows one repair after a reply that broke the draft contract. Main owns the model,
+        // so it grants that second call only for the instruction the contract itself builds: a Worker
+        // must not be able to spend a provider call on prose of its own choosing.
+        //
+        // The Worker asks for the repair in its own reply to `resolve-model`, so this arrives while
+        // the first call is still settling — `consumed` with its result already delivered. That is the
+        // ordinary case, not a duplicate request, and the resolver below is written to leave a
+        // successor pending call alone.
+        const repair =
+          attempt.modelRepairsSpent < GENERAL_DRAFT_REPAIR_ATTEMPT_LIMIT &&
+          isGeneralDraftRepairInstruction(event.prompt) &&
+          (attempt.modelPhase === "resolved"
+            ? attempt.pendingModel === undefined
+            : attempt.modelPhase === "consumed" && attempt.pendingModel?.result !== undefined);
+        if (
+          this.executionMode !== "model-writing-artifact" ||
+          this.modelRuntime === undefined ||
+          (!initial && !repair)
+        ) {
+          return this.protocolStateFailure(
+            attempt,
+            "General Worker emitted an invalid or duplicate model request",
+          );
+        }
+        if (repair) {
+          attempt.modelRepairsSpent += 1;
+        }
+        const controller = new AbortController();
+        let release!: () => void;
+        let rejectRelease!: (error: Error) => void;
+        const releasePromise = new Promise<void>((resolve, reject) => {
+          release = resolve;
+          rejectRelease = reject;
+        });
+        let complete!: () => void;
+        const completionPromise = new Promise<void>((resolve) => {
+          complete = resolve;
+        });
+        attempt.modelPhase = "pending";
+        attempt.pendingModel = {
+          callId: event.callId,
+          controller,
+          releasePromise,
+          release,
+          rejectRelease,
+          completionPromise,
+          complete,
+        };
+        if (attempt.modelAdmissionReleased) {
+          release();
+        }
+        void this.resolveModelRequest(attempt, event.callId, event.prompt).catch((error) => {
+          if (!this.closed && !this.failed) {
+            this.fail(
+              error instanceof Error
+                ? error
+                : new GeneralWorkerProcessError(
+                    "operation-failed",
+                    "General Worker model request failed",
+                  ),
+            );
+          }
         });
         return;
       }
@@ -744,6 +949,12 @@ export class GeneralWorkerProcessAdapter implements AgentAdapter {
         this.emitSignal(attempt, { type: "resumed" });
         return;
       case "completed":
+        if (this.modelResolutionPending(attempt)) {
+          return this.protocolStateFailure(
+            attempt,
+            "General Worker emitted completed while its Main model request was pending",
+          );
+        }
         this.requireTaskState(attempt, "running");
         this.emitCoreEvent(attempt, "task.completed", {
           from: "running",
@@ -753,6 +964,17 @@ export class GeneralWorkerProcessAdapter implements AgentAdapter {
         this.emitSignal(attempt, { type: "completed" });
         return;
       case "failed": {
+        // A Worker reports its verdict on a model reply the moment that reply reaches it, which is
+        // inside its response to `resolve-model` — so the call is still settling when the failure
+        // arrives. That is the ordinary path, not a lifecycle break, and rejecting it here would
+        // replace the Worker's own reason with `invalid-state` and lose why the work stopped.
+        // A failure while nothing has been delivered yet is still a genuine protocol fault.
+        if (this.modelResolutionPending(attempt) && attempt.pendingModel?.result === undefined) {
+          return this.protocolStateFailure(
+            attempt,
+            "General Worker emitted failed while its Main model request was pending",
+          );
+        }
         const taskState = this.requireActiveTask(attempt);
         const accepted = attempt.acceptedToolResult;
         if (
@@ -781,6 +1003,12 @@ export class GeneralWorkerProcessAdapter implements AgentAdapter {
         return;
       }
       case "cancelled": {
+        if (this.modelResolutionPending(attempt)) {
+          return this.protocolStateFailure(
+            attempt,
+            "General Worker emitted cancelled while its Main model request was pending",
+          );
+        }
         const taskState = this.requireActiveTask(attempt);
         const accepted = attempt.acceptedToolResult;
         if (accepted !== undefined && accepted.status !== "cancelled") {
@@ -805,6 +1033,123 @@ export class GeneralWorkerProcessAdapter implements AgentAdapter {
         return;
       }
     }
+  }
+
+  private async resolveModelRequest(
+    attempt: ProcessAttempt,
+    callId: string,
+    prompt: string,
+  ): Promise<void> {
+    const pendingModel = attempt.pendingModel;
+    const runtime = this.modelRuntime;
+    if (pendingModel === undefined || runtime === undefined || pendingModel.callId !== callId) {
+      throw new GeneralWorkerProcessError(
+        "operation-failed",
+        "General Worker model request lost its Main-owned correlation",
+      );
+    }
+    let result: ModelResult;
+    let timedOut = false;
+    try {
+      await pendingModel.releasePromise;
+    } catch {
+      return;
+    }
+    if (
+      attempt.pendingModel !== pendingModel ||
+      attempt.modelPhase !== "pending" ||
+      attempt.terminal ||
+      attempt.disposed ||
+      this.closing ||
+      this.closed ||
+      this.failed
+    ) {
+      return;
+    }
+    try {
+      const timeout = new Promise<never>((_, reject) => {
+        pendingModel.timeout = setTimeout(() => {
+          timedOut = true;
+          pendingModel.controller.abort();
+          reject(new Error("model-timeout"));
+        }, this.modelTimeoutMs);
+      });
+      const completion = await Promise.race([
+        runtime.invoke(
+          Object.freeze({ sessionId: attempt.request.sessionId, prompt }),
+          pendingModel.controller.signal,
+        ),
+        timeout,
+      ]);
+      if (pendingModel.timeout !== undefined) {
+        clearTimeout(pendingModel.timeout);
+        pendingModel.timeout = undefined;
+      }
+      result = Object.freeze({ status: "succeeded", content: completion.content });
+    } catch (error: unknown) {
+      if (pendingModel.timeout !== undefined) {
+        clearTimeout(pendingModel.timeout);
+        pendingModel.timeout = undefined;
+      }
+      result = timedOut
+        ? Object.freeze({
+            status: "failed" as const,
+            errorCode: "model-timeout" as const,
+            message: "The admitted model timed out.",
+          })
+        : // The runtime reports a refusal structurally, so a provider that answered unusably is not
+          // mislabelled as unreachable. No message text is inspected to decide this.
+          modelFailureResult(error);
+    }
+    if (
+      attempt.pendingModel !== pendingModel ||
+      attempt.modelPhase !== "pending" ||
+      attempt.terminal ||
+      attempt.disposed ||
+      this.closing ||
+      this.closed ||
+      this.failed
+    ) {
+      return;
+    }
+    pendingModel.result = result;
+    attempt.modelPhase = "consumed";
+    try {
+      await this.invoke("resolve-model", {
+        attemptToken: attempt.attemptToken,
+        callId,
+        result,
+      });
+    } finally {
+      if (attempt.pendingModel === pendingModel) {
+        attempt.pendingModel = undefined;
+        if (attempt.modelPhase === "consumed") {
+          attempt.modelPhase = "resolved";
+        }
+      }
+      pendingModel.complete();
+    }
+  }
+
+  private abortPendingModel(attempt: ProcessAttempt): void {
+    const pendingModel = attempt.pendingModel;
+    if (pendingModel === undefined) return;
+    attempt.pendingModel = undefined;
+    attempt.modelPhase = "aborted";
+    pendingModel.rejectRelease(new Error("General Worker model admission was cancelled"));
+    pendingModel.complete();
+    if (pendingModel.timeout !== undefined) {
+      clearTimeout(pendingModel.timeout);
+      pendingModel.timeout = undefined;
+    }
+    pendingModel.controller.abort();
+  }
+
+  private modelResolutionPending(attempt: ProcessAttempt): boolean {
+    return (
+      attempt.pendingModel !== undefined &&
+      (attempt.modelPhase === "pending" || attempt.modelPhase === "consumed")
+    );
   }
 
   private emitCoreEvent<Type extends CoreEventType>(
@@ -899,6 +1244,7 @@ export class GeneralWorkerProcessAdapter implements AgentAdapter {
   }
 
   private protocolStateFailure(attempt: ProcessAttempt, message: string): void {
+    this.abortPendingModel(attempt);
     this.emitProtocolError(attempt, "invalid-signal", message);
     this.fail(new GeneralWorkerProcessError("invalid-message", message));
   }
@@ -957,6 +1303,7 @@ export class GeneralWorkerProcessAdapter implements AgentAdapter {
     }
     if (!this.failed) {
       for (const attempt of this.attempts.values()) {
+        this.abortPendingModel(attempt);
         if (attempt.terminal || attempt.disposed) {
           continue;
         }
@@ -1004,6 +1351,9 @@ export class GeneralWorkerProcessAdapter implements AgentAdapter {
       return;
     }
     this.failed = true;
+    for (const attempt of this.attempts.values()) {
+      this.abortPendingModel(attempt);
+    }
     this.clearStartupTimer();
     if (!this.receivedReady) {
       this.rejectStartup(error);

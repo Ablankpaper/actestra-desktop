@@ -3,7 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { PersistenceError } from "../../core";
 
 export const ACTESTRA_SQLITE_APPLICATION_ID = 1_095_980_114;
-export const CURRENT_CORE_SCHEMA_VERSION = 17;
+export const CURRENT_CORE_SCHEMA_VERSION = 22;
 
 export interface SqliteMigration {
   readonly version: number;
@@ -829,6 +829,220 @@ export const CORE_SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
         WHERE state IN ('pending-effect', 'effect-uncertain');
       CREATE INDEX standard_team_message_nonce_idx
         ON standard_team_message_deliveries(team_id, target_slot_id, client_request_nonce);
+    `,
+  },
+  {
+    version: 18,
+    name: "artifact-workspace-delivery",
+    sql: `
+      CREATE TABLE artifact_deliveries (
+        artifact_id TEXT PRIMARY KEY REFERENCES artifacts(id) ON DELETE CASCADE,
+        contract_version INTEGER NOT NULL CHECK (contract_version = 1),
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+        state TEXT NOT NULL CHECK (
+          state IN ('pending', 'applying', 'applied', 'conflict', 'failed', 'cancelled')
+        ),
+        grant_id TEXT NOT NULL CHECK (length(grant_id) BETWEEN 1 AND 256),
+        patch_reference TEXT NOT NULL CHECK (length(patch_reference) BETWEEN 1 AND 512),
+        patch_sha256 TEXT NOT NULL CHECK (
+          length(patch_sha256) = 64 AND patch_sha256 NOT GLOB '*[^0-9a-f]*'
+        ),
+        patch_byte_length INTEGER NOT NULL CHECK (patch_byte_length > 0),
+        base_commit TEXT NOT NULL CHECK (
+          (length(base_commit) = 40 OR length(base_commit) = 64) AND
+          base_commit NOT GLOB '*[^0-9a-f]*'
+        ),
+        changed_file_count INTEGER NOT NULL CHECK (changed_file_count >= 0),
+        approval_id TEXT CHECK (approval_id IS NULL OR length(approval_id) BETWEEN 1 AND 256),
+        applied_commit TEXT CHECK (
+          applied_commit IS NULL OR (
+            (length(applied_commit) = 40 OR length(applied_commit) = 64) AND
+            applied_commit NOT GLOB '*[^0-9a-f]*'
+          )
+        ),
+        failure_code TEXT CHECK (
+          failure_code IS NULL OR failure_code IN (
+            'artifact-ownership-mismatch',
+            'patch-unavailable',
+            'patch-digest-mismatch',
+            'workspace-grant-invalid',
+            'workspace-dirty',
+            'head-drift',
+            'patch-conflict',
+            'apply-failed',
+            'lock-unavailable'
+          )
+        ),
+        failure_message TEXT CHECK (
+          failure_message IS NULL OR length(failure_message) BETWEEN 1 AND 1024
+        ),
+        created_at TEXT NOT NULL CHECK (length(created_at) = 24),
+        updated_at TEXT NOT NULL CHECK (length(updated_at) = 24),
+        CHECK (updated_at >= created_at),
+        CHECK (state <> 'applied' OR applied_commit IS NOT NULL),
+        CHECK (state = 'applied' OR applied_commit IS NULL),
+        CHECK (state IN ('conflict', 'failed') OR failure_code IS NULL),
+        CHECK (state NOT IN ('conflict', 'failed') OR failure_code IS NOT NULL),
+        CHECK (failure_message IS NULL OR failure_code IS NOT NULL)
+      ) STRICT;
+
+      CREATE INDEX artifact_deliveries_task_idx ON artifact_deliveries(task_id);
+      CREATE INDEX artifact_deliveries_state_idx ON artifact_deliveries(state);
+    `,
+  },
+  {
+    version: 19,
+    name: "artifact-delivery-split-authority",
+    sql: `
+      CREATE TABLE artifact_deliveries_v19 (
+        artifact_id TEXT PRIMARY KEY REFERENCES artifacts(id) ON DELETE CASCADE,
+        contract_version INTEGER NOT NULL CHECK (contract_version = 2),
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+        state TEXT NOT NULL CHECK (
+          state IN ('pending', 'applying', 'applied', 'conflict', 'failed', 'cancelled')
+        ),
+        patch_owner_grant_id TEXT NOT NULL CHECK (
+          length(patch_owner_grant_id) BETWEEN 1 AND 256
+        ),
+        destination_grant_id TEXT CHECK (
+          destination_grant_id IS NULL OR length(destination_grant_id) BETWEEN 1 AND 256
+        ),
+        patch_reference TEXT NOT NULL CHECK (length(patch_reference) BETWEEN 1 AND 512),
+        patch_sha256 TEXT NOT NULL CHECK (
+          length(patch_sha256) = 64 AND patch_sha256 NOT GLOB '*[^0-9a-f]*'
+        ),
+        patch_byte_length INTEGER NOT NULL CHECK (patch_byte_length > 0),
+        base_commit TEXT NOT NULL CHECK (
+          (length(base_commit) = 40 OR length(base_commit) = 64) AND
+          base_commit NOT GLOB '*[^0-9a-f]*'
+        ),
+        changed_file_count INTEGER NOT NULL CHECK (changed_file_count >= 0),
+        approval_id TEXT CHECK (approval_id IS NULL OR length(approval_id) BETWEEN 1 AND 256),
+        verified_head TEXT CHECK (
+          verified_head IS NULL OR (
+            (length(verified_head) = 40 OR length(verified_head) = 64) AND
+            verified_head NOT GLOB '*[^0-9a-f]*'
+          )
+        ),
+        failure_code TEXT CHECK (
+          failure_code IS NULL OR failure_code IN (
+            'artifact-ownership-mismatch',
+            'patch-unavailable',
+            'patch-digest-mismatch',
+            'workspace-grant-invalid',
+            'workspace-dirty',
+            'head-drift',
+            'patch-conflict',
+            'apply-failed',
+            'lock-unavailable'
+          )
+        ),
+        failure_message TEXT CHECK (
+          failure_message IS NULL OR length(failure_message) BETWEEN 1 AND 1024
+        ),
+        created_at TEXT NOT NULL CHECK (length(created_at) = 24),
+        updated_at TEXT NOT NULL CHECK (length(updated_at) = 24),
+        CHECK (updated_at >= created_at),
+        CHECK (state <> 'applied' OR verified_head IS NOT NULL),
+        CHECK (state = 'applied' OR verified_head IS NULL),
+        CHECK (state <> 'applied' OR destination_grant_id IS NOT NULL),
+        CHECK (state <> 'applied' OR approval_id IS NOT NULL),
+        CHECK (state <> 'pending' OR approval_id IS NULL),
+        CHECK (state IN ('conflict', 'failed') OR failure_code IS NULL),
+        CHECK (state NOT IN ('conflict', 'failed') OR failure_code IS NOT NULL),
+        CHECK (failure_message IS NULL OR failure_code IS NOT NULL)
+      ) STRICT;
+
+      INSERT INTO artifact_deliveries_v19 (
+        artifact_id,
+        contract_version,
+        workspace_id,
+        task_id,
+        session_id,
+        state,
+        patch_owner_grant_id,
+        destination_grant_id,
+        patch_reference,
+        patch_sha256,
+        patch_byte_length,
+        base_commit,
+        changed_file_count,
+        approval_id,
+        verified_head,
+        failure_code,
+        failure_message,
+        created_at,
+        updated_at
+      )
+      SELECT
+        artifact_id,
+        2,
+        workspace_id,
+        task_id,
+        session_id,
+        state,
+        grant_id,
+        CASE WHEN state = 'applied' THEN grant_id ELSE NULL END,
+        patch_reference,
+        patch_sha256,
+        patch_byte_length,
+        base_commit,
+        changed_file_count,
+        approval_id,
+        applied_commit,
+        failure_code,
+        failure_message,
+        created_at,
+        updated_at
+      FROM artifact_deliveries;
+
+      DROP TABLE artifact_deliveries;
+      ALTER TABLE artifact_deliveries_v19 RENAME TO artifact_deliveries;
+
+      CREATE INDEX artifact_deliveries_task_idx ON artifact_deliveries(task_id);
+      CREATE INDEX artifact_deliveries_state_idx ON artifact_deliveries(state);
+    `,
+  },
+  {
+    version: 20,
+    name: "artifact-delivery-patch-owner-identity",
+    sql: `
+      ALTER TABLE artifact_deliveries ADD COLUMN patch_owner_worker_id TEXT;
+      ALTER TABLE artifact_deliveries ADD COLUMN patch_request_id TEXT;
+
+      -- The patch is readable only by the exact owner it was stored under, and persistence resolves
+      -- that owner against the publishing session's own worker. Both facts are recoverable for rows
+      -- this build wrote: the worker from the session, the request id from the publisher's own naming.
+      UPDATE artifact_deliveries
+      SET patch_owner_worker_id = (
+        SELECT sessions.worker_id FROM sessions WHERE sessions.id = artifact_deliveries.session_id
+      )
+      WHERE session_id IS NOT NULL;
+
+      UPDATE artifact_deliveries
+      SET patch_request_id =
+        'request-coding-publish-' ||
+        substr(patch_reference, length('coding-publish-patch-') + 1)
+      WHERE patch_reference LIKE 'coding-publish-patch-%';
+    `,
+  },
+  {
+    version: 21,
+    name: "aionui-general-work-requirements",
+    sql: `
+      ALTER TABLE aionui_general_work_journeys
+        ADD COLUMN requirements_json TEXT;
+    `,
+  },
+  {
+    version: 22,
+    name: "artifact-delivery-destination-workspace",
+    sql: `
+      ALTER TABLE artifact_deliveries ADD COLUMN destination_workspace_id TEXT;
     `,
   },
 ] as const;

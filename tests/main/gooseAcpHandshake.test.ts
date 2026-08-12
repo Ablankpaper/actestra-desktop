@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ACTESTRA_ACP_CLIENT_VERSION,
   connectGooseAcp,
+  createGooseAcpHumanDecisionGate,
 } from "../../apps/desktop/src/main/workers/gooseAcpHandshake";
 import { EXPECTED_GOOSE_INITIALIZE_RESULT, LoopbackGooseAcpTransport } from "../fixtures/gooseAcp";
 
@@ -809,5 +810,48 @@ describe("Goose ACP handshake", () => {
     });
     expect(transport.sentLines.map((line) => JSON.parse(line).method)).toEqual(["initialize"]);
     expect(transport.closeCount).toBe(1);
+  });
+
+  it("holds the prompt activity deadline while a human approval decision is pending", async () => {
+    vi.useFakeTimers();
+    const gate = createGooseAcpHumanDecisionGate();
+    const transport = new LoopbackGooseAcpTransport({ silentPrompt: true });
+    const connection = await connectGooseAcp(transport);
+    const session = await connection.openSession({
+      workspaceDirectory: "/private/tmp/actestra-worktree",
+      capabilityProxyUrl: "http://127.0.0.1:43123/mcp",
+      attemptLease: "attempt-lease-0123456789abcdef0123456789abcdef",
+    });
+    await connection.discoverTools({
+      sessionId: session.sessionId,
+      extensionName: "actestra-capability-proxy",
+    });
+    const prompting = connection.prompt({
+      sessionId: session.sessionId,
+      text: "Modify README.md.",
+      timeoutMs: 30,
+      humanDecisionGate: gate,
+    });
+    const observed = prompting.then(
+      (value) => ({ status: "resolved" as const, value }),
+      (error: unknown) => ({ status: "rejected" as const, error }),
+    );
+
+    const release = gate.hold();
+    await vi.advanceTimersByTimeAsync(300_000);
+
+    expect(
+      await Promise.race([observed, Promise.resolve({ status: "pending" as const })]),
+    ).toMatchObject({ status: "pending" });
+
+    release();
+    await vi.advanceTimersByTimeAsync(31);
+
+    expect(
+      await Promise.race([observed, Promise.resolve({ status: "pending" as const })]),
+    ).toMatchObject({
+      status: "rejected",
+      error: { name: "GooseAcpSessionError", code: "prompt-timeout" },
+    });
   });
 });

@@ -14,6 +14,10 @@ const createBody = Object.freeze({
   name: "Actestra delivery team",
   description: "Coordinate one bounded General and Goose delivery.",
   workspace: workspaceId,
+  model_selection: Object.freeze({
+    provider_id: "provider-aionui-team",
+    model_id: "model-aionui-team",
+  }),
   agents: Object.freeze([
     Object.freeze({
       name: "General lead",
@@ -138,6 +142,7 @@ const runEvent = Object.freeze({
     authority: "Actestra Core",
     authority_source: "schema-15-team-run",
     revision: 4,
+    core_status: "blocked",
     status_explanation: "Goose is waiting for a protected-operation decision.",
     nodes: Object.freeze([
       Object.freeze({
@@ -211,7 +216,12 @@ describe("AionUI-native Actestra Team bridge contract", () => {
         ...request,
         body: {
           ...standardCreateBody,
-          agents: [{ ...standardCreateBody.agents[0], model: "renderer-authoritative-model" }],
+          agents: [
+            {
+              ...standardCreateBody.agents[0],
+              model: "renderer-authoritative-model",
+            },
+          ],
         },
       }),
     ).toThrow();
@@ -240,17 +250,30 @@ describe("AionUI-native Actestra Team bridge contract", () => {
       created_at: 1_785_883_200_000,
       updated_at: 1_785_883_200_000,
     };
-    const response = { contractVersion: 1, status: 200, data: responseWithoutSessionMode };
+    const response = {
+      contractVersion: 1,
+      status: 200,
+      data: responseWithoutSessionMode,
+    };
 
     expect(() => assertResponse(response)).not.toThrow();
     expect(() =>
-      assertResponse({ ...response, data: { ...response.data, session_mode: "plan" } }),
+      assertResponse({
+        ...response,
+        data: { ...response.data, session_mode: "plan" },
+      }),
     ).not.toThrow();
     expect(() =>
-      assertResponse({ ...response, data: { ...response.data, session_mode: "" } }),
+      assertResponse({
+        ...response,
+        data: { ...response.data, session_mode: "" },
+      }),
     ).toThrow();
     expect(() =>
-      assertResponse({ ...response, data: { ...response.data, renderer_owned: true } }),
+      assertResponse({
+        ...response,
+        data: { ...response.data, renderer_owned: true },
+      }),
     ).toThrow();
   });
 
@@ -290,7 +313,10 @@ describe("AionUI-native Actestra Team bridge contract", () => {
         ...request,
         body: {
           ...request.body,
-          assistant: { ...request.body.assistant, model: "renderer-authoritative-model" },
+          assistant: {
+            ...request.body.assistant,
+            model: "renderer-authoritative-model",
+          },
         },
       }),
     ).toThrow();
@@ -348,7 +374,10 @@ describe("AionUI-native Actestra Team bridge contract", () => {
               ...response.data.config_options[0],
               options: [
                 ...response.data.config_options[0].options,
-                { value: "https://outside.example/model", name: "External model" },
+                {
+                  value: "https://outside.example/model",
+                  name: "External model",
+                },
               ],
             },
           ],
@@ -397,7 +426,12 @@ describe("AionUI-native Actestra Team bridge contract", () => {
         expected: { kind: "select-workspace" },
       },
       {
-        request: { contractVersion: 1, method: "POST", path: "/api/teams", body: createBody },
+        request: {
+          contractVersion: 1,
+          method: "POST",
+          path: "/api/teams",
+          body: createBody,
+        },
         expected: { kind: "create", workspaceId },
       },
       {
@@ -450,7 +484,10 @@ describe("AionUI-native Actestra Team bridge contract", () => {
           path: `/api/teams/${teamId}/session`,
           body: undefined,
         },
-        expected: { kind: method === "POST" ? "ensure-session" : "stop-session", teamId },
+        expected: {
+          kind: method === "POST" ? "ensure-session" : "stop-session",
+          teamId,
+        },
       })),
       {
         request: {
@@ -593,6 +630,21 @@ describe("AionUI-native Actestra Team bridge contract", () => {
         },
         expected: { kind: "pause-node", teamId, runId, slotId: codingSlotId },
       },
+      {
+        request: {
+          contractVersion: 1,
+          method: "POST",
+          path: `/api/teams/${teamId}/runs/${runId}/agents/${codingSlotId}/handoff-completion`,
+          body: { content: "The reviewed manual coding result is complete." },
+        },
+        expected: {
+          kind: "complete-handoff",
+          teamId,
+          runId,
+          slotId: codingSlotId,
+          content: "The reviewed manual coding result is complete.",
+        },
+      },
     ];
 
     for (const { request, expected } of cases) {
@@ -630,7 +682,11 @@ describe("AionUI-native Actestra Team bridge contract", () => {
         path: `/api/teams/${standardTeamId}/name`,
         body: { name: "Renamed standard Team" },
       }),
-    ).toEqual({ kind: "rename-team", teamId: standardTeamId, name: "Renamed standard Team" });
+    ).toEqual({
+      kind: "rename-team",
+      teamId: standardTeamId,
+      name: "Renamed standard Team",
+    });
     const standardSlotId = "native-slot-claude";
     expect(
       parse({
@@ -639,7 +695,11 @@ describe("AionUI-native Actestra Team bridge contract", () => {
         path: `/api/teams/${standardTeamId}/agents/${standardSlotId}`,
         body: undefined,
       }),
-    ).toEqual({ kind: "remove-member", teamId: standardTeamId, slotId: standardSlotId });
+    ).toEqual({
+      kind: "remove-member",
+      teamId: standardTeamId,
+      slotId: standardSlotId,
+    });
     expect(
       parse({
         contractVersion: 1,
@@ -756,7 +816,12 @@ describe("AionUI-native Actestra Team bridge contract", () => {
           path: `/api/teams/${teamId}/runs/${runId}/agents/${codingSlotId}/${action}`,
           body: { reason: `Apply the visible ${action} control.` },
         }),
-      ).toMatchObject({ kind: `${action}-node`, teamId, runId, slotId: codingSlotId });
+      ).toMatchObject({
+        kind: `${action}-node`,
+        teamId,
+        runId,
+        slotId: codingSlotId,
+      });
     }
     for (const decision of ["approved", "denied"] as const) {
       expect(
@@ -791,7 +856,11 @@ describe("AionUI-native Actestra Team bridge contract", () => {
         contractVersion: 1,
         method: "POST",
         path: `/api/teams/${standardTeamId}/messages`,
-        body: { content: "Review this workspace.", files: [], request_nonce: requestNonce },
+        body: {
+          content: "Review this workspace.",
+          files: [],
+          request_nonce: requestNonce,
+        },
       }),
     ).toMatchObject({ kind: "send-message", requestNonce });
     expect(
@@ -804,8 +873,16 @@ describe("AionUI-native Actestra Team bridge contract", () => {
     ).toMatchObject({ kind: "send-member-message", requestNonce });
     for (const body of [
       { content: "Missing nonce.", files: [] },
-      { content: "Padded nonce.", files: [], request_nonce: ` ${requestNonce}` },
-      { content: "Oversized nonce.", files: [], request_nonce: "x".repeat(129) },
+      {
+        content: "Padded nonce.",
+        files: [],
+        request_nonce: ` ${requestNonce}`,
+      },
+      {
+        content: "Oversized nonce.",
+        files: [],
+        request_nonce: "x".repeat(129),
+      },
     ]) {
       expect(() =>
         parse({
@@ -816,6 +893,74 @@ describe("AionUI-native Actestra Team bridge contract", () => {
         }),
       ).toThrow();
     }
+  });
+
+  it("keeps Core's blocked and paused run status distinguishable from compatibility running", async () => {
+    const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
+      string,
+      unknown
+    >;
+    const assertEvent = compatibility.assertAionUiTeamEvent as (value: unknown) => void;
+
+    for (const coreStatus of ["accepted", "running", "paused", "blocked"] as const) {
+      const payload = {
+        ...runEvent,
+        status: "running",
+        actestra: { ...runEvent.actestra, core_status: coreStatus },
+      };
+      expect(() => assertEvent({ type: "team.runUpdated", payload })).not.toThrow();
+      expect(payload.actestra.core_status).toBe(coreStatus);
+    }
+
+    const { core_status: _dropped, ...withoutCoreStatus } = runEvent.actestra;
+    for (const payload of [
+      {
+        ...runEvent,
+        actestra: { ...runEvent.actestra, core_status: "running-blocked" },
+      },
+      { ...runEvent, actestra: withoutCoreStatus },
+    ]) {
+      expect(() => assertEvent({ type: "team.runUpdated", payload })).toThrow();
+    }
+
+    expect(runEvent.status).toBe("running");
+    expect(runEvent.actestra.core_status).toBe("blocked");
+  });
+
+  it("accepts the revision-requested feedback projection produced after denied feedback", async () => {
+    const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
+      string,
+      unknown
+    >;
+    const assertEvent = compatibility.assertAionUiTeamEvent as (value: unknown) => void;
+    const feedbackNode = {
+      ...runEvent.actestra.nodes[0],
+      slot_id: generalSlotId,
+      capability: "feedback",
+      state: "revision-requested",
+      blocked_reason: "revision-requested",
+      blocked_explanation: "The workflow feedback was denied and revision is requested.",
+      current_executor: "User",
+      next_actions: ["revise"],
+    };
+    const payload = {
+      ...runEvent,
+      slot_work: [
+        {
+          ...slotWork[0],
+          state: "blocked",
+          blocked_reason: "revision-requested",
+        },
+        slotWork[1],
+      ],
+      actestra: {
+        ...runEvent.actestra,
+        revision: 13,
+        nodes: [feedbackNode],
+      },
+    };
+
+    expect(() => assertEvent({ type: "team.runUpdated", payload })).not.toThrow();
   });
 
   it("validates native Team, run-state, event, and bounded Actestra explainability shapes", async () => {
@@ -847,6 +992,7 @@ describe("AionUI-native Actestra Team bridge contract", () => {
             {
               id: `team-message-${"4".repeat(64)}`,
               author: "You",
+              slot_id: null,
               content: "Prepare the bounded Team result.",
               tone: "user",
               occurred_at: 1_785_883_200_000,
@@ -874,10 +1020,19 @@ describe("AionUI-native Actestra Team bridge contract", () => {
     }
 
     for (const event of [
-      { type: "team.created", payload: { team_id: teamId, team_name: nativeTeam.name } },
-      { type: "team.listChanged", payload: { team_id: teamId, action: "created" } },
+      {
+        type: "team.created",
+        payload: { team_id: teamId, team_name: nativeTeam.name },
+      },
+      {
+        type: "team.listChanged",
+        payload: { team_id: teamId, action: "created" },
+      },
       { type: "team.removed", payload: { team_id: standardTeamId } },
-      { type: "team.listChanged", payload: { team_id: standardTeamId, action: "removed" } },
+      {
+        type: "team.listChanged",
+        payload: { team_id: standardTeamId, action: "removed" },
+      },
       {
         type: "team.agentRenamed",
         payload: {
@@ -892,7 +1047,10 @@ describe("AionUI-native Actestra Team bridge contract", () => {
       },
       { type: "team.runAccepted", payload: runEvent },
       { type: "team.runUpdated", payload: runEvent },
-      { type: "team.slotWorkChanged", payload: { team_id: teamId, slot_work: slotWork[1] } },
+      {
+        type: "team.slotWorkChanged",
+        payload: { team_id: teamId, slot_work: slotWork[1] },
+      },
       {
         type: "team.teammateMessage",
         payload: {
@@ -905,6 +1063,42 @@ describe("AionUI-native Actestra Team bridge contract", () => {
     ]) {
       expect(() => assertEvent(event)).not.toThrow();
     }
+  });
+
+  it("accepts the admitted multiline Team goal when it is projected back as activity", async () => {
+    const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
+      string,
+      unknown
+    >;
+    const assertResponse = compatibility.assertAionUiTeamBridgeResponse as (value: unknown) => void;
+
+    expect(() =>
+      assertResponse({
+        contractVersion: 1,
+        status: 200,
+        data: {
+          session_generation: "schema-15-revision-6",
+          submission: {
+            availability: "available",
+            blocked_reason: null,
+            next_action: "submit-task",
+            authority_source: "actestra-main-runtime",
+          },
+          active_run: runEvent,
+          slot_work: slotWork,
+          activities: [
+            {
+              id: `team-message-${"5".repeat(64)}`,
+              author: "You",
+              slot_id: null,
+              content: "First admitted line.\nSecond admitted line.",
+              tone: "user",
+              occurred_at: 1_785_883_200_000,
+            },
+          ],
+        },
+      }),
+    ).not.toThrow();
   });
 
   it("validates a bounded provider-owned standard Team run acknowledgement without schema-15 identities", async () => {
@@ -934,13 +1128,20 @@ describe("AionUI-native Actestra Team bridge contract", () => {
     };
 
     expect(() =>
-      assertResponse({ contractVersion: 1, status: 200, data: acknowledgement }),
+      assertResponse({
+        contractVersion: 1,
+        status: 200,
+        data: acknowledgement,
+      }),
     ).not.toThrow();
     expect(() =>
       assertResponse({
         contractVersion: 1,
         status: 200,
-        data: { ...acknowledgement, run: { ...acknowledgement.run, team_id: "../foreign" } },
+        data: {
+          ...acknowledgement,
+          run: { ...acknowledgement.run, team_id: "../foreign" },
+        },
       }),
     ).toThrow();
     expect(() =>
@@ -984,9 +1185,24 @@ describe("AionUI-native Actestra Team bridge contract", () => {
     const assertResponse = compatibility.assertAionUiTeamBridgeResponse as (value: unknown) => void;
 
     const invalidRequests = [
-      { contractVersion: 1, method: "GET", path: "/api/teams", body: undefined },
-      { contractVersion: 1, method: "GET", path: "/api/teams/%2e%2e/private", body: undefined },
-      { contractVersion: 1, method: "GET", path: "/api/teams?user_id=other-user", body: undefined },
+      {
+        contractVersion: 1,
+        method: "GET",
+        path: "/api/teams",
+        body: undefined,
+      },
+      {
+        contractVersion: 1,
+        method: "GET",
+        path: "/api/teams/%2e%2e/private",
+        body: undefined,
+      },
+      {
+        contractVersion: 1,
+        method: "GET",
+        path: "/api/teams?user_id=other-user",
+        body: undefined,
+      },
       {
         contractVersion: 1,
         method: "POST",
@@ -1027,13 +1243,19 @@ describe("AionUI-native Actestra Team bridge contract", () => {
         contractVersion: 1,
         method: "POST",
         path: `/api/teams/${teamId}/messages`,
-        body: { content: "Run this task.", planId: `team-plan-${"4".repeat(64)}` },
+        body: {
+          content: "Run this task.",
+          planId: `team-plan-${"4".repeat(64)}`,
+        },
       },
       {
         contractVersion: 1,
         method: "POST",
         path: `/api/teams/${teamId}/runs/${runId}/agents/${codingSlotId}/approval`,
-        body: { decision: "approved", approvalId: `approval-${"5".repeat(64)}` },
+        body: {
+          decision: "approved",
+          approvalId: `approval-${"5".repeat(64)}`,
+        },
       },
       {
         contractVersion: 1,
@@ -1047,7 +1269,11 @@ describe("AionUI-native Actestra Team bridge contract", () => {
     }
 
     for (const response of [
-      { contractVersion: 1, status: 200, data: { ...nativeTeam, workspace: "/private/workspace" } },
+      {
+        contractVersion: 1,
+        status: 200,
+        data: { ...nativeTeam, workspace: "/private/workspace" },
+      },
       {
         contractVersion: 1,
         status: 200,

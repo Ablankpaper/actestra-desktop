@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import {
+  ARTIFACT_DELIVERY_CONTRACT_VERSION,
   REQUIRED_REDACTION_BY_EVENT_TYPE,
   advanceCoreEventStreamState,
   assertApprovalRequestSnapshot,
@@ -71,6 +72,36 @@ export interface GooseCodingEvidenceIdentity {
   readonly correlationId: CorrelationId;
 }
 
+// A prompt failure carries an explicit incident code so a refused model
+// completion is distinguishable from a generic prompt failure in the durable
+// record. Both fields are Main-authored constants, never runner-supplied text.
+export type GooseCodingPromptFailureIncident = Readonly<{
+  errorCode: string;
+  message: string;
+}>;
+
+const DEFAULT_PROMPT_FAILURE_INCIDENT: GooseCodingPromptFailureIncident = Object.freeze({
+  errorCode: "goose-prompt-failed",
+  message: "The isolated Goose prompt failed before review evidence was available.",
+});
+
+function resolvePromptFailureIncident(
+  incident: GooseCodingPromptFailureIncident | undefined,
+): GooseCodingPromptFailureIncident {
+  if (
+    incident === undefined ||
+    typeof incident.errorCode !== "string" ||
+    incident.errorCode.length < 1 ||
+    incident.errorCode.length > 128 ||
+    typeof incident.message !== "string" ||
+    incident.message.length < 1 ||
+    incident.message.length > 1024
+  ) {
+    return DEFAULT_PROMPT_FAILURE_INCIDENT;
+  }
+  return Object.freeze({ errorCode: incident.errorCode, message: incident.message });
+}
+
 export interface GooseCodingEvidenceCoordinatorConfig {
   readonly persistence: ActestraPersistencePort;
   readonly clock: PrivilegedClock;
@@ -78,6 +109,7 @@ export interface GooseCodingEvidenceCoordinatorConfig {
   readonly taskId: TaskId;
   readonly sessionId: SessionId;
   readonly workerId: WorkerId;
+  readonly destinationWorkspaceId?: WorkspaceId;
   readonly identity: GooseCodingEvidenceIdentity;
   readonly approvalService: ApprovalService;
   readonly cancellationActorId: ApprovalActorId;
@@ -149,6 +181,20 @@ export class GooseCodingEvidenceCoordinator implements GooseCodingToolEvidenceRe
   private readonly approvalCancellationPrepared = new Set<ToolRequestId>();
   private publishOperation: ProtectedOperation | undefined;
   private publishedArtifact: Artifact | undefined;
+  private pendingDeliveryMetadata:
+    | {
+        readonly patchOwnerGrantId: string;
+        readonly destinationWorkspaceId: WorkspaceId | null;
+        readonly patchOwnerWorkerId: string;
+        readonly patchRequestId: string;
+        readonly patchReference: string;
+        readonly patchSha256: string;
+        readonly patchByteLength: number;
+        readonly baseCommit: string;
+        readonly changedFileCount: number;
+      }
+    | undefined;
+  private readOnlyReviewPrepared = false;
 
   constructor(private readonly config: GooseCodingEvidenceCoordinatorConfig) {
     this.newEventId = config.newEventId ?? defaultEventId;
@@ -358,7 +404,21 @@ export class GooseCodingEvidenceCoordinator implements GooseCodingToolEvidenceRe
     });
   }
 
-  completePublishedArtifact(operation: ProtectedOperation, artifact: Artifact): Promise<void> {
+  completePublishedArtifact(
+    operation: ProtectedOperation,
+    artifact: Artifact,
+    deliveryMetadata: {
+      readonly patchOwnerGrantId: string;
+      readonly destinationWorkspaceId: WorkspaceId | null;
+      readonly patchOwnerWorkerId: string;
+      readonly patchRequestId: string;
+      readonly patchReference: string;
+      readonly patchSha256: string;
+      readonly patchByteLength: number;
+      readonly baseCommit: string;
+      readonly changedFileCount: number;
+    },
+  ): Promise<void> {
     return this.serialize(async () => {
       this.requireOperation(operation);
       if (
@@ -393,7 +453,8 @@ export class GooseCodingEvidenceCoordinator implements GooseCodingToolEvidenceRe
           to: "completed",
         });
         this.toolStates.set(operation.requestId, "terminal");
-        this.publishedArtifact = Object.freeze({ ...artifact });
+        this.publishedArtifact = Object.freeze({ ...artifact, deliveryState: "pending" });
+        this.pendingDeliveryMetadata = Object.freeze(deliveryMetadata);
       } else if (!isDeepStrictEqual(this.publishedArtifact, artifact)) {
         throw new GooseCodingEvidenceError(
           "invalid-evidence",
@@ -409,6 +470,38 @@ export class GooseCodingEvidenceCoordinator implements GooseCodingToolEvidenceRe
         }),
         undefined,
         this.publishedArtifact,
+      );
+    });
+  }
+
+  /** Terminalizes a reviewed prompt whose isolated worktree stayed unchanged, so no Artifact exists. */
+  completeReadOnlyReview(): Promise<void> {
+    return this.serialize(async () => {
+      if (!this.readOnlyReviewPrepared) {
+        const from = this.requireTaskState();
+        if (
+          this.promptResult === undefined ||
+          this.promptResult.stopReason === "cancelled" ||
+          this.publishOperation !== undefined ||
+          from !== "blocked" ||
+          this.projection.sessionState !== "blocked" ||
+          this.projection.workerState !== "ready"
+        ) {
+          throw new GooseCodingEvidenceError(
+            "invalid-state",
+            "A read-only coding completion requires the exact blocked review projection",
+          );
+        }
+        this.queueEvent("task.completed", { from, to: "completed" });
+        this.readOnlyReviewPrepared = true;
+      }
+      await this.flushEvents();
+      await this.reconcileProjection(
+        Object.freeze({
+          taskState: "completed",
+          sessionState: "completed",
+          workerState: "stopping",
+        }),
       );
     });
   }
@@ -595,7 +688,7 @@ export class GooseCodingEvidenceCoordinator implements GooseCodingToolEvidenceRe
     });
   }
 
-  failPrompt(): Promise<void> {
+  failPrompt(incident?: GooseCodingPromptFailureIncident): Promise<void> {
     return this.serialize(async () => {
       const state = this.requireTaskState();
       if (
@@ -606,16 +699,18 @@ export class GooseCodingEvidenceCoordinator implements GooseCodingToolEvidenceRe
       }
       const cancelledApprovals = await this.preparePendingApprovalCancellations();
       if (!this.promptFailurePrepared) {
-        const message = "The isolated Goose prompt failed before review evidence was available.";
+        const resolved = resolvePromptFailureIncident(incident);
+        const errorCode = resolved.errorCode;
+        const message = resolved.message;
         this.queueEvent("worker.failed", {
-          errorCode: "goose-prompt-failed",
+          errorCode,
           message,
           retryable: false,
         });
         this.queueEvent("task.failed", {
           from: state,
           to: "failed",
-          errorCode: "goose-prompt-failed",
+          errorCode,
           message,
         });
         this.promptFailurePrepared = true;
@@ -1004,7 +1099,40 @@ export class GooseCodingEvidenceCoordinator implements GooseCodingToolEvidenceRe
         };
         assertDomainGraph(next);
         try {
+          if (next.artifacts.length > 0) {
+          }
           await this.config.persistence.replaceDomainGraph(next);
+          if (
+            artifact !== undefined &&
+            existingArtifact === undefined &&
+            this.pendingDeliveryMetadata !== undefined
+          ) {
+            const deliveryMetadata = this.pendingDeliveryMetadata;
+            await this.config.persistence.persistArtifactDelivery({
+              contractVersion: ARTIFACT_DELIVERY_CONTRACT_VERSION,
+              artifactId: artifact.id,
+              workspaceId: artifact.workspaceId,
+              destinationWorkspaceId: deliveryMetadata.destinationWorkspaceId,
+              taskId: artifact.taskId,
+              sessionId: artifact.sessionId ?? null,
+              state: "pending",
+              patchOwnerGrantId: deliveryMetadata.patchOwnerGrantId,
+              patchOwnerWorkerId: deliveryMetadata.patchOwnerWorkerId,
+              patchRequestId: deliveryMetadata.patchRequestId,
+              destinationGrantId: null,
+              patchReference: deliveryMetadata.patchReference,
+              patchSha256: deliveryMetadata.patchSha256,
+              patchByteLength: deliveryMetadata.patchByteLength,
+              baseCommit: deliveryMetadata.baseCommit,
+              changedFileCount: deliveryMetadata.changedFileCount,
+              approvalId: null,
+              verifiedHead: null,
+              failureCode: null,
+              failureMessage: null,
+              createdAt: artifact.createdAt,
+              updatedAt: artifact.updatedAt,
+            });
+          }
         } catch (error) {
           let committed = false;
           try {
@@ -1019,6 +1147,37 @@ export class GooseCodingEvidenceCoordinator implements GooseCodingToolEvidenceRe
           }
           if (!committed) {
             throw error;
+          }
+          if (
+            artifact !== undefined &&
+            existingArtifact === undefined &&
+            this.pendingDeliveryMetadata !== undefined
+          ) {
+            const deliveryMetadata = this.pendingDeliveryMetadata;
+            await this.config.persistence.persistArtifactDelivery({
+              contractVersion: ARTIFACT_DELIVERY_CONTRACT_VERSION,
+              artifactId: artifact.id,
+              workspaceId: artifact.workspaceId,
+              destinationWorkspaceId: deliveryMetadata.destinationWorkspaceId,
+              taskId: artifact.taskId,
+              sessionId: artifact.sessionId ?? null,
+              state: "pending",
+              patchOwnerGrantId: deliveryMetadata.patchOwnerGrantId,
+              patchOwnerWorkerId: deliveryMetadata.patchOwnerWorkerId,
+              patchRequestId: deliveryMetadata.patchRequestId,
+              destinationGrantId: null,
+              patchReference: deliveryMetadata.patchReference,
+              patchSha256: deliveryMetadata.patchSha256,
+              patchByteLength: deliveryMetadata.patchByteLength,
+              baseCommit: deliveryMetadata.baseCommit,
+              changedFileCount: deliveryMetadata.changedFileCount,
+              approvalId: null,
+              verifiedHead: null,
+              failureCode: null,
+              failureMessage: null,
+              createdAt: artifact.createdAt,
+              updatedAt: artifact.updatedAt,
+            });
           }
         }
       }

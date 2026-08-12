@@ -279,7 +279,7 @@ describe.skipIf(
       status: "blocked",
       approval: {
         kind: "publish",
-        title: "Publish Actestra coding patch",
+        title: "Save Actestra coding patch",
         snapshot: {
           baseCommit,
           patchByteLength: expect.any(Number),
@@ -301,8 +301,36 @@ describe.skipIf(
       throw new Error("Expected an exact retained-journey publish approval");
     }
     expect(publishApproval.approval.snapshot.patchByteLength).toBeGreaterThan(0);
-    expect(JSON.stringify(modelInvocations[1]!.request)).toContain("file-written");
-    expect(JSON.stringify(modelInvocations[2]!.request)).toContain("focused-test");
+    expect(modelInvocations[1]!.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "assistant",
+          toolCalls: expect.arrayContaining([
+            expect.objectContaining({ callId: "call-real-journey-write" }),
+          ]),
+        }),
+        expect.objectContaining({
+          role: "tool",
+          callId: "call-real-journey-write",
+          content: expect.stringContaining("file-written"),
+        }),
+      ]),
+    );
+    expect(modelInvocations[2]!.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "assistant",
+          toolCalls: expect.arrayContaining([
+            expect.objectContaining({ callId: "call-real-journey-test" }),
+          ]),
+        }),
+        expect.objectContaining({
+          role: "tool",
+          callId: "call-real-journey-test",
+          content: expect.stringContaining("focused-test"),
+        }),
+      ]),
+    );
     await fixture.journey.decidePublish(
       nativeConversationId,
       submitted.taskId,

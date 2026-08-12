@@ -1,3 +1,4 @@
+import { ARTIFACT_DELIVERY_TOOL_ID } from "./artifactDelivery";
 import {
   toolId,
   toolInputReference,
@@ -21,6 +22,12 @@ export const CODING_GIT_TOOL_ID = toolId("actestra.coding.git.inspect");
 export const CODING_DIFF_TOOL_ID = toolId("actestra.coding.diff.inspect");
 export const CODING_TEST_TOOL_ID = toolId("actestra.coding.test.run");
 export const CODING_ARTIFACT_PUBLISH_TOOL_ID = toolId("actestra.coding.artifact.publish");
+/**
+ * Applying a patch to the original workspace is executed by Main, never by Goose, so this tool is
+ * deliberately absent from {@link CODING_TOOL_IDS}. It shares the durable delivery tool id, because
+ * the delivery record and the gateway operation must name one protected effect rather than two.
+ */
+export const ARTIFACT_APPLY_TOOL_ID = toolId(ARTIFACT_DELIVERY_TOOL_ID);
 
 export const CODING_TOOL_IDS = Object.freeze([
   CODING_FILE_READ_TOOL_ID,
@@ -35,6 +42,25 @@ export const REGISTERED_ISOLATED_CODING_TOOL_IDS = Object.freeze([
   ...CODING_TOOL_IDS,
   CODING_ARTIFACT_PUBLISH_TOOL_ID,
 ] as const);
+
+/**
+ * The apply capability is declared so the Tool Gateway can resolve a manifest and reach its
+ * `require-approval` rule; without one, requesting the second approval would fail as
+ * `manifest-unavailable` before the user ever saw it. It is intentionally not an
+ * {@link IsolatedCodingToolDefinition}: no agent-supplied input is parsed, because Main applies the
+ * patch from the persisted Artifact reference.
+ */
+export const ARTIFACT_APPLY_TOOL_DEFINITION = Object.freeze({
+  toolId: ARTIFACT_APPLY_TOOL_ID,
+  action: "artifact.apply",
+  resourceKind: "repository",
+  timeoutMs: 60_000,
+} satisfies {
+  readonly toolId: ToolId;
+  readonly action: ProtectedAction;
+  readonly resourceKind: ProtectedResourceKind;
+  readonly timeoutMs: number;
+});
 
 export type IsolatedCodingToolId = (typeof CODING_TOOL_IDS)[number];
 export type RegisteredIsolatedCodingToolId = (typeof REGISTERED_ISOLATED_CODING_TOOL_IDS)[number];

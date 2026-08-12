@@ -420,6 +420,70 @@ describe("Actestra Team run authority", () => {
     );
   });
 
+  it("returns a denied feedback node to review and admits final approval", () => {
+    const blocked = createFeedbackBlockedRun();
+    const feedback = blocked.nodes.find(({ candidateKey }) => candidateKey === "feedback")!;
+
+    const denied = core.transitionTeamRun(blocked, {
+      type: "resolve-human-feedback",
+      nodeId: feedback.nodeId,
+      decision: "denied",
+      note: "Tighten the summary before acceptance.",
+      occurredAt: core.instant("2026-08-04T01:00:09.000Z"),
+    });
+
+    expect(denied.nodes.find(({ candidateKey }) => candidateKey === "feedback")).toMatchObject({
+      status: "revision-requested",
+      blockedReason: "revision-requested",
+      workflowFeedback: { decision: "denied", note: "Tighten the summary before acceptance." },
+    });
+    expect(denied.nodes.find(({ candidateKey }) => candidateKey === "aggregate")?.status).toBe(
+      "pending",
+    );
+
+    // A revision-requested node is not terminal: neither Worker retry nor cancellation is forced.
+    expect(() =>
+      core.transitionTeamRun(denied, {
+        type: "retry-node",
+        nodeId: feedback.nodeId,
+        reason: "Retry is a Worker-only control.",
+        occurredAt: core.instant("2026-08-04T01:00:10.000Z"),
+      }),
+    ).toThrow(expect.objectContaining({ code: "invalid-transition" }));
+
+    const revised = core.transitionTeamRun(denied, {
+      type: "request-feedback-revision",
+      nodeId: feedback.nodeId,
+      reason: "Summary rewritten to the requested length.",
+      occurredAt: core.instant("2026-08-04T01:00:11.000Z"),
+    });
+
+    expect(revised.nodes.find(({ candidateKey }) => candidateKey === "feedback")).toMatchObject({
+      status: "approval-blocked",
+      blockedReason: "human-feedback",
+      blockedExplanation: "Revision requested: Summary rewritten to the requested length.",
+      workflowFeedback: null,
+    });
+    expect(() => core.assertTeamRunRevisionTransition(denied, revised)).not.toThrow();
+
+    const approved = core.transitionTeamRun(revised, {
+      type: "resolve-human-feedback",
+      nodeId: feedback.nodeId,
+      decision: "approved",
+      note: "The revised bounded Team result is accepted.",
+      occurredAt: core.instant("2026-08-04T01:00:12.000Z"),
+    });
+
+    expect(approved.nodes.find(({ candidateKey }) => candidateKey === "feedback")).toMatchObject({
+      status: "completed",
+      blockedReason: null,
+      workflowFeedback: { decision: "approved" },
+    });
+    expect(approved.nodes.find(({ candidateKey }) => candidateKey === "aggregate")?.status).toBe(
+      "ready",
+    );
+  });
+
   it("resumes a protected operation only from persisted policy, Approval, and audit references", () => {
     const started = startRun();
     const checks = started.nodes.find(({ candidateKey }) => candidateKey === "checks")!;

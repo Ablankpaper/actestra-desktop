@@ -6,6 +6,7 @@ import {
   assertAionUiCodingJourneyProjection,
   assertAionUiCodingJourneySubmitRequest,
   hashAionUiGeneralWorkConversation,
+  projectArtifactDelivery,
   AIONUI_CODING_JOURNEY_MAX_PROJECTIONS,
   type AionUiCodingJourneyApprovalProjection,
   type AionUiCodingJourneyDecision,
@@ -24,7 +25,9 @@ import {
   CODING_TEST_TOOL_ID,
   approvalActorId,
   approvalId,
+  artifactId,
   assertApprovalRequestSnapshot,
+  canRetryArtifactDelivery,
   assertDomainGraph,
   compareInstants,
   instant,
@@ -36,6 +39,9 @@ import {
   type ActestraPersistencePort,
   type AgentClock,
   type ApprovalId,
+  type ArtifactId,
+  type UserApprovalDecision,
+  type ArtifactWorkspaceOperationsPort,
   type AuditRecordId,
   type ApprovalRequestSnapshot,
   type CoreEvent,
@@ -44,13 +50,17 @@ import {
 } from "../../core";
 import type { IsolatedCodingProcessDefinition } from "../privileged/isolatedCodingToolPlatform";
 import { withPersistenceMutationBarrier } from "../persistence/persistenceMutationBarrier";
-import type { AionUiGeneralWorkNativeContextPort } from "./aionuiGeneralWorkNativeContext";
+import type {
+  AionUiGeneralWorkNativeContext,
+  AionUiGeneralWorkNativeContextPort,
+} from "./aionuiGeneralWorkNativeContext";
 import { canonicalizeAionUiGeneralWorkNativeContext } from "./aionuiGeneralWorkNativeContext";
 import type { GooseLoopbackModelInvoker } from "../workers/gooseLoopbackModelServer";
 import type {
   GooseCodingApprovalDecision,
   GooseCodingApprovalDecisionRequest,
 } from "../workers/gooseCodingToolInvoker";
+import { createGooseAcpHumanDecisionGate } from "../workers/gooseAcpHandshake";
 import type {
   GooseAcpPromptResult,
   GooseAcpToolCallContent,
@@ -66,6 +76,7 @@ import type {
   IsolatedCodingMainService,
 } from "../workers/isolatedCodingMainService";
 import type { AdmittedGooseRunnerArtifact } from "../workers/gooseRunnerArtifact";
+import { ArtifactDeliveryService } from "../workers/artifactDeliveryService";
 
 const execFileAsync = promisify(execFile);
 const MAX_TITLE_BYTES = 512;
@@ -84,8 +95,12 @@ interface AionUiCodingAgentAdmissionPort {
   requireAdmittedArtifact(): Promise<AdmittedGooseRunnerArtifact>;
 }
 
+type AionUiCodingNativeContextResolver = (
+  intent: AionUiCodingJourneySubmitRequest,
+) => Promise<AionUiGeneralWorkNativeContext>;
+
 export interface AionUiCodingJourneyServiceConfig {
-  readonly persistence: ActestraPersistencePort;
+  readonly persistence: ActestraPersistencePort & ArtifactWorkspaceOperationsPort;
   readonly clock: AgentClock;
   readonly nativeContext: AionUiGeneralWorkNativeContextPort;
   readonly codingAgent: AionUiCodingAgentAdmissionPort;
@@ -156,7 +171,11 @@ export class AionUiCodingJourneyServiceError extends Error {
       | "task-not-owned"
       | "task-conflict"
       | "approval-not-pending"
-      | "execution-failed",
+      | "execution-failed"
+      | "artifact-not-found"
+      | "delivery-not-found"
+      | "delivery-conflict"
+      | "apply-failed",
     message: string,
     options?: ErrorOptions,
   ) {
@@ -535,13 +554,17 @@ async function requireCanonicalGitRoot(rootPath: string): Promise<string> {
     );
     const reportedRoot = result.stdout.trim();
     if (reportedRoot !== rootPath) {
-      throw new Error("AionUI coding workspace must be the canonical Git worktree root");
+      throw new AionUiCodingJourneyServiceError(
+        "workspace-unavailable",
+        "AionUI coding requires the canonical Git worktree root, and this workspace is a subdirectory of one",
+      );
     }
     return rootPath;
   } catch (error) {
+    if (error instanceof AionUiCodingJourneyServiceError) throw error;
     throw new AionUiCodingJourneyServiceError(
       "workspace-unavailable",
-      "AionUI coding requires one canonical native Git workspace",
+      "AionUI coding requires one canonical native Git workspace, and this workspace is not a Git repository",
       { cause: error },
     );
   }
@@ -585,10 +608,36 @@ export class AionUiCodingJourneyService {
   private readonly approvalObservers = new Map<TaskId, Set<AionUiCodingTeamApprovalObserver>>();
   private readonly preparedTeamApprovalDecisions = new Map<TaskId, PreparedTeamApprovalDecision>();
   private readonly journeyFailures = new Map<string, unknown>();
+  private readonly artifactApplyAborts = new Map<ArtifactId, AbortController>();
+  /** Built on first apply, so a session that never applies composes no delivery authority. */
+  private artifactDeliveryService: ArtifactDeliveryService | undefined;
 
   constructor(private readonly config: AionUiCodingJourneyServiceConfig) {}
 
   submit(value: unknown): Promise<AionUiCodingJourneyProjection> {
+    return this.submitWithContextResolver(value, (intent) =>
+      this.config.nativeContext.resolve(intent.nativeConversationId),
+    );
+  }
+
+  submitFromTrustedContext(
+    value: unknown,
+    nativeContext: AionUiGeneralWorkNativeContext,
+    destinationWorkspaceId?: ReturnType<typeof workspaceId>,
+  ): Promise<AionUiCodingJourneyProjection> {
+    const trustedContext = Object.freeze({ ...nativeContext });
+    return this.submitWithContextResolver(
+      value,
+      async () => trustedContext,
+      destinationWorkspaceId,
+    );
+  }
+
+  private submitWithContextResolver(
+    value: unknown,
+    resolveNativeContext: AionUiCodingNativeContextResolver,
+    destinationWorkspaceId?: ReturnType<typeof workspaceId>,
+  ): Promise<AionUiCodingJourneyProjection> {
     assertAionUiCodingJourneySubmitRequest(value);
     const intent = Object.freeze({ ...value }) as AionUiCodingJourneySubmitRequest;
     const identities = deriveAionUiCodingJourneyIdentities(
@@ -597,7 +646,12 @@ export class AionUiCodingJourneyService {
     );
     const existing = this.submissions.get(identities.taskId);
     if (existing !== undefined) return existing;
-    const operation = this.submitOnce(intent, identities).finally(() => {
+    const operation = this.submitOnce(
+      intent,
+      identities,
+      resolveNativeContext,
+      destinationWorkspaceId,
+    ).finally(() => {
       if (this.submissions.get(identities.taskId) === operation) {
         this.submissions.delete(identities.taskId);
       }
@@ -610,6 +664,7 @@ export class AionUiCodingJourneyService {
     nativeConversationId: string,
     limit = AIONUI_CODING_JOURNEY_MAX_PROJECTIONS,
   ): Promise<readonly AionUiCodingJourneyProjection[]> {
+    await this.recoverArtifactDeliveries();
     if (
       !Number.isSafeInteger(limit) ||
       limit < 1 ||
@@ -1101,10 +1156,153 @@ export class AionUiCodingJourneyService {
 
   async close(): Promise<void> {
     const active = [...this.activeJourneys.values()];
+    for (const controller of this.artifactApplyAborts.values()) {
+      controller.abort();
+    }
+    this.artifactApplyAborts.clear();
     await Promise.allSettled(active.map(({ session }) => session.close()));
     await Promise.allSettled(active.map(({ completion }) => completion));
     this.approvalObservers.clear();
     this.preparedTeamApprovalDecisions.clear();
+  }
+
+  async getArtifactPatchPreview(artifactIdValue: string): Promise<string> {
+    return this.config.persistence.getArtifactPatchPreview(artifactId(artifactIdValue));
+  }
+
+  async getArtifactPatchContent(artifactIdValue: string): Promise<string> {
+    return this.config.persistence.getArtifactPatchContent(artifactId(artifactIdValue));
+  }
+
+  async applyArtifactToWorkspace(
+    artifactIdValue: string,
+    workspaceRoot: string,
+  ): Promise<{ readonly verifiedHead: string }> {
+    return this.config.persistence.applyArtifactToWorkspace(
+      artifactId(artifactIdValue),
+      workspaceRoot,
+    );
+  }
+
+  async viewArtifact(artifactIdValue: string): Promise<{
+    readonly baseCommit: string;
+    readonly changedFileCount: number;
+    readonly patchPreview: string;
+  }> {
+    const preview = await this.getArtifactPatchPreview(artifactIdValue);
+    const delivery = await this.config.persistence.getArtifactDelivery(artifactId(artifactIdValue));
+    if (delivery === null) {
+      throw new AionUiCodingJourneyServiceError(
+        "artifact-not-found",
+        "Artifact delivery record not found",
+      );
+    }
+    return {
+      baseCommit: delivery.baseCommit,
+      changedFileCount: delivery.changedFileCount,
+      patchPreview: preview,
+    };
+  }
+
+  async downloadArtifact(artifactIdValue: string): Promise<{
+    readonly fileName: string;
+    readonly content: string;
+  }> {
+    const content = await this.getArtifactPatchContent(artifactIdValue);
+    const graph = await this.config.persistence.loadDomainGraph();
+    const artifact = graph.artifacts.find(({ id }) => id === artifactId(artifactIdValue));
+    if (artifact === undefined) {
+      throw new AionUiCodingJourneyServiceError("artifact-not-found", "Artifact not found");
+    }
+    const fileName = `${artifact.label.replace(/[^a-zA-Z0-9-]/g, "-")}.patch`;
+    return {
+      fileName,
+      content,
+    };
+  }
+
+  async applyArtifact(artifactIdValue: string): Promise<{ readonly approvalId: string }> {
+    const artifactIdBranded = artifactId(artifactIdValue);
+    const deliveryService = this.#deliveryService();
+    const inFlight = deliveryService.inFlightApply(artifactIdBranded);
+    if (inFlight !== undefined) {
+      return Object.freeze({ approvalId: inFlight.approvalId });
+    }
+    await this.recoverArtifactDeliveries();
+    const delivery = await this.config.persistence.getArtifactDelivery(artifactIdBranded);
+    if (delivery === null) {
+      throw new AionUiCodingJourneyServiceError(
+        "artifact-not-found",
+        "Artifact delivery record not found",
+      );
+    }
+    if (!canRetryArtifactDelivery(delivery.state)) {
+      throw new AionUiCodingJourneyServiceError(
+        "delivery-conflict",
+        `Artifact delivery is ${delivery.state}, not retryable`,
+      );
+    }
+    const destinationWorkspaceId = delivery.destinationWorkspaceId ?? delivery.workspaceId;
+    const grant = await this.config.persistence.getActiveWorkspaceGrant(destinationWorkspaceId);
+    if (grant === null) {
+      throw new AionUiCodingJourneyServiceError(
+        "workspace-unavailable",
+        "No active workspace grant found for artifact",
+      );
+    }
+
+    // The destination authority is the user's own active workspace grant, never the isolated worktree
+    // grant that produced the patch. No coding session is opened: opening one would create a fresh
+    // worktree and rebind this grant to it, so the approval would name a throwaway copy while the
+    // write landed in the user's repository.
+    const request = await deliveryService.requestApply({
+      artifactId: artifactIdBranded,
+      destinationGrant: grant,
+      signal: this.#applyAbort(artifactIdBranded).signal,
+    });
+
+    // Completion settles in background; user sees approval card immediately
+    request.completion.catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[AionUiCodingJourneyService] Apply completion failed: ${message}`, error);
+    });
+
+    return Object.freeze({ approvalId: request.approvalId });
+  }
+
+  /**
+   * Records a user decision on a pending apply approval. The write only happens once this is called
+   * with `approved`; nothing about clicking "apply" authorizes it.
+   */
+  async resolveArtifactApply(
+    approvalIdValue: string,
+    decision: UserApprovalDecision,
+  ): Promise<void> {
+    await this.#deliveryService().resolveApply(approvalId(approvalIdValue), decision);
+  }
+
+  /** Startup/reconnect hook: settle interrupted Main-owned apply attempts before projection or retry. */
+  async recoverArtifactDeliveries(): Promise<void> {
+    await this.#deliveryService().recoverInterruptedApplies();
+  }
+
+  #deliveryService(): ArtifactDeliveryService {
+    this.artifactDeliveryService ??= new ArtifactDeliveryService({
+      persistence: this.config.persistence,
+      clock: this.config.clock,
+    });
+    return this.artifactDeliveryService;
+  }
+
+  /** One abort controller per artifact, so cancelling one apply never cancels another. */
+  #applyAbort(artifactIdValue: ArtifactId): AbortController {
+    const existing = this.artifactApplyAborts.get(artifactIdValue);
+    if (existing !== undefined && !existing.signal.aborted) {
+      return existing;
+    }
+    const controller = new AbortController();
+    this.artifactApplyAborts.set(artifactIdValue, controller);
+    return controller;
   }
 
   #pendingTeamApproval(
@@ -1193,9 +1391,11 @@ export class AionUiCodingJourneyService {
   private async submitOnce(
     intent: AionUiCodingJourneySubmitRequest,
     identities: CodingJourneyIdentities,
+    resolveNativeContext: AionUiCodingNativeContextResolver,
+    destinationWorkspaceId?: ReturnType<typeof workspaceId>,
   ): Promise<AionUiCodingJourneyProjection> {
     const nativeContext = await canonicalizeAionUiGeneralWorkNativeContext(
-      await this.config.nativeContext.resolve(intent.nativeConversationId),
+      await resolveNativeContext(intent),
     );
     const repositoryRoot = await requireCanonicalGitRoot(nativeContext.rootPath);
     const mainService = this.config.getMainService();
@@ -1292,6 +1492,7 @@ export class AionUiCodingJourneyService {
       return this.project(identities);
     }
 
+    const humanDecisionGate = createGooseAcpHumanDecisionGate();
     let session: GooseCodingMainSession;
     try {
       session = await mainService.openGoose({
@@ -1308,8 +1509,10 @@ export class AionUiCodingJourneyService {
         taskId: identities.taskId,
         sessionId: identities.sessionId,
         workerId: identities.workerId,
+        destinationWorkspaceId,
         approvalDecisionHandler: (request) =>
           this.awaitToolApprovalDecision(identities.taskId, request),
+        holdHumanDecision: () => humanDecisionGate.hold(),
       });
     } catch (error) {
       let cause: unknown = error;
@@ -1330,7 +1533,7 @@ export class AionUiCodingJourneyService {
 
     let active!: ActiveCodingJourney;
     const completion = session
-      .prompt({ text: intent.prompt })
+      .prompt({ text: intent.prompt, humanDecisionGate })
       .then(async (result) => {
         active.promptResult = result;
         if (result.stopReason === "cancelled") {
@@ -1340,7 +1543,7 @@ export class AionUiCodingJourneyService {
         const publishResult = await session.publish({
           decisionHandler: (request) => this.awaitPublishDecision(identities.taskId, request),
         });
-        if (publishResult.status === "published") {
+        if (publishResult.status === "published" || publishResult.status === "unchanged") {
           await session.close();
         } else {
           active.retainAfterCompletion = true;
@@ -1381,6 +1584,14 @@ export class AionUiCodingJourneyService {
       );
     }
     const artifacts = graph.artifacts.filter(({ taskId: owner }) => owner === task.id);
+    const deliveryRecords = await Promise.all(
+      artifacts.map((artifact) => this.config.persistence.getArtifactDelivery(artifact.id)),
+    );
+    const deliveryMap = new Map(
+      artifacts
+        .map((artifact, index) => [artifact.id, deliveryRecords[index]] as const)
+        .filter(([, delivery]) => delivery !== null),
+    );
     const evidenceIdentity = deriveGooseCodingEvidenceIdentity({
       workspaceId: identities.workspaceId,
       taskId: identities.taskId,
@@ -1433,7 +1644,7 @@ export class AionUiCodingJourneyService {
             kind: "publish",
             approvalId: pendingPublishApproval.approval.approvalId,
             toolCallId: pendingPublishApproval.approval.operation.requestId,
-            title: "Publish Actestra coding patch",
+            title: "Save Actestra coding patch",
             operationKind: "execute",
             summary: pendingPublishApproval.approval.operation.summary,
             snapshot: pendingPublishApproval.snapshot,
@@ -1455,7 +1666,7 @@ export class AionUiCodingJourneyService {
         ? undefined
         : (Object.freeze({
             toolCallId: pendingPublishApproval.approval.operation.requestId,
-            title: "Publish Actestra coding patch",
+            title: "Save Actestra coding patch",
             kind: "execute",
             status: "pending",
             surface: "diff",
@@ -1505,13 +1716,22 @@ export class AionUiCodingJourneyService {
         ? {}
         : { incidentCode: durableProjection.incidentCode }),
       artifacts: Object.freeze(
-        artifacts.map((artifact) =>
-          Object.freeze({
+        artifacts.map((artifact) => {
+          const delivery = deliveryMap.get(artifact.id);
+          if (delivery === undefined || delivery === null) {
+            return Object.freeze({
+              artifactId: artifact.id,
+              label: artifact.label,
+              state: artifact.state,
+            });
+          }
+          return Object.freeze({
             artifactId: artifact.id,
             label: artifact.label,
             state: artifact.state,
-          }),
-        ),
+            delivery: projectArtifactDelivery(delivery),
+          });
+        }),
       ),
     }) satisfies AionUiCodingJourneyProjection;
     assertAionUiCodingJourneyProjection(projection);

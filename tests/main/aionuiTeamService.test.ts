@@ -8,11 +8,18 @@ import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   artifactId,
+  eventId,
   instant,
+  normalizeTeamDefinition,
   normalizeTeamExperienceBinding,
   normalizeTeamPlannerRequest,
+  sessionId,
   taskId,
+  toolOutputReference,
+  toolRequestId,
+  transitionTeamRun,
   teamRunId,
+  workerId,
   workspaceGrantId,
   workspaceId,
   WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
@@ -27,6 +34,7 @@ import type {
   NativeAionUiTeamRunState,
   NativeAionUiTeamWorkspaceOption,
 } from "../../apps/desktop/src/compatibility/aionui";
+import { parseAionUiTeamBridgeRequest } from "../../apps/desktop/src/compatibility/aionui";
 import * as AionUiTeamServices from "../../apps/desktop/src/main/compatibility/aionuiTeamService";
 import { AionUiTeamBridgeService } from "../../apps/desktop/src/main/compatibility/aionuiTeamBridgeService";
 import type {
@@ -39,9 +47,14 @@ import {
   type TeamWorkerExecutionResult,
   type TeamWorkerExecutionPort,
 } from "../../apps/desktop/src/main/orchestration/teamOrchestratorService";
-import { TeamPlanAdmissionService } from "../../apps/desktop/src/main/orchestration/teamPlanAdmissionService";
+import {
+  TeamPlanAdmissionService,
+  TeamPlanAdmissionServiceError,
+} from "../../apps/desktop/src/main/orchestration/teamPlanAdmissionService";
+import { deriveTeamJourneyReplyStreamId } from "../../apps/desktop/src/main/orchestration/teamJourneyWorkerRouter";
 import { openSqliteCorePersistence } from "../../apps/desktop/src/utility/persistence/sqliteCorePersistence";
 import { createTeamRunFixture } from "../fixtures/teamRun";
+import { createDomainGraph, createEvent } from "../fixtures/core";
 
 const testDirectories: string[] = [];
 
@@ -76,11 +89,35 @@ const createRoute = Object.freeze({
   name: "Actestra delivery Team",
   description: "Coordinate a bounded release brief and coding change.",
   workspaceId: "workspace-aionui-team-service",
+  modelSelection: Object.freeze({
+    providerId: "provider-aionui-team",
+    modelId: "model-aionui-team",
+  }),
   members: Object.freeze([
-    Object.freeze({ displayName: "General lead", role: "leader", capability: "general" }),
-    Object.freeze({ displayName: "Goose coding worker", role: "teammate", capability: "coding" }),
+    Object.freeze({
+      displayName: "General lead",
+      role: "leader",
+      capability: "general",
+    }),
+    Object.freeze({
+      displayName: "Goose coding worker",
+      role: "teammate",
+      capability: "coding",
+    }),
   ]),
 }) satisfies AionUiTeamBridgeRoute;
+
+const createRouteModelCatalog = Object.freeze({
+  list: async () => ({
+    providers: [
+      {
+        provider_id: "provider-aionui-team",
+        name: "AionUI Team provider",
+        model_ids: ["model-aionui-team"],
+      },
+    ],
+  }),
+});
 
 const { AionUiTeamService } = AionUiTeamServices;
 
@@ -255,6 +292,48 @@ async function waitForCondition(condition: () => boolean, timeoutMs = 3_000): Pr
   }
 }
 
+// The probe fixtures write this file non-atomically, so waiting for the path to
+// exist can observe a partial write under load. Wait for parseable content.
+async function waitForRecordedPids(
+  filePath: string,
+): Promise<{ wrapperPid: number; childPid: number }> {
+  let recorded: { wrapperPid: number; childPid: number } | null = null;
+  await waitForCondition(() => {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as {
+        wrapperPid?: number;
+        childPid?: number;
+      };
+      if (typeof parsed.wrapperPid !== "number" || typeof parsed.childPid !== "number")
+        return false;
+      recorded = { wrapperPid: parsed.wrapperPid, childPid: parsed.childPid };
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  if (recorded === null) throw new Error("Probe fixture PIDs were never recorded");
+  return recorded;
+}
+
+async function waitForRecordedChildPid(filePath: string): Promise<number> {
+  let childPid: number | null = null;
+  await waitForCondition(() => {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as {
+        childPid?: number;
+      };
+      if (typeof parsed.childPid !== "number") return false;
+      childPid = parsed.childPid;
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  if (childPid === null) throw new Error("Probe fixture child PID was never recorded");
+  return childPid;
+}
+
 function terminateProcess(child: ChildProcess | null): void {
   if (child?.pid === undefined || !processIsAlive(child.pid)) return;
   child.kill("SIGKILL");
@@ -418,10 +497,73 @@ function candidateFor(value: unknown): TeamPlanCandidate {
 }
 
 describe("AionUiTeamService", () => {
+  it("wires the authoritative loopback model catalog into downstream desktop Main", () => {
+    const downstreamPatch = fs.readFileSync(
+      path.join(process.cwd(), "downstream/aionui-v2.1.41/patches/0014-actestra-team-work.mjs"),
+      "utf8",
+    );
+
+    expect(downstreamPatch).toContain("import { getDataPath } from '@process/utils';");
+    expect(downstreamPatch).toContain("AionCoreProbeProcessGuard,");
+    expect(downstreamPatch).toContain(
+      "this.#standardBackend = new LoopbackAionUiStandardTeamBackend({\n      probeProcessGuard: new AionCoreProbeProcessGuard({ dataDirectory: getDataPath() }),\n    })",
+    );
+    expect(downstreamPatch).not.toContain("new LoopbackAionUiStandardTeamBackend()");
+    expect(downstreamPatch).toContain("new AionUiStandardTeamCreationService({");
+    expect(downstreamPatch).toContain("standardTeamCreation:");
+    expect(downstreamPatch).toContain(
+      "readonly #standardBackend: LoopbackAionUiStandardTeamBackend;",
+    );
+    expect(downstreamPatch).toContain("await this.#standardBackend.close();");
+    expect(downstreamPatch.indexOf("this.#service.close()")).toBeLessThan(
+      downstreamPatch.indexOf("await this.#standardBackend.close()"),
+    );
+    expect(downstreamPatch).toContain(
+      "for (const { orchestrator, runtime } of this.#teamRuntimes.values()) {",
+    );
+    expect(downstreamPatch.indexOf("await this.#standardBackend.close()")).toBeLessThan(
+      downstreamPatch.indexOf("await orchestrator.close()"),
+    );
+    expect(downstreamPatch.indexOf("await orchestrator.close()")).toBeLessThan(
+      downstreamPatch.indexOf("await this.#planner?.close()"),
+    );
+  });
+
   it("fails closed when a loopback model-catalog backend has no probe process guard", () => {
     const Backend = standardTeamLoopbackBackendConstructor();
 
     expect(() => new Backend()).toThrow("process guard is required");
+  });
+
+  it("routes standard Team create and add-member renderer intents through Main without model resolution", () => {
+    const downstreamPatch = fs.readFileSync(
+      path.join(process.cwd(), "downstream/aionui-v2.1.41/patches/0014-actestra-team-work.mjs"),
+      "utf8",
+    );
+
+    expect(downstreamPatch).toContain("export async function createStandardTeam");
+    expect(downstreamPatch).toContain("export async function addStandardTeamMember");
+    expect(downstreamPatch).toContain("const team = await createStandardTeam({");
+    expect(downstreamPatch).toContain("const created = await (providerActive");
+    expect(downstreamPatch).toContain("addStandardTeamMember({ team_id: team.id, assistant })");
+    expect(downstreamPatch).toContain(
+      "ipcBridge.team.addAgent.invoke({ team_id: team.id, assistant })",
+    );
+    expect(downstreamPatch).toContain("requested_model: agent.model?.trim() || null");
+    expect(downstreamPatch).toContain("export async function getStandardTeamConfigOptions");
+    expect(downstreamPatch).toContain(
+      "getStandardTeamConfigOptions(targetTeamId, conversation_id)",
+    );
+    expect(downstreamPatch).toContain("export async function setStandardTeamSessionMode");
+    expect(downstreamPatch).toContain(
+      "await setStandardTeamSessionMode(team_id, leaderConversationId, mode)",
+    );
+    expect(downstreamPatch).toContain("await onModeChanged?.(mode)");
+    expect(downstreamPatch).toContain("await teamPermission.propagateMode(mode)");
+    expect(downstreamPatch).toContain("await propagateMode(mode)");
+    expect(downstreamPatch).toContain(
+      "if (isActestraTeamProviderActive()) {\n        await setStandardTeamSessionMode(team_id, leaderConversationId, mode);\n        return;\n      }\n      await ipcBridge.team.setSessionMode.invoke({ team_id, session_mode: mode });",
+    );
   });
 
   it("uses the current Main AionCore loopback port and only fixed standard-Team routes", async () => {
@@ -499,14 +641,18 @@ describe("AionUiTeamService", () => {
       id: "native-team-1",
     });
     await expect(
-      backend.addTeamMember?.("native-team-1", { assistant: { name: "Gemini teammate" } }),
+      backend.addTeamMember?.("native-team-1", {
+        assistant: { name: "Gemini teammate" },
+      }),
     ).resolves.toEqual(persistedStandardAssistant("gemini-3.1-pro-preview"));
     await expect(backend.setTeamSessionMode?.("native-team-1", "default")).resolves.toBeUndefined();
     await expect(backend.ensureTeamSession?.("native-team-1")).resolves.toBeUndefined();
     await expect(backend.stopTeamSession?.("native-team-1")).resolves.toBeUndefined();
     await expect(backend.renewTeamActiveLease?.("native-team-1")).resolves.toBeUndefined();
     await expect(
-      backend.cancelTeamRun?.("native-team-1", "native-run-1", { reason: "Stop now." }),
+      backend.cancelTeamRun?.("native-team-1", "native-run-1", {
+        reason: "Stop now.",
+      }),
     ).resolves.toBeUndefined();
 
     expect(fetchRequest.mock.calls.map(([input]) => String(input))).toEqual([
@@ -567,10 +713,14 @@ describe("AionUiTeamService", () => {
     await expect(backend.removeTeamMember?.("native-team-1", "slot-1")).resolves.toBeUndefined();
     await expect(backend.attachTeamMember?.("native-team-1", "slot-1")).resolves.toBeUndefined();
     await expect(
-      backend.pauseTeamMemberWork?.("native-team-1", "run-1", "slot-1", { reason: "pause" }),
+      backend.pauseTeamMemberWork?.("native-team-1", "run-1", "slot-1", {
+        reason: "pause",
+      }),
     ).resolves.toBeUndefined();
     await expect(
-      backend.cancelTeamMemberWork?.("native-team-1", "run-1", "slot-1", { reason: "cancel" }),
+      backend.cancelTeamMemberWork?.("native-team-1", "run-1", "slot-1", {
+        reason: "cancel",
+      }),
     ).resolves.toBeUndefined();
     expect(fetchRequest).toHaveBeenCalledTimes(7);
   });
@@ -876,11 +1026,7 @@ describe("AionUiTeamService", () => {
       probeProcessGroupId = wrapper.pid;
       wrapper.unref();
 
-      await waitForCondition(() => fs.existsSync(probePidPath));
-      const recorded = JSON.parse(fs.readFileSync(probePidPath, "utf8")) as {
-        wrapperPid: number;
-        childPid: number;
-      };
+      const recorded = await waitForRecordedPids(probePidPath);
       expect(recorded.wrapperPid).toBe(probeProcessGroupId);
       probeChildId = recorded.childPid;
       await waitForCondition(
@@ -979,7 +1125,8 @@ describe("AionUiTeamService", () => {
           if (spawned || !fs.existsSync(process.argv[2])) return;
           spawned = true;
           const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
-          fs.writeFileSync(process.argv[3], JSON.stringify({ childPid: child.pid }));
+          fs.writeFileSync(process.argv[3], '{"childPid":');
+          setTimeout(() => fs.appendFileSync(process.argv[3], String(child.pid) + '}'), 500);
         }, 10);
       `;
       const wrapper = spawn(
@@ -1015,9 +1162,7 @@ describe("AionUiTeamService", () => {
       const snapshot = await guard.capture("probe-conversation-membership-drift");
 
       fs.writeFileSync(spawnTriggerPath, "spawn", "utf8");
-      await waitForCondition(() => fs.existsSync(childReadyPath));
-      probeChildId = (JSON.parse(fs.readFileSync(childReadyPath, "utf8")) as { childPid: number })
-        .childPid;
+      probeChildId = await waitForRecordedChildPid(childReadyPath);
       await waitForCondition(() => processIsAlive(probeChildId as number));
 
       const destructiveSignals: Array<
@@ -1098,11 +1243,7 @@ describe("AionUiTeamService", () => {
       probeProcessGroupId = wrapper.pid;
       wrapper.unref();
 
-      await waitForCondition(() => fs.existsSync(probePidPath));
-      const recorded = JSON.parse(fs.readFileSync(probePidPath, "utf8")) as {
-        wrapperPid: number;
-        childPid: number;
-      };
+      const recorded = await waitForRecordedPids(probePidPath);
       probeChildId = recorded.childPid;
       await waitForCondition(
         () =>
@@ -1217,7 +1358,9 @@ describe("AionUiTeamService", () => {
     await ensureStarted;
     await backend.close?.();
 
-    await expect(discovery).rejects.toMatchObject({ code: "team-model-unavailable" });
+    await expect(discovery).rejects.toMatchObject({
+      code: "team-model-unavailable",
+    });
     expect(operations).toEqual([
       "create",
       "ensure",
@@ -1259,7 +1402,12 @@ describe("AionUiTeamService", () => {
       ],
     };
     const observedConfigOptions = {
-      config_options: [{ ...staleConfigOptions.config_options[0], current_value: "auto-gemini-3" }],
+      config_options: [
+        {
+          ...staleConfigOptions.config_options[0],
+          current_value: "auto-gemini-3",
+        },
+      ],
     };
     const fetchRequest = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
@@ -1282,7 +1430,10 @@ describe("AionUiTeamService", () => {
       if (url.endsWith("/api/conversations/native-conversation-gemini/config-options/model")) {
         expect(init?.method).toBe("PUT");
         expect(init?.body).toBe(JSON.stringify({ value: "auto-gemini-3" }));
-        return backendResponse({ confirmation: "observed", ...observedConfigOptions });
+        return backendResponse({
+          confirmation: "observed",
+          ...observedConfigOptions,
+        });
       }
       throw new Error(`Unexpected standard Team model reconciliation URL: ${url}`);
     });
@@ -1544,7 +1695,10 @@ describe("AionUiTeamService", () => {
           geminiManagedAgent("auto-gemini-3", ["auto-gemini-3"]),
         ]),
         createTeam: vi.fn(async () => created),
-        getTeam: vi.fn(async () => ({ ...created, session_mode: "bypassPermissions" })),
+        getTeam: vi.fn(async () => ({
+          ...created,
+          session_mode: "bypassPermissions",
+        })),
         setTeamSessionMode: vi.fn(async () => null),
         removeTeam,
       },
@@ -1868,7 +2022,10 @@ describe("AionUiTeamService", () => {
   });
 
   it("stops a partially warmed standard Team when safe member-mode verification fails", async () => {
-    let stored = { ...persistedStandardTeam("claude-sonnet"), session_mode: "default" };
+    let stored = {
+      ...persistedStandardTeam("claude-sonnet"),
+      session_mode: "default",
+    };
     const ensureTeamSession = vi.fn(async () => null);
     const stopTeamSession = vi.fn(async () => null);
     const setTeamSessionMode = vi.fn(async (_teamId: string, mode: string) => {
@@ -2300,7 +2457,9 @@ describe("AionUiTeamService", () => {
     await expect(service.dispatch(route)).rejects.toMatchObject({
       code: "team-execution-failed",
     });
-    await expect(service.dispatch(route)).rejects.toMatchObject({ code: "team-conflict" });
+    await expect(service.dispatch(route)).rejects.toMatchObject({
+      code: "team-conflict",
+    });
     expect(sendMessage).toHaveBeenCalledOnce();
     const deliveryId = `standard-team-delivery-${createHash("sha256")
       .update(`native-team-uncertain\u0000\u0000team-request-${"2".repeat(64)}`)
@@ -2341,7 +2500,9 @@ describe("AionUiTeamService", () => {
       createDigest: () => "c".repeat(64),
     } as unknown as ConstructorParameters<typeof AionUiTeamService>[0]);
     const recover = (
-      service as unknown as { recoverStandardTeamMessageDeliveries: () => Promise<number> }
+      service as unknown as {
+        recoverStandardTeamMessageDeliveries: () => Promise<number>;
+      }
     ).recoverStandardTeamMessageDeliveries;
 
     expect(recover).toBeTypeOf("function");
@@ -2489,6 +2650,7 @@ describe("AionUiTeamService", () => {
       admission: null,
       orchestrator: null,
       standardTeamCreation: { renewActiveLease },
+      modelCatalog: createRouteModelCatalog,
       now: clock(),
       createDigest: () => "7".repeat(64),
     } as unknown as ConstructorParameters<typeof AionUiTeamService>[0]);
@@ -2965,7 +3127,10 @@ describe("AionUiTeamService", () => {
     });
     const after = Object.freeze({
       session_generation: "native-session-current",
-      active_run: Object.freeze({ ...runningRun, slot_work: Object.freeze([pausedWork]) }),
+      active_run: Object.freeze({
+        ...runningRun,
+        slot_work: Object.freeze([pausedWork]),
+      }),
       slot_work: Object.freeze([pausedWork]),
     });
     const getTeamRunState = vi.fn().mockResolvedValueOnce(before).mockResolvedValueOnce(after);
@@ -3045,13 +3210,19 @@ describe("AionUiTeamService", () => {
         createTeam: vi.fn(),
         getTeam: vi.fn(async () => stored),
         sendTeamMessage,
-        getTeamRunState: vi.fn(async () => ({ active_run: run, slot_work: [] })),
+        getTeamRunState: vi.fn(async () => ({
+          active_run: run,
+          slot_work: [],
+        })),
       },
     });
 
     await expect(
       service.sendMessage(stored.id, "Review the attached brief.", ["brief.txt"]),
-    ).resolves.toMatchObject({ experience: "standard", message_id: "native-message-attachment" });
+    ).resolves.toMatchObject({
+      experience: "standard",
+      message_id: "native-message-attachment",
+    });
     expect(sendTeamMessage).toHaveBeenCalledWith(stored.id, {
       content: "Review the attached brief.",
       files: [fs.realpathSync(admittedFile)],
@@ -3181,7 +3352,10 @@ describe("AionUiTeamService", () => {
       }),
     });
 
-    const created = await service.create({ ...standardCreateIntent(), workspace: "" });
+    const created = await service.create({
+      ...standardCreateIntent(),
+      workspace: "",
+    });
 
     expect(createTeam).toHaveBeenCalledWith(expect.objectContaining({ workspace: "" }));
     expect(created.workspace).toBe("/private/tmp/actestra-auto-team-workspace");
@@ -3235,7 +3409,9 @@ describe("AionUiTeamService", () => {
 
   it("fails closed when AionCore runtime discovery still exposes no Gemini model catalog", async () => {
     const createTeam = vi.fn();
-    const discoverAssistantModelCatalog = vi.fn(async () => ({ config_options: [] }));
+    const discoverAssistantModelCatalog = vi.fn(async () => ({
+      config_options: [],
+    }));
     const Service = standardTeamServiceConstructor();
     const backend = {
       getAssistant: vi.fn(async () => geminiAssistant("gemini-3.1-pro-high")),
@@ -3292,7 +3468,11 @@ describe("AionUiTeamService", () => {
         ...original,
         members: [
           original.members[0],
-          { ...original.members[0], displayName: "Gemini teammate", role: "teammate" },
+          {
+            ...original.members[0],
+            displayName: "Gemini teammate",
+            role: "teammate",
+          },
         ],
       }),
     ).rejects.toThrow("stop after model admission");
@@ -3397,7 +3577,9 @@ describe("AionUiTeamService", () => {
       assistants: [{ model: "gemini-2.5-pro" }],
     });
     expect(createTeam).toHaveBeenCalledWith(
-      expect.objectContaining({ agents: [expect.objectContaining({ model: "gemini-2.5-pro" })] }),
+      expect.objectContaining({
+        agents: [expect.objectContaining({ model: "gemini-2.5-pro" })],
+      }),
     );
   });
 
@@ -3485,7 +3667,10 @@ describe("AionUiTeamService", () => {
     const directory = createTestDirectory();
     const persistence = openSqliteCorePersistence(directory);
     const workspaceRoot = fs.realpathSync(directory);
-    const createIntent = Object.freeze({ ...standardCreateIntent(), workspace: workspaceRoot });
+    const createIntent = Object.freeze({
+      ...standardCreateIntent(),
+      workspace: workspaceRoot,
+    });
     const persistedTeam = {
       ...persistedStandardTeam("gemini-3.1-pro-preview"),
       workspace: workspaceRoot,
@@ -3625,8 +3810,14 @@ describe("AionUiTeamService", () => {
           type: "select" as const,
           current_value: "gemini-3.1-pro-preview",
           options: Object.freeze([
-            Object.freeze({ value: "gemini-3.1-pro-preview", name: "Gemini preview" }),
-            Object.freeze({ value: "gemini-3.1-pro-high", name: "Gemini high" }),
+            Object.freeze({
+              value: "gemini-3.1-pro-preview",
+              name: "Gemini preview",
+            }),
+            Object.freeze({
+              value: "gemini-3.1-pro-high",
+              name: "Gemini high",
+            }),
           ]),
         }),
       ]),
@@ -3704,7 +3895,11 @@ describe("AionUiTeamService", () => {
     } as unknown as ConstructorParameters<typeof AionUiTeamService>[0]);
 
     await expect(
-      service.dispatch({ kind: "rename-team", teamId: stored.id, name: "Renamed native Team" }),
+      service.dispatch({
+        kind: "rename-team",
+        teamId: stored.id,
+        name: "Renamed native Team",
+      }),
     ).resolves.toMatchObject({
       id: stored.id,
       experience: "standard",
@@ -3805,7 +4000,10 @@ describe("AionUiTeamService", () => {
     expect(listTeams).toHaveBeenCalledOnce();
     expect(events).toEqual([
       { type: "team.removed", payload: { team_id: standardTeamId } },
-      { type: "team.listChanged", payload: { team_id: standardTeamId, action: "removed" } },
+      {
+        type: "team.listChanged",
+        payload: { team_id: standardTeamId, action: "removed" },
+      },
     ]);
 
     unsubscribe();
@@ -3863,16 +4061,31 @@ describe("AionUiTeamService", () => {
     const slotId = stored.assistants[0]!.slot_id;
 
     await expect(
-      service.dispatch({ kind: "rename-member", teamId: stored.id, slotId, name: "CLI lead" }),
+      service.dispatch({
+        kind: "rename-member",
+        teamId: stored.id,
+        slotId,
+        name: "CLI lead",
+      }),
     ).rejects.toMatchObject({ code: "team-conflict" });
     expect(events).toEqual([]);
 
     applyMutation = true;
     await expect(
-      service.dispatch({ kind: "rename-member", teamId: stored.id, slotId, name: "CLI lead" }),
+      service.dispatch({
+        kind: "rename-member",
+        teamId: stored.id,
+        slotId,
+        name: "CLI lead",
+      }),
     ).resolves.toMatchObject({
       experience: "standard",
-      assistants: [expect.objectContaining({ slot_id: slotId, assistant_name: "CLI lead" })],
+      assistants: [
+        expect.objectContaining({
+          slot_id: slotId,
+          assistant_name: "CLI lead",
+        }),
+      ],
     });
     expect(renameTeamMember).toHaveBeenCalledWith(stored.id, slotId, "CLI lead");
     expect(getTeam).toHaveBeenCalledWith(stored.id);
@@ -3951,8 +4164,14 @@ describe("AionUiTeamService", () => {
     expect(removeTeamMember).toHaveBeenCalledWith(stored.id, slotId);
     expect(getTeam).toHaveBeenCalledWith(stored.id);
     expect(events).toEqual([
-      { type: "team.agentRemoved", payload: { team_id: stored.id, slot_id: slotId } },
-      { type: "team.listChanged", payload: { team_id: stored.id, action: "agent_removed" } },
+      {
+        type: "team.agentRemoved",
+        payload: { team_id: stored.id, slot_id: slotId },
+      },
+      {
+        type: "team.listChanged",
+        payload: { team_id: stored.id, action: "agent_removed" },
+      },
     ]);
 
     unsubscribe();
@@ -4110,7 +4329,10 @@ describe("AionUiTeamService", () => {
     await expect(service.dispatch({ kind: "list" })).resolves.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: standard.id, experience: "standard" }),
-        expect.objectContaining({ id: orchestrated.teamId, experience: "orchestrated" }),
+        expect.objectContaining({
+          id: orchestrated.teamId,
+          experience: "orchestrated",
+        }),
       ]),
     );
     service.close();
@@ -4184,6 +4406,8 @@ describe("AionUiTeamService", () => {
         retry: vi.fn(async () => accepted),
         replace: vi.fn(async () => accepted),
         requestHandoff: vi.fn(async () => accepted),
+        completeHandoff: vi.fn(async () => accepted),
+        requestRevision: vi.fn(async () => accepted),
         cancelNode: vi.fn(async () => accepted),
         cancelRun,
       } satisfies AionUiTeamOrchestratorPort;
@@ -4221,7 +4445,9 @@ describe("AionUiTeamService", () => {
                 note: "Must not cross the durable experience boundary.",
               };
 
-      await expect(service.dispatch(route)).rejects.toMatchObject({ code: "team-conflict" });
+      await expect(service.dispatch(route)).rejects.toMatchObject({
+        code: "team-conflict",
+      });
       expect(getRun).not.toHaveBeenCalled();
       expect(cancelRun).not.toHaveBeenCalled();
       await expect(persistence.getTeamDefinition(team.teamId)).resolves.toEqual(team);
@@ -4237,6 +4463,7 @@ describe("AionUiTeamService", () => {
       persistence,
       admission: null,
       orchestrator: null,
+      modelCatalog: createRouteModelCatalog,
       now: clock(),
       createDigest: () => "1".repeat(64),
     });
@@ -4257,13 +4484,21 @@ describe("AionUiTeamService", () => {
     await expect(service.dispatch({ kind: "list" })).resolves.toEqual([created]);
 
     const renamed = requireNativeTeam(
-      await service.dispatch({ kind: "rename-team", teamId: created.id, name: "Release Team" }),
+      await service.dispatch({
+        kind: "rename-team",
+        teamId: created.id,
+        name: "Release Team",
+      }),
     );
     expect(renamed.name).toBe("Release Team");
     const added = await service.dispatch({
       kind: "add-member",
       teamId: created.id,
-      member: { displayName: "General researcher", role: "teammate", capability: "general" },
+      member: {
+        displayName: "General researcher",
+        role: "teammate",
+        capability: "general",
+      },
     });
     expect(added).toMatchObject({
       assistant_backend: "general",
@@ -4283,12 +4518,131 @@ describe("AionUiTeamService", () => {
     await persistence.close();
   });
 
+  it("updates a terminal Team model selection without changing its cancelled run", async () => {
+    const directory = createTestDirectory();
+    const persistence = openSqliteCorePersistence(directory);
+    const fixture = await createTeamRunFixture("model-selection-update", {
+      codingMaxAttempts: 2,
+    });
+    const team = normalizeTeamDefinition({
+      ...fixture.team,
+      modelSelection: { providerId: "provider-explicit", modelId: "model-old" },
+    });
+    await persistence.persistAdmittedTeamPlan(fixture.plan);
+    await persistence.persistTeamDefinition(team);
+    await persistence.persistTeamExperienceBinding(
+      normalizeTeamExperienceBinding({
+        contractVersion: 1,
+        teamId: team.teamId,
+        experience: "orchestrated",
+        boundAt: "2026-08-05T02:00:00.000Z",
+      }),
+    );
+
+    await persistence.persistTeamRunSnapshot(fixture.accepted);
+    const running = transitionTeamRun(fixture.accepted, {
+      type: "start-run",
+      occurredAt: "2026-08-05T02:00:01.000Z",
+    });
+    await persistence.persistTeamRunSnapshot(running);
+
+    const service = new AionUiTeamService({
+      persistence,
+      admission: null,
+      orchestrator: null,
+      modelCatalog: {
+        list: async () => ({
+          providers: [
+            {
+              provider_id: "provider-explicit",
+              name: "Explicit provider",
+              model_ids: ["model-old", "model-tool-call"],
+            },
+          ],
+        }),
+      },
+      now: clock(),
+      createDigest: () => "a".repeat(64),
+    });
+
+    expect(
+      parseAionUiTeamBridgeRequest({
+        contractVersion: 1,
+        method: "PATCH",
+        path: `/api/teams/${team.teamId}/model-selection`,
+        body: { provider_id: "provider-explicit", model_id: "model-tool-call" },
+      }),
+    ).toMatchObject({
+      kind: "update-model-selection",
+      teamId: team.teamId,
+      modelSelection: {
+        providerId: "provider-explicit",
+        modelId: "model-tool-call",
+      },
+    });
+
+    await expect(
+      service.dispatch({
+        kind: "update-model-selection",
+        teamId: team.teamId,
+        modelSelection: {
+          providerId: "provider-explicit",
+          modelId: "model-tool-call",
+        },
+      }),
+    ).rejects.toMatchObject({ code: "team-active" });
+
+    const cancelled = transitionTeamRun(running, {
+      type: "cancel-run",
+      reason: "Preserve this historical run before selecting a proven model for a new run.",
+      occurredAt: "2026-08-05T02:00:02.000Z",
+    });
+    await persistence.persistTeamRunSnapshot(cancelled);
+
+    await expect(
+      service.dispatch({
+        kind: "update-model-selection",
+        teamId: team.teamId,
+        modelSelection: {
+          providerId: "provider-explicit",
+          modelId: "model-tool-call",
+        },
+      }),
+    ).resolves.toEqual({
+      provider_id: "provider-explicit",
+      model_id: "model-tool-call",
+    });
+    await expect(persistence.getTeamDefinition(team.teamId)).resolves.toMatchObject({
+      modelSelection: {
+        providerId: "provider-explicit",
+        modelId: "model-tool-call",
+      },
+    });
+    await expect(
+      service.dispatch({ kind: "get-model-selection", teamId: team.teamId }),
+    ).resolves.toEqual({
+      provider_id: "provider-explicit",
+      model_id: "model-tool-call",
+    });
+    await expect(persistence.listTeamRunsForTeam(team.teamId, 1)).resolves.toMatchObject([
+      {
+        runId: cancelled.runId,
+        status: "cancelled",
+        revision: cancelled.revision,
+      },
+    ]);
+
+    service.close();
+    await persistence.close();
+  });
+
   it("projects planner submission availability before accepting a Team task intent", async () => {
     const persistence = openSqliteCorePersistence(createTestDirectory());
     const service = new AionUiTeamService({
       persistence,
       admission: null,
       orchestrator: null,
+      modelCatalog: createRouteModelCatalog,
       now: clock(),
       createDigest: () => "d".repeat(64),
     });
@@ -4330,6 +4684,7 @@ describe("AionUiTeamService", () => {
       persistence,
       admission,
       orchestrator: null,
+      modelCatalog: createRouteModelCatalog,
       now: clock(),
       createDigest: () => "c".repeat(64),
     });
@@ -4359,6 +4714,67 @@ describe("AionUiTeamService", () => {
 
     service.close();
     await persistence.close();
+  });
+
+  it("maps planner invalid and timeout failures to distinct bounded Team errors", async () => {
+    for (const [plannerCode, bridgeCode] of [
+      ["planner-invalid", "team-planner-invalid"],
+      ["planner-timeout", "team-planner-timeout"],
+    ] as const) {
+      const persistence = openSqliteCorePersistence(createTestDirectory());
+      const admission = {
+        propose: vi.fn(async () => {
+          throw new TeamPlanAdmissionServiceError(plannerCode, "private planner details");
+        }),
+      };
+      const unexpected = async (): Promise<never> => {
+        throw new Error("The orchestrator must not receive a rejected plan");
+      };
+      const orchestrator = {
+        create: vi.fn(unexpected),
+        start: vi.fn(unexpected),
+        get: vi.fn(unexpected),
+        subscribe: vi.fn(() => () => {}),
+        resolveFeedback: vi.fn(unexpected),
+        pause: vi.fn(unexpected),
+        resume: vi.fn(unexpected),
+        decideApproval: vi.fn(unexpected),
+        retry: vi.fn(unexpected),
+        replace: vi.fn(unexpected),
+        requestHandoff: vi.fn(unexpected),
+        completeHandoff: vi.fn(unexpected),
+        requestRevision: vi.fn(unexpected),
+        cancelNode: vi.fn(unexpected),
+        cancelRun: vi.fn(unexpected),
+      } satisfies AionUiTeamOrchestratorPort;
+      const service = new AionUiTeamService({
+        persistence,
+        admission,
+        orchestrator,
+        modelCatalog: createRouteModelCatalog,
+        now: clock(),
+        createDigest: () => (plannerCode === "planner-invalid" ? "e" : "f").repeat(64),
+      });
+      const created = requireNativeTeam(await service.dispatch(createRoute));
+
+      await expect(
+        service.dispatch({
+          kind: "send-message",
+          teamId: created.id,
+          content: "Classify the planner failure without starting a run.",
+          files: [],
+          requestNonce: `team-request-${(plannerCode === "planner-invalid" ? "8" : "9").repeat(64)}`,
+        }),
+      ).rejects.toMatchObject({
+        code: bridgeCode,
+        message: "Team plan admission failed",
+      });
+      expect(orchestrator.create).not.toHaveBeenCalled();
+      await expect(persistence.listTeamRunsForTeam(created.id as never, 100)).resolves.toEqual([]);
+
+      service.close();
+      await persistence.close();
+    }
   });
 
   it("lists only active Actestra-owned workspace grants without exposing paths", async () => {
@@ -4467,10 +4883,188 @@ describe("AionUiTeamService", () => {
     await persistence.close();
   });
 
+  it("persists a Main-owned manual handoff Artifact before completing the blocked Worker", async () => {
+    const directory = createTestDirectory();
+    const persistence = openSqliteCorePersistence(directory);
+    const fixture = await createTeamRunFixture("manual-handoff-ui");
+    await persistence.persistAdmittedTeamPlan(fixture.plan);
+    await persistence.persistTeamDefinition(fixture.team);
+    await persistence.persistTeamExperienceBinding(
+      normalizeTeamExperienceBinding({
+        contractVersion: 1,
+        teamId: fixture.team.teamId,
+        experience: "orchestrated",
+        boundAt: "2026-08-05T02:00:00.000Z",
+      }),
+    );
+    await persistence.replaceDomainGraph({
+      workspaces: [
+        {
+          id: fixture.team.workspaceId,
+          name: "Manual handoff workspace",
+          state: "active",
+          createdAt: instant("2026-08-05T02:00:00.000Z"),
+          updatedAt: instant("2026-08-05T02:00:00.000Z"),
+        },
+      ],
+      tasks: [],
+      workers: [],
+      sessions: [],
+      approvals: [],
+      artifacts: [],
+    });
+    const persist = async (snapshot: typeof fixture.accepted) => {
+      await persistence.persistTeamRunSnapshot(snapshot);
+      return snapshot;
+    };
+    let snapshot = await persist(fixture.accepted);
+    snapshot = await persist(
+      transitionTeamRun(snapshot, {
+        type: "start-run",
+        occurredAt: "2026-08-05T02:00:01.000Z",
+      }),
+    );
+    const general = snapshot.nodes.find(
+      (node) => node.kind === "worker" && node.capability === "general",
+    )!;
+    snapshot = await persist(
+      transitionTeamRun(snapshot, {
+        type: "start-node",
+        nodeId: general.nodeId,
+        workerTaskId: "task-team-general-manual-handoff",
+        occurredAt: "2026-08-05T02:00:02.000Z",
+      }),
+    );
+    snapshot = await persist(
+      transitionTeamRun(snapshot, {
+        type: "complete-node",
+        nodeId: general.nodeId,
+        attemptId: snapshot.nodes.find(({ nodeId }) => nodeId === general.nodeId)!.attempts[0]!
+          .attemptId,
+        artifacts: [
+          {
+            artifactId: "artifact-team-general-manual-handoff",
+            taskId: "task-team-general-manual-handoff",
+            kind: "document",
+          },
+        ],
+        summary: "The General branch is complete.",
+        occurredAt: "2026-08-05T02:00:03.000Z",
+      }),
+    );
+    const coding = snapshot.nodes.find(
+      (node) => node.kind === "worker" && node.capability === "coding",
+    )!;
+    snapshot = await persist(
+      transitionTeamRun(snapshot, {
+        type: "start-node",
+        nodeId: coding.nodeId,
+        workerTaskId: "task-team-coding-manual-handoff",
+        occurredAt: "2026-08-05T02:00:04.000Z",
+      }),
+    );
+    snapshot = await persist(
+      transitionTeamRun(snapshot, {
+        type: "request-handoff",
+        nodeId: coding.nodeId,
+        reason: "A user will provide the reviewed coding result.",
+        occurredAt: "2026-08-05T02:00:05.000Z",
+      }),
+    );
+
+    const worker: TeamWorkerExecutionPort = {
+      taskIdFor: vi.fn(() => taskId("task-unexpected-worker")),
+      execute: vi.fn(async () => {
+        throw new Error("No Worker may start while the feedback node is blocked");
+      }),
+      prepareApprovalDecision: vi.fn(),
+      commitApprovalDecision: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn(),
+      cancel: vi.fn(),
+    };
+    const aggregator: TeamResultAggregationPort = {
+      aggregate: vi.fn(async () => {
+        throw new Error("Aggregation must wait for human feedback");
+      }),
+    };
+    const orchestrator = new TeamOrchestratorService({
+      persistence,
+      worker,
+      aggregator,
+      now: () => instant("2026-08-05T02:01:00.000Z"),
+    });
+    const service = new AionUiTeamService({
+      persistence,
+      admission: null,
+      orchestrator,
+      now: () => instant("2026-08-05T02:01:01.000Z"),
+      createDigest: () => "7".repeat(64),
+    });
+    const codingSlot = fixture.team.members.find(({ capability }) => capability === "coding")!;
+    const content = "The reviewed manual coding result is complete.";
+
+    const completed = (await service.dispatch({
+      kind: "complete-handoff",
+      teamId: fixture.team.teamId,
+      runId: snapshot.runId,
+      slotId: codingSlot.memberId,
+      content,
+    })) as NativeAionUiTeamRunState;
+
+    const completedCoding = completed.active_run?.actestra.nodes.find(
+      ({ slot_id }) => slot_id === codingSlot.memberId,
+    );
+    expect(completedCoding).toMatchObject({
+      state: "completed",
+      artifacts: [
+        {
+          artifact_id: expect.stringMatching(/^artifact-team-handoff-[a-f0-9]{64}$/u),
+          kind: "file",
+        },
+      ],
+    });
+    const graph = await persistence.loadDomainGraph();
+    const artifact = graph.artifacts.find(
+      ({ taskId: ownerTaskId }) => ownerTaskId === coding.taskId,
+    );
+    expect(artifact).toMatchObject({
+      workspaceId: fixture.team.workspaceId,
+      kind: "file",
+      label: "Reviewed manual handoff result",
+      state: "available",
+    });
+    if (artifact?.sessionId === undefined) throw new Error("Manual handoff session is missing");
+    const session = graph.sessions.find(({ id }) => id === artifact.sessionId)!;
+    const suffix = artifact.id.slice("artifact-team-handoff-".length);
+    await expect(
+      persistence.resolveContentReference({
+        contractVersion: WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
+        reference: toolOutputReference(`output-team-handoff-${suffix}`),
+        kind: "tool-output",
+        owner: {
+          workspaceId: fixture.team.workspaceId,
+          taskId: coding.taskId,
+          sessionId: sessionId(session.id),
+          workerId: workerId(session.workerId),
+          requestId: toolRequestId(`request-team-handoff-${suffix}`),
+        },
+        resolvedAt: instant("2026-08-05T02:01:02.000Z"),
+        consume: false,
+      }),
+    ).resolves.toMatchObject({ content });
+
+    service.close();
+    await orchestrator.close();
+    await persistence.close();
+  });
+
   it("admits, starts, explains, controls, and cancels a real persisted Team run", async () => {
     const persistence = openSqliteCorePersistence(createTestDirectory());
     const now = clock();
-    const planner = { propose: vi.fn(async (request: unknown) => candidateFor(request)) };
+    const planner = {
+      propose: vi.fn(async (request: unknown) => candidateFor(request)),
+    };
     const admission = new TeamPlanAdmissionService({ planner, persistence });
     const executions: Array<{ signal: AbortSignal; capability: string }> = [];
     const worker: TeamWorkerExecutionPort = {
@@ -4489,11 +5083,17 @@ describe("AionUiTeamService", () => {
     const aggregator: TeamResultAggregationPort = {
       aggregate: vi.fn(async () => ({ summary: "Unused", artifacts: [] })),
     };
-    const orchestrator = new TeamOrchestratorService({ persistence, worker, aggregator, now });
+    const orchestrator = new TeamOrchestratorService({
+      persistence,
+      worker,
+      aggregator,
+      now,
+    });
     const service = new AionUiTeamService({
       persistence,
       admission,
       orchestrator,
+      modelCatalog: createRouteModelCatalog,
       now,
       createDigest: () => "2".repeat(64),
     });
@@ -4513,7 +5113,10 @@ describe("AionUiTeamService", () => {
       run: {
         team_id: created.id,
         status: "running",
-        actestra: { authority: "Actestra Core", authority_source: "schema-15-team-run" },
+        actestra: {
+          authority: "Actestra Core",
+          authority_source: "schema-15-team-run",
+        },
       },
     });
     expect(planner.propose).toHaveBeenCalledOnce();
@@ -4561,7 +5164,9 @@ describe("AionUiTeamService", () => {
     const directory = createTestDirectory();
     const persistence = openSqliteCorePersistence(directory);
     const now = clock();
-    const planner = { propose: vi.fn(async (request: unknown) => candidateFor(request)) };
+    const planner = {
+      propose: vi.fn(async (request: unknown) => candidateFor(request)),
+    };
     const admission = new TeamPlanAdmissionService({ planner, persistence });
     const worker: TeamWorkerExecutionPort = {
       taskIdFor: ({ nodeId, attemptNumber }) =>
@@ -4588,11 +5193,17 @@ describe("AionUiTeamService", () => {
     const aggregator: TeamResultAggregationPort = {
       aggregate: vi.fn(async () => ({ summary: "Unused", artifacts: [] })),
     };
-    const orchestrator = new TeamOrchestratorService({ persistence, worker, aggregator, now });
+    const orchestrator = new TeamOrchestratorService({
+      persistence,
+      worker,
+      aggregator,
+      now,
+    });
     const service = new AionUiTeamService({
       persistence,
       admission,
       orchestrator,
+      modelCatalog: createRouteModelCatalog,
       now,
       createDigest: () => "3".repeat(64),
     });
@@ -4646,6 +5257,134 @@ describe("AionUiTeamService", () => {
           tone: "worker",
         }),
       ]),
+    );
+    expect(JSON.stringify(recovered)).not.toContain("/private/");
+
+    reopened.close();
+    await reopenedPersistence.close();
+  });
+
+  it("projects each Worker's durable assistant reply into Team chat activity", async () => {
+    const directory = createTestDirectory();
+    const persistence = openSqliteCorePersistence(directory);
+    await persistence.replaceDomainGraph(createDomainGraph());
+    const now = clock();
+    const planner = {
+      propose: vi.fn(async (request: unknown) => candidateFor(request)),
+    };
+    const admission = new TeamPlanAdmissionService({ planner, persistence });
+    const worker: TeamWorkerExecutionPort = {
+      taskIdFor: ({ nodeId, attemptNumber }) =>
+        taskId(`task-team-reply-${nodeId.slice(-12)}-${String(attemptNumber)}`),
+      execute: vi.fn(
+        async (input): Promise<TeamWorkerExecutionResult> => ({
+          status: "completed",
+          summary: `${input.capability} private output at /private/worker-root.`,
+          artifacts: [],
+        }),
+      ),
+      prepareApprovalDecision: vi.fn(),
+      commitApprovalDecision: vi.fn(),
+      pause: vi.fn(async () => {}),
+      resume: vi.fn(async () => {}),
+      cancel: vi.fn(async () => {}),
+    };
+    const aggregator: TeamResultAggregationPort = {
+      aggregate: vi.fn(async () => ({ summary: "Unused", artifacts: [] })),
+    };
+    const orchestrator = new TeamOrchestratorService({
+      persistence,
+      worker,
+      aggregator,
+      now,
+    });
+    const service = new AionUiTeamService({
+      persistence,
+      admission,
+      orchestrator,
+      modelCatalog: createRouteModelCatalog,
+      now,
+      createDigest: () => "5".repeat(64),
+    });
+    const created = requireNativeTeam(await service.dispatch(createRoute));
+    const acknowledgement = (await service.dispatch({
+      kind: "send-message",
+      teamId: created.id,
+      content: "Read the isolated README and report its first line.",
+      files: [],
+      requestNonce: `team-request-${"c".repeat(64)}`,
+    })) as NativeAionUiTeamRunAck;
+    const runId = teamRunId(acknowledgement.run.team_run_id);
+    await orchestrator.waitForIdle(runId);
+
+    const snapshot = await persistence.getTeamRunSnapshot(runId);
+    if (snapshot === null) throw new Error("Team run snapshot is unavailable");
+    const replyByCapability = new Map([
+      ["general", "The bounded brief is ready for review."],
+      ["coding", "# Fresh Team Electron Acceptance"],
+    ]);
+    let appended = 0;
+    for (const node of snapshot.nodes) {
+      const attempt = node.attempts.at(-1);
+      if (node.kind !== "worker" || node.capability === null || attempt === undefined) continue;
+      const content = replyByCapability.get(node.capability);
+      if (content === undefined) continue;
+      const streamId = deriveTeamJourneyReplyStreamId({
+        runId: snapshot.runId,
+        nodeId: node.nodeId,
+        attemptNumber: attempt.attemptNumber,
+        capability: node.capability,
+      });
+      const started = await persistence.appendEvent(
+        createEvent(
+          1,
+          "task.started",
+          { from: "ready", to: "running" },
+          { eventId: eventId(`event-team-start-${node.capability}`), streamId },
+        ),
+      );
+      expect(started.status).toBe("appended");
+      const result = await persistence.appendEvent(
+        createEvent(
+          2,
+          "agent.message",
+          { role: "assistant", content },
+          { eventId: eventId(`event-team-reply-${node.capability}`), streamId },
+        ),
+      );
+      expect(result.status).toBe("appended");
+      appended += 1;
+    }
+    expect(appended).toBe(2);
+
+    service.close();
+    await orchestrator.close();
+    await persistence.close();
+
+    const reopenedPersistence = openSqliteCorePersistence(directory);
+    const reopened = new AionUiTeamService({
+      persistence: reopenedPersistence,
+      admission: null,
+      orchestrator: null,
+      now: clock(),
+      createDigest: () => "6".repeat(64),
+    });
+    const recovered = (await reopened.dispatch({
+      kind: "run-state",
+      teamId: created.id,
+    })) as NativeAionUiTeamRunState;
+
+    const activities =
+      (
+        recovered as unknown as {
+          readonly activities?: readonly { readonly content: string }[];
+        }
+      ).activities ?? [];
+    const contents = activities.map(({ content }) => content);
+    expect(contents).toContain("# Fresh Team Electron Acceptance");
+    expect(contents).toContain("The bounded brief is ready for review.");
+    expect(contents).toContain(
+      "Prepare the bounded patch completed with 0 durable Artifact references.",
     );
     expect(JSON.stringify(recovered)).not.toContain("/private/");
 

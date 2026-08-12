@@ -35,14 +35,15 @@ describe("AionUI-first product entrypoints", () => {
   });
 
   it("materializes the reviewed downstream overlay before preview and distribution", () => {
-    for (const scriptName of [
-      "downstream:aionui:preview",
-      "downstream:aionui:dist:dir",
-      "downstream:aionui:dist:mac",
-    ]) {
+    for (const scriptName of ["downstream:aionui:preview", "downstream:aionui:dist:mac"]) {
       expect(packageJson.scripts[scriptName]).toContain("downstream:aionui:materialize");
       expect(packageJson.scripts[scriptName]).toContain(".actestra/aionui-v2.1.41");
     }
+    // downstream:aionui:dist:dir is now handled by build-aionui-dev-app.mjs,
+    // which calls materialize internally
+    expect(packageJson.scripts["downstream:aionui:dist:dir"]).toBe(
+      "node scripts/build-aionui-dev-app.mjs",
+    );
   });
 
   it("removes the legacy P2 renderer and its standalone product build chain", () => {

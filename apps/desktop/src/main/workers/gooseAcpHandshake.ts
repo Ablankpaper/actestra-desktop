@@ -134,10 +134,60 @@ export interface GooseAcpToolDiscovery {
   readonly toolNames: readonly string[];
 }
 
+/**
+ * Suspends the bounded prompt inactivity deadline while Actestra waits for a
+ * human approval decision. The approval itself carries its own independent
+ * expiry, so a suspended deadline stays bounded.
+ */
+export interface GooseAcpHumanDecisionGate {
+  subscribe(listener: (pending: boolean) => void): () => void;
+}
+
 export interface GooseAcpPromptOptions {
   readonly sessionId: string;
   readonly text: string;
   readonly timeoutMs?: number;
+  readonly humanDecisionGate?: GooseAcpHumanDecisionGate;
+}
+
+export interface GooseAcpHumanDecisionGateController extends GooseAcpHumanDecisionGate {
+  /** Balanced by the returned release; concurrent decisions keep the gate held. */
+  hold(): () => void;
+}
+
+/** Counts outstanding human decisions so overlapping approvals stay bounded. */
+export function createGooseAcpHumanDecisionGate(): GooseAcpHumanDecisionGateController {
+  const listeners = new Set<(pending: boolean) => void>();
+  let outstanding = 0;
+  const publish = (pending: boolean): void => {
+    // Copied first so a listener unsubscribing during publish cannot mutate the live iteration.
+    for (const listener of Array.from(listeners)) {
+      listener(pending);
+    }
+  };
+  return Object.freeze({
+    subscribe: (listener: (pending: boolean) => void): (() => void) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    hold: (): (() => void) => {
+      outstanding += 1;
+      if (outstanding === 1) {
+        publish(true);
+      }
+      let released = false;
+      return () => {
+        if (released) {
+          return;
+        }
+        released = true;
+        outstanding -= 1;
+        if (outstanding === 0) {
+          publish(false);
+        }
+      };
+    },
+  });
 }
 
 export type GooseAcpPromptStopReason =
@@ -1417,7 +1467,9 @@ function assertPromptOptions(options: GooseAcpPromptOptions, expectedSessionId: 
     (options.timeoutMs !== undefined &&
       (!Number.isSafeInteger(options.timeoutMs) ||
         options.timeoutMs < 1 ||
-        options.timeoutMs > MAX_SESSION_TIMEOUT_MS))
+        options.timeoutMs > MAX_SESSION_TIMEOUT_MS)) ||
+    (options.humanDecisionGate !== undefined &&
+      typeof options.humanDecisionGate.subscribe !== "function")
   ) {
     throw new GooseAcpSessionError(
       "invalid-session-options",
@@ -1444,11 +1496,47 @@ async function promptGooseAcp(
         settled = true;
         operation();
       };
+      let humanDecisionPending = false;
+      const disarm = (): void => {
+        if (timeout !== undefined) {
+          clearTimeout(timeout);
+          timeout = undefined;
+        }
+      };
+      const arm = (): void => {
+        disarm();
+        if (settled || humanDecisionPending) {
+          return;
+        }
+        timeout = setTimeout(() => {
+          settle(() =>
+            reject(
+              new GooseAcpSessionError(
+                "prompt-timeout",
+                "Goose produced no ACP session/prompt activity before the deadline",
+              ),
+            ),
+          );
+        }, timeoutMs);
+      };
+      if (options.humanDecisionGate !== undefined) {
+        unsubscribers.push(
+          options.humanDecisionGate.subscribe((pending) => {
+            humanDecisionPending = pending === true;
+            if (humanDecisionPending) {
+              disarm();
+            } else {
+              arm();
+            }
+          }),
+        );
+      }
       unsubscribers.push(
         transport.onLine((line) => {
           if (settled) {
             return;
           }
+          arm();
           try {
             const result = parsePromptMessage(line, options, updates);
             if (result !== undefined) {
@@ -1480,16 +1568,7 @@ async function promptGooseAcp(
           );
         }),
       );
-      timeout = setTimeout(() => {
-        settle(() =>
-          reject(
-            new GooseAcpSessionError(
-              "prompt-timeout",
-              "Goose did not complete ACP session/prompt before the deadline",
-            ),
-          ),
-        );
-      }, timeoutMs);
+      arm();
       transport.sendLine(
         JSON.stringify({
           jsonrpc: "2.0",

@@ -29,7 +29,7 @@ components or phases.
 | [0012](0012-aionui-approval-decision-authority.md)             | Accepted                     | Persist desktop AionUi confirmation decisions before native delivery and reconcile ambiguous outcomes                                    |
 | [0013](0013-aionui-approval-delivery-policy-gate.md)           | Accepted                     | Gate persisted AionUi response delivery through one exact P3 policy, capability, and durable audit path                                  |
 | [0014](0014-aionui-approval-reconciliation-policy-gate.md)     | Accepted                     | Gate the bounded native pending-state read used by retry and restart reconciliation                                                      |
-| [0015](0015-crewai-supervised-orchestration-sidecar.md)        | Accepted                     | Evaluate CrewAI as a supervised P6 planner sidecar while Actestra retains team authority and Eigent remains the experience reference     |
+| [0015](0015-crewai-supervised-orchestration-sidecar.md)        | Partially superseded by 0026 | Keep CLI/CrewAI boundaries and Actestra authority; planner-engine selection is superseded by the native planner decision                 |
 | [0016](0016-p4-general-work-process-and-content-boundaries.md) | Accepted                     | Move workload persistence behind a utility boundary and add bounded workspace grants and content references before real workers or tools |
 | [0017](0017-general-worker-process-and-agent-adapter-v2.md)    | Accepted                     | Run one supervised General Worker process per immutable Adapter v2 attempt                                                               |
 | [0018](0018-scoped-native-text-tools-and-policy.md)            | Accepted                     | Admit only scoped workspace text read and create-only task-output write through trusted manifests and policy                             |
@@ -40,6 +40,7 @@ components or phases.
 | [0023](0023-actestra-owned-scheduled-general-work.md)          | Accepted                     | Route bounded existing-conversation scheduled General Work through the native AionUI cron surface with Actestra-owned durable execution  |
 | [0024](0024-minimal-goose-acp-runner.md)                       | Accepted                     | Pin Goose v1.45.0 and admit only a minimal Actestra-built stdio ACP runner behind exact artifact, policy, and authority gates            |
 | [0025](0025-goose-rsa-metadata-only-disposition.md)            | Accepted                     | Admit only the exact uncompiled RSA metadata finding when independent graph, artifact, audit, and manifest evidence all remain closed    |
+| [0026](0026-actestra-native-team-planner.md)                   | Accepted                     | Admit one versioned Actestra-owned no-tool planner sidecar while keeping Worker readiness, authority, and P6 acceptance separate         |
 
 ## Creating an ADR
 

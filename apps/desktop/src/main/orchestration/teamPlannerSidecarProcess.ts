@@ -134,6 +134,7 @@ function closedEnvironment(): NodeJS.ProcessEnv {
     ALL_PROXY: "http://127.0.0.1:9",
     CREWAI_DISABLE_TELEMETRY: "true",
     CREWAI_DISABLE_TRACKING: "true",
+    ELECTRON_RUN_AS_NODE: "1",
     HTTP_PROXY: "http://127.0.0.1:9",
     HTTPS_PROXY: "http://127.0.0.1:9",
     LANG: "C.UTF-8",

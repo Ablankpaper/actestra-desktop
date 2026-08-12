@@ -22,6 +22,7 @@ export interface AionUiCodingRunnerAdmission extends AdmitGooseRunnerArtifactOpt
 export interface AionUiCodingAgentServiceOptions {
   readonly getMainService: () => IsolatedCodingMainService | null;
   readonly runnerAdmission?: AionUiCodingRunnerAdmission;
+  readonly admittedArtifact?: AdmittedGooseRunnerArtifact;
 }
 
 export interface AionUiCodingAgentServiceDependencies {
@@ -88,7 +89,9 @@ export class AionUiCodingAgentService {
   constructor(
     private readonly options: AionUiCodingAgentServiceOptions,
     private readonly dependencies: AionUiCodingAgentServiceDependencies = DEFAULT_DEPENDENCIES,
-  ) {}
+  ) {
+    this.admittedArtifact = options.admittedArtifact;
+  }
 
   private mainServiceAvailable(): boolean {
     try {
@@ -99,19 +102,19 @@ export class AionUiCodingAgentService {
   }
 
   private async admit(refresh: boolean): Promise<AdmittedGooseRunnerArtifact> {
-    const admission = this.options.runnerAdmission;
-    if (admission === undefined) {
-      throw new AionUiCodingAgentServiceError(
-        "not-ready",
-        "The admitted Goose runner is not configured",
-      );
-    }
     if (refresh) {
       this.admittedArtifact = undefined;
       this.admissionFailure = undefined;
     }
     if (this.admittedArtifact !== undefined) {
       return this.admittedArtifact;
+    }
+    const admission = this.options.runnerAdmission;
+    if (admission === undefined) {
+      throw new AionUiCodingAgentServiceError(
+        "not-ready",
+        "The admitted Goose runner is not configured",
+      );
     }
     if (!refresh && this.admissionFailure !== undefined) {
       throw new AionUiCodingAgentServiceError(
@@ -141,11 +144,11 @@ export class AionUiCodingAgentService {
       this.admissionFailure = undefined;
       return unavailableProjection("unavailable", "main-unavailable");
     }
-    if (this.options.runnerAdmission === undefined) {
-      return unavailableProjection("missing", "runner-not-configured");
-    }
     if (!refresh && this.admittedArtifact !== undefined) {
       return readyProjection();
+    }
+    if (this.options.runnerAdmission === undefined) {
+      return unavailableProjection("missing", "runner-not-configured");
     }
     if (!refresh && this.admissionFailure !== undefined) {
       return this.admissionFailure;
@@ -172,7 +175,16 @@ export class AionUiCodingAgentService {
   }
 
   async requireAdmittedArtifact(): Promise<AdmittedGooseRunnerArtifact> {
-    if (!this.mainServiceAvailable() || this.options.runnerAdmission === undefined) {
+    if (!this.mainServiceAvailable()) {
+      throw new AionUiCodingAgentServiceError(
+        "not-ready",
+        "The Actestra coding runtime is not ready",
+      );
+    }
+    if (this.admittedArtifact !== undefined) {
+      return this.admittedArtifact;
+    }
+    if (this.options.runnerAdmission === undefined) {
       throw new AionUiCodingAgentServiceError(
         "not-ready",
         "The Actestra coding runtime is not ready",

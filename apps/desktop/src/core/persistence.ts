@@ -28,6 +28,7 @@ export const PERSISTENCE_ERROR_CODES = [
   "team-definition-conflict",
   "team-run-conflict",
   "team-message-delivery-conflict",
+  "artifact-delivery-conflict",
 ] as const;
 
 export type PersistenceErrorCode = (typeof PERSISTENCE_ERROR_CODES)[number];

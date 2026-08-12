@@ -1,10 +1,161 @@
 # Project Status
 
-Last updated: 2026-08-08
+Last updated: 2026-08-12
 
 ## Current phase
 
-### P6 planner cleanup is closed on merged main; real AionUI Team acceptance remains open
+### 2026-08-12 current verification: P6 local development acceptance complete
+
+The P6 delivery batch is maintained on branch
+`codex/p6-aionui-team-acceptance`; its pre-delivery checkpoint was
+`ceeb7eeb89702df1f21cdd6b3941276e708c5979`. The evidence below is local. No
+push, exact-head CI, review/merge, release, deployment, or formal signing is
+claimed. The frozen `foundation/` tree remains untouched.
+
+The current P6 implementation contains both previously open vertical slices:
+
+- Coding delivery is `isolated worktree → patch Artifact → second explicit
+approval → Main-owned apply to the original workspace`. The Main applicator
+  has repository locking, canonical Git binding, HEAD/clean-tree/dry-run and
+  post-approval re-verification, idempotent retry/recovery, and fail-closed
+  dirty/drift/conflict handling. The real cross-layer regression walks the
+  Artifact through Git and the persistence utility into the bounded AionUI
+  projection; no path, patch content, or content-reference authority reaches
+  Renderer.
+- General v1 remains text-only. Structured Planner requirements are persisted
+  and admitted before model invocation; file/network/repository requirements are
+  rejected with distinct `general-input-required` or
+  `general-capability-mismatch` codes. A structured JSON output envelope,
+  one bounded repair, placeholder/invalid-output rejection, and separated
+  provider/instruction/lifecycle incident codes prevent false completed
+  Artifacts.
+
+Verified local gates on 2026-08-12:
+
+- `bun run check`: EXIT 0; 111 test files passed, 2 skipped; 1178 tests
+  passed, 9 skipped; format, lint (0 warnings/errors), typecheck, Electron
+  SQLite, smoke harness, boundary, frozen foundation, downstream overlay, and
+  package all passed.
+- `bun run dist:dir`: EXIT 0 with the arm64 development `.app` built outside
+  `~/Desktop` at the worktree-scoped cache directory. Bundle structure is
+  complete, `Signature=adhoc`, and `codesign --verify --deep --strict` exits 0;
+  `.actestra/aionui-v2.1.41/out/mac-arm64` points to that verified output.
+- `bun run smoke:aionui-general-work`: EXIT 0 against the packaged app. The
+  P4 scenarios pass against the current Actestra persistence schema 22,
+  including schedule recovery, representative file/content failures, Worker
+  crash recovery, writing/Office/DOCX, local research, grant denial,
+  cancellation, Artifact/event/privacy, and terminal evidence.
+
+The final provider-backed Electron gate is also GREEN on the same ad-hoc-signed
+development app. An isolated profile under
+`/private/tmp/actestra-p6-acceptance.a4YSo8` admitted the persisted provider and
+`gpt-5.4`, emitted `ACTESTRA_AIONUI_TEAM_WORKER_RUNTIME_READY`, and ran the
+visible AionUI-native General+Goose Team journey against the real provider.
+The acceptance evidence includes:
+
+- one capability-aligned mixed run in which General produced one durable
+  document Artifact, Goose used its real tool path to create the exact isolated
+  patch for `acceptance-result.txt`, and the separately approved Main-owned
+  apply operation wrote the 36-byte file to the original authorized workspace;
+  the persisted delivery is `applied`, `base_commit` and `verified_head` both
+  equal `d5f04caa75fbd2c5905fff56ad5bb5283915f792`, and the changed-file count is
+  one;
+- a new two-line Team request whose content rendered with the line break intact;
+  General produced one durable Artifact, Goose correctly completed the read-only
+  instruction as `no-changes`, final human feedback advanced revision 7 to
+  revision 8, and the run terminalized `completed` with 100% progress and one
+  aggregated Artifact;
+- a separate two-line run that reached final human feedback and then exercised
+  whole-Team cancellation, advancing revision 6 `blocked` to revision 7
+  `cancelled`;
+- normal quit and isolated-profile restart after the completed and cancelled
+  outcomes. The same terminal revisions were restored, AionCore shut down
+  gracefully with app exit code 0, and the final Actestra, AionCore, Goose, and
+  planner process scan was empty.
+
+The multiline bridge defect found during acceptance is fixed at the bounded
+compatibility boundary: Team activity content now uses the existing LF-only
+multiline normalizer instead of the single-line text assertion. The focused
+bridge regressions pass 30/30 and the complete gate above includes that change.
+No credential-shaped token appears in the captured Electron logs.
+
+This closes P6's local development exit gate for source, development build,
+real provider-backed Electron behavior, restart recovery, cancellation,
+Artifact delivery/apply, and packaged General Work smoke. It does not claim a
+push, exact-head CI, review/merge, merged-main CI, formal signing, release,
+deployment, production readiness, or final user acceptance. The delivery batch
+remains local and `foundation/` remains untouched.
+
+### Historical acceptance baseline (2026-08-10)
+
+On 2026-08-10 a real packaged Electron General+Goose Team journey ran from the
+local uncommitted branch `codex/p6-aionui-team-acceptance` at
+`ceeb7eeb89702df1f21cdd6b3941276e708c5979`. The ad-hoc-signed arm64
+development app used one isolated E2E root, schema 17 persistence, an admitted
+`actestra-native-team-planner@1.0.0`, the locally built Goose artifact, and the
+persisted real provider/model binding. Packaged startup emitted both
+`ACTESTRA_AIONUI_TEAM_PLANNER_READY` and
+`ACTESTRA_AIONUI_TEAM_WORKER_RUNTIME_READY`. General completed with one durable
+document Artifact, but the Artifact retained `<to be filled after read>`
+placeholders and did not report the actual `README.md` first line; the current
+General runtime explicitly requests a text-only draft with no tools. This exact
+scenario therefore does not prove General workspace-read behavior. The real
+provider's streaming response also proves that the former empty-completion
+failure is gone: it returned `finish_reason=tool_calls`, 748 prompt tokens, 90
+completion tokens, and two tool calls. The current Main-owned model contract
+accepts exactly one tool call per completion, so all four bounded attempts were
+rejected as `tool-call-count-unsupported` before Goose could execute
+`read_file`; the requested `acceptance-result.txt` was not created and the
+coding node had no Artifact.
+
+The same journey exposed a second fail-closed gap after that rejection. Goose's
+400 response became an assistant message saying that the request failed, but
+the coding journey persisted `task.completed`, projected the Goose node as
+completed with zero Artifacts, and created no `agent_attempt_evidence` row for
+the coding task. The human-feedback correction itself is real-Electron GREEN:
+the visible `要求修改` action used the workflow-feedback route, advanced the
+run from revision 6 to 7, and exposed retry, replace, handoff, and cancel without
+the former protected-approval `team-conflict`. A normal quit reached AionCore
+graceful shutdown with exit code 0. Restarting the same isolated profile emitted
+`ACTESTRA_AIONUI_TEAM_RECOVERY_READY {"recoveredRuns":3}` and restored the exact
+revision-7 blocked state and controls; the second normal quit also exited 0,
+and the final Actestra/AionCore/Goose/planner process scan was empty. The
+authoritative run is
+`team-run-5231a0548c7d3d91fe4f9a8c3e8490641e03e73be3717b5bce48c21477dc390f`.
+This is local packaged failure, recovery, feedback-route, and cleanup evidence,
+not P6 acceptance. The next gate is to keep the singular tool-execution contract
+explicit at the provider boundary or deliberately version it for multiple tool
+calls, terminalize a rejected model completion as failed rather than completed,
+add regressions for both facts, decide whether General v1 remains text-only or
+admits bounded workspace reads, rebuild the packaged app, and rerun a
+capability-aligned General+Goose journey through successful file output and
+final feedback.
+
+On 2026-08-10 the local development-app build wrapper and one load-dependent
+probe-process test were hardened without changing the frozen AionUI foundation.
+The wrapper now rejects filesystem, user-home, and system-temporary roots and
+uses real-path containment checks for the repository and `~/Desktop`, including
+symlink aliases, before materialization begins. The probe-process regression
+now waits for parseable PID JSON instead of assuming that file creation and a
+non-atomic write complete together. Focused evidence is 117/117 tests, and the
+previously flaky process-group-membership test passes 10 consecutive isolated
+runs. `bun run check` is GREEN at 990 passed, 9 skipped, and 0 failed, with
+format, zero-warning lint, strict TypeScript, Electron SQLite, smoke harness,
+product boundary, frozen foundation, downstream checks, and package all
+passing.
+
+The follow-up development build is also GREEN. `bun run dist:dir` materialized
+the downstream tree and built the arm64 app outside `~/Desktop` at the
+worktree-scoped cache location, then linked the verified output into the
+materialized `out/mac-arm64` path. `codesign --verify --deep --strict` exits 0;
+the bundle reports `Signature=adhoc`, `flags=0x2(adhoc)`, and sealed resources.
+`bun run smoke:aionui-general-work` exits 0 against that packaged app and covers
+the schema-17 General Work recovery, failure, DOCX/Word Preview, workspace-grant,
+cancellation, privacy, Artifact, event, and terminal-evidence paths. This is a
+local development-build and packaged General Work checkpoint, not a formal
+signature, release, deployment, provider-backed General+Goose Team journey, or
+P6 acceptance claim. Hub resources are intentionally skipped by the current
+development wrapper, so this smoke does not establish Hub packaging.
 
 On 2026-08-07 the owner authorized ADR-0026 and a local implementation slice for
 an Actestra-native planner. The local source now implements the exact engine
@@ -88,6 +239,19 @@ patch/materialization, Worker runtime admission, real General+Goose mixed
 journey, fresh-profile Electron journey, Task 14, and P6 acceptance remain
 open. No push, PR, Actions/CI, release, or deployment is claimed.
 
+The current uncommitted Task 14 batch is local on branch
+`codex/p6-aionui-team-acceptance` at base
+`a3f23d6391a6f6c34f5a88cfa12e35b9665e5196`. Downstream patch 0014 now
+embeds the orchestrated Team controls inside the native AionUI `ChatLayout`,
+retains the native `TeamTabs` and `TeamViewToggle`, and routes native title
+editing through the Actestra Main/Core rename projection. Orchestrated Teams
+disable member drag ordering because that provider cannot yet persist the
+operation; the standard Team default remains enabled. The affected local
+closure passes 5 generated native test files with 27 tests, materialized AionUI
+TypeScript, zero-warning targeted lint, and patch formatting. This is local
+implementation evidence only: no commit, push, PR, Actions, package, release,
+deployment, or user acceptance has occurred for these bytes.
+
 The A3 pre-B1 checkpoint scope used explicit command definitions.
 `git status --porcelain=v1 --untracked-files=all` reported 96 paths at the
 checkpoint: 61 modified, 8 deleted, and 27 untracked files. Before B1 staging,
@@ -120,6 +284,579 @@ findings. Whether any data was uploaded cannot be confirmed. This run is not
 review evidence, and external review remains prohibited without new
 authorization. At the A3 pre-B1 checkpoint, no commit, push, PR, CI, or fresh
 Electron acceptance had occurred for these bytes.
+
+The latest focused standard-Team authority correction closes stale-list
+mutation paths in the native AionUI sidebar. When the provider is active but a
+delete or rename target has disappeared from the current Main/Core Team
+projection, the renderer now fails closed with a fixed refresh instruction
+before invoking either native AionCore IPC or a guessed standard/orchestrated
+route. The provider-absent native fallback remains unchanged. The generated
+`useTeamListCronCleanup.dom.test.tsx` RED reproduced the previous resolved
+native-delete path; the final focused closure passes 2/2, and the native-wiring
+retention file passes 9/9 with the matching rename guard. This is local
+compatibility evidence only; it does not advance the orchestrated 2/7 ledger or
+claim Task 14/P6 acceptance, fresh Electron acceptance, commit, push, PR,
+Actions, release, or deployment.
+
+The subsequent provider-active event-source audit corrected a sidebar run-state
+authority mismatch. `useSiderTeamRunning` previously applied both Actestra
+provider events and raw native AionUI run lifecycle payloads even though its
+snapshot reads already used Main/Core. Native run events now remain available
+as compatibility hints but, while the provider is active, trigger a bounded
+Main/Core run-state reconciliation instead of mutating the badge directly.
+Validated Actestra provider events still apply immediately, and provider-absent
+AionUI keeps its original native event behavior. The focused RED reproduced the
+direct native update; the final renderer file passes 25/25, materialized strict
+TypeScript and zero-warning lint pass, and the downstream contract remains
+green at 308 declared files with 92 reviewed source copies. This does not
+advance the orchestrated 2/7 ledger or establish broader Task 14 acceptance.
+
+The matching Team-page audit closes the remaining run/slot event-source split
+inside `useTeamRunView`. Its initial snapshot already came from Main/Core, but
+six native run lifecycle channels and native `slotWorkChanged` still mutated
+renderer state directly and the page did not subscribe to the validated
+Actestra provider stream. With the provider active, native run/slot events now
+act only as reconciliation hints; Main/Core provider run/slot events apply
+directly and invalidate any older in-flight snapshot. With the provider absent,
+the original AionUI event behavior remains intact. Native child-turn, chat, and
+session-status paths are intentionally unchanged because their retained
+standard-Team capabilities do not yet have an equivalent Main projection. The
+focused RED produced five exact failures across native run/slot hints,
+provider run/slot events, and stale in-flight snapshot ordering; the final
+generated file passes 17/17. Materialized
+strict TypeScript, zero-warning targeted lint, two-file formatting, and the
+downstream contract at 308 declared files with 92 reviewed source copies pass.
+This is local event-authority evidence only; it does not advance the
+orchestrated 2/7 ledger or claim Task 14/P6 acceptance, fresh Electron
+acceptance, commit, push, PR, Actions, release, or deployment.
+
+The next provider-active retention audit separates the native permission and
+scheduled-task surfaces by their real authority paths. Team `CronJobManager`,
+its job events, and delete-before-Team cleanup already use the preserved
+`ipcBridge.cron` DTO while `httpBridge` routes every `/api/cron/*` request and
+event through the Actestra Main/Core schedule provider; no schedule production
+byte changed. The permission decision POST already crosses the accepted
+Actestra approval persistence, policy, audit, and delivery boundary. The actual
+gap was the visible pending-confirmation count: the in-page and sidebar hooks
+still consumed native list/event data directly after the Team provider became
+active. They now hydrate or reconcile from the Main/Core Team projection and
+treat native confirmation events only as refresh hints; provider absence keeps
+the original native list and delta behavior. The focused RED failed the two
+provider-active cases with the exact `0` instead of `3` and `2` instead of `4`
+counts while the native fallback passed. GREEN passes the new file at 3/3 and
+the five-file permission/Team-page/cron closure at 43/43. A follow-up RED then
+proved that an older in-flight sidebar reconciliation could overwrite a newer
+Main/Core Team-list projection. The Team-list signature change now invalidates
+every affected reconciliation sequence before replacing visible counts; the
+new file passes 4/4 and the same five-file closure passes 44/44. Materialized
+strict TypeScript, exact patch formatting, and zero-warning two-file lint pass.
+The downstream contract remains the next unchanged-input contract check. This
+is local standard-Team retention evidence only; it does not advance the
+orchestrated 2/7 ledger or claim Electron acceptance, commit, push, PR,
+Actions, P6 completion, release, or deployment.
+
+The current uncommitted correction adds forward-only schema 16
+`team_experience_bindings` while preserving the accepted schema-15 migration
+bytes. Main now persists `standard` before returning a newly created native
+Team, migrates legacy AionCore Teams to `standard`, binds schema-15 Actestra
+Team definitions to `orchestrated`, rejects type or cross-store identity
+conflicts, and restores both types after restart. Provider-active renderer
+list/get now consume one Main/Core projection; they no longer merge a native
+list with an Actestra list or infer a missing type. Focused evidence currently
+passes the 5-test Core authority file, the 41-test Main Team service file, the
+16-test persistence-utility client file, root and materialized AionUI strict
+TypeScript, the generated 5-test experience-routing DOM file, and the smoke
+harness. This remains local development evidence, not Task 14 or P6 acceptance.
+
+The standard-Team create failure exposed by the first fresh Electron journey is
+now corrected locally. When no folder is selected, AionCore owns an
+`auto_from_leader` workspace rather than echoing the renderer's empty selection;
+Main previously rejected that authoritative result as a conflict and
+compensating-deleted the valid Team. A focused regression failed with the exact
+`The persisted standard Team differs from the admitted creation intent` error,
+then passed after Main accepted AionCore's validated workspace while retaining
+exact equality for an explicit user selection. The complete affected Main file
+passes 38/38 tests.
+
+A fresh `/tmp`-isolated real Electron profile then created standard Team
+`019fd31e-a4bd-7b41-ba88-2bf6cddae0aa` from the native `+` chooser with Claude
+Code as leader and Codex CLI as teammate. The native page exposed Team tabs,
+parallel/single views, per-member chat and model controls, add-member, and the
+workspace file panel. Codex returned exact `CODEX_TEAM_OK`; Claude returned
+exact `CLAUDE_TEAM_OK`. Restarting the same isolated profile restored the same
+standard Team, both members, both replies, and native workspace view. The four
+local Claude/Codex/Aion logo requests returned `200`, and the visible member and
+navigation icons rendered through the native image controls. Both shutdowns
+left no profile-owned Electron, AionCore, Claude, or Codex process and no agent
+process registry; the test profiles were moved to Trash. No file under
+`~/.actestra-v1-dev` was newer than the isolated profile marker. Gemini and
+Google credential variables were explicitly removed, and no Gemini credential
+or API request was read or used. This exercised AionUI's standard-Team AionCore
+provider path; it does not admit Claude or Codex as an Actestra orchestrated-
+Team planner, aggregator, General Worker, or Goose model provider.
+
+The screenshot regression `创建团队失败 / The Team conflicts with durable
+authority` is now corrected in the uncommitted Main/Core session-mode slice.
+AionCore's `GET /api/teams/:id` contract legitimately omits `session_mode`;
+Main now treats that omission as compatible with the previously confirmed safe
+write, keeps explicit unsafe values fail-closed, and returns the Main-owned safe
+projection. The focused RED-to-GREEN closure is 8/8, including create, explicit
+session-mode write, and warmup-seed omission cases; the added AionCore/session
+combination is 3/3. Root and materialized strict TypeScript, exact two-file
+formatting, and zero-warning lint pass, and the latest materialized production
+build exited 0 without rerunning the full root gate.
+
+A fresh profile at
+`/tmp/actestra-p6-session-authority-fix-20260806b` launched the latest Electron
+bytes with Electron user-data, AionCore runtime/data, HOME, and TMPDIR under the
+same isolated root. The Team `+` chooser, native Standard Team form, Claude Code
+and Codex CLI icons, and member selection were visible; creation returned 201,
+entered `/team/019fd757-e95a-7061-b788-024fd787e639`, and never showed the
+durable-authority error or deleted the Team. The backend log records successful
+`session-mode` writes, a 200 Claude config-options postcondition, and an
+isolated-profile Codex runtime-not-ready response; this is an authentication or
+runtime-readiness limitation of the disposable HOME, not a Team creation
+conflict. No Gemini request or credential was used. The app then exited through
+the normal quit path; the profile-owned process registry is empty and no
+Electron/AionCore/Claude/Codex process or test fixture remains. The daily
+`~/.actestra-v1-dev` directory remains absent/empty. This is fresh local
+Electron evidence only; it does not close the remaining native warmup/error
+journey, advance the orchestrated 2/7 ledger, or claim Task 14/P6 acceptance,
+commit, push, PR, Actions, release, deployment, or user acceptance.
+
+The remaining focused standard-Team sidebar and member-operation set is now
+closed on the same local production bytes. Delete removes the Team from the
+sidebar, rename persists through the native menu, pin/unpin changes ordering,
+and the native member-tab close removes a Main/Core-projected Claude member.
+The first member-removal RED exposed a test-only authority bypass:
+the generic E2E helper mapped `team.add-agent` directly to AionCore HTTP and
+then swallowed its error. The corrected setup calls the provider-active
+`window.actestraTeam` contract with `experience: standard`, asserts the
+Main/Core response, and the exact failed journey passes 1/1 in 48.6 seconds.
+The three unchanged companion journeys already passed in the same 4-test
+session. A downstream retention guard now rejects reintroducing the direct
+helper path. Final exit left no worktree-owned Electron/AionCore/Claude/Codex
+process and no new E2E state or profile directory.
+
+A later `team-session-mode` attempt did not execute the permission journey and
+is not additional acceptance evidence. Re-materialization had removed the
+generated Electron main output, so the Playwright `electronApp` fixture timed
+out during setup before the Team UI opened. The new worker-scoped teardown still
+removed that failed attempt's isolated user-data and state roots, and the
+post-run audit found no worktree-owned Electron, AionCore, Claude, Codex, or
+planner process. The production bundle prerequisite has since been rebuilt, but
+the already-green 1/1 permission journey was not repeated because no related
+product byte or acceptance input established a new verification key.
+
+The current local E2E-fixture correction establishes a new safe verification
+key before any further native journey. Electron user-data, AionCore runtime and
+data, HOME, TMPDIR/TEMP/TMP, and XDG directories share one disposable
+`actestra-e2e-*` root; the launch environment also removes common model API-key
+variables without reading their values. The first runtime assertion failed
+before the Team journey with exact evidence that macOS Electron still reported
+`appHome` as `/Users/zizimutou`, despite the isolated `HOME` environment. The
+source-of-truth patch now passes explicit isolation-root, home, and temp paths
+to the app. E2E-only startup validates that those paths and user-data are
+absolute, non-root, lexically contained, and still contained after realpath,
+creates them privately, and calls `app.setPath('home', ...)` and
+`app.setPath('temp', ...)` before the first `app.getPath('appData')`. Normal
+development and packaged startup do not enter that branch.
+
+The focused native-wiring RED failed only the missing explicit path contract;
+GREEN passes 9/9, materialized strict TypeScript, exact patch formatting,
+zero-warning fixture/test lint, and the 311-file downstream contract with 92
+reviewed source copies. The final materialized production build succeeds. One
+new-key real Electron `team-session-mode` journey then passed 1/1 in 35.0
+seconds. Its startup log proves that Electron user-data, `appHome`, `appTemp`,
+`DATA_DIR`, environment home, and environment temp all lived under exact root
+`actestra-e2e-dJpiF1`. The native Standard Team was created without the
+durable-authority error and reached the explicit permission-unavailable state;
+this run therefore proves safe creation and error presentation, not a successful
+mode switch. Normal teardown removed the exact isolation root and left no
+matching Electron, AionCore, model, or planner process. The daily
+`~/.actestra-v1-dev` profile still contains no file. Real warmup success and the
+remaining error/recovery journeys remain open.
+
+A clean downstream reconstruction also exposed and corrected two patch-0014
+ordering defects: one attempted to edit the chooser DOM test before creating
+it, and one failed to preserve the escaped Team-route regex while matching a
+later E2E edit. The corrected source-of-truth patch materializes from the frozen
+foundation and passes the 292-file downstream contract with 91 reviewed source
+copies. The resulting AionUI main/preload/renderer production build succeeds;
+its existing dynamic-import, circular-chunk, and large-chunk warnings remain
+non-blocking. Gemini CLI is excluded from the current acceptance matrix because
+the owner has not configured a usable local model; no further Gemini diagnosis,
+invocation, credential access, or network request is planned for this batch.
+
+The retired P2 renderer no longer supplies the root development, preview, or
+package entrypoint. A scoped product-boundary guard now scans all 17 modified
+Team renderer/adapter paths in the materialized downstream application. It
+rejects Node/Electron imports, CommonJS or `window.require`, direct network
+clients, and process/environment authority while retaining the one compile-time
+`process.env.NODE_ENV` debug flag. Its RED-to-GREEN rule set passes 10 focused
+tests, and the guard passes against the same 293-file downstream reconstruction.
+No secret-shaped value, unexpected file-mode change, frozen-foundation change,
+or live Actestra/AionCore/Claude/Codex process was found in the final pre-gate
+audit. The prior root gate passed once on the then-stable production/test
+bytes: formatting over 248 files, zero-warning lint over 243 files, strict
+TypeScript, the Electron SQLite probe, 90 passing and 2 skipped test files with
+820 passing and 8 skipped tests, the deterministic smoke harness, the
+106-source product boundary, the frozen 1,766-file AionUI selection, the
+293-file downstream contract with 92 reviewed source copies, and the
+production build with 643 main, 30 preload, and 10,198 renderer modules.
+Existing dynamic-import, circular-chunk, and large-chunk warnings remain
+non-blocking. The current batch subsequently changed production/test bytes for
+the Main-owned standard-Team config setter, so this root-gate result is
+historical evidence and does not certify the final bytes. Per the current
+validation budget it is not being repeated; final delivery must rely on the
+narrow evidence below plus the one eventual exact-head gate.
+
+The standard-Team configuration, rename, deletion, and member-mutation
+corrections have their own focused evidence: the bridge contract is 8/8 plus
+the standard-slot route closure is 1/1, the Main Team service was 47/47 before
+the deletion delta, deletion is 2/2, and member rename/removal is 2/2; the
+materialized downstream `useAcpModelInfo` DOM contract is 12/12, native Team
+wiring was 8/8 before the deletion delta and its deletion/member wiring closure
+is 1/1, and the affected downstream TypeScript check passes. The downstream
+overlay contract now passes with 301 declared files and 92 reviewed source
+copies. The earlier four newly declared source-copy paths are
+`useAcpConfigOptions.ts`, `useAcpModelInfo.ts`, `teamConfigOptions.ts`, and
+`useAcpModelInfo.dom.test.ts`. The session/warmup closure additionally declares
+`useTeamWarmup.ts`, `AcpSendBox.dom.test.tsx`,
+`TeamPermissionContext.dom.test.tsx`, and `useTeamWarmup.dom.test.tsx` in the
+changed-file contract; no additional reviewed source-copy scope was added.
+
+Provider-active standard-Team title, deletion, and member edits now return
+through Main/Core. Main routes only an identity durably bound as `standard`,
+sends bounded PATCH or DELETE intents through the AionCore loopback provider,
+and requires the requested name, member name, or member absence in the
+observed projection before acknowledging the renderer. Native AionUI slot IDs
+remain bounded provider identities; only schema-15 orchestrated members use
+Actestra's `team-member-<digest>` identity rule. The retained AionUI deletion
+flow still performs its cron cleanup before the Main-owned Team delete; Main
+emits removed, agent-removed, and agent-renamed events only after the relevant
+postcondition. The fixed event boundary now admits bounded provider-owned Team
+and slot identities for those cross-experience list, rename, deletion, and
+member events, so standard-Team callbacks survive preload/renderer validation;
+schema-15 run, slot-work, teammate-message, and assistant events retain strict
+Actestra digest identities. The native Team session receives provider callbacks
+while the provider-absent native fallback remains intact. This closes the
+configuration, title, deletion, member, and session-mode write bypasses. At this
+checkpoint, standard message/control writes still required the same authority
+audit. It does not start a planner or Worker and does not advance the
+orchestrated 2/7 ledger.
+
+The same provider-active authority now owns both standard-Team warmup entry
+points. Main routes `POST /api/teams/:id/session` by the durable Team experience,
+persists and re-reads a safe session mode before starting AionCore, verifies
+Claude `default` and Codex `auto` member modes, and compensating-stops a partial
+session when a postcondition fails. `useTeamWarmup` and
+`TeamPermissionContext` call that fixed Main/Core projection when the provider
+is active and retain the native AionUI IPC fallback only when it is absent. A
+controlled legacy-path RED failed at the projected-call assertion; final focused
+evidence passes 4/4 Main session tests and 3 materialized renderer files with
+29/29 tests. Root and materialized strict TypeScript, exact-path zero-warning
+lint and formatting, the 1,766-file frozen-foundation check, and the 301-file
+downstream contract with 92 reviewed source copies pass. This is local focused
+evidence only; no real Electron acceptance, commit, push, PR, Actions run, or
+orchestrated-ledger advance is claimed.
+
+The subsequent session-mode/warmup authority closure added two provider-active
+retention guards. A directed retry-start now calls the Main/Core projected
+standard-Team attach intent and keeps native `attachAgent` only when the Actestra
+provider is absent; a RED exposed the previous direct native call and the final
+`teamSendRuntime` file passes 18/18. `TeamPermissionContext` now routes
+provider-active session-mode and config reads through Main/Core, restores native
+`team.setSessionMode` and `team.getConfigOptions` when the provider is absent,
+and leaves the native ACP config setter in control in that fallback; its focused
+DOM file passes 7/7. The combined affected renderer closure is 5 files and
+57/57 tests, while the four Main session tests and four changed Team route
+fixtures also pass. Root and materialized strict TypeScript pass; root changed
+path formatting/lint and the four changed renderer paths pass with no warnings.
+The downstream contract now records 303 declared files and 92 reviewed source
+copies. This remains local compatibility evidence only; it does not start a
+planner or Worker, advance the orchestrated 2/7 ledger, or claim Electron
+acceptance, commit, push, PR, Actions, or P6 completion.
+
+The next focused `useTeamSession` closure applies that authority split to
+session revalidation and member addition. With the provider active, SWR reads
+the Team through the fixed Main/Core projection and member creation submits the
+bounded standard-Team intent; with the provider absent, the original native
+`team.get` and `team.addAgent` paths remain reachable. The RED run failed the
+two expected assertions with the other 6 tests passing; the final generated DOM
+file passes 8/8. Materialized strict TypeScript, exact patch formatting, and
+zero-warning lint for the generated hook and test pass, and the downstream
+contract remains green at 303 declared files and 92 reviewed source copies.
+This is local standard-Team compatibility evidence only; it does not start a
+planner or Worker, advance the orchestrated 2/7 ledger, or claim Electron
+acceptance, commit, push, PR, Actions, or P6 completion.
+
+The next standard-Team control audit found that pause and cancel called the
+provider before proving that the requested run was still current. A stale run
+ID, or a matching run already in a terminal state, could therefore reach the
+AionCore effect before the later postcondition read. Main now projects the
+current run state first, requires the requested run to be the active accepted or
+running run and the member work to reference that same run, then performs the
+provider effect and retains the existing post-effect reconciliation. The stale
+and terminal RED cases both previously resolved successfully; the final focused
+closure passes those two rejection cases plus one valid running-to-paused
+precondition/effect/postcondition sequence at 3/3. Root and materialized strict
+TypeScript pass, and the two root source/test paths pass exact formatting and
+zero-warning lint. The downstream contract remains green at 303 declared files
+and 92 reviewed source copies. This remains local standard-Team control
+evidence. At this checkpoint, standard message durability and the remaining
+Task 14 native/error journeys were still open; the orchestrated ledger remained
+2/7, and no commit, push, PR, Actions, or P6 completion was claimed.
+
+One parallel full Main-file attempt passed 56/57 and timed out only while the
+already-closed no-orphan guard read `/bin/ps` under its test-only 50 ms grace.
+The same file had passed 57/57 before that concurrent attempt, and the failed
+test's `finally` cleanup left no probe process or test directory. A proposed
+unrelated timeout expansion was removed; the no-orphan layer was not rerun or
+changed by this session/warmup closure.
+
+The latest focused standard-Team message correction closes that remaining local
+delivery-authority gap with forward-only schema 17. Main persists a metadata-
+only `pending-effect` delivery before the AionCore message effect, records the
+bounded provider message/run acknowledgement only after the same run is
+observed, and records `effect-uncertain` after an ambiguous failure. One
+Main-owned delivery ID, bounded client nonce, and request SHA-256 make an
+observed duplicate safely replay its durable acknowledgement without repeating
+the effect; a changed request conflicts, while pending or uncertain delivery
+fails closed. Only one unresolved delivery may exist for a Team/target, and
+startup converts interrupted pending deliveries to uncertain before bridge
+registration instead of resending them. Message content and attachment paths
+are not persisted. The renderer stores only the nonce and request fingerprint,
+reuses them after failure or reload, and clears them after acknowledgement.
+Focused RED proved duplicate provider effects and missing renderer nonce reuse.
+The corrected closure passes 5 persistence/utility/bridge files with 66 tests,
+9/9 affected Main message/recovery/orchestrated tests, the complete 13/13 root
+bridge file, generated downstream slow-response 7/7 and native-wiring 8/8
+files, downstream path safety 3/3, and root plus materialized strict TypeScript.
+This is local focused evidence only: no fresh-profile Electron message journey,
+commit, push, PR, Actions run, orchestrated-ledger advance, or P6 completion is
+claimed. Remaining native/error journeys and the real orchestrated Team journey
+remain open.
+
+The latest session-mode authority slice closes the provider-active Team lease
+path without changing the retained native fallback. A RED first showed that
+`useActiveLease` still called native `ipcBridge.team.activeLease` while the
+Actestra provider was active, and a Main/Core RED showed that the existing
+`active-lease` route only read run state instead of forwarding the standard-Team
+lease effect. Main now checks the durable experience binding, forwards
+standard-Team renewal through the bounded AionCore loopback route, and keeps
+orchestrated Teams on their Actestra-owned state projection. The generated
+renderer hook selects the Actestra client only when the provider is active and
+retains native IPC otherwise. The final focused evidence is root Main/loopback
+3/3, materialized lease DOM 6/6, materialized strict TypeScript, downstream
+overlay 305 declared files with 92 reviewed source copies, exact-path format,
+and zero-warning lint. This remains local compatibility evidence only; the
+no-orphan `/bin/ps` path was not changed or rerun, the orchestrated ledger stays
+2/7, and no planner, Worker admission, Electron acceptance, commit, push, PR,
+Actions run, or P6 completion is claimed.
+
+The next native Team projection slice closes two remaining provider-active read
+bypasses in the visible AionUI shell. `useSiderTeamRunning` now hydrates each
+Team's running badge from the Main/Core projected run-state, subscribes to the
+fixed Actestra run-event provider for orchestrated Teams, and retains native
+run-state/events when the provider is absent. The mobile titlebar now resolves
+the Team name through the same Main/Core Team projection when provider-active,
+while preserving the native fallback. RED failed both provider-active sidebar
+journeys against the old native-only hook; GREEN passes the affected sidebar
+DOM file and native-wiring guard. The combined downstream focused closure is
+39/39 tests, materialized strict TypeScript, zero-warning lint, and the 307-file
+downstream contract with 92 reviewed source copies. This remains local
+compatibility evidence only: no real Electron acceptance, planner or Worker
+admission, commit, push, PR, Actions run, or P6 completion is claimed.
+
+The latest no-credential Task 14 UI audit found one additional orchestrated-
+Team defect: a failed authoritative create sent the raw bridge error message to
+a transient Toast and left no durable explanation in the form. The focused RED
+failed because the error region was absent. Patch 0014 now preserves every
+field, shows a localized bounded failure plus the next valid retry step, and
+does not render the raw bridge method or path. The exact generated DOM file
+passes 4/4 tests. This closes only the create-failure presentation defect; it
+does not supply a production planner or advance the 2/7 orchestrated-Team
+acceptance ledger.
+
+The subsequent startup-chain correction removes the attempted local-Agent
+startup injection and all three provider/runtime destinations from the shipped
+downstream source-copy graph. The generated desktop index now performs no
+Claude/Codex provider admission or Team/coding runtime assembly before
+persistence startup. The affected downstream contract passes with 293 declared
+files and 92 reviewed source copies; generated native wiring passes 8/8, the
+overlay path-safety contract passes 3/3, nine changed paths pass formatting,
+three changed scripts pass zero-warning lint, all 64 Markdown files pass link
+resolution, and `git diff --check` passes. The unchanged non-shipped provider
+rejection tests were not repeated, and no full root gate was run. This is a
+fail-closed product-graph correction only and does not advance the 2/7 ledger.
+
+The next local correction makes that fail-closed state visible before effect.
+Main now projects a closed `submission` availability object from the actual
+admission/orchestrator composition in every orchestrated Team run-state read.
+With no admitted runtime it returns `unavailable`,
+`planner-unavailable`, `restart-after-planner-admission`, and the
+`actestra-main-runtime` authority source. The bridge rejects inconsistent
+availability/reason/action combinations. The AionUI-native page displays the
+localized reason and next step immediately, disables task input and Run Team,
+and refuses the submit handler before any bridge intent; the existing POST
+rejection remains a race-safe Main boundary. Focused RED proved both the absent
+Main projection and absent UI state. GREEN passes the 3-file bridge/Main
+closure with 55 tests, the new inconsistent-contract check, the complete
+generated workspace file with 8 tests, root and materialized strict TypeScript,
+and the 293-file downstream contract. No planner, Worker, credential, model
+request, run record, commit, push, PR, Actions run, or ledger advance is
+claimed.
+
+Task 14 remains open. The standard-Team permission-count and scheduled-task
+authority paths now have the focused local evidence recorded above, but their
+fresh Electron error/recovery acceptance and the complete native journey still
+remain open. The orchestrated Team still has only its explicit
+planner-unavailable journey rather than a real admitted planner, General+Goose
+plan, protected approvals, controls, Artifact aggregation, and restart
+recovery. No commit, push, PR, Actions, package, release, deployment, or user
+acceptance is claimed for the current local bytes.
+
+The existing orchestrated-Team acceptance ledger remains 2/7; this provider
+hardening does not advance it. Live source audit confirms five
+remaining blockers: product startup supplies no admitted planner/model binding;
+the resulting null runtime leaves Team admission and orchestration unavailable;
+General Work still selects deterministic execution modes from `journeyKind`;
+the real Electron journey has not completed the mixed General+Goose,
+dependency, protected-approval, control, Artifact/aggregation, and restart
+postconditions; and the whole uncommitted batch still lacks one final stable-
+byte delivery and acceptance closure. The first four are product/acceptance
+gaps. The last is delivery state and must not be used to conceal them.
+
+The same source audit found and locally corrected one narrower defect in the
+unavailable path. `TeamPlanAdmissionService` now maps sidecar startup/request
+timeouts to `planner-timeout`, protocol or Core candidate-admission failures to
+`planner-invalid`, and every other unavailable planner failure to the existing
+generic category. The fixed bridge exposes bounded 504
+`team-planner-timeout` and 422 `team-planner-invalid` envelopes, and AionUI
+preserves the task while showing distinct English/Chinese recovery guidance
+without rendering private error details. RED failed the expected four cases;
+GREEN passes the three affected Main/bridge files with 56 tests and the
+generated Workspace DOM file with 10 tests. Root and materialized strict
+TypeScript, exact eight-path format/lint, and the 293-file downstream contract
+also pass. No provider, credential, model, tool, Worker, or run was started;
+the unchanged spawn-rejection tests were not rerun, and the 2/7 ledger does not
+advance.
+
+The next local UI audit removed four remaining raw-error paths from the
+orchestrated Team page. Control/approval, workflow feedback, whole-Team cancel,
+and rename failures no longer display a runtime `Error.message` in a transient
+Toast. They now select one fixed localized inline error and recovery step while
+preserving the authoritative Team projection. The generated Workspace DOM file
+passes 12 tests, including approval, cancellation, and rename failures that
+contain private bridge paths or runtime details; none is rendered. Patch and
+guard formatting plus zero-warning lint pass, the materialized AionUI strict
+TypeScript check passes, and the 293-file downstream contract rejects restoring
+the four raw-message branches. An initial parallel TypeScript attempt was
+invalid setup evidence because the downstream checker rebuilt the same
+materialized tree while `tsc` read it; one clean serial materialization and
+TypeScript run then passed. This UI containment does not start a planner or
+Worker and does not advance the 2/7 ledger.
+
+A further live audit corrected an initial assumption: the bridge already
+validated node and slot blocked reasons against closed enums, so no redundant
+contract was added. The actual defect was renderer presentation. For every
+Main-owned dependency, human-feedback, protected-approval, attempt-failed,
+cancelled, paused, handoff, or interrupted reason, AionUI now renders fixed
+English/Chinese explanation text instead of the Main English
+`blocked_explanation`; an unreachable unknown value has fixed fail-closed copy.
+The focused RED failed with the old protected-write explanation. After the UI
+mapping, the first GREEN attempt exposed one stale old-text assertion; the
+updated complete Workspace file passes 13/13. Materialized strict TypeScript,
+two-path format/lint, and the 293-file downstream contract pass. This improves
+multilingual explainability only and does not admit or execute a planner or
+advance the 2/7 ledger.
+
+The next focused UI RED found that run, member, node, and capability cards still
+displayed raw Main tokens (`running`, `active`, `blocked`, and `coding`). Patch
+0014 now maps every closed value in those four projections to fixed
+English/Chinese AionUI labels and adds stable DOM markers. The RED failed at
+13/14; the corrected Workspace DOM file passes 14/14. Exact patch/checker
+formatting and zero-warning lint, materialized AionUI strict TypeScript, and
+the 293-file downstream contract all pass. This is local explainability
+evidence only; the orchestrated ledger remains 2/7 and Task 14 remains open.
+
+An earlier production-startup call-chain audit exposed the orchestrated-Team
+blocker. `configureActestraTeamRuntime()` and
+`configureActestraCodingJourneyRuntime()` are exported by the materialized
+desktop-main bridge but had no product startup caller. Persistence startup
+therefore constructed `ActestraTeamComposition` with both the Team runtime and
+coding journey unavailable; by contract it created neither
+`TeamPlanAdmissionService` nor `TeamOrchestratorService`, so an orchestrated
+send deterministically returns `team-planner-unavailable`. The generic
+sidecar supervisor and deterministic test fixture are not a production
+planner, and no CrewAI runtime or production Goose model broker has been
+silently substituted. Closing the real Electron orchestrated journey requires
+an explicitly admitted production planner plus coding runtime before another
+acceptance claim. The current correction deliberately keeps that null-runtime
+product state: it removes the attempted local-Agent startup injection and the
+provider/runtime source copies from the materialized product graph. New
+manifest, downstream, and native-wiring guards reject their reintroduction.
+
+The same startup audit also prevents calling the existing mixed fixture a real
+product Team run. The current General Work launcher selects deterministic
+fixture execution modes from `journeyKind`; it does not yet bind a configured
+local Agent runtime for ordinary product work. Goose's loopback model port
+accepts raw completion and tool-call results, while Claude CLI and Codex CLI
+are complete Agents with their own execution surfaces. Passing either CLI
+through that port without an explicit no-tool, cancellable, policy-scoped
+Main-owned provider would create a second execution authority. The retained
+AionCore provider and Agent catalogue is useful compatibility input, but its
+upstream API clients are not an accepted Actestra credential or policy
+boundary. The materialized product now contains no local Claude/Codex planner
+adapter or startup wiring. The General Worker still uses its deterministic
+fixture modes and no real isolated Claude or Codex invocation is admitted. No
+renderer-side credential, model, command, or authoritative-ID construction is
+acceptable.
+
+The owner authorized that local architecture change on 2026-08-06. A live
+non-inference capability check found Claude Code `2.1.168` and Codex CLI
+`0.144.3` on the local PATH without reading or printing either credential.
+Codex advertises ephemeral structured output, ignored rules/config, and a
+read-only sandbox but no enforceable all-tools-disabled mode. Its earlier
+focused RED proved the first implementation still advertised planner and
+aggregation; the correction projects zero capabilities and rejects structured
+invocation before model-process spawn. Post-hoc event rejection is not accepted
+evidence because an observed shell, file, MCP, or web event may follow an
+effect.
+
+The same investigation has now rejected the earlier Claude admission claim.
+In one-variable non-inference checks, the closed environment reported OAuth
+login until `--setting-sources ""` was added; that flag alone changed the same
+`auth status` result to unauthenticated. Claude's own `--help` identifies
+`--bare` as the only mode that skips hooks, LSP, plugin sync, attribution,
+auto-memory, Skills, MCP, and all tools before execution, and explicitly states
+that bare mode never reads OAuth or Keychain. Private HOME, private
+`CLAUDE_CONFIG_DIR`, and the documented secure-storage split did not produce a
+safe OAuth-visible configuration. Enabling real user settings, invoking a
+shell-based `apiKeyHelper`, or forwarding a raw OAuth token/API key would widen
+the boundary and was not attempted. These checks made no model/API request and
+their temporary roots were removed.
+
+The local evaluation correction projected empty capabilities for both Claude
+and Codex, removed the unsafe Claude model invocation/output-parser path, and
+returned `capability-unavailable` before model-process spawn. The focused
+2-file rejection closure is GREEN at 4/4 on those bytes; it is retained as
+non-shipped research and was not rerun for this product-graph correction. The
+ordinary desktop product does not
+construct, catalogue, version-probe, help-probe, or invoke that prototype; it
+does not create a Goose-attempt root, compose a Team/coding runtime, or forward
+credentials. The obsolete product-runtime adapter and structured runtime were
+removed rather than retained as dead production code.
+
+Script-based Codex has no equivalent pre-execution proof and remains
+admission-disabled. Claude remains unavailable because its safe bare boundary
+cannot reuse the accepted local authentication path without widening credential
+authority. A post-hoc shell, file, MCP, or web event can never upgrade either
+candidate. No real credential, tool, model, or network request was used, and no
+CrewAI, commit, push, PR, Actions run, or P6 acceptance is claimed. Real
+planner/Goose execution, the non-fixture General Worker, and the orchestrated
+Team journey remain open.
 
 The containment foundation was developed from exact `origin/main`
 `071aa922c08dd9a139f0c11dee2aa0dadab02417` on branch
@@ -243,8 +980,7 @@ remaining sockets.
 
 Pull request 35 reached exact head
 `93a8e9633f2be7b5f8c8b1eead3f2a21b0770073`. Exact-head CI 30832907098
-passed macOS arm64 foundation job 91750962007 and Goose runner admission job
-91750962049. CodeRabbit exhausted its review quota and GitHub records no
+passed macOS arm64 foundation job 91750962007 and Goose runner admission job 91750962049. CodeRabbit exhausted its review quota and GitHub records no
 submitted review, inline comment, or review thread, so its status is not
 represented as line-level review. The branch squash merged as
 `8a31bafc1cd322744189fc4ed1e68f769225c999`, and exact merged-main CI
@@ -288,14 +1024,12 @@ contracts, and the 58-main/3-preload/28-renderer-module production build.
 
 Pull request 36 corrected final head
 `5fe78bfaf2982556af975d23bc904d10b77a1f29` passed exact-head CI 30843561874:
-macOS arm64 foundation job 91786216829 and Goose runner admission job
-91786216934. CodeRabbit selected all 15 changed files but supplied only its
+macOS arm64 foundation job 91786216829 and Goose runner admission job 91786216934. CodeRabbit selected all 15 changed files but supplied only its
 Free-plan summary and walkthrough, skipped the unchanged integration file as
 similar to its prior review, and left no submitted review, inline comment, or
 review thread. The branch squash merged as
 `08e6fefcd87721fbe4f21eee73f9ba6c52a638c0`. Exact merged-main CI 30845006202
-passed macOS arm64 foundation job 91791030796 and Goose runner admission job
-91791030814.
+passed macOS arm64 foundation job 91791030796 and Goose runner admission job 91791030814.
 
 The authenticated MCP tool-call slice starts from that exact merge on branch
 `codex/p5-goose-prompt-tool-loop`. After authenticated initialize, initialized,
@@ -333,8 +1067,7 @@ environment; and the 128-call ceiling is the intentional P5.2 containment bound.
 
 Pull request 37 delivered that authenticated tool-call bridge at exact head
 `84b0550495717343b75ca2540cb7c191ab65b12a`. Exact-head CI 30851778390
-passed macOS arm64 foundation job 91813249905 and Goose runner admission job
-91813250047. CodeRabbit selected all 12 files but explicitly stopped at its
+passed macOS arm64 foundation job 91813249905 and Goose runner admission job 91813250047. CodeRabbit selected all 12 files but explicitly stopped at its
 review limit; its successful status and Free summary are not line-level review
 evidence. GitHub records no submitted review or inline review thread. The branch
 squash merged as `d933546454e63a2d836e728f1b93980cb4a7c0ac`. The single
@@ -373,8 +1106,7 @@ AionUi foundation, the 184-file downstream contract, and the
 
 Pull request 38 reached exact head
 `cc773081ba448266951a3b2ac3654831022118fc`. Exact-head CI 30859115162 passed
-macOS arm64 foundation job 91836946596 and Goose runner admission job
-91836946628. CodeRabbit explicitly did not start a review because its quota was
+macOS arm64 foundation job 91836946596 and Goose runner admission job 91836946628. CodeRabbit explicitly did not start a review because its quota was
 exhausted; GitHub records no submitted review or inline review thread, so that
 status is not formal review evidence. The branch squash merged as
 `a6280dd38eacdbada9db159c4784110ec8e42770`.
@@ -401,8 +1133,7 @@ run is not rerun and is not represented as successful remote closure.
 
 Pull request 39 delivered that bounded test deadline at exact head
 `38cbbaaedbb8e5955b96a6d7148841180e751e35`. Exact-head CI 30861770178
-passed macOS arm64 foundation job 91845074323 and Goose runner admission job
-91845074258. The branch squash merged as
+passed macOS arm64 foundation job 91845074323 and Goose runner admission job 91845074258. The branch squash merged as
 `7e8732e264febff42fb3d451011b3b8e48caaff5`; the single automatic
 merged-main CI 30862710547 passed macOS arm64 foundation job 91847939794 and
 Goose runner admission job 91847939858. CodeRabbit returned success without
@@ -631,12 +1362,10 @@ rerun.
 
 The overlay-only correction reached exact head
 `a3d08a934160c1a5d61ff987ade29212bd3c0b05`. Exact-head CI 30906689796
-passed Goose runner-admission job 91983312901 and macOS arm64 foundation job
-91983312925. GitHub records no submitted review or inline thread; CodeRabbit's
+passed Goose runner-admission job 91983312901 and macOS arm64 foundation job 91983312925. GitHub records no submitted review or inline thread; CodeRabbit's
 successful status is not represented as line-level review evidence. The branch
 squash merged as `30742934adde1e0944c4e8ced1f005452a1f3568`; exact
-merged-main CI 30907869824 passed Goose job 91987128709 and macOS job
-91987128766. The bounded team-plan admission slice is accepted on `main`.
+merged-main CI 30907869824 passed Goose job 91987128709 and macOS job 91987128766. The bounded team-plan admission slice is accepted on `main`.
 
 The next P6 slice starts from that exact merge on branch
 `codex/p6-team-plan-persistence`. SQLite schema 14 adds one strict
@@ -933,37 +1662,98 @@ job was cancelled, the overall run reached `cancelled`, and the merge SHA was
 not rerun.
 
 Focused diagnosis found that a sidecar with no descendants can exit after stdin
-EOF while the old negative PGID reports `EPERM`. The current helper treats every
-probe-only `EPERM` as live, then sends a real signal to an identity the
-supervisor no longer owns; that signal correctly fails closed and misreports a
-normal close. A deterministic regression converts only a truly vanished group
-probe from `ESRCH` to `EPERM`; it failed with the exact CI cleanup error before
-the production change. The minimal correction keeps `EPERM` alive while the
-same-uid leader remains, but after the leader's observed exit treats it as a
-stale or reused group identity. A surviving supervised descendant remains
-signalable, and actual TERM/KILL errors remain fail closed. The regression now
-passes 1/1, the complete sidecar-process file passes 12/12, and the global
-matching process and temporary-directory scan is empty.
-
-That correction is now CI-backed on `main`. It reached exact head
-`a22121c63dc3d3bb3736ba85f797a6dfb6eac611` on branch
-`codex/p6-planner-cleanup-identity` and passed exact-head CI 30971605452, with
-both the macOS arm64 foundation and Goose runner admission jobs green. Pull
-request 49 squash merged as
+EOF while the old negative PGID reports `EPERM`. The corrected helper keeps
+`EPERM` alive while the same-uid leader remains, but after the leader's observed
+exit treats it as a stale or reused group identity; a surviving supervised
+descendant remains signalable, and actual TERM/KILL errors remain fail closed.
+Pull request 49 reached exact head
+`a22121c63dc3d3bb3736ba85f797a6dfb6eac611`; exact-head CI 30971605452
+passed both jobs. It squash merged as
 `a3f23d6391a6f6c34f5a88cfa12e35b9665e5196`, whose tree
 `fa76108ebed0031b1fa58f526ed5a5a23e8d96b8` is byte-identical to that exact
-head. Merged-main CI 30972570429 passes both jobs on that exact merge. The
-planner-sidecar serialization close that failed run 30970186524 passes on this
-corrected merge; the failed SHA itself was not rerun. GitHub recorded no
-submitted review or inline thread, and CodeRabbit returned a review-limit
-response before analysis, so its status is limit handling and not line-level
-review evidence. This closes the merged-main planner cleanup gate as
-implementation evidence only; it is not P6 phase acceptance.
+head; the sole merged-main CI 30972570429 passed. GitHub records no submitted
+review or inline thread; CodeRabbit returned a review-limit response before
+analysis, so its status is limit handling and not line-level review evidence.
+This closes the merged planner no-orphan correction without claiming UI or
+phase acceptance.
 
-With cleanup closed, the real AionUI Team/group-chat UI gate is now the leading
-open P6 item and remains independently unaccepted. Patch 0014, bridge contracts,
-DOM tests, and green CI do not substitute for a native user-journey review.
-Acceptance must still
+Task 14 local development then exposed a separate standard-Team model-catalog
+probe leak: deleting the temporary AionCore conversation removed its registry
+entry after the wrapper exited while a detached child remained in the same
+process group, so application teardown lost its ownership evidence. The local
+Main-owned guard now freezes only that conversation's PID/PGID snapshot before
+DELETE, then performs bounded TERM/KILL cleanup from the frozen snapshot and
+fails closed without touching another conversation. Backend close aborts and
+awaits in-flight probes before composition continues. Focused RED-to-GREEN
+evidence passes the 34-test service file, root and materialized strict
+TypeScript, the 8-test native-wiring file, downstream source-copy equality, and
+whitespace checks. The real detached wrapper/child probe is removed while an
+unrelated process remains alive; the captured profile-owned PID/PGID and
+temporary-directory scans are empty. These bytes remain local and unpushed.
+
+The same local Task 14 batch now retains standard-Team creation failures inside
+the native AionUI form instead of relying only on a transient toast. A focused
+DOM RED first failed because `team-create-error` did not exist; the corrected
+form preserves the Team name, members, and Workspace choice, displays the
+Main-sanitized failure plus an English/Chinese CLI-login-or-configuration next
+step, and keeps retry available. The exact focused file passes 14 tests; the
+affected generated component, test, and two locale files pass the downstream
+formatter, the component and test pass zero-warning lint, the root patch passes
+formatting and whitespace checks, and the one affected root wiring assertion
+passes under Vitest/Node.
+
+The same local UI closure now fails closed when the authoritative orchestrated
+Team run-state projection cannot be read: the workspace keeps the explanatory
+authority-unavailable banner but disables task input and Run Team, and the
+submit handler refuses the intent before calling the bridge. The new RED failed
+the generated Actestra workspace file (7/8 passing); after patch 0014 was
+updated, the focused file passes 8/8. This is a local UI/error-state fix only;
+it does not admit a planner or add real mixed Worker execution.
+
+A focused follow-up removes the remaining raw `running`, `active`, `blocked`,
+and `coding` tokens from the visible orchestrated-Team workspace. Renderer
+code now maps every closed Main-projected run status, assistant status, node
+state, and node capability to fixed English/Chinese AionUI copy without
+changing the authoritative values. The RED failed at 13/14 because the run
+status was still rendered directly; the corrected Workspace DOM file passes
+14/14. The two affected patch/checker files pass exact formatting and
+zero-warning lint, materialized AionUI strict TypeScript passes, and the
+293-file downstream contract requires the localized projection and stable DOM
+markers. This is local, uncommitted explainability evidence only and does not
+advance the 2/7 orchestrated journey ledger.
+
+Fresh-profile native evidence remains local and unpushed. In one isolated
+profile, a Claude Code leader and Codex CLI member both returned their requested
+bounded replies in the preserved parallel Team view. A separate verification
+key rooted at `/tmp/actestra-task14-gemini-nocred-CXnaap` fixed both Electron
+user data and AionCore runtime beneath its `profile` directory and fixed
+`GEMINI_CLI_HOME` beneath its separate `gemini-home`. Gemini/Google credential
+variables were unset, no user Gemini configuration was copied or read, and
+external proxy access was denied. The native standard-Team creation journey
+returned `Authentication required` / `Gemini API key is missing or not
+configured` in about 1.9 seconds. The fixed form retained the entered name and
+member, showed the Main-sanitized unavailable-model error and CLI
+login/configuration next step, and kept retry available. Immediately after the
+failed creation, `GET /api/teams` was empty and the temporary AionCore Gemini
+conversation Workspace was absent; Gemini CLI's own local state remained
+confined to the isolated `gemini-home`. Final shutdown recorded `before-quit`,
+AionCore graceful shutdown, `will-quit`, and exit code 0. The profile-owned
+process registry contained zero entries; all captured Electron, AionCore, and
+Gemini PIDs were absent; and no path under `~/.actestra-v1-dev` was newer than
+the verification start. Gemini CLI is not configured with a usable model on the
+owner's current machine, so Task 14 does not spend further time attempting or
+claiming a Gemini success reply. This is a local-configuration limitation, not
+a product-level Gemini retirement or defect claim; the retained entry remains
+available and, when local configuration is missing, must keep the existing
+clear, retryable failure and complete cleanup behavior. This proves only the
+bounded configured-Claude/Codex success and unconfigured-local-Gemini failure
+paths. It made no credential or Gemini API request, does not validate a working
+Gemini configuration, and does not close the remaining Team journeys or P6
+acceptance.
+
+P6 also remains independently unaccepted at the real AionUI Team/group-chat UI
+gate. Patch 0014, bridge contracts, DOM tests, and green CI do not substitute
+for a native user-journey review. After cleanup closure, acceptance must still
 enter from native navigation, create and edit a Team, open `/team/:id`, configure
 roles plus General+Goose, submit Workspace/task input and messages, understand
 plan/Worker/dependency/blocked/approval/Artifact/aggregation/recovery state, and
@@ -2538,80 +3328,80 @@ Review closure validation at
 
 <!-- markdownlint-disable MD060 -->
 
-| Area                                               | State                                                             | Evidence or blocker                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| -------------------------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Repository                                         | F0-F3.3 and P6 architecture accepted on `main`                    | PR 9 final head `d7e615206af0829375db0db1d1fcc6ca205102a8`; squash merge `327d5ca5abf3a0090bc2b3d3193e2935bbd47f38`; main CI 30470505690 passes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| P2 merge                                           | Accepted on `main`                                                | PR 2 final head `f972bb6c33c925f3e333a6ee87d20e5bbb72cece`; squash merge `76d6a58b20c3e010ee759358f2c86be80bc6a6c1`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| P2 main CI                                         | Pass                                                              | Main push run 30329620829 passed on the exact squash merge                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| P3 kickoff CI                                      | Pass                                                              | Pull-request run 30329964305 passed on exact pushed head `b9c1119479c805c02452e4054a3d904649a3ca03`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| P3.1/P3.2 CI                                       | Pass                                                              | Pull-request run 30331681309 passed on exact implementation commit `31dd6e4178eb7641b45be0ee2bccb862a96dac99`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| P3.3 CI                                            | Pass                                                              | Pull-request run 30335076556 passed on exact implementation commit `4de756984269624a02fbfdf77e558c958a03c2e0`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| P3.4 CI                                            | Pass                                                              | Pull-request run 30339662937 passed on exact implementation commit `2b1ad9200ff44f2b6be219a8a4b58b0083ebd45b`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| P3.5 CI                                            | Pass                                                              | Pull-request run 30345370507 passed on exact implementation commit `cec0cdc554656c021cdff7f2341ddd3f9b5d83dd`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| P3.6 CI                                            | Pass                                                              | Pull-request run 30350732223 passed on exact implementation commit `950fe0efa2fdc5adc69d013acc9f417d201cb28e`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| P3 review closure                                  | Pass with one documented invalid issue                            | Full 67-file review completed with 10 issues; 9 valid issues fixed; all 9 remediation files then completed a zero-issue review; exact remediation CI run 30374144474 passed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| P3 Ready gate                                      | Pass                                                              | Owner authorized the Ready transition; runs 30374447377 and 30376456379 passed on their exact heads; final PR-head run 30376696055 passed; the first Ready-triggered CodeRabbit selected 67 files and completed successfully with 0 review submissions and 0 threads                                                                                                                                                                                                                                                                                                                                                                                                    |
-| P3 merge                                           | Accepted on `main`                                                | PR 3 squash merged exact final head `71bf3e3fb1d7661fee053ee811279d44f1fdf45f` as `f6833c50eaf5a426948bac7999f93a08b19a425e`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| P3 main CI                                         | Pass                                                              | Main push run 30378191752 passed on exact squash commit `f6833c50eaf5a426948bac7999f93a08b19a425e`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| P4.0 foundation                                    | Accepted on `main` through PR 6                                   | Implementation `13270ca0abd7353710541afca9ddf46c47670be3`; early exact-head CI run 30392140461 passes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| P4.1 identity and isolation                        | Accepted on `main` through PR 6                                   | Implementation `836a9f1f81687f091e1c5b92ce30bff167e9da4f`; resource-only CI remediation `462a1b0d920279d42f124fdd28673d77dc55b765`; run 30417692550 passes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| P4.2 compatibility shadow                          | Accepted on `main` through PR 6                                   | Implementation `632573fa03c34fdb789c85d8efc1ce1e0f8e8177`; packaged-boundary remediation `1478726d62302fa885525024eb4839af5e98b4dd`; run 30421351204 passes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| P4.3/F3.1 approval decision authority              | Accepted on `main` through PR 6                                   | Implementation `cf61ffb8453a888cdc03f73457ebeaf72708511a`; ADR-0012; schema version 5 persist-before-deliver outbox; 30/153 root and 330/2,602 native tests; run 30425061316 passes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| PR 6 review and merge closure                      | Accepted on `main`                                                | Final head `70b2f29329fec26bf0e3d6384d8563aedcb7a4ce`; exact-head CI 30431557027 passes; local review of 21 final changed files returned zero findings; squash merge `61b9405fc007aa8cb16ec05a65f421cb7d277b51`; exact main CI 30434563810 passes                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| F3.2 approval delivery policy gate                 | Accepted on `main` through PR 7                                   | Implementation `20e3c0fcada0d072fc35820d43b85c953bf93929`; final head `df821ca203bea7b611fa8fb8092d00a16cabe578`; squash merge `ce19dbe072328e16dcdaf116b8199d5502cb44c6`; exact main CI run 30442166290 passes                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| F3.3 approval reconciliation policy gate           | Accepted on `main` through PR 8                                   | Implementation `c2fa4bbc4989b9a41bf6a283b5f0eb1f2f523acb`; final head `3f85e13072f5fb13fb43c9dae94f992bb0b7fb9c`; squash merge `c841ed9cb6a54bcb2e4078ca2be941adce0ac4ad`; exact main CI run 30449520722 passes; the complete local 18-file review raised zero issues before merge                                                                                                                                                                                                                                                                                                                                                                                      |
-| GW-P4.2 persistence utility and content foundation | Accepted on `main` through PR 10                                  | Final head `9003cc0387cb4266c4b1240308092366ef365bf4`; exact-head CI 30475836615; zero-finding 50-file review; squash merge `8e32882108b10272c1489c1a46a77cede1cc4fb7`; exact main CI 30476091907                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| GW-P4.3 General Worker and Adapter v2              | Accepted on `main` through PR 11                                  | Final head `b3a3bc7e27d7dab44dadeff6dcedc92cec1b3ee5`; exact-head CI 30481670123; squash merge `671587813bea18411b6cdc2ee388d94cd18d6c50`; exact main CI 30481890911; ADR-0017; 40/217 root and 334/2,610 native tests; build, unsigned harness package, real utility-worker smoke, and isolated native AionUi/AionCore launch pass                                                                                                                                                                                                                                                                                                                                     |
-| GW-P4.4 scoped native tools and policy             | Accepted on `main` through PR 12                                  | Final head `34f2d2201581c19b3dc67c5a7936f8a411bff9e1`; PR CI 30486392525; squash merge `7ec009c6384a93c17f24e4276469e98cb5f2b71d`; main CI 30486544268; ADR-0018; two scoped text tools; 42/232 root and 335/2,612 native tests; root/native build, unsigned harness package, scoped registration, and isolated AionUi/AionCore launch pass                                                                                                                                                                                                                                                                                                                             |
-| GW-P4.5 durable coordination and recovery          | Accepted on `main` through PR 13                                  | Final head `f160d9a3a00f317f12b7579bc3a48849c1cf32d2`; PR CI 30495112290; squash merge `1dacbc0bee8ebae26d688e6e719c8f0f5750db5f`; main CI 30495301140; ADR-0019; schema 7 recovery journal; full root/native regression, production builds, unsigned smoke, isolated AionUI recovery launch, and process cleanup pass                                                                                                                                                                                                                                                                                                                                                  |
-| GW-P4.6 preserved-AionUI General Work journey      | Accepted on `main` through PR 14                                  | Final head `4a07eb9db1907ae8fab2613b4cf11a7d2a8cbee4`; PR CI 30553454459; squash merge `784191bfc59d71a128ed5d3251db3535f1349e45`; main CI 30554447144; ADR-0020; schema 8 atomic journey authority; complete root check passes 50 files/292 tests; native passes 341 files/2,634 tests; production builds, signed local arm64 package, and target-app restart/denial/cancellation smoke pass                                                                                                                                                                                                                                                                           |
-| P4 representative workspace-file journey           | Accepted on `main` through PR 16                                  | Final head `f19b7dd006cf091aa9c7f1559dd484fdad35f200`; PR CI 30567484733; squash merge `2aed0f705bf6f9b3734742c0905c94ac562f501e`; exact main CI 30569476160; schema 9 closed kinds; 50/308 root and 341/2,635 native tests; signed local package and target-app smoke; no submitted reviews or inline comments; Free-plan summary is not line-level review evidence                                                                                                                                                                                                                                                                                                    |
-| P4 bounded local-research journey                  | Accepted on `main` through PR 17                                  | Final head `5694865462f7209ad413b2cd1dbe2eef0fe955bc`; PR CI 30577647392; squash merge `779880f28106aa8423ba042de5a6a3264bc0452e`; merged-main CI 30577886631; schema 10; 50/313 root and 341/2,637 native tests; builds, signed unnotarized local package, target-app smoke, local review closure; remote CodeRabbit rate-limited before review                                                                                                                                                                                                                                                                                                                        |
-| P4 bounded writing journey                         | Accepted on `main` through PR 18                                  | Final head `2febf25e80868fac51fb7b37fffb746d10f8edde`; PR CI 30585829619; squash merge `d5dbc68bb4b3076448dc0bfb9ffc164ffd1c40d2`; merged-main CI 30586015008; ADR-0021; schema 11; 50/325 root and 341/2,639 native tests; root/native builds; ad-hoc-signed unnotarized local arm64 package and target-app smoke; Free-plan remote summary is not line-level review evidence                                                                                                                                                                                                                                                                                          |
-| P4 bounded Office-document journey                 | Accepted on `main` through PR 19                                  | Final head `091f786d57c6b4569cdaac17ea969a0b9070ea02`; PR CI 30602624426; squash merge `505afb2f3916e75c7abb07cdf461bda29a602b9b`; merged-main CI 30602821085; ADR-0022; schema 12; 50/338 root and 343/2,644 native tests; final local CodeRabbit closure; signed unnotarized arm64 package and real Office target-app smoke pass; remote Free output is summary/walkthrough only                                                                                                                                                                                                                                                                                      |
-| P4 bounded scheduled General Work                  | Accepted on `main` through PR 20                                  | ADR-0023; exact final head `c06ca5b4bd842fbad098ffc3b9e7bcef1aadbceb`; PR CI 30659567604; squash merge `5b0748af674165f9e9475be61dc1e02a1b08c8bc`; merged-main CI 30660078199; schema 13; 56/424 root and 345/2,658 native tests; final local review closure; signed unnotarized arm64 package, strict package/ASAR/resource checks, and real schedule target-app smoke; remote CodeRabbit output is rate-limited summary/walkthrough only                                                                                                                                                                                                                              |
-| P4 representative tool failure                     | Accepted on `main` through PR 22                                  | Implementation `fd5524c7f0485923b2aa765df95b5ef0b14187e7`; final head `077f30bcfa3929959c971d08081092bbf976e2ee`; PR CI 30673687603; squash merge `c7c414c0c5a126b276fb02b372e02fff437e5f23`; merged-main CI 30673919260; 56/425 final root and 345/2,662 native tests; complete 15-file manual review and final scope/secret/generated-output audit; pinned, signed, unnotarized local arm64 package and schema-13 target-app `content-too-large` plus restart evidence; CodeRabbit was rate-limited before formal review and its Free summary is not line-level review evidence                                                                                       |
-| P4 Worker crash/recovery                           | Accepted on `main` through PR 24                                  | Implementation `47ed445eab204c0998e44167455c062600158dd3`; exact final head `3593fac8db48a0cb149bb6c736374eeaccebe332`; PR CI 30687199671; squash merge `80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`; merged-main CI 30687433298; 56/427 root and 345/2,665 native tests; builds; signed unnotarized arm64 package; external-`SIGKILL` schema-13 smoke; complete 14-file manual review and exact scope audits; automatic CodeRabbit was rate-limited before review and is not line-level review evidence                                                                                                                                                                  |
-| P4 phase                                           | Accepted on `main`                                                | The retained AionUI journey and representative file, local-research, writing, Office, schedule, denial, cancellation, tool-failure, persistence, Worker-crash/recovery, and Artifact-conflict evidence satisfy the P4 exit gate at exact phase head `80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`; acceptance record merge `adc9a99d7806f5627041368b4ff932c1fe9a42f0`; merged-main CI 30689608454 attempt 2 passes                                                                                                                                                                                                                                                         |
-| P5.0 Goose source and ACP admission                | Accepted on `main` through PR 26                                  | Exact head `e622f36e697b4e0be1037175267452e24cc180e3`; exact-head CI 30691045159; squash merge `b61dd3ea44a4c522ca0c15a84a01d8f76b335e4c`; merged-main CI 30691300690; ADR-0024 selects `v1.45.0` / `4dc0420f5704a92806c6628c8f0a3497d7a88759`, minimal Goose core stdio runner with empty feature set and no builtins, scheduler, or second UI; upstream CLI rejected; CodeRabbit rate limit is not formal review evidence                                                                                                                                                                                                                                             |
-| P5.1 minimal Goose runner and ACP handshake        | Accepted on `main` through PR 28                                  | Runner exact head `d3be6c665b1df51acec13c95691315ba97ba98dc`; PR 27 CI 30698164038; runner merge `df5bd41ca0ecd4838e046f48a9016e418b036ac7`; its main CI 30698648996 isolates a passing Goose job and failing Worker-crash desktop job; official symbols identify synchronous `HandleTermination` to `PostMessage` reentrancy; hotfix exact head `eed1623e9849b9f662f3dec690d02d7c85a693ef`; PR 28 CI 30699859869 passes; squash merge `d313fb2ed65e4b010f777435953752818fbbfae4`; merged-main CI 30700441312 passes both Goose admission and the packaged immediate-`SIGKILL` recovery smoke; incomplete automatic review is not zero-finding evidence; complete 9-file manual/static review; no session, tool, workspace, model, credential, UI, candidate, release, or deployment authority |
-| P5.2 isolated-coding containment foundation       | Delivered on `main` through PR 31                                 | Exact final head `c10110b38e8714b831a6d6d0fc09aa8df4218b7c`; exact-head CI 30808650150 passes; squash merge `266e3857bed7d4c32b773f92deff676bf2144b15`; exact merged-main CI 30809931486 passes; CodeRabbit was rate-limited before line-level review and its successful status/Free walkthrough are not formal review evidence; 3 focused files/39 tests and the recorded 63-file/488-test root gate pass; no ACP session or P5.2 acceptance |
-| P5.2 desktop-main containment composition         | Delivered on `main` through PR 32                                | Exact final head `5c4dade91d279e6a6f7d4c2daad1ebe972e47b98`; exact-head CI 30817462671 passes; exact-head CodeRabbit re-review covers 12 files with 0 issues and no GitHub review threads; squash merge `f55b5550c6ac189f09536061a70e8c8c7299c4f4`; exact merged-main CI 30818949121 passes both jobs; main-owned worktree/grant/Gateway lifecycle and patch 0012; 5 focused files/49 tests; recorded 65-file/498-test root gate; no renderer surface, real Goose coding, or phase acceptance |
-| P5.2 ACP session/new lifecycle                    | Delivered on `main` through PR 33                                | Exact head `5d873f2feb94679341627aab0472a66630cf16cd`; exact-head CI 30823601815; squash merge `c5f498e926adac484694dab6d2f05b9822cc0b12`; merged-main CI 30825221070; one process/one session, fixed request-ID correlation, exact loopback MCP declaration, bounded setup notifications/frames, and failed-session private-root cleanup; no model, prompt/tool execution, publish/Artifact flow, or phase acceptance |
-| P5.2 authenticated MCP transport                  | Delivered on `main` through PR 35                                | Exact head `93a8e9633f2be7b5f8c8b1eead3f2a21b0770073`; exact-head CI 30832907098; squash merge `8a31bafc1cd322744189fc4ed1e68f769225c999`; merged-main CI 30834217310; random authenticated loopback endpoint and six closed schemas; CodeRabbit quota exhaustion is not review evidence; `tools/call` remains denied |
-| P5.2 authenticated Goose readiness                | Delivered on `main` through PR 36                                | Old head `9e277e1593b2715ed3721e1febb886985a942824` had macOS pass/Goose `session-rejected` failure in CI 30837296114 and was not rerun; corrected exact head `5fe78bfaf2982556af975d23bc904d10b77a1f29`; exact-head CI 30843561874; squash merge `08e6fefcd87721fbe4f21eee73f9ba6c52a638c0`; merged-main CI 30845006202; separate MCP/model leases and loopback ports, authenticated non-inference catalog, closed provider/model environment, explicit ACP tool discovery, exact-six match, and Worker-first cleanup; 4 focused files/51 tests, admitted-artifact integration 1 file/1 test, and recorded 68-file/582-test root gate pass; no inference, prompt/tool execution, durable evidence, publish/Artifact flow, or phase acceptance |
-| P5.2 authenticated MCP tool-call bridge           | Delivered on `main` through PR 37                                | Exact head `84b0550495717343b75ca2540cb7c191ab65b12a`; exact-head CI 30851778390; squash merge `d933546454e63a2d836e728f1b93980cb4a7c0ac`; merged-main CI 30853499159; bounded `tools/call` through the real Tool Gateway, close-race guard, 3 focused files/65 tests, and recorded 68-file/589-test root gate; CodeRabbit review limit and zero GitHub review threads are not line-level review evidence; no inference, prompt loop, publish/Artifact flow, or phase acceptance |
-| P5.2 authenticated inference/prompt loop          | Delivered on `main` through PR 39                                | Prompt exact head `cc773081ba448266951a3b2ac3654831022118fc`; exact-head CI 30859115162; squash merge `a6280dd38eacdbada9db159c4784110ec8e42770`; merged-main CI 30860137257 failed only the Goose job when one real-Git test crossed the implicit 5-second limit and was not rerun; bounded-deadline correction exact head `38cbbaaedbb8e5955b96a6d7148841180e751e35`; exact-head CI 30861770178; squash merge `7e8732e264febff42fb3d451011b3b8e48caaff5`; merged-main CI 30862710547 passes both jobs; no submitted review or inline thread; no desktop-main composition, approval outcome projection, durable normalized evidence, publish/Artifact flow, or phase acceptance |
-| P5.2 desktop-main Goose lifecycle                  | Delivered on `main` through PR 40                                 | Exact head `c35f8c37c14dedaa980dfbb539f16fc21379be8a`; exact-head CI 30865837496; squash merge `1909033977576d94f6983f9c911b8e0a866a59de`; merged-main CI 30866691199; service-owned worktree/grant/Gateway/invoker/Goose opening, prompt, close ordering, close-race rejection, failure aggregation, and cleanup retry; no submitted review or inline thread; no approval outcomes, durable normalized evidence, publish/Artifact flow, or phase acceptance in that delivery                                                                                                                                                                                                                                                                                                                  |
-| P5.2 main-owned approval outcomes                  | Delivered on `main` through PR 41                                 | Exact head `917a95260d84f09aacf5038d92a5230d1781676d`; exact-head CI 30870425378; squash merge `7dfc4973021d68d5df0ded12fa218ecd42da9691`; merged-main CI 30871703449; persisted approve/deny outcomes, exact approval-snapshot binding, one-shot approved execution, denied no-execution projection, abort settlement, and explicit service forwarding; focused 18 passed/2 artifact-gated, recorded 68-file/601-test root gate, and materialized-native TypeScript plus generated 1/1 test pass; no durable normalized evidence, publish/Artifact flow, or phase acceptance in that delivery                                                                                                                                                                                                 |
-| P5.2 durable normalized coding evidence            | Delivered on `main` through PR 42                                 | Exact head `a20882abeb6caac3b4f230fde42a7e06965a0730`; exact-head CI 30876755457; squash merge `e064dc88e717cef093c866cdbc2692d23ed7dd03`; merged-main CI 30877711241 with Goose job 91892412815 and macOS job 91892412830; stable Actestra-owned stream/correlation identity, persist-before-open start, bounded evidence, review-blocked projection, response-loss-safe replay, and shared mutation barrier; Free CodeRabbit summary is not line-level review evidence; no publish/Artifact flow or phase acceptance in that delivery                                                                                                                                                                                                                                                        |
-| P5.2 publish and Artifact registration             | Accepted on `main` through PR 43                                  | Exact head `305a29d9b2b514865983ae9d8a23f877566bb7a5`; exact-head CI 30883055147; squash merge `9048fe2cc23819f596d8721adb8c544dcd0b786f`; merged-main CI 30884138218; main-only seventh publish capability remains outside Goose's six MCP tools; locked exact patch capture, metadata-only one-shot approval, drift denial, durable Artifact completion, ordered cleanup, 5 focused files/123 passed/2 artifact-gated skipped, recorded 68-file/618-test root gate, and 196-file downstream contract; rate-limited CodeRabbit status is not line-level review evidence; P5.2 accepted, not released or user-accepted                                                                                                                                                                      |
-| P5.3 preserved AionUI coding journey               | Accepted on `main` through PR 44                                  | Exact head `15a8e29b44a6684313f29a694f0d0615de95cf36`; exact-head CI 30899489690 passes; squash merge `ee8425e39e201078cd64fe3af38355279ecf56de`; merged-main CI 30900884248 passes; exact-head and merged-main tree `e301a0acede51671b404daf11248788cdaba34d9`; R1 patch 0013 preserves native and Team paths while providing the fixed Goose journey, real approval/publish/cancel evidence, 74/2 files and 642/5 tests in the final root gate, 217/4/80 downstream checks, and the 61/3/28 build; Free CodeRabbit summary is not line-level review evidence; no candidate, release, deployment, or user-acceptance claim                                                                                                                                                 |
-| P6 bounded team-plan admission                     | Accepted on `main` through PR 45                                  | Initial head `59cf48fbbb45d78c803ab6691547b61878fc8eb3` failed sole run 30905371865 only at the missing downstream source-copy declaration and was not rerun; corrected exact head `a3d08a934160c1a5d61ff987ade29212bd3c0b05`; exact-head CI 30906689796; squash merge `30742934adde1e0944c4e8ced1f005452a1f3568`; merged-main CI 30907869824; 2 focused files/30 tests and recorded 76/2-file, 672/5-test root gate; no submitted review or inline thread; no CrewAI/Python, persistence, scheduling, Worker launch, Team UI, packaging, or P6 phase acceptance |
-| P6 Team implementation and no-orphan gate          | Planner cleanup closed on merged main; UI acceptance open         | PR 46 merge `2b6821b` had live orphan PIDs 91520/91521; PR 47 exact head `cdae501` passed CI 30967391533 and merged as `102ac48`, whose merged-main run 30968128430 exposed isolated-coding cleanup; PR 48 exact head `e7805e3` passed CI 30969172383 and merged as `a24ad5e`, whose merged-main run 30970186524 failed planner serialization close; PR 49 exact head `a22121c` passed CI 30971605452 and merged as `a3f23d6` with byte-identical tree `fa76108`, whose merged-main CI 30972570429 passes both jobs and closes the cleanup gate; real AionUI Team/group-chat UI acceptance, CrewAI admission, and P6 acceptance remain open                             |
-| P6 admitted plan and Team run durability           | Local committed checkpoint in the unpushed PR 46 batch            | Local commit `ae2d4b98a05ef9f89b30e8cd3734f46d38d50345`; schema 14 remains the canonical admitted `team_plans` authority; schema 15 separately adds immutable Team definitions, current run heads, append-only revisions, Core transitions, CAS persistence, digest validation, recoverable-run listing, and fail-closed utility/client identity checks; revision 1 is reconstructed from the canonical plan and Team, while every N+1 revision must replay as one allowed Core transition or deterministic recovery; Team run 13/13, the earlier persistence/protocol 58/58, and final changed Core/persistence 17/17 tests pass; smoke harness, targeted format/lint, and strict TypeScript pass; no second root gate or Actions run; production planner provider, real mixed Worker execution, real AionUI-native Team/group-chat creation/run/explain/control UI, real CrewAI admission, and P6 acceptance remain absent |
-| P6 generic planner-sidecar boundary                | Local implementation in the unpushed PR 46 batch                  | Closed typed `propose` and reference-only `aggregate` protocol; exact engine/version handshake; closed environment and telemetry/network-denial policy variables; bounded serialized JSONL; sanitized failure; timeout/abort/crash/close process-group cleanup; 3 focused files/19 tests plus targeted format, zero-warning lint, and strict TypeScript; deterministic fixture only, with no real CrewAI admission, OS network-sandbox proof, mixed Workers, Team UI, packaging, or P6 acceptance |
-| P6 Team scheduler/control/recovery                 | Local implementation in the unpushed PR 46 batch                  | Actestra-owned persisted Core transitions; per-run serialization; persist-before-observe/effect; bounded parallel roots; dependency and Artifact gating; separate protected Approval and workflow feedback; pause/resume/retry/replace/handoff; child/whole cancel; reference-only aggregation; close cleanup; deterministic interrupted recovery; 3 focused files/31 tests, explicit-path format, zero-warning lint, and strict TypeScript; the scheduler contract is now composed through the separately recorded real mixed journey, but Team UI, push, CI, and P6 acceptance remain absent |
-| P6 real General+Goose Team composition            | Local committed checkpoint in the unpushed PR 46 batch            | Local commit `d5b9759a67889fb9651c5c134ead182d0274f432`; deterministic Team bindings route admitted nodes through the real General Work and admitted Goose coding journeys; protected write/test/publish approvals persist before effect and acknowledgement; completed Artifacts are re-read from Actestra persistence and aggregated only by reference; focused router/orchestrator 2 files/19 tests and real mixed 1 file/4 tests pass, including denial, whole-Team cancellation, no orphan process/worktree, and unchanged clean source-checkout evidence; later local Tasks 6-8 add the renderer/preload and Team UI, while real CrewAI admission, package, push, CI, and P6 acceptance remain absent |
-| P6 AionUI Team main provider and bridge           | Local committed checkpoint in the unpushed PR 46 batch            | Local commit `65adbf334bbaa7a318a7c8c2a5bfbd1a0b3bf0a8`; fixed request/event contracts and trusted-main-frame IPC; schema-15 two-to-five-member Team CAS, active-run exclusion, soft removal, duplicate retry and per-Team run-head listing through utility/client; main provider composes real plan admission and TeamOrchestrator, projects authority/executor/blocked/next-action state, and proves persisted creation, General+Goose parallel start, pause, whole-Team cancel and Worker abort; 9 focused files/72 tests, strict TypeScript, targeted formatting and zero-warning lint pass; patch 0014 now exposes this provider in the later local checkpoint, but no package, push, CI, or P6 acceptance is claimed |
-| P6 AionUI-native Team journey and recovery         | Merged through PR 46; real native UI acceptance remains open            | R1/R2 patch 0014 entered PR 46 and merge `2b6821b`; it supplies the fixed preload/provider, creation/list, `/team/:id`, group chat, members/roles, General+Goose, Workspace/task input, explainable plan/Worker/dependency/blocked state, approvals, pause/cancel/retry/replace/handoff, Artifacts, aggregation, and persistent recovery without editing the frozen foundation; focused native, DOM, type, format, lint, and downstream checks are implementation evidence only; real native navigation/create/edit/run/understand/control/recovery, bridge postconditions, and explicit error/unavailable-state evidence remain required                                                                                                                                                                                                                                                                                    |
-| Native AionUi source                               | Exact local desktop snapshot                                      | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| Native preservation contract                       | Local pass                                                        | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| Native AionUi build and launch                     | Local pass                                                        | Frozen install, production build, isolated native Electron launch, and actual Guide screenshot pass                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| Native AionUi tests                                | Latest local pass                                                 | Final Worker-crash input: 345 files passed, 1 skipped; 2,665 tests passed, 5 skipped; 0 failures                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| Legacy product shell                               | P3 harness only                                                   | Original Actestra Electron/React shell remains for platform-contract and packaging regression; it is not the target product UI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| Renderer boundary                                  | CI-backed through P3.6                                            | Context isolation, sandbox, Node and packaged DevTools disabled, production CSP denies connections, exact frozen preload allowlist, trusted-frame zero-argument IPC, and direct-client source checks                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| Automated tests                                    | Exact merged-main CI pass                                         | Main run 30378191752 passes 24 Vitest files with 130 tests, the exact Electron SQLite probe, process-failure harness, 34-source boundary check, build, package identity, and clean-profile smoke                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| Desktop package                                    | Final-byte local Apple Development-signed evidence; not notarized | `/private/tmp/actestra-p4-worker-crash-final.J8Jw8M/out/mac-arm64/Actestra.app` passes independent package verification, 4/4 exact production-entry ASAR hashes, AionCore `0.1.52`, 14/14 pinned Hub Git blobs, 13/13 Hub ZIPs, 4/4 Croner/docx/Electron notice checks, 25 signed actual arm64 Mach-O files, 17 valid symbolic links, and schema-13 target-app tool-failure plus external-Worker-crash restart smoke. It is not a notarized candidate, release, distribution, or user-acceptance artifact                                                                                                                                                               |
-| P3 domain contracts                                | Implemented and CI-backed                                         | Typed IDs and timestamps; workspace, task, session, worker, approval, and artifact records; transition and graph invariants; exact commit and run above                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| P3 event contract                                  | Implemented and CI-backed                                         | Schema version 1; per-attempt gapless order, exact-id idempotency, verified replay cursors, terminal enforcement, and diagnostic redaction; exact commit and run above                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| P3 persistence and migrations                      | Implemented and CI-backed                                         | ADR-0005 schemas 1 and 2 plus ADR-0008 schema 3 for privileged audit and terminal-attempt evidence; exact runs above                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| P3 worker lifecycle                                | Implemented and CI-backed through GW-P4.3                         | ADR-0006 protocol v1, supervisor, lifecycle, and fake are accepted; ADR-0017 supersedes only the AgentAdapter version/interface with v2 and adds a separate General Worker protocol v1, typed tool results, and a real deterministic utility process                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| P3 privileged services                             | Implemented and CI-backed                                         | ADR-0007; protected-operation and manifest contracts; policy, approval, opaque lease, metadata-only audit, and deterministic gateway services; exact commit and run above                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| P3 main integration                                | Implemented and CI-backed                                         | ADR-0008; main-only inert composition, durable audit, persist-before-release barrier, fixed IPC allowlist, bounded renderer projection, and packaged startup smoke; exact commit and run above                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| F2 shadow persistence                              | Local and CI-backed contract evidence                             | ADR-0011; schema version 4; gapless and idempotent metadata-only evidence; no authoritative domain or event writes; real Guide read remains local proof                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| F3.1 approval response persistence                 | Implemented and CI-backed                                         | ADR-0012; schema version 5 immutable response and delivery outbox; exact implementation run 30425061316; restart and explicit-fallback live proof remains local; native pending-request and protected-operation authority remain separate                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| Release                                            | None                                                              | No candidate, signed artifact, deployment, distribution, or user acceptance                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Area                                               | State                                                               | Evidence or blocker                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| -------------------------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Repository                                         | F0-F3.3 and P6 architecture accepted on `main`                      | PR 9 final head `d7e615206af0829375db0db1d1fcc6ca205102a8`; squash merge `327d5ca5abf3a0090bc2b3d3193e2935bbd47f38`; main CI 30470505690 passes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| P2 merge                                           | Accepted on `main`                                                  | PR 2 final head `f972bb6c33c925f3e333a6ee87d20e5bbb72cece`; squash merge `76d6a58b20c3e010ee759358f2c86be80bc6a6c1`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| P2 main CI                                         | Pass                                                                | Main push run 30329620829 passed on the exact squash merge                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| P3 kickoff CI                                      | Pass                                                                | Pull-request run 30329964305 passed on exact pushed head `b9c1119479c805c02452e4054a3d904649a3ca03`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| P3.1/P3.2 CI                                       | Pass                                                                | Pull-request run 30331681309 passed on exact implementation commit `31dd6e4178eb7641b45be0ee2bccb862a96dac99`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| P3.3 CI                                            | Pass                                                                | Pull-request run 30335076556 passed on exact implementation commit `4de756984269624a02fbfdf77e558c958a03c2e0`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| P3.4 CI                                            | Pass                                                                | Pull-request run 30339662937 passed on exact implementation commit `2b1ad9200ff44f2b6be219a8a4b58b0083ebd45b`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| P3.5 CI                                            | Pass                                                                | Pull-request run 30345370507 passed on exact implementation commit `cec0cdc554656c021cdff7f2341ddd3f9b5d83dd`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| P3.6 CI                                            | Pass                                                                | Pull-request run 30350732223 passed on exact implementation commit `950fe0efa2fdc5adc69d013acc9f417d201cb28e`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| P3 review closure                                  | Pass with one documented invalid issue                              | Full 67-file review completed with 10 issues; 9 valid issues fixed; all 9 remediation files then completed a zero-issue review; exact remediation CI run 30374144474 passed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| P3 Ready gate                                      | Pass                                                                | Owner authorized the Ready transition; runs 30374447377 and 30376456379 passed on their exact heads; final PR-head run 30376696055 passed; the first Ready-triggered CodeRabbit selected 67 files and completed successfully with 0 review submissions and 0 threads                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| P3 merge                                           | Accepted on `main`                                                  | PR 3 squash merged exact final head `71bf3e3fb1d7661fee053ee811279d44f1fdf45f` as `f6833c50eaf5a426948bac7999f93a08b19a425e`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| P3 main CI                                         | Pass                                                                | Main push run 30378191752 passed on exact squash commit `f6833c50eaf5a426948bac7999f93a08b19a425e`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| P4.0 foundation                                    | Accepted on `main` through PR 6                                     | Implementation `13270ca0abd7353710541afca9ddf46c47670be3`; early exact-head CI run 30392140461 passes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| P4.1 identity and isolation                        | Accepted on `main` through PR 6                                     | Implementation `836a9f1f81687f091e1c5b92ce30bff167e9da4f`; resource-only CI remediation `462a1b0d920279d42f124fdd28673d77dc55b765`; run 30417692550 passes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| P4.2 compatibility shadow                          | Accepted on `main` through PR 6                                     | Implementation `632573fa03c34fdb789c85d8efc1ce1e0f8e8177`; packaged-boundary remediation `1478726d62302fa885525024eb4839af5e98b4dd`; run 30421351204 passes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| P4.3/F3.1 approval decision authority              | Accepted on `main` through PR 6                                     | Implementation `cf61ffb8453a888cdc03f73457ebeaf72708511a`; ADR-0012; schema version 5 persist-before-deliver outbox; 30/153 root and 330/2,602 native tests; run 30425061316 passes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| PR 6 review and merge closure                      | Accepted on `main`                                                  | Final head `70b2f29329fec26bf0e3d6384d8563aedcb7a4ce`; exact-head CI 30431557027 passes; local review of 21 final changed files returned zero findings; squash merge `61b9405fc007aa8cb16ec05a65f421cb7d277b51`; exact main CI 30434563810 passes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| F3.2 approval delivery policy gate                 | Accepted on `main` through PR 7                                     | Implementation `20e3c0fcada0d072fc35820d43b85c953bf93929`; final head `df821ca203bea7b611fa8fb8092d00a16cabe578`; squash merge `ce19dbe072328e16dcdaf116b8199d5502cb44c6`; exact main CI run 30442166290 passes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| F3.3 approval reconciliation policy gate           | Accepted on `main` through PR 8                                     | Implementation `c2fa4bbc4989b9a41bf6a283b5f0eb1f2f523acb`; final head `3f85e13072f5fb13fb43c9dae94f992bb0b7fb9c`; squash merge `c841ed9cb6a54bcb2e4078ca2be941adce0ac4ad`; exact main CI run 30449520722 passes; the complete local 18-file review raised zero issues before merge                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| GW-P4.2 persistence utility and content foundation | Accepted on `main` through PR 10                                    | Final head `9003cc0387cb4266c4b1240308092366ef365bf4`; exact-head CI 30475836615; zero-finding 50-file review; squash merge `8e32882108b10272c1489c1a46a77cede1cc4fb7`; exact main CI 30476091907                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| GW-P4.3 General Worker and Adapter v2              | Accepted on `main` through PR 11                                    | Final head `b3a3bc7e27d7dab44dadeff6dcedc92cec1b3ee5`; exact-head CI 30481670123; squash merge `671587813bea18411b6cdc2ee388d94cd18d6c50`; exact main CI 30481890911; ADR-0017; 40/217 root and 334/2,610 native tests; build, unsigned harness package, real utility-worker smoke, and isolated native AionUi/AionCore launch pass                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| GW-P4.4 scoped native tools and policy             | Accepted on `main` through PR 12                                    | Final head `34f2d2201581c19b3dc67c5a7936f8a411bff9e1`; PR CI 30486392525; squash merge `7ec009c6384a93c17f24e4276469e98cb5f2b71d`; main CI 30486544268; ADR-0018; two scoped text tools; 42/232 root and 335/2,612 native tests; root/native build, unsigned harness package, scoped registration, and isolated AionUi/AionCore launch pass                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| GW-P4.5 durable coordination and recovery          | Accepted on `main` through PR 13                                    | Final head `f160d9a3a00f317f12b7579bc3a48849c1cf32d2`; PR CI 30495112290; squash merge `1dacbc0bee8ebae26d688e6e719c8f0f5750db5f`; main CI 30495301140; ADR-0019; schema 7 recovery journal; full root/native regression, production builds, unsigned smoke, isolated AionUI recovery launch, and process cleanup pass                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| GW-P4.6 preserved-AionUI General Work journey      | Accepted on `main` through PR 14                                    | Final head `4a07eb9db1907ae8fab2613b4cf11a7d2a8cbee4`; PR CI 30553454459; squash merge `784191bfc59d71a128ed5d3251db3535f1349e45`; main CI 30554447144; ADR-0020; schema 8 atomic journey authority; complete root check passes 50 files/292 tests; native passes 341 files/2,634 tests; production builds, signed local arm64 package, and target-app restart/denial/cancellation smoke pass                                                                                                                                                                                                                                                                                                                                                                                                  |
+| P4 representative workspace-file journey           | Accepted on `main` through PR 16                                    | Final head `f19b7dd006cf091aa9c7f1559dd484fdad35f200`; PR CI 30567484733; squash merge `2aed0f705bf6f9b3734742c0905c94ac562f501e`; exact main CI 30569476160; schema 9 closed kinds; 50/308 root and 341/2,635 native tests; signed local package and target-app smoke; no submitted reviews or inline comments; Free-plan summary is not line-level review evidence                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| P4 bounded local-research journey                  | Accepted on `main` through PR 17                                    | Final head `5694865462f7209ad413b2cd1dbe2eef0fe955bc`; PR CI 30577647392; squash merge `779880f28106aa8423ba042de5a6a3264bc0452e`; merged-main CI 30577886631; schema 10; 50/313 root and 341/2,637 native tests; builds, signed unnotarized local package, target-app smoke, local review closure; remote CodeRabbit rate-limited before review                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| P4 bounded writing journey                         | Accepted on `main` through PR 18                                    | Final head `2febf25e80868fac51fb7b37fffb746d10f8edde`; PR CI 30585829619; squash merge `d5dbc68bb4b3076448dc0bfb9ffc164ffd1c40d2`; merged-main CI 30586015008; ADR-0021; schema 11; 50/325 root and 341/2,639 native tests; root/native builds; ad-hoc-signed unnotarized local arm64 package and target-app smoke; Free-plan remote summary is not line-level review evidence                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| P4 bounded Office-document journey                 | Accepted on `main` through PR 19                                    | Final head `091f786d57c6b4569cdaac17ea969a0b9070ea02`; PR CI 30602624426; squash merge `505afb2f3916e75c7abb07cdf461bda29a602b9b`; merged-main CI 30602821085; ADR-0022; schema 12; 50/338 root and 343/2,644 native tests; final local CodeRabbit closure; signed unnotarized arm64 package and real Office target-app smoke pass; remote Free output is summary/walkthrough only                                                                                                                                                                                                                                                                                                                                                                                                             |
+| P4 bounded scheduled General Work                  | Accepted on `main` through PR 20                                    | ADR-0023; exact final head `c06ca5b4bd842fbad098ffc3b9e7bcef1aadbceb`; PR CI 30659567604; squash merge `5b0748af674165f9e9475be61dc1e02a1b08c8bc`; merged-main CI 30660078199; schema 13; 56/424 root and 345/2,658 native tests; final local review closure; signed unnotarized arm64 package, strict package/ASAR/resource checks, and real schedule target-app smoke; remote CodeRabbit output is rate-limited summary/walkthrough only                                                                                                                                                                                                                                                                                                                                                     |
+| P4 representative tool failure                     | Accepted on `main` through PR 22                                    | Implementation `fd5524c7f0485923b2aa765df95b5ef0b14187e7`; final head `077f30bcfa3929959c971d08081092bbf976e2ee`; PR CI 30673687603; squash merge `c7c414c0c5a126b276fb02b372e02fff437e5f23`; merged-main CI 30673919260; 56/425 final root and 345/2,662 native tests; complete 15-file manual review and final scope/secret/generated-output audit; pinned, signed, unnotarized local arm64 package and schema-13 target-app `content-too-large` plus restart evidence; CodeRabbit was rate-limited before formal review and its Free summary is not line-level review evidence                                                                                                                                                                                                              |
+| P4 Worker crash/recovery                           | Accepted on `main` through PR 24                                    | Implementation `47ed445eab204c0998e44167455c062600158dd3`; exact final head `3593fac8db48a0cb149bb6c736374eeaccebe332`; PR CI 30687199671; squash merge `80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`; merged-main CI 30687433298; 56/427 root and 345/2,665 native tests; builds; signed unnotarized arm64 package; external-`SIGKILL` schema-13 smoke; complete 14-file manual review and exact scope audits; automatic CodeRabbit was rate-limited before review and is not line-level review evidence                                                                                                                                                                                                                                                                                         |
+| P4 phase                                           | Accepted on `main`                                                  | The retained AionUI journey and representative file, local-research, writing, Office, schedule, denial, cancellation, tool-failure, persistence, Worker-crash/recovery, and Artifact-conflict evidence satisfy the P4 exit gate at exact phase head `80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`; acceptance record merge `adc9a99d7806f5627041368b4ff932c1fe9a42f0`; merged-main CI 30689608454 attempt 2 passes                                                                                                                                                                                                                                                                                                                                                                                |
+| P5.0 Goose source and ACP admission                | Accepted on `main` through PR 26                                    | Exact head `e622f36e697b4e0be1037175267452e24cc180e3`; exact-head CI 30691045159; squash merge `b61dd3ea44a4c522ca0c15a84a01d8f76b335e4c`; merged-main CI 30691300690; ADR-0024 selects `v1.45.0` / `4dc0420f5704a92806c6628c8f0a3497d7a88759`, minimal Goose core stdio runner with empty feature set and no builtins, scheduler, or second UI; upstream CLI rejected; CodeRabbit rate limit is not formal review evidence                                                                                                                                                                                                                                                                                                                                                                    |
+| P5.1 minimal Goose runner and ACP handshake        | Accepted on `main` through PR 28                                    | Runner exact head `d3be6c665b1df51acec13c95691315ba97ba98dc`; PR 27 CI 30698164038; runner merge `df5bd41ca0ecd4838e046f48a9016e418b036ac7`; its main CI 30698648996 isolates a passing Goose job and failing Worker-crash desktop job; official symbols identify synchronous `HandleTermination` to `PostMessage` reentrancy; hotfix exact head `eed1623e9849b9f662f3dec690d02d7c85a693ef`; PR 28 CI 30699859869 passes; squash merge `d313fb2ed65e4b010f777435953752818fbbfae4`; merged-main CI 30700441312 passes both Goose admission and the packaged immediate-`SIGKILL` recovery smoke; incomplete automatic review is not zero-finding evidence; complete 9-file manual/static review; no session, tool, workspace, model, credential, UI, candidate, release, or deployment authority |
+| P5.2 isolated-coding containment foundation        | Delivered on `main` through PR 31                                   | Exact final head `c10110b38e8714b831a6d6d0fc09aa8df4218b7c`; exact-head CI 30808650150 passes; squash merge `266e3857bed7d4c32b773f92deff676bf2144b15`; exact merged-main CI 30809931486 passes; CodeRabbit was rate-limited before line-level review and its successful status/Free walkthrough are not formal review evidence; 3 focused files/39 tests and the recorded 63-file/488-test root gate pass; no ACP session or P5.2 acceptance                                                                                                                                                                                                                                                                                                                                                  |
+| P5.2 desktop-main containment composition          | Delivered on `main` through PR 32                                   | Exact final head `5c4dade91d279e6a6f7d4c2daad1ebe972e47b98`; exact-head CI 30817462671 passes; exact-head CodeRabbit re-review covers 12 files with 0 issues and no GitHub review threads; squash merge `f55b5550c6ac189f09536061a70e8c8c7299c4f4`; exact merged-main CI 30818949121 passes both jobs; main-owned worktree/grant/Gateway lifecycle and patch 0012; 5 focused files/49 tests; recorded 65-file/498-test root gate; no renderer surface, real Goose coding, or phase acceptance                                                                                                                                                                                                                                                                                                  |
+| P5.2 ACP session/new lifecycle                     | Delivered on `main` through PR 33                                   | Exact head `5d873f2feb94679341627aab0472a66630cf16cd`; exact-head CI 30823601815; squash merge `c5f498e926adac484694dab6d2f05b9822cc0b12`; merged-main CI 30825221070; one process/one session, fixed request-ID correlation, exact loopback MCP declaration, bounded setup notifications/frames, and failed-session private-root cleanup; no model, prompt/tool execution, publish/Artifact flow, or phase acceptance                                                                                                                                                                                                                                                                                                                                                                         |
+| P5.2 authenticated MCP transport                   | Delivered on `main` through PR 35                                   | Exact head `93a8e9633f2be7b5f8c8b1eead3f2a21b0770073`; exact-head CI 30832907098; squash merge `8a31bafc1cd322744189fc4ed1e68f769225c999`; merged-main CI 30834217310; random authenticated loopback endpoint and six closed schemas; CodeRabbit quota exhaustion is not review evidence; `tools/call` remains denied                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| P5.2 authenticated Goose readiness                 | Delivered on `main` through PR 36                                   | Old head `9e277e1593b2715ed3721e1febb886985a942824` had macOS pass/Goose `session-rejected` failure in CI 30837296114 and was not rerun; corrected exact head `5fe78bfaf2982556af975d23bc904d10b77a1f29`; exact-head CI 30843561874; squash merge `08e6fefcd87721fbe4f21eee73f9ba6c52a638c0`; merged-main CI 30845006202; separate MCP/model leases and loopback ports, authenticated non-inference catalog, closed provider/model environment, explicit ACP tool discovery, exact-six match, and Worker-first cleanup; 4 focused files/51 tests, admitted-artifact integration 1 file/1 test, and recorded 68-file/582-test root gate pass; no inference, prompt/tool execution, durable evidence, publish/Artifact flow, or phase acceptance                                                 |
+| P5.2 authenticated MCP tool-call bridge            | Delivered on `main` through PR 37                                   | Exact head `84b0550495717343b75ca2540cb7c191ab65b12a`; exact-head CI 30851778390; squash merge `d933546454e63a2d836e728f1b93980cb4a7c0ac`; merged-main CI 30853499159; bounded `tools/call` through the real Tool Gateway, close-race guard, 3 focused files/65 tests, and recorded 68-file/589-test root gate; CodeRabbit review limit and zero GitHub review threads are not line-level review evidence; no inference, prompt loop, publish/Artifact flow, or phase acceptance                                                                                                                                                                                                                                                                                                               |
+| P5.2 authenticated inference/prompt loop           | Delivered on `main` through PR 39                                   | Prompt exact head `cc773081ba448266951a3b2ac3654831022118fc`; exact-head CI 30859115162; squash merge `a6280dd38eacdbada9db159c4784110ec8e42770`; merged-main CI 30860137257 failed only the Goose job when one real-Git test crossed the implicit 5-second limit and was not rerun; bounded-deadline correction exact head `38cbbaaedbb8e5955b96a6d7148841180e751e35`; exact-head CI 30861770178; squash merge `7e8732e264febff42fb3d451011b3b8e48caaff5`; merged-main CI 30862710547 passes both jobs; no submitted review or inline thread; no desktop-main composition, approval outcome projection, durable normalized evidence, publish/Artifact flow, or phase acceptance                                                                                                               |
+| P5.2 desktop-main Goose lifecycle                  | Delivered on `main` through PR 40                                   | Exact head `c35f8c37c14dedaa980dfbb539f16fc21379be8a`; exact-head CI 30865837496; squash merge `1909033977576d94f6983f9c911b8e0a866a59de`; merged-main CI 30866691199; service-owned worktree/grant/Gateway/invoker/Goose opening, prompt, close ordering, close-race rejection, failure aggregation, and cleanup retry; no submitted review or inline thread; no approval outcomes, durable normalized evidence, publish/Artifact flow, or phase acceptance in that delivery                                                                                                                                                                                                                                                                                                                  |
+| P5.2 main-owned approval outcomes                  | Delivered on `main` through PR 41                                   | Exact head `917a95260d84f09aacf5038d92a5230d1781676d`; exact-head CI 30870425378; squash merge `7dfc4973021d68d5df0ded12fa218ecd42da9691`; merged-main CI 30871703449; persisted approve/deny outcomes, exact approval-snapshot binding, one-shot approved execution, denied no-execution projection, abort settlement, and explicit service forwarding; focused 18 passed/2 artifact-gated, recorded 68-file/601-test root gate, and materialized-native TypeScript plus generated 1/1 test pass; no durable normalized evidence, publish/Artifact flow, or phase acceptance in that delivery                                                                                                                                                                                                 |
+| P5.2 durable normalized coding evidence            | Delivered on `main` through PR 42                                   | Exact head `a20882abeb6caac3b4f230fde42a7e06965a0730`; exact-head CI 30876755457; squash merge `e064dc88e717cef093c866cdbc2692d23ed7dd03`; merged-main CI 30877711241 with Goose job 91892412815 and macOS job 91892412830; stable Actestra-owned stream/correlation identity, persist-before-open start, bounded evidence, review-blocked projection, response-loss-safe replay, and shared mutation barrier; Free CodeRabbit summary is not line-level review evidence; no publish/Artifact flow or phase acceptance in that delivery                                                                                                                                                                                                                                                        |
+| P5.2 publish and Artifact registration             | Accepted on `main` through PR 43                                    | Exact head `305a29d9b2b514865983ae9d8a23f877566bb7a5`; exact-head CI 30883055147; squash merge `9048fe2cc23819f596d8721adb8c544dcd0b786f`; merged-main CI 30884138218; main-only seventh publish capability remains outside Goose's six MCP tools; locked exact patch capture, metadata-only one-shot approval, drift denial, durable Artifact completion, ordered cleanup, 5 focused files/123 passed/2 artifact-gated skipped, recorded 68-file/618-test root gate, and 196-file downstream contract; rate-limited CodeRabbit status is not line-level review evidence; P5.2 accepted, not released or user-accepted                                                                                                                                                                         |
+| P5.3 preserved AionUI coding journey               | Accepted on `main` through PR 44                                    | Exact head `15a8e29b44a6684313f29a694f0d0615de95cf36`; exact-head CI 30899489690 passes; squash merge `ee8425e39e201078cd64fe3af38355279ecf56de`; merged-main CI 30900884248 passes; exact-head and merged-main tree `e301a0acede51671b404daf11248788cdaba34d9`; R1 patch 0013 preserves native and Team paths while providing the fixed Goose journey, real approval/publish/cancel evidence, 74/2 files and 642/5 tests in the final root gate, 217/4/80 downstream checks, and the 61/3/28 build; Free CodeRabbit summary is not line-level review evidence; no candidate, release, deployment, or user-acceptance claim                                                                                                                                                                    |
+| P6 bounded team-plan admission                     | Accepted on `main` through PR 45                                    | Initial head `59cf48fbbb45d78c803ab6691547b61878fc8eb3` failed sole run 30905371865 only at the missing downstream source-copy declaration and was not rerun; corrected exact head `a3d08a934160c1a5d61ff987ade29212bd3c0b05`; exact-head CI 30906689796; squash merge `30742934adde1e0944c4e8ced1f005452a1f3568`; merged-main CI 30907869824; 2 focused files/30 tests and recorded 76/2-file, 672/5-test root gate; no submitted review or inline thread; no CrewAI/Python, persistence, scheduling, Worker launch, Team UI, packaging, or P6 phase acceptance                                                                                                                                                                                                                               |
+| P6 Team implementation and no-orphan gate          | Local development acceptance complete; delivery integration pending | PRs 46-49 record the earlier process-cleanup failures and corrections. The current batch also closes the AionCore model-probe child, passes the complete 1178-test root gate, and has real packaged quit/restart evidence with an empty Actestra, AionCore, Goose, and planner process scan. No push or exact-head CI is claimed.                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| P6 admitted plan and Team run durability           | Implemented in the local delivery batch                             | Schemas 14-22 own admitted plans, Team definitions and revisions, Team experience binding, message-delivery intent, Artifact delivery/apply authority, General requirements, and destination workspace identity. Core transition replay, CAS persistence, recovery, and fail-closed identity checks are covered by the current complete gate.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| P6 generic planner-sidecar boundary                | Implemented locally; CrewAI remains unadmitted                      | The versioned no-tool planner protocol, exact engine handshake, bounded JSONL, sanitized failure, timeout/abort/crash cleanup, and packaged Actestra-native planner are admitted. No CrewAI runtime is imported or packaged, and later CrewAI admission remains a separate gate.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| P6 Team scheduler/control/recovery                 | Locally accepted                                                    | Actestra-owned persisted transitions, per-run serialization, bounded parallel roots, dependency and Artifact gating, protected approval and workflow feedback, pause/retry/replace/handoff/cancel, reference-only aggregation, and deterministic interrupted recovery pass the current root and packaged acceptance gates.                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| P6 real General+Goose Team composition             | Locally accepted against a real provider                            | The packaged development app completed a capability-aligned General+Goose run with a durable General Artifact, real Goose tool execution, isolated patch creation, separate apply approval, Main-owned write-back, final feedback, cancellation, restart recovery, and no-orphan shutdown. General v1 remains text-only and fail-closed through structured admission/output validation.                                                                                                                                                                                                                                                                                                                                                                                                        |
+| P6 AionUI Team main provider and bridge            | Locally accepted                                                    | Fixed request/event contracts, trusted-current-main-frame IPC, Main/Core Team authority, provider credential redaction, standard/orchestrated binding, multiline activity, localized closed errors, and bounded projection pass the current complete and downstream gates. Renderer receives no credential, filesystem, Git, patch-content, process, or persistence authority.                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| P6 AionUI-native Team journey and recovery         | Local provider-backed Electron acceptance complete                  | R1/R2 patch 0014 preserves the AionUI-first product while supplying creation/list, `/team/:id`, group chat, members/roles, General+Goose configuration, workspace/task input, explainable plan/Worker/dependency/blocked state, approvals, controls, Artifacts, apply delivery state, aggregation, and recovery. Real navigation, multiline submission, final feedback, cancellation, completion, apply, quit, and restart were exercised in the packaged development app.                                                                                                                                                                                                                                                                                                                     |
+| Native AionUi source                               | Exact local desktop snapshot                                        | AionUi `v2.1.41` at `2d8925fc67a97a20996fadcd2a0862b778b572ba`; 1,766 files; no local modification inside snapshot                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Native preservation contract                       | Local pass                                                          | Manifest SHA-256 `252b7b22b75e3a89ad4d9379398a04521772f853b855227c236928fa151f844f`; 27 routes and 41 bridge domains verified                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Native AionUi build and launch                     | Local pass                                                          | Frozen install, production build, isolated native Electron launch, and actual Guide screenshot pass                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Native AionUi tests                                | Latest local pass                                                   | Final Worker-crash input: 345 files passed, 1 skipped; 2,665 tests passed, 5 skipped; 0 failures                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Legacy product shell                               | P3 harness only                                                     | Original Actestra Electron/React shell remains for platform-contract and packaging regression; it is not the target product UI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Renderer boundary                                  | CI-backed through P3.6                                              | Context isolation, sandbox, Node and packaged DevTools disabled, production CSP denies connections, exact frozen preload allowlist, trusted-frame zero-argument IPC, and direct-client source checks                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Automated tests                                    | Exact merged-main CI pass                                           | Main run 30378191752 passes 24 Vitest files with 130 tests, the exact Electron SQLite probe, process-failure harness, 34-source boundary check, build, package identity, and clean-profile smoke                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Desktop package                                    | Final-byte local Apple Development-signed evidence; not notarized   | `/private/tmp/actestra-p4-worker-crash-final.J8Jw8M/out/mac-arm64/Actestra.app` passes independent package verification, 4/4 exact production-entry ASAR hashes, AionCore `0.1.52`, 14/14 pinned Hub Git blobs, 13/13 Hub ZIPs, 4/4 Croner/docx/Electron notice checks, 25 signed actual arm64 Mach-O files, 17 valid symbolic links, and schema-13 target-app tool-failure plus external-Worker-crash restart smoke. It is not a notarized candidate, release, distribution, or user-acceptance artifact                                                                                                                                                                                                                                                                                      |
+| P3 domain contracts                                | Implemented and CI-backed                                           | Typed IDs and timestamps; workspace, task, session, worker, approval, and artifact records; transition and graph invariants; exact commit and run above                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| P3 event contract                                  | Implemented and CI-backed                                           | Schema version 1; per-attempt gapless order, exact-id idempotency, verified replay cursors, terminal enforcement, and diagnostic redaction; exact commit and run above                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| P3 persistence and migrations                      | Implemented and CI-backed                                           | ADR-0005 schemas 1 and 2 plus ADR-0008 schema 3 for privileged audit and terminal-attempt evidence; exact runs above                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| P3 worker lifecycle                                | Implemented and CI-backed through GW-P4.3                           | ADR-0006 protocol v1, supervisor, lifecycle, and fake are accepted; ADR-0017 supersedes only the AgentAdapter version/interface with v2 and adds a separate General Worker protocol v1, typed tool results, and a real deterministic utility process                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| P3 privileged services                             | Implemented and CI-backed                                           | ADR-0007; protected-operation and manifest contracts; policy, approval, opaque lease, metadata-only audit, and deterministic gateway services; exact commit and run above                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| P3 main integration                                | Implemented and CI-backed                                           | ADR-0008; main-only inert composition, durable audit, persist-before-release barrier, fixed IPC allowlist, bounded renderer projection, and packaged startup smoke; exact commit and run above                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| F2 shadow persistence                              | Local and CI-backed contract evidence                               | ADR-0011; schema version 4; gapless and idempotent metadata-only evidence; no authoritative domain or event writes; real Guide read remains local proof                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| F3.1 approval response persistence                 | Implemented and CI-backed                                           | ADR-0012; schema version 5 immutable response and delivery outbox; exact implementation run 30425061316; restart and explicit-fallback live proof remains local; native pending-request and protected-operation authority remain separate                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Release                                            | None                                                                | No candidate, signed artifact, deployment, distribution, or user acceptance                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 <!-- markdownlint-enable MD060 -->
 
@@ -2724,14 +3514,11 @@ The ordered implementation index and P3 non-claims are in
    `38cbbaaedbb8e5955b96a6d7148841180e751e35`, exact-head CI 30861770178,
    merge `7e8732e264febff42fb3d451011b3b8e48caaff5`, and passing merged-main CI 30862710547. Preserve desktop-main lifecycle exact head
    `c35f8c37c14dedaa980dfbb539f16fc21379be8a`, exact-head CI 30865837496,
-   merge `1909033977576d94f6983f9c911b8e0a866a59de`, and merged-main CI
-   30866691199. Preserve approval-outcome exact head
+   merge `1909033977576d94f6983f9c911b8e0a866a59de`, and merged-main CI 30866691199. Preserve approval-outcome exact head
    `917a95260d84f09aacf5038d92a5230d1781676d`, exact-head CI 30870425378,
-   merge `7dfc4973021d68d5df0ded12fa218ecd42da9691`, and merged-main CI
-   30871703449. Preserve durable-evidence PR 42 and publish/Artifact PR 43 exact
+   merge `7dfc4973021d68d5df0ded12fa218ecd42da9691`, and merged-main CI 30871703449. Preserve durable-evidence PR 42 and publish/Artifact PR 43 exact
    head `305a29d9b2b514865983ae9d8a23f877566bb7a5`, squash merge
-   `9048fe2cc23819f596d8721adb8c544dcd0b786f`, and merged-main CI
-   30884138218. Goose may not receive builtins, the original checkout, raw
+   `9048fe2cc23819f596d8721adb8c544dcd0b786f`, and merged-main CI 30884138218. Goose may not receive builtins, the original checkout, raw
    credentials, or a second UI.
 8. Preserve P5.3 exact head `15a8e29b44a6684313f29a694f0d0615de95cf36`,
    exact-head CI 30899489690, squash merge
@@ -2739,16 +3526,15 @@ The ordered implementation index and P3 non-claims are in
    30900884248 together with the retained AionUI journey, real-Goose publish
    and cancellation proof, native compatibility, and source-checkout
    preservation.
-9. Treat PR 46 and corrective PRs 47-49 as implementation evidence, not P6
-   acceptance. Do not rerun failed SHAs or runs 9c6cf1e, 102ac48, 30968128430,
-   or 30970186524. The planner stale-PGID correction has received both required
-   closures: exact-head CI 30971605452 on
-   `a22121c63dc3d3bb3736ba85f797a6dfb6eac611` and merged-main CI 30972570429 on
-   squash merge `a3f23d6391a6f6c34f5a88cfa12e35b9665e5196`. Preserve them, and do
-   not represent PR 49's review-limited CodeRabbit status as line-level review.
-   The next P6 item is the separate real AionUI Team/group-chat UI journey and
-   known UI issues, which must close before
-   claiming P6 acceptance. Admit real CrewAI only after exact pin/rollback,
+9. Treat PR 46 and corrective PRs 47-49 as historical implementation evidence,
+   not as substitutes for the current P6 local acceptance record. Do not rerun
+   failed SHAs or runs 9c6cf1e, 102ac48, 30968128430, or 30970186524. Preserve
+   PR 49 exact-head CI 30971605452, squash merge
+   `a3f23d6391a6f6c34f5a88cfa12e35b9665e5196`, and merged-main CI
+   30972570429 as the closed planner no-orphan layer. The next external gate is
+   a reviewable P6 delivery commit rebased onto current `origin/main`, followed
+   by push, exact-head CI, review/merge, and merged-main CI. Admit real CrewAI
+   only after exact pin/rollback,
    locked dependencies,
    license/NOTICE/SBOM/`pip-audit`, telemetry/network denial, cleanup,
    packaging, and cross-platform smoke pass. Do not give a planner process,
@@ -2788,12 +3574,16 @@ The ordered implementation index and P3 non-claims are in
   rate-limited before reviewing the final four-document status range. Its
   successful status is limit-handling evidence; exact final-head CI run
   30376696055 passed.
-- The current local branch runs schemas 1 through 15 in the dedicated
-  persistence utility. Schema 14 owns canonical admitted plans; schema 15
-  separately owns Team definitions, current run heads, and append-only
-  revisions. The downstream main retains the accepted shadow, confirmation,
-  General Work, coding, and schedule boundaries and locally adds one fixed Team
-  request/event provider. The provider returns only bounded Team DTOs,
+- The current local branch runs schemas 1 through 22 in the dedicated
+  persistence utility. Schema 14 owns canonical admitted plans; schema 15 owns
+  Team definitions, current run heads, and append-only revisions; schema 16
+  binds each Team identity to its Main/Core `standard` or `orchestrated`
+  experience; schema 17 owns standard-Team message-delivery intent; schemas
+  18-20 and 22 own Artifact delivery/apply identity and destination authority;
+  and schema 21 owns General Work requirements. The downstream main retains the
+  accepted shadow, confirmation, General Work, coding, and schedule boundaries
+  and locally adds one fixed Team request/event provider. The provider returns
+  only bounded Team DTOs,
   explanations, valid actions, messages, and Artifact references. It exposes no
   renderer-selected filesystem path, generic protected operation, generic tool
   transport, credential value, Worker/process identifier, private summary, or
@@ -2866,8 +3656,7 @@ The ordered implementation index and P3 non-claims are in
   through PR 42. Publish/Artifact registration and P5.2 acceptance are closed
   through PR 43, squash merge `9048fe2cc23819f596d8721adb8c544dcd0b786f`,
   and merged-main CI 30884138218. P5.3 is accepted through PR 44, squash merge
-  `ee8425e39e201078cd64fe3af38355279ecf56de`, and merged-main CI
-  30900884248. P6 admission is accepted through PR 45 and exact merge
+  `ee8425e39e201078cd64fe3af38355279ecf56de`, and merged-main CI 30900884248. P6 admission is accepted through PR 45 and exact merge
   `30742934adde1e0944c4e8ced1f005452a1f3568`. PR 46 merged the Team batch as
   `2b6821bd7b65f6debcbdaf5a40a0daaea6909885`, but post-merge live PIDs
   91520/91521 invalidate its parent-death no-orphan claim. The batch proves
@@ -2876,23 +3665,24 @@ The ordered implementation index and P3 non-claims are in
   real General+Goose mixed execution, protected approval ordering,
   reference-only aggregation, whole-Team cancellation, and bounded
   process/worktree cleanup. Patch 0014 and local commit `94e6699` additionally
-  prove the fixed Team bridge/preload/provider, AionUI-native Team/group-chat
-  surface, controls, privacy projection, and persistent activity recovery under
-  focused native and DOM tests. Corrective PR 47 adds parent-death and
+  prove the fixed Team bridge/preload/provider and the first orchestrated Team
+  control, privacy-projection, and persistent-activity surface under focused
+  native and DOM tests; they do not prove preservation of the complete native
+  Team experience. Corrective PR 47 adds parent-death and
   whole-group teardown evidence, passed exact-head CI 30967391533, and merged
   as `102ac48d7c1178f484662c40ef85c8d64a596ec4`. Its merged-main run
   30968128430 exposed a separate stale post-TERM KILL race in the accepted P5.2
   executor. PR 48 corrected that path at exact head `e7805e3`, passed exact-head
   CI 30969172383, and merged as `a24ad5e`; merged-main run 30970186524 then
   exposed the planner's stale-PGID `EPERM` close race and was not rerun. PR 49
-  corrected that probe at exact head `a22121c`, passed exact-head CI
-  30971605452, and squash merged as `a3f23d6` with a byte-identical tree;
-  merged-main CI 30972570429 passes both jobs and closes the cleanup gate.
-  CodeRabbit was review-limited before analysis on PR 49, and there is no
-  submitted review or inline thread, so no line-level review evidence exists for
-  it. Patch 0014 and automated UI evidence also
-  do not replace the still-open real AionUI Team/group-chat acceptance journey.
-  The batch does not prove real CrewAI admission or P6 acceptance.
+  corrected that path at exact head `a22121c`, passed exact-head CI 30971605452,
+  merged as `a3f23d6`, and passed merged-main CI 30972570429. The later local
+  AionCore probe guard closes the detached model-catalog child by an owned
+  pre-DELETE PID/PGID snapshot. The current delivery batch also records the
+  separate real provider-backed AionUI Team/group-chat acceptance at the top of
+  this document. That local evidence closes the P6 development gate; it does
+  not prove real CrewAI admission, exact-head CI, merge, release, deployment, or
+  final user acceptance.
 - F0 alone proves only that the original AionUi application can be preserved
   and run. F1, F2, F3.1, F3.2, and merged F3.3 add their separately recorded
   identity, shadow, narrow decision-authority, fixed-delivery audit, and

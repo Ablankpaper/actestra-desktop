@@ -1,5 +1,6 @@
 import {
   assertDomainGraph,
+  assertGeneralCapabilityRequest,
   assertStoreContentReferenceInput,
   assertWorkspaceGrant,
   artifactId,
@@ -19,6 +20,7 @@ import {
   type ArtifactState,
   type StoreContentReferenceInput,
   type WorkspaceGrant,
+  type GeneralCapabilityRequest,
 } from "../../core";
 
 export const AIONUI_GENERAL_WORK_CONTRACT_VERSION = 1 as const;
@@ -46,6 +48,7 @@ const INTENT_KEYS = [
   "submissionId",
   "prompt",
   "journeyKind",
+  "requirements",
 ] as const;
 const REGISTRATION_COMMON_KEYS = [
   "link",
@@ -61,6 +64,7 @@ const LINK_KEYS = [
   "conversationHash",
   "taskId",
   "journeyKind",
+  "requirements",
   "createdAt",
 ] as const;
 const PROJECTION_KEYS = [
@@ -108,6 +112,8 @@ export interface AionUiGeneralWorkIntent {
   readonly submissionId: string;
   readonly prompt: string;
   readonly journeyKind?: AionUiGeneralWorkJourneyKind;
+  /** Planner-owned structured admission metadata. It is persisted for deterministic recovery. */
+  readonly requirements?: GeneralCapabilityRequest;
 }
 
 function trimAionUiGeneralWorkCommandPadding(value: string): string {
@@ -159,6 +165,7 @@ export interface AionUiGeneralWorkLink {
   readonly conversationHash: string;
   readonly taskId: TaskId;
   readonly journeyKind: AionUiGeneralWorkJourneyKind;
+  readonly requirements?: GeneralCapabilityRequest;
   readonly createdAt: ReturnType<typeof instant>;
 }
 
@@ -374,6 +381,17 @@ export function assertAionUiGeneralWorkIntent(
       "AionUI general-work journey kind is invalid",
     );
   }
+  if (value.requirements !== undefined) {
+    try {
+      assertGeneralCapabilityRequest(value.requirements);
+    } catch (error) {
+      throw new AionUiGeneralWorkJourneyError(
+        "invalid-intent",
+        "AionUI general-work requirements violate the General v1 contract",
+        { cause: error },
+      );
+    }
+  }
 }
 
 export function assertAionUiGeneralWorkRegistration(
@@ -538,6 +556,17 @@ export function assertAionUiGeneralWorkLink(
       "AionUI general-work link is invalid",
     );
   }
+  if (value.requirements !== undefined) {
+    try {
+      assertGeneralCapabilityRequest(value.requirements);
+    } catch (error) {
+      throw new AionUiGeneralWorkJourneyError(
+        "invalid-registration",
+        "AionUI general-work link requirements violate the General v1 contract",
+        { cause: error },
+      );
+    }
+  }
   try {
     taskId(value.taskId);
     instant(value.createdAt);
@@ -666,4 +695,44 @@ export function assertAionUiGeneralWorkProjection(
     }
     assertProjectionText(artifact.label, "AionUI general-work artifact label", 512);
   }
+}
+
+/**
+ * What the surface tells the user for an incident it knows by name.
+ *
+ * A bare machine code leaves the user with nothing to do. These sentences say what stopped and what
+ * action, if any, would change the outcome — which is the whole distinction the code vocabulary
+ * carries. Two rules hold in every entry: nothing claims General read a file it cannot read, and a
+ * missing input is never described as an unavailable provider.
+ */
+const GENERAL_WORK_INCIDENT_GUIDANCE: Readonly<Record<string, string>> = Object.freeze({
+  "general-input-required":
+    "General has no file or network access, so it cannot fetch the material this task needs. " +
+    "Paste the text into the prompt and retry, or run the task through a different execution path.",
+  "general-capability-mismatch":
+    "This task needs an ability General does not have. Supplying more text will not change that, " +
+    "so run it through an execution path that has the capability.",
+  "general-output-invalid":
+    "General did not return a usable draft, even after one correction. Nothing was written. " +
+    "Retry, or narrow the request.",
+  "general-instruction-noncompliant":
+    "General could only produce a draft with gaps left to fill in later, so nothing was written. " +
+    "Supply the missing material in the prompt and retry.",
+  "model-unavailable": "The model could not be reached, so nothing was written. Retry shortly.",
+  "model-timeout": "The model took too long to answer, so nothing was written. Retry shortly.",
+  "model-completion-refused":
+    "The model returned no usable answer, so nothing was written. Retry, or rephrase the request.",
+});
+
+/**
+ * Resolves one incident code to the sentence the surface shows, or null for a code it does not know.
+ *
+ * A null is deliberate: inventing prose for an unrecognized code would state a cause nobody
+ * established. The caller falls back to showing the code itself, which is honest about being opaque.
+ */
+export function describeAionUiGeneralWorkIncident(incidentCode: string | undefined): string | null {
+  if (incidentCode === undefined) {
+    return null;
+  }
+  return GENERAL_WORK_INCIDENT_GUIDANCE[incidentCode] ?? null;
 }

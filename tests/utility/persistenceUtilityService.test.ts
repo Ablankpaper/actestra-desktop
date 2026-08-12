@@ -8,7 +8,16 @@ import { PersistenceUtilityService } from "../../apps/desktop/src/utility/persis
 import { CURRENT_CORE_SCHEMA_VERSION } from "../../apps/desktop/src/utility/persistence/sqliteMigrations";
 import { createAionUiScheduleRegistration } from "../fixtures/aionuiSchedule";
 import { createTeamRunFixture } from "../fixtures/teamRun";
-import { instant, normalizeTeamDefinition, transitionTeamRun } from "../../apps/desktop/src/core";
+import {
+  instant,
+  normalizeTeamDefinition,
+  transitionTeamRun,
+  type PrivilegedClock,
+} from "../../apps/desktop/src/core";
+
+const testClock: PrivilegedClock = Object.freeze({
+  now: () => instant(new Date().toISOString()),
+});
 
 const testDirectories: string[] = [];
 
@@ -30,7 +39,7 @@ afterEach(() => {
 describe("persistence utility schedule service", () => {
   it("dispatches schema 15 Team definitions and append-only run snapshots", async () => {
     const userDataPath = createTestDirectory();
-    const service = new PersistenceUtilityService();
+    const service = new PersistenceUtilityService(testClock);
     const { plan, team, accepted } = await createTeamRunFixture("service");
 
     await service.handle({
@@ -129,7 +138,7 @@ describe("persistence utility schedule service", () => {
 
   it("dispatches schedule state and preserves typed persistence errors", async () => {
     const userDataPath = createTestDirectory();
-    const service = new PersistenceUtilityService();
+    const service = new PersistenceUtilityService(testClock);
     const registration = createAionUiScheduleRegistration("service", userDataPath);
 
     await expect(

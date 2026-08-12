@@ -9,6 +9,7 @@ import {
   assertNativeAionUiTeamRunEvent,
   assertNativeAionUiStandardTeam,
   assertNativeAionUiStandardTeamRunEvent,
+  projectArtifactDelivery,
   type AionUiTeamBridgeRoute,
   type AionUiTeamBridgeSuccessData,
   type AionUiTeamEvent,
@@ -22,9 +23,12 @@ import {
   type NativeAionUiStandardTeamRunState,
   type NativeAionUiTeam,
   type NativeAionUiTeamActivity,
+  type NativeAionUiTeamArtifactDelivery,
   type NativeAionUiTeamArtifactReference,
   type NativeAionUiTeamAssistant,
   type NativeAionUiTeamConfigOptions,
+  type NativeAionUiTeamModelOptions,
+  type NativeAionUiTeamModelSelection,
   type NativeAionUiTeamNodeView,
   type NativeAionUiTeamRunAck,
   type NativeAionUiTeamRunEvent,
@@ -35,6 +39,8 @@ import {
 } from "../../compatibility/aionui";
 import {
   PersistenceError,
+  artifactId,
+  assertDomainGraph,
   compareInstants,
   correlationId,
   instant,
@@ -42,10 +48,15 @@ import {
   normalizeTeamDefinition,
   normalizeTeamExperienceBinding,
   normalizeStandardTeamMessageDelivery,
+  sessionId,
+  taskId,
   teamId,
   teamExperienceId,
   teamMemberId,
   teamRunId,
+  toolOutputReference,
+  toolRequestId,
+  workerId,
   workspaceGrantId,
   workspaceId,
   WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
@@ -54,6 +65,7 @@ import {
   type Instant,
   type TeamDefinition,
   type TeamMember,
+  type TeamModelSelection,
   type TeamPlanNodeId,
   type TeamRunNode,
   type TeamRunSnapshot,
@@ -63,10 +75,16 @@ import {
   TeamOrchestratorServiceError,
   type CancelTeamRunInput,
   type CreateTeamRunInput,
+  type CompleteTeamHandoffInput,
   type DecideTeamNodeApprovalInput,
   type ResolveTeamFeedbackInput,
   type TeamNodeControlInput,
 } from "../orchestration/teamOrchestratorService";
+import { withPersistenceMutationBarrier } from "../persistence/persistenceMutationBarrier";
+import {
+  deriveTeamJourneyBinding,
+  deriveTeamJourneyReplyStreamId,
+} from "../orchestration/teamJourneyWorkerRouter";
 import { TeamPlanAdmissionServiceError } from "../orchestration/teamPlanAdmissionService";
 
 export interface AionUiTeamPersistencePort extends Pick<
@@ -75,6 +93,7 @@ export interface AionUiTeamPersistencePort extends Pick<
   | "persistTeamExperienceBinding"
   | "loadDomainGraph"
   | "replaceDomainGraph"
+  | "storeContentReference"
   | "persistWorkspaceGrant"
   | "getActiveWorkspaceGrant"
   | "getTeamDefinition"
@@ -87,6 +106,8 @@ export interface AionUiTeamPersistencePort extends Pick<
   | "removeTeamDefinition"
   | "getAdmittedTeamPlan"
   | "listTeamRunsForTeam"
+  | "listArtifactDeliveriesForTask"
+  | "replayEvents"
 > {}
 
 export interface AionUiTeamAdmissionPort {
@@ -111,14 +132,26 @@ export interface AionUiTeamOrchestratorPort {
   retry(input: TeamNodeControlInput): Promise<TeamRunSnapshot>;
   replace(input: TeamNodeControlInput): Promise<TeamRunSnapshot>;
   requestHandoff(input: TeamNodeControlInput): Promise<TeamRunSnapshot>;
+  completeHandoff(input: CompleteTeamHandoffInput): Promise<TeamRunSnapshot>;
+  requestRevision(input: TeamNodeControlInput): Promise<TeamRunSnapshot>;
   cancelNode(input: TeamNodeControlInput): Promise<TeamRunSnapshot>;
   cancelRun(input: CancelTeamRunInput): Promise<TeamRunSnapshot>;
+}
+
+export interface AionUiTeamWorkerRuntimeAdmissionPort {
+  admit(team: TeamDefinition): Promise<AionUiTeamOrchestratorPort | null>;
+}
+
+export interface AionUiTeamModelCatalogPort {
+  list(): Promise<NativeAionUiTeamModelOptions>;
 }
 
 export interface AionUiTeamServiceOptions {
   readonly persistence: AionUiTeamPersistencePort;
   readonly admission: AionUiTeamAdmissionPort | null;
   readonly orchestrator: AionUiTeamOrchestratorPort | null;
+  readonly workerRuntimeAdmission?: AionUiTeamWorkerRuntimeAdmissionPort | null;
+  readonly modelCatalog?: AionUiTeamModelCatalogPort | null;
   readonly workspaceSelection?: AionUiTeamWorkspaceSelectionPort | null;
   readonly standardTeamCreation?: AionUiStandardTeamCreationPort | null;
   readonly now: () => Instant;
@@ -263,7 +296,8 @@ type TeamControlKind = Extract<
       | "resume-node"
       | "retry-node"
       | "replace-node"
-      | "handoff-node";
+      | "handoff-node"
+      | "revise-node";
   }
 >["kind"];
 
@@ -274,6 +308,7 @@ const TERMINAL_RUN_STATUSES = new Set<TeamRunSnapshot["status"]>([
 ]);
 const STANDARD_TEAM_BACKEND_TIMEOUT_MS = 10_000;
 const STANDARD_TEAM_RUNTIME_DISCOVERY_TIMEOUT_MS = 45_000;
+const MAX_TEAM_ACTIVITY_CONTENT_BYTES = 8 * 1024;
 const MAX_STANDARD_TEAM_BACKEND_BODY_BYTES = 64 * 1024;
 const AIONCORE_AGENT_PROCESS_REGISTRY_RELATIVE_PATH = path.join(
   "runtime",
@@ -285,6 +320,17 @@ const MAX_AIONCORE_PROBE_PROCESS_ENTRIES = 8;
 const MAX_AIONCORE_PROBE_PROCESS_GROUP_MEMBERS = 64;
 const MAX_AIONCORE_PROCESS_TABLE_BYTES = 256 * 1024;
 const DEFAULT_AIONCORE_PROBE_TERMINATION_GRACE_MS = 1_000;
+// How long a process-table read may take, which is unrelated to how long a probe
+// process is given to exit: `ps` needs tens of milliseconds to walk a full table
+// even when idle, so deriving this from the caller's cleanup grace starves the
+// read on a loaded machine and reports a live probe as unreadable.
+const AIONCORE_PROCESS_TABLE_READ_TIMEOUT_MS = 5_000;
+const TEAM_MODEL_IDENTIFIER_PATTERN = /^[A-Za-z0-9]+(?:[._:/-][A-Za-z0-9]+)*$/u;
+
+/** Per-task bound on the delivery read behind a Team Artifact, so a long history cannot stall it. */
+const TEAM_ARTIFACT_DELIVERY_SCAN_LIMIT = 100;
+const MAX_TEAM_MODEL_PROVIDERS = 64;
+const MAX_TEAM_MODELS_PER_PROVIDER = 256;
 
 function digest(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -292,6 +338,63 @@ function digest(value: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function snapshotTeamModelOptions(value: unknown): NativeAionUiTeamModelOptions | null {
+  if (
+    !isRecord(value) ||
+    Reflect.ownKeys(value).length !== 1 ||
+    !Object.hasOwn(value, "providers") ||
+    !Array.isArray(value.providers) ||
+    value.providers.length > MAX_TEAM_MODEL_PROVIDERS
+  ) {
+    return null;
+  }
+  const providerIds = new Set<string>();
+  const providers: NativeAionUiTeamModelOptions["providers"][number][] = [];
+  for (const candidate of value.providers) {
+    if (
+      !isRecord(candidate) ||
+      Reflect.ownKeys(candidate).length !== 3 ||
+      !Object.hasOwn(candidate, "provider_id") ||
+      !Object.hasOwn(candidate, "name") ||
+      !Object.hasOwn(candidate, "model_ids") ||
+      typeof candidate.provider_id !== "string" ||
+      candidate.provider_id.length > 256 ||
+      !TEAM_MODEL_IDENTIFIER_PATTERN.test(candidate.provider_id) ||
+      providerIds.has(candidate.provider_id) ||
+      typeof candidate.name !== "string" ||
+      candidate.name.length < 1 ||
+      candidate.name.length > 256 ||
+      candidate.name.trim() !== candidate.name ||
+      !Array.isArray(candidate.model_ids) ||
+      candidate.model_ids.length < 1 ||
+      candidate.model_ids.length > MAX_TEAM_MODELS_PER_PROVIDER
+    ) {
+      return null;
+    }
+    const modelIds = new Set<string>();
+    for (const modelId of candidate.model_ids) {
+      if (
+        typeof modelId !== "string" ||
+        modelId.length > 256 ||
+        !TEAM_MODEL_IDENTIFIER_PATTERN.test(modelId) ||
+        modelIds.has(modelId)
+      ) {
+        return null;
+      }
+      modelIds.add(modelId);
+    }
+    providerIds.add(candidate.provider_id);
+    providers.push(
+      Object.freeze({
+        provider_id: candidate.provider_id,
+        name: candidate.name,
+        model_ids: Object.freeze([...modelIds]),
+      }),
+    );
+  }
+  return Object.freeze({ providers: Object.freeze(providers) });
 }
 
 function safeProcessIdentity(value: unknown): number | null {
@@ -507,14 +610,23 @@ export class AionCoreProbeProcessGuard implements AionUiStandardTeamProbeProcess
           encoding: "utf8",
           env: { LANG: "C", LC_ALL: "C" },
           maxBuffer: MAX_AIONCORE_PROCESS_TABLE_BYTES,
-          timeout: this.#terminationGraceMs,
+          timeout: AIONCORE_PROCESS_TABLE_READ_TIMEOUT_MS,
         },
         (error, stdout) => {
           if (error !== null) {
+            const failure = error as NodeJS.ErrnoException & {
+              signal?: string | null;
+            };
+            const cause =
+              failure.signal === "SIGTERM"
+                ? "timeout"
+                : failure.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
+                  ? "output-limit"
+                  : (failure.code ?? "spawn-failed");
             reject(
               new AionUiTeamBridgePortError(
                 "team-model-unavailable",
-                "The temporary Team model catalog process table could not be read",
+                `The temporary Team model catalog process table could not be read (cause=${cause})`,
               ),
             );
             return;
@@ -558,7 +670,15 @@ export class AionCoreProbeProcessGuard implements AionUiStandardTeamProbeProcess
               );
               return;
             }
-            entries.push(Object.freeze({ pid, processGroupId, userId, startedAt, executable }));
+            entries.push(
+              Object.freeze({
+                pid,
+                processGroupId,
+                userId,
+                startedAt,
+                executable,
+              }),
+            );
           }
           resolve(Object.freeze(entries));
         },
@@ -626,7 +746,12 @@ export class AionCoreProbeProcessGuard implements AionUiStandardTeamProbeProcess
             "The temporary Team model catalog process identity changed before cleanup",
           );
         }
-        return [Object.freeze({ process: entry, members: Object.freeze(currentMembers) })];
+        return [
+          Object.freeze({
+            process: entry,
+            members: Object.freeze(currentMembers),
+          }),
+        ];
       }),
     );
   }
@@ -701,6 +826,27 @@ function standardText(
     throw new AionUiTeamBridgePortError("team-model-unavailable", `${label} is invalid`);
   }
   return value;
+}
+
+/**
+ * Collapses a free-form Worker reply into the single-line, control-free,
+ * NFC-normalized shape the native Team activity contract accepts.
+ */
+function boundedActivityContent(value: string): string {
+  const normalized = value
+    .normalize("NFC")
+    .replace(/\s+/gu, " ")
+    .replace(/[\p{Cc}\p{Cf}]/gu, "")
+    .trim();
+  let result = "";
+  let bytes = 0;
+  for (const character of normalized) {
+    const nextBytes = new TextEncoder().encode(character).byteLength;
+    if (bytes + nextBytes > MAX_TEAM_ACTIVITY_CONTENT_BYTES) break;
+    result += character;
+    bytes += nextBytes;
+  }
+  return result.trim();
 }
 
 function modelIdentifier(value: unknown): string | null {
@@ -1942,7 +2088,11 @@ export class AionUiStandardTeamCreationService {
             "The requested mode is not admitted by every standard Team member",
           );
         }
-        return Object.freeze({ assistant, targetMode, optionId: modeOption.id });
+        return Object.freeze({
+          assistant,
+          targetMode,
+          optionId: modeOption.id,
+        });
       }),
     );
 
@@ -2230,7 +2380,9 @@ export class AionUiStandardTeamCreationService {
         "The standard Team cancellation target is no longer current",
       );
     }
-    await this.#backend.cancelTeamRun(stableTeamId, stableRunId, { reason: stableReason });
+    await this.#backend.cancelTeamRun(stableTeamId, stableRunId, {
+      reason: stableReason,
+    });
     const observed = this.#projectRunState(team, await this.#backend.getTeamRunState(stableTeamId));
     if (
       observed.active_run?.team_run_id === stableRunId &&
@@ -2416,7 +2568,11 @@ export class AionUiStandardTeamCreationService {
       // The shared bridge assertion is intentionally exercised here so Main never
       // returns an unbounded provider-owned acknowledgement to the renderer.
       assertAionUiTeamBridgeResponse(
-        Object.freeze({ contractVersion: 1, status: 200, data: acknowledgement }),
+        Object.freeze({
+          contractVersion: 1,
+          status: 200,
+          data: acknowledgement,
+        }),
       );
     } catch {
       throw new AionUiTeamBridgePortError(
@@ -2579,9 +2735,12 @@ export class AionUiStandardTeamCreationService {
     return projected as NativeAionUiStandardTeamRunEvent;
   }
 
-  async #resolveMembers(
-    members: readonly AionUiStandardTeamMemberIntent[],
-  ): Promise<readonly Readonly<{ member: AionUiStandardTeamMemberIntent; model: string }>[]> {
+  async #resolveMembers(members: readonly AionUiStandardTeamMemberIntent[]): Promise<
+    readonly Readonly<{
+      member: AionUiStandardTeamMemberIntent;
+      model: string;
+    }>[]
+  > {
     const managedAgentsValue = await this.#backend.listManagedAgents();
     if (!Array.isArray(managedAgentsValue)) {
       throw new AionUiTeamBridgePortError(
@@ -2662,7 +2821,10 @@ export class AionUiStandardTeamCreationService {
   }
 
   #projectPersistedAssistant(
-    resolved: Readonly<{ member: AionUiStandardTeamMemberIntent; model: string }>,
+    resolved: Readonly<{
+      member: AionUiStandardTeamMemberIntent;
+      model: string;
+    }>,
     value: unknown,
   ): NativeAionUiStandardTeamAssistant {
     if (!isRecord(value)) {
@@ -2941,6 +3103,8 @@ function nodeState(node: TeamRunNode): NativeAionUiTeamNodeView["state"] {
       return "blocked";
     case "handoff-required":
       return "handoff-required";
+    case "revision-requested":
+      return "revision-requested";
     default:
       return node.status;
   }
@@ -2951,15 +3115,26 @@ function nodeActions(node: TeamRunNode): NativeAionUiTeamNodeView["next_actions"
     case "running":
       return Object.freeze(["pause", "cancel", "replace", "handoff"]);
     case "approval-blocked":
-      return Object.freeze(["approve", "deny", "cancel"]);
+      // approve/deny here mean the protected-Approval route, which Core admits only for Worker
+      // nodes. A workflow-feedback node resolves through the run feedback route instead.
+      return node.blockedReason === "human-feedback"
+        ? Object.freeze([])
+        : Object.freeze(["approve", "deny", "cancel"]);
     case "paused":
       return Object.freeze(["resume", "cancel", "replace", "handoff"]);
+    case "revision-requested":
+      // A denied feedback node becomes revision-requested. The leader can request revision,
+      // which moves it back to approval-blocked for re-work. Child cancellation is Worker-only.
+      return node.kind === "human-feedback" ? Object.freeze(["revise"]) : Object.freeze([]);
     case "failed":
-      return Object.freeze(["retry", "replace", "handoff", "cancel"]);
+      // Retry is the only active route for a failed Worker. Replace and handoff require
+      // an active in-memory Worker attempt and therefore must not be projected here. Core also
+      // rejects cancel once the attempt is terminal, so exposing it would create a dead button.
+      return node.kind === "human-feedback" ? Object.freeze([]) : Object.freeze(["retry"]);
     case "pending":
     case "ready":
     case "handoff-required":
-      return Object.freeze(["cancel"]);
+      return Object.freeze([]);
     default:
       return Object.freeze([]);
   }
@@ -2968,15 +3143,22 @@ function nodeActions(node: TeamRunNode): NativeAionUiTeamNodeView["next_actions"
 function artifactReference(
   artifact: TeamRunNode["artifacts"][number],
   label: string,
+  deliveries?: ReadonlyMap<string, NativeAionUiTeamArtifactDelivery>,
 ): NativeAionUiTeamArtifactReference {
+  const delivery = deliveries?.get(artifact.artifactId);
   return Object.freeze({
     artifact_id: artifact.artifactId,
     kind: artifact.kind,
     label,
+    ...(delivery === undefined ? {} : { delivery }),
   });
 }
 
-function projectNode(team: TeamDefinition, node: TeamRunNode): NativeAionUiTeamNodeView {
+function projectNode(
+  team: TeamDefinition,
+  node: TeamRunNode,
+  deliveries?: ReadonlyMap<string, NativeAionUiTeamArtifactDelivery>,
+): NativeAionUiTeamNodeView {
   const member = assignedMember(team, node);
   return Object.freeze({
     action_id: actionId(node.nodeId),
@@ -2995,7 +3177,7 @@ function projectNode(team: TeamDefinition, node: TeamRunNode): NativeAionUiTeamN
           : "Goose",
     next_actions: nodeActions(node),
     artifacts: Object.freeze(
-      node.artifacts.map((artifact) => artifactReference(artifact, node.title)),
+      node.artifacts.map((artifact) => artifactReference(artifact, node.title, deliveries)),
     ),
   });
 }
@@ -3026,6 +3208,7 @@ function slotState(node: TeamRunNode | undefined): NativeAionUiTeamSlotWork["sta
     case "paused":
       return "paused";
     case "approval-blocked":
+    case "revision-requested":
     case "handoff-required":
     case "failed":
       return "blocked";
@@ -3047,9 +3230,15 @@ function relevantNode(
   );
   return (
     matching.find(({ status }) =>
-      ["approval-blocked", "paused", "handoff-required", "running", "ready", "failed"].includes(
-        status,
-      ),
+      [
+        "approval-blocked",
+        "revision-requested",
+        "paused",
+        "handoff-required",
+        "running",
+        "ready",
+        "failed",
+      ].includes(status),
     ) ?? matching.at(-1)
   );
 }
@@ -3179,6 +3368,7 @@ function projectRunEvent(
   team: TeamDefinition,
   snapshot: TeamRunSnapshot,
   source: NativeAionUiTeamRunEvent["source"],
+  deliveries?: ReadonlyMap<string, NativeAionUiTeamArtifactDelivery>,
 ): NativeAionUiTeamRunEvent {
   const leader = team.members.find(({ role }) => role === "leader");
   if (leader === undefined) {
@@ -3204,8 +3394,9 @@ function projectRunEvent(
       authority: "Actestra Core",
       authority_source: "schema-15-team-run",
       revision: snapshot.revision,
+      core_status: snapshot.status,
       status_explanation: statusExplanation(snapshot),
-      nodes: Object.freeze(snapshot.nodes.map((node) => projectNode(team, node))),
+      nodes: Object.freeze(snapshot.nodes.map((node) => projectNode(team, node, deliveries))),
       result:
         snapshot.result === null
           ? null
@@ -3213,7 +3404,7 @@ function projectRunEvent(
               summary: snapshot.result.summary,
               artifacts: Object.freeze(
                 snapshot.result.artifacts.map((artifact) =>
-                  artifactReference(artifact, "Team result Artifact"),
+                  artifactReference(artifact, "Team result Artifact", deliveries),
                 ),
               ),
             }),
@@ -3241,10 +3432,15 @@ function eventType(snapshot: TeamRunSnapshot): AionUiTeamEvent["type"] {
 function normalizedFailure(error: unknown): AionUiTeamBridgePortError {
   if (error instanceof AionUiTeamBridgePortError) return error;
   if (error instanceof TeamPlanAdmissionServiceError) {
-    return new AionUiTeamBridgePortError(
-      error.code === "planner-failed" ? "team-planner-unavailable" : "team-execution-failed",
-      "Team plan admission failed",
-    );
+    const code =
+      error.code === "planner-invalid"
+        ? "team-planner-invalid"
+        : error.code === "planner-timeout"
+          ? "team-planner-timeout"
+          : error.code === "planner-failed"
+            ? "team-planner-unavailable"
+            : "team-execution-failed";
+    return new AionUiTeamBridgePortError(code, "Team plan admission failed");
   }
   if (error instanceof TeamOrchestratorServiceError) {
     if (error.code === "not-found") {
@@ -3274,28 +3470,33 @@ function normalizedFailure(error: unknown): AionUiTeamBridgePortError {
 export class AionUiTeamService implements AionUiTeamBridgePort {
   readonly #persistence: AionUiTeamPersistencePort;
   readonly #admission: AionUiTeamAdmissionPort | null;
-  readonly #orchestrator: AionUiTeamOrchestratorPort | null;
+  readonly #initialOrchestrator: AionUiTeamOrchestratorPort | null;
+  readonly #workerRuntimeAdmission: AionUiTeamWorkerRuntimeAdmissionPort | null;
+  readonly #modelCatalog: AionUiTeamModelCatalogPort | null;
   readonly #workspaceSelection: AionUiTeamWorkspaceSelectionPort | null;
   readonly #standardTeamCreation: AionUiStandardTeamCreationPort | null;
   readonly #now: () => Instant;
   readonly #createDigest: () => string;
   readonly #handlers = new Set<(event: AionUiTeamEvent) => void>();
-  readonly #unsubscribeOrchestrator: (() => void) | null;
+  readonly #orchestratorSubscriptions = new Map<AionUiTeamOrchestratorPort, () => void>();
+  /** Serializes the Main-owned persistence half of one manual handoff node. */
+  readonly #handoffMutations = new Map<string, Promise<void>>();
   #closed = false;
 
   constructor(options: AionUiTeamServiceOptions) {
     this.#persistence = options.persistence;
     this.#admission = options.admission;
-    this.#orchestrator = options.orchestrator;
+    this.#initialOrchestrator = options.orchestrator;
+    this.#workerRuntimeAdmission = options.workerRuntimeAdmission ?? null;
+    this.#modelCatalog = options.modelCatalog ?? null;
     this.#workspaceSelection = options.workspaceSelection ?? null;
     this.#standardTeamCreation = options.standardTeamCreation ?? null;
     this.#now = options.now;
     this.#createDigest = options.createDigest;
     instant(this.#now());
-    this.#unsubscribeOrchestrator =
-      this.#orchestrator?.subscribe((snapshot) => {
-        void this.#emitSnapshot(snapshot);
-      }) ?? null;
+    if (this.#initialOrchestrator !== null) {
+      this.#subscribeOrchestrator(this.#initialOrchestrator);
+    }
   }
 
   async dispatch(route: AionUiTeamBridgeRoute): Promise<AionUiTeamBridgeSuccessData> {
@@ -3340,20 +3541,62 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
   close(): void {
     if (this.#closed) return;
     this.#closed = true;
-    this.#unsubscribeOrchestrator?.();
+    for (const unsubscribe of this.#orchestratorSubscriptions.values()) unsubscribe();
+    this.#orchestratorSubscriptions.clear();
     this.#handlers.clear();
+  }
+
+  #subscribeOrchestrator(orchestrator: AionUiTeamOrchestratorPort): void {
+    if (this.#orchestratorSubscriptions.has(orchestrator)) return;
+    this.#orchestratorSubscriptions.set(
+      orchestrator,
+      orchestrator.subscribe((snapshot) => {
+        void this.#emitSnapshot(snapshot);
+      }),
+    );
+  }
+
+  async #ensureWorkerRuntime(team: TeamDefinition): Promise<AionUiTeamOrchestratorPort> {
+    let orchestrator = this.#initialOrchestrator;
+    if (this.#workerRuntimeAdmission !== null) {
+      try {
+        orchestrator = await this.#workerRuntimeAdmission.admit(team);
+      } catch {
+        orchestrator = null;
+      }
+    }
+    if (orchestrator === null) {
+      throw new AionUiTeamBridgePortError(
+        "team-worker-runtime-unavailable",
+        "The selected Team Worker runtime is unavailable",
+      );
+    }
+    this.#subscribeOrchestrator(orchestrator);
+    return orchestrator;
   }
 
   async #dispatch(route: AionUiTeamBridgeRoute): Promise<AionUiTeamBridgeSuccessData> {
     switch (route.kind) {
       case "list":
         return this.#list();
+      case "model-options":
+        return this.#listModelOptions();
+      case "get-model-selection":
+        return this.#getModelSelection(route.teamId);
+      case "update-model-selection":
+        return this.#updateModelSelection(route.teamId, route.modelSelection);
       case "list-workspaces":
         return this.#listWorkspaces();
       case "select-workspace":
         return this.#selectWorkspace();
       case "create":
-        return this.#create(route.name, route.description, route.workspaceId, route.members);
+        return this.#create(
+          route.name,
+          route.description,
+          route.workspaceId,
+          route.modelSelection,
+          route.members,
+        );
       case "create-standard":
         if (this.#standardTeamCreation === null) {
           throw new AionUiTeamBridgePortError(
@@ -3437,11 +3680,14 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
       case "retry-node":
       case "replace-node":
       case "handoff-node":
+      case "revise-node":
         return this.#controlNode(route);
       case "decide-approval":
         return this.#decideApproval(route.teamId, route.runId, route.slotId, route.decision);
       case "resolve-feedback":
         return this.#resolveFeedback(route.teamId, route.runId, route.decision, route.note);
+      case "complete-handoff":
+        return this.#completeHandoff(route);
     }
   }
 
@@ -3627,6 +3873,98 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
     }
   }
 
+  async #listModelOptions(): Promise<NativeAionUiTeamModelOptions> {
+    if (this.#modelCatalog === null) {
+      throw new AionUiTeamBridgePortError(
+        "team-worker-runtime-unavailable",
+        "Team model options are unavailable",
+      );
+    }
+    let options: NativeAionUiTeamModelOptions | null;
+    try {
+      options = snapshotTeamModelOptions(await this.#modelCatalog.list());
+    } catch {
+      options = null;
+    }
+    if (options === null) {
+      throw new AionUiTeamBridgePortError(
+        "team-worker-runtime-unavailable",
+        "Team model options are unavailable",
+      );
+    }
+    return options;
+  }
+
+  async #assertModelSelectionAvailable(selection: TeamModelSelection): Promise<void> {
+    const options = await this.#listModelOptions();
+    const matches = options.providers.filter(
+      (provider) =>
+        provider.provider_id === selection.providerId &&
+        provider.model_ids.includes(selection.modelId),
+    );
+    if (matches.length !== 1) {
+      throw new AionUiTeamBridgePortError(
+        "team-worker-runtime-unavailable",
+        "The selected Team model is unavailable",
+      );
+    }
+  }
+
+  async #getModelSelection(teamIdValue: string): Promise<NativeAionUiTeamModelSelection> {
+    const team = await this.#requireTeam(teamIdValue);
+    if (team.modelSelection === undefined) {
+      throw new AionUiTeamBridgePortError(
+        "team-model-unavailable",
+        "The Team has no explicit model selection",
+      );
+    }
+    return this.#projectModelSelection(team.modelSelection);
+  }
+
+  async #updateModelSelection(
+    teamIdValue: string,
+    modelSelection: TeamModelSelection,
+  ): Promise<NativeAionUiTeamModelSelection> {
+    const team = await this.#requireTeam(teamIdValue);
+    const latestRun = await this.#latestRun(team.teamId);
+    if (latestRun !== null && !["completed", "failed", "cancelled"].includes(latestRun.status)) {
+      throw new AionUiTeamBridgePortError(
+        "team-active",
+        "Team model selection cannot change while a Team run is active",
+      );
+    }
+    await this.#assertModelSelectionAvailable(modelSelection);
+    if (
+      team.modelSelection?.providerId === modelSelection.providerId &&
+      team.modelSelection.modelId === modelSelection.modelId
+    ) {
+      return this.#projectModelSelection(modelSelection);
+    }
+    const replacement = normalizeTeamDefinition({
+      ...team,
+      modelSelection,
+      updatedAt: this.#nextUpdate(team),
+    });
+    const result = await this.#persistence.replaceTeamDefinition(team, replacement);
+    if (
+      result.team.modelSelection?.providerId !== modelSelection.providerId ||
+      result.team.modelSelection.modelId !== modelSelection.modelId
+    ) {
+      throw new AionUiTeamBridgePortError(
+        "team-conflict",
+        "Team model selection persistence returned substituted authority",
+      );
+    }
+    return this.#projectModelSelection(result.team.modelSelection);
+  }
+
+  #projectModelSelection(selection: TeamModelSelection): NativeAionUiTeamModelSelection {
+    return Object.freeze({
+      provider_id: selection.providerId,
+      model_id: selection.modelId,
+    });
+  }
+
   async #listWorkspaces(): Promise<NativeAionUiTeamWorkspaceOptions> {
     const graph = await this.#persistence.loadDomainGraph();
     const options: Array<{ workspace_id: string; display_name: string }> = [];
@@ -3634,7 +3972,10 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
       if (workspace.state !== "active") continue;
       const grant = await this.#persistence.getActiveWorkspaceGrant(workspace.id);
       if (grant === null || grant.state !== "active") continue;
-      options.push({ workspace_id: workspace.id, display_name: workspace.name });
+      options.push({
+        workspace_id: workspace.id,
+        display_name: workspace.name,
+      });
     }
     return Object.freeze({
       workspace_options: Object.freeze(options),
@@ -3707,8 +4048,10 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
     name: string,
     description: string | null,
     workspaceId: string,
+    modelSelection: TeamModelSelection,
     members: readonly AionUiTeamMemberInput[],
   ): Promise<NativeAionUiTeam> {
+    await this.#assertModelSelectionAvailable(modelSelection);
     const createdAt = instant(this.#now());
     const rawDigest = this.#createDigest();
     if (!/^[a-f0-9]{64}$/u.test(rawDigest)) {
@@ -3722,6 +4065,7 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
       name,
       description,
       workspaceId,
+      modelSelection,
       members: members.map((member, index) => ({
         memberId: `team-member-${digest(`${stableTeamId}:${String(index)}:${member.capability}`)}`,
         role: member.role,
@@ -3739,8 +4083,14 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
       throw error;
     }
     const native = await this.#nativeTeam(stored.team);
-    this.#emit({ type: "team.created", payload: { team_id: team.teamId, team_name: team.name } });
-    this.#emit({ type: "team.listChanged", payload: { team_id: team.teamId, action: "created" } });
+    this.#emit({
+      type: "team.created",
+      payload: { team_id: team.teamId, team_name: team.name },
+    });
+    this.#emit({
+      type: "team.listChanged",
+      payload: { team_id: team.teamId, action: "created" },
+    });
     return native;
   }
 
@@ -3769,7 +4119,10 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
     await this.#assertNoActiveRun(team.teamId);
     await this.#persistence.removeTeamDefinition(team, this.#nextUpdate(team));
     this.#emit({ type: "team.removed", payload: { team_id: team.teamId } });
-    this.#emit({ type: "team.listChanged", payload: { team_id: team.teamId, action: "removed" } });
+    this.#emit({
+      type: "team.listChanged",
+      payload: { team_id: team.teamId, action: "removed" },
+    });
     return null;
   }
 
@@ -3798,8 +4151,14 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
       updatedAt: this.#nextUpdate(team),
     });
     const result = await this.#persistence.replaceTeamDefinition(team, replacement);
-    this.#emit({ type: "team.renamed", payload: { team_id: team.teamId, team_name: name } });
-    this.#emit({ type: "team.listChanged", payload: { team_id: team.teamId, action: "renamed" } });
+    this.#emit({
+      type: "team.renamed",
+      payload: { team_id: team.teamId, team_name: name },
+    });
+    this.#emit({
+      type: "team.listChanged",
+      payload: { team_id: team.teamId, action: "renamed" },
+    });
     return this.#nativeTeam(result.team);
   }
 
@@ -3823,7 +4182,10 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
     });
     const result = await this.#persistence.replaceTeamDefinition(team, replacement);
     const assistant = projectAssistant(result.team, null, member);
-    this.#emit({ type: "team.agentSpawned", payload: { team_id: team.teamId, assistant } });
+    this.#emit({
+      type: "team.agentSpawned",
+      payload: { team_id: team.teamId, assistant },
+    });
     this.#emit({
       type: "team.listChanged",
       payload: { team_id: team.teamId, action: "agent_added" },
@@ -4191,12 +4553,7 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
         "Team planning is unavailable",
       );
     }
-    if (this.#orchestrator === null) {
-      throw new AionUiTeamBridgePortError(
-        "team-worker-runtime-unavailable",
-        "Team Worker runtime is unavailable",
-      );
-    }
+    const orchestrator = await this.#ensureWorkerRuntime(team);
     await this.#assertNoActiveRun(team.teamId);
     const existingRuns = await this.#persistence.listTeamRunsForTeam(team.teamId, 100);
     const plan = await this.#admission.propose({
@@ -4210,7 +4567,10 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
         ...new Set(team.members.map(({ capability }) => capability)),
       ]),
       contextReferences: Object.freeze([
-        Object.freeze({ referenceId: team.workspaceId, classification: "internal" }),
+        Object.freeze({
+          referenceId: team.workspaceId,
+          classification: "internal",
+        }),
       ]),
       limits: Object.freeze({
         maxNodes: 5,
@@ -4219,12 +4579,12 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
         maxTotalAttempts: 10,
       }),
     });
-    const accepted = await this.#orchestrator.create({
+    const accepted = await orchestrator.create({
       team,
       planId: plan.planId,
       occurredAt: instant(this.#now()),
     });
-    const started = await this.#orchestrator.start(accepted.runId, instant(this.#now()));
+    const started = await orchestrator.start(accepted.runId, instant(this.#now()));
     return Object.freeze({
       enqueue_status: "accepted",
       message_id: teamMessageId(started, content),
@@ -4313,10 +4673,8 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
     if (snapshot === null || TERMINAL_RUN_STATUSES.has(snapshot.status)) {
       return this.#projectRunState(team, snapshot);
     }
-    if (this.#orchestrator === null) {
-      throw new AionUiTeamBridgePortError("team-unavailable", "Team orchestrator is unavailable");
-    }
-    const cancelled = await this.#orchestrator.cancelRun({
+    const orchestrator = await this.#ensureWorkerRuntime(team);
+    const cancelled = await orchestrator.cancelRun({
       runId: snapshot.runId,
       reason: "The AionUI Team session was stopped.",
       occurredAt: instant(this.#now()),
@@ -4344,7 +4702,7 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
       );
     }
     const { team, snapshot } = await this.#requireRun(stableTeamId, runIdValue);
-    const orchestrator = this.#requireOrchestrator();
+    const orchestrator = await this.#ensureWorkerRuntime(team);
     const cancelled = await orchestrator.cancelRun({
       runId: snapshot.runId,
       reason,
@@ -4397,7 +4755,7 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
       reason: route.reason,
       occurredAt: instant(this.#now()),
     };
-    const orchestrator = this.#requireOrchestrator();
+    const orchestrator = await this.#ensureWorkerRuntime(team);
     let next: TeamRunSnapshot;
     switch (route.kind) {
       case "pause-node":
@@ -4414,6 +4772,9 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
         break;
       case "handoff-node":
         next = await orchestrator.requestHandoff(input);
+        break;
+      case "revise-node":
+        next = await orchestrator.requestRevision(input);
         break;
       case "cancel-node":
         next = await orchestrator.cancelNode(input);
@@ -4433,7 +4794,8 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
     if (node.protectedApproval === null) {
       throw new AionUiTeamBridgePortError("team-conflict", "Team node has no active Approval");
     }
-    const next = await this.#requireOrchestrator().decideApproval({
+    const orchestrator = await this.#ensureWorkerRuntime(team);
+    const next = await orchestrator.decideApproval({
       runId: snapshot.runId,
       nodeId: node.nodeId,
       approvalId: node.protectedApproval.approvalId,
@@ -4450,13 +4812,21 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
     note: string,
   ): Promise<NativeAionUiTeamRunState> {
     const { team, snapshot } = await this.#requireRun(teamIdValue, runIdValue);
+    // Core parks a dependency-satisfied human-feedback node at approval-blocked, never at
+    // ready, so this mirrors the precondition resolveWorkflowFeedback itself enforces.
     const node = snapshot.nodes.find(
-      (candidate) => candidate.kind === "human-feedback" && candidate.status === "ready",
+      (candidate) =>
+        candidate.kind === "human-feedback" &&
+        candidate.status === "approval-blocked" &&
+        candidate.blockedReason === "human-feedback" &&
+        candidate.protectedApproval === null &&
+        candidate.workflowFeedback === null,
     );
     if (node === undefined) {
       throw new AionUiTeamBridgePortError("team-conflict", "Team feedback is not ready");
     }
-    const next = await this.#requireOrchestrator().resolveFeedback({
+    const orchestrator = await this.#ensureWorkerRuntime(team);
+    const next = await orchestrator.resolveFeedback({
       runId: snapshot.runId,
       nodeId: node.nodeId,
       decision,
@@ -4466,27 +4836,220 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
     return this.#projectRunState(team, next);
   }
 
+  async #completeHandoff(
+    route: Extract<AionUiTeamBridgeRoute, { kind: "complete-handoff" }>,
+  ): Promise<NativeAionUiTeamRunState> {
+    const key = `${route.teamId}\u0000${route.runId}\u0000${route.slotId}`;
+    const previous = this.#handoffMutations.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const slot = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const current = previous.catch((): undefined => undefined).then(() => slot);
+    this.#handoffMutations.set(key, current);
+    await previous.catch((): undefined => undefined);
+    try {
+      return await this.#completeHandoffSerialized(route);
+    } finally {
+      release();
+      if (this.#handoffMutations.get(key) === current) this.#handoffMutations.delete(key);
+    }
+  }
+
+  async #completeHandoffSerialized(
+    route: Extract<AionUiTeamBridgeRoute, { kind: "complete-handoff" }>,
+  ): Promise<NativeAionUiTeamRunState> {
+    const { team, snapshot } = await this.#requireRun(route.teamId, route.runId);
+    const node = this.#nodeForSlot(team, snapshot, route.slotId, "complete-handoff");
+    if (node.kind !== "worker" || node.status !== "handoff-required") {
+      throw new AionUiTeamBridgePortError("team-conflict", "Team handoff is not ready");
+    }
+    const stableDigest = digest(`${snapshot.runId}\u0000${node.nodeId}\u0000${route.content}`);
+    const stableArtifactId = artifactId(`artifact-team-handoff-${stableDigest}`);
+    const stableSessionId = sessionId(`session-team-handoff-${stableDigest}`);
+    const stableWorkerId = workerId(`worker-team-handoff-${stableDigest}`);
+    const stableRequestId = toolRequestId(`request-team-handoff-${stableDigest}`);
+    const stableReference = toolOutputReference(`output-team-handoff-${stableDigest}`);
+    const completedAt = instant(this.#now());
+
+    await withPersistenceMutationBarrier(this.#persistence as ActestraPersistencePort, async () => {
+      const graph = await this.#persistence.loadDomainGraph();
+      const existingTask = graph.tasks.find(({ id }) => id === node.taskId);
+      const existingWorker = graph.workers.find(({ id }) => id === stableWorkerId);
+      const existingSession = graph.sessions.find(({ id }) => id === stableSessionId);
+      const existingArtifact = graph.artifacts.find(({ id }) => id === stableArtifactId);
+      const conflicts =
+        (existingTask !== undefined && existingTask.workspaceId !== team.workspaceId) ||
+        (existingWorker !== undefined && existingWorker.workspaceId !== team.workspaceId) ||
+        (existingSession !== undefined &&
+          (existingSession.workspaceId !== team.workspaceId ||
+            existingSession.taskId !== node.taskId ||
+            existingSession.workerId !== stableWorkerId)) ||
+        (existingArtifact !== undefined &&
+          (existingArtifact.workspaceId !== team.workspaceId ||
+            existingArtifact.taskId !== node.taskId ||
+            existingArtifact.sessionId !== stableSessionId ||
+            existingArtifact.kind !== node.expectedArtifactKind));
+      if (conflicts) {
+        throw new AionUiTeamBridgePortError(
+          "team-conflict",
+          "Team handoff persistence conflicts with durable authority",
+        );
+      }
+      const next = Object.freeze({
+        ...graph,
+        tasks: Object.freeze(
+          existingTask === undefined
+            ? [
+                ...graph.tasks,
+                Object.freeze({
+                  id: taskId(node.taskId),
+                  workspaceId: team.workspaceId,
+                  title: node.title,
+                  state: "completed" as const,
+                  activeSessionId: stableSessionId,
+                  createdAt: completedAt,
+                  updatedAt: completedAt,
+                }),
+              ]
+            : graph.tasks.map((candidate) =>
+                candidate.id === node.taskId
+                  ? Object.freeze({
+                      ...candidate,
+                      state: "completed" as const,
+                      activeSessionId: stableSessionId,
+                      updatedAt: completedAt,
+                    })
+                  : candidate,
+              ),
+        ),
+        workers: Object.freeze(
+          existingWorker === undefined
+            ? [
+                ...graph.workers,
+                Object.freeze({
+                  id: stableWorkerId,
+                  workspaceId: team.workspaceId,
+                  adapterKind: "actestra-human-handoff",
+                  state: "stopped" as const,
+                  createdAt: completedAt,
+                  updatedAt: completedAt,
+                }),
+              ]
+            : graph.workers,
+        ),
+        sessions: Object.freeze(
+          existingSession === undefined
+            ? [
+                ...graph.sessions,
+                Object.freeze({
+                  id: stableSessionId,
+                  workspaceId: team.workspaceId,
+                  taskId: taskId(node.taskId),
+                  workerId: stableWorkerId,
+                  state: "completed" as const,
+                  createdAt: completedAt,
+                  updatedAt: completedAt,
+                }),
+              ]
+            : graph.sessions,
+        ),
+        artifacts: Object.freeze(
+          existingArtifact === undefined
+            ? [
+                ...graph.artifacts,
+                Object.freeze({
+                  id: stableArtifactId,
+                  workspaceId: team.workspaceId,
+                  taskId: taskId(node.taskId),
+                  sessionId: stableSessionId,
+                  kind: node.expectedArtifactKind,
+                  label: "Reviewed manual handoff result",
+                  state: "available" as const,
+                  createdAt: completedAt,
+                  updatedAt: completedAt,
+                }),
+              ]
+            : graph.artifacts,
+        ),
+      });
+      assertDomainGraph(next);
+      await this.#persistence.replaceDomainGraph(next);
+      await this.#persistence.storeContentReference({
+        contractVersion: WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
+        reference: stableReference,
+        kind: "tool-output",
+        owner: {
+          workspaceId: team.workspaceId,
+          taskId: taskId(node.taskId),
+          sessionId: stableSessionId,
+          workerId: stableWorkerId,
+          requestId: stableRequestId,
+        },
+        classification: "task-content",
+        mediaType: "text/plain; charset=utf-8",
+        content: route.content,
+        createdAt: completedAt,
+      });
+    });
+
+    const orchestrator = await this.#ensureWorkerRuntime(team);
+    const next = await orchestrator.completeHandoff({
+      runId: snapshot.runId,
+      nodeId: node.nodeId,
+      artifacts: [
+        {
+          artifactId: stableArtifactId,
+          taskId: taskId(node.taskId),
+          kind: node.expectedArtifactKind,
+        },
+      ],
+      summary: route.content,
+      occurredAt: instant(this.#now()),
+    });
+    return this.#projectRunState(team, next);
+  }
+
   #nodeForSlot(
     team: TeamDefinition,
     snapshot: TeamRunSnapshot,
     slotIdValue: string,
-    action: TeamControlKind | "decide-approval",
+    action: TeamControlKind | "decide-approval" | "complete-handoff",
   ): TeamRunNode {
     const stableSlotId = teamMemberId(slotIdValue);
     const member = team.members.find(({ memberId }) => memberId === stableSlotId);
     if (member === undefined) {
       throw new AionUiTeamBridgePortError("team-not-found", "Team member does not exist");
     }
+    // revise-node targets the leader's workflow-feedback node, the only node kind Core admits
+    // for request-feedback-revision. Every other control acts on a Worker node.
+    if (action === "revise-node") {
+      const feedbackNode = snapshot.nodes.find(
+        (candidate) =>
+          candidate.kind === "human-feedback" &&
+          candidate.status === "revision-requested" &&
+          candidate.blockedReason === "revision-requested",
+      );
+      if (feedbackNode === undefined || member.role !== "leader") {
+        throw new AionUiTeamBridgePortError(
+          "team-conflict",
+          "Team member has no revisable feedback node",
+        );
+      }
+      return feedbackNode;
+    }
     const allowed =
       action === "decide-approval"
         ? ["approval-blocked"]
-        : action === "resume-node"
-          ? ["paused"]
-          : action === "retry-node"
-            ? ["failed"]
-            : action === "pause-node"
-              ? ["running"]
-              : ["running", "approval-blocked", "paused", "failed", "handoff-required"];
+        : action === "complete-handoff"
+          ? ["handoff-required"]
+          : action === "resume-node"
+            ? ["paused"]
+            : action === "retry-node"
+              ? ["failed"]
+              : action === "pause-node"
+                ? ["running"]
+                : ["running", "approval-blocked", "paused", "failed", "handoff-required"];
     const node = snapshot.nodes.find(
       (candidate) =>
         candidate.kind === "worker" &&
@@ -4502,15 +5065,15 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
   async #requireRun(
     teamIdValue: string,
     runIdValue: string,
-  ): Promise<{ readonly team: TeamDefinition; readonly snapshot: TeamRunSnapshot }> {
+  ): Promise<{
+    readonly team: TeamDefinition;
+    readonly snapshot: TeamRunSnapshot;
+  }> {
     const team = await this.#requireTeam(teamIdValue);
     const stableRunId = teamRunId(runIdValue);
-    const snapshot =
-      this.#orchestrator === null
-        ? (await this.#persistence.listTeamRunsForTeam(team.teamId, 100)).find(
-            ({ runId }) => runId === stableRunId,
-          )
-        : await this.#orchestrator.get(stableRunId);
+    const snapshot = (await this.#persistence.listTeamRunsForTeam(team.teamId, 100)).find(
+      ({ runId }) => runId === stableRunId,
+    );
     if (snapshot === undefined || snapshot.teamId !== team.teamId) {
       throw new AionUiTeamBridgePortError("team-not-found", "Team run does not exist");
     }
@@ -4526,18 +5089,6 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
       throw new AionUiTeamBridgePortError("team-not-found", "Team does not exist");
     }
     return normalizeTeamDefinition(JSON.parse(JSON.stringify(team)));
-  }
-
-  #requireOrchestrator(): AionUiTeamOrchestratorPort {
-    if (this.#orchestrator === null) {
-      throw new AionUiTeamBridgePortError(
-        this.#admission === null ? "team-planner-unavailable" : "team-worker-runtime-unavailable",
-        this.#admission === null
-          ? "Team planning is unavailable"
-          : "Team Worker runtime is unavailable",
-      );
-    }
-    return this.#orchestrator;
   }
 
   async #latestRun(teamIdValue: TeamDefinition["teamId"]): Promise<TeamRunSnapshot | null> {
@@ -4564,7 +5115,8 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
               next_action: "restart-after-planner-admission" as const,
               authority_source: "actestra-main-runtime" as const,
             }
-          : this.#orchestrator === null
+          : this.#initialOrchestrator === null &&
+              (this.#workerRuntimeAdmission === null || team.modelSelection === undefined)
             ? {
                 availability: "unavailable" as const,
                 blocked_reason: "worker-runtime-unavailable" as const,
@@ -4578,15 +5130,131 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
                 authority_source: "actestra-main-runtime" as const,
               },
       ),
-      active_run: snapshot === null ? null : projectRunEvent(team, snapshot, "system_lifecycle"),
+      active_run:
+        snapshot === null
+          ? null
+          : projectRunEvent(
+              team,
+              snapshot,
+              "system_lifecycle",
+              await this.#resolveArtifactDeliveries(snapshot),
+            ),
       slot_work: Object.freeze(team.members.map((member) => projectSlot(team, snapshot, member))),
-      activities: snapshot === null ? Object.freeze([]) : await this.#projectActivities(snapshot),
+      activities:
+        snapshot === null ? Object.freeze([]) : await this.#projectActivities(team, snapshot),
     });
   }
 
+  /**
+   * Resolves the delivery projection for each coding Artifact a Team produced, so the Team surface
+   * renders the same Artifact card as the non-Team surface instead of an inert tag.
+   *
+   * Keyed by Artifact, and only for coding nodes: a General node writes no patch. The apply itself
+   * is still driven through the coding journey bridge, so the deterministic conversation the node
+   * ran under travels with the projection.
+   */
+  async #resolveArtifactDeliveries(
+    snapshot: TeamRunSnapshot,
+  ): Promise<ReadonlyMap<string, NativeAionUiTeamArtifactDelivery>> {
+    const deliveries = new Map<string, NativeAionUiTeamArtifactDelivery>();
+    for (const node of snapshot.nodes) {
+      const attempt = node.attempts.at(-1);
+      if (node.kind !== "worker" || node.capability !== "coding" || attempt === undefined) continue;
+      if (node.artifacts.length === 0) continue;
+      let nativeConversationId: string;
+      try {
+        nativeConversationId = deriveTeamJourneyBinding({
+          runId: snapshot.runId,
+          nodeId: node.nodeId,
+          attemptNumber: attempt.attemptNumber,
+          capability: node.capability,
+        }).nativeConversationId;
+      } catch {
+        // A node whose identity cannot be derived simply renders without apply controls.
+        continue;
+      }
+      for (const artifact of node.artifacts) {
+        try {
+          const records = await this.#persistence.listArtifactDeliveriesForTask(
+            artifact.taskId,
+            TEAM_ARTIFACT_DELIVERY_SCAN_LIMIT,
+          );
+          const record = records.find((entry) => entry.artifactId === artifact.artifactId);
+          if (record === undefined) continue;
+          const projection = projectArtifactDelivery(record);
+          deliveries.set(
+            artifact.artifactId,
+            Object.freeze({
+              native_conversation_id: nativeConversationId,
+              delivery_state: projection.deliveryState,
+              base_commit: projection.baseCommit,
+              changed_file_count: projection.changedFileCount,
+              ...(projection.failureCode === undefined
+                ? {}
+                : { failure_code: projection.failureCode }),
+              ...(projection.applyApprovalId === undefined
+                ? {}
+                : { apply_approval_id: projection.applyApprovalId }),
+            }),
+          );
+        } catch {
+          // Delivery is supplementary: a read failure must not break the run projection.
+        }
+      }
+    }
+    return deliveries;
+  }
+
+  /**
+   * Reads each Worker node's own durable journey stream for the last assistant
+   * reply. The operational Worker summary is Worker-authored and stays out of
+   * the projection, so this is the only sanctioned source for the real answer.
+   */
+  async #resolveWorkerReplies(
+    snapshot: TeamRunSnapshot,
+  ): Promise<
+    ReadonlyMap<string, Readonly<{ eventId: string; content: string; occurredAt: Instant }>>
+  > {
+    const replies = new Map<
+      string,
+      Readonly<{ eventId: string; content: string; occurredAt: Instant }>
+    >();
+    for (const node of snapshot.nodes) {
+      const attempt = node.attempts.at(-1);
+      if (node.kind !== "worker" || node.capability === null || attempt === undefined) continue;
+      try {
+        const events = await this.#persistence.replayEvents(
+          deriveTeamJourneyReplyStreamId({
+            runId: snapshot.runId,
+            nodeId: node.nodeId,
+            attemptNumber: attempt.attemptNumber,
+            capability: node.capability,
+          }),
+        );
+        for (const event of events) {
+          if (event.type !== "agent.message" || event.payload.role !== "assistant") continue;
+          const content = boundedActivityContent(event.payload.content);
+          if (content.length === 0) continue;
+          replies.set(node.nodeId, {
+            eventId: event.eventId,
+            content,
+            occurredAt: event.occurredAt,
+          });
+        }
+      } catch (error) {
+        // One corrupt journey stream cannot break Team projection, but a
+        // programming defect must stay visible instead of reading as "no reply".
+        if (error instanceof TypeError || error instanceof ReferenceError) throw error;
+      }
+    }
+    return replies;
+  }
+
   async #projectActivities(
+    team: TeamDefinition,
     snapshot: TeamRunSnapshot,
   ): Promise<readonly NativeAionUiTeamActivity[]> {
+    const replies = await this.#resolveWorkerReplies(snapshot);
     const planValue = await this.#persistence.getAdmittedTeamPlan(snapshot.planId);
     if (planValue === null) {
       throw new AionUiTeamBridgePortError(
@@ -4598,6 +5266,7 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
     const userActivity: NativeAionUiTeamActivity = Object.freeze({
       id: teamMessageId(snapshot, plan.goal),
       author: "You",
+      slot_id: null,
       content: plan.goal,
       tone: "user",
       occurred_at: toMillis(snapshot.createdAt),
@@ -4607,14 +5276,30 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
         if (node.kind !== "worker" || node.summary === null) return [];
         const occurredAt = node.attempts.at(-1)?.updatedAt ?? snapshot.updatedAt;
         const artifactCount = node.artifacts.length;
+        const slotId =
+          team.members.find(({ capability }) => capability === node.capability)?.memberId ?? null;
+        const reply = replies.get(node.nodeId);
         return [
           Object.freeze({
             id: `team-activity-${digest(`${snapshot.runId}:${node.nodeId}:${occurredAt}:${String(artifactCount)}`)}`,
             author: node.capability === "general" ? "General Worker" : "Goose",
+            slot_id: slotId,
             content: `${node.title} completed with ${String(artifactCount)} durable Artifact ${artifactCount === 1 ? "reference" : "references"}.`,
             tone: "worker",
             occurred_at: toMillis(occurredAt),
           }),
+          ...(reply === undefined
+            ? []
+            : [
+                Object.freeze({
+                  id: `team-activity-${digest(`${snapshot.runId}:${node.nodeId}:reply:${reply.eventId}`)}`,
+                  author: node.capability === "general" ? "General Worker" : "Goose",
+                  slot_id: slotId,
+                  content: reply.content,
+                  tone: "worker" as const,
+                  occurred_at: toMillis(reply.occurredAt),
+                }),
+              ]),
         ];
       })
       .sort(
@@ -4652,7 +5337,12 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
       if (team === null || this.#closed) return;
       this.#emit({
         type: eventType(snapshot),
-        payload: projectRunEvent(team, snapshot, "system_lifecycle"),
+        payload: projectRunEvent(
+          team,
+          snapshot,
+          "system_lifecycle",
+          await this.#resolveArtifactDeliveries(snapshot),
+        ),
       } as AionUiTeamEvent);
     } catch {
       // Projection failure cannot change or interrupt persisted orchestration.

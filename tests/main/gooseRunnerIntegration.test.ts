@@ -109,6 +109,8 @@ describe.skipIf(
         text: "Read README.md through the admitted Actestra tool and return its result.",
         timeoutMs: 30_000,
       });
+      expect(modelInvocations).toHaveLength(2);
+      expect(modelInvocations[0]!.sessionId).toBe(opened.session.sessionId);
       expect(prompt.stopReason).toBe("end_turn");
       expect(prompt.usage).toEqual({
         totalTokens: 51,
@@ -121,9 +123,23 @@ describe.skipIf(
         toolId: CODING_FILE_READ_TOOL_ID,
         input: { contractVersion: 1, relativePath: "README.md" },
       });
-      expect(modelInvocations).toHaveLength(2);
-      expect(modelInvocations[0]!.sessionId).toBe(opened.session.sessionId);
-      expect(JSON.stringify(modelInvocations[1]!.request)).toContain("integration tool result");
+      expect(modelInvocations[1]).toMatchObject({
+        purpose: "coding",
+        responseMode: "text-or-tool-call",
+        messages: expect.arrayContaining([
+          expect.objectContaining({
+            role: "assistant",
+            toolCalls: expect.arrayContaining([
+              expect.objectContaining({ callId: "call-actestra-integration-1" }),
+            ]),
+          }),
+          expect.objectContaining({
+            role: "tool",
+            callId: "call-actestra-integration-1",
+            content: expect.stringContaining("integration tool result"),
+          }),
+        ]),
+      });
       expect(prompt.updates).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ type: "tool_call" }),

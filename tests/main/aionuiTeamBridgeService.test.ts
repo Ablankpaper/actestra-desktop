@@ -148,6 +148,10 @@ describe("AionUiTeamBridgeService", () => {
         name: team.name,
         description: team.description,
         workspace: workspaceId,
+        model_selection: {
+          provider_id: "provider-aionui-team",
+          model_id: "model-aionui-team",
+        },
         agents: [
           {
             name: "General lead",
@@ -259,7 +263,9 @@ describe("AionUiTeamBridgeService", () => {
     for (const [code, status] of [
       ["team-not-found", 404],
       ["team-active", 409],
+      ["team-planner-invalid", 422],
       ["team-planner-unavailable", 503],
+      ["team-planner-timeout", 504],
     ] as const) {
       port.dispatch.mockRejectedValueOnce(
         new AionUiTeamBridgePortError(code, "/private/worker-root must stay private"),

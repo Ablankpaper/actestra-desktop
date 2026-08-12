@@ -122,7 +122,7 @@ describe("AionUI preserved coding-journey bridge contract", () => {
         kind: "publish",
         approvalId,
         toolCallId: "publish-coding-1",
-        title: "Publish Actestra coding patch",
+        title: "Save Actestra coding patch",
         operationKind: "execute",
         summary: "Register the approved isolated patch as an Actestra Artifact.",
         snapshot: {
@@ -136,6 +136,27 @@ describe("AionUI preserved coding-journey bridge contract", () => {
     expect(() => assertProjection(projection)).not.toThrow();
     expect(() => assertResult({ status: "ok", projection })).not.toThrow();
     expect(() => assertResult({ status: "ok", projections: [projection] })).not.toThrow();
+    expect(() =>
+      assertResult({
+        status: "ok",
+        artifactView: {
+          baseCommit: "c".repeat(40),
+          changedFileCount: 1,
+          patchPreview: "diff --git a/fixture.ts b/fixture.ts",
+        },
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertResult({
+        status: "ok",
+        artifactDownload: {
+          fileName: "fixture-change.patch",
+          content: "diff --git a/fixture.ts b/fixture.ts",
+        },
+      }),
+    ).not.toThrow();
+    expect(() => assertResult({ status: "ok", artifactApply: { approvalId } })).not.toThrow();
+    expect(() => assertResult({ status: "ok" })).not.toThrow();
     expect(() => assertResult({ status: "rejected", code: "approval-not-pending" })).not.toThrow();
   });
 

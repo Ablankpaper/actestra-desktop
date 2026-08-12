@@ -7,6 +7,7 @@ import {
 } from "../../apps/desktop/src/core";
 import {
   GENERAL_WORKER_PROTOCOL_VERSION,
+  MAX_GENERAL_WORKER_MODEL_OUTPUT_BYTES,
   MAX_GENERAL_WORKER_MESSAGE_BYTES,
   MAX_GENERAL_WORKER_PRIVATE_TOOL_INPUT_BYTES,
   MAX_GENERAL_WORKER_PROMPT_BYTES,
@@ -64,6 +65,73 @@ function privateWriteEvent(input: ReturnType<typeof privateWriteInputWithSeriali
 }
 
 describe("General Worker process protocol", () => {
+  it("versions the bounded Main-owned model request and result channel as protocol v2", () => {
+    expect(GENERAL_WORKER_PROTOCOL_VERSION).toBe(2);
+    expect(createGeneralWorkerReadyMessage().capabilities).toContain("model-requests");
+    expect(() =>
+      assertGeneralWorkerMessage({
+        protocolVersion: 2,
+        type: "event",
+        attemptToken: "attempt-model",
+        sequence: 2,
+        event: {
+          type: "model-requested",
+          callId: "general-worker-model-call",
+          prompt: "Create a bounded Markdown draft.",
+        },
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertGeneralWorkerRequest({
+        protocolVersion: 2,
+        type: "request",
+        requestId: "worker-request-model",
+        operation: "resolve-model",
+        payload: {
+          attemptToken: "attempt-model",
+          callId: "general-worker-model-call",
+          result: {
+            status: "succeeded",
+            content: "# Bounded draft\n",
+          },
+        },
+      }),
+    ).not.toThrow();
+  });
+
+  it("rejects oversized model results and undeclared provider fields", () => {
+    const request = {
+      protocolVersion: 2,
+      type: "request",
+      requestId: "worker-request-model",
+      operation: "resolve-model",
+      payload: {
+        attemptToken: "attempt-model",
+        callId: "general-worker-model-call",
+        result: {
+          status: "succeeded",
+          content: "x".repeat(MAX_GENERAL_WORKER_MODEL_OUTPUT_BYTES + 1),
+        },
+      },
+    } as const;
+
+    expect(() => assertGeneralWorkerRequest(request)).toThrow(/model result|bounded/u);
+    expect(() =>
+      assertGeneralWorkerRequest({
+        ...request,
+        payload: {
+          ...request.payload,
+          result: {
+            status: "failed",
+            errorCode: "model-unavailable",
+            message: "The admitted model is unavailable.",
+            apiKey: "must-not-cross",
+          },
+        },
+      }),
+    ).toThrow(/apiKey|unsupported/u);
+  });
+
   it("accepts the exact version, identity, and closed capability manifest", () => {
     expect(() => assertGeneralWorkerMessage(createGeneralWorkerReadyMessage())).not.toThrow();
     expect(() =>
@@ -71,7 +139,13 @@ describe("General Worker process protocol", () => {
         ...createGeneralWorkerReadyMessage(),
         protocolVersion: 2,
       }),
-    ).toThrow(/protocol version 1/);
+    ).not.toThrow();
+    expect(() =>
+      assertGeneralWorkerMessage({
+        ...createGeneralWorkerReadyMessage(),
+        protocolVersion: 1,
+      }),
+    ).toThrow(/protocol version 2/);
     expect(() =>
       assertGeneralWorkerMessage({
         ...createGeneralWorkerReadyMessage(),

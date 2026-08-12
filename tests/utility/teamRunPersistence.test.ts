@@ -6,6 +6,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  artifactId,
   instant,
   normalizeTeamDefinition,
   normalizeTeamExperienceBinding,
@@ -470,6 +471,80 @@ describe("schema 15 Team run persistence", () => {
     expect(Object.isFrozen(restored)).toBe(true);
     expect(restored?.nodes.every(Object.isFrozen)).toBe(true);
     await reopened.close();
+  });
+
+  it("persists a requested feedback revision through the canonical Core transition", async () => {
+    const userDataPath = createTestDirectory();
+    const { plan, team, accepted } = await createTeamRunFixture("feedback-revision");
+    const persistence = openSqliteCorePersistence(userDataPath);
+    const teamPersistence = persistence as unknown as TeamRunPersistence;
+    await persistence.persistAdmittedTeamPlan(plan);
+    await teamPersistence.persistTeamDefinition(team);
+
+    let snapshot = accepted;
+    await teamPersistence.persistTeamRunSnapshot(snapshot);
+    snapshot = transitionTeamRun(snapshot, {
+      type: "start-run",
+      occurredAt: instant("2026-08-04T01:00:02.000Z"),
+    });
+    await teamPersistence.persistTeamRunSnapshot(snapshot);
+    for (const [capability, occurredAt] of [
+      ["general", "2026-08-04T01:00:03.000Z"],
+      ["coding", "2026-08-04T01:00:05.000Z"],
+    ] as const) {
+      const node = snapshot.nodes.find(
+        (candidate) => candidate.kind === "worker" && candidate.capability === capability,
+      );
+      if (node?.kind !== "worker") throw new Error(`Missing ${capability} Worker node`);
+      const running = transitionTeamRun(snapshot, {
+        type: "start-node",
+        nodeId: node.nodeId,
+        workerTaskId: taskId(`task-team-feedback-${capability}`),
+        occurredAt: instant(occurredAt),
+      });
+      await teamPersistence.persistTeamRunSnapshot(running);
+      const attempt = running.nodes.find(({ nodeId }) => nodeId === node.nodeId)!.attempts.at(-1)!;
+      snapshot = transitionTeamRun(running, {
+        type: "complete-node",
+        nodeId: node.nodeId,
+        attemptId: attempt.attemptId,
+        artifacts: [
+          {
+            artifactId: artifactId(`artifact-team-feedback-${capability}`),
+            taskId: attempt.workerTaskId,
+            kind: node.expectedArtifactKind,
+          },
+        ],
+        summary: `${capability} completed its bounded result.`,
+        occurredAt: instant(
+          capability === "general" ? "2026-08-04T01:00:04.000Z" : "2026-08-04T01:00:06.000Z",
+        ),
+      });
+      await teamPersistence.persistTeamRunSnapshot(snapshot);
+    }
+
+    const feedback = snapshot.nodes.find(({ kind }) => kind === "human-feedback")!;
+    const denied = transitionTeamRun(snapshot, {
+      type: "resolve-human-feedback",
+      nodeId: feedback.nodeId,
+      decision: "denied",
+      note: "Request one bounded revision.",
+      occurredAt: instant("2026-08-04T01:00:07.000Z"),
+    });
+    await teamPersistence.persistTeamRunSnapshot(denied);
+    const revised = transitionTeamRun(denied, {
+      type: "request-feedback-revision",
+      nodeId: feedback.nodeId,
+      reason: "Continue the review after the requested revision.",
+      occurredAt: instant("2026-08-04T01:00:08.000Z"),
+    });
+
+    await expect(teamPersistence.persistTeamRunSnapshot(revised)).resolves.toEqual({
+      status: "stored",
+      snapshot: revised,
+    });
+    await expect(teamPersistence.getTeamRunSnapshot(accepted.runId)).resolves.toEqual(revised);
+    await persistence.close();
   });
 
   it("binds every initial run and later revision to canonical Core authority", async () => {

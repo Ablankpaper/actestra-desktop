@@ -8,7 +8,10 @@ import {
   type AionUiGeneralWorkProjection,
 } from "../../compatibility/aionui";
 import {
+  TEAM_PLAN_MAX_GOAL_BYTES,
+  GENERAL_V1_CONTRACT_VERSION,
   assertDomainGraph,
+  eventStreamId,
   taskId,
   teamRunId,
   type ActestraPersistencePort,
@@ -25,7 +28,11 @@ import type {
   AionUiCodingTeamApprovalObserver,
   AionUiCodingTeamApprovalOutcomeEvidence,
 } from "../compatibility/aionuiCodingJourneyService";
-import { deriveAionUiGeneralWorkJourneyTaskId } from "../compatibility/aionuiGeneralWorkJourneyService";
+import {
+  deriveAionUiGeneralWorkJourneyStreamId,
+  deriveAionUiGeneralWorkJourneyTaskId,
+} from "../compatibility/aionuiGeneralWorkJourneyService";
+import { deriveGooseCodingEvidenceIdentity } from "../workers/gooseCodingEvidenceCoordinator";
 import type {
   TeamWorkerExecutionInput,
   TeamWorkerExecutionObserver,
@@ -55,6 +62,11 @@ export interface TeamGeneralWorkJourneyPort {
 
 export interface TeamCodingJourneyPort {
   submit(intent: AionUiCodingJourneySubmitRequest): Promise<AionUiCodingJourneyProjection>;
+  submitFromTrustedContext(
+    intent: AionUiCodingJourneySubmitRequest,
+    nativeContext: AionUiGeneralWorkNativeContext,
+    destinationWorkspaceId?: WorkspaceId,
+  ): Promise<AionUiCodingJourneyProjection>;
   waitForIdle(taskIdValue: TaskId): Promise<void>;
   list(
     nativeConversationId: string,
@@ -178,6 +190,33 @@ export function deriveTeamJourneyBinding(
   });
 }
 
+/**
+ * Resolves the durable event stream that holds a Team node attempt's own
+ * `agent.message` replies, so callers can surface the Worker's real answer
+ * without projecting the operational Worker summary.
+ */
+export function deriveTeamJourneyReplyStreamId(
+  input: Pick<TeamWorkerTaskIdentityInput, "runId" | "nodeId" | "attemptNumber" | "capability">,
+): ReturnType<typeof eventStreamId> {
+  const binding = deriveTeamJourneyBinding(input);
+  if (input.capability === "general") {
+    return deriveAionUiGeneralWorkJourneyStreamId(
+      binding.nativeConversationId,
+      binding.submissionId,
+    );
+  }
+  const identities = deriveAionUiCodingJourneyIdentities(
+    binding.nativeConversationId,
+    binding.submissionId,
+  );
+  return deriveGooseCodingEvidenceIdentity({
+    workspaceId: identities.workspaceId,
+    taskId: identities.taskId,
+    sessionId: identities.sessionId,
+    workerId: identities.workerId,
+  }).streamId;
+}
+
 function generalIntent(input: TeamWorkerExecutionInput, binding: TeamJourneyBinding) {
   if (input.expectedArtifactKind !== "document") {
     throw new TeamJourneyWorkerRouterError(
@@ -186,12 +225,15 @@ function generalIntent(input: TeamWorkerExecutionInput, binding: TeamJourneyBind
     );
   }
   const title = boundedText(input.title, 256);
-  const purpose = boundedText(input.completionCriteria, 2_048);
+  const goal = boundedText(input.goal, 1_900);
+  const purpose = boundedText(input.completionCriteria, 1_800);
   const prompt = [
     `Title: ${title}`,
     "Audience: Actestra Team",
-    `Purpose: ${purpose}`,
-    `Point: ${purpose}`,
+    `Purpose: Write a concise reviewable summary. Completion requirement: ${purpose}`,
+    `Point: Inline source text (provided and complete): ${goal}`,
+    "Point: Use only this inline text. It is not a file reference and must not be fetched.",
+    "Point: Do not ask for a file or additional source material.",
   ].join("\n");
   return Object.freeze({
     contractVersion: AIONUI_GENERAL_WORK_CONTRACT_VERSION,
@@ -199,6 +241,15 @@ function generalIntent(input: TeamWorkerExecutionInput, binding: TeamJourneyBind
     submissionId: binding.submissionId,
     prompt,
     journeyKind: "writing-artifact" as const,
+    requirements:
+      input.requirements ??
+      Object.freeze({
+        contractVersion: GENERAL_V1_CONTRACT_VERSION,
+        capabilities: Object.freeze(["text-generation"] as const),
+        contextReferences: Object.freeze(["inline-text"] as const),
+        inputRequirements: Object.freeze(["bounded-text"] as const),
+        completionCriteria: "json-envelope" as const,
+      }),
   });
 }
 
@@ -209,14 +260,18 @@ function codingIntent(input: TeamWorkerExecutionInput, binding: TeamJourneyBindi
       "Coding Team work currently requires a file Artifact",
     );
   }
+  const goal = boundedText(input.goal, TEAM_PLAN_MAX_GOAL_BYTES);
   return Object.freeze({
     contractVersion: AIONUI_CODING_JOURNEY_CONTRACT_VERSION,
     nativeConversationId: binding.nativeConversationId,
     submissionId: binding.submissionId,
-    prompt: `${boundedText(input.title, 512)}\n\nCompletion: ${boundedText(
-      input.completionCriteria,
-      8_192,
-    )}`,
+    prompt: [
+      `Goal: ${goal}`,
+      `Node: ${boundedText(input.title, 512)}`,
+      `Completion: ${boundedText(input.completionCriteria, 8_192)}`,
+      "",
+      "IMPORTANT: You are working in an isolated Git worktree. Your file modifications will be captured as a patch Artifact for review. The original authorized workspace will NOT be automatically modified. Do not claim that files have been written to the original workspace.",
+    ].join("\n\n"),
   });
 }
 
@@ -224,11 +279,15 @@ function artifactReferences(
   graphArtifacts: readonly Artifact[],
   workerTaskId: TaskId,
   expectedKind: Artifact["kind"],
+  admitReadOnlyCompletion: boolean,
 ): readonly Readonly<{ artifactId: Artifact["id"]; taskId: TaskId; kind: Artifact["kind"] }>[] {
   const artifacts = graphArtifacts.filter(
     (artifact) => artifact.taskId === workerTaskId && artifact.state === "available",
   );
-  if (artifacts.length === 0 || !artifacts.some(({ kind }) => kind === expectedKind)) {
+  if (
+    (artifacts.length === 0 && !admitReadOnlyCompletion) ||
+    (artifacts.length > 0 && !artifacts.some(({ kind }) => kind === expectedKind))
+  ) {
     throw new TeamJourneyWorkerRouterError(
       "artifact-mismatch",
       "Team journey has no persisted Artifact of the admitted kind",
@@ -239,6 +298,24 @@ function artifactReferences(
       Object.freeze({ artifactId: id, taskId: ownerTaskId, kind }),
     ),
   );
+}
+
+/** Mirrors the incident-code shape the orchestrator accepts, so a preserved code is never dropped. */
+const JOURNEY_INCIDENT_CODE_PATTERN = /^[a-z][a-z0-9-]{0,62}$/u;
+
+/**
+ * Carries a journey's own reason for not completing as a cause the orchestrator's incident walk reads.
+ *
+ * A journey that stopped because General was never given the material it needs is a different outcome
+ * from one that broke, and the Team surface can only say which happened if the code survives this
+ * layer. The router's own codes are a closed union, so the reason travels as a cause instead: the
+ * incident walk descends the chain and keeps the deepest code it finds, which is this one.
+ */
+function journeyIncidentCause(projection: unknown): ErrorOptions | undefined {
+  if (typeof projection !== "object" || projection === null) return undefined;
+  const code: unknown = (projection as { readonly incidentCode?: unknown }).incidentCode;
+  if (typeof code !== "string" || !JOURNEY_INCIDENT_CODE_PATTERN.test(code)) return undefined;
+  return Object.freeze({ cause: Object.freeze({ code }) });
 }
 
 export class TeamJourneyWorkerRouter implements TeamWorkerExecutionPort {
@@ -305,13 +382,18 @@ export class TeamJourneyWorkerRouter implements TeamWorkerExecutionPort {
           ),
         );
       }
+      const nativeContext = await this.options.workspaceContext.resolve(input.workspaceId);
       const initial =
         input.capability === "general"
           ? await this.options.general.submitFromTrustedContext(
               generalIntent(input, binding),
-              await this.options.workspaceContext.resolve(input.workspaceId),
+              nativeContext,
             )
-          : await this.options.coding.submit(codingIntent(input, binding));
+          : await this.options.coding.submitFromTrustedContext(
+              codingIntent(input, binding),
+              nativeContext,
+              input.workspaceId,
+            );
       if (initial.taskId !== workerTaskId) {
         throw new TeamJourneyWorkerRouterError(
           "identity-mismatch",
@@ -338,6 +420,7 @@ export class TeamJourneyWorkerRouter implements TeamWorkerExecutionPort {
         throw new TeamJourneyWorkerRouterError(
           "journey-failed",
           "Team journey did not reach one persisted completed Task",
+          journeyIncidentCause(projection),
         );
       }
       const graph = await this.options.persistence.loadDomainGraph();
@@ -353,6 +436,7 @@ export class TeamJourneyWorkerRouter implements TeamWorkerExecutionPort {
         graph.artifacts,
         workerTaskId,
         input.expectedArtifactKind,
+        input.capability === "coding",
       );
       const projectedArtifactIds = new Set(
         projection.artifacts.map(({ artifactId }) => artifactId),

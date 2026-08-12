@@ -24,6 +24,7 @@ import {
   compareInstants,
   correlationId,
   eventStreamId,
+  isGeneralAwaitingInputErrorCode,
   assertOfficeDocumentModel,
   parseOfficeDocumentBrief,
   parseWritingArtifactBrief,
@@ -40,13 +41,17 @@ import {
   type Artifact,
   type DomainGraph,
   type GeneralWorkCheckpoint,
+  type GeneralCapabilityRequest,
   type Instant,
   type Session,
   type Task,
   type ToolRequestId,
 } from "../../core";
 import type { ScopedNativeToolPlatform } from "../privileged/scopedNativeToolPlatform";
-import { AgentAdapterSupervisor } from "../workers/agentAdapterSupervisor";
+import {
+  AgentAdapterSupervisor,
+  isTerminalAgentAttemptState,
+} from "../workers/agentAdapterSupervisor";
 import { GeneralWorkCoordinator } from "../workers/generalWorkCoordinator";
 import {
   GENERAL_WORKER_ADAPTER_KIND,
@@ -102,6 +107,7 @@ export interface AionUiGeneralWorkJourneyServiceConfig {
     readonly journeyKind: AionUiGeneralWorkJourneyKind;
     readonly readRequestId: ToolRequestId;
     readonly requestId: ToolRequestId;
+    readonly requirements?: GeneralCapabilityRequest;
   }) => Promise<GeneralWorkerProcessAdapter>;
 }
 
@@ -149,6 +155,20 @@ export function deriveAionUiGeneralWorkJourneyTaskId(
   });
   return identitiesFor(hashAionUiGeneralWorkConversation(nativeConversationId), submissionId)
     .taskId;
+}
+
+export function deriveAionUiGeneralWorkJourneyStreamId(
+  nativeConversationId: string,
+  submissionId: string,
+): ReturnType<typeof eventStreamId> {
+  assertAionUiGeneralWorkIntent({
+    contractVersion: AIONUI_GENERAL_WORK_CONTRACT_VERSION,
+    nativeConversationId,
+    submissionId,
+    prompt: "Derive one bounded Actestra Team journey identity.",
+  });
+  return identitiesFor(hashAionUiGeneralWorkConversation(nativeConversationId), submissionId)
+    .streamId;
 }
 
 function identitiesForDigest(digest: string): JourneyIdentities {
@@ -320,6 +340,7 @@ function registrationFor(
         conversationHash,
         taskId: identities.taskId,
         journeyKind: "writing-artifact",
+        ...(intent.requirements === undefined ? {} : { requirements: intent.requirements }),
         createdAt,
       }),
     });
@@ -332,6 +353,7 @@ function registrationFor(
         conversationHash,
         taskId: identities.taskId,
         journeyKind: "office-document-artifact",
+        ...(intent.requirements === undefined ? {} : { requirements: intent.requirements }),
         createdAt,
       }),
     });
@@ -385,6 +407,7 @@ function registrationFor(
         conversationHash,
         taskId: identities.taskId,
         journeyKind: "workspace-file-artifact",
+        ...(intent.requirements === undefined ? {} : { requirements: intent.requirements }),
         createdAt,
       }),
       readInputReference: initialInputReference,
@@ -398,6 +421,7 @@ function registrationFor(
         conversationHash,
         taskId: identities.taskId,
         journeyKind: "local-research-artifact",
+        ...(intent.requirements === undefined ? {} : { requirements: intent.requirements }),
         createdAt,
       }),
       readInputReference: initialInputReference,
@@ -410,6 +434,7 @@ function registrationFor(
       conversationHash,
       taskId: identities.taskId,
       journeyKind: "prompt-artifact",
+      ...(intent.requirements === undefined ? {} : { requirements: intent.requirements }),
       createdAt,
     }),
     toolInputReference: initialInputReference,
@@ -576,10 +601,9 @@ export class AionUiGeneralWorkJourneyService {
     }
     const active = this.activeJourneys.get(stableTaskId);
     if (active === undefined) {
-      throw new AionUiGeneralWorkJourneyServiceError(
-        "task-conflict",
-        "AionUI general-work task has no active supervised Worker",
-      );
+      // A task blocked on missing input has no live Worker left to signal, so abandoning it is a
+      // durable Task decision. Refusing here would offer a cancel the surface cannot honour.
+      return this.cancelInertTask(task, graph);
     }
     await active.supervisor.cancel(active.sessionId, reason);
     await Promise.allSettled([active.completion]);
@@ -747,7 +771,14 @@ export class AionUiGeneralWorkJourneyService {
         const identities = identitiesForTask(task);
         assertPreparedJourneyGraph(task, graph, identities);
         const prompt = await this.resolvePrompt(identities);
-        await this.startPreparedJourney(task, graph, identities, prompt, link.journeyKind);
+        await this.startPreparedJourney(
+          task,
+          graph,
+          identities,
+          prompt,
+          link.journeyKind,
+          link.requirements,
+        );
         started += 1;
       } catch {
         failed += 1;
@@ -833,6 +864,32 @@ export class AionUiGeneralWorkJourneyService {
     return this.project(nextTask, nextGraph);
   }
 
+  /**
+   * Abandons a task whose attempt already ended. The durable attempt evidence is left untouched: it
+   * records what the Worker actually reported, and cancellation is the user's decision about the
+   * task, not a revision of that history.
+   */
+  private async cancelInertTask(
+    task: Task,
+    graph: DomainGraph,
+  ): Promise<AionUiGeneralWorkProjection> {
+    const cancelledAt = this.config.clock.now();
+    const nextTask = Object.freeze({
+      ...task,
+      state: "cancelled" as const,
+      activeSessionId: undefined,
+      updatedAt: cancelledAt,
+    });
+    const nextGraph = Object.freeze({
+      ...graph,
+      tasks: Object.freeze(
+        graph.tasks.map((candidate) => (candidate.id === task.id ? nextTask : candidate)),
+      ),
+    }) satisfies DomainGraph;
+    await this.config.persistence.replaceDomainGraph(nextGraph);
+    return this.project(nextTask, nextGraph);
+  }
+
   async waitForIdle(stableTaskId?: ReturnType<typeof taskId>): Promise<void> {
     if (stableTaskId !== undefined) {
       while (this.activeJourneys.has(stableTaskId)) {
@@ -910,6 +967,12 @@ export class AionUiGeneralWorkJourneyService {
         "AionUI submission identity conflicts with its durable journey kind",
       );
     }
+    if (link !== undefined && !isDeepStrictEqual(link.requirements, intent.requirements)) {
+      throw new AionUiGeneralWorkJourneyServiceError(
+        "task-conflict",
+        "AionUI submission identity conflicts with its durable admission requirements",
+      );
+    }
 
     assertPreparedJourneyGraph(task, graph, identities);
 
@@ -929,7 +992,14 @@ export class AionUiGeneralWorkJourneyService {
         "AionUI submission identity conflicts with its durable prompt",
       );
     }
-    return this.startPreparedJourney(task, graph, identities, prompt, journeyKind);
+    return this.startPreparedJourney(
+      task,
+      graph,
+      identities,
+      prompt,
+      journeyKind,
+      link?.requirements ?? intent.requirements,
+    );
   }
 
   private async resolvePrompt(identities: JourneyIdentities): Promise<string> {
@@ -962,6 +1032,7 @@ export class AionUiGeneralWorkJourneyService {
     identities: JourneyIdentities,
     prompt: string,
     journeyKind: AionUiGeneralWorkJourneyKind,
+    requirements?: GeneralCapabilityRequest,
   ): Promise<AionUiGeneralWorkProjection> {
     if (this.activeJourneys.has(task.id)) {
       throw new AionUiGeneralWorkJourneyServiceError(
@@ -973,6 +1044,7 @@ export class AionUiGeneralWorkJourneyService {
       journeyKind,
       readRequestId: identities.readRequestId,
       requestId: identities.requestId,
+      ...(requirements === undefined ? {} : { requirements }),
     });
     const supervisor = new AgentAdapterSupervisor(adapter, this.config.clock, {
       expectedAdapterKind: GENERAL_WORKER_ADAPTER_KIND,
@@ -1001,7 +1073,15 @@ export class AionUiGeneralWorkJourneyService {
         startedAt: this.config.clock.now(),
         initialPrompt: prompt,
       });
+      // Admission can refuse a request before any model turn, which makes the attempt terminal during
+      // `start`. Finalizing preserves that refusal's own error code; checkpointing it as active would
+      // report `invalid-state` instead and lose the reason the user needs to act on.
+      if (isTerminalAgentAttemptState(supervisor.snapshot(identities.sessionId).state)) {
+        const refused = await coordinator.finalizeAttempt(identities.sessionId);
+        return this.buildProjection(task, graph, refused.checkpoint);
+      }
       const checkpoint = await coordinator.checkpointAttempt(identities.sessionId);
+      await adapter.releaseModel(identities.sessionId);
       const projection = this.buildProjection(task, graph, checkpoint);
       let active!: ActiveJourney;
       const completion = Promise.resolve()
@@ -1214,6 +1294,14 @@ export class AionUiGeneralWorkJourneyService {
               });
               return;
             }
+            // A model-authored journey can already be terminal here: the draft contract may have
+            // refused the reply, spending its one bounded repair first. Sending the prompt into a
+            // finished attempt would raise `invalid-state` and bury the Worker's own reason, so the
+            // outcome is finalized exactly as reported instead.
+            if (isTerminalAgentAttemptState(supervisor.snapshot(identities.sessionId).state)) {
+              await coordinator.finalizeAttempt(identities.sessionId);
+              return;
+            }
             await supervisor.send(identities.sessionId, {
               messageId: identities.messageId,
               content: prompt,
@@ -1292,8 +1380,13 @@ export class AionUiGeneralWorkJourneyService {
         : `Actestra created ${String(artifacts.length)} task artifact${
             artifacts.length === 1 ? "" : "s"
           }.`);
-    const status = checkpoint?.attempt.taskState ?? task.state;
     const incidentCode = checkpoint?.attempt.incident?.code ?? latestFailureCode(checkpoint);
+    // A refusal for material General was never given leaves the task waiting for the user, not
+    // broken. The durable Task record already says so, so the projection follows it rather than the
+    // attempt's own terminal outcome, and the user gets a state they can act on.
+    const status = isGeneralAwaitingInputErrorCode(incidentCode)
+      ? task.state
+      : (checkpoint?.attempt.taskState ?? task.state);
     const projection = Object.freeze({
       contractVersion: AIONUI_GENERAL_WORK_CONTRACT_VERSION,
       taskId: task.id,
