@@ -21,6 +21,8 @@ import {
   createGeneralWorkEventStreamState,
   eventId,
   instant,
+  isGeneralAwaitingInputErrorCode,
+  isTerminalTaskState,
   toolId,
   type ActestraPersistencePort,
   type AgentClock,
@@ -170,7 +172,12 @@ function maximumInstant(...values: readonly Instant[]): Instant {
   return values.reduce((latest, value) => (compareInstants(value, latest) > 0 ? value : latest));
 }
 
-function taskStateForAttempt(attempt: GeneralWorkAttemptRecord): TaskState {
+/**
+ * `awaitingInput` marks the one terminal failure that is not a failure of the task: General was asked
+ * for material a text-only turn cannot obtain. The attempt is over either way, but the task is
+ * waiting for the user rather than broken, so it stays blocked and retryable.
+ */
+function taskStateForAttempt(attempt: GeneralWorkAttemptRecord, awaitingInput = false): TaskState {
   switch (attempt.state as GeneralWorkTerminalAttemptState) {
     case "completed":
       return "completed";
@@ -179,10 +186,17 @@ function taskStateForAttempt(attempt: GeneralWorkAttemptRecord): TaskState {
     case "crashed":
       return attempt.taskState === "failed" ? "failed" : "blocked";
     case "failed":
+      return awaitingInput ? "blocked" : "failed";
     case "timed-out":
     case "protocol-failed":
       return "failed";
   }
+}
+
+/** The code carried by the terminal evidence, which is where a Worker-reported refusal records it. */
+function terminalFailureCode(checkpoint: GeneralWorkCheckpoint): string | undefined {
+  const failure = checkpoint.events.filter((event) => event.type === "task.failed").at(-1);
+  return failure?.type === "task.failed" ? failure.payload.errorCode : undefined;
 }
 
 function sessionStateForAttempt(state: GeneralWorkTerminalAttemptState): SessionState {
@@ -205,8 +219,13 @@ function workerStateForAttempt(state: GeneralWorkTerminalAttemptState): WorkerSt
     : "stopped";
 }
 
-function updateTask(task: Task, attempt: GeneralWorkAttemptRecord, updatedAt: Instant): Task {
-  const state = taskStateForAttempt(attempt);
+function updateTask(
+  task: Task,
+  attempt: GeneralWorkAttemptRecord,
+  updatedAt: Instant,
+  awaitingInput = false,
+): Task {
+  const state = taskStateForAttempt(attempt, awaitingInput);
   return Object.freeze({
     ...task,
     state,
@@ -425,7 +444,9 @@ export class GeneralWorkCoordinator {
   async finalizeAttempt(session: SessionId): Promise<GeneralWorkFinalization> {
     const supervisor = this.requireSupervisor();
     const snapshot = await supervisor.awaitCleanup(session);
-    const existing = await this.requireCheckpoint(session);
+    const existing =
+      (await this.config.persistence.getGeneralWorkCheckpoint(session)) ??
+      (await this.persistPreTerminalPrefix(snapshot, supervisor.coreEvents(session)));
     if (existing.phase === "finalized") {
       await supervisor.dispose(session);
       return Object.freeze({
@@ -441,6 +462,39 @@ export class GeneralWorkCoordinator {
     const terminal = this.terminalAttempt(snapshot, existing, supervisor.coreEvents(session));
     const pending = await this.persistTerminal(existing, terminal.attempt, terminal.events);
     return this.settle(pending, supervisor);
+  }
+
+  /**
+   * An attempt can reach a terminal state inside `start` — capability admission refuses a request
+   * before any model turn. No active checkpoint exists yet, and the durable contract requires a
+   * checkpoint to be born active with a live attempt, so recovery replays the prefix that preceded
+   * the terminal Task event and finalizes from there. Without it the caller would checkpoint a
+   * terminal session and report `invalid-state`, losing the refusal's own reason.
+   */
+  private async persistPreTerminalPrefix(
+    snapshot: AgentAttemptSnapshot,
+    events: readonly CoreEvent[],
+  ): Promise<GeneralWorkCheckpoint> {
+    const terminal = events.at(-1);
+    if (terminal === undefined || !isTerminalTaskState(snapshot.taskState ?? "ready")) {
+      throw new GeneralWorkRecoveryError(
+        "event-mismatch",
+        `Session ${snapshot.sessionId} cannot be finalized before its terminal Task event`,
+      );
+    }
+    const prefix = events.slice(0, -1);
+    const prefixState = createGeneralWorkEventStreamState(undefined, prefix);
+    return this.persistActive(
+      Object.freeze({
+        ...immutableAttempt(snapshot),
+        state: "running",
+        ...(prefixState.taskState === undefined ? {} : { taskState: prefixState.taskState }),
+        lastSignalAt: prefix.at(-1)?.occurredAt ?? snapshot.startedAt,
+        lastCoreEventSequence: prefixState.previous?.sequence ?? 0,
+        disposed: false,
+      }),
+      prefix,
+    );
   }
 
   private terminalAttempt(
@@ -1051,10 +1105,13 @@ export class GeneralWorkCoordinator {
       );
     }
     const updatedAt = checkpoint.updatedAt;
+    const awaitingInput = isGeneralAwaitingInputErrorCode(terminalFailureCode(checkpoint));
     const next: DomainGraph = {
       ...graph,
       tasks: graph.tasks.map((candidate) =>
-        candidate.id === task.id ? updateTask(candidate, checkpoint.attempt, updatedAt) : candidate,
+        candidate.id === task.id
+          ? updateTask(candidate, checkpoint.attempt, updatedAt, awaitingInput)
+          : candidate,
       ),
       sessions: graph.sessions.map((candidate) =>
         candidate.id === session.id

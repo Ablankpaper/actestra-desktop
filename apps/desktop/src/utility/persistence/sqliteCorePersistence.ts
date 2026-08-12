@@ -72,13 +72,18 @@ import {
   createCoreEventStreamState,
   eventStreamId,
   instant,
+  isArtifactDeliveryTransitionLegal,
+  normalizeArtifactDeliveryRecord,
   normalizeAdmittedTeamPlan,
   normalizeTeamDefinition,
+  normalizeTeamExperienceBinding,
+  normalizeStandardTeamMessageDelivery,
   normalizeTeamRunSnapshot,
   replayCoreEvents,
   sessionId,
   taskId,
   teamId,
+  teamExperienceId,
   teamPlanId,
   teamRunId,
   toolInputReference,
@@ -94,6 +99,8 @@ import {
   type AgentAttemptEvidence,
   type AppendPrivilegedAuditInput,
   type AuditRecord,
+  type ArtifactDeliveryRecord,
+  type ArtifactId,
   type ArtifactKind,
   type ArtifactState,
   type ContentReferenceKind,
@@ -105,10 +112,13 @@ import {
   type DomainGraph,
   type EventStreamId,
   type GeneralWorkCheckpoint,
+  type PersistArtifactDeliveryResult,
   type PersistGeneralWorkCheckpointResult,
   type PersistContentReferenceResult,
   type PersistAdmittedTeamPlanResult,
   type PersistTeamDefinitionResult,
+  type PersistTeamExperienceBindingResult,
+  type PersistStandardTeamMessageDeliveryResult,
   type PersistTeamRunSnapshotResult,
   type RemoveTeamDefinitionResult,
   type ReplaceTeamDefinitionResult,
@@ -120,8 +130,11 @@ import {
   type ResolvedContentReference,
   type SessionState,
   type StoreContentReferenceInput,
+  type TaskId,
   type TaskState,
   type TeamDefinition,
+  type TeamExperienceBinding,
+  type StandardTeamMessageDelivery,
   type TeamRunSnapshot,
   type WorkerState,
   type WorkspaceGrant,
@@ -175,6 +188,21 @@ const TEAM_PLAN_COLUMNS = `
 const TEAM_DEFINITION_COLUMNS = `
   team_id, record_sha256, updated_at, removed_at, team_json
 `;
+const TEAM_EXPERIENCE_BINDING_COLUMNS = `
+  team_id, contract_version, experience, bound_at, record_sha256, binding_json
+`;
+const STANDARD_TEAM_MESSAGE_DELIVERY_COLUMNS = `
+  delivery_id, contract_version, client_request_nonce, request_sha256, team_id,
+  target_slot_id, state, provider_enqueue_status, provider_message_id,
+  provider_run_id, created_at, updated_at, delivery_json
+`;
+const ARTIFACT_DELIVERY_COLUMNS = `
+  artifact_id, contract_version, workspace_id, task_id, session_id, state,
+  patch_owner_grant_id, patch_owner_worker_id, patch_request_id,
+  destination_workspace_id, destination_grant_id, patch_reference, patch_sha256,
+  patch_byte_length, base_commit, changed_file_count, approval_id,
+  verified_head, failure_code, failure_message, created_at, updated_at
+`;
 const TEAM_RUN_COLUMNS = `
   run_id, team_id, plan_id, revision, status, updated_at,
   record_sha256, snapshot_json
@@ -183,7 +211,7 @@ const TEAM_RUN_REVISION_COLUMNS = `
   run_id, revision, occurred_at, record_sha256, snapshot_json
 `;
 const AIONUI_GENERAL_WORK_JOURNEY_COLUMNS = `
-  task_id, contract_version, conversation_hash, journey_kind, created_at
+  task_id, contract_version, conversation_hash, journey_kind, requirements_json, created_at
 `;
 const AIONUI_SCHEDULE_JOB_COLUMNS = `
   job_id, contract_version, conversation_hash, native_conversation_id,
@@ -548,6 +576,118 @@ function parseStoredTeamDefinition(row: SqliteRow): TeamDefinition {
   return team;
 }
 
+function parseStoredTeamExperienceBinding(row: SqliteRow): TeamExperienceBinding {
+  const encoded = requiredString(row, "binding_json");
+  const digest = createHash("sha256").update(encoded).digest("hex");
+  if (requiredString(row, "record_sha256") !== digest) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted Team experience binding bytes failed integrity",
+    );
+  }
+  let binding: TeamExperienceBinding;
+  try {
+    binding = normalizeTeamExperienceBinding(JSON.parse(encoded));
+  } catch (error) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted Team experience binding violates its contract",
+      { cause: error },
+    );
+  }
+  if (
+    requiredString(row, "team_id") !== binding.teamId ||
+    requiredNumber(row, "contract_version") !== binding.contractVersion ||
+    requiredString(row, "experience") !== binding.experience ||
+    requiredString(row, "bound_at") !== binding.boundAt
+  ) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted Team experience projection does not match its canonical record",
+    );
+  }
+  return binding;
+}
+
+function parseStoredStandardTeamMessageDelivery(row: SqliteRow): StandardTeamMessageDelivery {
+  const encoded = requiredString(row, "delivery_json");
+  let delivery: StandardTeamMessageDelivery;
+  try {
+    delivery = normalizeStandardTeamMessageDelivery(JSON.parse(encoded));
+  } catch (error) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted Standard Team message delivery violates its contract",
+      { cause: error },
+    );
+  }
+  const nullable = (field: string): string | null => {
+    const value = row[field];
+    if (value === null) return null;
+    return requiredString(row, field);
+  };
+  if (
+    requiredString(row, "delivery_id") !== delivery.deliveryId ||
+    requiredNumber(row, "contract_version") !== delivery.contractVersion ||
+    requiredString(row, "client_request_nonce") !== delivery.clientRequestNonce ||
+    requiredString(row, "request_sha256") !== delivery.requestSha256 ||
+    requiredString(row, "team_id") !== delivery.teamId ||
+    nullable("target_slot_id") !== delivery.targetSlotId ||
+    requiredString(row, "state") !== delivery.state ||
+    nullable("provider_enqueue_status") !== delivery.providerEnqueueStatus ||
+    nullable("provider_message_id") !== delivery.providerMessageId ||
+    nullable("provider_run_id") !== delivery.providerRunId ||
+    requiredString(row, "created_at") !== delivery.createdAt ||
+    requiredString(row, "updated_at") !== delivery.updatedAt
+  ) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted Standard Team message delivery projection does not match its canonical record",
+    );
+  }
+  return delivery;
+}
+
+function parseStoredArtifactDelivery(row: SqliteRow): ArtifactDeliveryRecord {
+  const nullable = (field: string): string | null => {
+    const value = row[field];
+    if (value === null) return null;
+    return requiredString(row, field);
+  };
+  try {
+    return normalizeArtifactDeliveryRecord({
+      contractVersion: requiredNumber(row, "contract_version"),
+      artifactId: requiredString(row, "artifact_id"),
+      workspaceId: requiredString(row, "workspace_id"),
+      taskId: requiredString(row, "task_id"),
+      sessionId: nullable("session_id"),
+      state: requiredString(row, "state"),
+      patchOwnerGrantId: requiredString(row, "patch_owner_grant_id"),
+      patchOwnerWorkerId: nullable("patch_owner_worker_id"),
+      patchRequestId: nullable("patch_request_id"),
+      destinationGrantId: nullable("destination_grant_id"),
+      destinationWorkspaceId: nullable("destination_workspace_id"),
+      patchReference: requiredString(row, "patch_reference"),
+      patchSha256: requiredString(row, "patch_sha256"),
+      patchByteLength: requiredNumber(row, "patch_byte_length"),
+      baseCommit: requiredString(row, "base_commit"),
+      changedFileCount: requiredNumber(row, "changed_file_count"),
+      approvalId: nullable("approval_id"),
+      verifiedHead: nullable("verified_head"),
+      failureCode: nullable("failure_code"),
+      failureMessage: nullable("failure_message"),
+      createdAt: requiredString(row, "created_at"),
+      updatedAt: requiredString(row, "updated_at"),
+    });
+  } catch (error) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Persisted Artifact delivery violates its contract",
+      { cause: error },
+    );
+  }
+}
+
 function parseStoredTeamRunHead(row: SqliteRow): TeamRunSnapshot {
   const encoded = requiredString(row, "snapshot_json");
   const digest = createHash("sha256").update(encoded).digest("hex");
@@ -665,11 +805,25 @@ function hasNonTerminalTeamRun(
 }
 
 function parseStoredAionUiGeneralWorkLink(row: SqliteRow): AionUiGeneralWorkLink {
+  const encodedRequirements = optionalString(row, "requirements_json");
+  let requirements: unknown;
+  if (encodedRequirements !== undefined) {
+    try {
+      requirements = JSON.parse(encodedRequirements);
+    } catch (error) {
+      throw new PersistenceError(
+        "corrupt-database",
+        "Persisted AionUI general-work requirements are not valid JSON",
+        { cause: error },
+      );
+    }
+  }
   const value: unknown = {
     contractVersion: requiredNumber(row, "contract_version"),
     conversationHash: requiredString(row, "conversation_hash"),
     taskId: requiredString(row, "task_id"),
     journeyKind: requiredString(row, "journey_kind"),
+    ...(requirements === undefined ? {} : { requirements }),
     createdAt: requiredString(row, "created_at"),
   };
   try {
@@ -1393,12 +1547,16 @@ export function resolveCoreDatabasePath(userDataPath: string): string {
   return path.join(userDataPath, STATE_DIRECTORY, CORE_DATABASE_FILENAME);
 }
 
+let persistenceInstanceCounter = 0;
+
 class SqliteCorePersistence implements ActestraPersistencePort {
   private database: DatabaseSync | null;
   private readonly streamStates = new Map<EventStreamId, CoreEventStreamState>();
+  private readonly instanceId: number;
 
   constructor(database: DatabaseSync) {
     this.database = database;
+    this.instanceId = ++persistenceInstanceCounter;
   }
 
   private requireDatabase(): DatabaseSync {
@@ -1581,18 +1739,104 @@ class SqliteCorePersistence implements ActestraPersistencePort {
     database.exec("PRAGMA defer_foreign_keys = ON");
 
     try {
-      database.exec(`
-        DELETE FROM approvals;
-        DELETE FROM artifacts;
-        DELETE FROM sessions;
-        DELETE FROM tasks;
-        DELETE FROM workers;
-        DELETE FROM workspaces;
-      `);
+      const nextArtifactIds = new Set(graph.artifacts.map((a) => a.id));
+
+      // Query artifacts that have delivery records - these must be preserved
+      const artifactsWithDeliveries = new Set(
+        (database.prepare("SELECT artifact_id FROM artifact_deliveries").all() as SqliteRow[]).map(
+          (row) => requiredString(row, "artifact_id"),
+        ),
+      );
+
+      // Query tasks, workspaces, AND sessions referenced by artifacts with deliveries
+      const entitiesToPreserve =
+        artifactsWithDeliveries.size > 0
+          ? (database
+              .prepare(`
+            SELECT DISTINCT task_id, workspace_id, session_id FROM artifacts
+            WHERE id IN (${Array.from(artifactsWithDeliveries)
+              .map(() => "?")
+              .join(",")})
+          `)
+              .all(...Array.from(artifactsWithDeliveries)) as SqliteRow[])
+          : [];
+
+      const tasksToPreserve = new Set(
+        entitiesToPreserve.map((row) => requiredString(row, "task_id")),
+      );
+      const workspacesToPreserve = new Set(
+        entitiesToPreserve.map((row) => requiredString(row, "workspace_id")),
+      );
+      const sessionsToPreserve = new Set(
+        entitiesToPreserve
+          .map((row) => optionalString(row, "session_id"))
+          .filter((id): id is string => id !== undefined),
+      );
+
+      // Delete entities, but preserve tasks, workspaces, and sessions that have artifacts with deliveries
+      database.exec("DELETE FROM approvals;");
+
+      if (sessionsToPreserve.size > 0) {
+        const deleteSession = database.prepare("DELETE FROM sessions WHERE id = ?");
+        const existingSessionIds = (
+          database.prepare("SELECT id FROM sessions").all() as SqliteRow[]
+        ).map((row) => requiredString(row, "id"));
+        for (const sessionId of existingSessionIds) {
+          if (!sessionsToPreserve.has(sessionId)) {
+            deleteSession.run(sessionId);
+          }
+        }
+      } else {
+        database.exec("DELETE FROM sessions;");
+      }
+
+      if (tasksToPreserve.size > 0) {
+        const deleteTask = database.prepare("DELETE FROM tasks WHERE id = ?");
+        const existingTaskIds = (database.prepare("SELECT id FROM tasks").all() as SqliteRow[]).map(
+          (row) => requiredString(row, "id"),
+        );
+        for (const taskId of existingTaskIds) {
+          if (!tasksToPreserve.has(taskId)) {
+            deleteTask.run(taskId);
+          }
+        }
+      } else {
+        database.exec("DELETE FROM tasks;");
+      }
+
+      database.exec("DELETE FROM workers;");
+
+      if (workspacesToPreserve.size > 0) {
+        const deleteWorkspace = database.prepare("DELETE FROM workspaces WHERE id = ?");
+        const existingWorkspaceIds = (
+          database.prepare("SELECT id FROM workspaces").all() as SqliteRow[]
+        ).map((row) => requiredString(row, "id"));
+        for (const workspaceId of existingWorkspaceIds) {
+          if (!workspacesToPreserve.has(workspaceId)) {
+            deleteWorkspace.run(workspaceId);
+          }
+        }
+      } else {
+        database.exec("DELETE FROM workspaces;");
+      }
+      const deleteArtifact = database.prepare("DELETE FROM artifacts WHERE id = ?");
+      const existingArtifactIds = (
+        database.prepare("SELECT id FROM artifacts").all() as SqliteRow[]
+      ).map((row) => artifactId(requiredString(row, "id")));
+      for (const existingId of existingArtifactIds) {
+        if (!nextArtifactIds.has(existingId) && !artifactsWithDeliveries.has(existingId)) {
+          deleteArtifact.run(existingId);
+        } else {
+        }
+      }
 
       const insertWorkspace = database.prepare(
         `INSERT INTO workspaces (id, name, state, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           name = excluded.name,
+           state = excluded.state,
+           updated_at = excluded.updated_at`,
       );
       for (const workspace of graph.workspaces) {
         insertWorkspace.run(
@@ -1623,7 +1867,12 @@ class SqliteCorePersistence implements ActestraPersistencePort {
       const insertTask = database.prepare(
         `INSERT INTO tasks (
            id, workspace_id, title, state, active_session_id, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, NULL, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, NULL, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           workspace_id = excluded.workspace_id,
+           title = excluded.title,
+           state = excluded.state,
+           updated_at = excluded.updated_at`,
       );
       for (const task of graph.tasks) {
         insertTask.run(
@@ -1639,7 +1888,13 @@ class SqliteCorePersistence implements ActestraPersistencePort {
       const insertSession = database.prepare(
         `INSERT INTO sessions (
            id, workspace_id, task_id, worker_id, state, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           workspace_id = excluded.workspace_id,
+           task_id = excluded.task_id,
+           worker_id = excluded.worker_id,
+           state = excluded.state,
+           updated_at = excluded.updated_at`,
       );
       for (const session of graph.sessions) {
         insertSession.run(
@@ -1685,7 +1940,16 @@ class SqliteCorePersistence implements ActestraPersistencePort {
       const insertArtifact = database.prepare(
         `INSERT INTO artifacts (
            id, workspace_id, task_id, session_id, kind, label, state, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           workspace_id = excluded.workspace_id,
+           task_id = excluded.task_id,
+           session_id = excluded.session_id,
+           kind = excluded.kind,
+           label = excluded.label,
+           state = excluded.state,
+           created_at = excluded.created_at,
+           updated_at = excluded.updated_at`,
       );
       for (const artifact of graph.artifacts) {
         insertArtifact.run(
@@ -2322,6 +2586,452 @@ class SqliteCorePersistence implements ActestraPersistencePort {
       .prepare(`SELECT ${TEAM_PLAN_COLUMNS} FROM team_plans WHERE plan_id = ?`)
       .get(stablePlanId) as SqliteRow | undefined;
     return row === undefined ? null : parseStoredTeamPlan(row);
+  }
+
+  async persistTeamExperienceBinding(
+    bindingValue: TeamExperienceBinding,
+  ): Promise<PersistTeamExperienceBindingResult> {
+    const database = this.requireDatabase();
+    let binding: TeamExperienceBinding;
+    try {
+      binding = normalizeTeamExperienceBinding(JSON.parse(JSON.stringify(bindingValue)));
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Team experience binding is invalid", {
+        cause: error,
+      });
+    }
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const row = database
+        .prepare(
+          `SELECT ${TEAM_EXPERIENCE_BINDING_COLUMNS}
+           FROM team_experience_bindings
+           WHERE team_id = ?`,
+        )
+        .get(binding.teamId) as SqliteRow | undefined;
+      if (row !== undefined) {
+        const existing = parseStoredTeamExperienceBinding(row);
+        if (existing.experience === binding.experience) {
+          database.exec("COMMIT");
+          return deepFreeze({ status: "duplicate", binding: existing });
+        }
+        throw new PersistenceError(
+          "team-experience-conflict",
+          "Team experience identity conflicts with durable authority",
+        );
+      }
+      const encoded = JSON.stringify(binding);
+      const digest = createHash("sha256").update(encoded).digest("hex");
+      database
+        .prepare(
+          `INSERT INTO team_experience_bindings (
+             team_id, contract_version, experience, bound_at, record_sha256, binding_json
+           ) VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          binding.teamId,
+          binding.contractVersion,
+          binding.experience,
+          binding.boundAt,
+          digest,
+          encoded,
+        );
+      database.exec("COMMIT");
+      return deepFreeze({ status: "stored", binding });
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) throw error;
+      throw new PersistenceError(
+        "corrupt-database",
+        "Actestra could not persist the Team experience binding",
+        { cause: error },
+      );
+    }
+  }
+
+  async getTeamExperienceBinding(teamIdValue: string): Promise<TeamExperienceBinding | null> {
+    const database = this.requireDatabase();
+    let stableTeamId: string;
+    try {
+      stableTeamId = teamExperienceId(teamIdValue);
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Team experience lookup is invalid", {
+        cause: error,
+      });
+    }
+    const row = database
+      .prepare(
+        `SELECT ${TEAM_EXPERIENCE_BINDING_COLUMNS}
+         FROM team_experience_bindings
+         WHERE team_id = ?`,
+      )
+      .get(stableTeamId) as SqliteRow | undefined;
+    return row === undefined ? null : parseStoredTeamExperienceBinding(row);
+  }
+
+  async persistStandardTeamMessageDelivery(
+    deliveryValue: StandardTeamMessageDelivery,
+  ): Promise<PersistStandardTeamMessageDeliveryResult> {
+    const database = this.requireDatabase();
+    let delivery: StandardTeamMessageDelivery;
+    try {
+      delivery = normalizeStandardTeamMessageDelivery(JSON.parse(JSON.stringify(deliveryValue)));
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Standard Team message delivery is invalid", {
+        cause: error,
+      });
+    }
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const existingRow = database
+        .prepare(
+          `SELECT ${STANDARD_TEAM_MESSAGE_DELIVERY_COLUMNS}
+           FROM standard_team_message_deliveries
+           WHERE delivery_id = ?`,
+        )
+        .get(delivery.deliveryId) as SqliteRow | undefined;
+      if (existingRow !== undefined) {
+        const existing = parseStoredStandardTeamMessageDelivery(existingRow);
+        const immutableMatches =
+          existing.clientRequestNonce === delivery.clientRequestNonce &&
+          existing.requestSha256 === delivery.requestSha256 &&
+          existing.teamId === delivery.teamId &&
+          existing.targetSlotId === delivery.targetSlotId &&
+          existing.createdAt === delivery.createdAt;
+        if (!immutableMatches) {
+          throw new PersistenceError(
+            "team-message-delivery-conflict",
+            "Standard Team message delivery identity conflicts with durable authority",
+          );
+        }
+        if (isDeepStrictEqual(existing, delivery)) {
+          database.exec("COMMIT");
+          return deepFreeze({ status: "duplicate", delivery: existing });
+        }
+        const legalTransition =
+          (existing.state === "pending-effect" || existing.state === "effect-uncertain") &&
+          (delivery.state === "effect-observed" || delivery.state === "effect-uncertain") &&
+          compareInstants(delivery.updatedAt, existing.updatedAt) >= 0;
+        if (!legalTransition) {
+          throw new PersistenceError(
+            "team-message-delivery-conflict",
+            "Standard Team message delivery transition conflicts with durable authority",
+          );
+        }
+        const encoded = JSON.stringify(delivery);
+        database
+          .prepare(
+            `UPDATE standard_team_message_deliveries
+             SET state = ?, provider_enqueue_status = ?, provider_message_id = ?, provider_run_id = ?, updated_at = ?, delivery_json = ?
+             WHERE delivery_id = ?`,
+          )
+          .run(
+            delivery.state,
+            delivery.providerEnqueueStatus,
+            delivery.providerMessageId,
+            delivery.providerRunId,
+            delivery.updatedAt,
+            encoded,
+            delivery.deliveryId,
+          );
+        database.exec("COMMIT");
+        return deepFreeze({ status: "stored", delivery });
+      }
+      if (delivery.state !== "pending-effect") {
+        throw new PersistenceError(
+          "team-message-delivery-conflict",
+          "A Standard Team message acknowledgement has no pending intent",
+        );
+      }
+      const unresolved = database
+        .prepare(
+          `SELECT delivery_id
+           FROM standard_team_message_deliveries
+           WHERE team_id = ? AND COALESCE(target_slot_id, '') = COALESCE(?, '')
+             AND state IN ('pending-effect', 'effect-uncertain')
+           LIMIT 1`,
+        )
+        .get(delivery.teamId, delivery.targetSlotId) as SqliteRow | undefined;
+      if (unresolved !== undefined) {
+        throw new PersistenceError(
+          "team-message-delivery-conflict",
+          "A previous Standard Team message delivery has an uncertain effect; refresh before sending again",
+        );
+      }
+      const encoded = JSON.stringify(delivery);
+      database
+        .prepare(
+          `INSERT INTO standard_team_message_deliveries (
+             delivery_id, contract_version, client_request_nonce, request_sha256,
+             team_id, target_slot_id, state, provider_enqueue_status, provider_message_id,
+             provider_run_id, created_at, updated_at, delivery_json
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          delivery.deliveryId,
+          delivery.contractVersion,
+          delivery.clientRequestNonce,
+          delivery.requestSha256,
+          delivery.teamId,
+          delivery.targetSlotId,
+          delivery.state,
+          delivery.providerEnqueueStatus,
+          delivery.providerMessageId,
+          delivery.providerRunId,
+          delivery.createdAt,
+          delivery.updatedAt,
+          encoded,
+        );
+      database.exec("COMMIT");
+      return deepFreeze({ status: "stored", delivery });
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) throw error;
+      throw new PersistenceError(
+        "corrupt-database",
+        "Actestra could not persist the Standard Team message delivery",
+        { cause: error },
+      );
+    }
+  }
+
+  async getStandardTeamMessageDelivery(
+    deliveryIdValue: string,
+  ): Promise<StandardTeamMessageDelivery | null> {
+    const database = this.requireDatabase();
+    if (
+      typeof deliveryIdValue !== "string" ||
+      !/^standard-team-delivery-[a-f0-9]{64}$/u.test(deliveryIdValue)
+    ) {
+      throw new PersistenceError(
+        "invalid-record",
+        "Standard Team message delivery lookup is invalid",
+      );
+    }
+    const row = database
+      .prepare(
+        `SELECT ${STANDARD_TEAM_MESSAGE_DELIVERY_COLUMNS}
+         FROM standard_team_message_deliveries
+         WHERE delivery_id = ?`,
+      )
+      .get(deliveryIdValue) as SqliteRow | undefined;
+    return row === undefined ? null : parseStoredStandardTeamMessageDelivery(row);
+  }
+
+  async listUnresolvedStandardTeamMessageDeliveries(
+    limit: number,
+  ): Promise<readonly StandardTeamMessageDelivery[]> {
+    const database = this.requireDatabase();
+    assertTeamPersistenceLimit(limit, "Standard Team message delivery limit");
+    return Object.freeze(
+      asRows(
+        database
+          .prepare(
+            `SELECT ${STANDARD_TEAM_MESSAGE_DELIVERY_COLUMNS}
+             FROM standard_team_message_deliveries
+             WHERE state IN ('pending-effect', 'effect-uncertain')
+             ORDER BY created_at, delivery_id
+             LIMIT ?`,
+          )
+          .all(limit),
+      ).map(parseStoredStandardTeamMessageDelivery),
+    );
+  }
+
+  async persistArtifactDelivery(
+    deliveryValue: ArtifactDeliveryRecord,
+  ): Promise<PersistArtifactDeliveryResult> {
+    const database = this.requireDatabase();
+    let delivery: ArtifactDeliveryRecord;
+    try {
+      delivery = normalizeArtifactDeliveryRecord(JSON.parse(JSON.stringify(deliveryValue)));
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Artifact delivery record is invalid", {
+        cause: error,
+      });
+    }
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const artifactRow = database
+        .prepare(`SELECT workspace_id, task_id, session_id FROM artifacts WHERE id = ?`)
+        .get(delivery.artifactId) as SqliteRow | undefined;
+      if (artifactRow === undefined) {
+        throw new PersistenceError(
+          "domain-reference",
+          "An Artifact delivery requires its durable Artifact",
+        );
+      }
+      if (
+        requiredString(artifactRow, "workspace_id") !== delivery.workspaceId ||
+        requiredString(artifactRow, "task_id") !== delivery.taskId ||
+        (artifactRow.session_id === null ? null : requiredString(artifactRow, "session_id")) !==
+          delivery.sessionId
+      ) {
+        throw new PersistenceError(
+          "artifact-delivery-conflict",
+          "Artifact delivery ownership does not match the durable Artifact",
+        );
+      }
+      const existingRow = database
+        .prepare(
+          `SELECT ${ARTIFACT_DELIVERY_COLUMNS} FROM artifact_deliveries WHERE artifact_id = ?`,
+        )
+        .get(delivery.artifactId) as SqliteRow | undefined;
+      if (existingRow !== undefined) {
+        const existing = parseStoredArtifactDelivery(existingRow);
+        if (
+          existing.patchSha256 !== delivery.patchSha256 ||
+          existing.patchByteLength !== delivery.patchByteLength ||
+          existing.baseCommit !== delivery.baseCommit ||
+          existing.patchReference !== delivery.patchReference ||
+          existing.patchOwnerGrantId !== delivery.patchOwnerGrantId ||
+          existing.patchOwnerWorkerId !== delivery.patchOwnerWorkerId ||
+          existing.patchRequestId !== delivery.patchRequestId ||
+          existing.destinationWorkspaceId !== delivery.destinationWorkspaceId ||
+          existing.createdAt !== delivery.createdAt
+        ) {
+          throw new PersistenceError(
+            "artifact-delivery-conflict",
+            "Artifact delivery patch identity conflicts with durable authority",
+          );
+        }
+        // The destination grant authorizes the write into the user's own repository, so once it is
+        // recorded it can never be rebound to a different workspace.
+        if (
+          existing.destinationGrantId !== null &&
+          existing.destinationGrantId !== delivery.destinationGrantId
+        ) {
+          throw new PersistenceError(
+            "artifact-delivery-conflict",
+            "Artifact delivery destination grant cannot be rebound",
+          );
+        }
+        if (isDeepStrictEqual(existing, delivery)) {
+          database.exec("COMMIT");
+          return deepFreeze({ status: "duplicate", delivery: existing });
+        }
+        if (
+          !isArtifactDeliveryTransitionLegal(existing.state, delivery.state) ||
+          compareInstants(delivery.updatedAt, existing.updatedAt) < 0
+        ) {
+          throw new PersistenceError(
+            "artifact-delivery-conflict",
+            "Artifact delivery transition conflicts with durable authority",
+          );
+        }
+        database
+          .prepare(
+            `UPDATE artifact_deliveries
+             SET state = ?, changed_file_count = ?, destination_workspace_id = ?, destination_grant_id = ?, approval_id = ?,
+                 verified_head = ?, failure_code = ?, failure_message = ?, updated_at = ?
+             WHERE artifact_id = ?`,
+          )
+          .run(
+            delivery.state,
+            delivery.changedFileCount,
+            delivery.destinationWorkspaceId,
+            delivery.destinationGrantId,
+            delivery.approvalId,
+            delivery.verifiedHead,
+            delivery.failureCode,
+            delivery.failureMessage,
+            delivery.updatedAt,
+            delivery.artifactId,
+          );
+        database.exec("COMMIT");
+        return deepFreeze({ status: "stored", delivery });
+      }
+      if (delivery.state !== "pending") {
+        throw new PersistenceError(
+          "artifact-delivery-conflict",
+          "An Artifact delivery outcome has no pending delivery intent",
+        );
+      }
+      database
+        .prepare(
+          `INSERT INTO artifact_deliveries (
+             artifact_id, contract_version, workspace_id, task_id, session_id, state,
+             patch_owner_grant_id, patch_owner_worker_id, patch_request_id,
+             destination_workspace_id, destination_grant_id, patch_reference, patch_sha256,
+             patch_byte_length, base_commit, changed_file_count, approval_id,
+             verified_head, failure_code, failure_message, created_at, updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          delivery.artifactId,
+          delivery.contractVersion,
+          delivery.workspaceId,
+          delivery.taskId,
+          delivery.sessionId,
+          delivery.state,
+          delivery.patchOwnerGrantId,
+          delivery.patchOwnerWorkerId,
+          delivery.patchRequestId,
+          delivery.destinationWorkspaceId,
+          delivery.destinationGrantId,
+          delivery.patchReference,
+          delivery.patchSha256,
+          delivery.patchByteLength,
+          delivery.baseCommit,
+          delivery.changedFileCount,
+          delivery.approvalId,
+          delivery.verifiedHead,
+          delivery.failureCode,
+          delivery.failureMessage,
+          delivery.createdAt,
+          delivery.updatedAt,
+        );
+      database.exec("COMMIT");
+      return deepFreeze({ status: "stored", delivery });
+    } catch (error) {
+      rollback(database);
+      throw error;
+    }
+  }
+
+  async getArtifactDelivery(artifactIdValue: ArtifactId): Promise<ArtifactDeliveryRecord | null> {
+    const database = this.requireDatabase();
+    let identity: ArtifactId;
+    try {
+      identity = artifactId(String(artifactIdValue));
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Artifact delivery lookup is invalid", {
+        cause: error,
+      });
+    }
+    const row = database
+      .prepare(`SELECT ${ARTIFACT_DELIVERY_COLUMNS} FROM artifact_deliveries WHERE artifact_id = ?`)
+      .get(identity) as SqliteRow | undefined;
+    return row === undefined ? null : parseStoredArtifactDelivery(row);
+  }
+
+  async listArtifactDeliveriesForTask(
+    taskIdValue: TaskId,
+    limit: number,
+  ): Promise<readonly ArtifactDeliveryRecord[]> {
+    const database = this.requireDatabase();
+    assertTeamPersistenceLimit(limit, "Artifact delivery limit");
+    let identity: TaskId;
+    try {
+      identity = taskId(String(taskIdValue));
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Artifact delivery task lookup is invalid", {
+        cause: error,
+      });
+    }
+    return Object.freeze(
+      asRows(
+        database
+          .prepare(
+            `SELECT ${ARTIFACT_DELIVERY_COLUMNS}
+             FROM artifact_deliveries
+             WHERE task_id = ?
+             ORDER BY created_at, artifact_id
+             LIMIT ?`,
+          )
+          .all(identity, limit),
+      ).map(parseStoredArtifactDelivery),
+    );
   }
 
   async persistTeamDefinition(teamValue: TeamDefinition): Promise<PersistTeamDefinitionResult> {
@@ -3001,14 +3711,15 @@ class SqliteCorePersistence implements ActestraPersistencePort {
       database
         .prepare(
           `INSERT INTO aionui_general_work_journeys (
-             task_id, contract_version, conversation_hash, journey_kind, created_at
-           ) VALUES (?, ?, ?, ?, ?)`,
+             task_id, contract_version, conversation_hash, journey_kind, requirements_json, created_at
+           ) VALUES (?, ?, ?, ?, ?, ?)`,
         )
         .run(
           stable.link.taskId,
           stable.link.contractVersion,
           stable.link.conversationHash,
           stable.link.journeyKind,
+          stable.link.requirements === undefined ? null : JSON.stringify(stable.link.requirements),
           stable.link.createdAt,
         );
       verifyNoForeignKeyViolations(database);
@@ -3079,6 +3790,7 @@ class SqliteCorePersistence implements ActestraPersistencePort {
              journeys.contract_version,
              journeys.conversation_hash,
              journeys.journey_kind,
+             journeys.requirements_json,
              journeys.created_at
            FROM aionui_general_work_journeys AS journeys
            JOIN tasks ON tasks.id = journeys.task_id

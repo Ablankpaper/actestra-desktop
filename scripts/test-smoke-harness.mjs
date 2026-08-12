@@ -19,6 +19,13 @@ const scheduledGeneralWorkPatch = path.join(
   "patches",
   "0011-actestra-scheduled-general-work.mjs",
 );
+const providerBoundaryPatch = path.join(
+  repositoryRoot,
+  "downstream",
+  "aionui-v2.1.41",
+  "patches",
+  "0016-actestra-provider-credential-and-capability.mjs",
+);
 const packagedVerificationScript = path.join(repositoryRoot, "scripts", "verify-packaged-app.mjs");
 const ciWorkflow = path.join(repositoryRoot, ".github", "workflows", "ci.yml");
 const harnessRoot = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-smoke-harness-"));
@@ -52,8 +59,8 @@ function assert(condition, message) {
 try {
   const packagedSmokeSource = fs.readFileSync(smokeScript, "utf8");
   assert(
-    packagedSmokeSource.includes("const expectedPersistenceSchemaVersion = 15;"),
-    "Packaged shell smoke must validate the current schema 15 database",
+    packagedSmokeSource.includes("const expectedPersistenceSchemaVersion = 22;"),
+    "Packaged shell smoke must validate the current schema 22 database",
   );
 
   const generalWorkSmokeSource = fs.readFileSync(generalWorkSmokeScript, "utf8");
@@ -62,8 +69,8 @@ try {
     "General Work target-app smoke must keep a bounded one-minute startup deadline",
   );
   assert(
-    generalWorkSmokeSource.includes("const expectedPersistenceSchemaVersion = 15;"),
-    "General Work target-app smoke must validate the current schema 15 database",
+    generalWorkSmokeSource.includes("const expectedPersistenceSchemaVersion = 22;"),
+    "General Work target-app smoke must validate the current schema 22 database",
   );
   assert(
     generalWorkSmokeSource.includes('"actestra-input.txt"') &&
@@ -158,16 +165,20 @@ try {
   );
 
   const scheduledGeneralWorkPatchSource = fs.readFileSync(scheduledGeneralWorkPatch, "utf8");
+  const providerBoundaryPatchSource = fs.readFileSync(providerBoundaryPatch, "utf8");
   assert(
     scheduledGeneralWorkPatchSource.includes("const port = window.__backendPort;") &&
       scheduledGeneralWorkPatchSource.includes(
         "!Number.isSafeInteger(port) || port < 1 || port > 65_535",
       ) &&
+      providerBoundaryPatchSource.includes("direct Provider fetch unexpectedly succeeded") &&
+      providerBoundaryPatchSource.includes("window.electronAPI?.actestraProviderList") &&
+      providerBoundaryPatchSource.includes("assertRedactedProviderProjection") &&
       !scheduledGeneralWorkPatchSource.includes("backendPortDeadline") &&
       !scheduledGeneralWorkPatchSource.includes(
         "await new Promise((resolve) => setTimeout(resolve, 25));",
       ),
-    "Schedule target-app provider probe must fail immediately when the sandboxed preload is unavailable",
+    "Schedule target-app provider probe must deny direct fetch and admit only the redacted Main IPC projection",
   );
 
   const packagedVerificationSource = fs.readFileSync(packagedVerificationScript, "utf8");
@@ -269,7 +280,7 @@ const database = new DatabaseSync(path.join(stateDirectory, "actestra.sqlite3"))
 database.exec(\`
   CREATE TABLE workspace_grants (id TEXT PRIMARY KEY) STRICT;
   CREATE TABLE content_references (id TEXT PRIMARY KEY) STRICT;
-  PRAGMA user_version = 15;
+  PRAGMA user_version = 22;
 \`);
 database.close();
 console.log("ACTESTRA_PERSISTENCE_UTILITY_READY");

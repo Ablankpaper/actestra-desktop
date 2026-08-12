@@ -8,6 +8,8 @@ import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  ARTIFACT_APPLY_TOOL_ID,
+  buildArtifactApplyApprovalSummary,
   CODING_DIFF_TOOL_ID,
   CODING_FILE_READ_TOOL_ID,
   CODING_FILE_WRITE_TOOL_ID,
@@ -1222,6 +1224,10 @@ describe("P5.2 isolated coding capability proxy", () => {
     const harness = await openHarness("process-terminal", {
       sourceFiles: {
         "fail.mjs": "console.error('expected fixture failure'); process.exit(7);\n",
+        "lock.mjs": [
+          "console.error(\"fatal: Unable to create '/Users/fixture/secret-repo/.git/index.lock': File exists.\");",
+          "process.exit(128);",
+        ].join("\n"),
         "wait.mjs": [
           "import { spawn } from 'node:child_process';",
           "import { writeFileSync } from 'node:fs';",
@@ -1238,6 +1244,7 @@ describe("P5.2 isolated coding capability proxy", () => {
       },
       commands: () => ({
         fail: { executablePath: process.execPath, args: ["fail.mjs"] },
+        lock: { executablePath: process.execPath, args: ["lock.mjs"] },
         wait: {
           executablePath: process.execPath,
           args: ["wait.mjs", "actestra-process-terminal-leader"],
@@ -1251,7 +1258,11 @@ describe("P5.2 isolated coding capability proxy", () => {
       "shell.execute",
     );
     await storeInput(harness, failureOperation, { contractVersion: 1, commandId: "fail" });
-    await expect(approveAndInvoke(harness, failureOperation)).rejects.toMatchObject({
+    const failure = await approveAndInvoke(harness, failureOperation).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(failure).toMatchObject({
       code: "tool-execution-failed",
       mayHaveExecuted: true,
       cause: {
@@ -1259,6 +1270,34 @@ describe("P5.2 isolated coding capability proxy", () => {
         mayHaveExecuted: true,
       },
     });
+    const exitMessage = String(
+      (failure as { cause?: { message?: unknown } } | undefined)?.cause?.message,
+    );
+    expect(exitMessage).toContain("exitCode=7");
+    expect(exitMessage).toContain("signal=none");
+    expect(exitMessage).toMatch(/stderrBytes=[1-9][0-9]*/u);
+    expect(exitMessage).toContain("stderrSignature=unclassified");
+    expect(exitMessage).not.toContain("expected fixture failure");
+
+    const lockOperation = operationFor(
+      harness,
+      "process-terminal-lock",
+      CODING_TERMINAL_TOOL_ID,
+      "shell.execute",
+    );
+    await storeInput(harness, lockOperation, { contractVersion: 1, commandId: "lock" });
+    const lockFailure = await approveAndInvoke(harness, lockOperation).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    const lockMessage = String(
+      (lockFailure as { cause?: { message?: unknown } } | undefined)?.cause?.message,
+    );
+    expect(lockMessage).toContain("exitCode=128");
+    expect(lockMessage).toContain("stderrSignature=git-lock-contention");
+    expect(lockMessage).not.toContain("index.lock");
+    expect(lockMessage).not.toContain("/Users/fixture");
+    expect(lockMessage).not.toContain("secret-repo");
 
     const cancellationOperation = operationFor(
       harness,
@@ -1660,5 +1699,69 @@ describe("P5.2 isolated coding capability proxy", () => {
       persist.mockRestore();
       await managed.close().catch((): undefined => undefined);
     }
+  });
+
+  it("asks the user a second time before a saved patch may be applied to the original workspace", async () => {
+    const harness = await openHarness("apply-approval");
+    const applyOperation = {
+      ...harness.operation,
+      requestId: toolRequestId("request-coding-apply-approval"),
+      toolId: ARTIFACT_APPLY_TOOL_ID,
+      action: "artifact.apply",
+      summary: buildArtifactApplyApprovalSummary({
+        changedFileCount: 2,
+        baseCommit: "b".repeat(40),
+      }),
+    } as const satisfies ProtectedOperation;
+
+    // A manifest must exist, otherwise the Gateway fails as `manifest-unavailable` before the
+    // policy decision and the apply approval never reaches the user at all.
+    await expect(harness.platform.executor.manifest(ARTIFACT_APPLY_TOOL_ID)).resolves.toMatchObject(
+      { actions: ["artifact.apply"], resourceKinds: ["repository"] },
+    );
+
+    const gated = await harness.platform.toolGateway.invoke(applyOperation);
+    expect(gated.status).toBe("approval-required");
+    if (gated.status !== "approval-required") {
+      throw new Error("Applying a saved patch must require its own approval");
+    }
+    expect(gated.approval.state).toBe("pending");
+    expect(gated.decision.effect).toBe("require-approval");
+
+    // Applying writes the user's repository, so the copy must not read like saving an Artifact.
+    expect(applyOperation.summary).toContain("modifies the original workspace");
+    expect(applyOperation.summary).not.toContain("does not modify the original workspace");
+
+    // Even so, the isolated executor never applies a patch: Main owns that write.
+    await expect(
+      harness.platform.executor.execute({
+        operation: applyOperation,
+        authorization: {
+          grantId: authorizationGrantId("authorization-coding-apply-approval"),
+          requestId: applyOperation.requestId,
+          workspaceId: applyOperation.workspaceId,
+          taskId: applyOperation.taskId,
+          sessionId: applyOperation.sessionId,
+          workerId: applyOperation.workerId,
+          toolId: applyOperation.toolId,
+          inputRef: applyOperation.inputRef,
+          action: applyOperation.action,
+          resourceKind: applyOperation.resourceKind,
+          credentialRefs: [],
+          policyDecisionId: gated.decision.decisionId,
+          policyRevision: gated.decision.policyRevision,
+          method: "approval",
+          approvalId: gated.approval.approvalId,
+          issuedAt: harness.clock.now(),
+        },
+        credentialLeases: [],
+        timeoutMs: 5_000,
+      }),
+    ).rejects.toMatchObject({
+      name: "ProtectedToolExecutionError",
+      errorCode: "unsupported-tool",
+      mayHaveExecuted: false,
+    });
+    expect(fs.readFileSync(harness.sourceFile, "utf8")).toBe("before\n");
   });
 });

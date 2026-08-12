@@ -3,14 +3,21 @@
 import { describe, expect, it } from "vitest";
 
 const teamId = `team-${"a".repeat(64)}`;
+const standardTeamId = "019fd371-7aa5-7f81-8a71-e3169de4946a";
 const runId = `team-run-${"b".repeat(64)}`;
 const generalSlotId = `team-member-${"c".repeat(64)}`;
 const codingSlotId = `team-member-${"d".repeat(64)}`;
 const workspaceId = "workspace-team-ui-contract";
 
 const createBody = Object.freeze({
+  experience: "orchestrated",
   name: "Actestra delivery team",
+  description: "Coordinate one bounded General and Goose delivery.",
   workspace: workspaceId,
+  model_selection: Object.freeze({
+    provider_id: "provider-aionui-team",
+    model_id: "model-aionui-team",
+  }),
   agents: Object.freeze([
     Object.freeze({
       name: "General lead",
@@ -27,10 +34,34 @@ const createBody = Object.freeze({
   ]),
 });
 
+const standardCreateBody = Object.freeze({
+  experience: "standard",
+  user_id: "system_default_user",
+  name: "Native CLI Team",
+  workspace: "/private/tmp/actestra-standard-team",
+  workspace_mode: "shared",
+  agents: Object.freeze([
+    Object.freeze({
+      name: "Gemini lead",
+      role: "lead",
+      assistant_id: "assistant-gemini",
+      requested_model: "gemini-3.1-pro-high",
+    }),
+    Object.freeze({
+      name: "Codex teammate",
+      role: "teammate",
+      assistant_id: "assistant-codex",
+      requested_model: null,
+    }),
+  ]),
+});
+
 const nativeTeam = Object.freeze({
   id: teamId,
+  experience: "orchestrated",
   user_id: "actestra-local-user",
   name: createBody.name,
+  description: createBody.description,
   workspace: workspaceId,
   workspace_mode: "isolated",
   leader_assistant_id: generalSlotId,
@@ -111,6 +142,7 @@ const runEvent = Object.freeze({
     authority: "Actestra Core",
     authority_source: "schema-15-team-run",
     revision: 4,
+    core_status: "blocked",
     status_explanation: "Goose is waiting for a protected-operation decision.",
     nodes: Object.freeze([
       Object.freeze({
@@ -132,6 +164,228 @@ const runEvent = Object.freeze({
 });
 
 describe("AionUI-native Actestra Team bridge contract", () => {
+  it("parses standard Team creation as a bounded selection intent without renderer authority", async () => {
+    const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
+      string,
+      unknown
+    >;
+    const parse = compatibility.parseAionUiTeamBridgeRequest as (value: unknown) => unknown;
+    const assertResponse = compatibility.assertAionUiTeamBridgeResponse as (value: unknown) => void;
+    const request = {
+      contractVersion: 1,
+      method: "POST",
+      path: "/api/teams",
+      body: standardCreateBody,
+    };
+
+    expect(parse(request)).toEqual({
+      kind: "create-standard",
+      userId: "system_default_user",
+      name: "Native CLI Team",
+      workspace: "/private/tmp/actestra-standard-team",
+      workspaceMode: "shared",
+      members: [
+        {
+          displayName: "Gemini lead",
+          role: "leader",
+          assistantId: "assistant-gemini",
+          requestedModel: "gemini-3.1-pro-high",
+        },
+        {
+          displayName: "Codex teammate",
+          role: "teammate",
+          assistantId: "assistant-codex",
+          requestedModel: null,
+        },
+      ],
+    });
+    expect(() =>
+      parse({
+        ...request,
+        body: { ...standardCreateBody, team_id: "renderer-owned-team" },
+      }),
+    ).toThrow();
+    expect(() =>
+      parse({
+        ...request,
+        body: { ...standardCreateBody, user_id: "renderer-selected-user" },
+      }),
+    ).toThrow();
+    expect(() =>
+      parse({
+        ...request,
+        body: {
+          ...standardCreateBody,
+          agents: [
+            {
+              ...standardCreateBody.agents[0],
+              model: "renderer-authoritative-model",
+            },
+          ],
+        },
+      }),
+    ).toThrow();
+
+    const responseWithoutSessionMode = {
+      id: "native-team-1",
+      experience: "standard",
+      user_id: "system_default_user",
+      name: "Native CLI Team",
+      workspace: "/private/tmp/actestra-standard-team",
+      workspace_mode: "shared",
+      leader_assistant_id: "native-slot-gemini",
+      assistants: [
+        {
+          slot_id: "native-slot-gemini",
+          conversation_id: "native-conversation-gemini",
+          role: "leader",
+          assistant_backend: "gemini",
+          assistant_name: "Gemini lead",
+          status: "pending",
+          assistant_id: "assistant-gemini",
+          model: "gemini-3.1-pro-preview",
+          pending_confirmations: 0,
+        },
+      ],
+      created_at: 1_785_883_200_000,
+      updated_at: 1_785_883_200_000,
+    };
+    const response = {
+      contractVersion: 1,
+      status: 200,
+      data: responseWithoutSessionMode,
+    };
+
+    expect(() => assertResponse(response)).not.toThrow();
+    expect(() =>
+      assertResponse({
+        ...response,
+        data: { ...response.data, session_mode: "plan" },
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertResponse({
+        ...response,
+        data: { ...response.data, session_mode: "" },
+      }),
+    ).toThrow();
+    expect(() =>
+      assertResponse({
+        ...response,
+        data: { ...response.data, renderer_owned: true },
+      }),
+    ).toThrow();
+  });
+
+  it("parses standard Team add-member as a bounded selection intent for a native Team identity", async () => {
+    const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
+      string,
+      unknown
+    >;
+    const parse = compatibility.parseAionUiTeamBridgeRequest as (value: unknown) => unknown;
+    const request = {
+      contractVersion: 1,
+      method: "POST",
+      path: "/api/teams/native-team-1/agents",
+      body: {
+        experience: "standard",
+        assistant: {
+          name: "Gemini teammate",
+          role: "teammate",
+          assistant_id: "assistant-gemini",
+          requested_model: "gemini-3.1-pro-high",
+        },
+      },
+    };
+
+    expect(parse(request)).toEqual({
+      kind: "add-standard-member",
+      teamId: "native-team-1",
+      member: {
+        displayName: "Gemini teammate",
+        role: "teammate",
+        assistantId: "assistant-gemini",
+        requestedModel: "gemini-3.1-pro-high",
+      },
+    });
+    expect(() =>
+      parse({
+        ...request,
+        body: {
+          ...request.body,
+          assistant: {
+            ...request.body.assistant,
+            model: "renderer-authoritative-model",
+          },
+        },
+      }),
+    ).toThrow();
+  });
+
+  it("admits only a bounded Main-projected standard Team runtime model catalog", async () => {
+    const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
+      string,
+      unknown
+    >;
+    const assertResponse = compatibility.assertAionUiTeamBridgeResponse as (value: unknown) => void;
+    const response = {
+      contractVersion: 1,
+      status: 200,
+      data: {
+        config_options: [
+          {
+            id: "model",
+            name: "Model",
+            category: "model",
+            type: "select",
+            current_value: "auto-gemini-3",
+            options: [
+              {
+                value: "auto-gemini-3",
+                name: "Auto (Gemini 3)",
+                description: "Let Gemini CLI select an admitted Gemini 3 model.",
+              },
+            ],
+          },
+        ],
+      },
+    };
+
+    expect(() => assertResponse(response)).not.toThrow();
+    expect(() =>
+      assertResponse({
+        ...response,
+        data: {
+          config_options: [
+            {
+              ...response.data.config_options[0],
+              current_value: "removed-model",
+            },
+          ],
+        },
+      }),
+    ).toThrow();
+    expect(() =>
+      assertResponse({
+        ...response,
+        data: {
+          config_options: [
+            {
+              ...response.data.config_options[0],
+              options: [
+                ...response.data.config_options[0].options,
+                {
+                  value: "https://outside.example/model",
+                  name: "External model",
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    ).toThrow();
+  });
+
   it("parses the fixed native Team CRUD, session, message, and run routes", async () => {
     const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
       string,
@@ -154,7 +408,30 @@ describe("AionUI-native Actestra Team bridge contract", () => {
         expected: { kind: "list" },
       },
       {
-        request: { contractVersion: 1, method: "POST", path: "/api/teams", body: createBody },
+        request: {
+          contractVersion: 1,
+          method: "GET",
+          path: "/api/teams/workspace-options",
+          body: undefined,
+        },
+        expected: { kind: "list-workspaces" },
+      },
+      {
+        request: {
+          contractVersion: 1,
+          method: "POST",
+          path: "/api/teams/workspace-options/select",
+          body: undefined,
+        },
+        expected: { kind: "select-workspace" },
+      },
+      {
+        request: {
+          contractVersion: 1,
+          method: "POST",
+          path: "/api/teams",
+          body: createBody,
+        },
         expected: { kind: "create", workspaceId },
       },
       {
@@ -207,7 +484,10 @@ describe("AionUI-native Actestra Team bridge contract", () => {
           path: `/api/teams/${teamId}/session`,
           body: undefined,
         },
-        expected: { kind: method === "POST" ? "ensure-session" : "stop-session", teamId },
+        expected: {
+          kind: method === "POST" ? "ensure-session" : "stop-session",
+          teamId,
+        },
       })),
       {
         request: {
@@ -219,6 +499,23 @@ describe("AionUI-native Actestra Team bridge contract", () => {
           body: undefined,
         },
         expected: { kind: "config-options", teamId },
+      },
+      {
+        request: {
+          contractVersion: 1,
+          method: "PUT",
+          path: `/api/teams/${standardTeamId}/conversations/${encodeURIComponent(
+            "native-conversation-gemini",
+          )}/config-options/model`,
+          body: { value: "gemini-3.1-pro-preview" },
+        },
+        expected: {
+          kind: "set-config-option",
+          teamId: standardTeamId,
+          conversationId: "native-conversation-gemini",
+          optionId: "model",
+          value: "gemini-3.1-pro-preview",
+        },
       },
       {
         request: {
@@ -252,9 +549,17 @@ describe("AionUI-native Actestra Team bridge contract", () => {
           contractVersion: 1,
           method: "POST",
           path: `/api/teams/${teamId}/session-mode`,
-          body: { mode: "plan" },
+          body: {
+            conversation_id: "actestra-team-conversation-general",
+            mode: "plan",
+          },
         },
-        expected: { kind: "set-session-mode", teamId },
+        expected: {
+          kind: "set-session-mode",
+          teamId,
+          conversationId: "actestra-team-conversation-general",
+          mode: "plan",
+        },
       },
       {
         request: {
@@ -270,7 +575,10 @@ describe("AionUI-native Actestra Team bridge contract", () => {
           contractVersion: 1,
           method: "POST",
           path: `/api/teams/${teamId}/messages`,
-          body: { content: "Prepare the release brief and matching code change." },
+          body: {
+            content: "Prepare the release brief and matching code change.",
+            request_nonce: `team-request-${"1".repeat(64)}`,
+          },
         },
         expected: { kind: "send-message", teamId },
       },
@@ -279,7 +587,10 @@ describe("AionUI-native Actestra Team bridge contract", () => {
           contractVersion: 1,
           method: "POST",
           path: `/api/teams/${teamId}/agents/${codingSlotId}/messages`,
-          body: { content: "Explain the current blocked operation." },
+          body: {
+            content: "Explain the current blocked operation.",
+            request_nonce: `team-request-${"2".repeat(64)}`,
+          },
         },
         expected: { kind: "send-member-message", teamId, slotId: codingSlotId },
       },
@@ -319,11 +630,176 @@ describe("AionUI-native Actestra Team bridge contract", () => {
         },
         expected: { kind: "pause-node", teamId, runId, slotId: codingSlotId },
       },
+      {
+        request: {
+          contractVersion: 1,
+          method: "POST",
+          path: `/api/teams/${teamId}/runs/${runId}/agents/${codingSlotId}/handoff-completion`,
+          body: { content: "The reviewed manual coding result is complete." },
+        },
+        expected: {
+          kind: "complete-handoff",
+          teamId,
+          runId,
+          slotId: codingSlotId,
+          content: "The reviewed manual coding result is complete.",
+        },
+      },
     ];
 
     for (const { request, expected } of cases) {
       expect(parse(request)).toMatchObject(expected);
     }
+  });
+
+  it("parses a standard Team UUID as a bounded experience identity for item routes", async () => {
+    const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
+      string,
+      unknown
+    >;
+    const parse = compatibility.parseAionUiTeamBridgeRequest as (value: unknown) => unknown;
+
+    expect(
+      parse({
+        contractVersion: 1,
+        method: "GET",
+        path: `/api/teams/${standardTeamId}`,
+        body: undefined,
+      }),
+    ).toEqual({ kind: "get", teamId: standardTeamId });
+    expect(
+      parse({
+        contractVersion: 1,
+        method: "DELETE",
+        path: `/api/teams/${standardTeamId}`,
+        body: undefined,
+      }),
+    ).toEqual({ kind: "remove", teamId: standardTeamId });
+    expect(
+      parse({
+        contractVersion: 1,
+        method: "PATCH",
+        path: `/api/teams/${standardTeamId}/name`,
+        body: { name: "Renamed standard Team" },
+      }),
+    ).toEqual({
+      kind: "rename-team",
+      teamId: standardTeamId,
+      name: "Renamed standard Team",
+    });
+    const standardSlotId = "native-slot-claude";
+    expect(
+      parse({
+        contractVersion: 1,
+        method: "DELETE",
+        path: `/api/teams/${standardTeamId}/agents/${standardSlotId}`,
+        body: undefined,
+      }),
+    ).toEqual({
+      kind: "remove-member",
+      teamId: standardTeamId,
+      slotId: standardSlotId,
+    });
+    expect(
+      parse({
+        contractVersion: 1,
+        method: "PATCH",
+        path: `/api/teams/${standardTeamId}/agents/${standardSlotId}/name`,
+        body: { name: "Claude reviewer" },
+      }),
+    ).toEqual({
+      kind: "rename-member",
+      teamId: standardTeamId,
+      slotId: standardSlotId,
+      name: "Claude reviewer",
+    });
+    expect(() =>
+      parse({
+        contractVersion: 1,
+        method: "GET",
+        path: "/api/teams/%0A",
+        body: undefined,
+      }),
+    ).toThrow();
+    expect(() =>
+      parse({
+        contractVersion: 1,
+        method: "DELETE",
+        path: `/api/teams/${standardTeamId}/agents/native-slot-%0A`,
+        body: undefined,
+      }),
+    ).toThrow();
+  });
+
+  it("parses bounded standard Team attachment intents without accepting extra authority fields", async () => {
+    const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
+      string,
+      unknown
+    >;
+    const parse = compatibility.parseAionUiTeamBridgeRequest as (value: unknown) => unknown;
+
+    expect(
+      parse({
+        contractVersion: 1,
+        method: "POST",
+        path: `/api/teams/${standardTeamId}/messages`,
+        body: {
+          content: "Review these selected workspace files.",
+          files: ["/private/tmp/actestra-standard-team/README.md", "docs/PROJECT_STATUS.md"],
+          request_nonce: `team-request-${"3".repeat(64)}`,
+        },
+      }),
+    ).toEqual({
+      kind: "send-message",
+      teamId: standardTeamId,
+      content: "Review these selected workspace files.",
+      files: ["/private/tmp/actestra-standard-team/README.md", "docs/PROJECT_STATUS.md"],
+      requestNonce: `team-request-${"3".repeat(64)}`,
+    });
+    expect(() =>
+      parse({
+        contractVersion: 1,
+        method: "POST",
+        path: `/api/teams/${standardTeamId}/messages`,
+        body: {
+          content: "Review this file.",
+          files: ["README.md"],
+          request_nonce: `team-request-${"4".repeat(64)}`,
+          workspace: "/private/tmp/actestra-standard-team",
+        },
+      }),
+    ).toThrow();
+  });
+
+  it("parses bounded provider-owned standard Team run controls without renderer inference", async () => {
+    const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
+      string,
+      unknown
+    >;
+    const parse = compatibility.parseAionUiTeamBridgeRequest as (value: unknown) => unknown;
+
+    expect(
+      parse({
+        contractVersion: 1,
+        method: "POST",
+        path: `/api/teams/${standardTeamId}/runs/native-run-1/agents/native-slot-claude/pause`,
+        body: { reason: "user_stop" },
+      }),
+    ).toEqual({
+      kind: "pause-node",
+      teamId: standardTeamId,
+      runId: "native-run-1",
+      slotId: "native-slot-claude",
+      reason: "user_stop",
+    });
+    expect(() =>
+      parse({
+        contractVersion: 1,
+        method: "POST",
+        path: `/api/teams/${standardTeamId}/runs/%2e%2e/agents/native-slot-claude/pause`,
+        body: { reason: "user_stop" },
+      }),
+    ).toThrow();
   });
 
   it("parses only the bounded Actestra controls needed by the visible Team journey", async () => {
@@ -340,7 +816,12 @@ describe("AionUI-native Actestra Team bridge contract", () => {
           path: `/api/teams/${teamId}/runs/${runId}/agents/${codingSlotId}/${action}`,
           body: { reason: `Apply the visible ${action} control.` },
         }),
-      ).toMatchObject({ kind: `${action}-node`, teamId, runId, slotId: codingSlotId });
+      ).toMatchObject({
+        kind: `${action}-node`,
+        teamId,
+        runId,
+        slotId: codingSlotId,
+      });
     }
     for (const decision of ["approved", "denied"] as const) {
       expect(
@@ -362,6 +843,126 @@ describe("AionUI-native Actestra Team bridge contract", () => {
     }
   });
 
+  it("requires one bounded client nonce for standard Team message effect idempotency", async () => {
+    const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
+      string,
+      unknown
+    >;
+    const parse = compatibility.parseAionUiTeamBridgeRequest as (value: unknown) => unknown;
+    const requestNonce = `team-request-${"8".repeat(64)}`;
+
+    expect(
+      parse({
+        contractVersion: 1,
+        method: "POST",
+        path: `/api/teams/${standardTeamId}/messages`,
+        body: {
+          content: "Review this workspace.",
+          files: [],
+          request_nonce: requestNonce,
+        },
+      }),
+    ).toMatchObject({ kind: "send-message", requestNonce });
+    expect(
+      parse({
+        contractVersion: 1,
+        method: "POST",
+        path: `/api/teams/${standardTeamId}/agents/native-slot-claude/messages`,
+        body: { content: "Review this file.", request_nonce: requestNonce },
+      }),
+    ).toMatchObject({ kind: "send-member-message", requestNonce });
+    for (const body of [
+      { content: "Missing nonce.", files: [] },
+      {
+        content: "Padded nonce.",
+        files: [],
+        request_nonce: ` ${requestNonce}`,
+      },
+      {
+        content: "Oversized nonce.",
+        files: [],
+        request_nonce: "x".repeat(129),
+      },
+    ]) {
+      expect(() =>
+        parse({
+          contractVersion: 1,
+          method: "POST",
+          path: `/api/teams/${standardTeamId}/messages`,
+          body,
+        }),
+      ).toThrow();
+    }
+  });
+
+  it("keeps Core's blocked and paused run status distinguishable from compatibility running", async () => {
+    const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
+      string,
+      unknown
+    >;
+    const assertEvent = compatibility.assertAionUiTeamEvent as (value: unknown) => void;
+
+    for (const coreStatus of ["accepted", "running", "paused", "blocked"] as const) {
+      const payload = {
+        ...runEvent,
+        status: "running",
+        actestra: { ...runEvent.actestra, core_status: coreStatus },
+      };
+      expect(() => assertEvent({ type: "team.runUpdated", payload })).not.toThrow();
+      expect(payload.actestra.core_status).toBe(coreStatus);
+    }
+
+    const { core_status: _dropped, ...withoutCoreStatus } = runEvent.actestra;
+    for (const payload of [
+      {
+        ...runEvent,
+        actestra: { ...runEvent.actestra, core_status: "running-blocked" },
+      },
+      { ...runEvent, actestra: withoutCoreStatus },
+    ]) {
+      expect(() => assertEvent({ type: "team.runUpdated", payload })).toThrow();
+    }
+
+    expect(runEvent.status).toBe("running");
+    expect(runEvent.actestra.core_status).toBe("blocked");
+  });
+
+  it("accepts the revision-requested feedback projection produced after denied feedback", async () => {
+    const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
+      string,
+      unknown
+    >;
+    const assertEvent = compatibility.assertAionUiTeamEvent as (value: unknown) => void;
+    const feedbackNode = {
+      ...runEvent.actestra.nodes[0],
+      slot_id: generalSlotId,
+      capability: "feedback",
+      state: "revision-requested",
+      blocked_reason: "revision-requested",
+      blocked_explanation: "The workflow feedback was denied and revision is requested.",
+      current_executor: "User",
+      next_actions: ["revise"],
+    };
+    const payload = {
+      ...runEvent,
+      slot_work: [
+        {
+          ...slotWork[0],
+          state: "blocked",
+          blocked_reason: "revision-requested",
+        },
+        slotWork[1],
+      ],
+      actestra: {
+        ...runEvent.actestra,
+        revision: 13,
+        nodes: [feedbackNode],
+      },
+    };
+
+    expect(() => assertEvent({ type: "team.runUpdated", payload })).not.toThrow();
+  });
+
   it("validates native Team, run-state, event, and bounded Actestra explainability shapes", async () => {
     const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
       string,
@@ -379,12 +980,19 @@ describe("AionUI-native Actestra Team bridge contract", () => {
         status: 200,
         data: {
           session_generation: "schema-15-revision-4",
+          submission: {
+            availability: "available",
+            blocked_reason: null,
+            next_action: "submit-task",
+            authority_source: "actestra-main-runtime",
+          },
           active_run: runEvent,
           slot_work: slotWork,
           activities: [
             {
               id: `team-message-${"4".repeat(64)}`,
               author: "You",
+              slot_id: null,
               content: "Prepare the bounded Team result.",
               tone: "user",
               occurred_at: 1_785_883_200_000,
@@ -412,11 +1020,37 @@ describe("AionUI-native Actestra Team bridge contract", () => {
     }
 
     for (const event of [
-      { type: "team.created", payload: { team_id: teamId, team_name: nativeTeam.name } },
-      { type: "team.listChanged", payload: { team_id: teamId, action: "created" } },
+      {
+        type: "team.created",
+        payload: { team_id: teamId, team_name: nativeTeam.name },
+      },
+      {
+        type: "team.listChanged",
+        payload: { team_id: teamId, action: "created" },
+      },
+      { type: "team.removed", payload: { team_id: standardTeamId } },
+      {
+        type: "team.listChanged",
+        payload: { team_id: standardTeamId, action: "removed" },
+      },
+      {
+        type: "team.agentRenamed",
+        payload: {
+          team_id: standardTeamId,
+          slot_id: "native-slot-claude",
+          name: "Claude reviewer",
+        },
+      },
+      {
+        type: "team.agentRemoved",
+        payload: { team_id: standardTeamId, slot_id: "native-slot-claude" },
+      },
       { type: "team.runAccepted", payload: runEvent },
       { type: "team.runUpdated", payload: runEvent },
-      { type: "team.slotWorkChanged", payload: { team_id: teamId, slot_work: slotWork[1] } },
+      {
+        type: "team.slotWorkChanged",
+        payload: { team_id: teamId, slot_work: slotWork[1] },
+      },
       {
         type: "team.teammateMessage",
         payload: {
@@ -431,6 +1065,117 @@ describe("AionUI-native Actestra Team bridge contract", () => {
     }
   });
 
+  it("accepts the admitted multiline Team goal when it is projected back as activity", async () => {
+    const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
+      string,
+      unknown
+    >;
+    const assertResponse = compatibility.assertAionUiTeamBridgeResponse as (value: unknown) => void;
+
+    expect(() =>
+      assertResponse({
+        contractVersion: 1,
+        status: 200,
+        data: {
+          session_generation: "schema-15-revision-6",
+          submission: {
+            availability: "available",
+            blocked_reason: null,
+            next_action: "submit-task",
+            authority_source: "actestra-main-runtime",
+          },
+          active_run: runEvent,
+          slot_work: slotWork,
+          activities: [
+            {
+              id: `team-message-${"5".repeat(64)}`,
+              author: "You",
+              slot_id: null,
+              content: "First admitted line.\nSecond admitted line.",
+              tone: "user",
+              occurred_at: 1_785_883_200_000,
+            },
+          ],
+        },
+      }),
+    ).not.toThrow();
+  });
+
+  it("validates a bounded provider-owned standard Team run acknowledgement without schema-15 identities", async () => {
+    const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
+      string,
+      unknown
+    >;
+    const assertResponse = compatibility.assertAionUiTeamBridgeResponse as (value: unknown) => void;
+    const acknowledgement = {
+      experience: "standard",
+      enqueue_status: "accepted",
+      message_id: "native-message-1",
+      run: {
+        team_id: standardTeamId,
+        team_run_id: "native-run-1",
+        source: "user_message",
+        has_user_intervention: false,
+        target_slot_id: "native-slot-claude",
+        target_role: "lead",
+        status: "accepted",
+        queued_intent_count: 0,
+        starting_batch_count: 1,
+        running_batch_count: 0,
+        active_enqueue_lease_count: 1,
+        slot_work: [],
+      },
+    };
+
+    expect(() =>
+      assertResponse({
+        contractVersion: 1,
+        status: 200,
+        data: acknowledgement,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertResponse({
+        contractVersion: 1,
+        status: 200,
+        data: {
+          ...acknowledgement,
+          run: { ...acknowledgement.run, team_id: "../foreign" },
+        },
+      }),
+    ).toThrow();
+    expect(() =>
+      assertResponse({
+        contractVersion: 1,
+        status: 200,
+        data: { ...acknowledgement, private_runtime: "/tmp/runtime" },
+      }),
+    ).toThrow();
+  });
+
+  it("validates a bounded provider-owned standard Team run-state projection", async () => {
+    const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
+      string,
+      unknown
+    >;
+    const assertResponse = compatibility.assertAionUiTeamBridgeResponse as (value: unknown) => void;
+    const state = {
+      experience: "standard",
+      session_generation: "native-session-1",
+      active_run: null,
+      slot_work: [],
+    };
+
+    expect(() => assertResponse({ contractVersion: 1, status: 200, data: state })).not.toThrow();
+    expect(() =>
+      assertResponse({
+        contractVersion: 1,
+        status: 200,
+        data: { ...state, credential: "private" },
+      }),
+    ).toThrow();
+  });
+
   it("rejects traversal, unbounded input, raw paths/files, and renderer-selected authority", async () => {
     const compatibility = (await import("../../apps/desktop/src/compatibility/aionui")) as Record<
       string,
@@ -440,14 +1185,35 @@ describe("AionUI-native Actestra Team bridge contract", () => {
     const assertResponse = compatibility.assertAionUiTeamBridgeResponse as (value: unknown) => void;
 
     const invalidRequests = [
-      { contractVersion: 1, method: "GET", path: "/api/teams", body: undefined },
-      { contractVersion: 1, method: "GET", path: "/api/teams/%2e%2e/private", body: undefined },
-      { contractVersion: 1, method: "GET", path: "/api/teams?user_id=other-user", body: undefined },
+      {
+        contractVersion: 1,
+        method: "GET",
+        path: "/api/teams",
+        body: undefined,
+      },
+      {
+        contractVersion: 1,
+        method: "GET",
+        path: "/api/teams/%2e%2e/private",
+        body: undefined,
+      },
+      {
+        contractVersion: 1,
+        method: "GET",
+        path: "/api/teams?user_id=other-user",
+        body: undefined,
+      },
       {
         contractVersion: 1,
         method: "POST",
         path: "/api/teams",
         body: { ...createBody, workspace: "/private/workspace" },
+      },
+      {
+        contractVersion: 1,
+        method: "POST",
+        path: "/api/teams",
+        body: { ...createBody, description: 42 },
       },
       {
         contractVersion: 1,
@@ -477,13 +1243,19 @@ describe("AionUI-native Actestra Team bridge contract", () => {
         contractVersion: 1,
         method: "POST",
         path: `/api/teams/${teamId}/messages`,
-        body: { content: "Run this task.", planId: `team-plan-${"4".repeat(64)}` },
+        body: {
+          content: "Run this task.",
+          planId: `team-plan-${"4".repeat(64)}`,
+        },
       },
       {
         contractVersion: 1,
         method: "POST",
         path: `/api/teams/${teamId}/runs/${runId}/agents/${codingSlotId}/approval`,
-        body: { decision: "approved", approvalId: `approval-${"5".repeat(64)}` },
+        body: {
+          decision: "approved",
+          approvalId: `approval-${"5".repeat(64)}`,
+        },
       },
       {
         contractVersion: 1,
@@ -497,13 +1269,33 @@ describe("AionUI-native Actestra Team bridge contract", () => {
     }
 
     for (const response of [
-      { contractVersion: 1, status: 200, data: { ...nativeTeam, workspace: "/private/workspace" } },
+      {
+        contractVersion: 1,
+        status: 200,
+        data: { ...nativeTeam, workspace: "/private/workspace" },
+      },
       {
         contractVersion: 1,
         status: 200,
         data: {
           ...runEvent,
           actestra: { ...runEvent.actestra, worker_id: "worker-private" },
+        },
+      },
+      {
+        contractVersion: 1,
+        status: 200,
+        data: {
+          session_generation: null,
+          submission: {
+            availability: "available",
+            blocked_reason: "planner-unavailable",
+            next_action: "restart-after-planner-admission",
+            authority_source: "actestra-main-runtime",
+          },
+          active_run: null,
+          slot_work: [],
+          activities: [],
         },
       },
       {

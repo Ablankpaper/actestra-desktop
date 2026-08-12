@@ -49,6 +49,7 @@ export interface IsolatedCodingPatchSnapshot {
   readonly patch: string;
   readonly patchByteLength: number;
   readonly patchSha256: string;
+  readonly changedFileCount: number;
 }
 
 function gitEnvironment(worktreeRoot: string): Readonly<Record<string, string>> {
@@ -251,24 +252,34 @@ export async function captureIsolatedCodingPatch(
             baseCommit!,
             "--",
           );
+          // Count changed files using the same environment so untracked files are included
+          const changedPaths = (
+            await runGit(
+              options.worktreeRoot,
+              patchEnvironment,
+              MAX_ISOLATED_CODING_PATCH_BYTES + 1,
+              "diff",
+              "--name-only",
+              "-z",
+              baseCommit!,
+              "--",
+            )
+          )
+            .split("\0")
+            .filter((candidate) => candidate.length > 0);
+
+          return Object.freeze({
+            baseCommit: baseCommit!,
+            patch,
+            patchByteLength: Buffer.byteLength(patch, "utf8"),
+            patchSha256: createHash("sha256").update(patch, "utf8").digest("hex"),
+            changedFileCount: changedPaths.length,
+          });
         } finally {
           if (temporaryIndexRoot !== undefined) {
             await rm(temporaryIndexRoot, { force: true, recursive: true });
           }
         }
-        const patchByteLength = Buffer.byteLength(patch, "utf8");
-        if (patchByteLength > MAX_ISOLATED_CODING_PATCH_BYTES) {
-          throw new IsolatedCodingPatchError(
-            "patch-too-large",
-            "Coding patch exceeds the admitted byte boundary",
-          );
-        }
-        return Object.freeze({
-          baseCommit: baseCommit!,
-          patch,
-          patchByteLength,
-          patchSha256: createHash("sha256").update(patch, "utf8").digest("hex"),
-        });
       },
     );
   } catch (error) {

@@ -500,6 +500,8 @@ function validateLockfile(lockfile: string): void {
     !lockfile.includes(exactSource) ||
     !/name = "event-listener"\nversion = "5\.4\.2"/.test(lockfile) ||
     /name = "event-listener"\nversion = "5\.4\.1"/.test(lockfile) ||
+    !/name = "lru"\nversion = "0\.18\.2"/.test(lockfile) ||
+    /name = "lru"\nversion = "0\.18\.1"/.test(lockfile) ||
     /name = "quick-xml"\nversion = "(?:0\.36\.2|0\.37\.5)"/.test(lockfile)
   ) {
     throw new GooseRunnerArtifactError(

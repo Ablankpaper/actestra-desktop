@@ -6,7 +6,15 @@ import {
   materializeAionUiDownstream,
   resolveContainedPath,
 } from "./materialize-aionui-downstream.mjs";
-import { inspectGeneralWorkerModuleGraph } from "./general-worker-authority-rules.mjs";
+import {
+  extractStaticModuleSpecifiers,
+  inspectGeneralWorkerModuleGraph,
+} from "./general-worker-authority-rules.mjs";
+import {
+  actestraTeamRendererAuthorityPaths,
+  actestraTeamRendererPrivilegePatterns,
+  inspectSourceFilesForPrivilegePatterns,
+} from "./product-boundary-rules.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const overlayPath = path.join(repositoryRoot, "downstream", "aionui-v2.1.41", "overlay.json");
@@ -121,18 +129,28 @@ function main() {
     !overlay.migration.strategy.includes("team_definitions") ||
     !overlay.migration.strategy.includes("team_runs") ||
     !overlay.migration.strategy.includes("team_run_revisions") ||
+    !overlay.migration.strategy.includes("schema v17") ||
+    !overlay.migration.strategy.includes("standard_team_message_deliveries") ||
     !overlay.migration.rollback.includes("schema v14") ||
     !overlay.migration.rollback.includes("schema v15") ||
+    !overlay.migration.rollback.includes("schema v17") ||
     !overlay.migration.rollback.includes("patch 0014") ||
     !overlay.migration.rollback.includes("patch 0013") ||
-    overlay.patches.at(-1)?.path !== "patches/0014-actestra-team-work.mjs" ||
+    !overlay.patches.some((patch) => patch.path === "patches/0014-actestra-team-work.mjs") ||
+    !overlay.patches.some(
+      (patch) => patch.path === "patches/0015-actestra-macos-build-hardening.mjs",
+    ) ||
+    overlay.patches.at(-1)?.path !==
+      "patches/0016-actestra-provider-credential-and-capability.mjs" ||
     overlay.uiContract.layoutChangesAllowed !== true ||
     overlay.uiContract.featureEntryRemovalAllowed !== false
   ) {
     throw new Error("Invalid P6 AionUI-native Team-work downstream overlay policy");
   }
 
-  const teamPatch = overlay.patches.at(-1);
+  const teamPatch = overlay.patches.find(
+    (patch) => patch.path === "patches/0014-actestra-team-work.mjs",
+  );
   for (const classification of ["R1", "R2"]) {
     if (!teamPatch.classification.includes(classification)) {
       throw new Error(`P6 Team patch is missing ${classification} retention classification`);
@@ -237,6 +255,22 @@ function main() {
       );
     }
   }
+  const formatterConfig = readJson(path.join(outputRoot, ".oxfmtrc.json"));
+  const sourceCopyFormatterOverride = Array.isArray(formatterConfig.overrides)
+    ? formatterConfig.overrides.find(
+        (override) =>
+          Array.isArray(override?.files) &&
+          override.files.includes("packages/desktop/src/actestra/**/*.{js,jsx,ts,tsx,cjs,mjs}"),
+      )
+    : undefined;
+  if (
+    sourceCopyFormatterOverride?.options?.singleQuote !== false ||
+    sourceCopyFormatterOverride?.options?.jsxSingleQuote !== false ||
+    sourceCopyFormatterOverride?.options?.printWidth !== 100 ||
+    sourceCopyFormatterOverride?.options?.trailingComma !== "all"
+  ) {
+    throw new Error("Actestra source-copy formatter ownership override is missing or widened");
+  }
   for (const requiredScheduleSourceCopy of [
     "packages/desktop/src/actestra/compatibility/aionui/scheduleContract.ts",
     "packages/desktop/src/actestra/compatibility/aionui/scheduleBridge.ts",
@@ -249,6 +283,7 @@ function main() {
     }
   }
   for (const requiredCodingSourceCopy of [
+    "packages/desktop/src/actestra/main/compatibility/aionuiCodingArtifactService.ts",
     "packages/desktop/src/actestra/main/workers/gooseAcpHandshake.ts",
     "packages/desktop/src/actestra/main/workers/gooseCodingToolInvoker.ts",
     "packages/desktop/src/actestra/main/workers/gooseCodingEvidenceCoordinator.ts",
@@ -256,6 +291,7 @@ function main() {
     "packages/desktop/src/actestra/main/workers/gooseMcpCapabilityServer.ts",
     "packages/desktop/src/actestra/main/workers/gooseMcpSessionComposition.ts",
     "packages/desktop/src/actestra/main/workers/gooseRunnerArtifact.ts",
+    "packages/desktop/src/actestra/main/workers/actestraCodingJourneyRuntime.ts",
     "packages/desktop/src/actestra/main/workers/gooseRunnerProcess.ts",
     "packages/desktop/src/actestra/main/workers/isolatedCodingMainService.ts",
     "packages/desktop/src/actestra/main/workers/isolatedCodingWorktree.ts",
@@ -267,20 +303,61 @@ function main() {
       throw new Error(`Missing isolated-coding source copy: ${requiredCodingSourceCopy}`);
     }
   }
+  for (const requiredMainModelSourceCopy of [
+    "packages/desktop/src/actestra/main/model/actestraMainModelJson.ts",
+    "packages/desktop/src/actestra/main/model/actestraMainModelBroker.ts",
+    "packages/desktop/src/actestra/main/workers/actestraGeneralWorkRuntime.ts",
+  ]) {
+    if (!sourceCopyDestinations.has(requiredMainModelSourceCopy)) {
+      throw new Error(`Missing Main model source copy: ${requiredMainModelSourceCopy}`);
+    }
+  }
   for (const requiredTeamSourceCopy of [
     "packages/desktop/src/actestra/core/teamRun.ts",
     "packages/desktop/src/actestra/compatibility/aionui/teamBridge.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiTeamBridgeService.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiTeamService.ts",
+    "packages/desktop/src/actestra/main/orchestration/actestraNativeTeamPlanner.ts",
+    "packages/desktop/src/actestra/main/orchestration/actestraNativeTeamPlannerProcess.ts",
     "packages/desktop/src/actestra/main/orchestration/teamPlanAdmissionService.ts",
     "packages/desktop/src/actestra/main/orchestration/teamOrchestratorService.ts",
     "packages/desktop/src/actestra/main/orchestration/teamJourneyWorkerRouter.ts",
     "packages/desktop/src/actestra/main/orchestration/teamPlannerSidecarProcess.ts",
+    "packages/desktop/src/actestra/main/orchestration/teamWorkspaceGrantContext.ts",
     "packages/desktop/src/actestra/main/privileged/approvalAuditEvidence.ts",
     "packages/desktop/src/actestra/shared/teamPlannerSidecarProtocol.ts",
+    "packages/desktop/src/actestra/utility/orchestration/actestraNativeTeamPlannerEntry.ts",
   ]) {
     if (!sourceCopyDestinations.has(requiredTeamSourceCopy)) {
       throw new Error(`Missing Team-work source copy: ${requiredTeamSourceCopy}`);
+    }
+  }
+  const plannerManifestDestination =
+    "packages/desktop/src/actestra/scripts/actestraNativeTeamPlannerManifest.cjs";
+  if (!sourceCopyDestinations.has(plannerManifestDestination)) {
+    throw new Error(
+      `Missing native planner manifest helper source copy: ${plannerManifestDestination}`,
+    );
+  }
+  for (const admissionDisabledSourceCopy of [
+    "packages/desktop/src/actestra/main/orchestration/localClaudeProductRuntime.ts",
+    "packages/desktop/src/actestra/main/orchestration/supervisedLocalAgentProvider.ts",
+    "packages/desktop/src/actestra/main/orchestration/supervisedLocalAgentRuntime.ts",
+  ]) {
+    if (sourceCopyDestinations.has(admissionDisabledSourceCopy)) {
+      throw new Error(
+        `Admission-disabled local-Agent evaluation code entered the product graph: ${admissionDisabledSourceCopy}`,
+      );
+    }
+  }
+  for (const sourceCopy of overlay.sourceCopies) {
+    const declared = `${sourceCopy.source}\n${sourceCopy.destination}`;
+    if (
+      declared.includes("tests/fixtures") ||
+      declared.includes("localAgentCli") ||
+      declared.includes("teamPlannerSidecar.mjs")
+    ) {
+      throw new Error(`Test-only planner source entered the product graph: ${declared}`);
     }
   }
   for (const requiredR0Path of [
@@ -301,6 +378,19 @@ function main() {
     ) {
       throw new Error(`A second upstream application UI/runtime path entered P6: ${changedPath}`);
     }
+  }
+
+  const teamRendererAuthorityFindings = inspectSourceFilesForPrivilegePatterns({
+    rootPath: outputRoot,
+    relativePaths: actestraTeamRendererAuthorityPaths,
+    rules: actestraTeamRendererPrivilegePatterns,
+  });
+  if (teamRendererAuthorityFindings.length > 0) {
+    throw new Error(
+      `Actestra Team renderer authority boundary is invalid: ${teamRendererAuthorityFindings
+        .map((finding) => `${finding.relativePath}: ${finding.label}`)
+        .join("; ")}`,
+    );
   }
 
   for (const assetCopy of overlay.assetCopies) {
@@ -362,13 +452,6 @@ function main() {
   requireText(path.join(outputRoot, "packages/desktop/src/common/adapter/httpBridge.ts"), [
     "publishActestraHttpObservation",
     "publishActestraWebSocketObservation",
-    "ACTESTRA_TEAM_PATH = '/api/teams'",
-    "isActestraTeamProviderActive",
-    "requestActestraTeam",
-    "window.actestraTeam!.request",
-    "assertAionUiTeamBridgeResponse",
-    "teamUnavailableError",
-    "teamEmitter",
     "ACTESTRA_SCHEDULE_PATH = '/api/cron'",
     "requestActestraSchedule",
     "window.actestraSchedule!.onEvent",
@@ -377,8 +460,6 @@ function main() {
   requireOrderedFragments(
     path.join(outputRoot, "packages/desktop/src/common/adapter/httpBridge.ts"),
     [
-      "if (isActestraTeamPath(path))",
-      "return requestActestraTeam<T>(method, path, body);",
       "if (isActestraSchedulePath(path))",
       "return requestActestraSchedule<T>(method, path, body);",
       "const approvalRoute = await routeActestraApprovalRequest",
@@ -387,13 +468,17 @@ function main() {
   requireOrderedFragments(
     path.join(outputRoot, "packages/desktop/src/common/adapter/httpBridge.ts"),
     [
-      "if (isActestraTeamEventName(eventName))",
-      "return teamEmitter<Params>(eventName);",
       "if (isActestraScheduleEventName(eventName))",
       "return scheduleEmitter<Params>(eventName);",
       "ensureWs();",
     ],
   );
+  rejectText(path.join(outputRoot, "packages/desktop/src/common/adapter/httpBridge.ts"), [
+    "ACTESTRA_TEAM_PATH = '/api/teams'",
+    "isActestraTeamProviderActive",
+    "requestActestraTeam",
+    "teamEmitter",
+  ]);
   requireText(path.join(outputRoot, "packages/desktop/src/preload/main.ts"), [
     "contextBridge.exposeInMainWorld('actestraTeam'",
     "ACTESTRA_TEAM_REQUEST_CHANNEL",
@@ -421,6 +506,8 @@ function main() {
       'segments[1] !== "teams"',
       '"team-planner-unavailable": 503',
       'authority_source: "schema-15-team-run"',
+      'authority_source: "actestra-main-runtime"',
+      '"restart-after-planner-admission"',
       "assertAionUiTeamBridgeRequest",
       "assertAionUiTeamBridgeResponse",
       "assertAionUiTeamEvent",
@@ -447,6 +534,8 @@ function main() {
       "persistTeamDefinition",
       "team-planner-unavailable",
       'authority_source: "schema-15-team-run"',
+      'blocked_reason: "planner-unavailable"',
+      'next_action: "restart-after-planner-admission"',
       "next_actions",
       "decideApproval",
       "resolveFeedback",
@@ -497,7 +586,6 @@ function main() {
       "ACTESTRA_AIONUI_SCHEDULE_RECOVERY_READY",
       "ActestraTeamComposition",
       "configureActestraTeamRuntime",
-      "ACTESTRA_AIONUI_TEAM_RECOVERY_READY",
       "registerRecoveredTeamBridge",
       "[Actestra schedule] Recovery unavailable at startup",
       "[Actestra general work] Recovery unavailable at startup",
@@ -514,28 +602,43 @@ function main() {
     [
       "class ActestraTeamComposition",
       "new TeamJourneyWorkerRouter",
+      "readonly #teamRuntimes = new Map",
+      "workerRuntimeAdmission:",
       "new TeamOrchestratorService",
       "new TeamPlanAdmissionService",
       "new AionUiTeamService",
       "registerAionUiTeamBridgeIpc",
-      "await this.#orchestrator?.close()",
+      "workspaceSelection: { select: () => this.#selectWorkspace() }",
+      "dialog.showOpenDialog(window",
+      "const rootPath = await realpath(selectedPath);",
+      "rootPath === path.parse(rootPath).root",
+      "await orchestrator.close()",
+      "await runtime.close()",
       "await this.#planner?.close()",
       "Actestra Team composition shutdown failed",
+      "ACTESTRA_AIONUI_TEAM_RECOVERY_READY",
+      "recoverStandardAuthority",
+      "window.webContents.once('did-finish-load'",
+      "this.#recoverWorkerRuns()",
     ],
   );
   requireOrderedFragments(
     path.join(outputRoot, "packages/desktop/src/process/services/actestraTeamComposition.ts"),
+    ["this.#service.close();", "await orchestrator.close();", "await this.#planner?.close();"],
+  );
+  requireText(
+    path.join(outputRoot, "packages/desktop/src/process/services/actestraShadowBridge.ts"),
     [
-      "this.#service.close();",
-      "await this.#orchestrator?.close();",
-      "await this.#planner?.close();",
+      "createGeneralWorkJourney(trustedRuntime.general)",
+      "modelCatalog: teamWorkerRuntimeAdmission?.modelCatalog ?? null",
+      "workerRuntimeAdmission:",
     ],
   );
   requireOrderedFragments(
     path.join(outputRoot, "packages/desktop/src/process/services/actestraShadowBridge.ts"),
     [
       "await scheduleService.recover();",
-      "await teamComposition.recover();",
+      "await teamComposition.recoverStandardAuthority();",
       "registerRecoveredTeamBridge();",
       "[Actestra persistence] Utility ready schema=",
     ],
@@ -786,7 +889,7 @@ function main() {
     "missed-occurrence",
     "schedule-smoke-interrupted-claim",
     "schedule-skill-unsupported",
-    "expectedPersistenceSchemaVersion = 15",
+    "expectedPersistenceSchemaVersion = 22",
   ]);
   rejectText(path.join(repositoryRoot, "scripts/smoke-aionui-general-work.mjs"), [
     "Electron.app",
@@ -798,10 +901,19 @@ function main() {
     "persistenceUtilityEntry.ts",
     "'actestra-general-worker'",
     "generalWorkerEntry.ts",
+    "'actestra-team-planner'",
+    "actestraNativeTeamPlannerEntry.ts",
+    "createRequire(import.meta.url)",
+    "actestraNativeTeamPlannerManifest.cjs",
+    "writeActestraTeamPlannerManifest(resolve(__dirname, '../..'))",
     "entryFileNames: '[name].js'",
   ]);
   requireText(path.join(outputRoot, "packages/desktop/src/index.ts"), [
     "await initializeProcess();",
+    "startTrustedActestraCodingJourneyRuntime",
+    "resolveTrustedActestraCodingRunnerAdmission",
+    "configureActestraTeamWorkerRuntimeAdmission({",
+    "projectAionCoreTeamModelCatalog",
     "await initializeActestraPersistenceUtility(app.getPath('userData'));",
     "registerActestraScheduleResumeBridge();",
     "resumeActestraSchedule()",
@@ -814,6 +926,10 @@ function main() {
   ]);
   rejectText(path.join(outputRoot, "packages/desktop/src/index.ts"), [
     "/api/cron/internal/system-resume",
+    "admitLocalClaudeProductRuntime",
+    "configureActestraTeamRuntime({ planner:",
+    "configureActestraCodingJourneyRuntime({",
+    "selection: null",
   ]);
   requireOrderedFragments(
     path.join(outputRoot, "packages/desktop/src/process/services/actestraShadowBridge.ts"),
@@ -834,24 +950,33 @@ function main() {
     path.join(outputRoot, "packages/desktop/src/process/services/actestraShadowBridge.ts"),
     [
       "disposeScheduleBridge?.();",
+      "await activeTeam?.close();",
       "let codingJourneyCloseError: unknown;",
       "await activeCodingJourney?.close();",
       "codingJourneyService = null;",
+      "let codingArtifactCloseError: unknown;",
+      "await activeCodingArtifact?.close();",
+      "codingArtifactCloseError = error;",
       "let isolatedCodingCloseFailed = false;",
       "await activeIsolatedCoding?.close();",
       "isolatedCodingMainService = null;",
       "isolatedCodingCloseFailed = true;",
       "await activeSchedule?.close()",
       "await activeGeneralWork?.close()",
-      "if (teamCloseError !== undefined || codingJourneyCloseError !== undefined || isolatedCodingCloseFailed)",
+      "teamCloseError !== undefined ||",
+      "codingJourneyCloseError !== undefined ||",
+      "codingArtifactCloseError !== undefined ||",
+      "isolatedCodingCloseFailed",
       "Actestra coding journey shutdown failed",
       "persistence = null;",
       "await activePersistence.close();",
     ],
   );
   requireOrderedFragments(path.join(outputRoot, "packages/desktop/src/index.ts"), [
-    "await initializeActestraPersistenceUtility(app.getPath('userData'));",
+    "await initializeProcess();",
     "rendererInitialLanguage = ProcessConfig.getSync('language') ?? null;",
+    "configureActestraTeamWorkerRuntimeAdmission({",
+    "await initializeActestraPersistenceUtility(app.getPath('userData'));",
     "createWindow({ showOnReady: showMainWindowOnReady });",
   ]);
   requireText(
@@ -970,7 +1095,14 @@ function main() {
   requireText(
     path.join(outputRoot, "packages/desktop/src/actestra/utility/persistence/sqliteMigrations.ts"),
     [
-      "CURRENT_CORE_SCHEMA_VERSION = 15",
+      "CURRENT_CORE_SCHEMA_VERSION = 22",
+      "artifact-delivery-split-authority",
+      "artifact-delivery-patch-owner-identity",
+      "patch_owner_grant_id",
+      "patch_owner_worker_id",
+      "patch_request_id",
+      "destination_grant_id",
+      "verified_head",
       "aionui_shadow_evidence",
       "aionui_approval_decisions",
       "pending-delivery",
@@ -981,9 +1113,14 @@ function main() {
       "local-research-artifact",
       "writing-artifact",
       "office-document-artifact",
+      "aionui-general-work-requirements",
+      "requirements_json",
       "aionui-scheduled-general-work",
       "aionui_schedule_jobs",
       "team-plan-authority",
+      "team_experience_bindings",
+      "standard-team-message-delivery-authority",
+      "standard_team_message_deliveries",
       "team_plans",
       "team_definitions",
       "team_runs",
@@ -1088,11 +1225,14 @@ function main() {
   requireText(
     path.join(outputRoot, "packages/desktop/src/actestra/shared/generalWorkerProtocol.ts"),
     [
-      "GENERAL_WORKER_PROTOCOL_VERSION = 1",
-      'GENERAL_WORKER_IMPLEMENTATION_VERSION = "0.1.0"',
+      "GENERAL_WORKER_PROTOCOL_VERSION = 2",
+      'GENERAL_WORKER_IMPLEMENTATION_VERSION = "0.2.0"',
       "MAX_GENERAL_WORKER_MESSAGE_BYTES",
       "MAX_GENERAL_WORKER_PROMPT_BYTES",
       '"tool-result-accepted"',
+      '"model-requests"',
+      '"model-requested"',
+      '"resolve-model"',
       "assertGeneralWorkerMessage",
     ],
   );
@@ -1193,6 +1333,101 @@ function main() {
       )}`,
     );
   }
+  const mainModelJsonPath = path.join(
+    outputRoot,
+    "packages/desktop/src/actestra/main/model/actestraMainModelJson.ts",
+  );
+  const mainModelBrokerPath = path.join(
+    outputRoot,
+    "packages/desktop/src/actestra/main/model/actestraMainModelBroker.ts",
+  );
+  const generalWorkRuntimePath = path.join(
+    outputRoot,
+    "packages/desktop/src/actestra/main/workers/actestraGeneralWorkRuntime.ts",
+  );
+  requireText(mainModelBrokerPath, [
+    "export interface ActestraMainModelInvocation",
+    'readonly purpose: "general-work" | "coding";',
+    "export interface ActestraMainModelBrokerPort",
+    "readonly invokeModel: ActestraMainModelInvoker;",
+  ]);
+  requireText(generalWorkRuntimePath, [
+    'from "../model/actestraMainModelBroker";',
+    'purpose: "general-work"',
+    "tools: Object.freeze([])",
+  ]);
+  for (const providerNeutralPath of [
+    mainModelJsonPath,
+    mainModelBrokerPath,
+    generalWorkRuntimePath,
+  ]) {
+    rejectText(providerNeutralPath, [
+      "credential",
+      "Credential",
+      "authorization",
+      "Authorization",
+      "headers",
+      "Headers",
+      "baseUrl",
+      "baseURL",
+      "base_url",
+      "BASE_URL",
+      "Provider",
+      "provider",
+      "Goose",
+      "goose",
+      "GOOSE",
+      " DTO",
+      "Dto",
+      "http://",
+      "https://",
+      'from "node:http"',
+      'from "node:https"',
+      'from "node:net"',
+      'from "node:tls"',
+      "fetch(",
+      "WebSocket",
+      "EventSource",
+      "XMLHttpRequest",
+    ]);
+  }
+  const mainModelBrokerImports = extractStaticModuleSpecifiers(
+    fs.readFileSync(mainModelBrokerPath, "utf8"),
+  );
+  const mainModelJsonImports = extractStaticModuleSpecifiers(
+    fs.readFileSync(mainModelJsonPath, "utf8"),
+  );
+  if (mainModelJsonImports.length !== 1 || mainModelJsonImports[0] !== "node:buffer") {
+    throw new Error(
+      `Actestra Main model JSON boundary has an undeclared dependency: ${mainModelJsonImports.join(", ")}`,
+    );
+  }
+  if (
+    mainModelBrokerImports.length !== 1 ||
+    mainModelBrokerImports[0] !== "./actestraMainModelJson"
+  ) {
+    throw new Error(
+      `Actestra Main model broker has a non-neutral dependency: ${mainModelBrokerImports.join(", ")}`,
+    );
+  }
+  const generalWorkRuntimeImports = extractStaticModuleSpecifiers(
+    fs.readFileSync(generalWorkRuntimePath, "utf8"),
+  );
+  // The broker is the runtime's only authority-bearing dependency. The draft contract is a pure
+  // core module holding the shared prompt and envelope rules, so the prompt has one definition
+  // instead of a copy that can drift from the validator that enforces it.
+  const generalWorkRuntimeAllowedImports = new Set([
+    "../model/actestraMainModelBroker",
+    "../../core/generalDraftContract",
+  ]);
+  const generalWorkRuntimeUnexpected = generalWorkRuntimeImports.filter(
+    (specifier) => !generalWorkRuntimeAllowedImports.has(specifier),
+  );
+  if (generalWorkRuntimeUnexpected.length > 0) {
+    throw new Error(
+      `Actestra General runtime depends outside the Main model broker: ${generalWorkRuntimeUnexpected.join(", ")}`,
+    );
+  }
   requireText(path.join(outputRoot, "tests/unit/actestra/generalWorkerProcessAdapter.test.ts"), [
     "General Worker process adapter",
     "protocolVersion: 2",
@@ -1211,7 +1446,7 @@ function main() {
   ]);
   requireText(path.join(outputRoot, "tests/unit/actestra/persistenceUtilityClient.test.ts"), [
     "schema v14 utility IPC",
-    "expect(client.schemaVersion).toBe(15)",
+    "expect(client.schemaVersion).toBe(CURRENT_CORE_SCHEMA_VERSION)",
   ]);
   requireText(path.join(outputRoot, "tests/unit/actestra/generalWorkSmoke.test.ts"), [
     "prepare-writing-restart",
@@ -1249,6 +1484,43 @@ function main() {
     "actestraCodingAgent",
     "ActestraCodingAgentRepairPanel",
   ]);
+  const codingJourneyRuntimePath = path.join(
+    outputRoot,
+    "packages/desktop/src/actestra/main/workers/actestraCodingJourneyRuntime.ts",
+  );
+  requireText(codingJourneyRuntimePath, [
+    "resolveTrustedActestraCodingRunnerAdmission",
+    "startTrustedActestraCodingJourneyRuntime",
+    "admitGooseRunnerArtifact",
+    "goose-private",
+    '"git.status"',
+    '"git.diff-check"',
+    "modelBinding",
+    'from "../model/actestraMainModelBroker";',
+  ]);
+  rejectText(codingJourneyRuntimePath, ["actestraGeneralWorkRuntime"]);
+  const allowedCodingJourneyRuntimeImports = [
+    "node:fs",
+    "node:fs/promises",
+    "node:path",
+    "../model/actestraMainModelBroker",
+    "../compatibility/aionuiCodingAgentService",
+    "../privileged/isolatedCodingToolPlatform",
+    "./gooseRunnerArtifact",
+  ];
+  const codingJourneyRuntimeImports = extractStaticModuleSpecifiers(
+    fs.readFileSync(codingJourneyRuntimePath, "utf8"),
+  );
+  if (
+    codingJourneyRuntimeImports.length !== allowedCodingJourneyRuntimeImports.length ||
+    codingJourneyRuntimeImports.some(
+      (specifier, index) => specifier !== allowedCodingJourneyRuntimeImports[index],
+    )
+  ) {
+    throw new Error(
+      `Actestra coding runtime import closure is invalid: ${codingJourneyRuntimeImports.join(", ")}`,
+    );
+  }
   requireText(path.join(outputRoot, "tests/unit/actestra/codingAgentClient.dom.test.ts"), [
     "Actestra coding-agent renderer client",
     "mergeActestraCodingAgent",
@@ -1338,6 +1610,17 @@ function main() {
   ]);
   requireText(path.join(outputRoot, "packages/desktop/src/common/adapter/actestraTeamClient.ts"), [
     "isActestraTeamProviderActive",
+    "window.actestraTeam!.request",
+    "listActestraTeams",
+    "getActestraTeam",
+    "createStandardTeam",
+    "addStandardTeamMember",
+    "getStandardTeamConfigOptions",
+    "isActestraTeamUnavailableError",
+    "selectActestraTeamWorkspace",
+    "listActestraTeamModelOptions",
+    "createActestraTeam",
+    "description: input.description?.trim() || null",
     "subscribeActestraTeamEvents",
     "getActestraTeamRunState",
     "submitActestraTeamTask",
@@ -1347,11 +1630,32 @@ function main() {
     "cancelActestraTeamRun",
   ]);
   requireText(path.join(outputRoot, "packages/desktop/src/renderer/pages/team/TeamPage.tsx"), [
-    "isActestraTeamProviderActive()",
+    "resolveTeamExperience(team) === 'orchestrated'",
+    "resolveTeamExperience(team) === 'standard'",
     "ActestraTeamWorkspace",
     "NativeTeamPage",
+    "team-experience-unavailable",
+  ]);
+  rejectText(path.join(outputRoot, "packages/desktop/src/renderer/pages/team/TeamPage.tsx"), [
+    "isActestraTeamProviderActive()",
+  ]);
+  requireText(path.join(outputRoot, "packages/desktop/src/renderer/pages/team/index.tsx"), [
+    "return getActestraTeam(id!)",
+    "team-provider-unavailable",
+    "team.experience.providerUnavailable",
+  ]);
+  rejectText(path.join(outputRoot, "packages/desktop/src/renderer/pages/team/index.tsx"), [
+    "listActestraTeams",
+    "mergeTeamLists",
   ]);
   requireText(
+    path.join(
+      outputRoot,
+      "packages/desktop/src/renderer/pages/team/components/TeamCreateModal.tsx",
+    ),
+    ["TeamAssistantPicker", "WorkspaceFolderSelect", "createStandardTeam"],
+  );
+  rejectText(
     path.join(
       outputRoot,
       "packages/desktop/src/renderer/pages/team/components/TeamCreateModal.tsx",
@@ -1360,7 +1664,37 @@ function main() {
   );
   requireText(
     path.join(outputRoot, "packages/desktop/src/renderer/pages/team/hooks/useTeamList.ts"),
-    ["isActestraTeamProviderActive()", "actestra-local-user"],
+    ["isActestraTeamProviderActive()", "listActestraTeams", "teamProviderUnavailable"],
+  );
+  rejectText(
+    path.join(outputRoot, "packages/desktop/src/renderer/pages/team/hooks/useTeamList.ts"),
+    ["mergeTeamLists"],
+  );
+  requireText(
+    path.join(
+      outputRoot,
+      "packages/desktop/src/renderer/components/layout/Sider/TeamSiderSection.tsx",
+    ),
+    [
+      "TeamCreateExperienceChooser",
+      "setCreateChooserVisible(true)",
+      "<TeamCreateModal",
+      "<ActestraTeamCreateModal",
+      "actestra-team-provider-unavailable",
+    ],
+  );
+  requireText(
+    path.join(
+      outputRoot,
+      "packages/desktop/src/renderer/pages/team/components/TeamCreateExperienceChooser.tsx",
+    ),
+    [
+      "team-create-kind-standard",
+      "team-create-kind-orchestrated",
+      "role='menuitem'",
+      "team.experience.standardTitle",
+      "team.experience.orchestratedTitle",
+    ],
   );
   requireText(
     path.join(
@@ -1369,11 +1703,32 @@ function main() {
     ),
     [
       "data-testid='actestra-team-create-modal'",
-      "data-testid='actestra-team-workspace-input'",
-      "assistant_id: 'actestra-general-worker'",
-      "assistant_id: 'actestra-goose-worker'",
+      "data-testid='actestra-team-description-input'",
+      "data-testid='actestra-team-workspace-select'",
+      "data-testid='actestra-team-workspace-grant'",
+      "data-testid='actestra-team-provider-select'",
+      "data-testid='actestra-team-model-select'",
+      "data-testid='actestra-team-member-row'",
+      "data-testid='actestra-team-member-add'",
+      "members.length >= 2",
+      "members.length <= 5",
+      "member.capability === 'general' ? 'actestra-general-worker' : 'actestra-goose-worker'",
       "workspace_mode: 'isolated'",
-      "renderer pages never receive a filesystem path",
+      "selectActestraTeamWorkspace",
+      "listActestraTeamModelOptions",
+    ],
+  );
+  rejectText(
+    path.join(
+      outputRoot,
+      "packages/desktop/src/renderer/pages/team/components/ActestraTeamCreateModal.tsx",
+    ),
+    [
+      "data-testid='actestra-team-workspace-input'",
+      "defaultValue:",
+      "useModelProviderList",
+      "api_key",
+      "base_url",
     ],
   );
   const teamWorkspacePath = path.join(
@@ -1383,14 +1738,30 @@ function main() {
   requireText(teamWorkspacePath, [
     "data-testid='actestra-team-workspace'",
     "data-testid='actestra-team-current-executor'",
+    "data-testid='actestra-team-run-status'",
+    "data-testid='actestra-team-member-status'",
+    "data-testid='actestra-team-node-status'",
+    "data-testid='actestra-team-node-capability'",
     "data-testid='actestra-team-blocked-reason'",
     "data-testid='actestra-team-result'",
     "data-testid='actestra-team-run-submit'",
-    "Actestra Core owns Team identity",
-    "schema-15 Team authority",
-    "Team group chat",
+    "data-testid='actestra-team-submission-unavailable'",
+    "data-testid='actestra-team-action-error'",
+    "setActionFailureKey('controlFailed')",
+    "setActionFailureKey('feedbackFailed')",
+    "setActionFailureKey('cancelFailed')",
+    "setActionFailureKey('renameFailed')",
+    "team.actestra.authoritySourceDescription",
+    "team.actestra.groupChat",
+    "team.actestra.blocked.protectedApproval",
+    "team.actestra.blocked.unknown",
+    "t('team.actestra.runStatus.' + run.actestra.core_status)",
+    "t('team.actestra.assistantStatus.' + assistant.status)",
+    "t('team.actestra.nodeState.' + node.state)",
+    "t('team.actestra.capability.' + node.capability)",
+    "blockedExplanation(node, t)",
     "data?.activities",
-    "Plan, dependencies, blocked reasons, controls, and Artifacts",
+    "team.actestra.planEmpty",
     "pause",
     "resume",
     "cancel",
@@ -1405,20 +1776,122 @@ function main() {
     "workerId",
     "repositoryRoot",
     "sidecarTraceback",
+    "Message.error(controlError",
+    "Message.error(feedbackError",
+    "Message.error(cancelError",
+    "Message.error(renameError",
   ]);
   requireText(path.join(outputRoot, "tests/unit/actestra/teamNativeWiring.test.ts"), [
     "Actestra AionUI-native Team wiring",
-    "routes only exact Team paths and events",
-    "Team authority, recovery, IPC, and close ordering",
-    "visible explainable control surface",
+    "keeps native Team HTTP and events reachable",
+    "keeps Team authority, recovery, IPC, and close ordering",
+    "keeps Workspace selection in the registered main window and projects no path",
+    "keeps both Team creation directions reachable",
+    "ships English and Chinese Team experience copy",
   ]);
+  requireText(
+    path.join(outputRoot, "tests/unit/renderer/team/TeamCreateExperienceChooser.dom.test.tsx"),
+    [
+      "routes standard to the preserved native modal",
+      "routes the explicit orchestrated choice",
+      "returns focus to the Team plus",
+    ],
+  );
+  requireText(
+    path.join(outputRoot, "tests/unit/renderer/team/TeamExperienceRouting.dom.test.tsx"),
+    [
+      "opens a standard Team from the single Main/Core projection while the provider is active",
+      "opens an orchestrated Team from its Main/Core projection",
+      "uses the preserved native provider only when the Actestra provider is absent",
+      "fails closed when the Main/Core projection fails",
+      "explains an Actestra provider failure",
+    ],
+  );
+  requireText(
+    path.join(outputRoot, "tests/unit/renderer/team/TeamPageCronJobManager.dom.test.tsx"),
+    [
+      "keeps native Team chat and switches to Actestra plan controls",
+      "team-tabs-slot",
+      "team-chat-view-member-conv",
+      "actestra-team-plan-control",
+    ],
+  );
+  requireText(path.join(outputRoot, "tests/e2e/helpers/teamHelpers.ts"), [
+    "chooseTeamExperience",
+    "team-create-kind-${experience}",
+    "await chooseTeamExperience(page, 'standard')",
+    "modal.locator('[data-testid=\"team-create-name-input\"]')",
+    'team-create-add-member-btn"]:visible',
+    "const options = page.locator('[data-testid^=\"team-create-agent-option-\"]')",
+  ]);
+  for (const relativePath of [
+    "tests/e2e/cases/teams/team-create.e2e.ts",
+    "tests/e2e/cases/teams/team-create-mobile.e2e.ts",
+    "tests/e2e/cases/teams/team-create-ui.e2e.ts",
+    "tests/e2e/cases/teams/team-ui-details.e2e.ts",
+    "tests/e2e/cases/teams/team-whitelist.e2e.ts",
+  ]) {
+    requireText(path.join(outputRoot, relativePath), ["chooseTeamExperience(page, 'standard')"]);
+  }
+  requireText(path.join(outputRoot, "tests/e2e/cases/teams/team-experience-choice.e2e.ts"), [
+    "team-create-kind-standard",
+    "team-create-kind-orchestrated",
+    "team-create-layout",
+    "actestra-team-create-modal",
+    "keeps the Main/Core standard provider readable",
+    "createTeam(page, teamName, 'claude')",
+    "/api/teams?user_id=actestra-local-user",
+    "team-provider-unavailable",
+    "team-tab-bar",
+  ]);
+  requireText(path.join(outputRoot, "tests/e2e/cases/teams/team-member-messaging.e2e.ts"), [
+    "page.route('**/api/teams/*/session'",
+    "team-warmup-retry",
+    "invokeBridge<TeamProjection>(page, 'team.get'",
+    "team-tab-${addedMember.slot_id}",
+    "cleanupTeamsByName",
+  ]);
+  const teamMemberOpsPath = path.join(outputRoot, "tests/e2e/cases/teams/team-member-ops.e2e.ts");
+  requireText(teamMemberOpsPath, [
+    "window.actestraTeam?.request",
+    "experience: 'standard'",
+    "Main/Core did not return a standard Team member slot",
+    "team-tab-remove-${addResult.slot_id}",
+  ]);
+  rejectText(teamMemberOpsPath, ["invokeBridge<{ slot_id: string } | null>"]);
+  requireText(path.join(outputRoot, "tests/e2e/cases/teams/team-orchestrated-create.e2e.ts"), [
+    "actestra-team-workspace-grant",
+    "experience: 'orchestrated'",
+    "not.toContain(workspaceRoot)",
+    "restartElectronApp",
+    "planner|规划器|不可用",
+  ]);
+  requireText(path.join(outputRoot, "tests/e2e/fixtures.ts"), [
+    "AIONUI_E2E_USER_DATA_DIR: e2eUserDataDir",
+    "ACTESTRA_E2E_TEST: '1'",
+    "ACTESTRA_USER_DATA_DIR: e2eUserDataDir",
+    "restartElectronApp",
+    "previousApp.close()",
+    "app = await launchApp()",
+  ]);
+  requireText(
+    path.join(outputRoot, "tests/unit/renderer/team/ActestraTeamCreateModal.dom.test.tsx"),
+    [
+      "supporting two to five explicit members",
+      "requests Main-owned workspace selection without renderer path input",
+      "submits description, approved workspace reference, finite model IDs, and member intent",
+      "not.toContain('team-member-')",
+    ],
+  );
   requireText(
     path.join(outputRoot, "tests/unit/renderer/team/ActestraTeamWorkspace.dom.test.tsx"),
     [
       "Actestra Team workspace",
       "shows authority, executor, dependency, blocked reason, actions, and Artifact references",
+      "localizes run, member, node, and capability tokens from the Main projection",
       "routes approval through the fixed Actestra Team control client",
       "restores durable user and Worker activity",
+      "projects planner unavailability before effect and blocks an impossible task intent",
     ],
   );
 
@@ -1430,8 +1903,9 @@ function main() {
       "the supervised General Worker, scoped native text tools, deterministic recovery, and " +
       "the preserved AionUI General Work and scheduled-task journeys plus the main-owned " +
       "isolated-coding containment lifecycle, retained Goose Agent readiness, and the closed " +
-      "native ACP coding journey plus the schema-15 Team provider, visible group-chat, controls, " +
-      "explainability, Artifact aggregation, and recovery projection present.",
+      "native ACP coding journey plus the schema-15 Team authority, schema-16 Team experience " +
+      "binding, visible group-chat, controls, explainability, Artifact aggregation, and recovery " +
+      "projection present.",
   );
 }
 

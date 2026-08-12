@@ -62,6 +62,8 @@ export interface CreateGooseCodingToolInvokerOptions {
   readonly sessionId: SessionId;
   readonly workerId: WorkerId;
   readonly approvalDecisionHandler?: GooseCodingApprovalDecisionHandler;
+  /** Suspends the Goose prompt inactivity deadline while a human decides. */
+  readonly holdHumanDecision?: () => () => void;
   readonly evidenceRecorder?: GooseCodingToolEvidenceRecorder;
   readonly newToolRequestId?: () => ToolRequestId;
   readonly newToolInputReference?: () => ToolInputReference;
@@ -130,6 +132,7 @@ function assertOptions(options: CreateGooseCodingToolInvokerOptions): void {
     "sessionId",
     "workerId",
     "approvalDecisionHandler",
+    "holdHumanDecision",
     "evidenceRecorder",
     "newToolRequestId",
     "newToolInputReference",
@@ -148,6 +151,7 @@ function assertOptions(options: CreateGooseCodingToolInvokerOptions): void {
     typeof options.session?.toolGateway?.invoke !== "function" ||
     (options.approvalDecisionHandler !== undefined &&
       typeof options.approvalDecisionHandler !== "function") ||
+    (options.holdHumanDecision !== undefined && typeof options.holdHumanDecision !== "function") ||
     (options.evidenceRecorder !== undefined &&
       (typeof options.evidenceRecorder !== "object" ||
         options.evidenceRecorder === null ||
@@ -203,6 +207,7 @@ function normalizeApprovalDecision(value: unknown): GooseCodingApprovalDecision 
 async function awaitApprovalDecision(
   handler: GooseCodingApprovalDecisionHandler,
   request: GooseCodingApprovalDecisionRequest,
+  holdHumanDecision: (() => () => void) | undefined,
 ): Promise<GooseCodingApprovalDecision> {
   const aborted = (): GooseCodingToolInvokerError =>
     new GooseCodingToolInvokerError(
@@ -218,11 +223,13 @@ async function awaitApprovalDecision(
   });
   const onAbort = (): void => rejectOnAbort(aborted());
   request.signal.addEventListener("abort", onAbort, { once: true });
+  const releaseHumanDecision = holdHumanDecision?.();
   try {
     return normalizeApprovalDecision(
       await Promise.race([Promise.resolve().then(() => handler(request)), abortPromise]),
     );
   } finally {
+    releaseHumanDecision?.();
     request.signal.removeEventListener("abort", onAbort);
   }
 }
@@ -462,6 +469,7 @@ export function createGooseCodingToolInvoker(
             toolCallRequestId: call.toolCallRequestId,
             signal: call.signal,
           }),
+          options.holdHumanDecision,
         );
         let resolvedApproval: ApprovalRequestSnapshot;
         try {

@@ -576,4 +576,55 @@ describe("AionUI general-work renderer projection", () => {
       );
     }
   });
+
+  it("explains each known incident in words the user can act on", async () => {
+    const { describeAionUiGeneralWorkIncident: describe_ } =
+      (await import("../../apps/desktop/src/compatibility/aionui")) as {
+        readonly describeAionUiGeneralWorkIncident: (code: string | undefined) => string | null;
+      };
+
+    // Spec E: an input request must say what to do, name no file General supposedly read, and never
+    // borrow the vocabulary of a provider outage — the user would go looking for the wrong problem.
+    const inputRequired = describe_("general-input-required");
+    expect(inputRequired).toBeTypeOf("string");
+    expect(inputRequired).toContain("retry");
+    expect(inputRequired?.toLowerCase()).not.toContain("unavailable");
+    expect(inputRequired?.toLowerCase()).not.toContain("timed out");
+
+    // A capability mismatch must not invite a retry that cannot succeed, so it says so outright.
+    expect(describe_("general-capability-mismatch")).toContain("will not change that");
+
+    // Spec E: no surface text may imply a draft exists when none was written.
+    for (const code of [
+      "general-output-invalid",
+      "general-instruction-noncompliant",
+      "model-unavailable",
+      "model-timeout",
+      "model-completion-refused",
+    ]) {
+      const text = describe_(code);
+      expect(text, code).toBeTypeOf("string");
+      expect(text, code).toMatch(/nothing was written/iu);
+    }
+
+    // Nothing may claim General has access it does not have, in any entry.
+    for (const code of [
+      "general-input-required",
+      "general-capability-mismatch",
+      "general-output-invalid",
+      "general-instruction-noncompliant",
+      "model-unavailable",
+      "model-timeout",
+      "model-completion-refused",
+    ]) {
+      const text = describe_(code) ?? "";
+      expect(text, code).not.toMatch(/\bread the\b|\bI read\b|\bafter reading\b/iu);
+      expect(text, code).not.toContain("to be filled");
+      expect(text, code).not.toContain("completed");
+    }
+
+    // An unknown code earns no invented cause: the caller falls back to showing the code itself.
+    expect(describe_("worker-process-exit")).toBeNull();
+    expect(describe_(undefined)).toBeNull();
+  });
 });

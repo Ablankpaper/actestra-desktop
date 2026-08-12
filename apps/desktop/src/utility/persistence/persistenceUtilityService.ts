@@ -1,9 +1,15 @@
 import path from "node:path";
 import {
+  ArtifactWorkspaceApplicatorError,
   CoreContractError,
   PersistenceError,
+  artifactId,
+  generateArtifactPatchPreview,
+  getArtifactPatchContent,
   instant,
+  taskId,
   type ActestraPersistencePort,
+  type PrivilegedClock,
 } from "../../core";
 import {
   assertPersistenceUtilityMessage,
@@ -49,6 +55,13 @@ function errorData(error: unknown): PersistenceUtilityErrorData {
       message: boundedMessage(error.message),
     };
   }
+  if (error instanceof ArtifactWorkspaceApplicatorError) {
+    return {
+      domain: "artifact-applicator",
+      code: error.code,
+      message: boundedMessage(error.message),
+    };
+  }
   if (error instanceof PersistenceUtilityServiceError) {
     return {
       domain: "utility",
@@ -66,7 +79,10 @@ function errorData(error: unknown): PersistenceUtilityErrorData {
 export class PersistenceUtilityService {
   private persistence: ActestraPersistencePort | null = null;
 
-  constructor(private readonly openPersistence: OpenPersistence = openSqliteCorePersistence) {}
+  constructor(
+    private readonly clock: PrivilegedClock,
+    private readonly openPersistence: OpenPersistence = openSqliteCorePersistence,
+  ) {}
 
   async shutdown(): Promise<void> {
     const persistence = this.persistence;
@@ -188,6 +204,46 @@ export class PersistenceUtilityService {
         return persistence.persistAdmittedTeamPlan(request.payload.plan);
       case "get-admitted-team-plan":
         return persistence.getAdmittedTeamPlan(request.payload.planId);
+      case "persist-team-experience-binding":
+        return persistence.persistTeamExperienceBinding(request.payload.binding);
+      case "get-team-experience-binding":
+        return persistence.getTeamExperienceBinding(request.payload.teamId);
+      case "persist-standard-team-message-delivery":
+        return persistence.persistStandardTeamMessageDelivery(request.payload.delivery);
+      case "get-standard-team-message-delivery":
+        return persistence.getStandardTeamMessageDelivery(request.payload.deliveryId);
+      case "list-unresolved-standard-team-message-deliveries":
+        return persistence.listUnresolvedStandardTeamMessageDeliveries(request.payload.limit);
+      case "persist-artifact-delivery":
+        return persistence.persistArtifactDelivery(request.payload.delivery);
+      case "get-artifact-delivery": {
+        const result = await persistence.getArtifactDelivery(
+          artifactId(request.payload.artifactId),
+        );
+        return result;
+      }
+      case "list-artifact-deliveries-for-task":
+        return persistence.listArtifactDeliveriesForTask(
+          taskId(request.payload.taskId),
+          request.payload.limit,
+        );
+      case "get-artifact-patch-preview":
+        return generateArtifactPatchPreview(
+          artifactId(request.payload.artifactId),
+          persistence,
+          this.clock,
+        );
+      case "get-artifact-patch-content":
+        return getArtifactPatchContent(
+          artifactId(request.payload.artifactId),
+          persistence,
+          this.clock,
+        );
+      case "apply-artifact-to-workspace":
+        throw new PersistenceUtilityServiceError(
+          "not-open",
+          "apply-artifact-to-workspace must be invoked through Main process service layer",
+        );
       case "persist-team-definition":
         return persistence.persistTeamDefinition(request.payload.team);
       case "get-team-definition":

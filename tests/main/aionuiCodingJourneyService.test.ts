@@ -26,6 +26,7 @@ import {
 } from "../../apps/desktop/src/core";
 import {
   AionUiCodingJourneyService,
+  AionUiCodingJourneyServiceError,
   deriveAionUiCodingJourneyIdentities,
 } from "../../apps/desktop/src/main/compatibility/aionuiCodingJourneyService";
 import { DeterministicAgentClock } from "../../apps/desktop/src/main/workers/deterministicFakeAgentAdapter";
@@ -124,6 +125,31 @@ describe("AionUiCodingJourneyService", () => {
     });
     const prompt = vi.fn(() => promptResult);
     const closeGoose = vi.fn(async () => undefined);
+    const openGooseSession = vi.fn(async () =>
+      Object.freeze({
+        info: Object.freeze({
+          protocolVersion: 1 as const,
+          agentName: "goose" as const,
+          agentVersion: "1.45.0" as const,
+          loadSession: true as const,
+          prompt: Object.freeze({
+            image: true as const,
+            audio: false as const,
+            embeddedContext: true as const,
+          }),
+          mcp: Object.freeze({ http: true as const, sse: false as const, acp: false as const }),
+          session: Object.freeze({ list: true as const, close: true as const }),
+        }),
+        privateRoot: path.join(fixture.root, "goose-private", "attempt"),
+        session: Object.freeze({
+          sessionId: "goose-aionui-coding-journey",
+          setupNotificationKinds: Object.freeze([]),
+        }),
+        toolNames: Object.freeze([]),
+        prompt,
+        close: closeGoose,
+      }),
+    );
     const mainService = createIsolatedCodingMainService(
       {
         persistence,
@@ -134,31 +160,7 @@ describe("AionUiCodingJourneyService", () => {
         createToolInvoker: vi.fn(() => async () => {
           throw new Error("The background prompt must not call a tool in this test");
         }),
-        openGooseSession: vi.fn(async () =>
-          Object.freeze({
-            info: Object.freeze({
-              protocolVersion: 1 as const,
-              agentName: "goose" as const,
-              agentVersion: "1.45.0" as const,
-              loadSession: true as const,
-              prompt: Object.freeze({
-                image: true as const,
-                audio: false as const,
-                embeddedContext: true as const,
-              }),
-              mcp: Object.freeze({ http: true as const, sse: false as const, acp: false as const }),
-              session: Object.freeze({ list: true as const, close: true as const }),
-            }),
-            privateRoot: path.join(fixture.root, "goose-private", "attempt"),
-            session: Object.freeze({
-              sessionId: "goose-aionui-coding-journey",
-              setupNotificationKinds: Object.freeze([]),
-            }),
-            toolNames: Object.freeze([]),
-            prompt,
-            close: closeGoose,
-          }),
-        ),
+        openGooseSession,
       },
     );
     const requireAdmittedArtifact = vi.fn(async () => artifact);
@@ -243,6 +245,10 @@ describe("AionUiCodingJourneyService", () => {
     expect(requireAdmittedArtifact).toHaveBeenCalledTimes(1);
     expect(prompt).toHaveBeenCalledWith({
       text: "Update the fixture and run the focused test.",
+      humanDecisionGate: {
+        hold: expect.any(Function),
+        subscribe: expect.any(Function),
+      },
     });
     expect(mainService.managedRoot).toBe(path.join(fixture.root, "coding-worktrees"));
     expect(await runGit(fixture.repositoryRoot, "status", "--porcelain=v1")).toBe("");
@@ -251,6 +257,70 @@ describe("AionUiCodingJourneyService", () => {
     await service.waitForIdle(projection.taskId);
     await service.close();
     expect(closeGoose).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a workspace that is not a Git root and names which remedy applies", async () => {
+    const fixture = await createRepositoryFixture();
+    const persistence = (await openTestPersistenceUtility(fixture.root)).client;
+    persistenceClients.push(persistence);
+    const nestedRoot = path.join(fixture.repositoryRoot, "nested");
+    fs.mkdirSync(nestedRoot);
+    const cases = [
+      { rootPath: fixture.root, expected: /is not a Git repository$/u },
+      { rootPath: nestedRoot, expected: /is a subdirectory of one$/u },
+    ] as const;
+
+    for (const [index, { rootPath, expected }] of cases.entries()) {
+      const nativeResolve = vi.fn(async () => ({
+        rootPath,
+        displayName: "Native coding workspace",
+      }));
+      const service = new AionUiCodingJourneyService({
+        persistence,
+        clock: new DeterministicAgentClock(instant("2026-08-04T06:00:00.000Z")),
+        nativeContext: { resolve: nativeResolve },
+        codingAgent: { requireAdmittedArtifact: vi.fn(async () => artifact) },
+        getMainService: () => null,
+        privateRootParent: path.join(fixture.root, "goose-private"),
+        modelId: "actestra-fixture-model",
+        modelInvoker: vi.fn(async () =>
+          Object.freeze({
+            type: "message" as const,
+            text: "fixture model response",
+            usage: Object.freeze({ promptTokens: 1, completionTokens: 1 }),
+          }),
+        ),
+        commands: {},
+        tests: {},
+      });
+
+      const rejection = await service
+        .submit({
+          contractVersion: 1,
+          nativeConversationId: `native-coding-conversation-${String(index)}`,
+          submissionId: `submission-coding-workspace-${String(index)}`,
+          prompt: "Update the fixture and run the focused test.",
+        })
+        .then(
+          () => null,
+          (error: unknown) => error,
+        );
+
+      expect(rejection).toBeInstanceOf(AionUiCodingJourneyServiceError);
+      const failure = rejection as AionUiCodingJourneyServiceError;
+      expect(failure.code).toBe("workspace-unavailable");
+      expect(failure.message).toMatch(expected);
+      expect(failure.message).not.toContain(rootPath);
+      await expect(persistence.loadDomainGraph()).resolves.toEqual({
+        workspaces: [],
+        tasks: [],
+        sessions: [],
+        workers: [],
+        approvals: [],
+        artifacts: [],
+      });
+      await service.close();
+    }
   });
 
   it("holds a Team tool approval until real audit outcome is persisted before Goose resumes", async () => {
@@ -583,7 +653,8 @@ describe("AionUiCodingJourneyService", () => {
           inputRef: toolInputReference(`input-coding-publish-${"4".repeat(64)}`),
           action: "publish.execute" as const,
           resourceKind: "repository" as const,
-          summary: "Publish the approved isolated coding patch as an Actestra Artifact",
+          summary:
+            "Save the reviewed isolated coding patch as an Actestra Artifact. This does not modify the original workspace.",
           credentialRefs: Object.freeze([]),
           requestedAt,
         });

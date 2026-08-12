@@ -136,6 +136,11 @@ const ACTIVE_ATTEMPT_STATES: readonly AgentAttemptState[] = [
   "blocked",
   "cancelling",
 ];
+/** True once an attempt can no longer advance, so a caller finalizes it instead of checkpointing it. */
+export function isTerminalAgentAttemptState(state: AgentAttemptState): boolean {
+  return TERMINAL_ATTEMPT_STATES.includes(state);
+}
+
 const TERMINAL_ATTEMPT_STATES: readonly AgentAttemptState[] = [
   "completed",
   "failed",

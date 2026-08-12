@@ -30,6 +30,9 @@ import {
   PersistenceError,
   normalizeAdmittedTeamPlan,
   normalizeTeamDefinition,
+  normalizeTeamExperienceBinding,
+  normalizeStandardTeamMessageDelivery,
+  normalizeArtifactDeliveryRecord,
   normalizeTeamRunSnapshot,
   type ActestraPersistencePort,
   type AdmittedTeamPlan,
@@ -46,6 +49,13 @@ import {
   type PersistContentReferenceResult,
   type PersistAdmittedTeamPlanResult,
   type PersistTeamDefinitionResult,
+  type PersistTeamExperienceBindingResult,
+  type PersistStandardTeamMessageDeliveryResult,
+  type PersistArtifactDeliveryResult,
+  type ArtifactDeliveryRecord,
+  type ArtifactId,
+  type ArtifactWorkspaceOperationsPort,
+  type TaskId,
   type PersistTeamRunSnapshotResult,
   type RemoveTeamDefinitionResult,
   type ReplaceTeamDefinitionResult,
@@ -61,6 +71,8 @@ import {
   type SessionId,
   type TeamPlanId,
   type TeamDefinition,
+  type TeamExperienceBinding,
+  type StandardTeamMessageDelivery,
   type TeamId,
   type TeamRunId,
   type TeamRunSnapshot,
@@ -127,7 +139,9 @@ function responseError(error: PersistenceUtilityErrorData): Error {
   return new PersistenceUtilityError("operation-failed", error.message);
 }
 
-export class PersistenceUtilityClient implements ActestraPersistencePort {
+export class PersistenceUtilityClient
+  implements ActestraPersistencePort, ArtifactWorkspaceOperationsPort
+{
   private readonly pending = new Map<string, PendingRequest>();
   private readonly startupTimeoutMs: number;
   private readonly requestTimeoutMs: number;
@@ -374,6 +388,168 @@ export class PersistenceUtilityClient implements ActestraPersistencePort {
       throw this.failInvalidMessage("Persistence utility substituted a team-plan lookup identity");
     }
     return stablePlan;
+  }
+
+  async persistTeamExperienceBinding(
+    binding: TeamExperienceBinding,
+  ): Promise<PersistTeamExperienceBindingResult> {
+    const result = await this.invoke("persist-team-experience-binding", { binding });
+    const stableBinding = this.normalizeTeamExperienceBindingResponse(result.binding);
+    if (
+      stableBinding.teamId !== binding.teamId ||
+      stableBinding.experience !== binding.experience ||
+      (result.status === "stored" && !isDeepStrictEqual(stableBinding, binding))
+    ) {
+      throw this.failInvalidMessage(
+        "Persistence utility returned substituted Team experience binding bytes",
+      );
+    }
+    return Object.freeze({ status: result.status, binding: stableBinding });
+  }
+
+  async getTeamExperienceBinding(teamId: string): Promise<TeamExperienceBinding | null> {
+    const binding = await this.invoke("get-team-experience-binding", { teamId });
+    if (binding === null) return null;
+    const stableBinding = this.normalizeTeamExperienceBindingResponse(binding);
+    if (stableBinding.teamId !== teamId) {
+      throw this.failInvalidMessage(
+        "Persistence utility substituted a Team experience lookup identity",
+      );
+    }
+    return stableBinding;
+  }
+
+  async persistStandardTeamMessageDelivery(
+    delivery: StandardTeamMessageDelivery,
+  ): Promise<PersistStandardTeamMessageDeliveryResult> {
+    const result = await this.invoke("persist-standard-team-message-delivery", { delivery });
+    const stableDelivery = this.normalizeStandardTeamMessageDeliveryResponse(result.delivery);
+    if (!isDeepStrictEqual(stableDelivery, delivery)) {
+      throw this.failInvalidMessage(
+        "Persistence utility returned substituted Standard Team message delivery bytes",
+      );
+    }
+    return Object.freeze({ status: result.status, delivery: stableDelivery });
+  }
+
+  async getStandardTeamMessageDelivery(
+    deliveryId: string,
+  ): Promise<StandardTeamMessageDelivery | null> {
+    const delivery = await this.invoke("get-standard-team-message-delivery", { deliveryId });
+    if (delivery === null) return null;
+    const stableDelivery = this.normalizeStandardTeamMessageDeliveryResponse(delivery);
+    if (stableDelivery.deliveryId !== deliveryId) {
+      throw this.failInvalidMessage(
+        "Persistence utility substituted a Standard Team message delivery lookup identity",
+      );
+    }
+    return stableDelivery;
+  }
+
+  async listUnresolvedStandardTeamMessageDeliveries(
+    limit: number,
+  ): Promise<readonly StandardTeamMessageDelivery[]> {
+    const deliveries = await this.invoke("list-unresolved-standard-team-message-deliveries", {
+      limit,
+    });
+    const stableDeliveries = deliveries.map((delivery) =>
+      this.normalizeStandardTeamMessageDeliveryResponse(delivery),
+    );
+    if (stableDeliveries.length > limit) {
+      throw this.failInvalidMessage(
+        "Persistence utility returned more unresolved Standard Team message deliveries than requested",
+      );
+    }
+    if (
+      stableDeliveries.some(
+        ({ state }) => state !== "pending-effect" && state !== "effect-uncertain",
+      )
+    ) {
+      throw this.failInvalidMessage(
+        "Persistence utility returned a resolved Standard Team message delivery as unresolved",
+      );
+    }
+    if (
+      new Set(stableDeliveries.map(({ deliveryId }) => deliveryId)).size !== stableDeliveries.length
+    ) {
+      throw this.failInvalidMessage(
+        "Persistence utility returned duplicate Standard Team message deliveries",
+      );
+    }
+    return Object.freeze(stableDeliveries);
+  }
+
+  async persistArtifactDelivery(
+    delivery: ArtifactDeliveryRecord,
+  ): Promise<PersistArtifactDeliveryResult> {
+    const result = await this.invoke("persist-artifact-delivery", { delivery });
+    const stableDelivery = this.normalizeArtifactDeliveryResponse(result.delivery);
+    if (!isDeepStrictEqual(stableDelivery, delivery)) {
+      throw this.failInvalidMessage(
+        "Persistence utility returned substituted Artifact delivery evidence",
+      );
+    }
+    return Object.freeze({ status: result.status, delivery: stableDelivery });
+  }
+
+  async getArtifactDelivery(artifact: ArtifactId): Promise<ArtifactDeliveryRecord | null> {
+    const delivery = await this.invoke("get-artifact-delivery", { artifactId: artifact });
+    if (delivery === null) return null;
+    const stableDelivery = this.normalizeArtifactDeliveryResponse(delivery);
+    if (stableDelivery.artifactId !== artifact) {
+      throw this.failInvalidMessage(
+        "Persistence utility substituted an Artifact delivery lookup identity",
+      );
+    }
+    return stableDelivery;
+  }
+
+  async listArtifactDeliveriesForTask(
+    task: TaskId,
+    limit: number,
+  ): Promise<readonly ArtifactDeliveryRecord[]> {
+    const deliveries = await this.invoke("list-artifact-deliveries-for-task", {
+      taskId: task,
+      limit,
+    });
+    const stableDeliveries = deliveries.map((delivery) =>
+      this.normalizeArtifactDeliveryResponse(delivery),
+    );
+    if (stableDeliveries.length > limit) {
+      throw this.failInvalidMessage(
+        "Persistence utility returned more Artifact deliveries than requested",
+      );
+    }
+    if (stableDeliveries.some((delivery) => delivery.taskId !== task)) {
+      throw this.failInvalidMessage(
+        "Persistence utility returned an Artifact delivery for another Task",
+      );
+    }
+    if (
+      new Set(stableDeliveries.map(({ artifactId: id }) => id)).size !== stableDeliveries.length
+    ) {
+      throw this.failInvalidMessage("Persistence utility returned duplicate Artifact deliveries");
+    }
+    return Object.freeze(stableDeliveries);
+  }
+
+  async getArtifactPatchPreview(artifact: ArtifactId): Promise<string> {
+    return this.invoke("get-artifact-patch-preview", { artifactId: artifact });
+  }
+
+  async getArtifactPatchContent(artifact: ArtifactId): Promise<string> {
+    return this.invoke("get-artifact-patch-content", { artifactId: artifact });
+  }
+
+  async applyArtifactToWorkspace(
+    _artifact: ArtifactId,
+    _workspaceRoot: string,
+  ): Promise<{ readonly verifiedHead: string }> {
+    // This operation cannot delegate to utility process - it requires Main process capabilities
+    throw new PersistenceUtilityError(
+      "operation-failed",
+      "applyArtifactToWorkspace must be called through the service layer with full context",
+    );
   }
 
   async persistTeamDefinition(team: TeamDefinition): Promise<PersistTeamDefinitionResult> {
@@ -768,6 +944,36 @@ export class PersistenceUtilityClient implements ActestraPersistencePort {
       return normalizeTeamDefinition(value);
     } catch {
       throw this.failInvalidMessage("Persistence utility returned an invalid Team definition");
+    }
+  }
+
+  private normalizeTeamExperienceBindingResponse(value: unknown): TeamExperienceBinding {
+    try {
+      return normalizeTeamExperienceBinding(value);
+    } catch {
+      throw this.failInvalidMessage(
+        "Persistence utility returned an invalid Team experience binding",
+      );
+    }
+  }
+
+  private normalizeStandardTeamMessageDeliveryResponse(
+    value: unknown,
+  ): StandardTeamMessageDelivery {
+    try {
+      return normalizeStandardTeamMessageDelivery(value);
+    } catch {
+      throw this.failInvalidMessage(
+        "Persistence utility returned an invalid Standard Team message delivery",
+      );
+    }
+  }
+
+  private normalizeArtifactDeliveryResponse(value: unknown): ArtifactDeliveryRecord {
+    try {
+      return normalizeArtifactDeliveryRecord(value);
+    } catch {
+      throw this.failInvalidMessage("Persistence utility returned an invalid Artifact delivery");
     }
   }
 

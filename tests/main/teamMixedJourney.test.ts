@@ -72,7 +72,6 @@ interface MixedJourneyFixture {
   readonly root: string;
   readonly repositoryRoot: string;
   readonly sourceFile: string;
-  readonly generalWorkspaceRoot: string;
   readonly managedRoot: string;
   readonly privateRootParent: string;
   readonly persistence: ActestraPersistencePort;
@@ -114,6 +113,23 @@ async function runGit(repositoryRoot: string, ...arguments_: readonly string[]):
   return result.stdout.trim();
 }
 
+/**
+ * Tracked source state, which a Team run must never mutate. Actestra's own
+ * `.actestra/` output root is excluded because General writes its task output
+ * there inside the Team workspace it shares with coding.
+ */
+async function trackedSourceState(repositoryRoot: string): Promise<string> {
+  return await runGit(repositoryRoot, "status", "--porcelain=v1", "--untracked-files=no");
+}
+
+async function untrackedSourcePaths(repositoryRoot: string): Promise<readonly string[]> {
+  const status = await runGit(repositoryRoot, "status", "--porcelain=v1");
+  return status
+    .split("\n")
+    .filter((line) => line.startsWith("?? "))
+    .map((line) => line.slice(3));
+}
+
 function requireAdmittedArtifact(): Promise<AdmittedGooseRunnerArtifact> {
   admittedArtifact ??= admitGooseRunnerArtifact(artifactDirectory!, {
     expectedTargetTriple: targetTriple!,
@@ -131,12 +147,10 @@ async function openMixedFixture(
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "actestra-team-mixed-")));
   const repositoryRoot = path.join(root, "source");
   const sourceFile = path.join(repositoryRoot, "answer.txt");
-  const generalWorkspaceRoot = path.join(root, "general-workspace");
   const productStateRoot = path.join(root, "product-state");
   const managedRoot = path.join(productStateRoot, "coding-worktrees");
   const privateRootParent = path.join(productStateRoot, "goose-private");
   fs.mkdirSync(repositoryRoot, { recursive: true });
-  fs.mkdirSync(generalWorkspaceRoot, { recursive: true });
   fs.mkdirSync(privateRootParent, { recursive: true, mode: 0o700 });
   await runGit(repositoryRoot, "init", "--initial-branch=main");
   await runGit(repositoryRoot, "config", "user.name", "Actestra Test");
@@ -211,8 +225,8 @@ async function openMixedFixture(
       async resolve(workspaceIdValue) {
         expect(workspaceIdValue).toBe(teamFixture.team.workspaceId);
         return Object.freeze({
-          rootPath: generalWorkspaceRoot,
-          displayName: `Mixed Team General ${suffix}`,
+          rootPath: repositoryRoot,
+          displayName: `Mixed Team Workspace ${suffix}`,
         });
       },
     },
@@ -235,7 +249,6 @@ async function openMixedFixture(
     root,
     repositoryRoot,
     sourceFile,
-    generalWorkspaceRoot,
     managedRoot,
     privateRootParent,
     persistence,
@@ -381,7 +394,8 @@ describe.skipIf(
       { aggregate },
     );
     const baseCommit = await runGit(fixture.repositoryRoot, "rev-parse", "HEAD");
-    const sourceStatus = await runGit(fixture.repositoryRoot, "status", "--porcelain=v1");
+    const sourceStatus = await trackedSourceState(fixture.repositoryRoot);
+    const sourceUntracked = await untrackedSourcePaths(fixture.repositoryRoot);
     const codingNode = fixture.accepted.nodes.find(({ candidateKey }) => candidateKey === "coding");
     if (codingNode?.kind !== "worker") throw new Error("Missing mixed Team coding node");
     const codingBinding = deriveTeamJourneyBinding({
@@ -495,14 +509,18 @@ describe.skipIf(
     expect(aggregateInput.artifacts.map(({ kind }) => kind).sort()).toEqual(["document", "file"]);
     const serializedAggregation = JSON.stringify(aggregateInput);
     expect(serializedAggregation).not.toContain(fixture.repositoryRoot);
-    expect(serializedAggregation).not.toContain(fixture.generalWorkspaceRoot);
     expect(serializedAggregation).not.toContain("real mixed Team journey");
     expect(serializedAggregation).not.toContain("audit-");
 
     const graph = await fixture.persistence.loadDomainGraph();
     expect(graph.approvals.filter(({ state }) => state === "approved")).toHaveLength(3);
     expect(await runGit(fixture.repositoryRoot, "rev-parse", "HEAD")).toBe(baseCommit);
-    expect(await runGit(fixture.repositoryRoot, "status", "--porcelain=v1")).toBe(sourceStatus);
+    expect(await trackedSourceState(fixture.repositoryRoot)).toBe(sourceStatus);
+    expect(
+      (await untrackedSourcePaths(fixture.repositoryRoot)).filter(
+        (entry) => !sourceUntracked.includes(entry) && entry !== ".actestra/",
+      ),
+    ).toEqual([]);
     expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
     expect(
       (await runGit(fixture.repositoryRoot, "worktree", "list", "--porcelain")).match(
@@ -541,7 +559,8 @@ describe.skipIf(
       { aggregate },
     );
     const baseCommit = await runGit(fixture.repositoryRoot, "rev-parse", "HEAD");
-    const sourceStatus = await runGit(fixture.repositoryRoot, "status", "--porcelain=v1");
+    const sourceStatus = await trackedSourceState(fixture.repositoryRoot);
+    const sourceUntracked = await untrackedSourcePaths(fixture.repositoryRoot);
     const codingNode = fixture.accepted.nodes.find(({ candidateKey }) => candidateKey === "coding");
     if (codingNode?.kind !== "worker") throw new Error("Missing denied Team coding node");
     const binding = deriveTeamJourneyBinding({
@@ -581,7 +600,12 @@ describe.skipIf(
     });
     expect(aggregate).not.toHaveBeenCalled();
     expect(await runGit(fixture.repositoryRoot, "rev-parse", "HEAD")).toBe(baseCommit);
-    expect(await runGit(fixture.repositoryRoot, "status", "--porcelain=v1")).toBe(sourceStatus);
+    expect(await trackedSourceState(fixture.repositoryRoot)).toBe(sourceStatus);
+    expect(
+      (await untrackedSourcePaths(fixture.repositoryRoot)).filter(
+        (entry) => !sourceUntracked.includes(entry) && entry !== ".actestra/",
+      ),
+    ).toEqual([]);
     expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
     expect(fs.existsSync(path.join(fixture.repositoryRoot, "denied-output.txt"))).toBe(false);
     expect(
@@ -626,7 +650,8 @@ describe.skipIf(
       { holdGeneralWorker: true },
     );
     const baseCommit = await runGit(fixture.repositoryRoot, "rev-parse", "HEAD");
-    const sourceStatus = await runGit(fixture.repositoryRoot, "status", "--porcelain=v1");
+    const sourceStatus = await trackedSourceState(fixture.repositoryRoot);
+    const sourceUntracked = await untrackedSourcePaths(fixture.repositoryRoot);
 
     await fixture.orchestrator.start(fixture.accepted.runId, fixture.nextInstant());
     await codingStarted.promise;
@@ -647,7 +672,12 @@ describe.skipIf(
     expect(aggregate).not.toHaveBeenCalled();
     expect(fixture.transports[0]!.killCount).toBeGreaterThan(0);
     expect(await runGit(fixture.repositoryRoot, "rev-parse", "HEAD")).toBe(baseCommit);
-    expect(await runGit(fixture.repositoryRoot, "status", "--porcelain=v1")).toBe(sourceStatus);
+    expect(await trackedSourceState(fixture.repositoryRoot)).toBe(sourceStatus);
+    expect(
+      (await untrackedSourcePaths(fixture.repositoryRoot)).filter(
+        (entry) => !sourceUntracked.includes(entry) && entry !== ".actestra/",
+      ),
+    ).toEqual([]);
     expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
     expect(
       (await runGit(fixture.repositoryRoot, "worktree", "list", "--porcelain")).match(

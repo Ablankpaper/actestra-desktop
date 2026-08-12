@@ -31,6 +31,7 @@ import {
 import {
   deriveGooseCodingEvidenceIdentity,
   GooseCodingEvidenceCoordinator,
+  type GooseCodingPromptFailureIncident,
 } from "./gooseCodingEvidenceCoordinator";
 import {
   createGooseCodingArtifactPublisher,
@@ -44,6 +45,7 @@ import {
 } from "./gooseCodingToolInvoker";
 import {
   openGooseMcpSessionComposition,
+  GooseMcpSessionCompositionError,
   type GooseMcpSessionComposition,
   type GooseMcpSessionPromptOptions,
   type OpenGooseMcpSessionCompositionOptions,
@@ -95,7 +97,11 @@ export interface OpenGooseCodingMainSessionOptions extends OpenIsolatedCodingMai
   readonly taskId: TaskId;
   readonly sessionId: SessionId;
   readonly workerId: WorkerId;
+  /** Original workspace identity for post-publish apply; coding workspace remains isolated. */
+  readonly destinationWorkspaceId?: WorkspaceId;
   readonly approvalDecisionHandler?: GooseCodingApprovalDecisionHandler;
+  /** Suspends the Goose prompt inactivity deadline while a human decides. */
+  readonly holdHumanDecision?: () => () => void;
   readonly handshakeTimeoutMs?: number;
   readonly sessionTimeoutMs?: number;
 }
@@ -195,6 +201,29 @@ function requireExactGrantReceipt(
       "Workspace grant persistence returned mismatched evidence",
     );
   }
+}
+
+// A refused model completion gets its own incident code so the durable record
+// distinguishes "the gateway violated the model contract" from any other prompt
+// failure. Only Main-authored constants are recorded; the underlying error
+// message is never propagated into evidence.
+function promptFailureIncident(error: unknown): GooseCodingPromptFailureIncident | undefined {
+  if (!(error instanceof GooseMcpSessionCompositionError)) return undefined;
+  if (error.code === "model-completion-refused") {
+    return Object.freeze({
+      errorCode: "model-completion-refused",
+      message:
+        "Actestra refused every model completion for this prompt, so no reviewable coding result exists.",
+    });
+  }
+  if (error.code === "model-request-rejected") {
+    return Object.freeze({
+      errorCode: "model-request-rejected",
+      message:
+        "Actestra could not read any inference request for this prompt, so no reviewable coding result exists.",
+    });
+  }
+  return undefined;
 }
 
 interface PendingIsolatedCodingCleanup {
@@ -410,6 +439,7 @@ export function createIsolatedCodingMainService(
         taskId: sessionOptions.taskId,
         sessionId: sessionOptions.sessionId,
         workerId: sessionOptions.workerId,
+        destinationWorkspaceId: sessionOptions.destinationWorkspaceId,
         identity: evidenceIdentity,
         approvalService: codingSession.approvalService,
         cancellationActorId: approvalActorId("actestra-coding-session-close"),
@@ -427,6 +457,7 @@ export function createIsolatedCodingMainService(
         taskId: sessionOptions.taskId,
         sessionId: sessionOptions.sessionId,
         workerId: sessionOptions.workerId,
+        destinationWorkspaceId: sessionOptions.destinationWorkspaceId,
         toolGateway: codingSession.toolGateway,
         approvalService: codingSession.approvalService,
         evidence: activeEvidence,
@@ -442,6 +473,9 @@ export function createIsolatedCodingMainService(
         ...(sessionOptions.approvalDecisionHandler === undefined
           ? {}
           : { approvalDecisionHandler: sessionOptions.approvalDecisionHandler }),
+        ...(sessionOptions.holdHumanDecision === undefined
+          ? {}
+          : { holdHumanDecision: sessionOptions.holdHumanDecision }),
       });
       const gooseSession = await dependencies.openGooseSession({
         artifact: sessionOptions.artifact,
@@ -514,7 +548,7 @@ export function createIsolatedCodingMainService(
                 return result;
               },
               async (error: unknown) => {
-                await activeEvidence.failPrompt();
+                await activeEvidence.failPrompt(promptFailureIncident(error));
                 throw error;
               },
             );
@@ -561,7 +595,7 @@ export function createIsolatedCodingMainService(
             .publish(admittedPublishOptions, publishController.signal)
             .then(async (result) => {
               publishFinished = true;
-              if (result.status === "published") {
+              if (result.status === "published" || result.status === "unchanged") {
                 await exposed.close();
               }
               return result;

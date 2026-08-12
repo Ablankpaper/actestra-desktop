@@ -540,8 +540,7 @@ replaceOnce(
       const workerProbe = await runGeneralWorkerProbe({`,
   `    if (
       process.env.ACTESTRA_E2E_TEST === '1' &&
-      process.env.ACTESTRA_GENERAL_WORK_SMOKE_SCENARIO !==
-        'recover-worker-crash'
+      process.env.ACTESTRA_GENERAL_WORK_SMOKE_SCENARIO !== 'recover-worker-crash'
     ) {
       const workerProbe = await runGeneralWorkerProbe({`,
 );
@@ -712,7 +711,7 @@ replaceOnce(
               };
             },
           },
-    launchWorker: async ({ journeyKind, readRequestId, requestId }) => {
+    launchWorker: async ({ journeyKind, readRequestId, requestId, requirements }) => {
       if (
         generalWorkSmokeConfig?.scenario === 'prepare-restart' ||
         generalWorkSmokeConfig?.scenario === 'prepare-writing-restart' ||
@@ -752,6 +751,7 @@ replaceOnce(
         modulePath: path.join(__dirname, 'actestra-general-worker.js'),
         workingDirectory: process.resourcesPath,
         adapter: {
+          ...(requirements === undefined ? {} : { requirements }),
           executionMode:
             generalWorkSmokeConfig?.scenario === 'cancellation' ||
             generalWorkSmokeConfig?.scenario === 'prepare-worker-crash'
@@ -1648,6 +1648,7 @@ export function previewActestraGeneralWork(
 writeNew(
   "packages/desktop/src/renderer/hooks/chat/actestraGeneralWorkProjection.ts",
   `import {
+  describeAionUiGeneralWorkIncident,
   parseAionUiGeneralWorkCommand,
   type AionUiGeneralWorkCommand,
   type AionUiGeneralWorkProjection,
@@ -1682,7 +1683,14 @@ export function projectActestraGeneralWorkMessage(
     projection.title,
     ...(projection.summary === undefined ? [] : [projection.summary]),
     ...projection.artifacts.map((artifact) => \`Artifact: \${artifact.label} · \${artifact.state}\`),
-    ...(projection.incidentCode === undefined ? [] : [\`Incident: \${projection.incidentCode}\`]),
+    // Main names the incident; the surface says what it means for the user and what would change it.
+    // An unrecognized code falls back to itself rather than to prose nobody established.
+    ...(projection.incidentCode === undefined
+      ? []
+      : [
+          describeAionUiGeneralWorkIncident(projection.incidentCode) ??
+            \`Incident: \${projection.incidentCode}\`,
+        ]),
   ];
   const messageId = \`actestra-general-work-\${projection.taskId}\`;
   return {

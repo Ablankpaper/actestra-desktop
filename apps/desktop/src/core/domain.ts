@@ -154,6 +154,13 @@ export type WorkerState =
 export type ApprovalState = "pending" | "approved" | "denied" | "expired" | "cancelled";
 export type ArtifactKind = "file" | "document" | "dataset" | "directory" | "other";
 export type ArtifactState = "available" | "superseded";
+export type ArtifactDeliveryState =
+  | "pending"
+  | "applying"
+  | "applied"
+  | "conflict"
+  | "failed"
+  | "cancelled";
 
 export interface Workspace {
   readonly id: WorkspaceId;
@@ -212,6 +219,7 @@ export interface Artifact {
   readonly kind: ArtifactKind;
   readonly label: string;
   readonly state: ArtifactState;
+  readonly deliveryState?: ArtifactDeliveryState;
   readonly createdAt: Instant;
   readonly updatedAt: Instant;
 }

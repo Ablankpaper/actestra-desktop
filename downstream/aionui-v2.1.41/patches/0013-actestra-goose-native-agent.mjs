@@ -38,6 +38,44 @@ function replaceOnce(relativePath, before, after) {
 
 const bridgePath = "packages/desktop/src/process/services/actestraShadowBridge.ts";
 
+// Applying a reviewed patch needs the workspace operations port as well as the persistence port. The
+// utility client implements both; these annotations are what kept the apply path from seeing it.
+replaceOnce(
+  bridgePath,
+  `  WORKSPACE_READ_TEXT_TOOL_ID,
+  type ActestraPersistencePort,
+} from '@/actestra/core';`,
+  `  WORKSPACE_READ_TEXT_TOOL_ID,
+  type ActestraPersistencePort,
+  type ArtifactWorkspaceOperationsPort,
+} from '@/actestra/core';`,
+);
+
+replaceOnce(
+  bridgePath,
+  `let persistence: ActestraPersistencePort | null = null;`,
+  `let persistence: (ActestraPersistencePort & ArtifactWorkspaceOperationsPort) | null = null;`,
+);
+
+replaceOnce(
+  bridgePath,
+  `function configurePersistenceServices(
+  activePersistence: ActestraPersistencePort,
+  userDataPath: string,
+): void {`,
+  `function configurePersistenceServices(
+  activePersistence: ActestraPersistencePort & ArtifactWorkspaceOperationsPort,
+  userDataPath: string,
+): void {`,
+);
+
+replaceOnce(
+  bridgePath,
+  `  let launchedPersistence: ActestraPersistencePort | null = null;`,
+  `  let launchedPersistence: (ActestraPersistencePort & ArtifactWorkspaceOperationsPort) | null =
+    null;`,
+);
+
 replaceOnce(
   bridgePath,
   `import {
@@ -50,12 +88,11 @@ replaceOnce(
 } from '@/actestra/main/workers/isolatedCodingMainService';
 import {
   AionUiCodingAgentService,
-  type AionUiCodingRunnerAdmission,
 } from '@/actestra/main/compatibility/aionuiCodingAgentService';
+import { AionUiCodingArtifactService } from '@/actestra/main/compatibility/aionuiCodingArtifactService';
 import { AionUiCodingJourneyService } from '@/actestra/main/compatibility/aionuiCodingJourneyService';
 import { AionUiCodingJourneyBridgeService } from '@/actestra/main/compatibility/aionuiCodingJourneyBridgeService';
-import type { GooseLoopbackModelInvoker } from '@/actestra/main/workers/gooseLoopbackModelServer';
-import type { IsolatedCodingProcessDefinition } from '@/actestra/main/privileged/isolatedCodingToolPlatform';`,
+import type { TrustedActestraCodingJourneyRuntime } from '@/actestra/main/workers/actestraCodingJourneyRuntime';`,
 );
 
 replaceOnce(
@@ -73,6 +110,10 @@ replaceOnce(
 } from '@/actestra/compatibility/aionui/codingAgent';
 import {
   ACTESTRA_CODING_JOURNEY_APPROVAL_DECISION_CHANNEL,
+  ACTESTRA_CODING_JOURNEY_ARTIFACT_APPLY_CHANNEL,
+  ACTESTRA_CODING_JOURNEY_ARTIFACT_APPLY_DECISION_CHANNEL,
+  ACTESTRA_CODING_JOURNEY_ARTIFACT_DOWNLOAD_CHANNEL,
+  ACTESTRA_CODING_JOURNEY_ARTIFACT_VIEW_CHANNEL,
   ACTESTRA_CODING_JOURNEY_CANCEL_CHANNEL,
   ACTESTRA_CODING_JOURNEY_LIST_CHANNEL,
   ACTESTRA_CODING_JOURNEY_PUBLISH_DECISION_CHANNEL,
@@ -90,6 +131,7 @@ let generalWorkJourneyService: AionUiGeneralWorkJourneyService | null = null;`,
   `let isolatedCodingMainService: IsolatedCodingMainService | null = null;
 let codingAgentService: AionUiCodingAgentService | null = null;
 let codingJourneyService: AionUiCodingJourneyService | null = null;
+let codingArtifactService: AionUiCodingArtifactService | null = null;
 let codingJourneyBridgeService: AionUiCodingJourneyBridgeService | null = null;
 let generalWorkJourneyService: AionUiGeneralWorkJourneyService | null = null;`,
 );
@@ -111,38 +153,10 @@ replaceOnce(
   `const approvalReconciliationGateEnabled =
   process.env.ACTESTRA_APPROVAL_RECONCILIATION_GATE !== '0';
 
-function resolveCodingRunnerAdmission(
-  environment: NodeJS.ProcessEnv,
-): AionUiCodingRunnerAdmission | undefined {
-  const directory = environment.ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIRECTORY?.trim();
-  const trustedManifestSha256 =
-    environment.ACTESTRA_GOOSE_RUNNER_MANIFEST_SHA256?.trim();
-  const expectedTargetTriple =
-    environment.ACTESTRA_GOOSE_RUNNER_TARGET_TRIPLE?.trim();
-  if (!directory || !trustedManifestSha256 || !expectedTargetTriple) {
-    return undefined;
-  }
-  return Object.freeze({
-    directory,
-    trustedManifestSha256,
-    expectedTargetTriple,
-  });
-}
-
-const codingRunnerAdmission = resolveCodingRunnerAdmission(process.env);
-
-export interface AionUiCodingJourneyRuntime {
-  readonly privateRootParent: string;
-  readonly modelId: string;
-  readonly modelInvoker: GooseLoopbackModelInvoker;
-  readonly commands: Readonly<Record<string, IsolatedCodingProcessDefinition>>;
-  readonly tests: Readonly<Record<string, IsolatedCodingProcessDefinition>>;
-}
-
-let codingJourneyRuntime: AionUiCodingJourneyRuntime | null = null;
+let codingJourneyRuntime: TrustedActestraCodingJourneyRuntime | null = null;
 
 export function configureActestraCodingJourneyRuntime(
-  runtime: AionUiCodingJourneyRuntime | null,
+  runtime: TrustedActestraCodingJourneyRuntime | null,
 ): void {
   if (persistence !== null) {
     throw new Error('Actestra coding journey runtime must be injected before persistence startup');
@@ -262,6 +276,41 @@ async function decideCodingJourneyPublish(
   return trustedCodingJourneyBridge(event, extraArguments)?.decidePublish(request) ?? codingJourneyUnavailable();
 }
 
+async function viewCodingJourneyArtifact(
+  event: IpcMainInvokeEvent,
+  request: unknown,
+  ...extraArguments: unknown[]
+): Promise<AionUiCodingJourneyBridgeResult> {
+  return trustedCodingJourneyBridge(event, extraArguments)?.viewArtifact(request) ?? codingJourneyUnavailable();
+}
+
+async function downloadCodingJourneyArtifact(
+  event: IpcMainInvokeEvent,
+  request: unknown,
+  ...extraArguments: unknown[]
+): Promise<AionUiCodingJourneyBridgeResult> {
+  return trustedCodingJourneyBridge(event, extraArguments)?.downloadArtifact(request) ?? codingJourneyUnavailable();
+}
+
+async function applyCodingJourneyArtifact(
+  event: IpcMainInvokeEvent,
+  request: unknown,
+  ...extraArguments: unknown[]
+): Promise<AionUiCodingJourneyBridgeResult> {
+  return trustedCodingJourneyBridge(event, extraArguments)?.applyArtifact(request) ?? codingJourneyUnavailable();
+}
+
+async function decideCodingJourneyArtifactApply(
+  event: IpcMainInvokeEvent,
+  request: unknown,
+  ...extraArguments: unknown[]
+): Promise<AionUiCodingJourneyBridgeResult> {
+  return (
+    trustedCodingJourneyBridge(event, extraArguments)?.resolveArtifactApply(request) ??
+    codingJourneyUnavailable()
+  );
+}
+
 async function submitGeneralWork(
   event: IpcMainInvokeEvent,`,
 );
@@ -279,11 +328,19 @@ replaceOnce(
     clock: platform.clock,
     managedRoot: path.join(userDataPath, 'coding-worktrees'),
   });
+  const activeCodingRuntime = codingJourneyRuntime;
   codingAgentService = new AionUiCodingAgentService({
     getMainService: () => isolatedCodingMainService,
-    ...(codingRunnerAdmission === undefined
+    ...(activeCodingRuntime === null
       ? {}
-      : { runnerAdmission: codingRunnerAdmission }),
+      : {
+          runnerAdmission: activeCodingRuntime.runnerAdmission,
+          admittedArtifact: activeCodingRuntime.admittedArtifact,
+      }),
+  });
+  codingArtifactService = new AionUiCodingArtifactService({
+    persistence: activePersistence,
+    clock: platform.clock,
   });
   console.info('[Actestra isolated coding] Desktop-main containment ready');`,
 );
@@ -295,6 +352,7 @@ replaceOnce(
   `    isolatedCodingMainService = null;
     codingAgentService = null;
     codingJourneyService = null;
+    codingArtifactService = null;
     codingJourneyBridgeService = null;
     await scheduleService?.close().catch((): undefined => undefined);`,
 );
@@ -302,8 +360,7 @@ replaceOnce(
 replaceOnce(
   bridgePath,
   `  const journey = new AionUiGeneralWorkJourneyService({`,
-  `  const activeCodingRuntime = codingJourneyRuntime;
-  if (activeCodingRuntime !== null) {
+  `  if (activeCodingRuntime !== null) {
     codingJourneyService = new AionUiCodingJourneyService({
       persistence: activePersistence,
       clock: platform.clock,
@@ -316,8 +373,11 @@ replaceOnce(
       commands: activeCodingRuntime.commands,
       tests: activeCodingRuntime.tests,
     });
-    codingJourneyBridgeService = new AionUiCodingJourneyBridgeService(codingJourneyService);
   }
+  codingJourneyBridgeService = new AionUiCodingJourneyBridgeService(
+    codingJourneyService,
+    codingArtifactService,
+  );
   const journey = new AionUiGeneralWorkJourneyService({`,
 );
 
@@ -342,6 +402,16 @@ replaceOnce(
       ACTESTRA_CODING_JOURNEY_PUBLISH_DECISION_CHANNEL,
       decideCodingJourneyPublish,
     );
+    ipcMain.handle(ACTESTRA_CODING_JOURNEY_ARTIFACT_VIEW_CHANNEL, viewCodingJourneyArtifact);
+    ipcMain.handle(
+      ACTESTRA_CODING_JOURNEY_ARTIFACT_DOWNLOAD_CHANNEL,
+      downloadCodingJourneyArtifact,
+    );
+    ipcMain.handle(ACTESTRA_CODING_JOURNEY_ARTIFACT_APPLY_CHANNEL, applyCodingJourneyArtifact);
+    ipcMain.handle(
+      ACTESTRA_CODING_JOURNEY_ARTIFACT_APPLY_DECISION_CHANNEL,
+      decideCodingJourneyArtifactApply,
+    );
     codingJourneyHandlersRegistered = true;
   }
   if (!generalWorkHandlersRegistered) {
@@ -353,6 +423,7 @@ replaceOnce(
   `  const activeIsolatedCoding = isolatedCodingMainService;
   const disposeScheduleBridge = disposeScheduleBridgeIpc;`,
   `  const activeCodingJourney = codingJourneyService;
+  const activeCodingArtifact = codingArtifactService;
   const activeIsolatedCoding = isolatedCodingMainService;
   const disposeScheduleBridge = disposeScheduleBridgeIpc;`,
 );
@@ -363,38 +434,61 @@ replaceOnce(
   generalWorkJourneyService = null;`,
   `  nativeToolPlatform = null;
   codingAgentService = null;
+  codingArtifactService = null;
   codingJourneyBridgeService = null;
   generalWorkJourneyService = null;`,
 );
 
 replaceOnce(
   bridgePath,
-  `  let isolatedCodingCloseFailed = false;
+  `  disposeScheduleBridge?.();
+  let isolatedCodingCloseFailed = false;
   let isolatedCodingCloseError: unknown;
   try {
-    await activeIsolatedCoding?.close();`,
-  `  let codingJourneyCloseError: unknown;
+    await activeIsolatedCoding?.close();
+    isolatedCodingMainService = null;
+  } catch (error) {
+    isolatedCodingCloseFailed = true;
+    isolatedCodingCloseError = error;
+  }
+  await activeSchedule?.close().catch((): undefined => undefined);
+  await activeGeneralWork?.close().catch((): undefined => undefined);
+  if (isolatedCodingCloseFailed) {
+    throw isolatedCodingCloseError;
+  }
+  persistence = null;`,
+  `  disposeScheduleBridge?.();
+  let codingJourneyCloseError: unknown;
   try {
     await activeCodingJourney?.close();
     codingJourneyService = null;
   } catch (error) {
     codingJourneyCloseError = error;
   }
+  let codingArtifactCloseError: unknown;
+  try {
+    await activeCodingArtifact?.close();
+  } catch (error) {
+    codingArtifactCloseError = error;
+  }
   let isolatedCodingCloseFailed = false;
   let isolatedCodingCloseError: unknown;
   try {
-    await activeIsolatedCoding?.close();`,
-);
-
-replaceOnce(
-  bridgePath,
-  `  if (isolatedCodingCloseFailed) {
-    throw isolatedCodingCloseError;
+    await activeIsolatedCoding?.close();
+    isolatedCodingMainService = null;
+  } catch (error) {
+    isolatedCodingCloseFailed = true;
+    isolatedCodingCloseError = error;
   }
-  persistence = null;`,
-  `  if (codingJourneyCloseError !== undefined || isolatedCodingCloseFailed) {
+  await activeSchedule?.close().catch((): undefined => undefined);
+  await activeGeneralWork?.close().catch((): undefined => undefined);
+  if (
+    codingJourneyCloseError !== undefined ||
+    codingArtifactCloseError !== undefined ||
+    isolatedCodingCloseFailed
+  ) {
     throw new AggregateError(
-      [codingJourneyCloseError, isolatedCodingCloseError].filter(
+      [codingJourneyCloseError, codingArtifactCloseError, isolatedCodingCloseError].filter(
         (error): error is unknown => error !== undefined,
       ),
       'Actestra coding journey shutdown failed',
@@ -414,11 +508,17 @@ replaceOnce(
 } from '../actestra/compatibility/aionui/codingAgent';
 import {
   ACTESTRA_CODING_JOURNEY_APPROVAL_DECISION_CHANNEL,
+  ACTESTRA_CODING_JOURNEY_ARTIFACT_APPLY_CHANNEL,
+  ACTESTRA_CODING_JOURNEY_ARTIFACT_APPLY_DECISION_CHANNEL,
+  ACTESTRA_CODING_JOURNEY_ARTIFACT_DOWNLOAD_CHANNEL,
+  ACTESTRA_CODING_JOURNEY_ARTIFACT_VIEW_CHANNEL,
   ACTESTRA_CODING_JOURNEY_CANCEL_CHANNEL,
   ACTESTRA_CODING_JOURNEY_LIST_CHANNEL,
   ACTESTRA_CODING_JOURNEY_PUBLISH_DECISION_CHANNEL,
   ACTESTRA_CODING_JOURNEY_SUBMIT_CHANNEL,
   type AionUiCodingJourneyApprovalDecisionRequest,
+  type AionUiCodingJourneyArtifactApplyDecisionRequest,
+  type AionUiCodingJourneyArtifactOperationRequest,
   type AionUiCodingJourneyCancelRequest,
   type AionUiCodingJourneyListRequest,
   type AionUiCodingJourneyPublishDecisionRequest,
@@ -449,6 +549,14 @@ contextBridge.exposeInMainWorld('actestraCodingJourney', {
     ipcRenderer.invoke(ACTESTRA_CODING_JOURNEY_APPROVAL_DECISION_CHANNEL, request),
   decidePublish: (request: AionUiCodingJourneyPublishDecisionRequest) =>
     ipcRenderer.invoke(ACTESTRA_CODING_JOURNEY_PUBLISH_DECISION_CHANNEL, request),
+  viewArtifact: (request: AionUiCodingJourneyArtifactOperationRequest) =>
+    ipcRenderer.invoke(ACTESTRA_CODING_JOURNEY_ARTIFACT_VIEW_CHANNEL, request),
+  downloadArtifact: (request: AionUiCodingJourneyArtifactOperationRequest) =>
+    ipcRenderer.invoke(ACTESTRA_CODING_JOURNEY_ARTIFACT_DOWNLOAD_CHANNEL, request),
+  applyArtifact: (request: AionUiCodingJourneyArtifactOperationRequest) =>
+    ipcRenderer.invoke(ACTESTRA_CODING_JOURNEY_ARTIFACT_APPLY_CHANNEL, request),
+  decideArtifactApply: (request: AionUiCodingJourneyArtifactApplyDecisionRequest) =>
+    ipcRenderer.invoke(ACTESTRA_CODING_JOURNEY_ARTIFACT_APPLY_DECISION_CHANNEL, request),
 });
 
 contextBridge.exposeInMainWorld('actestraGeneralWork', {`,
@@ -576,6 +684,8 @@ writeNew(
   `import {
   assertAionUiCodingJourneyBridgeResult,
   type AionUiCodingJourneyApprovalDecisionRequest,
+  type AionUiCodingJourneyArtifactApplyDecisionRequest,
+  type AionUiCodingJourneyArtifactOperationRequest,
   type AionUiCodingJourneyBridgeResult,
   type AionUiCodingJourneyCancelRequest,
   type AionUiCodingJourneyListRequest,
@@ -631,6 +741,34 @@ export function decideActestraCodingJourneyPublish(
   request: AionUiCodingJourneyPublishDecisionRequest,
 ): Promise<AionUiCodingJourneyBridgeResult> {
   return invoke((bridge) => bridge.decidePublish(request));
+}
+
+export function viewActestraCodingJourneyArtifact(
+  request: AionUiCodingJourneyArtifactOperationRequest,
+): Promise<AionUiCodingJourneyBridgeResult> {
+  return invoke((bridge) => bridge.viewArtifact(request));
+}
+
+export function downloadActestraCodingJourneyArtifact(
+  request: AionUiCodingJourneyArtifactOperationRequest,
+): Promise<AionUiCodingJourneyBridgeResult> {
+  return invoke((bridge) => bridge.downloadArtifact(request));
+}
+
+/**
+ * Starts an apply. This never writes: it returns a pending approval that the user must resolve
+ * through {@link decideActestraCodingJourneyArtifactApply}.
+ */
+export function applyActestraCodingJourneyArtifact(
+  request: AionUiCodingJourneyArtifactOperationRequest,
+): Promise<AionUiCodingJourneyBridgeResult> {
+  return invoke((bridge) => bridge.applyArtifact(request));
+}
+
+export function decideActestraCodingJourneyArtifactApply(
+  request: AionUiCodingJourneyArtifactApplyDecisionRequest,
+): Promise<AionUiCodingJourneyBridgeResult> {
+  return invoke((bridge) => bridge.decideArtifactApply(request));
 }
 `,
 );
@@ -1261,6 +1399,422 @@ replaceOnce(
 );
 
 writeNew(
+  "packages/desktop/src/renderer/components/actestra/ActestraCodingArtifactCard.tsx",
+  `import React from 'react';
+import { Button, Space, Tag, Typography } from '@arco-design/web-react';
+import type {
+  AionUiCodingJourneyArtifactDeliveryProjection,
+  AionUiCodingJourneyArtifactProjection,
+} from '@/actestra/compatibility/aionui/codingJourney';
+import { approvalId } from '@/actestra/core';
+// A pure predicate over the delivery state. It carries no capability, so the renderer stays unable to
+// reach the filesystem or Git while still agreeing with Main on which states are retryable.
+import { canRetryArtifactDelivery } from '@/actestra/core/artifactDelivery';
+import {
+  applyActestraCodingJourneyArtifact,
+  decideActestraCodingJourneyArtifactApply,
+  downloadActestraCodingJourneyArtifact,
+  viewActestraCodingJourneyArtifact,
+} from '@/common/adapter/actestraCodingJourneyClient';
+
+/**
+ * Renders one delivered Artifact. The card never touches the filesystem or Git: every action goes
+ * through the Main-owned journey bridge, which returns bounded, redacted projections only.
+ */
+
+type DeliveryState = AionUiCodingJourneyArtifactDeliveryProjection['deliveryState'];
+
+/**
+ * An Artifact with no delivery record has never been applied. That is the absence of a delivery
+ * rather than a delivery state, so it is kept out of the state vocabulary and rendered separately.
+ */
+const NEVER_APPLIED = Object.freeze({ color: 'gray', label: 'Not applied' });
+
+const deliveryTag: Readonly<Record<DeliveryState, { color: string; label: string }>> = Object.freeze({
+  pending: { color: 'orange', label: 'Awaiting approval' },
+  applying: { color: 'blue', label: 'Applying' },
+  applied: { color: 'green', label: 'Applied' },
+  conflict: { color: 'red', label: 'Conflict' },
+  failed: { color: 'red', label: 'Failed' },
+  cancelled: { color: 'gray', label: 'Cancelled' },
+});
+
+/**
+ * Only the fields the card actually renders. The Team surface projects its own snake_case Artifact
+ * reference into this shape, so one card serves both surfaces without either contract depending on
+ * the other's field names.
+ */
+export type ActestraCodingArtifactCardArtifact = Pick<
+  AionUiCodingJourneyArtifactProjection,
+  'artifactId' | 'label' | 'delivery'
+>;
+
+const ActestraCodingArtifactCard: React.FC<{
+  nativeConversationId: string;
+  artifact: ActestraCodingArtifactCardArtifact;
+  onDeliveryChanged?: () => void | Promise<void>;
+}> = ({ nativeConversationId, artifact, onDeliveryChanged }) => {
+  const [preview, setPreview] = React.useState<string | undefined>(undefined);
+  const [notice, setNotice] = React.useState<string | undefined>(undefined);
+  const [busy, setBusy] = React.useState(false);
+  const [localDelivery, setLocalDelivery] = React.useState(artifact.delivery);
+  React.useEffect(() => {
+    if (
+      localDelivery?.deliveryState === 'applying' &&
+      localDelivery.applyApprovalId !== undefined &&
+      artifact.delivery?.deliveryState === 'pending'
+    ) {
+      return;
+    }
+    setLocalDelivery(artifact.delivery);
+    if (artifact.delivery?.deliveryState !== 'applying') setNotice(undefined);
+  }, [artifact.delivery, localDelivery]);
+  const delivery = localDelivery;
+  const state = delivery?.deliveryState;
+  const awaitingApproval = state === 'applying' && delivery?.applyApprovalId !== undefined;
+  const tag = state === undefined
+    ? NEVER_APPLIED
+    : awaitingApproval
+      ? { color: 'orange', label: 'Awaiting approval' }
+      : deliveryTag[state];
+  // Main persists an approval-bearing delivery as 'applying', never 'pending'. Narrowing once here
+  // keeps the two handlers aligned with the Core contract and prevents a stale synthetic approval.
+  const pendingApprovalId =
+    awaitingApproval ? delivery?.applyApprovalId : undefined;
+  const request = Object.freeze({
+    contractVersion: 1 as const,
+    nativeConversationId,
+    artifactId: artifact.artifactId,
+  });
+
+  const run = async (operation: () => Promise<void>): Promise<void> => {
+    setBusy(true);
+    setNotice(undefined);
+    try {
+      await operation();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleView = (): Promise<void> =>
+    run(async () => {
+      const result = await viewActestraCodingJourneyArtifact(request);
+      if (result.status === 'ok' && 'artifactView' in result) {
+        setPreview(result.artifactView.patchPreview);
+        return;
+      }
+      setNotice(result.status === 'rejected' ? result.code : 'execution-failed');
+    });
+
+  const handleDownload = (): Promise<void> =>
+    run(async () => {
+      const result = await downloadActestraCodingJourneyArtifact(request);
+      setNotice(
+        result.status === 'ok' && 'artifactDownload' in result
+          ? 'Saved ' + result.artifactDownload.fileName
+          : result.status === 'rejected'
+            ? result.code
+            : 'execution-failed',
+      );
+    });
+
+  const handleApply = (): Promise<void> =>
+    run(async () => {
+      const result = await applyActestraCodingJourneyArtifact(request);
+      if (result.status === 'ok' && 'artifactApply' in result) {
+        setLocalDelivery((previous) =>
+          previous === undefined
+            ? previous
+            : Object.freeze({ ...previous, deliveryState: 'applying', applyApprovalId: result.artifactApply.approvalId }),
+        );
+        setNotice('Approval requested. Approve the apply to write it to your workspace.');
+        await onDeliveryChanged?.();
+        return;
+      }
+      setNotice(result.status === 'rejected' ? result.code : 'execution-failed');
+    });
+
+  // The apply waits on this decision. Main holds the approval, so denying is a first-class outcome
+  // rather than a timeout: the Artifact is kept and stays retryable either way.
+  const handleDecision = (decision: 'approved' | 'denied', applyApprovalId: string): Promise<void> =>
+    run(async () => {
+      const result = await decideActestraCodingJourneyArtifactApply({
+        contractVersion: 1 as const,
+        nativeConversationId,
+        approvalId: approvalId(applyApprovalId),
+        decision,
+      });
+      if (result.status === 'ok') {
+        setLocalDelivery((previous) =>
+          previous === undefined
+            ? previous
+            : decision === 'approved'
+              ? (() => {
+                  const next = { ...previous, deliveryState: 'applying' as const };
+                  delete next.applyApprovalId;
+                  return Object.freeze(next);
+                })()
+              : Object.freeze({ ...previous, deliveryState: 'cancelled' as const }),
+        );
+      }
+      await onDeliveryChanged?.();
+      setNotice(
+        result.status === 'ok'
+          ? decision === 'approved'
+            ? 'Applying to your workspace.'
+            : 'Apply denied. The Artifact is kept.'
+          : result.status === 'rejected'
+            ? result.code
+            : 'execution-failed',
+      );
+    });
+
+  return (
+    <div
+      data-testid={'actestra-coding-artifact-card-' + artifact.artifactId}
+      className='mt-8px flex flex-col gap-8px rounded-8px bg-aou-1 px-12px py-10px'
+    >
+      <div className='flex items-center justify-between gap-8px'>
+        <Typography.Text className='font-medium'>{artifact.label}</Typography.Text>
+        <Tag data-testid='actestra-coding-artifact-state' color={tag.color}>
+          {tag.label}
+        </Tag>
+      </div>
+
+      {delivery ? (
+        <Typography.Text type='secondary' className='text-12px'>
+          {delivery.changedFileCount} changed file(s) · base{' '}
+          {delivery.baseCommit.slice(0, 12)}
+          {delivery.failureCode ? ' · ' + delivery.failureCode : ''}
+        </Typography.Text>
+      ) : null}
+
+      <Space>
+        <Button size='mini' loading={busy} onClick={handleView} data-testid='actestra-coding-artifact-view'>
+          View changes
+        </Button>
+        <Button size='mini' loading={busy} onClick={handleDownload} data-testid='actestra-coding-artifact-download'>
+          Download patch
+        </Button>
+        <Button
+          size='mini'
+          type='primary'
+          loading={busy}
+          disabled={state !== undefined && !canRetryArtifactDelivery(state)}
+          onClick={handleApply}
+          data-testid='actestra-coding-artifact-apply'
+        >
+          Apply to workspace
+        </Button>
+      </Space>
+
+      {pendingApprovalId === undefined ? null : (
+        <div data-testid='actestra-coding-artifact-approval' className='flex flex-col gap-6px'>
+          <Typography.Text type='secondary' className='text-12px'>
+            Apply this patch to your workspace?
+          </Typography.Text>
+          <Space>
+            <Button
+              size='mini'
+              type='primary'
+              loading={busy}
+              onClick={() => handleDecision('approved', pendingApprovalId)}
+              data-testid='actestra-coding-artifact-approve'
+            >
+              Approve
+            </Button>
+            <Button
+              size='mini'
+              status='danger'
+              loading={busy}
+              onClick={() => handleDecision('denied', pendingApprovalId)}
+              data-testid='actestra-coding-artifact-deny'
+            >
+              Deny
+            </Button>
+          </Space>
+        </div>
+      )}
+
+      {notice ? (
+        <Typography.Text type='secondary' className='text-12px' data-testid='actestra-coding-artifact-notice'>
+          {notice}
+        </Typography.Text>
+      ) : null}
+
+      {preview ? (
+        <pre
+          data-testid='actestra-coding-artifact-preview'
+          className='max-h-240px overflow-auto rounded-6px bg-aou-2 px-10px py-8px text-12px'
+        >
+          {preview}
+        </pre>
+      ) : null}
+    </div>
+  );
+};
+
+export default ActestraCodingArtifactCard;
+`,
+);
+
+writeNew(
+  "packages/desktop/src/renderer/pages/conversation/Messages/components/ActestraCodingJourneyArtifactActions.tsx",
+  `import React from 'react';
+import type { IMessageTips } from '@/common/chat/chatLib';
+import type {
+  AionUiCodingJourneyArtifactDeliveryProjection,
+  AionUiCodingJourneyArtifactProjection,
+} from '@/actestra/compatibility/aionui/codingJourney';
+import ActestraCodingArtifactCard from '@/renderer/components/actestra/ActestraCodingArtifactCard';
+
+/** Bound so a malformed or hostile projection cannot make the renderer walk an unbounded list. */
+const ARTIFACT_LIMIT = 100;
+
+const ARTIFACT_STATES = ['available', 'superseded'] as const;
+
+const DELIVERY_STATES = [
+  'pending',
+  'applying',
+  'applied',
+  'conflict',
+  'failed',
+  'cancelled',
+] as const;
+
+interface ActestraCodingJourneyTipContext {
+  readonly taskId: string;
+  readonly artifacts: readonly AionUiCodingJourneyArtifactProjection[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readDelivery(
+  value: unknown,
+): AionUiCodingJourneyArtifactDeliveryProjection | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const { deliveryState, baseCommit, changedFileCount, failureCode, applyApprovalId } = value;
+  if (
+    !DELIVERY_STATES.some((state) => state === deliveryState) ||
+    typeof baseCommit !== 'string' ||
+    typeof changedFileCount !== 'number' ||
+    !Number.isInteger(changedFileCount) ||
+    changedFileCount < 0
+  ) {
+    return undefined;
+  }
+  if (failureCode !== undefined && typeof failureCode !== 'string') {
+    return undefined;
+  }
+  if (applyApprovalId !== undefined && typeof applyApprovalId !== 'string') {
+    return undefined;
+  }
+  if (applyApprovalId !== undefined && deliveryState !== 'applying') {
+    return undefined;
+  }
+  return {
+    deliveryState,
+    baseCommit,
+    changedFileCount,
+    ...(typeof failureCode === 'string' ? { failureCode } : {}),
+    ...(typeof applyApprovalId === 'string' ? { applyApprovalId } : {}),
+  } as AionUiCodingJourneyArtifactDeliveryProjection;
+}
+
+/**
+ * Reads the coding-journey projection off a tips message. Every field is validated here rather than
+ * trusted, because the projection arrives as opaque message params.
+ */
+function readContext(message: IMessageTips): ActestraCodingJourneyTipContext | null {
+  const code = message.content.code;
+  if (typeof code !== 'string' || !code.startsWith('ACTESTRA_CODING_')) {
+    return null;
+  }
+  if (typeof message.conversation_id !== 'string') {
+    return null;
+  }
+  const params = message.content.params;
+  if (!isRecord(params)) {
+    return null;
+  }
+  const value = params.actestraCodingJourney;
+  if (
+    !isRecord(value) ||
+    value.contractVersion !== 1 ||
+    typeof value.taskId !== 'string' ||
+    !Array.isArray(value.artifacts) ||
+    value.artifacts.length > ARTIFACT_LIMIT
+  ) {
+    return null;
+  }
+  const artifacts: AionUiCodingJourneyArtifactProjection[] = [];
+  for (const entry of value.artifacts) {
+    if (
+      !isRecord(entry) ||
+      typeof entry.artifactId !== 'string' ||
+      typeof entry.label !== 'string' ||
+      !ARTIFACT_STATES.some((state) => state === entry.state)
+    ) {
+      continue;
+    }
+    const delivery = readDelivery(entry.delivery);
+    artifacts.push({
+      artifactId: entry.artifactId,
+      label: entry.label,
+      state: entry.state,
+      ...(delivery === undefined ? {} : { delivery }),
+    } as AionUiCodingJourneyArtifactProjection);
+  }
+  return artifacts.length === 0 ? null : { taskId: value.taskId, artifacts };
+}
+
+const ActestraCodingJourneyArtifactActions: React.FC<{ message: IMessageTips }> = ({
+  message,
+}) => {
+  const context = readContext(message);
+  if (context === null) {
+    return null;
+  }
+  return (
+    <div
+      data-testid='actestra-coding-journey-artifact-actions'
+      className='flex flex-col gap-6px'
+    >
+      {context.artifacts.map((artifact) => (
+        <ActestraCodingArtifactCard
+          key={artifact.artifactId}
+          nativeConversationId={message.conversation_id}
+          artifact={artifact}
+        />
+      ))}
+    </div>
+  );
+};
+
+export default ActestraCodingJourneyArtifactActions;
+`,
+);
+
+replaceOnce(
+  "packages/desktop/src/renderer/pages/conversation/Messages/components/MessageTips.tsx",
+  `import ActestraGeneralWorkArtifactActions from './ActestraGeneralWorkArtifactActions';`,
+  `import ActestraGeneralWorkArtifactActions from './ActestraGeneralWorkArtifactActions';
+import ActestraCodingJourneyArtifactActions from './ActestraCodingJourneyArtifactActions';`,
+);
+
+replaceOnce(
+  "packages/desktop/src/renderer/pages/conversation/Messages/components/MessageTips.tsx",
+  `        <ActestraGeneralWorkArtifactActions message={message} />`,
+  `        <ActestraGeneralWorkArtifactActions message={message} />
+        <ActestraCodingJourneyArtifactActions message={message} />`,
+);
+
+writeNew(
   "packages/desktop/src/renderer/pages/settings/AgentSettings/ActestraCodingAgentRepairPanel.tsx",
   `import React from 'react';
 import { Alert, Typography } from '@arco-design/web-react';
@@ -1701,6 +2255,8 @@ describe('Actestra retained AionUI coding-agent wiring', () => {
     const main = read('packages/desktop/src/process/services/actestraShadowBridge.ts');
     const preload = read('packages/desktop/src/preload/main.ts');
     expect(main).toContain('AionUiCodingAgentService');
+    expect(main).toContain('runnerAdmission: activeCodingRuntime.runnerAdmission');
+    expect(main).toContain('admittedArtifact: activeCodingRuntime.admittedArtifact');
     expect(main).toContain('ACTESTRA_CODING_AGENT_STATUS_CHANNEL');
     expect(main).toContain('ACTESTRA_CODING_AGENT_PROBE_CHANNEL');
     expect(main).toContain('ownsMainFrame(event, extraArguments)');
@@ -1938,7 +2494,7 @@ describe('Actestra retained AionUI coding-journey hook', () => {
         kind: 'publish',
         approvalId: approval,
         toolCallId: 'tool-publish',
-        title: 'Publish Actestra coding patch',
+        title: 'Save Actestra coding patch',
         operationKind: 'execute',
         summary: 'Publish the reviewed isolated patch',
         snapshot: {
@@ -2031,6 +2587,342 @@ describe('Actestra retained AionUI coding-journey hook', () => {
       reason: 'User stopped the task from the retained AionUI ACP SendBox.',
     });
     expect(hook.result.current.hasActive).toBe(false);
+  });
+});
+`,
+);
+
+writeNew(
+  "tests/unit/actestra/codingArtifactCard.dom.test.tsx",
+  `// @vitest-environment jsdom
+
+import React from 'react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { ActestraCodingArtifactCardArtifact } from '@/renderer/components/actestra/ActestraCodingArtifactCard';
+
+const mocks = vi.hoisted(() => ({
+  view: vi.fn(),
+  download: vi.fn(),
+  apply: vi.fn(),
+  decide: vi.fn(),
+}));
+
+vi.mock('@/common/adapter/actestraCodingJourneyClient', () => ({
+  viewActestraCodingJourneyArtifact: mocks.view,
+  downloadActestraCodingJourneyArtifact: mocks.download,
+  applyActestraCodingJourneyArtifact: mocks.apply,
+  decideActestraCodingJourneyArtifactApply: mocks.decide,
+}));
+
+import ActestraCodingArtifactCard from '@/renderer/components/actestra/ActestraCodingArtifactCard';
+
+const NATIVE_CONVERSATION_ID = 'native-coding-artifact-card';
+const ARTIFACT_ID = 'artifact-' + '7'.repeat(64);
+const APPROVAL_ID = 'approval-artifact-apply-' + '8'.repeat(64);
+const BASE_COMMIT = 'a'.repeat(40);
+
+function artifact(
+  delivery?: ActestraCodingArtifactCardArtifact['delivery'],
+): ActestraCodingArtifactCardArtifact {
+  return { artifactId: ARTIFACT_ID, label: 'Patch preview', ...(delivery ? { delivery } : {}) };
+}
+
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
+
+describe('Actestra coding Artifact card', () => {
+  it('shows the never-applied state and offers apply when no delivery exists', () => {
+    render(
+      <ActestraCodingArtifactCard
+        nativeConversationId={NATIVE_CONVERSATION_ID}
+        artifact={artifact()}
+      />,
+    );
+
+    expect(screen.getByTestId('actestra-coding-artifact-state').textContent).toContain('Not applied');
+    expect(screen.getByTestId('actestra-coding-artifact-apply')).not.toBeDisabled();
+    expect(screen.queryByTestId('actestra-coding-artifact-approval')).toBeNull();
+  });
+
+  it('requests an apply approval instead of blocking on the write', async () => {
+    mocks.apply.mockResolvedValue({ status: 'ok', artifactApply: { approvalId: APPROVAL_ID } });
+    render(
+      <ActestraCodingArtifactCard
+        nativeConversationId={NATIVE_CONVERSATION_ID}
+        artifact={artifact({
+          deliveryState: 'pending',
+          baseCommit: BASE_COMMIT,
+          changedFileCount: 1,
+        })}
+      />,
+    );
+
+    await userEvent.click(screen.getByTestId('actestra-coding-artifact-apply'));
+
+    expect(mocks.apply).toHaveBeenCalledExactlyOnceWith({
+      contractVersion: 1,
+      nativeConversationId: NATIVE_CONVERSATION_ID,
+      artifactId: ARTIFACT_ID,
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('actestra-coding-artifact-notice').textContent).toContain(
+        'Approval requested',
+      ),
+    );
+    expect(screen.getByTestId('actestra-coding-artifact-approval')).toBeTruthy();
+    expect(screen.getByTestId('actestra-coding-artifact-state').textContent).toContain(
+      'Awaiting approval',
+    );
+  });
+
+  it('keeps a newly returned approval when a stale pending projection rerenders the card', async () => {
+    mocks.apply.mockResolvedValue({ status: 'ok', artifactApply: { approvalId: APPROVAL_ID } });
+    const pending = artifact({
+      deliveryState: 'pending',
+      baseCommit: BASE_COMMIT,
+      changedFileCount: 1,
+    });
+    const { rerender } = render(
+      <ActestraCodingArtifactCard
+        nativeConversationId={NATIVE_CONVERSATION_ID}
+        artifact={pending}
+      />,
+    );
+
+    await userEvent.click(screen.getByTestId('actestra-coding-artifact-apply'));
+    await waitFor(() => expect(screen.getByTestId('actestra-coding-artifact-approval')).toBeTruthy());
+
+    rerender(
+      <ActestraCodingArtifactCard
+        nativeConversationId={NATIVE_CONVERSATION_ID}
+        artifact={artifact({
+          deliveryState: 'pending',
+          baseCommit: BASE_COMMIT,
+          changedFileCount: 1,
+        })}
+      />,
+    );
+
+    expect(screen.getByTestId('actestra-coding-artifact-approval')).toBeTruthy();
+    expect(screen.getByTestId('actestra-coding-artifact-state').textContent).toContain(
+      'Awaiting approval',
+    );
+  });
+
+  it('renders the applying approval so the second approval reaches the user, and approves it', async () => {
+    mocks.decide.mockResolvedValue({ status: 'ok' });
+    render(
+      <ActestraCodingArtifactCard
+        nativeConversationId={NATIVE_CONVERSATION_ID}
+        artifact={artifact({
+          deliveryState: 'applying',
+          baseCommit: BASE_COMMIT,
+          changedFileCount: 2,
+          applyApprovalId: APPROVAL_ID,
+        })}
+      />,
+    );
+
+    expect(screen.getByTestId('actestra-coding-artifact-state').textContent).toContain(
+      'Awaiting approval',
+    );
+    await userEvent.click(screen.getByTestId('actestra-coding-artifact-approve'));
+
+    expect(mocks.decide).toHaveBeenCalledExactlyOnceWith({
+      contractVersion: 1,
+      nativeConversationId: NATIVE_CONVERSATION_ID,
+      approvalId: APPROVAL_ID,
+      decision: 'approved',
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('actestra-coding-artifact-notice').textContent).toContain(
+        'Applying to your workspace',
+      ),
+    );
+  });
+
+  it('clears the transient applying notice when Main projects the applied delivery', async () => {
+    mocks.decide.mockResolvedValue({ status: 'ok' });
+    const { rerender } = render(
+      <ActestraCodingArtifactCard
+        nativeConversationId={NATIVE_CONVERSATION_ID}
+        artifact={artifact({
+          deliveryState: 'applying',
+          baseCommit: BASE_COMMIT,
+          changedFileCount: 1,
+          applyApprovalId: APPROVAL_ID,
+        })}
+      />,
+    );
+
+    await userEvent.click(screen.getByTestId('actestra-coding-artifact-approve'));
+    await waitFor(() =>
+      expect(screen.getByTestId('actestra-coding-artifact-notice').textContent).toContain(
+        'Applying to your workspace',
+      ),
+    );
+
+    rerender(
+      <ActestraCodingArtifactCard
+        nativeConversationId={NATIVE_CONVERSATION_ID}
+        artifact={artifact({
+          deliveryState: 'applied',
+          baseCommit: BASE_COMMIT,
+          changedFileCount: 1,
+        })}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('actestra-coding-artifact-notice')).toBeNull(),
+    );
+  });
+
+  it('denies the apply and keeps the Artifact', async () => {
+    mocks.decide.mockResolvedValue({ status: 'ok' });
+    render(
+      <ActestraCodingArtifactCard
+        nativeConversationId={NATIVE_CONVERSATION_ID}
+        artifact={artifact({
+          deliveryState: 'applying',
+          baseCommit: BASE_COMMIT,
+          changedFileCount: 1,
+          applyApprovalId: APPROVAL_ID,
+        })}
+      />,
+    );
+
+    await userEvent.click(screen.getByTestId('actestra-coding-artifact-deny'));
+
+    expect(mocks.decide.mock.calls[0]?.[0]).toMatchObject({ decision: 'denied' });
+    await waitFor(() =>
+      expect(screen.getByTestId('actestra-coding-artifact-notice').textContent).toContain(
+        'Artifact is kept',
+      ),
+    );
+  });
+
+  it('refreshes the authoritative delivery after an expired decision is rejected', async () => {
+    const onDeliveryChanged = vi.fn();
+    mocks.decide.mockResolvedValue({ status: 'execution-failed' });
+    render(
+      <ActestraCodingArtifactCard
+        nativeConversationId={NATIVE_CONVERSATION_ID}
+        artifact={artifact({
+          deliveryState: 'applying',
+          baseCommit: BASE_COMMIT,
+          changedFileCount: 1,
+          applyApprovalId: APPROVAL_ID,
+        })}
+        onDeliveryChanged={onDeliveryChanged}
+      />,
+    );
+
+    await userEvent.click(screen.getByTestId('actestra-coding-artifact-approve'));
+
+    await waitFor(() => expect(onDeliveryChanged).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId('actestra-coding-artifact-notice').textContent).toContain(
+      'execution-failed',
+    );
+  });
+
+  it('hides the approval controls while applying and blocks a second apply', () => {
+    render(
+      <ActestraCodingArtifactCard
+        nativeConversationId={NATIVE_CONVERSATION_ID}
+        artifact={artifact({
+          deliveryState: 'applying',
+          baseCommit: BASE_COMMIT,
+          changedFileCount: 3,
+        })}
+      />,
+    );
+
+    expect(screen.getByTestId('actestra-coding-artifact-state').textContent).toContain('Applying');
+    expect(screen.queryByTestId('actestra-coding-artifact-approval')).toBeNull();
+    expect(screen.getByTestId('actestra-coding-artifact-apply')).toBeDisabled();
+  });
+
+  it('keeps an applied delivery from being re-applied and reports the base commit', () => {
+    render(
+      <ActestraCodingArtifactCard
+        nativeConversationId={NATIVE_CONVERSATION_ID}
+        artifact={artifact({
+          deliveryState: 'applied',
+          baseCommit: BASE_COMMIT,
+          changedFileCount: 4,
+        })}
+      />,
+    );
+
+    expect(screen.getByTestId('actestra-coding-artifact-state').textContent).toContain('Applied');
+    expect(screen.getByTestId('actestra-coding-artifact-apply')).toBeDisabled();
+    expect(screen.getByTestId('actestra-coding-artifact-card-' + ARTIFACT_ID).textContent).toContain(
+      BASE_COMMIT.slice(0, 12),
+    );
+  });
+
+  it('surfaces the failure code and stays retryable on conflict', () => {
+    render(
+      <ActestraCodingArtifactCard
+        nativeConversationId={NATIVE_CONVERSATION_ID}
+        artifact={artifact({
+          deliveryState: 'conflict',
+          baseCommit: BASE_COMMIT,
+          changedFileCount: 2,
+          failureCode: 'patch-conflict',
+        })}
+      />,
+    );
+
+    expect(screen.getByTestId('actestra-coding-artifact-state').textContent).toContain('Conflict');
+    expect(screen.getByTestId('actestra-coding-artifact-card-' + ARTIFACT_ID).textContent).toContain(
+      'patch-conflict',
+    );
+    expect(screen.getByTestId('actestra-coding-artifact-apply')).not.toBeDisabled();
+  });
+
+  it('renders a bounded preview from the Main-owned projection rather than reading the patch itself', async () => {
+    mocks.view.mockResolvedValue({
+      status: 'ok',
+      artifactView: { baseCommit: BASE_COMMIT, changedFileCount: 1, patchPreview: 'diff --git a/x b/x' },
+    });
+    render(
+      <ActestraCodingArtifactCard
+        nativeConversationId={NATIVE_CONVERSATION_ID}
+        artifact={artifact()}
+      />,
+    );
+
+    await userEvent.click(screen.getByTestId('actestra-coding-artifact-view'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('actestra-coding-artifact-preview').textContent).toContain(
+        'diff --git a/x b/x',
+      ),
+    );
+  });
+
+  it('reports a rejection code without claiming the apply succeeded', async () => {
+    mocks.apply.mockResolvedValue({ status: 'rejected', code: 'workspace-unavailable' });
+    render(
+      <ActestraCodingArtifactCard
+        nativeConversationId={NATIVE_CONVERSATION_ID}
+        artifact={artifact()}
+      />,
+    );
+
+    await userEvent.click(screen.getByTestId('actestra-coding-artifact-apply'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('actestra-coding-artifact-notice').textContent).toContain(
+        'workspace-unavailable',
+      ),
+    );
   });
 });
 `,

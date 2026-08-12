@@ -4,13 +4,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { AionUiCodingJourneyProjection } from "../../apps/desktop/src/compatibility/aionui";
-import { instant, taskId } from "../../apps/desktop/src/core";
+import { artifactId, instant, taskId } from "../../apps/desktop/src/core";
 import { AionUiCodingJourneyServiceError } from "../../apps/desktop/src/main/compatibility/aionuiCodingJourneyService";
 
 const servicePath = path.resolve(
   import.meta.dirname,
   "../../apps/desktop/src/main/compatibility/aionuiCodingJourneyBridgeService.ts",
 );
+const BASE_COMMIT = "a".repeat(40);
 const projection = Object.freeze({
   contractVersion: 1,
   taskId: taskId(`task-aionui-coding-${"a".repeat(64)}`),
@@ -42,6 +43,14 @@ describe("AionUiCodingJourneyBridgeService", () => {
       })),
       decideApproval: vi.fn(async () => projection),
       decidePublish: vi.fn(async () => projection),
+      viewArtifact: vi.fn(async () => ({
+        baseCommit: BASE_COMMIT,
+        changedFileCount: 1,
+        patchPreview: "diff",
+      })),
+      downloadArtifact: vi.fn(async () => ({ fileName: "patch.patch", content: "diff content" })),
+      applyArtifact: vi.fn(async () => ({ approvalId: "approval-artifact-apply-123" })),
+      resolveArtifactApply: vi.fn(async () => {}),
     };
     const bridge = new AionUiCodingJourneyBridgeService(journey);
     const nativeConversationId = "native-coding-bridge-conversation";
@@ -111,6 +120,55 @@ describe("AionUiCodingJourneyBridgeService", () => {
     expect(journey.decideApproval).toHaveBeenCalledTimes(1);
   });
 
+  it("routes Artifact operations through an independent Main-owned port when coding runtime is absent", async () => {
+    expect(fs.existsSync(servicePath)).toBe(true);
+    if (!fs.existsSync(servicePath)) return;
+    const { AionUiCodingJourneyBridgeService } =
+      await import("../../apps/desktop/src/main/compatibility/aionuiCodingJourneyBridgeService");
+    const artifactIdValue = artifactId(`artifact-team-fallback-${"d".repeat(64)}`);
+    const artifactPort = {
+      viewArtifact: vi.fn(async () => ({
+        baseCommit: BASE_COMMIT,
+        changedFileCount: 1,
+        patchPreview: "diff",
+      })),
+      downloadArtifact: vi.fn(async () => ({ fileName: "patch.patch", content: "diff content" })),
+      applyArtifact: vi.fn(async () => ({ approvalId: "approval-artifact-apply-fallback" })),
+      resolveArtifactApply: vi.fn(async () => undefined),
+    };
+    // The Team runtime is dynamic and may be absent from the static coding journey slot. Artifact
+    // actions still belong to Main and must remain available through their independent port.
+    const bridge = new AionUiCodingJourneyBridgeService(null as never, artifactPort as never);
+    const nativeConversationId = "native-team-fallback-conversation";
+    const request = {
+      contractVersion: 1 as const,
+      nativeConversationId,
+      artifactId: artifactIdValue,
+    };
+
+    await expect(bridge.viewArtifact(request)).resolves.toEqual({
+      status: "ok",
+      artifactView: { baseCommit: BASE_COMMIT, changedFileCount: 1, patchPreview: "diff" },
+    });
+    await expect(bridge.downloadArtifact(request)).resolves.toMatchObject({ status: "ok" });
+    await expect(bridge.applyArtifact(request)).resolves.toMatchObject({ status: "ok" });
+    await expect(
+      bridge.resolveArtifactApply({
+        contractVersion: 1,
+        nativeConversationId,
+        approvalId: "approval-artifact-apply-fallback",
+        decision: "approved",
+      }),
+    ).resolves.toEqual({ status: "ok" });
+    expect(artifactPort.viewArtifact).toHaveBeenCalledWith(artifactIdValue);
+    expect(artifactPort.downloadArtifact).toHaveBeenCalledWith(artifactIdValue);
+    expect(artifactPort.applyArtifact).toHaveBeenCalledWith(artifactIdValue);
+    expect(artifactPort.resolveArtifactApply).toHaveBeenCalledWith(
+      "approval-artifact-apply-fallback",
+      "approved",
+    );
+  });
+
   it("maps internal failures to fixed codes without returning private details", async () => {
     expect(fs.existsSync(servicePath)).toBe(true);
     if (!fs.existsSync(servicePath)) return;
@@ -137,6 +195,14 @@ describe("AionUiCodingJourneyBridgeService", () => {
       decidePublish: vi.fn(async () => {
         throw new Error("private patch digest");
       }),
+      viewArtifact: vi.fn(async () => ({
+        baseCommit: BASE_COMMIT,
+        changedFileCount: 1,
+        patchPreview: "diff",
+      })),
+      downloadArtifact: vi.fn(async () => ({ fileName: "patch.patch", content: "diff content" })),
+      applyArtifact: vi.fn(async () => ({ approvalId: "approval-artifact-apply-123" })),
+      resolveArtifactApply: vi.fn(async () => {}),
     };
     const bridge = new AionUiCodingJourneyBridgeService(failedJourney);
     const nativeConversationId = "native-coding-bridge-failure";

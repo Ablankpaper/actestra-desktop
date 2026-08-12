@@ -38,6 +38,7 @@ import {
 import { createGooseCodingToolInvoker } from "../../apps/desktop/src/main/workers/gooseCodingToolInvoker";
 import { deriveGooseCodingEvidenceIdentity } from "../../apps/desktop/src/main/workers/gooseCodingEvidenceCoordinator";
 import { captureIsolatedCodingPatch } from "../../apps/desktop/src/main/workers/isolatedCodingPatch";
+import { GooseMcpSessionCompositionError } from "../../apps/desktop/src/main/workers/gooseMcpSessionComposition";
 import type {
   GooseMcpSessionComposition,
   OpenGooseMcpSessionCompositionOptions,
@@ -487,6 +488,62 @@ describe("P5.2 desktop-main isolated coding composition", () => {
     expect(await runGit(fixture.repositoryRoot, "status", "--porcelain=v1")).toBe("");
   }, 15_000);
 
+  it("admits the human decision hold through the closed Tool Gateway invoker composition", async () => {
+    let fixture!: MainServiceFixture;
+    let invokerHoldObserved = false;
+    fixture = await openFixture("goose-human-decision-hold", {
+      createToolInvoker(options) {
+        invokerHoldObserved = typeof options.holdHumanDecision === "function";
+        return createGooseCodingToolInvoker(options);
+      },
+      async openGooseSession() {
+        return Object.freeze({
+          info: GOOSE_INFO,
+          privateRoot: path.join(fixture.root, "goose-private", "attempt-human-decision-hold"),
+          session: Object.freeze({
+            sessionId: "goose-desktop-main-human-decision-hold",
+            setupNotificationKinds: Object.freeze([]),
+          }),
+          toolNames: Object.freeze([]),
+          async prompt() {
+            return Object.freeze({
+              stopReason: "end_turn" as const,
+              updates: Object.freeze([]),
+            });
+          },
+          async close() {},
+        });
+      },
+    });
+
+    const opened = await fixture.service.openGoose({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-goose-human-decision-hold"),
+      displayName: "P5.2 human decision hold composition",
+      commands: {},
+      tests: {},
+      artifact: GOOSE_ARTIFACT,
+      privateRootParent: path.join(fixture.root, "goose-private"),
+      modelId: "actestra-desktop-main-model",
+      modelInvoker: async () =>
+        Object.freeze({
+          type: "message" as const,
+          text: "desktop-main hold result",
+          usage: Object.freeze({ promptTokens: 5, completionTokens: 4 }),
+        }),
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+      holdHumanDecision: () => () => {},
+    });
+
+    expect(invokerHoldObserved).toBe(true);
+    expect(opened.session.sessionId).toBe("goose-desktop-main-human-decision-hold");
+
+    await opened.close();
+  }, 15_000);
+
   it("publishes one approved coding patch as an Actestra Artifact before cleanup", async () => {
     let fixture!: MainServiceFixture;
     let graphObservedAtGooseClose: DomainGraph | undefined;
@@ -702,6 +759,44 @@ describe("P5.2 desktop-main isolated coding composition", () => {
     ).resolves.toBeNull();
     expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
     expect(await runGit(fixture.repositoryRoot, "status", "--porcelain=v1")).toBe("");
+    // The Artifact is publishable evidence only: workspace delivery is a separate, durable
+    // authority that starts out pending and carries no apply approval yet.
+    const delivery = await fixture.persistence.getArtifactDelivery(result.artifact.id);
+    expect(delivery).toMatchObject({
+      contractVersion: 2,
+      artifactId: result.artifact.id,
+      workspaceId: fixture.ids.workspaceId,
+      destinationWorkspaceId: null,
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      state: "pending",
+      patchOwnerGrantId: opened.grant.grantId,
+      destinationGrantId: null,
+      patchSha256: publishSnapshot?.patchSha256,
+      patchByteLength: publishSnapshot?.patchByteLength,
+      baseCommit,
+      changedFileCount: 2,
+      approvalId: null,
+      verifiedHead: null,
+      failureCode: null,
+      failureMessage: null,
+    });
+    // Apply must be able to read the patch after the isolated worktree is gone, so the
+    // delivery authority points at persisted content rather than a worktree path.
+    expect(delivery?.patchReference).toMatch(/^coding-publish-patch-[a-f0-9]{64}$/u);
+    const deliveryPatch = await fixture.persistence.resolveContentReference({
+      contractVersion: WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
+      reference: toolInputReference(delivery?.patchReference ?? ""),
+      kind: "tool-input",
+      owner: result.output.owner,
+      resolvedAt: fixture.clock.now(),
+      consume: false,
+    });
+    expect(deliveryPatch.content).toBe(publishedContent.content);
+    expect(await fixture.persistence.listArtifactDeliveriesForTask(fixture.ids.taskId, 10)).toEqual(
+      [delivery],
+    );
+
     const replayed = await opened.publish(publishOptions);
     expect(replayed).toEqual(result);
     expect(publishDecisionCalls).toBe(1);
@@ -864,6 +959,70 @@ describe("P5.2 desktop-main isolated coding composition", () => {
 
     await opened.close();
     await expect(fs.promises.stat(opened.worktreeRoot)).rejects.toMatchObject({ code: "ENOENT" });
+  }, 15_000);
+
+  it("completes a read-only coding review without an Artifact or a publish approval", async () => {
+    let fixture!: MainServiceFixture;
+    fixture = await openFixture("goose-publish-unchanged", {
+      createToolInvoker(options) {
+        return createGooseCodingToolInvoker(options);
+      },
+      async openGooseSession() {
+        return Object.freeze({
+          info: GOOSE_INFO,
+          privateRoot: path.join(fixture.root, "goose-private", "attempt-publish-unchanged"),
+          session: Object.freeze({
+            sessionId: "goose-desktop-main-publish-unchanged",
+            setupNotificationKinds: Object.freeze([]),
+          }),
+          toolNames: Object.freeze([]),
+          async prompt() {
+            return Object.freeze({ stopReason: "end_turn" as const, updates: Object.freeze([]) });
+          },
+          async close() {},
+        });
+      },
+    });
+    const opened = await fixture.service.openGoose({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-publish-unchanged"),
+      displayName: "P5.2 read-only coding review",
+      commands: {},
+      tests: {},
+      artifact: GOOSE_ARTIFACT,
+      privateRootParent: path.join(fixture.root, "goose-private"),
+      modelId: "actestra-desktop-main-model",
+      modelInvoker: async () =>
+        Object.freeze({
+          type: "message" as const,
+          text: "desktop-main read-only review",
+          usage: Object.freeze({ promptTokens: 2, completionTokens: 1 }),
+        }),
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+    });
+    await opened.prompt({ text: "Explain the fixture without changing any file." });
+
+    const decisionHandler = vi.fn();
+    const result = await opened.publish({ decisionHandler });
+
+    expect(result).toMatchObject({ status: "unchanged" });
+    expect(decisionHandler).not.toHaveBeenCalled();
+    const reviewedGraph = await fixture.persistence.loadDomainGraph();
+    expect(reviewedGraph).toMatchObject({
+      tasks: [{ id: fixture.ids.taskId, state: "completed" }],
+      sessions: [{ id: fixture.ids.sessionId, state: "completed" }],
+      artifacts: [],
+    });
+    const events = await fixture.persistence.replayEvents(opened.streamId);
+    expect(events.at(-1)).toMatchObject({
+      type: "task.completed",
+      payload: { from: "blocked", to: "completed" },
+    });
+    expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
+    expect(await runGit(fixture.repositoryRoot, "status", "--porcelain=v1")).toBe("");
   }, 15_000);
 
   it("rejects a worktree change after approval and returns to blocked review", async () => {
@@ -1768,6 +1927,166 @@ describe("P5.2 desktop-main isolated coding composition", () => {
       tasks: [{ id: fixture.ids.taskId, state: "failed" }],
       sessions: [{ id: fixture.ids.sessionId, state: "failed" }],
       workers: [{ id: fixture.ids.workerId, state: "crashed" }],
+    });
+
+    await opened.close();
+  }, 15_000);
+
+  it("fails a refused-completion prompt with its own incident code and refuses to publish", async () => {
+    let fixture!: MainServiceFixture;
+    fixture = await openFixture("goose-model-completion-refused", {
+      createToolInvoker(options) {
+        return createGooseCodingToolInvoker(options);
+      },
+      async openGooseSession() {
+        return Object.freeze({
+          info: GOOSE_INFO,
+          privateRoot: path.join(fixture.root, "goose-private", "attempt-completion-refused"),
+          session: Object.freeze({
+            sessionId: "goose-desktop-main-completion-refused",
+            setupNotificationKinds: Object.freeze([]),
+          }),
+          toolNames: Object.freeze([]),
+          // The composition layer detects the refusal and rejects the turn, so
+          // the session surface reproduces only that rejection here.
+          async prompt() {
+            throw new GooseMcpSessionCompositionError(
+              "model-completion-refused",
+              "Actestra refused every model completion in this Goose prompt turn",
+            );
+          },
+          async close() {},
+        });
+      },
+    });
+    const opened = await fixture.service.openGoose({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-goose-completion-refused"),
+      displayName: "P6 refused model completion terminal state",
+      commands: {},
+      tests: {},
+      artifact: GOOSE_ARTIFACT,
+      privateRootParent: path.join(fixture.root, "goose-private"),
+      modelId: "actestra-desktop-main-model",
+      modelInvoker: async () =>
+        Object.freeze({
+          type: "message" as const,
+          text: "unused refused completion result",
+          usage: Object.freeze({ promptTokens: 1, completionTokens: 1 }),
+        }),
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+    });
+
+    await expect(opened.prompt({ text: "Read the README and summarize it." })).rejects.toThrow(
+      "Actestra refused every model completion",
+    );
+
+    const events = await fixture.persistence.replayEvents(opened.streamId);
+    expect(events.map((event) => event.type)).toEqual([
+      "task.started",
+      "worker.failed",
+      "task.failed",
+    ]);
+    for (const index of [1, 2]) {
+      expect(events[index]).toMatchObject({
+        payload: {
+          errorCode: "model-completion-refused",
+          message:
+            "Actestra refused every model completion for this prompt, so no reviewable coding result exists.",
+        },
+      });
+    }
+    await expect(fixture.persistence.loadDomainGraph()).resolves.toMatchObject({
+      tasks: [{ id: fixture.ids.taskId, state: "failed" }],
+      sessions: [{ id: fixture.ids.sessionId, state: "failed" }],
+      workers: [{ id: fixture.ids.workerId, state: "crashed" }],
+    });
+
+    // A refused prompt must never reach `unchanged`/`published`: publish is
+    // gated on completed prompt review evidence that failPrompt never wrote.
+    await expect(
+      opened.publish({
+        decisionHandler: async () =>
+          Object.freeze({
+            decision: "approved" as const,
+            actorId: approvalActorId("actor-coding-completion-refused"),
+          }),
+      }),
+    ).rejects.toThrow(/requires completed prompt review evidence/i);
+
+    await opened.close();
+  }, 15_000);
+
+  it("records a malformed inference request under its own incident code", async () => {
+    let fixture!: MainServiceFixture;
+    fixture = await openFixture("goose-model-request-rejected", {
+      createToolInvoker(options) {
+        return createGooseCodingToolInvoker(options);
+      },
+      async openGooseSession() {
+        return Object.freeze({
+          info: GOOSE_INFO,
+          privateRoot: path.join(fixture.root, "goose-private", "attempt-request-rejected"),
+          session: Object.freeze({
+            sessionId: "goose-desktop-main-request-rejected",
+            setupNotificationKinds: Object.freeze([]),
+          }),
+          toolNames: Object.freeze([]),
+          async prompt() {
+            throw new GooseMcpSessionCompositionError(
+              "model-request-rejected",
+              "Actestra could not read any inference request in this Goose prompt turn",
+            );
+          },
+          async close() {},
+        });
+      },
+    });
+    const opened = await fixture.service.openGoose({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-goose-request-rejected"),
+      displayName: "P6 malformed inference request terminal state",
+      commands: {},
+      tests: {},
+      artifact: GOOSE_ARTIFACT,
+      privateRootParent: path.join(fixture.root, "goose-private"),
+      modelId: "actestra-desktop-main-model",
+      modelInvoker: async () =>
+        Object.freeze({
+          type: "message" as const,
+          text: "unused rejected request result",
+          usage: Object.freeze({ promptTokens: 1, completionTokens: 1 }),
+        }),
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+    });
+
+    await expect(opened.prompt({ text: "Read the README and summarize it." })).rejects.toThrow(
+      "Actestra could not read any inference request",
+    );
+
+    const events = await fixture.persistence.replayEvents(opened.streamId);
+    expect(events.map((event) => event.type)).toEqual([
+      "task.started",
+      "worker.failed",
+      "task.failed",
+    ]);
+    for (const index of [1, 2]) {
+      expect(events[index]).toMatchObject({
+        payload: {
+          errorCode: "model-request-rejected",
+          message:
+            "Actestra could not read any inference request for this prompt, so no reviewable coding result exists.",
+        },
+      });
+    }
+    await expect(fixture.persistence.loadDomainGraph()).resolves.toMatchObject({
+      tasks: [{ id: fixture.ids.taskId, state: "failed" }],
     });
 
     await opened.close();
@@ -3148,7 +3467,21 @@ describe.skipIf(
           }),
         ]),
       );
-      expect(JSON.stringify(modelInvocations[1]!.request)).toContain("file-written");
+      expect(modelInvocations[1]!.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: "assistant",
+            toolCalls: expect.arrayContaining([
+              expect.objectContaining({ callId: "call-actestra-approved-1" }),
+            ]),
+          }),
+          expect.objectContaining({
+            role: "tool",
+            callId: "call-actestra-approved-1",
+            content: expect.stringContaining("file-written"),
+          }),
+        ]),
+      );
       const approval = await opened.approvalService.get(approvalRequest!.approvalId);
       expect(approval).toMatchObject({ state: "approved", resolvedBy: actorId });
       expect(approval).toHaveProperty("consumedAt");
@@ -3241,7 +3574,21 @@ describe.skipIf(
           }),
         ]),
       );
-      expect(JSON.stringify(modelInvocations[1]!.request)).toContain("approval-denied");
+      expect(modelInvocations[1]!.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: "assistant",
+            toolCalls: expect.arrayContaining([
+              expect.objectContaining({ callId: "call-actestra-denied-1" }),
+            ]),
+          }),
+          expect.objectContaining({
+            role: "tool",
+            callId: "call-actestra-denied-1",
+            content: expect.stringContaining("approval-denied"),
+          }),
+        ]),
+      );
       const approval = await opened.approvalService.get(approvalRequest!.approvalId);
       expect(approval).toMatchObject({ state: "denied", resolvedBy: actorId });
       expect(approval).not.toHaveProperty("consumedAt");

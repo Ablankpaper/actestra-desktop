@@ -41,6 +41,26 @@ const admission = Object.freeze({
 });
 
 describe("AionUI coding-agent readiness service", () => {
+  it("reuses the startup-admitted artifact and revalidates it only on an explicit probe", async () => {
+    const { AionUiCodingAgentService } = await loadServiceModule();
+    const admitRunnerArtifact = vi.fn(async () => artifact);
+    const service = new AionUiCodingAgentService(
+      {
+        getMainService: () => mainService,
+        runnerAdmission: admission,
+        admittedArtifact: artifact,
+      },
+      { admitRunnerArtifact },
+    );
+
+    await expect(service.status()).resolves.toEqual(expect.objectContaining({ status: "ready" }));
+    await expect(service.requireAdmittedArtifact()).resolves.toBe(artifact);
+    expect(admitRunnerArtifact).not.toHaveBeenCalled();
+
+    await expect(service.probe()).resolves.toEqual(expect.objectContaining({ status: "ready" }));
+    expect(admitRunnerArtifact).toHaveBeenCalledOnce();
+  });
+
   it("admits the exact runner once for status and refreshes only on an explicit probe", async () => {
     const { AionUiCodingAgentService } = await loadServiceModule();
     const admitRunnerArtifact = vi.fn(async () => artifact);

@@ -235,6 +235,19 @@ application UI.
 - Preserve native Team creation, navigation, chat, status, rename/pin/delete,
   messaging, and recovery behaviors.
 
+General v1 capability scope: the Team General worker is text-only. It is invoked
+with `tools: []` and `responseMode: "text"`, so it has no file, repository, or
+network authority and drafts solely from the prompt text it is given. Structured
+Planner requirements are admitted before invocation; file/network/repository
+requirements are rejected with distinct input or capability codes. The model
+must return the bounded JSON envelope, and Main validates the envelope, empty
+content, and placeholder rules before creating an Artifact. A missing input is
+reported as a blocked result rather than a fabricated or completed document.
+Workspace reads stay on the separate P4 scoped-native path
+([ADR-0018](decisions/0018-scoped-native-text-tools-and-policy.md)), which owns
+the grant, approval, and tool-result evidence contracts; extending General beyond
+text is a later capability change, not a defect fix.
+
 Exit: a mixed general-and-code fixture completes through the preserved Team UI
 with deterministic failure and restart proof, and a CrewAI crash or version
 mismatch cannot corrupt authoritative state.

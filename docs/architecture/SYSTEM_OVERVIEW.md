@@ -12,8 +12,8 @@ ADR-0025 admits only the exact uncompiled RSA metadata finding. P5.1 builds and
 validates the runner and is accepted through its reviewed hotfix, exact-head CI,
 squash merge, and merged-main CI recorded in project status. P5 is accepted on
 `main`. P6 plan admission is also accepted on `main`; the larger Team
-orchestration and AionUI-native Team journey are implemented only in the local,
-unpushed batch recorded in project status. A generic supervised planner
+orchestration and AionUI-native Team journey are implemented in the local
+delivery batch recorded in project status. A generic supervised planner
 boundary exists locally, but CrewAI itself is not imported, admitted, or
 packaged.
 
@@ -146,8 +146,7 @@ pass, followed by complete 14-file manual review and exact scope audits in
 implementation commit `47ed445eab204c0998e44167455c062600158dd3`.
 Ready pull request 24 reached exact final head
 `3593fac8db48a0cb149bb6c736374eeaccebe332`, passed PR CI 30687199671, squash
-merged as `80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`, and passed merged-main CI
-30687433298. Its rate-limited CodeRabbit status is not formal review evidence.
+merged as `80e84a28cb6e4e08eb73ec83193908ab3aa69cbe`, and passed merged-main CI 30687433298. Its rate-limited CodeRabbit status is not formal review evidence.
 
 P4.2 adds the separate compatibility boundary accepted in
 [ADR-0011](decisions/0011-aionui-shadow-projection.md). Successful native HTTP
@@ -419,7 +418,7 @@ The app core owns:
 - credential references;
 - migrations and crash recovery.
 
-### Team orchestrator and CrewAI sidecar
+### Team orchestrator and supervised planner providers
 
 The Actestra TeamOrchestrator owns the authoritative dependency graph, worker
 admission, attempt identity, budgets, approvals, artifacts, cancellation,
@@ -436,8 +435,7 @@ deeply frozen request through a cancellable planner port and sanitizes planner
 failures. Pull request 45 reached exact head
 `a3d08a934160c1a5d61ff987ade29212bd3c0b05`, passed exact-head CI
 30906689796, squash merged as
-`30742934adde1e0944c4e8ced1f005452a1f3568`, and passed exact merged-main CI
-30907869824.
+`30742934adde1e0944c4e8ced1f005452a1f3568`, and passed exact merged-main CI 30907869824.
 
 The current local P6 batch adds durable admission authority before scheduling.
 Core revalidates exact fields, bounded text, identities, limits, canonical
@@ -455,18 +453,87 @@ rewrite schema 14 or make a planner authoritative. The main-owned scheduler
 then persists each Core transition before observation or effect and owns
 dependency readiness, controls, protected-approval blocking, workflow
 feedback, cancellation, cleanup, deterministic recovery, and reference-only
-aggregation. Real General and Goose nodes execute through their already
-accepted journeys.
+aggregation. General and Goose nodes route through their already accepted
+journey boundaries. The current local development product admits the fixed
+`actestra-native-team-planner@1.0.0` sidecar and a Main-owned persisted
+provider/model binding, so an ordinary orchestrated Team can execute both
+workers without giving the planner, renderer, or Goose direct credential
+authority. Deterministic fixtures remain boundary evidence; the 2026-08-12
+isolated Electron acceptance additionally proves the packaged development path
+against a real provider.
 
-CrewAI is the first P6 planner-sidecar candidate under
-[ADR-0015](decisions/0015-crewai-supervised-orchestration-sidecar.md). If
-admitted, it will run in a separately supervised Python process and may propose
-bounded plans, replans, worker-capability assignments, and result aggregations.
-The current local generic supervisor proves the protocol and process boundary
-with a deterministic fixture; it is not CrewAI. Neither provider may create
-processes, worktrees, credentials, approvals, tools, authoritative identifiers,
-or durable product state. Private planner memory, persistence, events, traces,
-and retries remain disposable compatibility state.
+The current Task 14 correction adds forward-only schema 16 without changing the
+accepted schema-15 migration bytes. Its immutable
+`team_experience_bindings` table binds each Team identity exactly once to
+`standard` or `orchestrated`. Main binds existing AionCore Teams as standard on
+first list/get projection and schema-15 Actestra Team definitions as
+orchestrated; a cross-store identity or type conflict fails closed and the
+binding survives restart.
+
+Forward-only schema 17 separately owns metadata-only standard-Team message
+delivery authority. Main persists `pending-effect` before the AionCore message
+effect, records `effect-observed` only with a bounded provider message/run
+acknowledgement whose run postcondition was observed, and records
+`effect-uncertain` for an ambiguous provider outcome or interrupted startup.
+The Main-owned delivery ID, bounded client nonce, and request SHA-256 make an
+observed retry replay only its durable acknowledgement; a changed request,
+pending delivery, or uncertain delivery fails closed before another effect.
+Each Team/target can have at most one unresolved delivery. Neither message
+content nor attachment paths are persisted, and startup converts inherited
+pending deliveries to uncertain before Team bridge registration rather than
+resending them. Renderer storage contains only the nonce and request
+fingerprint, never delivery authority or message content.
+
+The current Actestra-owned persistence utility is schema 22. Forward
+migrations after schema 17 add immutable Team experience binding,
+artifact-delivery authority (including distinct patch-owner and destination
+grants), and persisted General v1 capability requirements. Schema 17 remains
+the historical standard-Team message-delivery migration; it is not the current
+Actestra database version used by packaged smoke.
+
+Coding delivery remains split by authority: an isolated Goose worktree produces
+a patch Artifact, while only a separately approved Main operation can apply it
+to the original workspace. General v1 remains text-only and validates a
+structured output envelope before Artifact creation.
+
+The 2026-08-06 amendment to
+[ADR-0015](decisions/0015-crewai-supervised-orchestration-sidecar.md) makes an
+Actestra Main-owned local-Agent compatibility provider a possible production
+candidate boundary, not an admitted runtime. The current product graph does not
+ship that provider: ordinary desktop startup does not import, construct,
+catalogue, version-probe, help-probe, or invoke Claude or Codex, and it forwards
+no credential or user environment to either CLI. Downstream manifest and
+native-wiring guards reject the provider/runtime source copies and any startup
+injection that would assemble Team or coding runtime state from them.
+
+A non-shipped local evaluation prototype projects zero capabilities for Claude
+and Codex and rejects structured invocation before model-process spawn. That
+prototype is boundary research only. Codex still lacks an enforceable
+all-tools-off mode; Claude Code `2.1.168` can disable hooks, plugins, memory,
+Skills, MCP, and tools with `--bare`, but that mode does not reuse OAuth or
+Keychain credentials. Read-only or ephemeral execution and post-hoc tool-event
+inspection are not admission evidence. Actestra does not enable user settings,
+invoke `apiKeyHelper`, forward a raw token/API key, or use Gemini in this batch.
+That local-Agent candidate remains disabled. It no longer determines ordinary
+Team readiness: ADR-0026 supplies the admitted Actestra-native planner, and
+Main constructs `ActestraTeamComposition` only when the persisted provider/model
+selection and both Worker journeys pass their independent admission checks.
+Without those prerequisites the visible journey remains explicitly
+`team-planner-unavailable` or `team-worker-runtime-unavailable`. Main projects
+that live submission availability, bounded reason, next action, and
+`actestra-main-runtime` authority source before the renderer can submit a task.
+The AionUI page disables an impossible intent while the POST boundary remains
+independently fail closed; renderer code does not infer readiness.
+
+Planner candidates and aggregations would still require Core/closed-protocol
+normalization, Goose may receive only the existing message-or-tool-call result,
+and Team workspace paths resolve only from an active persisted Main grant.
+Neither prototype evidence nor fixture execution is production acceptance.
+Neither a local CLI nor a later CrewAI provider may create product processes,
+worktrees, credentials, approvals, tools, authoritative identifiers, or durable
+product state. Private provider memory, persistence, events, traces, and retries
+remain disposable compatibility state. CrewAI remains separately gated and is
+not imported or admitted by this amendment.
 
 Eigent remains the reference for the user-visible Team experience and
 acceptance behavior; its separate application and complete runtime are not
@@ -477,11 +544,14 @@ trusted-current-main-frame IPC, and downstream patch 0014. Main owns Team
 identity and two-to-five-member CAS updates, active-run mutation exclusion,
 soft removal, plan admission, orchestrator controls, and the projection of
 schema-15 run authority into native Team DTOs. The fixed preload provider
-routes only `/api/teams` and declared Team events; it fails closed instead of
-falling back to AionCore.
+routes only `/api/teams` and declared Team events. While that provider is
+active, renderer list/get use its single schema-16-typed Main/Core projection;
+the preserved native AionUI provider is used only when the Actestra provider is
+absent, never as a second renderer-side authority.
 
-The same AionUI-first surface now provides local Team creation and list,
-`/team/:id`, members/roles and General+Goose configuration, owned
+The same AionUI-first surface now provides a local explicit standard-versus-
+orchestrated creation choice, Team list, `/team/:id`, members/roles and
+General+Goose configuration, owned
 workspace/task input, group-chat messages, plan/node/Worker and dependency
 state, protected approvals, pause/cancel/retry/replace/handoff,
 Artifact/result aggregation, and restart recovery. It presents Actestra
@@ -492,11 +562,12 @@ from schema-15 revisions. Raw Worker summaries, private paths, audit
 identifiers, process details, plan internals, and persistence authority do not
 cross into the renderer. No Goose or Eigent application UI enters the product.
 
-This provider and visible journey are local and unpushed. Their focused native,
-Core, TypeScript, downstream-contract, and DOM evidence is recorded in project
-status; the final root gate, package and target-app acceptance, push, exact-head
-CI, review/merge, merged-main CI, real CrewAI admission, and P6 phase acceptance
-remain open.
+This provider and visible journey are in the local delivery batch. Their focused native,
+Core, TypeScript, downstream-contract, DOM, complete root, packaged smoke, and
+real provider-backed Electron evidence is recorded in project status. The P6
+local development exit gate is closed; push, exact-head CI, review/merge,
+merged-main CI, formal signing, release, deployment, final user acceptance, and
+real CrewAI admission remain open.
 
 ### Agent workers
 
@@ -684,18 +755,15 @@ authority.
 
 That bounded ACP lifecycle is delivered on `main` through pull request 33 at
 exact final head `5d873f2feb94679341627aab0472a66630cf16cd`, squash merge
-`c5f498e926adac484694dab6d2f05b9822cc0b12`, and exact merged-main CI
-30825221070. Delivery does not expand its fixture-backed authority boundary.
+`c5f498e926adac484694dab6d2f05b9822cc0b12`, and exact merged-main CI 30825221070. Delivery does not expand its fixture-backed authority boundary.
 
 Pull request 34 changed only the four P5 source-of-truth documents, passed
 exact-head CI 30827073008, squash merged as
-`776d1e1c10d13f036a3318f7d3c193a7819443a2`, and passed exact merged-main CI
-30828549443. It introduced no additional runtime authority.
+`776d1e1c10d13f036a3318f7d3c193a7819443a2`, and passed exact merged-main CI 30828549443. It introduced no additional runtime authority.
 
 The authenticated, stateless MCP transport is delivered through pull request
 35 at exact head `93a8e9633f2be7b5f8c8b1eead3f2a21b0770073`, squash merge
-`8a31bafc1cd322744189fc4ed1e68f769225c999`, and exact merged-main CI
-30834217310. One Actestra-owned server listens on a random `127.0.0.1` port,
+`8a31bafc1cd322744189fc4ed1e68f769225c999`, and exact merged-main CI 30834217310. One Actestra-owned server listens on a random `127.0.0.1` port,
 accepts only exact `POST /mcp` requests with the attempt-private Bearer lease,
 and validates Host, absence of Origin, pinned Goose User-Agent, content and
 accept headers, body length, and the negotiated MCP protocol header. It admits
@@ -888,8 +956,7 @@ the 91-source product boundary, the exact 1,766-file foundation, the downstream
 contract, and the 59-main/3-preload/28-renderer-module production build. Pull
 request 42 delivered those bytes at exact head
 `a20882abeb6caac3b4f230fde42a7e06965a0730`, exact-head CI 30876755457,
-squash merge `e064dc88e717cef093c866cdbc2692d23ed7dd03`, and merged-main CI
-30877711241.
+squash merge `e064dc88e717cef093c866cdbc2692d23ed7dd03`, and merged-main CI 30877711241.
 
 The accepted main-only publish boundary starts only from the blocked review
 projection. It captures a maximum 1 MiB base-to-worktree binary patch across
@@ -922,8 +989,7 @@ contract with 4 R0 invariants and 75 source copies, strict types, smoke, and the
 
 Pull request 43 delivered the boundary at exact head
 `305a29d9b2b514865983ae9d8a23f877566bb7a5`, exact-head CI 30883055147,
-squash merge `9048fe2cc23819f596d8721adb8c544dcd0b786f`, and merged-main CI
-30884138218. P5.2 is accepted on that exact composition.
+squash merge `9048fe2cc23819f596d8721adb8c544dcd0b786f`, and merged-main CI 30884138218. P5.2 is accepted on that exact composition.
 
 P5.3 adds one R1 downstream provider patch over the retained AionUI surface.
 Electron main owns the fixed Goose managed-agent identity and readiness state,

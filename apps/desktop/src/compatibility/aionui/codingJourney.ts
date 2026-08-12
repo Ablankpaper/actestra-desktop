@@ -1,9 +1,14 @@
 import {
+  ARTIFACT_PATCH_PREVIEW_MAXIMUM_BYTES,
+  MAX_ISOLATED_CODING_PATCH_BYTES,
   approvalId,
   artifactId,
   compareInstants,
   instant,
   taskId,
+  ARTIFACT_DELIVERY_STATES,
+  type ArtifactDeliveryFailureCode,
+  type ArtifactDeliveryState,
   type ArtifactState,
   type TaskState,
 } from "../../core";
@@ -20,6 +25,18 @@ export const ACTESTRA_CODING_JOURNEY_APPROVAL_DECISION_CHANNEL =
   "actestra:coding-journey:approval-decision" as const;
 export const ACTESTRA_CODING_JOURNEY_PUBLISH_DECISION_CHANNEL =
   "actestra:coding-journey:publish-decision" as const;
+export const ACTESTRA_CODING_JOURNEY_ARTIFACT_VIEW_CHANNEL =
+  "actestra:coding-journey:artifact-view" as const;
+export const ACTESTRA_CODING_JOURNEY_ARTIFACT_DOWNLOAD_CHANNEL =
+  "actestra:coding-journey:artifact-download" as const;
+export const ACTESTRA_CODING_JOURNEY_ARTIFACT_APPLY_CHANNEL =
+  "actestra:coding-journey:artifact-apply" as const;
+/**
+ * The user's decision on an apply approval. It is a separate channel from starting the apply because
+ * starting only returns a pending approval: the write is released here and nowhere else.
+ */
+export const ACTESTRA_CODING_JOURNEY_ARTIFACT_APPLY_DECISION_CHANNEL =
+  "actestra:coding-journey:artifact-apply-decision" as const;
 
 const SUBMIT_KEYS = ["contractVersion", "nativeConversationId", "submissionId", "prompt"] as const;
 const LIST_KEYS = ["contractVersion", "nativeConversationId", "limit"] as const;
@@ -31,6 +48,13 @@ const DECISION_KEYS = [
   "approvalId",
   "decision",
 ] as const;
+const ARTIFACT_APPLY_DECISION_KEYS = [
+  "contractVersion",
+  "nativeConversationId",
+  "approvalId",
+  "decision",
+] as const;
+const ARTIFACT_OPERATION_KEYS = ["contractVersion", "nativeConversationId", "artifactId"] as const;
 const PROJECTION_KEYS = [
   "contractVersion",
   "taskId",
@@ -59,7 +83,16 @@ const TOOL_APPROVAL_KEYS = [
 ] as const;
 const PUBLISH_APPROVAL_KEYS = [...TOOL_APPROVAL_KEYS, "snapshot"] as const;
 const SNAPSHOT_KEYS = ["baseCommit", "patchByteLength", "patchSha256"] as const;
-const ARTIFACT_KEYS = ["artifactId", "label", "state"] as const;
+const ARTIFACT_KEYS = ["artifactId", "label", "state", "delivery"] as const;
+const ARTIFACT_DELIVERY_REQUIRED_KEYS = [
+  "deliveryState",
+  "baseCommit",
+  "changedFileCount",
+] as const;
+const ARTIFACT_DELIVERY_OPTIONAL_KEYS = ["failureCode", "applyApprovalId"] as const;
+const ARTIFACT_VIEW_KEYS = ["baseCommit", "changedFileCount", "patchPreview"] as const;
+const ARTIFACT_DOWNLOAD_KEYS = ["fileName", "content"] as const;
+const ARTIFACT_APPLY_KEYS = ["approvalId"] as const;
 
 const TASK_STATES: readonly TaskState[] = [
   "draft",
@@ -96,6 +129,11 @@ const REJECTION_CODES = [
   "approval-not-pending",
   "persistence-unavailable",
   "execution-failed",
+  "artifact-not-found",
+  "delivery-not-found",
+  "delivery-conflict",
+  "workspace-dirty",
+  "apply-failed",
 ] as const;
 
 export type AionUiCodingJourneyStage = (typeof STAGES)[number];
@@ -135,6 +173,38 @@ interface AionUiCodingJourneyDecisionRequest {
 
 export type AionUiCodingJourneyApprovalDecisionRequest = AionUiCodingJourneyDecisionRequest;
 export type AionUiCodingJourneyPublishDecisionRequest = AionUiCodingJourneyDecisionRequest;
+
+export interface AionUiCodingJourneyArtifactOperationRequest {
+  readonly contractVersion: typeof AIONUI_CODING_JOURNEY_CONTRACT_VERSION;
+  readonly nativeConversationId: string;
+  readonly artifactId: ReturnType<typeof artifactId>;
+}
+
+export interface AionUiCodingJourneyArtifactApplyDecisionRequest {
+  readonly contractVersion: typeof AIONUI_CODING_JOURNEY_CONTRACT_VERSION;
+  readonly nativeConversationId: string;
+  readonly approvalId: ReturnType<typeof approvalId>;
+  readonly decision: AionUiCodingJourneyDecision;
+}
+
+export interface AionUiCodingJourneyArtifactViewResponse {
+  readonly baseCommit: string;
+  readonly changedFileCount: number;
+  readonly patchPreview: string;
+}
+
+export interface AionUiCodingJourneyArtifactDownloadResponse {
+  readonly fileName: string;
+  readonly content: string;
+}
+
+export interface AionUiCodingJourneyArtifactApplyResponse {
+  /**
+   * The approval ID for the apply request. The user must decide via resolveArtifactApply before
+   * the patch is written. The approval card displays immediately; completion settles in background.
+   */
+  readonly approvalId: string;
+}
 
 export interface AionUiCodingJourneyMessageProjection {
   readonly messageId: string;
@@ -187,10 +257,44 @@ export type AionUiCodingJourneyApprovalProjection =
   | AionUiCodingJourneyToolApprovalProjection
   | AionUiCodingJourneyPublishApprovalProjection;
 
+export interface AionUiCodingJourneyArtifactDeliveryProjection {
+  readonly deliveryState: ArtifactDeliveryState;
+  readonly baseCommit: string;
+  readonly changedFileCount: number;
+  readonly failureCode?: ArtifactDeliveryFailureCode;
+  readonly applyApprovalId?: string;
+}
+
+/**
+ * Narrows a durable delivery record to the bounded projection the Renderer may see. Only the fields
+ * needed to render state and drive apply cross the boundary: no patch text, no stored path, no
+ * grant identifier.
+ */
+export function projectArtifactDelivery(
+  delivery: Readonly<{
+    state: ArtifactDeliveryState;
+    baseCommit: string;
+    changedFileCount: number;
+    failureCode: ArtifactDeliveryFailureCode | null;
+    approvalId: string | null;
+  }>,
+): AionUiCodingJourneyArtifactDeliveryProjection {
+  return Object.freeze({
+    deliveryState: delivery.state,
+    baseCommit: delivery.baseCommit,
+    changedFileCount: delivery.changedFileCount,
+    ...(delivery.failureCode === null ? {} : { failureCode: delivery.failureCode }),
+    ...(delivery.state === "applying" && delivery.approvalId !== null
+      ? { applyApprovalId: delivery.approvalId }
+      : {}),
+  });
+}
+
 export interface AionUiCodingJourneyArtifactProjection {
   readonly artifactId: ReturnType<typeof artifactId>;
   readonly label: string;
   readonly state: ArtifactState;
+  readonly delivery?: AionUiCodingJourneyArtifactDeliveryProjection;
 }
 
 export interface AionUiCodingJourneyProjection {
@@ -212,6 +316,10 @@ export interface AionUiCodingJourneyProjection {
 export type AionUiCodingJourneyBridgeResult =
   | Readonly<{ status: "ok"; projection: AionUiCodingJourneyProjection }>
   | Readonly<{ status: "ok"; projections: readonly AionUiCodingJourneyProjection[] }>
+  | Readonly<{ status: "ok"; artifactView: AionUiCodingJourneyArtifactViewResponse }>
+  | Readonly<{ status: "ok"; artifactDownload: AionUiCodingJourneyArtifactDownloadResponse }>
+  | Readonly<{ status: "ok"; artifactApply: AionUiCodingJourneyArtifactApplyResponse }>
+  | Readonly<{ status: "ok" }>
   | Readonly<{ status: "rejected"; code: AionUiCodingJourneyRejectionCode }>;
 
 export interface AionUiCodingJourneyBridgeApi {
@@ -223,6 +331,18 @@ export interface AionUiCodingJourneyBridgeApi {
   ): Promise<AionUiCodingJourneyBridgeResult>;
   decidePublish(
     request: AionUiCodingJourneyPublishDecisionRequest,
+  ): Promise<AionUiCodingJourneyBridgeResult>;
+  viewArtifact(
+    request: AionUiCodingJourneyArtifactOperationRequest,
+  ): Promise<AionUiCodingJourneyBridgeResult>;
+  downloadArtifact(
+    request: AionUiCodingJourneyArtifactOperationRequest,
+  ): Promise<AionUiCodingJourneyBridgeResult>;
+  applyArtifact(
+    request: AionUiCodingJourneyArtifactOperationRequest,
+  ): Promise<AionUiCodingJourneyBridgeResult>;
+  decideArtifactApply(
+    request: AionUiCodingJourneyArtifactApplyDecisionRequest,
   ): Promise<AionUiCodingJourneyBridgeResult>;
 }
 
@@ -243,9 +363,25 @@ function hasExactKeys(value: Record<string, unknown>, allowed: readonly string[]
     allowed
       .filter(
         (key) =>
-          key !== "limit" && key !== "reason" && key !== "approval" && key !== "incidentCode",
+          key !== "limit" &&
+          key !== "reason" &&
+          key !== "approval" &&
+          key !== "incidentCode" &&
+          key !== "delivery",
       )
       .every((key) => Object.hasOwn(value, key))
+  );
+}
+
+function hasExactKeysWithOptional(
+  value: Record<string, unknown>,
+  required: readonly string[],
+  optional: readonly string[],
+): boolean {
+  const actual = Object.keys(value);
+  return (
+    actual.every((key) => required.includes(key) || optional.includes(key)) &&
+    required.every((key) => Object.hasOwn(value, key))
   );
 }
 
@@ -358,6 +494,23 @@ export function assertAionUiCodingJourneyPublishDecisionRequest(
   value: unknown,
 ): asserts value is AionUiCodingJourneyPublishDecisionRequest {
   assertDecisionRequest(value);
+}
+
+export function assertAionUiCodingJourneyArtifactOperationRequest(
+  value: unknown,
+): asserts value is AionUiCodingJourneyArtifactOperationRequest {
+  exactVersionedRequest(value, ARTIFACT_OPERATION_KEYS);
+  artifactId(value.artifactId as string);
+}
+
+export function assertAionUiCodingJourneyArtifactApplyDecisionRequest(
+  value: unknown,
+): asserts value is AionUiCodingJourneyArtifactApplyDecisionRequest {
+  exactVersionedRequest(value, ARTIFACT_APPLY_DECISION_KEYS);
+  approvalId(value.approvalId as string);
+  if (!DECISIONS.includes(value.decision as AionUiCodingJourneyDecision)) {
+    throw new Error("AionUI coding-journey Artifact apply decision is invalid");
+  }
 }
 
 function assertRelativePath(value: unknown): asserts value is string {
@@ -546,6 +699,36 @@ export function assertAionUiCodingJourneyProjection(
     }
     artifactId(artifact.artifactId as string);
     boundedText(artifact.label, 512);
+    if (artifact.delivery !== undefined) {
+      const delivery = artifact.delivery;
+      if (
+        !isRecord(delivery) ||
+        !hasExactKeysWithOptional(
+          delivery,
+          ARTIFACT_DELIVERY_REQUIRED_KEYS,
+          ARTIFACT_DELIVERY_OPTIONAL_KEYS,
+        ) ||
+        typeof delivery.deliveryState !== "string" ||
+        !ARTIFACT_DELIVERY_STATES.includes(delivery.deliveryState as ArtifactDeliveryState) ||
+        typeof delivery.baseCommit !== "string" ||
+        !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(delivery.baseCommit) ||
+        !Number.isSafeInteger(delivery.changedFileCount) ||
+        (delivery.changedFileCount as number) < 0
+      ) {
+        throw new Error("AionUI coding-journey Artifact delivery projection is invalid");
+      }
+      if (delivery.failureCode !== undefined && typeof delivery.failureCode !== "string") {
+        throw new Error("AionUI coding-journey Artifact delivery failure code is invalid");
+      }
+      if (delivery.applyApprovalId !== undefined) {
+        approvalId(delivery.applyApprovalId as string);
+        if (delivery.deliveryState !== "applying") {
+          throw new Error(
+            "AionUI coding-journey Artifact apply approval requires an applying delivery",
+          );
+        }
+      }
+    }
   }
 }
 
@@ -579,5 +762,40 @@ export function assertAionUiCodingJourneyBridgeResult(
     value.projections.forEach(assertAionUiCodingJourneyProjection);
     return;
   }
+  if (hasExactKeys(value, ["status", "artifactView"]) && isRecord(value.artifactView)) {
+    const artifactView = value.artifactView;
+    if (
+      !hasExactKeys(artifactView, ARTIFACT_VIEW_KEYS) ||
+      typeof artifactView.baseCommit !== "string" ||
+      !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(artifactView.baseCommit) ||
+      !Number.isSafeInteger(artifactView.changedFileCount) ||
+      (artifactView.changedFileCount as number) < 0
+    ) {
+      throw new Error("AionUI coding-journey Artifact view is invalid");
+    }
+    boundedText(artifactView.patchPreview, ARTIFACT_PATCH_PREVIEW_MAXIMUM_BYTES);
+    return;
+  }
+  if (hasExactKeys(value, ["status", "artifactDownload"]) && isRecord(value.artifactDownload)) {
+    const artifactDownload = value.artifactDownload;
+    if (
+      !hasExactKeys(artifactDownload, ARTIFACT_DOWNLOAD_KEYS) ||
+      typeof artifactDownload.fileName !== "string" ||
+      !/^[A-Za-z0-9-]*\.patch$/u.test(artifactDownload.fileName)
+    ) {
+      throw new Error("AionUI coding-journey Artifact download is invalid");
+    }
+    boundedIdentifier(artifactDownload.fileName, 520);
+    boundedText(artifactDownload.content, MAX_ISOLATED_CODING_PATCH_BYTES);
+    return;
+  }
+  if (hasExactKeys(value, ["status", "artifactApply"]) && isRecord(value.artifactApply)) {
+    if (!hasExactKeys(value.artifactApply, ARTIFACT_APPLY_KEYS)) {
+      throw new Error("AionUI coding-journey Artifact apply is invalid");
+    }
+    approvalId(value.artifactApply.approvalId as string);
+    return;
+  }
+  if (hasExactKeys(value, ["status"])) return;
   throw new Error("AionUI coding-journey success result is invalid");
 }

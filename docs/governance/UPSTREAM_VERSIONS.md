@@ -131,9 +131,13 @@ clarified before Actestra distributes AionCore-derived code or binaries.
 - The committed minimal runner uses Rust 1.96.1 at rustc commit
   `31fca3adb283cc9dfd56b49cdee9a96eb9c96ffd` with the same toolchain's
   `rustfmt 1.9.0-stable (31fca3adb2 2026-06-26)`, an empty Goose patch and
-  feature set, and `event-listener 5.4.2`. The local macOS arm64 executable is
-  63,911,512 bytes with SHA-256
-  `1aa35cfa29a781752f992afa67dc6139f235b3cc662e01d2d556080dabbe8d21`.
+  feature set, `event-listener 5.4.2`, and `lru 0.18.2`. The `lru` floor removes
+  the reachable `RUSTSEC-2026-0253` unsoundness finding without changing the
+  Goose source pin or feature surface. The original admitted macOS arm64
+  executable was 63,911,512 bytes with SHA-256
+  `1aa35cfa29a781752f992afa67dc6139f235b3cc662e01d2d556080dabbe8d21`;
+  generated remediation artifacts remain local or short-lived CI evidence and
+  are rehashed in their immutable manifest.
 - The first exact runner lock and embedded-metadata scans both report only
   `RUSTSEC-2023-0071` for `rsa 0.9.10`. ADR-0025 permits that record only as
   `metadata-only-not-compiled`: the active graph excludes RSA and SQLx MySQL,

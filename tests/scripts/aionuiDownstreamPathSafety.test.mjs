@@ -48,12 +48,17 @@ describe("AionUi downstream path safety", () => {
     expect(overlay.migration.strategy).toContain("team_definitions");
     expect(overlay.migration.strategy).toContain("team_runs");
     expect(overlay.migration.strategy).toContain("team_run_revisions");
+    expect(overlay.migration.strategy).toContain("schema v17");
+    expect(overlay.migration.strategy).toContain("standard_team_message_deliveries");
     expect(overlay.migration.rollback).toContain("schema v14");
     expect(overlay.migration.rollback).toContain("schema v15");
+    expect(overlay.migration.rollback).toContain("schema v17");
     expect(overlay.migration.rollback).toContain("patch 0014");
     expect(overlay.migration.rollback).toContain("patch 0013");
     expect(overlay.migration.rollback).toContain("patch 0012");
-    expect(overlay.patches.at(-1)).toMatchObject({
+    expect(
+      overlay.patches.find((patch) => patch.path === "patches/0014-actestra-team-work.mjs"),
+    ).toMatchObject({
       path: "patches/0014-actestra-team-work.mjs",
       classification: expect.arrayContaining(["R1", "R2"]),
       domains: expect.arrayContaining([
@@ -62,6 +67,27 @@ describe("AionUi downstream path safety", () => {
         "Team plan and Worker explainability",
         "Team controls and Artifact aggregation",
         "Team restart recovery",
+      ]),
+    });
+    expect(
+      overlay.patches.find(
+        (patch) => patch.path === "patches/0015-actestra-macos-build-hardening.mjs",
+      ),
+    ).toMatchObject({
+      path: "patches/0015-actestra-macos-build-hardening.mjs",
+      classification: ["R0"],
+      domains: expect.arrayContaining([
+        "macOS distributable retry classification",
+        "packaged .app completeness",
+      ]),
+    });
+    expect(overlay.patches.at(-1)).toMatchObject({
+      path: "patches/0016-actestra-provider-credential-and-capability.mjs",
+      classification: expect.arrayContaining(["R1"]),
+      domains: expect.arrayContaining([
+        "Provider credential confidentiality in the Renderer",
+        "Provider response cache suppression",
+        "Provider capability declaration",
       ]),
     });
     expect(overlay.uiContract.layoutChangesAllowed).toBe(true);
@@ -79,6 +105,7 @@ describe("AionUi downstream path safety", () => {
         "packages/desktop/src/actestra/compatibility/aionui/codingAgent.ts",
         "packages/desktop/src/actestra/compatibility/aionui/codingJourney.ts",
         "packages/desktop/src/actestra/main/compatibility/aionuiCodingJourneyService.ts",
+        "packages/desktop/src/actestra/main/compatibility/aionuiCodingArtifactService.ts",
         "tests/unit/actestra/codingJourneyNativeWiring.test.ts",
         "packages/desktop/src/actestra/core/teamRun.ts",
         "packages/desktop/src/actestra/compatibility/aionui/teamBridge.ts",
@@ -87,7 +114,10 @@ describe("AionUi downstream path safety", () => {
         "packages/desktop/src/actestra/main/orchestration/teamPlanAdmissionService.ts",
         "packages/desktop/src/actestra/main/orchestration/teamOrchestratorService.ts",
         "packages/desktop/src/actestra/main/orchestration/teamJourneyWorkerRouter.ts",
+        "packages/desktop/src/actestra/main/orchestration/actestraNativeTeamPlanner.ts",
+        "packages/desktop/src/actestra/main/orchestration/actestraNativeTeamPlannerProcess.ts",
         "packages/desktop/src/actestra/main/orchestration/teamPlannerSidecarProcess.ts",
+        "packages/desktop/src/actestra/utility/orchestration/actestraNativeTeamPlannerEntry.ts",
         "packages/desktop/src/actestra/main/privileged/approvalAuditEvidence.ts",
         "packages/desktop/src/actestra/shared/teamPlannerSidecarProtocol.ts",
         "packages/desktop/src/common/adapter/actestraTeamClient.ts",
@@ -130,6 +160,11 @@ describe("AionUi downstream path safety", () => {
             "packages/desktop/src/actestra/main/compatibility/aionuiCodingJourneyService.ts",
         },
         {
+          source: "apps/desktop/src/main/compatibility/aionuiCodingArtifactService.ts",
+          destination:
+            "packages/desktop/src/actestra/main/compatibility/aionuiCodingArtifactService.ts",
+        },
+        {
           source: "apps/desktop/src/core/teamRun.ts",
           destination: "packages/desktop/src/actestra/core/teamRun.ts",
         },
@@ -162,6 +197,16 @@ describe("AionUi downstream path safety", () => {
             "packages/desktop/src/actestra/main/orchestration/teamJourneyWorkerRouter.ts",
         },
         {
+          source: "apps/desktop/src/main/orchestration/actestraNativeTeamPlanner.ts",
+          destination:
+            "packages/desktop/src/actestra/main/orchestration/actestraNativeTeamPlanner.ts",
+        },
+        {
+          source: "apps/desktop/src/main/orchestration/actestraNativeTeamPlannerProcess.ts",
+          destination:
+            "packages/desktop/src/actestra/main/orchestration/actestraNativeTeamPlannerProcess.ts",
+        },
+        {
           source: "apps/desktop/src/main/orchestration/teamPlannerSidecarProcess.ts",
           destination:
             "packages/desktop/src/actestra/main/orchestration/teamPlannerSidecarProcess.ts",
@@ -174,8 +219,24 @@ describe("AionUi downstream path safety", () => {
           source: "apps/desktop/src/shared/teamPlannerSidecarProtocol.ts",
           destination: "packages/desktop/src/actestra/shared/teamPlannerSidecarProtocol.ts",
         },
+        {
+          source: "apps/desktop/src/utility/orchestration/actestraNativeTeamPlannerEntry.ts",
+          destination:
+            "packages/desktop/src/actestra/utility/orchestration/actestraNativeTeamPlannerEntry.ts",
+        },
       ]),
     );
+    for (const destination of [
+      "packages/desktop/src/actestra/main/orchestration/localClaudeProductRuntime.ts",
+      "packages/desktop/src/actestra/main/orchestration/supervisedLocalAgentProvider.ts",
+      "packages/desktop/src/actestra/main/orchestration/supervisedLocalAgentRuntime.ts",
+    ]) {
+      expect(overlay.sourceCopies).not.toContainEqual(expect.objectContaining({ destination }));
+      expect(overlay.expectedChangedFiles).not.toContain(destination);
+    }
+    expect(JSON.stringify(overlay.sourceCopies)).not.toContain("tests/fixtures");
+    expect(JSON.stringify(overlay.sourceCopies)).not.toContain("localAgentCli");
+    expect(JSON.stringify(overlay.sourceCopies)).not.toContain("teamPlannerSidecar.mjs");
     expect(overlay.invariantFiles).toContain("packages/desktop/src/common/adapter/ipcBridge.ts");
     const checker = fs.readFileSync(
       path.join(repositoryRoot, "scripts/check-aionui-downstream.mjs"),

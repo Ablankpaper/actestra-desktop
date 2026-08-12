@@ -41,6 +41,7 @@ export const PRIVILEGED_CONTRACT_VERSION = 1 as const;
 export const PROTECTED_ACTIONS = [
   "workspace.read",
   "artifact.create",
+  "artifact.apply",
   "workspace.modify",
   "workspace.delete",
   "shell.execute",

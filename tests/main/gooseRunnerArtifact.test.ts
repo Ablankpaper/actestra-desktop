@@ -52,6 +52,8 @@ async function createArtifactFixture() {
     `source = "git+https://github.com/aaif-goose/goose?rev=${sourceContract.goose.commit}#${sourceContract.goose.commit}"`,
     'name = "event-listener"',
     'version = "5.4.2"',
+    'name = "lru"',
+    'version = "0.18.2"',
     "",
   ].join("\n");
   const license = await readFile(
@@ -305,6 +307,36 @@ describe("Goose runner artifact admission", () => {
 
     await expect(
       admitGooseRunnerArtifact(directory, admissionOptions(sha256(widenedManifest))),
+    ).rejects.toMatchObject({
+      name: "GooseRunnerArtifactError",
+      code: "incompatible-artifact",
+    });
+  });
+
+  it("rejects the unsound lru version from RUSTSEC-2026-0253", async () => {
+    const { directory, manifest } = await createArtifactFixture();
+    const lockPath = path.join(directory, "Cargo.lock");
+    const unsafeLock = (await readFile(lockPath, "utf8")).replace(
+      'name = "lru"\nversion = "0.18.2"',
+      'name = "lru"\nversion = "0.18.1"',
+    );
+    const unsafeManifest = JSON.stringify({
+      ...manifest,
+      build: {
+        ...manifest.build,
+        lockfile: {
+          ...manifest.build.lockfile,
+          sha256: sha256(unsafeLock),
+        },
+      },
+    });
+    await Promise.all([
+      writeFile(lockPath, unsafeLock),
+      writeFile(path.join(directory, GOOSE_RUNNER_MANIFEST_FILE), unsafeManifest),
+    ]);
+
+    await expect(
+      admitGooseRunnerArtifact(directory, admissionOptions(sha256(unsafeManifest))),
     ).rejects.toMatchObject({
       name: "GooseRunnerArtifactError",
       code: "incompatible-artifact",

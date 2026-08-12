@@ -1,4 +1,6 @@
+import fs from "node:fs";
 import { builtinModules } from "node:module";
+import path from "node:path";
 
 function escapeRegularExpression(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -33,6 +35,39 @@ export const rendererPrivilegePatterns = Object.freeze([
   { label: "window require escape", pattern: /\bwindow(?:\[['"]require['"]\]|\.require)\b/ },
 ]);
 
+export const actestraTeamRendererPrivilegePatterns = Object.freeze([
+  ...rendererPrivilegePatterns.filter((rule) => rule.label !== "Node process global"),
+  {
+    label: "Node process global",
+    pattern: /\bprocess(?:\.(?!env\.NODE_ENV\b)|\s*\[)/,
+  },
+]);
+
+export const actestraTeamRendererAuthorityPaths = Object.freeze([
+  "packages/desktop/src/common/adapter/actestraTeamClient.ts",
+  "packages/desktop/src/renderer/components/layout/Sider/TeamSiderSection.tsx",
+  "packages/desktop/src/renderer/pages/team/TeamPage.tsx",
+  "packages/desktop/src/renderer/pages/team/components/ActestraTeamArtifactList.tsx",
+  "packages/desktop/src/renderer/pages/team/components/ActestraTeamCreateModal.tsx",
+  "packages/desktop/src/renderer/pages/team/components/ActestraTeamWorkspace.tsx",
+  "packages/desktop/src/renderer/pages/team/components/TeamChatView.tsx",
+  "packages/desktop/src/renderer/pages/team/components/TeamCreateExperienceChooser.tsx",
+  "packages/desktop/src/renderer/pages/team/components/TeamCreateModal.tsx",
+  "packages/desktop/src/renderer/pages/team/components/TeamTabs.tsx",
+  "packages/desktop/src/renderer/pages/team/components/memberPicker/TeamAddMemberPopover.tsx",
+  "packages/desktop/src/renderer/pages/team/components/teamSendRuntime.ts",
+  "packages/desktop/src/renderer/pages/team/hooks/TeamPermissionContext.tsx",
+  "packages/desktop/src/renderer/pages/team/hooks/TeamTabsContext.tsx",
+  "packages/desktop/src/renderer/pages/team/hooks/teamConfigOptions.ts",
+  "packages/desktop/src/renderer/pages/team/hooks/useSiderTeamBadges.ts",
+  "packages/desktop/src/renderer/pages/team/hooks/useTeamList.ts",
+  "packages/desktop/src/renderer/pages/team/hooks/useTeamPendingPermissions.ts",
+  "packages/desktop/src/renderer/pages/team/hooks/useTeamRunView.ts",
+  "packages/desktop/src/renderer/pages/team/hooks/useTeamSession.ts",
+  "packages/desktop/src/renderer/pages/team/hooks/useTeamWarmup.ts",
+  "packages/desktop/src/renderer/pages/team/index.tsx",
+]);
+
 export const preloadPrivilegePatterns = Object.freeze([
   { label: "Node import", pattern: nodeBuiltinImportPattern },
   { label: "privileged process import", pattern: privilegedProcessImportPattern },
@@ -52,3 +87,38 @@ export const preloadPrivilegePatterns = Object.freeze([
     pattern: /exposeInMainWorld\s*\([^,]+,\s*ipcRenderer\s*\)/,
   },
 ]);
+
+export function inspectSourceFilesForPrivilegePatterns({ rootPath, relativePaths, rules }) {
+  const resolvedRoot = path.resolve(rootPath);
+  const findings = [];
+
+  for (const relativePath of relativePaths) {
+    if (
+      typeof relativePath !== "string" ||
+      relativePath.length === 0 ||
+      relativePath.includes("\0") ||
+      path.isAbsolute(relativePath)
+    ) {
+      throw new Error("Renderer authority source path must be a non-empty relative path");
+    }
+    const filePath = path.resolve(resolvedRoot, relativePath);
+    const containedPath = path.relative(resolvedRoot, filePath);
+    if (
+      containedPath === ".." ||
+      containedPath.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(containedPath)
+    ) {
+      throw new Error(`Renderer authority source path escapes its declared root: ${relativePath}`);
+    }
+
+    const source = fs.readFileSync(filePath, "utf8");
+    for (const rule of rules) {
+      rule.pattern.lastIndex = 0;
+      if (rule.pattern.test(source)) {
+        findings.push({ relativePath, label: rule.label });
+      }
+    }
+  }
+
+  return findings;
+}

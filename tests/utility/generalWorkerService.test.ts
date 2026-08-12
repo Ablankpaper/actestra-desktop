@@ -428,6 +428,338 @@ describe("General Worker utility service", () => {
     ]);
   });
 
+  it("requests one Main-owned model completion and converts only its bounded text into a draft", async () => {
+    const service = new GeneralWorkerService();
+    const attemptToken = "attempt-model-writing-artifact";
+    const prompt = "Write a reviewable launch note from the admitted Team task.";
+
+    const started = await service.handle(
+      request("start", {
+        attemptToken,
+        prompt,
+        entryState: "ready",
+        executionMode: "model-writing-artifact",
+      }),
+    );
+    expect(started).toMatchObject([
+      { type: "event", sequence: 1, event: { type: "started" } },
+      {
+        type: "event",
+        sequence: 2,
+        event: {
+          type: "model-requested",
+          callId: "general-worker-model-writing-call",
+          prompt,
+        },
+      },
+      { type: "response", operation: "start", ok: true },
+    ]);
+
+    const resolved = await service.handle(
+      request("resolve-model", {
+        attemptToken,
+        callId: "general-worker-model-writing-call",
+        result: {
+          status: "succeeded",
+          // The model replies with the draft envelope; only its markdown reaches the artifact.
+          content: JSON.stringify({
+            status: "completed",
+            markdown: "# Launch note\n\nReady for human review.\n",
+          }),
+        },
+      }),
+    );
+    expect(resolved).toMatchObject([
+      {
+        type: "event",
+        sequence: 3,
+        event: {
+          type: "message",
+          role: "assistant",
+          content: "Prepared one bounded model-authored writing draft.",
+        },
+      },
+      {
+        type: "event",
+        sequence: 4,
+        event: {
+          type: "tool-requested",
+          callId: "general-worker-task-output-write-text-call",
+          toolName: "actestra.task-output.write-text",
+          input: {
+            contractVersion: 1,
+            relativePath: "draft.md",
+            mediaType: "text/markdown; charset=utf-8",
+            content: "# Launch note\n\nReady for human review.\n",
+          },
+        },
+      },
+      { type: "response", operation: "resolve-model", ok: true },
+    ]);
+  });
+
+  it("repairs one malformed reply without quoting it back, then accepts the corrected draft", async () => {
+    const service = new GeneralWorkerService();
+    const attemptToken = "attempt-model-writing-repair";
+    await service.handle(
+      request("start", {
+        attemptToken,
+        prompt: "Write a reviewable launch note.",
+        entryState: "ready",
+        executionMode: "model-writing-artifact",
+      }),
+    );
+
+    const malformed = "Sure! Here is the draft: SENTINEL-MALFORMED-BODY";
+    const repaired = await service.handle(
+      request("resolve-model", {
+        attemptToken,
+        callId: "general-worker-model-writing-call",
+        result: { status: "succeeded", content: malformed },
+      }),
+    );
+    expect(repaired).toMatchObject([
+      {
+        type: "event",
+        sequence: 3,
+        event: {
+          type: "message",
+          role: "system",
+          content: "The draft did not satisfy the contract (not-json). Requesting one repair.",
+        },
+      },
+      {
+        type: "event",
+        sequence: 4,
+        event: { type: "model-requested", callId: "general-worker-model-writing-repair-call" },
+      },
+      { type: "response", operation: "resolve-model", ok: true },
+    ]);
+    // Spec C: the retry states the broken rule and nothing else. Echoing the reply back invites the
+    // model to repeat it, and the reply may carry the very prose the contract just rejected.
+    expect(JSON.stringify(repaired)).not.toContain("SENTINEL-MALFORMED-BODY");
+
+    const accepted = await service.handle(
+      request("resolve-model", {
+        attemptToken,
+        callId: "general-worker-model-writing-repair-call",
+        result: {
+          status: "succeeded",
+          content: JSON.stringify({
+            status: "completed",
+            markdown: "# Launch note\n\nRepaired for human review.\n",
+          }),
+        },
+      }),
+    );
+    // One repair is enough to reach the artifact, so a single malformed reply does not lose the work.
+    expect(accepted).toMatchObject([
+      { type: "event", sequence: 5, event: { type: "message", role: "assistant" } },
+      {
+        type: "event",
+        sequence: 6,
+        event: {
+          type: "tool-requested",
+          toolName: "actestra.task-output.write-text",
+          input: {
+            relativePath: "draft.md",
+            content: "# Launch note\n\nRepaired for human review.\n",
+          },
+        },
+      },
+      { type: "response", operation: "resolve-model", ok: true },
+    ]);
+  });
+
+  it("spends exactly one repair on malformed JSON and then reports general-output-invalid", async () => {
+    const service = new GeneralWorkerService();
+    const attemptToken = "attempt-model-writing-malformed";
+    await service.handle(
+      request("start", {
+        attemptToken,
+        prompt: "Write a reviewable launch note.",
+        entryState: "ready",
+        executionMode: "model-writing-artifact",
+      }),
+    );
+
+    const repaired = await service.handle(
+      request("resolve-model", {
+        attemptToken,
+        callId: "general-worker-model-writing-call",
+        result: { status: "succeeded", content: "not a draft envelope at all" },
+      }),
+    );
+    expect(repaired).toMatchObject([
+      { type: "event", event: { type: "message", role: "system" } },
+      {
+        type: "event",
+        event: { type: "model-requested", callId: "general-worker-model-writing-repair-call" },
+      },
+      { type: "response", operation: "resolve-model", ok: true },
+    ]);
+
+    const exhausted = await service.handle(
+      request("resolve-model", {
+        attemptToken,
+        callId: "general-worker-model-writing-repair-call",
+        result: { status: "succeeded", content: "still not a draft envelope" },
+      }),
+    );
+    // Spec F4: a malformed shape is an output-contract fault, so it keeps its own code rather than
+    // borrowing the placeholder verdict or collapsing into the lifecycle code invalid-state.
+    expect(exhausted).toMatchObject([
+      {
+        type: "event",
+        sequence: 5,
+        event: { type: "failed", errorCode: "general-output-invalid" },
+      },
+      { type: "response", operation: "resolve-model", ok: true },
+    ]);
+    const serialized = JSON.stringify(exhausted);
+    expect(serialized).not.toContain("model-requested");
+    expect(serialized).not.toContain("draft.md");
+    expect(serialized).not.toContain("invalid-state");
+  });
+
+  it("fails a persistent placeholder draft instead of writing one, once the repair is spent", async () => {
+    const service = new GeneralWorkerService();
+    const attemptToken = "attempt-model-writing-placeholder";
+    await service.handle(
+      request("start", {
+        attemptToken,
+        prompt: "Write the quarterly brief.",
+        entryState: "ready",
+        executionMode: "model-writing-artifact",
+      }),
+    );
+
+    const placeholderDraft = JSON.stringify({
+      status: "completed",
+      markdown: "# Quarterly brief\n\nRevenue: [TBD]\n",
+    });
+    await expect(
+      service.handle(
+        request("resolve-model", {
+          attemptToken,
+          callId: "general-worker-model-writing-call",
+          result: { status: "succeeded", content: placeholderDraft },
+        }),
+      ),
+    ).resolves.toMatchObject([
+      {
+        type: "event",
+        event: {
+          type: "message",
+          content:
+            "The draft did not satisfy the contract (placeholder-in-markdown). Requesting one repair.",
+        },
+      },
+      { type: "event", event: { type: "model-requested" } },
+      { type: "response", ok: true },
+    ]);
+
+    const exhausted = await service.handle(
+      request("resolve-model", {
+        attemptToken,
+        callId: "general-worker-model-writing-repair-call",
+        result: { status: "succeeded", content: placeholderDraft },
+      }),
+    );
+    // Spec C bounds the repair at one. A draft written around a gap is the outcome this contract
+    // exists to stop, so the attempt fails with the rule it broke rather than shipping the gap.
+    expect(exhausted).toMatchObject([
+      {
+        type: "event",
+        sequence: 5,
+        event: { type: "failed", errorCode: "general-instruction-noncompliant" },
+      },
+      { type: "response", operation: "resolve-model", ok: true },
+    ]);
+    // No second repair, and above all no artifact carrying the placeholder.
+    const serialized = JSON.stringify(exhausted);
+    expect(serialized).not.toContain("model-requested");
+    expect(serialized).not.toContain("draft.md");
+    expect(serialized).not.toContain("TBD");
+  });
+
+  it("fails closed on an unavailable or uncorrelated Main model result", async () => {
+    const service = new GeneralWorkerService();
+    const attemptToken = "attempt-model-failure";
+    await service.handle(
+      request("start", {
+        attemptToken,
+        prompt: "Write a bounded draft.",
+        entryState: "ready",
+        executionMode: "model-writing-artifact",
+      }),
+    );
+
+    await expect(
+      service.handle(
+        request("resolve-model", {
+          attemptToken,
+          callId: "wrong-model-call",
+          result: {
+            status: "succeeded",
+            content: "must not be accepted",
+          },
+        }),
+      ),
+    ).resolves.toMatchObject([
+      { type: "response", operation: "resolve-model", ok: false, error: { code: "invalid-state" } },
+    ]);
+
+    await expect(
+      service.handle(
+        request("resolve-model", {
+          attemptToken,
+          callId: "general-worker-model-writing-call",
+          result: {
+            status: "failed",
+            errorCode: "model-unavailable",
+            message: "The admitted model is unavailable.",
+          },
+        }),
+      ),
+    ).resolves.toMatchObject([
+      {
+        type: "event",
+        sequence: 3,
+        event: {
+          type: "failed",
+          errorCode: "model-unavailable",
+          message: "The admitted model is unavailable.",
+        },
+      },
+      { type: "response", operation: "resolve-model", ok: true },
+    ]);
+  });
+
+  it("rejects ordinary input while the one bounded model request is pending", async () => {
+    const service = new GeneralWorkerService();
+    const attemptToken = "attempt-model-pending";
+    await service.handle(
+      request("start", {
+        attemptToken,
+        prompt: "Wait for the Main model result.",
+        entryState: "ready",
+        executionMode: "model-writing-artifact",
+      }),
+    );
+
+    await expect(
+      service.handle(
+        request("send", {
+          attemptToken,
+          content: "Do not interleave ordinary input.",
+        }),
+      ),
+    ).resolves.toMatchObject([
+      { type: "response", operation: "send", ok: false, error: { code: "invalid-state" } },
+    ]);
+  });
+
   it("turns the persisted Office brief into one private Word-document model without a workspace read", async () => {
     const service = new GeneralWorkerService();
     const attemptToken = "attempt-office-document-artifact";
@@ -595,6 +927,92 @@ describe("General Worker utility service", () => {
         ok: false,
         error: { code: "duplicate-attempt" },
       },
+    ]);
+  });
+
+  it("refuses a task needing a file before any model turn, so nothing invents the content", async () => {
+    const service = new GeneralWorkerService();
+    const events = await service.handle(
+      request("start", {
+        attemptToken: "attempt-input-required",
+        prompt: "Summarise the README.",
+        entryState: "ready",
+        executionMode: "model-writing-artifact",
+        requirements: {
+          contractVersion: 1,
+          capabilities: ["text-generation"],
+          contextReferences: ["inline-text"],
+          inputRequirements: ["file-reference"],
+          completionCriteria: "json-envelope",
+        },
+      }),
+    );
+
+    expect(events).toMatchObject([
+      { type: "event", sequence: 1, event: { type: "started" } },
+      {
+        type: "event",
+        sequence: 2,
+        event: { type: "failed", errorCode: "general-input-required" },
+      },
+      { type: "response", operation: "start", ok: true },
+    ]);
+    // The decisive assertion: admission ran instead of a model turn.
+    expect(JSON.stringify(events)).not.toContain("model-requested");
+  });
+
+  it("reports a capability mismatch when the task needs an ability General does not have", async () => {
+    const service = new GeneralWorkerService();
+    const events = await service.handle(
+      request("start", {
+        attemptToken: "attempt-capability-mismatch",
+        prompt: "Fetch the changelog and rewrite it.",
+        entryState: "ready",
+        executionMode: "model-writing-artifact",
+        requirements: {
+          contractVersion: 1,
+          capabilities: ["network-fetch"],
+          contextReferences: ["inline-text"],
+          inputRequirements: ["none"],
+          completionCriteria: "json-envelope",
+        },
+      }),
+    );
+
+    expect(events).toMatchObject([
+      { type: "event", sequence: 1, event: { type: "started" } },
+      {
+        type: "event",
+        sequence: 2,
+        event: { type: "failed", errorCode: "general-capability-mismatch" },
+      },
+      { type: "response", operation: "start", ok: true },
+    ]);
+    expect(JSON.stringify(events)).not.toContain("model-requested");
+  });
+
+  it("admits a text-only writing task, so admission does not block ordinary work", async () => {
+    const service = new GeneralWorkerService();
+    const events = await service.handle(
+      request("start", {
+        attemptToken: "attempt-admitted",
+        prompt: "Draft a launch note from the brief below.",
+        entryState: "ready",
+        executionMode: "model-writing-artifact",
+        requirements: {
+          contractVersion: 1,
+          capabilities: ["text-generation"],
+          contextReferences: ["inline-text"],
+          inputRequirements: ["bounded-text"],
+          completionCriteria: "json-envelope",
+        },
+      }),
+    );
+
+    expect(events).toMatchObject([
+      { type: "event", sequence: 1, event: { type: "started" } },
+      { type: "event", sequence: 2, event: { type: "model-requested" } },
+      { type: "response", operation: "start", ok: true },
     ]);
   });
 

@@ -1,4 +1,5 @@
 import process from "node:process";
+import { instant, type PrivilegedClock } from "../../core";
 import {
   createPersistenceUtilityFatalMessage,
   createPersistenceUtilityReadyMessage,
@@ -10,7 +11,11 @@ if (parentPort === undefined) {
   throw new Error("Actestra persistence utility requires an Electron parent port");
 }
 
-const service = new PersistenceUtilityService();
+const clock: PrivilegedClock = Object.freeze({
+  now: () => instant(new Date().toISOString()),
+});
+
+const service = new PersistenceUtilityService(clock);
 let queue: Promise<void> = Promise.resolve();
 let terminating = false;
 

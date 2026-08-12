@@ -1,15 +1,16 @@
+import fs from "node:fs";
+import os from "node:os";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 import { describe, expect, it } from "vitest";
-import {
-  preloadPrivilegePatterns,
-  rendererPrivilegePatterns,
-} from "../../scripts/product-boundary-rules.mjs";
+import * as productBoundaryRules from "../../scripts/product-boundary-rules.mjs";
 import {
   extractStaticModuleSpecifiers,
   findGeneralWorkerAuthorityFindings,
 } from "../../scripts/general-worker-authority-rules.mjs";
+
+const { preloadPrivilegePatterns, rendererPrivilegePatterns } = productBoundaryRules;
 
 const nodeImportRule = preloadPrivilegePatterns.find((rule) => rule.label === "Node import");
 const rendererNodeImportRule = rendererPrivilegePatterns.find(
@@ -68,6 +69,85 @@ describe("product boundary rules", () => {
     ]) {
       expect(electronImportRule.pattern.test(source), source).toBe(true);
     }
+  });
+
+  it("scans the declared downstream renderer files for direct privileged authority", () => {
+    const inspect = productBoundaryRules.inspectSourceFilesForPrivilegePatterns;
+    expect(inspect).toBeTypeOf("function");
+    if (typeof inspect !== "function") return;
+
+    const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-renderer-boundary-"));
+    try {
+      fs.writeFileSync(
+        path.join(fixtureRoot, "safe.ts"),
+        "export const request = window.actestraTeam?.request;\n",
+      );
+      fs.writeFileSync(
+        path.join(fixtureRoot, "unsafe.tsx"),
+        'import { ipcRenderer } from "electron";\nexport const load = () => fetch("https://example.invalid");\n',
+      );
+
+      expect(
+        inspect({
+          rootPath: fixtureRoot,
+          relativePaths: ["safe.ts", "unsafe.tsx"],
+          rules: rendererPrivilegePatterns,
+        }),
+      ).toEqual([
+        { relativePath: "unsafe.tsx", label: "Electron import" },
+        { relativePath: "unsafe.tsx", label: "direct fetch client" },
+      ]);
+    } finally {
+      fs.rmSync(fixtureRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("allows only the compile-time NODE_ENV flag in the Actestra Team renderer scope", () => {
+    const inspect = productBoundaryRules.inspectSourceFilesForPrivilegePatterns;
+    const rules = productBoundaryRules.actestraTeamRendererPrivilegePatterns;
+    expect(inspect).toBeTypeOf("function");
+    expect(rules).toBeInstanceOf(Array);
+    if (typeof inspect !== "function" || !Array.isArray(rules)) return;
+
+    const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-team-renderer-scope-"));
+    try {
+      fs.writeFileSync(
+        path.join(fixtureRoot, "debug.ts"),
+        "export const debug = process.env.NODE_ENV !== 'production';\n",
+      );
+      fs.writeFileSync(
+        path.join(fixtureRoot, "credential.ts"),
+        "export const credential = process.env.ACTESTRA_SECRET;\n",
+      );
+
+      expect(
+        inspect({
+          rootPath: fixtureRoot,
+          relativePaths: ["debug.ts", "credential.ts"],
+          rules,
+        }),
+      ).toEqual([{ relativePath: "credential.ts", label: "Node process global" }]);
+    } finally {
+      fs.rmSync(fixtureRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("covers every downstream file that can carry Actestra Team renderer authority", () => {
+    const repositoryRoot = path.resolve(import.meta.dirname, "../..");
+    const overlay = JSON.parse(
+      fs.readFileSync(path.join(repositoryRoot, "downstream/aionui-v2.1.41/overlay.json"), "utf8"),
+    );
+    const expectedPaths = overlay.expectedChangedFiles
+      .filter(
+        (relativePath) =>
+          relativePath === "packages/desktop/src/common/adapter/actestraTeamClient.ts" ||
+          relativePath ===
+            "packages/desktop/src/renderer/components/layout/Sider/TeamSiderSection.tsx" ||
+          relativePath.startsWith("packages/desktop/src/renderer/pages/team/"),
+      )
+      .sort();
+
+    expect(productBoundaryRules.actestraTeamRendererAuthorityPaths).toEqual(expectedPaths);
   });
 
   it("extracts static imports, exports, dynamic imports, and require calls", () => {

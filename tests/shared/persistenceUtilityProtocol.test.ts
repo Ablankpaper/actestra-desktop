@@ -10,17 +10,50 @@ import { createGeneralWorkCheckpoint } from "../fixtures/generalWorkRecovery";
 import { createAionUiGeneralWorkRegistration } from "../fixtures/aionuiGeneralWork";
 import { createAionUiScheduleRegistration } from "../fixtures/aionuiSchedule";
 import { createTeamRunFixture } from "../fixtures/teamRun";
-import { instant, normalizeTeamDefinition } from "../../apps/desktop/src/core";
+import {
+  instant,
+  normalizeStandardTeamMessageDelivery,
+  normalizeTeamDefinition,
+  normalizeTeamExperienceBinding,
+} from "../../apps/desktop/src/core";
 
 describe("persistence utility protocol", () => {
-  it("accepts only the nine closed schema 15 Team persistence operations", async () => {
+  it("accepts only the fourteen closed Team persistence operations through schema 17", async () => {
     const { team, accepted } = await createTeamRunFixture("protocol");
+    const binding = normalizeTeamExperienceBinding({
+      contractVersion: 1,
+      teamId: "native-team-protocol",
+      experience: "standard",
+      boundAt: "2026-08-06T02:15:00.000Z",
+    });
+    const delivery = normalizeStandardTeamMessageDelivery({
+      contractVersion: 1,
+      deliveryId: `standard-team-delivery-${"a".repeat(64)}`,
+      clientRequestNonce: `team-request-${"b".repeat(64)}`,
+      requestSha256: "c".repeat(64),
+      teamId: binding.teamId,
+      targetSlotId: null,
+      state: "pending-effect",
+      providerEnqueueStatus: null,
+      providerMessageId: null,
+      providerRunId: null,
+      createdAt: "2026-08-06T08:00:00.000Z",
+      updatedAt: "2026-08-06T08:00:00.000Z",
+    });
     const replacement = normalizeTeamDefinition({
       ...team,
       name: "Protocol replacement Team",
       updatedAt: "2026-08-04T01:00:02.000Z",
     });
     const requests = [
+      { operation: "persist-team-experience-binding", payload: { binding } },
+      { operation: "get-team-experience-binding", payload: { teamId: binding.teamId } },
+      { operation: "persist-standard-team-message-delivery", payload: { delivery } },
+      {
+        operation: "get-standard-team-message-delivery",
+        payload: { deliveryId: delivery.deliveryId },
+      },
+      { operation: "list-unresolved-standard-team-message-deliveries", payload: { limit: 100 } },
       { operation: "persist-team-definition", payload: { team } },
       { operation: "get-team-definition", payload: { teamId: team.teamId } },
       { operation: "list-team-definitions", payload: { limit: 100 } },
@@ -46,6 +79,17 @@ describe("persistence utility protocol", () => {
     }
 
     const responses = [
+      {
+        operation: "persist-team-experience-binding",
+        result: { status: "stored", binding },
+      },
+      { operation: "get-team-experience-binding", result: binding },
+      {
+        operation: "persist-standard-team-message-delivery",
+        result: { status: "stored", delivery },
+      },
+      { operation: "get-standard-team-message-delivery", result: delivery },
+      { operation: "list-unresolved-standard-team-message-deliveries", result: [delivery] },
       {
         operation: "persist-team-definition",
         result: { status: "stored", team },
@@ -81,6 +125,20 @@ describe("persistence utility protocol", () => {
     }
 
     for (const rejected of [
+      {
+        operation: "persist-team-experience-binding",
+        payload: { binding, rendererGuess: true },
+      },
+      { operation: "get-team-experience-binding", payload: { teamId: " native-team" } },
+      {
+        operation: "persist-standard-team-message-delivery",
+        payload: { delivery, content: "must not cross utility protocol" },
+      },
+      {
+        operation: "get-standard-team-message-delivery",
+        payload: { deliveryId: "provider-owned-message" },
+      },
+      { operation: "list-unresolved-standard-team-message-deliveries", payload: { limit: 101 } },
       {
         operation: "persist-team-definition",
         payload: { team, rootPath: "/private/unowned" },

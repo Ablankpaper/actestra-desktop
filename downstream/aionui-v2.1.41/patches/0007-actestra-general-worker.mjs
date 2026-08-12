@@ -72,9 +72,7 @@ replaceOnce(
         modulePath: path.join(__dirname, 'actestra-general-worker.js'),
         workingDirectory: process.resourcesPath,
       });
-      console.info(
-        \`ACTESTRA_GENERAL_WORKER_READY \${JSON.stringify(workerProbe)}\`,
-      );
+      console.info(\`ACTESTRA_GENERAL_WORKER_READY \${JSON.stringify(workerProbe)}\`);
     }
     rendererInitialLanguage = ProcessConfig.getSync('language') ?? null;`,
 );

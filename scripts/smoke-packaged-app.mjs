@@ -13,7 +13,7 @@ const appBundle = path.resolve(
 const executable = path.join(appBundle, "Contents", "MacOS", "Actestra");
 const profileDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-smoke-"));
 const timeoutMilliseconds = 20_000;
-const expectedPersistenceSchemaVersion = 15;
+const expectedPersistenceSchemaVersion = 22;
 let output = "";
 let childOutcome = null;
 let resolveChildOutcome;

@@ -5,10 +5,19 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { hashAionUiGeneralWorkConversation } from "../../apps/desktop/src/compatibility/aionui";
-import { eventId, instant, taskId } from "../../apps/desktop/src/core";
+import {
+  eventId,
+  instant,
+  isGeneralDraftRepairInstruction,
+  taskId,
+} from "../../apps/desktop/src/core";
 import { createScopedNativeToolPlatform } from "../../apps/desktop/src/main/privileged/scopedNativeToolPlatform";
 import { AionUiGeneralWorkJourneyService } from "../../apps/desktop/src/main/compatibility/aionuiGeneralWorkJourneyService";
 import { DeterministicAgentClock } from "../../apps/desktop/src/main/workers/deterministicFakeAgentAdapter";
+import {
+  ActestraGeneralWorkModelError,
+  type TrustedActestraGeneralWorkRuntime,
+} from "../../apps/desktop/src/main/workers/actestraGeneralWorkRuntime";
 import { GeneralWorkCoordinator } from "../../apps/desktop/src/main/workers/generalWorkCoordinator";
 import { MAX_GENERAL_WORKER_SEND_CONTENT_BYTES } from "../../apps/desktop/src/shared/generalWorkerProtocol";
 import type { LoopbackGeneralWorkerTransport } from "../fixtures/generalWorker";
@@ -894,6 +903,848 @@ describe("AionUiGeneralWorkJourneyService", () => {
       workers: [{ state: "created" }],
       artifacts: [],
     });
+  });
+
+  it("persists the active attempt before releasing the Main model effect", async () => {
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "actestra-aionui-journey-service-test-"),
+    );
+    testDirectories.push(directory);
+    const persistence = (await openTestPersistenceUtility(directory)).client;
+    persistenceClients.push(persistence);
+    const workspaceRoot = path.join(directory, "workspace");
+    fs.mkdirSync(workspaceRoot);
+    const clock = new DeterministicAgentClock(instant("2026-08-07T05:00:00.000Z"));
+    const nativeTools = createScopedNativeToolPlatform({ persistence, clock });
+    const effectOrder: string[] = [];
+    const persistGeneralWorkCheckpoint = persistence.persistGeneralWorkCheckpoint.bind(persistence);
+    vi.spyOn(persistence, "persistGeneralWorkCheckpoint").mockImplementation(async (checkpoint) => {
+      effectOrder.push(`checkpoint:${checkpoint.phase}`);
+      return persistGeneralWorkCheckpoint(checkpoint);
+    });
+    const invoke = vi.fn<TrustedActestraGeneralWorkRuntime["invoke"]>(async () => {
+      effectOrder.push("model:invoke");
+      return Object.freeze({
+        content: JSON.stringify({
+          status: "completed",
+          markdown: "# Main model draft\n\nReady for Team review.\n",
+        }),
+      });
+    });
+    let workerEventSequence = 0;
+    const service = new AionUiGeneralWorkJourneyService({
+      persistence,
+      nativeTools,
+      clock,
+      nativeContext: {
+        resolve: async () => ({
+          rootPath: fs.realpathSync(workspaceRoot),
+          displayName: "AionUI model writing workspace",
+        }),
+      },
+      launchWorker: async ({ journeyKind, requestId }) => {
+        expect(journeyKind).toBe("writing-artifact");
+        return (
+          await openTestGeneralWorker(clock, {
+            executionMode: "model-writing-artifact",
+            modelRuntime: Object.freeze({ modelId: "actestra.test.model", invoke }),
+            newAttemptToken: () => "attempt-aionui-model-writing-barrier",
+            newToolRequestId: () => requestId,
+            newEventId: () =>
+              eventId(`event-aionui-model-writing-barrier-${String(++workerEventSequence)}`),
+          })
+        ).adapter;
+      },
+    });
+
+    await service.submitFromTrustedContext(
+      {
+        contractVersion: 1,
+        nativeConversationId: "conversation-native-model-writing-barrier",
+        submissionId: "submission-native-model-writing-barrier",
+        journeyKind: "writing-artifact",
+        prompt: [
+          "Title: Main-owned model barrier",
+          "Audience: Actestra Team",
+          "Purpose: Prove persistence before the model effect.",
+          "Point: Keep the provider behind the durable checkpoint.",
+        ].join("\n"),
+      },
+      {
+        rootPath: workspaceRoot,
+        displayName: "AionUI model writing workspace",
+      },
+    );
+    await service.waitForIdle();
+
+    expect(invoke).toHaveBeenCalledOnce();
+    const firstActiveCheckpoint = effectOrder.indexOf("checkpoint:active");
+    const modelEffect = effectOrder.indexOf("model:invoke");
+    expect(firstActiveCheckpoint).toBeGreaterThanOrEqual(0);
+    expect(modelEffect).toBeGreaterThan(firstActiveCheckpoint);
+  });
+
+  it("turns one model-authored draft into a document Artifact the user can preview", async () => {
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "actestra-aionui-journey-service-test-"),
+    );
+    testDirectories.push(directory);
+    const persistence = (await openTestPersistenceUtility(directory)).client;
+    persistenceClients.push(persistence);
+    const workspaceRoot = path.join(directory, "workspace");
+    fs.mkdirSync(workspaceRoot);
+    const clock = new DeterministicAgentClock(instant("2026-08-11T07:30:00.000Z"));
+    const nativeTools = createScopedNativeToolPlatform({ persistence, clock });
+    const draft = "# Verified launch note\n\nThe approved sequence ships this quarter.\n";
+    const invoke = vi.fn<TrustedActestraGeneralWorkRuntime["invoke"]>(async () =>
+      Object.freeze({ content: JSON.stringify({ status: "completed", markdown: draft }) }),
+    );
+    let workerEventSequence = 0;
+    const service = new AionUiGeneralWorkJourneyService({
+      persistence,
+      nativeTools,
+      clock,
+      nativeContext: {
+        resolve: async () => ({
+          rootPath: fs.realpathSync(workspaceRoot),
+          displayName: "AionUI model writing success workspace",
+        }),
+      },
+      launchWorker: async ({ requestId }) =>
+        (
+          await openTestGeneralWorker(clock, {
+            executionMode: "model-writing-artifact",
+            modelRuntime: Object.freeze({ modelId: "actestra.test.model", invoke }),
+            newAttemptToken: () => "attempt-aionui-model-writing-success",
+            newToolRequestId: () => requestId,
+            newEventId: () =>
+              eventId(`event-aionui-model-writing-success-${String(++workerEventSequence)}`),
+          })
+        ).adapter,
+    });
+    const nativeConversationId = "conversation-native-model-writing-success";
+
+    await service.submitFromTrustedContext(
+      {
+        contractVersion: 1,
+        nativeConversationId,
+        submissionId: "submission-native-model-writing-success",
+        journeyKind: "writing-artifact",
+        prompt: [
+          "Title: Verified launch note",
+          "Audience: Product leadership",
+          "Purpose: Record the approved launch sequence.",
+          "Point: State the verified customer outcome.",
+        ].join("\n"),
+      },
+      { rootPath: workspaceRoot, displayName: "AionUI model writing success workspace" },
+    );
+    await service.waitForIdle();
+
+    // Spec F1: a text-only brief the model can answer needs exactly one call and no repair.
+    expect(invoke).toHaveBeenCalledOnce();
+    const [completed] = await service.list(nativeConversationId);
+    expect(completed).toMatchObject({
+      status: "completed",
+      canCancel: false,
+      artifacts: [
+        expect.objectContaining({
+          kind: "document",
+          label: "Actestra writing draft",
+          state: "available",
+        }),
+      ],
+    });
+    if (completed?.artifacts[0] === undefined) {
+      throw new Error("Expected the model-authored writing journey artifact");
+    }
+    // The bytes on disk are the model's own, so nothing rewrote the draft on its way through.
+    expect(
+      fs.readFileSync(
+        path.join(workspaceRoot, ".actestra", "task-output", completed.taskId, "draft.md"),
+        "utf8",
+      ),
+    ).toBe(draft);
+    await expect(
+      service.preview(nativeConversationId, completed.taskId, completed.artifacts[0].artifactId),
+    ).resolves.toEqual({
+      contractVersion: 1,
+      taskId: completed.taskId,
+      artifactId: completed.artifacts[0].artifactId,
+      label: "Actestra writing draft",
+      mediaType: "text/markdown; charset=utf-8",
+      content: draft,
+    });
+    const graph = await persistence.loadDomainGraph();
+    expect(graph.tasks).toEqual([expect.objectContaining({ state: "completed" })]);
+    expect(graph.artifacts).toEqual([
+      expect.objectContaining({
+        id: completed.artifacts[0].artifactId,
+        taskId: completed.taskId,
+        state: "available",
+      }),
+    ]);
+    const checkpoint = await persistence.getGeneralWorkCheckpoint(graph.sessions[0]!.id);
+    expect(checkpoint).toMatchObject({
+      phase: "finalized",
+      attempt: { state: "completed", taskState: "completed", disposed: true },
+      artifactBinding: { artifact: { kind: "document", label: "Actestra writing draft" } },
+    });
+    // Success changes nothing about privacy: the prose reaches the Artifact, never the event stream.
+    expect(JSON.stringify(checkpoint?.events)).not.toContain("The approved sequence ships");
+  });
+
+  it("writes no Artifact at all when the model keeps returning a placeholder draft", async () => {
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "actestra-aionui-journey-service-test-"),
+    );
+    testDirectories.push(directory);
+    const persistence = (await openTestPersistenceUtility(directory)).client;
+    persistenceClients.push(persistence);
+    const workspaceRoot = path.join(directory, "workspace");
+    fs.mkdirSync(workspaceRoot);
+    const clock = new DeterministicAgentClock(instant("2026-08-11T05:30:00.000Z"));
+    const nativeTools = createScopedNativeToolPlatform({ persistence, clock });
+    const invoke = vi.fn<TrustedActestraGeneralWorkRuntime["invoke"]>(async () =>
+      Object.freeze({
+        content: JSON.stringify({
+          status: "completed",
+          markdown: "# Quarterly brief\n\nRevenue: [TBD]\n",
+        }),
+      }),
+    );
+    let workerEventSequence = 0;
+    const service = new AionUiGeneralWorkJourneyService({
+      persistence,
+      nativeTools,
+      clock,
+      nativeContext: {
+        resolve: async () => ({
+          rootPath: fs.realpathSync(workspaceRoot),
+          displayName: "AionUI placeholder draft workspace",
+        }),
+      },
+      launchWorker: async ({ requestId }) =>
+        (
+          await openTestGeneralWorker(clock, {
+            executionMode: "model-writing-artifact",
+            modelRuntime: Object.freeze({ modelId: "actestra.test.model", invoke }),
+            newAttemptToken: () => "attempt-aionui-placeholder-draft",
+            newToolRequestId: () => requestId,
+            newEventId: () =>
+              eventId(`event-aionui-placeholder-draft-${String(++workerEventSequence)}`),
+          })
+        ).adapter,
+    });
+
+    const submitted = await service.submitFromTrustedContext(
+      {
+        contractVersion: 1,
+        nativeConversationId: "conversation-native-placeholder-draft",
+        submissionId: "submission-native-placeholder-draft",
+        journeyKind: "writing-artifact",
+        prompt: [
+          "Title: Quarterly brief",
+          "Audience: Product leadership",
+          "Purpose: Record the approved revenue outcome.",
+          "Point: State the verified revenue figure.",
+        ].join("\n"),
+      },
+      { rootPath: workspaceRoot, displayName: "AionUI placeholder draft workspace" },
+    );
+    await service.waitForIdle();
+
+    // Spec C bounds the repair at one, so a second placeholder ends the attempt rather than looping.
+    expect(invoke).toHaveBeenCalledTimes(2);
+    // Spec F3: a draft written around a gap must never reach the user as finished work.
+    await expect(service.list("conversation-native-placeholder-draft")).resolves.toEqual([
+      expect.objectContaining({
+        taskId: submitted.taskId,
+        status: "failed",
+        incidentCode: "general-instruction-noncompliant",
+        artifacts: [],
+      }),
+    ]);
+    const graph = await persistence.loadDomainGraph();
+    expect(graph.artifacts).toEqual([]);
+    expect(graph.tasks).toEqual([expect.objectContaining({ state: "failed" })]);
+    expect(
+      fs.existsSync(path.join(workspaceRoot, ".actestra", "task-output", submitted.taskId)),
+    ).toBe(false);
+    const checkpoint = await persistence.getGeneralWorkCheckpoint(graph.sessions[0]!.id);
+    expect(checkpoint?.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "task.failed",
+          payload: expect.objectContaining({ errorCode: "general-instruction-noncompliant" }),
+        }),
+      ]),
+    );
+    // The rejected prose must not survive in durable evidence either.
+    expect(JSON.stringify(checkpoint?.events)).not.toContain("TBD");
+  });
+
+  it("carries general-input-required through every layer without spending a model call", async () => {
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "actestra-aionui-journey-service-test-"),
+    );
+    testDirectories.push(directory);
+    const persistence = (await openTestPersistenceUtility(directory)).client;
+    persistenceClients.push(persistence);
+    const workspaceRoot = path.join(directory, "workspace");
+    fs.mkdirSync(workspaceRoot);
+    const clock = new DeterministicAgentClock(instant("2026-08-11T05:00:00.000Z"));
+    const nativeTools = createScopedNativeToolPlatform({ persistence, clock });
+    const invoke = vi.fn<TrustedActestraGeneralWorkRuntime["invoke"]>();
+    let workerEventSequence = 0;
+    const service = new AionUiGeneralWorkJourneyService({
+      persistence,
+      nativeTools,
+      clock,
+      nativeContext: {
+        resolve: async () => ({
+          rootPath: fs.realpathSync(workspaceRoot),
+          displayName: "AionUI input required workspace",
+        }),
+      },
+      launchWorker: async ({ requestId, requirements }) =>
+        (
+          await openTestGeneralWorker(clock, {
+            executionMode: "model-writing-artifact",
+            requirements,
+            modelRuntime: Object.freeze({ modelId: "actestra.test.model", invoke }),
+            newAttemptToken: () => "attempt-aionui-input-required",
+            newToolRequestId: () => requestId,
+            newEventId: () =>
+              eventId(`event-aionui-input-required-${String(++workerEventSequence)}`),
+          })
+        ).adapter,
+    });
+
+    await service.submitFromTrustedContext(
+      {
+        contractVersion: 1,
+        nativeConversationId: "conversation-native-input-required",
+        submissionId: "submission-native-input-required",
+        journeyKind: "writing-artifact",
+        prompt: [
+          "Title: Release notes summary",
+          "Audience: Release reviewers",
+          "Purpose: Summarize the repository README for the release notes",
+          "Point: Summarize README.md",
+        ].join("\n"),
+        requirements: {
+          contractVersion: 1,
+          capabilities: ["text-generation"],
+          contextReferences: ["none"],
+          inputRequirements: ["file-reference"],
+          completionCriteria: "json-envelope",
+        },
+      },
+      { rootPath: workspaceRoot, displayName: "AionUI input required workspace" },
+    );
+    await service.waitForIdle();
+
+    await expect(
+      persistence.listAionUiGeneralWorkJourneyLinks(
+        hashAionUiGeneralWorkConversation("conversation-native-input-required"),
+        10,
+      ),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        requirements: {
+          contractVersion: 1,
+          capabilities: ["text-generation"],
+          contextReferences: ["none"],
+          inputRequirements: ["file-reference"],
+          completionCriteria: "json-envelope",
+        },
+      }),
+    ]);
+
+    // Spec A: an unmet requirement must cost no provider call.
+    expect(invoke).not.toHaveBeenCalled();
+
+    // Spec F5: the task waits for material the user can supply, so it is blocked and retryable, not
+    // failed. The projection must name the blocking reason rather than a generic worker failure.
+    await expect(service.list("conversation-native-input-required")).resolves.toEqual([
+      expect.objectContaining({
+        status: "blocked",
+        incidentCode: "general-input-required",
+        artifacts: [],
+      }),
+    ]);
+    // The durable Task record carries that state, so a restart reports it without replaying events.
+    const blockedGraph = await persistence.loadDomainGraph();
+    expect(blockedGraph.tasks[0]).toMatchObject({ state: "blocked" });
+
+    const graph = await persistence.loadDomainGraph();
+    const checkpoint = await persistence.getGeneralWorkCheckpoint(graph.sessions[0]!.id);
+    // A refusal is Worker-reported, so its code lives in the terminal Task event rather than in
+    // `incident`, which the supervisor reserves for faults it observes itself.
+    expect(checkpoint).toMatchObject({
+      phase: "finalized",
+      attempt: { state: "failed", taskState: "failed" },
+    });
+    expect(checkpoint?.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "task.failed",
+          payload: expect.objectContaining({ errorCode: "general-input-required" }),
+        }),
+      ]),
+    );
+    // No half-written draft may survive a blocked admission.
+    expect(graph.artifacts).toEqual([]);
+
+    // Spec F: a restarted process must re-derive the same blocking reason from durable state alone,
+    // without relaunching a Worker or spending the model call admission already refused.
+    const restarted = new AionUiGeneralWorkJourneyService({
+      persistence,
+      nativeTools,
+      clock,
+      nativeContext: {
+        resolve: async () => {
+          throw new Error("recovery must not replay native workspace context");
+        },
+      },
+      launchWorker: async () => {
+        throw new Error("recovery must not relaunch a refused journey");
+      },
+    });
+    // A finalized refusal is not prepared work, so recovery must find nothing left to run.
+    await expect(restarted.recoverPrepared()).resolves.toEqual({
+      attempted: 0,
+      started: 0,
+      failed: 0,
+    });
+    // The durable Task record carries the blocking reason, so the restarted projection reports the
+    // same actionable state without consulting the attempt's own terminal outcome.
+    await expect(restarted.list("conversation-native-input-required")).resolves.toEqual([
+      expect.objectContaining({
+        status: "blocked",
+        canCancel: true,
+        incidentCode: "general-input-required",
+        artifacts: [],
+      }),
+    ]);
+    expect(invoke).not.toHaveBeenCalled();
+
+    // Spec F5 advertises a cancel on a blocked task, so it must be honoured after a restart, when no
+    // live Worker remains to signal. The durable attempt evidence stays exactly as the Worker left it.
+    await expect(
+      restarted.cancel("conversation-native-input-required", graph.tasks[0]!.id),
+    ).resolves.toMatchObject({
+      status: "cancelled",
+      canCancel: false,
+      incidentCode: "general-input-required",
+    });
+    const cancelledGraph = await persistence.loadDomainGraph();
+    expect(cancelledGraph.tasks[0]).toMatchObject({
+      state: "cancelled",
+      activeSessionId: undefined,
+    });
+    await expect(
+      persistence.getGeneralWorkCheckpoint(graph.sessions[0]!.id),
+    ).resolves.toStrictEqual(checkpoint);
+  });
+
+  it("reports general-capability-mismatch as failed rather than asking for text that cannot help", async () => {
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "actestra-aionui-journey-service-test-"),
+    );
+    testDirectories.push(directory);
+    const persistence = (await openTestPersistenceUtility(directory)).client;
+    persistenceClients.push(persistence);
+    const workspaceRoot = path.join(directory, "workspace");
+    fs.mkdirSync(workspaceRoot);
+    const clock = new DeterministicAgentClock(instant("2026-08-11T06:00:00.000Z"));
+    const nativeTools = createScopedNativeToolPlatform({ persistence, clock });
+    const invoke = vi.fn<TrustedActestraGeneralWorkRuntime["invoke"]>();
+    let workerEventSequence = 0;
+    const service = new AionUiGeneralWorkJourneyService({
+      persistence,
+      nativeTools,
+      clock,
+      nativeContext: {
+        resolve: async () => ({
+          rootPath: fs.realpathSync(workspaceRoot),
+          displayName: "AionUI capability mismatch workspace",
+        }),
+      },
+      launchWorker: async ({ requestId }) =>
+        (
+          await openTestGeneralWorker(clock, {
+            executionMode: "model-writing-artifact",
+            // The Planner recorded an ability General v1 does not have at all.
+            requirements: {
+              contractVersion: 1,
+              capabilities: ["network-fetch"],
+              contextReferences: ["none"],
+              inputRequirements: ["none"],
+              completionCriteria: "json-envelope",
+            },
+            modelRuntime: Object.freeze({ modelId: "actestra.test.model", invoke }),
+            newAttemptToken: () => "attempt-aionui-capability-mismatch",
+            newToolRequestId: () => requestId,
+            newEventId: () =>
+              eventId(`event-aionui-capability-mismatch-${String(++workerEventSequence)}`),
+          })
+        ).adapter,
+    });
+
+    const submitted = await service.submitFromTrustedContext(
+      {
+        contractVersion: 1,
+        nativeConversationId: "conversation-native-capability-mismatch",
+        submissionId: "submission-native-capability-mismatch",
+        journeyKind: "writing-artifact",
+        prompt: [
+          "Title: Upstream changelog rewrite",
+          "Audience: Release reviewers",
+          "Purpose: Rewrite the published upstream changelog",
+          "Point: Fetch the changelog and restate it",
+        ].join("\n"),
+      },
+      { rootPath: workspaceRoot, displayName: "AionUI capability mismatch workspace" },
+    );
+    await service.waitForIdle();
+
+    // Spec A: admission runs before any model turn, so an unmet capability costs no provider call.
+    expect(invoke).not.toHaveBeenCalled();
+    // Spec D keeps this code apart from `general-input-required` on purpose: no text the user pastes in
+    // grants General the authority it lacks, so the surface must not offer a retry that cannot work.
+    // That makes the task failed and uncancellable rather than blocked and waiting.
+    expect(submitted).toMatchObject({
+      status: "failed",
+      canCancel: false,
+      incidentCode: "general-capability-mismatch",
+      artifacts: [],
+    });
+    await expect(service.list("conversation-native-capability-mismatch")).resolves.toEqual([
+      expect.objectContaining({
+        taskId: submitted.taskId,
+        status: "failed",
+        incidentCode: "general-capability-mismatch",
+        artifacts: [],
+      }),
+    ]);
+    const graph = await persistence.loadDomainGraph();
+    expect(graph.tasks).toEqual([expect.objectContaining({ state: "failed" })]);
+    expect(graph.artifacts).toEqual([]);
+    const checkpoint = await persistence.getGeneralWorkCheckpoint(graph.sessions[0]!.id);
+    expect(checkpoint?.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "task.failed",
+          payload: expect.objectContaining({ errorCode: "general-capability-mismatch" }),
+        }),
+      ]),
+    );
+    // Spec F7: a refused capability is a content-authority verdict, never a lifecycle fault.
+    expect(JSON.stringify(checkpoint?.events)).not.toContain("invalid-state");
+  });
+
+  it("spends one repair on a malformed reply, then reports general-output-invalid without quoting it", async () => {
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "actestra-aionui-journey-service-test-"),
+    );
+    testDirectories.push(directory);
+    const persistence = (await openTestPersistenceUtility(directory)).client;
+    persistenceClients.push(persistence);
+    const workspaceRoot = path.join(directory, "workspace");
+    fs.mkdirSync(workspaceRoot);
+    const clock = new DeterministicAgentClock(instant("2026-08-11T06:30:00.000Z"));
+    const nativeTools = createScopedNativeToolPlatform({ persistence, clock });
+    const malformed = "Sure! Here is your draft: SENTINEL-MALFORMED-MAIN-BODY";
+    const invoke = vi.fn<TrustedActestraGeneralWorkRuntime["invoke"]>(async () =>
+      Object.freeze({ content: malformed }),
+    );
+    let workerEventSequence = 0;
+    const service = new AionUiGeneralWorkJourneyService({
+      persistence,
+      nativeTools,
+      clock,
+      nativeContext: {
+        resolve: async () => ({
+          rootPath: fs.realpathSync(workspaceRoot),
+          displayName: "AionUI malformed draft workspace",
+        }),
+      },
+      launchWorker: async ({ requestId }) =>
+        (
+          await openTestGeneralWorker(clock, {
+            executionMode: "model-writing-artifact",
+            modelRuntime: Object.freeze({ modelId: "actestra.test.model", invoke }),
+            newAttemptToken: () => "attempt-aionui-malformed-draft",
+            newToolRequestId: () => requestId,
+            newEventId: () =>
+              eventId(`event-aionui-malformed-draft-${String(++workerEventSequence)}`),
+          })
+        ).adapter,
+    });
+
+    const submitted = await service.submitFromTrustedContext(
+      {
+        contractVersion: 1,
+        nativeConversationId: "conversation-native-malformed-draft",
+        submissionId: "submission-native-malformed-draft",
+        journeyKind: "writing-artifact",
+        prompt: [
+          "Title: Launch note",
+          "Audience: Product leadership",
+          "Purpose: Record the approved launch sequence.",
+          "Point: State the verified customer outcome.",
+        ].join("\n"),
+      },
+      { rootPath: workspaceRoot, displayName: "AionUI malformed draft workspace" },
+    );
+    await service.waitForIdle();
+
+    // Spec C: exactly one repair, granted by Main because the prompt is the instruction the contract
+    // itself builds. A third call would mean the Worker could spend provider calls of its own accord.
+    expect(invoke).toHaveBeenCalledTimes(2);
+    const repairPrompt = invoke.mock.calls[1]?.[0].prompt ?? "";
+    expect(isGeneralDraftRepairInstruction(repairPrompt)).toBe(true);
+    // The retry names the broken rule and nothing else: echoing the reply back invites a repeat of it.
+    expect(repairPrompt).not.toContain("SENTINEL-MALFORMED-MAIN-BODY");
+
+    // Spec F4: a malformed shape keeps its own output-contract code instead of borrowing the
+    // placeholder verdict or collapsing into the lifecycle code `invalid-state`.
+    expect(submitted).toMatchObject({ status: "running" });
+    await expect(service.list("conversation-native-malformed-draft")).resolves.toEqual([
+      expect.objectContaining({
+        taskId: submitted.taskId,
+        status: "failed",
+        canCancel: false,
+        incidentCode: "general-output-invalid",
+        artifacts: [],
+      }),
+    ]);
+    const graph = await persistence.loadDomainGraph();
+    expect(graph.tasks).toEqual([expect.objectContaining({ state: "failed" })]);
+    expect(graph.artifacts).toEqual([]);
+    expect(
+      fs.existsSync(path.join(workspaceRoot, ".actestra", "task-output", submitted.taskId)),
+    ).toBe(false);
+    const checkpoint = await persistence.getGeneralWorkCheckpoint(graph.sessions[0]!.id);
+    expect(checkpoint?.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "task.failed",
+          payload: expect.objectContaining({ errorCode: "general-output-invalid" }),
+        }),
+      ]),
+    );
+    const serializedEvents = JSON.stringify(checkpoint?.events);
+    expect(serializedEvents).not.toContain("invalid-state");
+    // Neither the rejected reply nor a draft built around it may survive in durable evidence.
+    expect(serializedEvents).not.toContain("SENTINEL-MALFORMED-MAIN-BODY");
+  });
+
+  it("blocks on a model-reported missing input after one real call instead of failing the task", async () => {
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "actestra-aionui-journey-service-test-"),
+    );
+    testDirectories.push(directory);
+    const persistence = (await openTestPersistenceUtility(directory)).client;
+    persistenceClients.push(persistence);
+    const workspaceRoot = path.join(directory, "workspace");
+    fs.mkdirSync(workspaceRoot);
+    const clock = new DeterministicAgentClock(instant("2026-08-11T06:45:00.000Z"));
+    const nativeTools = createScopedNativeToolPlatform({ persistence, clock });
+    // Admission passes here: the recorded requirements are text-only. Only the model, holding the
+    // prompt, can see that the material it names was never actually supplied.
+    const invoke = vi.fn<TrustedActestraGeneralWorkRuntime["invoke"]>(async () =>
+      Object.freeze({
+        content: JSON.stringify({
+          status: "needs-input",
+          missing_inputs: ["The Q3 revenue figures the brief refers to"],
+          message: "Paste the revenue table and I can write the section.",
+        }),
+      }),
+    );
+    let workerEventSequence = 0;
+    const service = new AionUiGeneralWorkJourneyService({
+      persistence,
+      nativeTools,
+      clock,
+      nativeContext: {
+        resolve: async () => ({
+          rootPath: fs.realpathSync(workspaceRoot),
+          displayName: "AionUI model-reported input workspace",
+        }),
+      },
+      launchWorker: async ({ requestId }) =>
+        (
+          await openTestGeneralWorker(clock, {
+            executionMode: "model-writing-artifact",
+            requirements: {
+              contractVersion: 1,
+              capabilities: ["text-generation"],
+              contextReferences: ["inline-text"],
+              inputRequirements: ["bounded-text"],
+              completionCriteria: "json-envelope",
+            },
+            modelRuntime: Object.freeze({ modelId: "actestra.test.model", invoke }),
+            newAttemptToken: () => "attempt-aionui-model-needs-input",
+            newToolRequestId: () => requestId,
+            newEventId: () =>
+              eventId(`event-aionui-model-needs-input-${String(++workerEventSequence)}`),
+          })
+        ).adapter,
+    });
+
+    const submitted = await service.submitFromTrustedContext(
+      {
+        contractVersion: 1,
+        nativeConversationId: "conversation-native-model-needs-input",
+        submissionId: "submission-native-model-needs-input",
+        journeyKind: "writing-artifact",
+        prompt: [
+          "Title: Quarterly revenue note",
+          "Audience: Finance leadership",
+          "Purpose: Record the approved quarterly result.",
+          "Point: State the Q3 revenue figures.",
+        ].join("\n"),
+      },
+      { rootPath: workspaceRoot, displayName: "AionUI model-reported input workspace" },
+    );
+    await service.waitForIdle();
+
+    // A well-formed needs-input reply satisfies the contract, so it earns no repair: the model was
+    // right the first time and asking again would spend a call to be told the same thing.
+    expect(invoke).toHaveBeenCalledTimes(1);
+
+    // Spec F5: this route reaches the same actionable state as a refused admission, though it arrives
+    // by a different road — the model was called and reported the gap itself. The user can still fix
+    // it by supplying the text, so the task waits rather than failing.
+    await expect(service.list("conversation-native-model-needs-input")).resolves.toEqual([
+      expect.objectContaining({
+        taskId: submitted.taskId,
+        status: "blocked",
+        canCancel: true,
+        incidentCode: "general-input-required",
+        artifacts: [],
+      }),
+    ]);
+    const graph = await persistence.loadDomainGraph();
+    expect(graph.tasks).toEqual([expect.objectContaining({ state: "blocked" })]);
+    // Spec F3: a reply that names what is missing must never leave a draft written around the gap.
+    expect(graph.artifacts).toEqual([]);
+    expect(
+      fs.existsSync(path.join(workspaceRoot, ".actestra", "task-output", submitted.taskId)),
+    ).toBe(false);
+    const checkpoint = await persistence.getGeneralWorkCheckpoint(graph.sessions[0]!.id);
+    expect(checkpoint?.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "task.failed",
+          payload: expect.objectContaining({ errorCode: "general-input-required" }),
+        }),
+      ]),
+    );
+    // What the model said it needs must reach the user, or the blocked state is not actionable.
+    const failure = checkpoint?.events.find((event) => event.type === "task.failed");
+    expect(failure?.type === "task.failed" ? failure.payload.message : "").toContain(
+      "The Q3 revenue figures the brief refers to",
+    );
+    const serializedEvents = JSON.stringify(checkpoint?.events);
+    // Spec F6/F7: a missing input is neither a provider outage nor a lifecycle fault.
+    expect(serializedEvents).not.toContain("invalid-state");
+    expect(serializedEvents).not.toContain("model-unavailable");
+    expect(serializedEvents).not.toContain("general-output-invalid");
+  });
+
+  it("keeps a provider outage separate from a content or input verdict all the way to the projection", async () => {
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "actestra-aionui-journey-service-test-"),
+    );
+    testDirectories.push(directory);
+    const persistence = (await openTestPersistenceUtility(directory)).client;
+    persistenceClients.push(persistence);
+    const workspaceRoot = path.join(directory, "workspace");
+    fs.mkdirSync(workspaceRoot);
+    const clock = new DeterministicAgentClock(instant("2026-08-11T07:00:00.000Z"));
+    const nativeTools = createScopedNativeToolPlatform({ persistence, clock });
+    // The runtime classifies the failure structurally, so no message text decides the code.
+    const invoke = vi.fn<TrustedActestraGeneralWorkRuntime["invoke"]>(async () => {
+      throw new ActestraGeneralWorkModelError(
+        "model-unavailable",
+        "General Work model response is unavailable",
+      );
+    });
+    let workerEventSequence = 0;
+    const service = new AionUiGeneralWorkJourneyService({
+      persistence,
+      nativeTools,
+      clock,
+      nativeContext: {
+        resolve: async () => ({
+          rootPath: fs.realpathSync(workspaceRoot),
+          displayName: "AionUI model outage workspace",
+        }),
+      },
+      launchWorker: async ({ requestId }) =>
+        (
+          await openTestGeneralWorker(clock, {
+            executionMode: "model-writing-artifact",
+            modelRuntime: Object.freeze({ modelId: "actestra.test.model", invoke }),
+            newAttemptToken: () => "attempt-aionui-model-outage",
+            newToolRequestId: () => requestId,
+            newEventId: () => eventId(`event-aionui-model-outage-${String(++workerEventSequence)}`),
+          })
+        ).adapter,
+    });
+
+    const submitted = await service.submitFromTrustedContext(
+      {
+        contractVersion: 1,
+        nativeConversationId: "conversation-native-model-outage",
+        submissionId: "submission-native-model-outage",
+        journeyKind: "writing-artifact",
+        prompt: [
+          "Title: Launch note",
+          "Audience: Product leadership",
+          "Purpose: Record the approved launch sequence.",
+          "Point: State the verified customer outcome.",
+        ].join("\n"),
+      },
+      { rootPath: workspaceRoot, displayName: "AionUI model outage workspace" },
+    );
+    await service.waitForIdle();
+
+    // Spec F6: the provider codes stay their own vocabulary. An outage is not a malformed reply, and
+    // above all it is not an input request — reporting it as one would ask the user for text that was
+    // never the problem, while a content code would blame a model that never answered.
+    await expect(service.list("conversation-native-model-outage")).resolves.toEqual([
+      expect.objectContaining({
+        taskId: submitted.taskId,
+        status: "failed",
+        canCancel: false,
+        incidentCode: "model-unavailable",
+        artifacts: [],
+      }),
+    ]);
+    // An unreachable model is not a retryable wait, so the task must not advertise the blocked state
+    // spec F5 reserves for material the user can actually supply.
+    const graph = await persistence.loadDomainGraph();
+    expect(graph.tasks).toEqual([expect.objectContaining({ state: "failed" })]);
+    expect(graph.artifacts).toEqual([]);
+    const checkpoint = await persistence.getGeneralWorkCheckpoint(graph.sessions[0]!.id);
+    expect(checkpoint?.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "task.failed",
+          payload: expect.objectContaining({ errorCode: "model-unavailable" }),
+        }),
+      ]),
+    );
+    const serializedEvents = JSON.stringify(checkpoint?.events);
+    // Spec F7: a provider outage is not a lifecycle fault either.
+    expect(serializedEvents).not.toContain("invalid-state");
+    expect(serializedEvents).not.toContain("general-input-required");
+    expect(serializedEvents).not.toContain("general-output-invalid");
   });
 
   it("persists the Worker-authored draft before creating a document Artifact and Preview", async () => {

@@ -1,7 +1,8 @@
-# ADR-0015: Use CrewAI as the First Supervised P6 Orchestration Candidate
+# ADR-0015: Supervise P6 Planner Providers Under Actestra Authority
 
-- Status: Accepted
+- Status: Partially superseded by ADR-0026 for planner-engine selection
 - Date: 2026-07-30
+- Amended: 2026-08-06
 - Clarifies:
   [ADR-0001](0001-capability-fusion.md) and
   [ADR-0010](0010-aionui-first-product-foundation.md)
@@ -41,7 +42,106 @@ distribution. P6 must reverify the selected version, dependency graph,
 licenses, vulnerabilities, packaging, and rollback revision before production
 integration.
 
+The owner amended the first production-provider evaluation on 2026-08-06 after
+the generic boundary and AionUI Team journey exposed a concrete startup gap.
+Actestra first evaluates a Main-owned local-Agent compatibility provider. The
+locally installed Claude and Codex CLIs may be detected in its closed catalogue,
+but neither is currently admitted: each requires a pre-execution boundary that
+proves tools, hooks, network, credentials, and arbitrary reads cannot become a
+second execution authority. Gemini remains outside this batch, and CrewAI
+remains a separately gated future candidate. Where the original text below
+calls CrewAI the first production candidate, this amendment controls.
+
 ## Decision
+
+### 2026-08-06 local-Agent provider amendment
+
+Actestra Main owns one closed provider catalogue and all provider process
+lifecycle. Renderer code may display the catalogue and submit one stable
+provider/model selection, but it may not submit an executable path, arguments,
+environment, credential, workspace path, process identity, planner identity,
+Worker identity, or authoritative Team/run/node identifier. Core validates and
+persists the selected provider capability before a run becomes schedulable.
+
+No local-Agent engine is currently admitted. Admission is capability-specific
+rather than name-based:
+
+- Claude CLI may provide bounded planner, reference-only aggregation, and Goose
+  raw-model completion only when the exact executable supports print mode,
+  structured JSON/schema output, `--bare`, disabled session persistence, and
+  cancellation of the whole owned process group, and when an Actestra-owned
+  credential boundary works in that bare context without renderer secrets, raw
+  token or API-key forwarding, a shell-based `apiKeyHelper`, or user settings.
+  Claude Code `2.1.168` explicitly disables OAuth and Keychain access in bare
+  mode. Its non-bare OAuth path cannot prove hooks and plugin startup are absent.
+  It therefore projects an empty capability set and rejects every structured
+  invocation before a model process starts until that credential boundary is
+  available.
+- Codex CLI is projected with an empty capability set and every structured
+  invocation is rejected before a model process can start. Empty or read-only
+  working directories, ephemeral sessions, ignored configuration, sandbox
+  labels, schema-constrained output, and post-hoc event inspection do not prove
+  zero tools because a shell, file, MCP, or web effect may already have occurred
+  before its event is observed. Codex remains admission-disabled for planner,
+  aggregation, and Goose roles until its exact version and an Actestra-owned
+  policy or OS sandbox prove, before execution, that tools, network,
+  credentials, and arbitrary filesystem reads are unavailable.
+- Gemini CLI and every undeclared executable fail closed and are not probed,
+  configured, or invoked by this batch.
+
+The current product implementation is intentionally narrower than this
+candidate design. Product startup does not ship, import, construct, catalogue,
+version-probe, help-probe, or invoke the local-Agent provider. It does not copy
+that provider or its runtime into the materialized AionUI product and does not
+forward a credential or user environment. Downstream guards reject both those
+source copies and startup injection. The orchestrated Team composition
+therefore receives no planner/coding runtime and returns the explicit
+`team-planner-unavailable` state.
+
+Current implementation note: the safe unavailable envelope now distinguishes
+sidecar startup/request timeout as `planner-timeout` and protocol or Core
+candidate-admission failure as `planner-invalid`. The fixed AionUI bridge maps
+those categories to bounded 504 and 422 errors, while the page preserves task
+input and shows fixed recovery guidance without private provider details. This
+error-classification boundary does not start or admit a provider and is not
+planner, Worker, or P6 acceptance evidence.
+
+A non-shipped evaluation prototype exposes no model-binding option, projects an
+empty capability set, and rejects structured invocation before model-process
+spawn. Caller-supplied legacy-shaped bindings cannot upgrade it. Its focused
+2-file rejection closure is GREEN at 4/4 on the current bytes; this evidence is
+research for a later admission decision, not product runtime or acceptance
+evidence. Any future provider admission requires
+a new explicit implementation and proof for the safe credential-backed model
+proxy, portable sandbox, exact executable, and zero-tool boundary; observing a
+later shell, file, MCP, or web event could not repair those gaps. Codex remains
+`admission-disabled`; Claude remains unavailable in the product. No provider
+result may assemble a production Team runtime on prototype or fixture evidence.
+
+Any future admitted invocation must receive its prompt through stdin so
+model-controlled or user-controlled content is absent from process arguments.
+Main must supply a minimal environment and a private, non-workspace current
+directory, never read or copy a CLI credential file, never forward renderer
+credentials, and record the exact engine/version/capability projection used for
+the attempt. An outbound model request would be an explicit provider effect,
+not Worker network authority.
+
+Provider output is untrusted. A planner candidate still passes the existing
+closed plan normalization, Core admission, persistence-before-scheduling, and
+budget/policy gates. A Goose completion is reduced to the existing closed
+message-or-tool-call contract; every proposed coding tool still crosses the
+accepted Goose -> Actestra capability, policy, approval, audit, grant, and
+worktree boundary. A CLI may not execute a product tool on Goose's behalf.
+
+Timeout, caller abort, app shutdown, malformed output, unsupported version,
+missing authentication, provider failure, and parent loss must terminate the
+entire owned process group and produce a bounded user-visible unavailable or
+failed state. No fallback may silently switch engine, provider, model, Team
+type, or authority.
+
+This amendment does not admit CrewAI. Real CrewAI remains subject to the exact
+pin, dependency lock, license/NOTICE/SBOM, vulnerability, telemetry/network,
+packaging, rollback, and cross-platform gates recorded below.
 
 ### Product and authority roles
 
@@ -51,7 +151,7 @@ The P6 product composition is:
 AionUi product UI
   -> Actestra Main/Core
     -> Actestra TeamOrchestrator
-      -> supervised CrewAI planner sidecar
+      -> supervised admitted planner provider
       -> AgentAdapter/Supervisor
         -> General Worker
         -> Goose Worker
@@ -180,8 +280,8 @@ architecture, claim P6 completion, or change product authority.
 
 ## Implementation status
 
-As of 2026-08-05, the unpushed P6 batch on
-`codex/p6-team-plan-persistence` implements the Actestra-owned parts of this
+As of 2026-08-06, the unpushed P6 batch on
+`codex/p6-aionui-team-acceptance` implements the Actestra-owned parts of this
 decision without admitting CrewAI:
 
 - a closed planner protocol and generic supervised JSON-lines process boundary
@@ -191,6 +291,15 @@ decision without admitting CrewAI:
 - schema 14 remains the canonical admitted-plan durability barrier, while
   schema 15 separately owns Team definitions, current run heads, and
   append-only revisions;
+- schema 16 immutably binds each Team identity to `standard` or
+  `orchestrated`; legacy/native Teams are Main-bound as `standard`, while
+  schema-15 Actestra definitions are Main-bound as `orchestrated`, and
+  conflicts fail closed;
+- schema 17 separately persists metadata-only standard-Team message delivery
+  intent before provider effect, records observed or uncertain outcomes, and
+  uses a bounded client nonce plus request digest to replay only a durable
+  acknowledgement or fail closed without storing message content or attachment
+  paths;
 - the Actestra scheduler persists Core transitions before observation or
   effects, routes real General and Goose work, keeps workflow feedback separate
   from protected-operation Approval evidence, and owns control, cancellation,
@@ -199,6 +308,113 @@ decision without admitting CrewAI:
   Team/group-chat surface through a fixed current-main-frame provider, with
   creation, configuration, messages, explainable state, controls, Artifacts,
   aggregation, and recovery behavior.
+- Standard-Team configuration, title, deletion, and member writes now return
+  through the Main-owned bridge. Main validates Team/conversation ownership and
+  the authoritative model catalog for configuration, requires the durable
+  `standard` experience binding for every provider-active mutation, forwards
+  only bounded intents to AionCore, and requires the observed rename, member
+  rename, or absence postcondition before acknowledging the renderer. Native
+  cron cleanup remains before provider-active deletion, and Main emits removal
+  events only after AionCore no longer projects the Team or member. Cross-
+  experience identity/list/member-edit events admit bounded provider-owned Team
+  and slot identities so standard-Team callbacks survive IPC validation;
+  schema-15 run, slot-work, teammate-message, and assistant events retain
+  strict Actestra identities. Native AionUI slot identities remain provider-
+  owned; the `team-member-<digest>` rule is limited to schema-15 orchestrated
+  members. The native AionUI Team controls remain visible; no renderer-side
+  model-ID authority or provider-global Team-page replacement is retained.
+- the non-shipped local-Agent evaluation prototype recognizes the reviewed
+  Claude and Codex CLI shapes, projects an empty capability set, and rejects
+  structured invocation before model-process spawn. The materialized product
+  does not copy or start that prototype and composes no Team runtime from it.
+
+The prior local root gate for this uncommitted batch passed once on the then
+stable production/test bytes: 248 formatted files, 243 linted files with zero
+warnings, 90 passing and 2 skipped test files with 820 passing and 8 skipped
+tests, the 106-source product boundary, the frozen 1,766-file AionUI selection,
+the 293-file downstream contract with 92 reviewed source copies, and a
+643-main/30-preload/10,198-renderer production build. The current standard-
+Team config-setter correction changed production/test bytes after that gate,
+so this result is historical and is not evidence for the final tree. It is not
+being repeated under the one-root-gate-per-batch budget.
+
+The correction has its own narrow evidence: bridge 8/8, Main Team service
+47/47, materialized downstream `useAcpModelInfo` DOM 12/12, native Team wiring
+8/8, downstream TypeScript green, and the downstream contract green at 297
+declared files and 92 reviewed source copies. This does not advance the 2/7
+ledger.
+
+The later standard-Team session/warmup closure routes both AionUI warmup entry
+points through the Main/Core Team projection when the provider is active while
+retaining the native fallback when it is absent. Main persists a safe seed
+before the fixed loopback session start, verifies the per-member mode
+postcondition, and stops a partially warmed Team on failure. Its final focused
+evidence is 4/4 Main session tests and 3 materialized renderer files with 29/29
+tests, plus root/materialized strict TypeScript, exact-path formatting and
+zero-warning lint, the 1,766-file frozen-foundation contract, and the 301-file
+downstream contract with 92 reviewed source copies. This remains local
+standard-Team compatibility evidence and does not advance the 2/7 orchestrated
+ledger.
+
+The follow-on local closure keeps the same authority split for directed
+retry-start, session-mode, and runtime-config operations. Provider-active retry
+and config/session writes use the Main/Core projection; provider absence keeps
+the native AionUi attach, session-mode, config-read, and ACP config-setter paths
+reachable. RED-to-GREEN evidence is 18/18 for retry-start, 7/7 for the
+permission-context DOM contract, and 57/57 across the five affected renderer
+files, with the four Main session tests and four changed Team route fixtures
+passing. Root and materialized TypeScript pass, the downstream contract is
+303 declared files with 92 reviewed source copies, and no provider, planner,
+Worker, or CrewAI runtime is admitted. This remains local compatibility
+evidence and does not advance the 2/7 orchestrated ledger or P6 acceptance.
+
+The next focused `useTeamSession` closure applies that split to Team
+revalidation and member addition. Provider-active SWR reads and member creates
+now use the Main/Core projection, while provider absence retains the native
+`team.get` and `team.addAgent` paths. The RED run failed the two intended
+assertions with 6 other tests passing; the final generated DOM file passes 8/8.
+Materialized strict TypeScript, exact patch formatting, zero-warning lint for
+the generated hook and test, and the 303-file downstream contract with 92
+reviewed source copies pass. This remains local standard-Team compatibility
+evidence; it does not admit a provider, planner, Worker, or CrewAI runtime and
+does not advance the 2/7 orchestrated ledger or P6 acceptance.
+
+The subsequent standard-Team control audit closes an effect-before-validation
+gap in member pause and cancel. Main now projects current provider run state
+before the effect, requires the requested run to be the active accepted or
+running run and the target member work to reference it, and only then invokes
+the provider before the existing post-effect reconciliation. Focused RED proved
+that both a stale run ID and a terminal run previously reached the effect and
+resolved; GREEN passes those two fail-closed cases plus one valid
+running-to-paused ordering case at 3/3. Root and materialized strict TypeScript,
+exact root source/test formatting, and zero-warning root lint pass. This is
+local standard-Team control evidence only; the downstream contract remains
+green at 303 declared files and 92 reviewed source copies. At this checkpoint,
+standard message durability and the remaining native/error journeys were open,
+and the 2/7 orchestrated ledger and P6 acceptance did not advance.
+
+The subsequent local message-delivery closure adds forward-only schema 17.
+Main persists `pending-effect` before calling AionCore, records the bounded
+provider message/run acknowledgement only after observing the same run, and
+records `effect-uncertain` for ambiguous provider failure or interrupted
+startup. An observed same-nonce/same-digest retry replays only its durable
+acknowledgement; changed, pending, uncertain, or conflicting requests fail
+closed before another effect. Only one unresolved delivery is allowed for a
+Team/target, and neither message content nor attachment paths are persisted.
+Focused evidence passes 5 persistence/utility/bridge files with 66 tests, 9/9
+affected Main tests, the 13/13 root bridge file, generated slow-response 7/7 and
+native-wiring 8/8 files, downstream path safety 3/3, and root plus materialized
+strict TypeScript. This is local standard-Team durability evidence only; it does
+not advance the 2/7 orchestrated ledger or establish Electron, delivery, or P6
+acceptance.
+
+This evidence leaves the orchestrated-Team acceptance ledger at 2/7. Product
+startup still has no admitted planner/model binding, the null runtime keeps
+orchestrated admission and execution unavailable, General Work is still
+fixture-backed by `journeyKind`, and no real Electron journey has completed the
+mixed General+Goose dependency, protected-approval, control, Artifact,
+aggregation, and restart postconditions. Delivery of the current local batch is
+also still open and is separate from those product gaps.
 
 No CrewAI source, package, Python lock, or runtime is imported, installed,
 bundled, or selected by that implementation. The exact version and rollback
@@ -207,6 +423,12 @@ telemetry and network denial, packaging, rollback, and cross-platform smoke
 gates above remain mandatory. The generic supervisor and AionUI Team journey
 are therefore local P6 implementation evidence, not CrewAI admission, P6 phase
 acceptance, a candidate, or a release.
+
+ADR-0026 now selects a separate Actestra-native planner v1 as the first
+Actestra-owned production planner candidate. This changes only the engine
+selection: the closed request protocol, Core admission, persist-before-effect,
+Worker/process isolation, approval/audit authority, cleanup, and all CrewAI/CLI
+non-claims in this ADR remain mandatory.
 
 ## Consequences
 

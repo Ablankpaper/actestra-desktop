@@ -144,6 +144,15 @@ needed to prove that affected crates are absent. ADR-0024 therefore requires a
 minimal Actestra runner lock, `event-listener >=5.4.2`, auditable binary
 metadata, SBOM, and a new artifact scan before real Worker admission.
 
+On 2026-08-12 the RustSec database added `RUSTSEC-2026-0253` for `lru 0.18.1`,
+patched in `>=0.18.2`. Unlike the disconnected RSA metadata disposition, `lru`
+is a direct normal Goose core dependency and was present in the Actestra
+auditable binary. The Actestra-owned runner lock therefore advances only that
+package to `0.18.2`; artifact admission pins the safe resolved version and
+rejects `0.18.1`. A rebuilt lock and binary scan contains no unsound warning
+and retains only ADR-0025's exact RSA metadata record. The Goose commit, empty
+feature set, and empty source-patch set are unchanged.
+
 ## Telemetry, credentials, and network
 
 Goose source includes PostHog support and an upstream capture URL. Telemetry is

@@ -21,6 +21,7 @@ Thumbs.db
 *.log
 logs/
 .cache/
+.codex-tmp/
 .tmp/
 tmp/
 

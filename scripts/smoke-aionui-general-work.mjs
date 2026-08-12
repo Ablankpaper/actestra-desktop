@@ -29,7 +29,7 @@ const backendRuntimeReadyMarker = "startup: managed runtime background preparati
 const rendererProviderFailureMarker = "ACTESTRA_RENDERER_PROVIDER_SMOKE_FAILED ";
 const maximumOutputBytes = 2 * 1_024 * 1_024;
 const startupTimeoutMs = 60_000;
-const expectedPersistenceSchemaVersion = 15;
+const expectedPersistenceSchemaVersion = 22;
 const schedulePrompt = "/actestra Produce the scheduled Actestra artifact.";
 const scheduleRunNowName = "Schedule smoke run-now";
 const scheduleMissedName = "Schedule smoke missed";
@@ -80,13 +80,17 @@ function findPackagedApp() {
     fs.statSync(value, { throwIfNoEntry: false })?.isDirectory(),
   );
   if (candidate === undefined) {
-    fail(`packaged Actestra.app is unavailable; expected one of ${candidates.join(", ")}`);
+    fail(
+      `packaged Actestra.app is unavailable; run "bun run dist:dir" first; expected one of ${candidates.join(", ")}`,
+    );
   }
   const appAsar = path.join(candidate, "Contents", "Resources", "app.asar");
   requireFile(appAsar, "Packaged Actestra app.asar");
   const builtMainState = fs.statSync(builtMain, { throwIfNoEntry: false });
   if (builtMainState === undefined || fs.statSync(appAsar).mtimeMs < builtMainState.mtimeMs) {
-    fail("packaged Actestra.app is older than the current production build");
+    fail(
+      'packaged Actestra.app is older than the current production build; re-run "bun run dist:dir"',
+    );
   }
   return candidate;
 }
@@ -217,10 +221,40 @@ function targetAppIsReady(output) {
   );
 }
 
+// The packaged app refuses to boot under ACTESTRA_E2E_TEST unless userData,
+// home and temp all sit strictly inside one declared isolation root, so every
+// scenario gets its own root holding all three. Reusing the profile directory
+// across a prepare/recover pair keeps durable state, so the root is derived
+// from the profile path rather than freshly created per launch.
+function resolveIsolationPaths(profilePath) {
+  const isolationRoot = `${profilePath}-isolation`;
+  const userDataDir = path.join(isolationRoot, "user-data");
+  return {
+    isolationRoot,
+    userDataDir,
+    homeDir: path.join(isolationRoot, "home"),
+    tempDir: path.join(isolationRoot, "temp"),
+  };
+}
+
+/** Durable state lives in the isolated userData dir, not the scenario profile dir. */
+function profileStateDatabasePath(profilePath) {
+  return path.join(resolveIsolationPaths(profilePath).userDataDir, "state", "actestra.sqlite3");
+}
+
 async function runScenario(scenario, profilePath, workspacePath, packagedExecutable) {
   fs.mkdirSync(profilePath, { recursive: true });
   fs.mkdirSync(workspacePath, { recursive: true });
   const canonicalWorkspacePath = fs.realpathSync(workspacePath);
+  const isolation = resolveIsolationPaths(profilePath);
+  for (const directory of [
+    isolation.isolationRoot,
+    isolation.userDataDir,
+    isolation.homeDir,
+    isolation.tempDir,
+  ]) {
+    fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+  }
   let output = "";
   const child = spawn(packagedExecutable, [], {
     cwd: materializedRoot,
@@ -228,7 +262,12 @@ async function runScenario(scenario, profilePath, workspacePath, packagedExecuta
       ...process.env,
       ACTESTRA_E2E_TEST: "1",
       ACTESTRA_DISABLE_AUTO_UPDATE: "1",
-      ACTESTRA_USER_DATA_DIR: profilePath,
+      ACTESTRA_USER_DATA_DIR: isolation.userDataDir,
+      ACTESTRA_E2E_ISOLATION_ROOT: isolation.isolationRoot,
+      ACTESTRA_E2E_HOME_DIR: isolation.homeDir,
+      ACTESTRA_E2E_TEMP_DIR: isolation.tempDir,
+      HOME: isolation.homeDir,
+      TMPDIR: isolation.tempDir,
       ACTESTRA_GENERAL_WORK_SMOKE_SCENARIO: scenario,
       ACTESTRA_GENERAL_WORK_SMOKE_WORKSPACE: workspacePath,
       ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
@@ -237,10 +276,14 @@ async function runScenario(scenario, profilePath, workspacePath, packagedExecuta
   });
   const outcomePromise = childOutcome(child);
   let workerPid;
+  const transcriptPath = path.join(smokeRoot, `${scenario}.stdout.log`);
+  const transcript = fs.createWriteStream(transcriptPath, { flags: "a" });
   child.stdout.on("data", (chunk) => {
+    transcript.write(chunk);
     output = appendOutput(output, chunk);
   });
   child.stderr.on("data", (chunk) => {
+    transcript.write(chunk);
     output = appendOutput(output, chunk);
   });
 
@@ -337,7 +380,7 @@ async function runScenario(scenario, profilePath, workspacePath, packagedExecuta
     );
   }
   await delay(500);
-  if (processStillOwnsProfile(profilePath)) {
+  if (processStillOwnsProfile(isolation.isolationRoot)) {
     fail(`${scenario} left a process that still owns its isolated profile`);
   }
   if (
@@ -357,7 +400,7 @@ function databaseValue(database, sql) {
 }
 
 function verifyPreparedProfile(profilePath, expected) {
-  const database = new DatabaseSync(path.join(profilePath, "state", "actestra.sqlite3"), {
+  const database = new DatabaseSync(profileStateDatabasePath(profilePath), {
     readOnly: true,
     allowExtension: false,
     enableDoubleQuotedStringLiterals: false,
@@ -386,7 +429,7 @@ function verifyPreparedProfile(profilePath, expected) {
 }
 
 function verifyTerminalProfile(profilePath, expected) {
-  const database = new DatabaseSync(path.join(profilePath, "state", "actestra.sqlite3"), {
+  const database = new DatabaseSync(profileStateDatabasePath(profilePath), {
     readOnly: true,
     allowExtension: false,
     enableDoubleQuotedStringLiterals: false,
@@ -449,7 +492,7 @@ function verifyTerminalProfile(profilePath, expected) {
 
 function verifyToolFailureProfile(profilePath, workspacePath) {
   const canonicalWorkspacePath = fs.realpathSync(workspacePath);
-  const database = new DatabaseSync(path.join(profilePath, "state", "actestra.sqlite3"), {
+  const database = new DatabaseSync(profileStateDatabasePath(profilePath), {
     readOnly: true,
     allowExtension: false,
     enableDoubleQuotedStringLiterals: false,
@@ -708,7 +751,7 @@ function verifyToolFailureProfile(profilePath, workspacePath) {
 
 function verifyWorkerCrashProfile(profilePath, workspacePath) {
   const canonicalWorkspacePath = fs.realpathSync(workspacePath);
-  const database = new DatabaseSync(path.join(profilePath, "state", "actestra.sqlite3"), {
+  const database = new DatabaseSync(profileStateDatabasePath(profilePath), {
     readOnly: true,
     allowExtension: false,
     enableDoubleQuotedStringLiterals: false,
@@ -950,7 +993,7 @@ function verifyWorkerCrashProfile(profilePath, workspacePath) {
 }
 
 function verifyPreparedScheduleProfile(profilePath) {
-  const database = new DatabaseSync(path.join(profilePath, "state", "actestra.sqlite3"), {
+  const database = new DatabaseSync(profileStateDatabasePath(profilePath), {
     readOnly: true,
     allowExtension: false,
     enableDoubleQuotedStringLiterals: false,
@@ -1022,7 +1065,7 @@ function verifyTerminalScheduleProfile(profilePath, workspacePath) {
     artifactCount: 1,
     journeyKind: "prompt-artifact",
   });
-  const database = new DatabaseSync(path.join(profilePath, "state", "actestra.sqlite3"), {
+  const database = new DatabaseSync(profileStateDatabasePath(profilePath), {
     readOnly: true,
     allowExtension: false,
     enableDoubleQuotedStringLiterals: false,
@@ -1341,7 +1384,7 @@ try {
   if (expectedWritingFragments.some((fragment) => !writingContents.includes(fragment))) {
     fail("Recovered writing draft does not contain the structured brief");
   }
-  const writingDatabase = new DatabaseSync(path.join(writingProfile, "state", "actestra.sqlite3"), {
+  const writingDatabase = new DatabaseSync(profileStateDatabasePath(writingProfile), {
     readOnly: true,
     allowExtension: false,
     enableDoubleQuotedStringLiterals: false,
@@ -1412,7 +1455,7 @@ try {
   );
   requireFile(officeOutput, "Recovered Office document");
   verifyDocxPackage(officeOutput);
-  const officeDatabase = new DatabaseSync(path.join(officeProfile, "state", "actestra.sqlite3"), {
+  const officeDatabase = new DatabaseSync(profileStateDatabasePath(officeProfile), {
     readOnly: true,
     allowExtension: false,
     enableDoubleQuotedStringLiterals: false,
@@ -1490,15 +1533,12 @@ try {
   ) {
     fail("Local research Markdown artifact does not contain the bounded research brief");
   }
-  const researchDatabase = new DatabaseSync(
-    path.join(researchProfile, "state", "actestra.sqlite3"),
-    {
-      readOnly: true,
-      allowExtension: false,
-      enableDoubleQuotedStringLiterals: false,
-      enableForeignKeyConstraints: true,
-    },
-  );
+  const researchDatabase = new DatabaseSync(profileStateDatabasePath(researchProfile), {
+    readOnly: true,
+    allowExtension: false,
+    enableDoubleQuotedStringLiterals: false,
+    enableForeignKeyConstraints: true,
+  });
   try {
     const leakedCoreEventCount = researchDatabase
       .prepare(

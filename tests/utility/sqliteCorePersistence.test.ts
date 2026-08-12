@@ -10,11 +10,15 @@ import {
   CoreContractError,
   MAX_RECOVERABLE_GENERAL_WORK_CHECKPOINTS,
   PersistenceError,
+  artifactId,
   correlationId,
   coreEventCursor,
   eventId,
   eventStreamId,
+  approvalId,
+  instant,
   sessionId,
+  taskId,
   workerId,
   type DomainGraph,
 } from "../../apps/desktop/src/core";
@@ -24,10 +28,14 @@ import {
   resolveCoreDatabasePath,
 } from "../../apps/desktop/src/utility/persistence/sqliteCorePersistence";
 import {
+  createArtifactDeliveryRecord,
   createDomainGraph,
   createEvent,
   createStartedEvent,
+  FIXTURE_ARTIFACT_ID,
+  FIXTURE_DESTINATION_GRANT_ID,
   FIXTURE_STREAM_ID,
+  FIXTURE_TASK_ID,
 } from "../fixtures/core";
 import { createGeneralWorkCheckpoint } from "../fixtures/generalWorkRecovery";
 
@@ -302,6 +310,183 @@ describe("Actestra SQLite core persistence", () => {
       code: "corrupt-database",
     });
     await reopened.close();
+  });
+
+  it("recovers Artifact delivery state after a restart", async () => {
+    const userDataPath = createTestDirectory();
+    const first = openSqliteCorePersistence(userDataPath);
+    await first.replaceDomainGraph(createDomainGraph());
+
+    const pending = createArtifactDeliveryRecord();
+    expect(await first.persistArtifactDelivery(pending)).toEqual({
+      status: "stored",
+      delivery: pending,
+    });
+    expect(await first.persistArtifactDelivery(pending)).toEqual({
+      status: "duplicate",
+      delivery: pending,
+    });
+    await first.close();
+
+    const reopened = openSqliteCorePersistence(userDataPath);
+    expect(await reopened.getArtifactDelivery(FIXTURE_ARTIFACT_ID)).toEqual(pending);
+    expect(await reopened.listArtifactDeliveriesForTask(FIXTURE_TASK_ID, 10)).toEqual([pending]);
+
+    // "applying" is the durable crash-recovery marker recorded before the repository is touched.
+    const applying = createArtifactDeliveryRecord({
+      state: "applying",
+      destinationGrantId: FIXTURE_DESTINATION_GRANT_ID,
+      approvalId: approvalId("approval-apply-primary"),
+      updatedAt: instant("2026-07-28T06:10:00.000Z"),
+    });
+    expect((await reopened.persistArtifactDelivery(applying)).status).toBe("stored");
+
+    const applied = createArtifactDeliveryRecord({
+      state: "applied",
+      destinationGrantId: FIXTURE_DESTINATION_GRANT_ID,
+      approvalId: approvalId("approval-apply-primary"),
+      verifiedHead: "b".repeat(40),
+      updatedAt: instant("2026-07-28T06:11:00.000Z"),
+    });
+    expect(await reopened.persistArtifactDelivery(applied)).toEqual({
+      status: "stored",
+      delivery: applied,
+    });
+    await reopened.close();
+
+    const third = openSqliteCorePersistence(userDataPath);
+    expect(await third.getArtifactDelivery(FIXTURE_ARTIFACT_ID)).toEqual(applied);
+    await third.close();
+  });
+
+  it("keeps a failed Artifact delivery recoverable and its Artifact intact", async () => {
+    const userDataPath = createTestDirectory();
+    const persistence = openSqliteCorePersistence(userDataPath);
+    await persistence.replaceDomainGraph(createDomainGraph());
+    await persistence.persistArtifactDelivery(createArtifactDeliveryRecord());
+    await persistence.persistArtifactDelivery(
+      createArtifactDeliveryRecord({
+        state: "applying",
+        destinationGrantId: FIXTURE_DESTINATION_GRANT_ID,
+        approvalId: approvalId("approval-apply-primary"),
+        updatedAt: instant("2026-07-28T06:09:00.000Z"),
+      }),
+    );
+
+    const failed = createArtifactDeliveryRecord({
+      state: "conflict",
+      destinationGrantId: FIXTURE_DESTINATION_GRANT_ID,
+      approvalId: approvalId("approval-apply-primary"),
+      failureCode: "patch-conflict",
+      failureMessage: "The reviewed patch does not apply to the current workspace tree.",
+      updatedAt: instant("2026-07-28T06:10:00.000Z"),
+    });
+    expect(await persistence.persistArtifactDelivery(failed)).toEqual({
+      status: "stored",
+      delivery: failed,
+    });
+
+    // A failed delivery is retryable, and the Artifact itself is untouched.
+    const retry = createArtifactDeliveryRecord({
+      state: "applying",
+      destinationGrantId: FIXTURE_DESTINATION_GRANT_ID,
+      approvalId: approvalId("approval-apply-retry"),
+      updatedAt: instant("2026-07-28T06:11:00.000Z"),
+    });
+    expect((await persistence.persistArtifactDelivery(retry)).status).toBe("stored");
+    const graph = await persistence.loadDomainGraph();
+    expect(graph?.artifacts).toEqual(createDomainGraph().artifacts);
+    await persistence.close();
+  });
+
+  it("rejects Artifact delivery records that conflict with durable authority", async () => {
+    const userDataPath = createTestDirectory();
+    const persistence = openSqliteCorePersistence(userDataPath);
+    await persistence.replaceDomainGraph(createDomainGraph());
+
+    // An outcome without a pending delivery intent has no provenance.
+    await expect(
+      persistence.persistArtifactDelivery(
+        createArtifactDeliveryRecord({
+          state: "applied",
+          destinationGrantId: FIXTURE_DESTINATION_GRANT_ID,
+          approvalId: approvalId("approval-apply-primary"),
+          verifiedHead: "b".repeat(40),
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "artifact-delivery-conflict" });
+
+    await persistence.persistArtifactDelivery(createArtifactDeliveryRecord());
+
+    // The reviewed patch identity is immutable once a delivery exists.
+    await expect(
+      persistence.persistArtifactDelivery(
+        createArtifactDeliveryRecord({
+          patchSha256: "d".repeat(64),
+          updatedAt: instant("2026-07-28T06:10:00.000Z"),
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "artifact-delivery-conflict" });
+
+    // A delivery cannot jump straight to an outcome without its durable "applying" marker.
+    await expect(
+      persistence.persistArtifactDelivery(
+        createArtifactDeliveryRecord({
+          state: "applied",
+          destinationGrantId: FIXTURE_DESTINATION_GRANT_ID,
+          approvalId: approvalId("approval-apply-primary"),
+          verifiedHead: "b".repeat(40),
+          updatedAt: instant("2026-07-28T06:10:00.000Z"),
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "artifact-delivery-conflict" });
+
+    // An applied delivery is terminal.
+    await persistence.persistArtifactDelivery(
+      createArtifactDeliveryRecord({
+        state: "applying",
+        destinationGrantId: FIXTURE_DESTINATION_GRANT_ID,
+        approvalId: approvalId("approval-apply-primary"),
+        updatedAt: instant("2026-07-28T06:09:00.000Z"),
+      }),
+    );
+    await persistence.persistArtifactDelivery(
+      createArtifactDeliveryRecord({
+        state: "applied",
+        destinationGrantId: FIXTURE_DESTINATION_GRANT_ID,
+        approvalId: approvalId("approval-apply-primary"),
+        verifiedHead: "b".repeat(40),
+        updatedAt: instant("2026-07-28T06:10:00.000Z"),
+      }),
+    );
+    await expect(
+      persistence.persistArtifactDelivery(
+        createArtifactDeliveryRecord({
+          state: "pending",
+          updatedAt: instant("2026-07-28T06:11:00.000Z"),
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "artifact-delivery-conflict" });
+    await persistence.close();
+  });
+
+  it("refuses an Artifact delivery whose ownership does not match its Artifact", async () => {
+    const userDataPath = createTestDirectory();
+    const persistence = openSqliteCorePersistence(userDataPath);
+    await persistence.replaceDomainGraph(createDomainGraph());
+
+    await expect(
+      persistence.persistArtifactDelivery(
+        createArtifactDeliveryRecord({ artifactId: artifactId("artifact-unknown") }),
+      ),
+    ).rejects.toMatchObject({ code: "domain-reference" });
+
+    await expect(
+      persistence.persistArtifactDelivery(
+        createArtifactDeliveryRecord({ taskId: taskId("task-other") }),
+      ),
+    ).rejects.toMatchObject({ code: "artifact-delivery-conflict" });
+    await persistence.close();
   });
 
   it("fails closed when the database file is not valid SQLite", () => {

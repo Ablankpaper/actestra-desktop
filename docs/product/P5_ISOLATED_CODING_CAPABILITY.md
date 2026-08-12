@@ -56,6 +56,30 @@ and remote exit evidence remains separate from the accepted P5.2 gate.
 
 ## Scope
 
+## Current P6 delivery contract
+
+The coding result contract is intentionally two-phase:
+
+1. Goose writes only to the task-private isolated Git worktree.
+2. Main captures the reviewed change as a patch Artifact.
+3. The user explicitly approves the separate `apply-to-workspace` operation.
+4. Main revalidates the destination grant, canonical Git root, HEAD, clean
+   tree, patch digest, dry-run, and approval snapshot under a repository lock
+   before applying the patch to the original workspace.
+
+Artifact creation therefore never writes back to the original checkout. The
+Artifact card distinguishes never-applied, awaiting-approval, applied,
+conflict, failed, and cancelled states. Apply is retryable only after a
+fail-closed terminal state and is never exposed as a Goose-invocable tool.
+
+General v1 is a separate text-only contract. It receives structured Planner
+requirements and accepts only bounded inline text input; it has no file,
+repository, or network authority. Requirements outside that capability are
+rejected before model invocation. Successful model output must satisfy the
+structured JSON envelope and placeholder rules before an Artifact can be
+created; malformed or non-compliant output is terminalized with a specific
+incident code rather than projected as completed.
+
 This slice creates one task-private detached Git worktree and admits six exact
 main-owned capabilities:
 

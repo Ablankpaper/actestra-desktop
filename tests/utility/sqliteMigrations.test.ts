@@ -61,7 +61,9 @@ describe("Actestra SQLite migrations", () => {
     expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
       fromVersion: 0,
       toVersion: CURRENT_CORE_SCHEMA_VERSION,
-      appliedVersions: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+      appliedVersions: [
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+      ],
     });
     expect(pragmaNumber(database, "application_id")).toBe(ACTESTRA_SQLITE_APPLICATION_ID);
     expect(pragmaNumber(database, "user_version")).toBe(CURRENT_CORE_SCHEMA_VERSION);
@@ -129,6 +131,34 @@ describe("Actestra SQLite migrations", () => {
       {
         version: 15,
         name: "team-run-authority",
+      },
+      {
+        version: 16,
+        name: "team-experience-authority",
+      },
+      {
+        version: 17,
+        name: "standard-team-message-delivery-authority",
+      },
+      {
+        version: 18,
+        name: "artifact-workspace-delivery",
+      },
+      {
+        version: 19,
+        name: "artifact-delivery-split-authority",
+      },
+      {
+        version: 20,
+        name: "artifact-delivery-patch-owner-identity",
+      },
+      {
+        version: 21,
+        name: "aionui-general-work-requirements",
+      },
+      {
+        version: 22,
+        name: "artifact-delivery-destination-workspace",
       },
     ]);
     expect(
@@ -922,7 +952,9 @@ describe("Actestra SQLite migrations", () => {
       )
       .run(planId, "correlation-schema-14-preserved", digest, planJson);
 
-    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
+    expect(
+      migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 15), APPLIED_AT),
+    ).toEqual({
       fromVersion: 14,
       toVersion: 15,
       appliedVersions: [15],
@@ -946,6 +978,159 @@ describe("Actestra SQLite migrations", () => {
       { name: "team_run_revisions" },
       { name: "team_runs" },
     ]);
+  });
+
+  it("adds schema 16 Team experience authority without guessing existing Team types", () => {
+    const database = createDatabase();
+    migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 15), APPLIED_AT);
+
+    expect(
+      migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 16), APPLIED_AT),
+    ).toEqual({
+      fromVersion: 15,
+      toVersion: 16,
+      appliedVersions: [16],
+    });
+    expect(
+      database
+        .prepare(
+          "SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'team_experience_bindings'",
+        )
+        .get(),
+    ).toEqual({ name: "team_experience_bindings" });
+    expect(
+      database.prepare("SELECT COUNT(*) AS count FROM team_experience_bindings").get(),
+    ).toEqual({
+      count: 0,
+    });
+    expect(
+      database
+        .prepare(
+          "SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'team_definitions'",
+        )
+        .get(),
+    ).toEqual({ name: "team_definitions" });
+  });
+
+  it("adds schema 17 metadata-only standard Team message delivery authority", () => {
+    const database = createDatabase();
+    migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 16), APPLIED_AT);
+
+    expect(
+      migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 17), APPLIED_AT),
+    ).toEqual({
+      fromVersion: 16,
+      toVersion: 17,
+      appliedVersions: [17],
+    });
+    expect(
+      database
+        .prepare(
+          "SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'standard_team_message_deliveries'",
+        )
+        .get(),
+    ).toEqual({ name: "standard_team_message_deliveries" });
+    const columns = database
+      .prepare("PRAGMA table_info(standard_team_message_deliveries)")
+      .all()
+      .map((row) => (row as { name: string }).name);
+    expect(columns).toEqual([
+      "delivery_id",
+      "contract_version",
+      "client_request_nonce",
+      "request_sha256",
+      "team_id",
+      "target_slot_id",
+      "state",
+      "provider_enqueue_status",
+      "provider_message_id",
+      "provider_run_id",
+      "created_at",
+      "updated_at",
+      "delivery_json",
+    ]);
+    expect(columns).not.toContain("content");
+    expect(columns).not.toContain("files");
+  });
+
+  it("adds schema 18 artifact workspace delivery state that survives restart", () => {
+    const database = createDatabase();
+    migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 17), APPLIED_AT);
+
+    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
+      fromVersion: 17,
+      toVersion: 22,
+      appliedVersions: [18, 19, 20, 21, 22],
+    });
+    const columns = database
+      .prepare("PRAGMA table_info(artifact_deliveries)")
+      .all()
+      .map((row) => (row as { name: string }).name);
+    expect(columns).toEqual([
+      "artifact_id",
+      "contract_version",
+      "workspace_id",
+      "task_id",
+      "session_id",
+      "state",
+      "patch_owner_grant_id",
+      "destination_grant_id",
+      "patch_reference",
+      "patch_sha256",
+      "patch_byte_length",
+      "base_commit",
+      "changed_file_count",
+      "approval_id",
+      "verified_head",
+      "failure_code",
+      "failure_message",
+      "created_at",
+      "updated_at",
+      // Schema 20: the authority the patch was stored under, so a later read names it instead of
+      // guessing a constant that could never validate.
+      "patch_owner_worker_id",
+      "patch_request_id",
+      "destination_workspace_id",
+    ]);
+    // The delivery row references stored patch content, never a worktree path or patch body.
+    expect(columns).not.toContain("patch");
+    expect(columns).not.toContain("patch_content");
+    expect(columns).not.toContain("worktree_root");
+  });
+
+  it("keeps artifact delivery terminal evidence consistent at schema 18", () => {
+    const database = createDatabase();
+    migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 19), APPLIED_AT);
+    database.exec(`
+      INSERT INTO workspaces (id, name, state, created_at, updated_at)
+        VALUES ('workspace-1', 'Workspace', 'active', '${APPLIED_AT}', '${APPLIED_AT}');
+      INSERT INTO tasks (id, workspace_id, title, state, created_at, updated_at)
+        VALUES ('task-1', 'workspace-1', 'Task', 'running', '${APPLIED_AT}', '${APPLIED_AT}');
+      INSERT INTO artifacts (id, workspace_id, task_id, kind, label, state, created_at, updated_at)
+        VALUES ('artifact-1', 'workspace-1', 'task-1', 'file', 'Actestra coding patch', 'available', '${APPLIED_AT}', '${APPLIED_AT}');
+    `);
+    const insert = (columns: string, values: string) =>
+      database.exec(
+        `INSERT INTO artifact_deliveries (artifact_id, contract_version, workspace_id, task_id, state, patch_owner_grant_id, patch_reference, patch_sha256, patch_byte_length, base_commit, changed_file_count, created_at, updated_at${columns})
+         VALUES ('artifact-1', 2, 'workspace-1', 'task-1', ${values}, 'grant-1', 'tool-output:patch', '${"a".repeat(64)}', 12, '${"b".repeat(40)}', 1, '${APPLIED_AT}', '${APPLIED_AT}'${columns === "" ? "" : ""})`,
+      );
+
+    // applied requires the resulting commit; pending must not carry one
+    expect(() => insert("", "'applied'")).toThrow();
+    expect(() =>
+      database.exec(
+        `INSERT INTO artifact_deliveries (artifact_id, contract_version, workspace_id, task_id, state, patch_owner_grant_id, patch_reference, patch_sha256, patch_byte_length, base_commit, changed_file_count, created_at, updated_at, verified_head)
+         VALUES ('artifact-1', 2, 'workspace-1', 'task-1', 'pending', 'grant-1', 'tool-output:patch', '${"a".repeat(64)}', 12, '${"b".repeat(40)}', 1, '${APPLIED_AT}', '${APPLIED_AT}', '${"c".repeat(40)}')`,
+      ),
+    ).toThrow();
+    // conflict/failed require a bounded failure code
+    expect(() => insert("", "'conflict'")).toThrow();
+    // pending is a legal resting state and survives as-is
+    insert("", "'pending'");
+    expect(database.prepare("SELECT state, verified_head FROM artifact_deliveries").get()).toEqual({
+      state: "pending",
+      verified_head: null,
+    });
   });
 
   it("rejects a future schema without changing its version", () => {

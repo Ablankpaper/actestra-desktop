@@ -1,7 +1,9 @@
 import {
+  ARTIFACT_DELIVERY_CONTRACT_VERSION,
   approvalId,
   artifactId,
   correlationId,
+  normalizeArtifactDeliveryRecord,
   eventId,
   eventStreamId,
   instant,
@@ -10,6 +12,7 @@ import {
   taskId,
   workerId,
   workspaceId,
+  type ArtifactDeliveryRecord,
   type CoreEvent,
   type CoreEventType,
   type DomainGraph,
@@ -95,6 +98,44 @@ export function createDomainGraph(): DomainGraph {
       },
     ],
   };
+}
+
+export const FIXTURE_ARTIFACT_ID = artifactId("artifact-primary");
+/** The isolated worktree grant the patch was produced under. */
+export const FIXTURE_PATCH_OWNER_GRANT_ID = "grant-isolated-worktree-primary";
+/** The original workspace grant a patch is applied into; never the patch owner. */
+export const FIXTURE_DESTINATION_GRANT_ID = "grant-original-workspace-primary";
+
+export function createArtifactDeliveryRecord(
+  overrides: Partial<ArtifactDeliveryRecord> = {},
+): ArtifactDeliveryRecord {
+  return normalizeArtifactDeliveryRecord({
+    contractVersion: ARTIFACT_DELIVERY_CONTRACT_VERSION,
+    artifactId: FIXTURE_ARTIFACT_ID,
+    workspaceId: FIXTURE_WORKSPACE_ID,
+    destinationWorkspaceId: null,
+    taskId: FIXTURE_TASK_ID,
+    sessionId: FIXTURE_SESSION_ID,
+    state: "pending",
+    patchOwnerGrantId: FIXTURE_PATCH_OWNER_GRANT_ID,
+    // The publishing session's own worker and request, because reading the patch back has to name the
+    // exact authority it was stored under.
+    patchOwnerWorkerId: FIXTURE_WORKER_ID,
+    patchRequestId: "request-coding-publish-primary",
+    destinationGrantId: null,
+    patchReference: "coding-publish-output-primary",
+    patchSha256: "a".repeat(64),
+    patchByteLength: 128,
+    baseCommit: "b".repeat(40),
+    changedFileCount: 2,
+    approvalId: null,
+    verifiedHead: null,
+    failureCode: null,
+    failureMessage: null,
+    createdAt: CREATED_AT,
+    updatedAt: UPDATED_AT,
+    ...overrides,
+  });
 }
 
 export function createEvent<Type extends CoreEventType>(
