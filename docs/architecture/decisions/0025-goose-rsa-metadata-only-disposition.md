@@ -59,8 +59,9 @@ following remain true in the same build:
 2. The runner is built with `cargo auditable build --locked --release
    --message-format=json-render-diagnostics`, the committed lock remains
    unchanged, and the current build's compiler-artifact identities are recorded.
-3. `event-listener` resolves to `5.4.2`; vulnerable `quick-xml` versions and
-   the broad Goose CLI/tool crates do not enter the selected graph.
+3. `event-listener` resolves to `5.4.2`, `lru` resolves to `0.18.2`, vulnerable
+   `quick-xml` versions and the broad Goose CLI/tool crates do not enter the
+   selected graph.
 4. The active graph, all-target inverse normal-edge queries, and compiled
    release artifacts all independently show no `rsa` or `sqlx-mysql` path or
    artifact. The active SBOM dependency count must also equal Cargo's normalized

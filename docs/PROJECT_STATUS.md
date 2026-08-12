@@ -4,7 +4,55 @@ Last updated: 2026-08-13
 
 ## Current phase
 
-### 2026-08-13 current verification: exact-head CI packaging defects fixed locally
+### 2026-08-13 current verification: exact-head CI delivery gate and Goose RustSec repair
+
+The latest pushed exact head is
+`ad3f6716b9caec95c69811349074f5e5f096cfe4`. CI run `31620624446` proves the
+entire `macOS arm64 foundation` job green, including the complete root check,
+documentation, frozen-lock downstream install, materialized typecheck and
+renderer build, local app bundle, packaged identity, and packaged General Work
+smoke. The independent `Goose runner admission` job failed, so this SHA remains
+unmergeable.
+
+Raw `cargo-audit 0.22.2` JSON against the CI-era RustSec database identifies the
+failure as `RUSTSEC-2026-0253`: `lru 0.18.1` has a potential use-after-free and
+is fixed in `>=0.18.2`. The package is a direct normal dependency of the pinned
+Goose core and appears in both the committed lock and auditable runner binary;
+it cannot use ADR-0025's metadata-only RSA disposition. The committed runner
+lock now resolves only `lru 0.18.2`, and artifact admission independently
+rejects a self-consistent lock containing `0.18.1`. Goose remains pinned to
+`v1.45.0` at the same commit with its empty feature and source-patch sets.
+
+Verified local remediation evidence:
+
+- the admission regression failed against the old validator because the unsafe
+  lock was admitted, then passed after the dependency floor was added;
+- the focused artifact suite passes 10 tests;
+- an auditable release build against RustSec database commit
+  `69f93e1d081d8b6fbee010e48f0b5e0d13661415` reports 545 lock packages, 458
+  auditable binary dependencies, 413 active dependencies, no unsound warning
+  in either scan, and only ADR-0025's exact
+  `RUSTSEC-2023-0071 / rsa 0.9.10` metadata-only disposition;
+- the real Goose suite passes 10 files and 183 tests across artifact admission,
+  ACP handshake and lifecycle, MCP/model composition, the real runner, coding
+  journey, and Team mixed journey;
+- `NODE_OPTIONS=--max-old-space-size=4096 bun run check` exits zero: format,
+  zero-warning lint, strict types, Electron SQLite, 111 test files with 1,181
+  tests passed and 9 skipped, smoke harness, 127-file product boundary, frozen
+  foundation, downstream overlay, frozen-lock install, and the 10,207-module
+  AionUI package build all pass;
+- documentation links resolve across 66 files, Markdown lint reports zero
+  errors across 62 files, `git diff --check` is clean, `foundation/` is
+  unchanged, and the source diff contains no credential or private-key value.
+
+The first online build attempt completed compilation but its second advisory
+database fetch failed with a GitHub network I/O error. The successful build used
+the builder's governed offline mode with the same database commit and a
+one-minute-old `FETCH_HEAD`; that path still performs both scans and rejects
+database evidence older than seven days. This is local remediation evidence,
+not replacement exact-head CI. The branch still requires commit/push, two green
+exact-head CI jobs, review disposition, merge, and one green merged-main run.
+No release, deployment, formal signing, or new user acceptance is claimed.
 
 The P6 delivery batch was pushed to
 `codex/p6-aionui-team-acceptance` at
