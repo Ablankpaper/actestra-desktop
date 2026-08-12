@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 const repositoryRoot = path.resolve(import.meta.dirname, "../..");
 const packageJson = JSON.parse(fs.readFileSync(path.join(repositoryRoot, "package.json"), "utf8"));
 const projectStatus = fs.readFileSync(path.join(repositoryRoot, "docs/PROJECT_STATUS.md"), "utf8");
+const ciWorkflow = fs.readFileSync(path.join(repositoryRoot, ".github/workflows/ci.yml"), "utf8");
 const legacyProductPaths = [
   "apps/desktop/electron.vite.config.ts",
   "apps/desktop/electron-builder.yml",
@@ -49,6 +50,12 @@ describe("AionUI-first product entrypoints", () => {
   it("installs the frozen downstream lockfile before packaging from a clean checkout", () => {
     expect(packageJson.scripts["downstream:aionui:package"]).toBe(
       "bun run downstream:aionui:install && bun run --cwd .actestra/aionui-v2.1.41 package",
+    );
+  });
+
+  it("gives the complete CI check enough heap to render the downstream application", () => {
+    expect(ciWorkflow).toMatch(
+      /- name: Verify source, tests, boundaries, and renderer build\n\s+run: bun run check\n\s+env:\n\s+NODE_OPTIONS: "--max-old-space-size=4096"/u,
     );
   });
 

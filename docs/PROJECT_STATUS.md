@@ -4,7 +4,7 @@ Last updated: 2026-08-13
 
 ## Current phase
 
-### 2026-08-13 current verification: exact-head CI packaging defect fixed locally
+### 2026-08-13 current verification: exact-head CI packaging defects fixed locally
 
 The P6 delivery batch was pushed to
 `codex/p6-aionui-team-acceptance` at
@@ -43,11 +43,28 @@ Verified follow-up evidence on 2026-08-13:
 - `git diff --check` is clean, `foundation/` is unchanged, and the process scan
   has no Actestra, AionCore, Goose, planner, or General Worker residue.
 
-This is a local repair of the first exact-head CI failure, not replacement CI
-evidence. The repair still requires a new commit and push, a fresh exact-head CI
-run with both jobs green, review disposition, merge, and one green merged-main
-CI run. No formal signing, release, deployment, production readiness, or final
-user acceptance is claimed.
+That repair was committed and pushed as
+`81a73e47c2cb7a52f8ab4aab25e270a8e5877e00`. Its exact-head CI run
+`31619324454` proves that the dependency correction worked: all 1,179 tests and
+the frozen-lock installation passed, `@sentry/vite-plugin` was installed, and
+the renderer transformed 10,207 modules. The same `bun run check` step then
+failed during chunk rendering with `SIGABRT` / EXIT 134 because Node reached its
+default approximately 2 GB heap limit. This was a second deterministic CI
+configuration defect. The workflow already gave the later standalone renderer
+build `NODE_OPTIONS=--max-old-space-size=4096`, but omitted it from the complete
+check even though that check now builds the same renderer.
+
+The local follow-up applies that existing 4 GB heap setting to the complete CI
+check and locks the exact step environment in the entry-point regression. With
+the same environment, the complete local `bun run check` exits zero: 111 test
+files passed, 2 skipped; 1,180 tests passed, 9 skipped; the downstream lockfile
+was installed and the 10,207-module renderer completed chunk rendering.
+
+This is a local repair of two observed exact-head CI failures, not replacement
+CI evidence. The second repair still requires a new commit and push, a fresh
+exact-head CI run with both jobs green, review disposition, merge, and one green
+merged-main CI run. No formal signing, release, deployment, production
+readiness, or final user acceptance is claimed.
 
 ### 2026-08-12 current verification: P6 local development acceptance complete
 

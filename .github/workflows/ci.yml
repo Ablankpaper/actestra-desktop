@@ -83,6 +83,8 @@ jobs:
 
       - name: Verify source, tests, boundaries, and renderer build
         run: bun run check
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
 
       - name: Verify documentation links
         run: bun run docs:check
