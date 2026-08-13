@@ -4,6 +4,36 @@ Last updated: 2026-08-13
 
 ## Current phase
 
+### 2026-08-13 current verification: P7.1 security abuse baseline locally verified
+
+The P7.1 Threat Model and Abuse-Case Baseline is verified on branch
+`codex/p7-threat-model-abuse-baseline` at implementation/test parent
+`04f92b2`. This is a local macOS arm64 development-build gate, not a release
+or cross-platform acceptance.
+
+Evidence recorded for this slice:
+
+- the closed catalog contains 28 stable abuse-case IDs and the aggregate local
+  security gate reports 28/28 `denied-safe`;
+- the complete local security/project checks cover 121 test files and 1,248
+  tests, with zero-warning lint, strict typecheck, Electron SQLite, product
+  boundary, frozen-foundation, downstream-overlay, and package checks green;
+- the admitted Goose runner's parent-death/process cleanup cases pass against
+  the real artifact and leave no privileged process residue;
+- the arm64 development app has identifier `com.bignormal.actestra`, an
+  ad-hoc signature, and passes deep strict codesign verification; and
+- packaged trust verification, the existing General Work smoke, and the P7
+  packaged security smoke pass. The packaged security hook physically
+  exercises `P7-A-RENDERER-002`; the remaining cases are local Layer 1-3
+  evidence only.
+
+This closes P7.1's local development baseline only. P7.2 Worker resource and
+process reliability, P7.3 database backup/migration rollback and crash
+recovery, and P7.4 diagnostic export/audit retention remain open. Windows and
+Linux enforcement, exact-head or merged-main CI for this branch, formal
+signing/notarization, release, deployment, and final user acceptance are not
+claimed.
+
 ### 2026-08-13 current verification: P6 delivery exit accepted on `main`
 
 P6's development-delivery exit gate is accepted. Pull request
