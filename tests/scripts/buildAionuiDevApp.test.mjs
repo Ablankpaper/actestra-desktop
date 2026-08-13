@@ -140,6 +140,14 @@ describe("build-aionui-dev-app", () => {
       expect(source).toContain("AIONUI_HUB_SKIP");
       expect(source).toMatch(/AIONUI_HUB_SKIP.*1/);
     });
+
+    it("uses the standard Electron cache while preserving an explicit override", () => {
+      const source = readBuildScript();
+      expect(source).toContain("function resolveElectronCache");
+      expect(source).toContain("process.env.ELECTRON_CACHE");
+      expect(source).toContain('path.join(os.homedir(), "Library", "Caches", "electron")');
+      expect(source).toMatch(/ELECTRON_CACHE:\s*resolveElectronCache\(\)/u);
+    });
   });
 
   describe("build verification", () => {
@@ -222,6 +230,22 @@ describe("build-aionui-dev-app", () => {
       expect(source).toContain("downstream:aionui:materialize");
       const mainBody = source.match(/function main\(\) \{([^}]+)\}/)?.[1] ?? "";
       expect(mainBody.indexOf("materializeDownstream")).toBeLessThan(mainBody.indexOf("buildApp"));
+    });
+
+    it("installs the frozen downstream lockfile after materializing and before building", () => {
+      const source = readBuildScript();
+      expect(source).toContain("function installDownstreamDependencies");
+      expect(source).toContain('"install", "--cwd", materializedRoot, "--frozen-lockfile"');
+      const mainBody = source.match(/function main\(\) \{([\s\S]+?)\n\}/)?.[1] ?? "";
+      expect(mainBody.indexOf("materializeDownstream")).toBeGreaterThan(-1);
+      expect(mainBody.indexOf("installDownstreamDependencies")).toBeGreaterThan(-1);
+      expect(mainBody.indexOf("buildApp")).toBeGreaterThan(-1);
+      expect(mainBody.indexOf("materializeDownstream")).toBeLessThan(
+        mainBody.indexOf("installDownstreamDependencies"),
+      );
+      expect(mainBody.indexOf("installDownstreamDependencies")).toBeLessThan(
+        mainBody.indexOf("buildApp"),
+      );
     });
   });
 });

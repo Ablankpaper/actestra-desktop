@@ -38,6 +38,8 @@ describe("Actestra native Team planner build manifest", () => {
 
     expect(downstreamPatch).toContain("function buildActestraTeamPlannerManifestPlugin()");
     expect(downstreamPatch).toContain("buildActestraTeamPlannerManifestPlugin(),");
+    expect(downstreamPatch).toContain("configResolved(config: { readonly root: string })");
+    expect(downstreamPatch).toContain("writeBundle()");
     expect(downstreamPatch).not.toMatch(
       /isDevelopment[^\n]*buildActestraTeamPlannerManifestPlugin/u,
     );

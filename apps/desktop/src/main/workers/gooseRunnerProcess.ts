@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { constants as fsConstants, createReadStream } from "node:fs";
+import { spawn, type ChildProcessByStdio } from "node:child_process";
+import { constants as fsConstants, createReadStream, realpathSync } from "node:fs";
 import { chmod, copyFile, lstat, mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import type { Readable, Writable } from "node:stream";
 import {
   GooseAcpHandshakeError,
   connectGooseAcp,
@@ -18,13 +19,12 @@ import {
   type GooseAcpTransport,
 } from "./gooseAcpHandshake";
 import type { AdmittedGooseRunnerArtifact } from "./gooseRunnerArtifact";
+import { createGooseRunnerSandboxLaunch } from "./gooseRunnerSandbox";
 
 const MAX_STDOUT_LINE_BYTES = 64 * 1024;
 const MAX_STDERR_BYTES = 256 * 1024;
 const CLOSE_GRACE_MS = 1_000;
 const TERMINATE_GRACE_MS = 1_000;
-const MACOS_NO_NETWORK_PROFILE = "(version 1)(allow default)(deny network*)";
-
 export type GooseRunnerProcessErrorCode =
   | "invalid-options"
   | "artifact-mismatch"
@@ -46,6 +46,7 @@ export class GooseRunnerProcessError extends Error {
 export interface GooseAcpSpawnOptions {
   readonly executablePath: string;
   readonly workingDirectory: string;
+  readonly workspaceDirectory?: string;
   readonly environment: Readonly<Record<string, string>>;
   readonly networkPolicy:
     | "deny-all"
@@ -59,6 +60,8 @@ export interface GooseAcpSpawnOptions {
 
 export type GooseAcpTransportFactory = (options: GooseAcpSpawnOptions) => GooseAcpTransport;
 
+type GooseChildProcess = ChildProcessByStdio<Writable, Readable, Readable>;
+
 export interface GooseRunnerModelBinding {
   readonly baseUrl: string;
   readonly modelId: string;
@@ -68,6 +71,7 @@ export interface GooseRunnerModelBinding {
 export interface OpenGooseRunnerHandshakeOptions {
   readonly artifact: AdmittedGooseRunnerArtifact;
   readonly privateRootParent: string;
+  readonly workspaceDirectory?: string;
   readonly capabilityProxyUrl?: string;
   readonly modelBinding?: GooseRunnerModelBinding;
   readonly handshakeTimeoutMs?: number;
@@ -156,7 +160,7 @@ function wait(milliseconds: number): Promise<void> {
   });
 }
 
-function signalProcessGroup(child: ChildProcessWithoutNullStreams, signal: NodeJS.Signals): void {
+function signalProcessGroup(child: GooseChildProcess, signal: NodeJS.Signals): void {
   if (child.pid === undefined) {
     return;
   }
@@ -171,6 +175,41 @@ function signalProcessGroup(child: ChildProcessWithoutNullStreams, signal: NodeJ
       throw error;
     }
   }
+}
+
+function processGroupIsAlive(child: GooseChildProcess, leaderHasExited: () => boolean): boolean {
+  if (child.pid === undefined) {
+    return false;
+  }
+  try {
+    process.kill(-child.pid, 0);
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ESRCH") {
+      return false;
+    }
+    if (code === "EPERM") {
+      return !leaderHasExited();
+    }
+    throw error;
+  }
+}
+
+async function waitForProcessGroupExit(
+  child: GooseChildProcess,
+  milliseconds: number,
+  leaderHasExited: () => boolean,
+): Promise<boolean> {
+  const deadline = Date.now() + milliseconds;
+  while (processGroupIsAlive(child, leaderHasExited)) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      return false;
+    }
+    await wait(Math.min(remaining, 10));
+  }
+  return true;
 }
 
 function exactLoopbackMcpPort(url: string): number | undefined {
@@ -216,26 +255,57 @@ function validateModelBinding(modelBinding: GooseRunnerModelBinding): {
 }
 
 function macosNetworkProfile(options: GooseAcpSpawnOptions): string | undefined {
-  if (options.networkPolicy === "deny-all") {
-    return MACOS_NO_NETWORK_PROFILE;
+  const ports: number[] = [];
+  if (options.networkPolicy !== "deny-all") {
+    const policy = options.networkPolicy;
+    if (
+      policy.kind !== "loopback-session" ||
+      policy.host !== "127.0.0.1" ||
+      !Number.isSafeInteger(policy.capabilityProxyPort) ||
+      policy.capabilityProxyPort < 1 ||
+      policy.capabilityProxyPort > 65_535 ||
+      !Number.isSafeInteger(policy.modelProxyPort) ||
+      policy.modelProxyPort < 1 ||
+      policy.modelProxyPort > 65_535
+    ) {
+      return undefined;
+    }
+    ports.push(policy.capabilityProxyPort, policy.modelProxyPort);
   }
-  const policy = options.networkPolicy;
-  if (
-    policy.kind !== "loopback-session" ||
-    policy.host !== "127.0.0.1" ||
-    !Number.isSafeInteger(policy.capabilityProxyPort) ||
-    policy.capabilityProxyPort < 1 ||
-    policy.capabilityProxyPort > 65_535 ||
-    !Number.isSafeInteger(policy.modelProxyPort) ||
-    policy.modelProxyPort < 1 ||
-    policy.modelProxyPort > 65_535
-  ) {
+  if (!path.isAbsolute(options.workingDirectory) || !path.isAbsolute(options.executablePath)) {
     return undefined;
   }
-  const ports = [...new Set([policy.capabilityProxyPort, policy.modelProxyPort])];
-  return `${MACOS_NO_NETWORK_PROFILE}${ports
-    .map((port) => `(allow network-outbound (remote ip "localhost:${String(port)}"))`)
-    .join("")}`;
+  const privateRoot = realpathSync(path.dirname(options.workingDirectory));
+  const executablePath = realpathSync(options.executablePath);
+  const launch = createGooseRunnerSandboxLaunch({
+    executablePath,
+    privateRoot,
+    networkPorts: ports,
+  });
+  if (options.workspaceDirectory === undefined) {
+    return launch.profile;
+  }
+  const workspaceDirectory = realpathSync(options.workspaceDirectory);
+  const traversalPaths = sandboxTraversalPaths(workspaceDirectory);
+  return `${launch.profile}(allow file-read-metadata ${traversalPaths
+    .map((root) => `(literal "${sandboxLiteral(root)}")`)
+    .join(" ")})(allow file-read* (subpath "${sandboxLiteral(workspaceDirectory)}"))`;
+}
+
+function sandboxLiteral(value: string): string {
+  return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+}
+
+function sandboxTraversalPaths(...values: readonly string[]): readonly string[] {
+  const traversal = new Set<string>();
+  for (const value of values) {
+    let current = path.resolve(value);
+    while (path.parse(current).root !== current) {
+      traversal.add(current);
+      current = path.dirname(current);
+    }
+  }
+  return [...traversal];
 }
 
 class NodeGooseAcpTransport implements GooseAcpTransport {
@@ -249,7 +319,7 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
   private transportFailed = false;
   private closePromise: Promise<void> | undefined;
 
-  constructor(private readonly child: ChildProcessWithoutNullStreams) {
+  constructor(private readonly child: GooseChildProcess) {
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => {
       this.stdoutBuffer += chunk;
@@ -344,28 +414,26 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
     });
   }
 
-  private async waitForExit(milliseconds: number): Promise<boolean> {
-    if (this.exited) {
-      return true;
+  private async waitForProcessTreeExit(milliseconds: number): Promise<boolean> {
+    if (process.platform !== "win32") {
+      return waitForProcessGroupExit(this.child, milliseconds, () => this.exited);
     }
+    if (this.exited) return true;
     await Promise.race([this.exitPromise, wait(milliseconds)]);
     return this.exited;
   }
 
   private async closeProcess(): Promise<void> {
-    if (this.exited) {
-      return;
-    }
     this.child.stdin.end();
-    if (await this.waitForExit(CLOSE_GRACE_MS)) {
+    if (await this.waitForProcessTreeExit(CLOSE_GRACE_MS)) {
       return;
     }
     signalProcessGroup(this.child, "SIGTERM");
-    if (await this.waitForExit(TERMINATE_GRACE_MS)) {
+    if (await this.waitForProcessTreeExit(TERMINATE_GRACE_MS)) {
       return;
     }
     signalProcessGroup(this.child, "SIGKILL");
-    if (!(await this.waitForExit(TERMINATE_GRACE_MS))) {
+    if (!(await this.waitForProcessTreeExit(TERMINATE_GRACE_MS))) {
       throw new GooseRunnerProcessError(
         "cleanup-failed",
         "Goose process group did not exit after forced termination",
@@ -397,13 +465,15 @@ function createNodeGooseAcpTransport(options: GooseAcpSpawnOptions): GooseAcpTra
     );
   }
 
-  let child: ChildProcessWithoutNullStreams;
+  let child: GooseChildProcess;
   try {
     child = spawn("/usr/bin/sandbox-exec", ["-p", networkProfile, options.executablePath], {
       cwd: options.workingDirectory,
-      env: { ...options.environment },
+      env: { ...options.environment, ACTESTRA_PARENT_LIVENESS_FD: "3" },
       detached: true,
-      stdio: ["pipe", "pipe", "pipe"],
+      // fd 3 is a parent-liveness pipe. The admitted runner watches its read
+      // end and terminates its process group when Main disappears.
+      stdio: ["pipe", "pipe", "pipe", "pipe"],
       windowsHide: true,
     });
   } catch (error) {
@@ -545,6 +615,16 @@ export async function openGooseRunnerHandshake(
   }
   const stableModelBinding =
     options.modelBinding === undefined ? undefined : validateModelBinding(options.modelBinding);
+  const admittedWorkspaceDirectory =
+    options.workspaceDirectory === undefined
+      ? undefined
+      : await realpath(options.workspaceDirectory).catch((error: unknown) => {
+          throw new GooseRunnerProcessError(
+            "invalid-options",
+            "Goose runner workspace directory is unavailable",
+            { cause: error },
+          );
+        });
   let prepared:
     | { readonly root: string; readonly executablePath: string; readonly workingDirectory: string }
     | undefined;
@@ -554,6 +634,9 @@ export async function openGooseRunnerHandshake(
     const spawnOptions: GooseAcpSpawnOptions = Object.freeze({
       executablePath: prepared.executablePath,
       workingDirectory: prepared.workingDirectory,
+      ...(admittedWorkspaceDirectory === undefined
+        ? {}
+        : { workspaceDirectory: admittedWorkspaceDirectory }),
       environment: createGooseRunnerEnvironment(prepared.root, stableModelBinding?.binding),
       networkPolicy:
         capabilityProxyPort === undefined || stableModelBinding === undefined
@@ -575,6 +658,16 @@ export async function openGooseRunnerHandshake(
       privateRoot: prepared.root,
       async openSession(sessionOptions: GooseAcpSessionOptions): Promise<GooseAcpSession> {
         try {
+          if (
+            admittedWorkspaceDirectory !== undefined &&
+            (await realpath(sessionOptions.workspaceDirectory).catch(() => undefined)) !==
+              admittedWorkspaceDirectory
+          ) {
+            throw new GooseRunnerProcessError(
+              "invalid-options",
+              "Goose ACP session workspace differs from the admitted sandbox root",
+            );
+          }
           return await connection.openSession(sessionOptions);
         } catch (error) {
           closePromise ??= closeAndRemove(connection, prepared!.root);

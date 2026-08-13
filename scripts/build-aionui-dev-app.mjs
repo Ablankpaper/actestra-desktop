@@ -97,6 +97,10 @@ function resolveOutputDirectory() {
   return defaultDir;
 }
 
+function resolveElectronCache() {
+  return process.env.ELECTRON_CACHE ?? path.join(os.homedir(), "Library", "Caches", "electron");
+}
+
 function materializeDownstream() {
   console.log("📦 Materializing AionUI downstream...");
   const result = spawnSync("bun", ["run", "downstream:aionui:materialize"], {
@@ -109,6 +113,21 @@ function materializeDownstream() {
   }
   if (result.status !== 0) {
     fail(`Downstream materialize failed with exit code ${result.status}`);
+  }
+}
+
+function installDownstreamDependencies() {
+  console.log("📥 Installing frozen downstream dependencies...");
+  const result = spawnSync("bun", ["install", "--cwd", materializedRoot, "--frozen-lockfile"], {
+    cwd: repositoryRoot,
+    stdio: "inherit",
+    shell: false,
+  });
+  if (result.error) {
+    fail(`Failed to spawn downstream install: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    fail(`Downstream dependency install failed with exit code ${result.status}`);
   }
 }
 
@@ -135,6 +154,7 @@ function buildApp(outputDir) {
         ...process.env,
         CSC_IDENTITY_AUTO_DISCOVERY: "false",
         AIONUI_HUB_SKIP: "1",
+        ELECTRON_CACHE: resolveElectronCache(),
       },
     },
   );
@@ -228,6 +248,7 @@ function main() {
   // unsafe override fails immediately instead of after a full materialize.
   const outputDir = resolveOutputDirectory();
   materializeDownstream();
+  installDownstreamDependencies();
   buildApp(outputDir);
   verifyApp(outputDir);
   atomicLinkOutput(outputDir);
