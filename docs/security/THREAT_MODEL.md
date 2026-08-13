@@ -1,6 +1,7 @@
 # Actestra Repository Threat Model
 
-**Status:** Baseline for P7.1 review; executable evidence is not yet complete
+**Status:** P7.1 local and packaged-macOS security baseline verified; P7.2-P7.4,
+cross-platform P8, release signing, and final acceptance remain open
 **Date:** 2026-08-13
 **Scope:** P4-P6 product boundaries and the P7.1 security-abuse baseline
 
@@ -22,11 +23,33 @@ Renderer input, provider/model output, Worker messages, local peers, files,
 Git state, persisted bytes, and packaged artifacts are rejected at the owning
 boundary without protected side effects.
 
-This document describes the baseline at the P6 source revision. It is not a
-claim that the P7.1 attack suite, packaged security harness, cross-platform
-enforcement, release signing, or user acceptance has passed. The final P7.1
-documentation-only revision will update the footer after the reviewed source
-and test bytes are fixed.
+This document describes the verified P7.1 baseline at the reviewed source
+revision. It does not claim that all of P7, cross-platform enforcement, formal
+release signing, distribution, deployment, or final user acceptance has
+passed.
+
+## Verified P7.1 evidence
+
+The reviewed implementation and test parent is `04f92b2`. On macOS arm64:
+
+- the focused security suite covers all 28 catalog IDs;
+- the aggregate local gate passes 28/28 `denied-safe` cases;
+- the complete local project gate passes 121 test files and 1,248 tests,
+  zero-warning lint, strict typecheck, Electron SQLite, product boundary,
+  frozen foundation, downstream overlay, and package;
+- the admitted Goose runner passes the real parent-death and process cleanup
+  cases, with no privileged process residue;
+- the development app builds with `DIST_EXIT=0`, has identifier
+  `com.bignormal.actestra`, arm64 architecture, and a verified ad-hoc
+  signature; and
+- packaged trust verification, the existing General Work smoke, and the
+  packaged P7 security smoke pass. The packaged hook physically exercises
+  `P7-A-RENDERER-002`; the other catalog cases remain covered by their local
+  Layer 1-3 evidence.
+
+These are local and packaged development-build results. No exact-head CI,
+merged-main CI, formal signing/notarization, release, deployment, or user
+acceptance is claimed here.
 
 ## Threat Model, Trust Boundaries, and Assumptions
 
@@ -276,10 +299,11 @@ contain API keys, authorization headers, provider URLs with embedded secrets,
 prompt or completion text, tool arguments, content references, raw patches,
 absolute user paths, environment values, or private Worker state.
 
-The P7.1 catalog and ledger begin as `evidence-incomplete`; this document does
-not pre-claim attack success. A final revision binds the body to the exact
-reviewed product and test parent and records local, packaged, CI, merge, and
-merged-main evidence separately from release or user acceptance.
+The P7.1 catalog and ledger were initialized as `evidence-incomplete`; this
+reviewed revision binds them to the exact implementation/test parent and
+records local and packaged development evidence separately from CI, merge,
+release, deployment, and user acceptance. Future P7 slices must add their own
+evidence rather than widening this P7.1 disposition.
 
 ## Related Authority
 
@@ -291,4 +315,4 @@ merged-main evidence separately from release or user acceptance.
 - [ADR-0027](../architecture/decisions/0027-p7-threat-model-and-abuse-authority.md)
 
 Repository: github.com/bignormal/actestra-desktop
-Version: 17acae034d723e45a46dcef264844ed5a27c3da2
+Version: 4a461f9b5c6ada45a25983a835fca212388b6f64

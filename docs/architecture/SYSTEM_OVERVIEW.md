@@ -17,6 +17,16 @@ delivery batch recorded in project status. A generic supervised planner
 boundary exists locally, but CrewAI itself is not imported, admitted, or
 packaged.
 
+The current P7.1 security baseline is verified locally on macOS arm64 at
+implementation/test parent `04f92b2`: all 28 catalog abuse cases are
+`denied-safe`, the development package passes trust checks, and the packaged
+security hook exercises the Renderer network-isolation case
+`P7-A-RENDERER-002`. This is a development verification boundary only.
+P7.2 Worker resource/process reliability, P7.3 database backup and migration
+rollback, P7.4 diagnostic export and audit retention, Windows/Linux enforcement,
+formal signing, release, deployment, and final user acceptance remain outside
+the verified system state.
+
 ## Context
 
 Actestra presents one desktop product while using multiple specialized execution
