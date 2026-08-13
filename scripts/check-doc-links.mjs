@@ -4,7 +4,13 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const markdownFiles = [];
-const excludedDirectories = new Set([".git", "node_modules", "aionui-v2.1.41", ".codex-tmp"]);
+const excludedDirectories = new Set([
+  ".git",
+  "node_modules",
+  "aionui-v2.1.41",
+  ".actestra",
+  ".codex-tmp",
+]);
 
 function walk(directory) {
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
