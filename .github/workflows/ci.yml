@@ -128,3 +128,6 @@ jobs:
 
       - name: Smoke materialized AionUi General Work from clean profiles
         run: bun run smoke:aionui-general-work
+
+      - name: Smoke packaged P7 security boundaries from clean profiles
+        run: bun run smoke:p7-security

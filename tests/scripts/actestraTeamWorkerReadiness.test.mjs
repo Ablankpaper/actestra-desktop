@@ -152,7 +152,7 @@ describe("Actestra Team planner and Worker readiness boundary", () => {
     expect(patch).toContain("window.webContents.once('did-finish-load'");
     expect(patch).toContain("this.#recoverWorkerRuns()");
     expect(patch).not.toContain("await teamComposition.recover();");
-    expect(patch).toContain("writeActestraTeamPlannerManifest(resolve(__dirname, '../..'))");
+    expect(patch).toContain("writeActestraTeamPlannerManifest(projectRoot ?? process.cwd())");
 
     const service = fs.readFileSync(servicePath, "utf8");
     expect(service).not.toContain("configureOrchestrator");

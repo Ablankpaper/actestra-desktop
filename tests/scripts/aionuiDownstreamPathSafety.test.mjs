@@ -81,7 +81,11 @@ describe("AionUi downstream path safety", () => {
         "packaged .app completeness",
       ]),
     });
-    expect(overlay.patches.at(-1)).toMatchObject({
+    expect(
+      overlay.patches.find(
+        (patch) => patch.path === "patches/0016-actestra-provider-credential-and-capability.mjs",
+      ),
+    ).toMatchObject({
       path: "patches/0016-actestra-provider-credential-and-capability.mjs",
       classification: expect.arrayContaining(["R1"]),
       domains: expect.arrayContaining([

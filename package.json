@@ -22,6 +22,7 @@
     "lint": "oxlint --deny-warnings apps downstream script scripts tests vitest.config.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:security": "node scripts/run-p7-abuse-cases.mjs",
     "test:coverage": "vitest run --coverage",
     "test:electron-sqlite": "node scripts/test-electron-sqlite.mjs",
     "test:smoke-harness": "node scripts/test-smoke-harness.mjs",
@@ -44,12 +45,13 @@
     "verify:package": "node scripts/verify-packaged-app.mjs",
     "smoke:package": "node scripts/smoke-packaged-app.mjs",
     "smoke:aionui-general-work": "node scripts/smoke-aionui-general-work.mjs",
+    "smoke:p7-security": "node scripts/smoke-p7-security.mjs",
     "goose:runner:tools": "node scripts/install-goose-runner-tools.mjs",
     "goose:runner:format:check": "cargo fmt --manifest-path workers/goose-runner/Cargo.toml -- --check",
     "goose:runner:build": "node scripts/build-goose-runner.mjs",
     "goose:runner:test": "node scripts/test-goose-runner.mjs",
     "goose:runner:check": "bun run goose:runner:format:check && bun run goose:runner:tools && bun run goose:runner:build && bun run goose:runner:test",
-    "check": "bun run format:check && bun run lint && bun run typecheck && bun run test:electron-sqlite && bun run test && bun run test:smoke-harness && bun run boundary:check && bun run foundation:aionui:check && bun run downstream:aionui:check && bun run package"
+    "check": "bun run format:check && bun run lint && bun run typecheck && bun run test:electron-sqlite && bun run test && bun run test:security && bun run test:smoke-harness && bun run boundary:check && bun run foundation:aionui:check && bun run downstream:aionui:check && bun run package"
   },
   "dependencies": {
     "croner": "9.1.0",

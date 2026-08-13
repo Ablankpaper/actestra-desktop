@@ -80,10 +80,17 @@ function buildActestraTeamPlannerManifestPlugin() {
   ) as {
     writeActestraTeamPlannerManifest: (projectRoot: string) => string;
   };
+  let projectRoot: string | undefined;
   return {
     name: 'vite-plugin-build-actestra-team-planner-manifest',
-    closeBundle() {
-      writeActestraTeamPlannerManifest(resolve(__dirname, '../..'));
+    configResolved(config: { readonly root: string }) {
+      projectRoot = config.root;
+    },
+    writeBundle() {
+      // electron-vite materializes this config into a temporary module. Use
+      // Vite's resolved root and wait until the entry bytes are on disk before
+      // binding the manifest; __dirname and process.cwd() are not stable here.
+      writeActestraTeamPlannerManifest(projectRoot ?? process.cwd());
     },
   };
 }`,
