@@ -21,7 +21,9 @@ A real direct-push attempt from a documentation branch ahead of `main` exited
 status checks. The remote `main` ref remained unchanged at
 `17845d0c7701a31c6e7778b082c42966f056f0f8`. A separate dry-run through
 `old-origin` exited 128 before contacting GitHub because its disabled
-`no_push` protocol has no remote helper.
+`no_push` protocol has no remote helper. The governed pull-request path is
+exercised by
+[#54](https://github.com/Ablankpaper/actestra-desktop/pull/54).
 
 The canonical local `origin` remains
 `git@github-ablankpaper:Ablankpaper/actestra-desktop.git`. The historical
