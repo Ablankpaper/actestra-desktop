@@ -10,7 +10,7 @@ Base: `a32b7cb4516f5592e8e1fe6f1f5afad7c50de991`
 
 Implementation: `13270ca0abd7353710541afca9ddf46c47670be3`
 
-Merged PR: [6](https://github.com/bignormal/actestra-desktop/pull/6)
+Merged PR: [6](https://github.com/Ablankpaper/actestra-desktop/pull/6)
 
 ## Result
 
@@ -71,7 +71,7 @@ corresponding AionUi error, diagnostics, and configuration experience.
 ## Non-claims
 
 The F0 implementation commit is pushed, and exact-head CI run
-[30392140461](https://github.com/bignormal/actestra-desktop/actions/runs/30392140461)
+[30392140461](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30392140461)
 passes the root source/test/boundary/documentation/package/smoke workflow. The
 full native AionUi tests, native build, and visual launch in this document are
 local evidence and are not represented as CI.

@@ -34,44 +34,44 @@ Final pull-request head: `71bf3e3fb1d7661fee053ee811279d44f1fdf45f`
 Squash merge commit: `f6833c50eaf5a426948bac7999f93a08b19a425e`
 
 Review surface:
-[pull request 3](https://github.com/bignormal/actestra-desktop/pull/3)
+[pull request 3](https://github.com/Ablankpaper/actestra-desktop/pull/3)
 
 P2 entry proof:
-[main CI run 30329620829](https://github.com/bignormal/actestra-desktop/actions/runs/30329620829)
+[main CI run 30329620829](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30329620829)
 
 P3 kickoff proof:
-[pull-request CI run 30329964305](https://github.com/bignormal/actestra-desktop/actions/runs/30329964305)
+[pull-request CI run 30329964305](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30329964305)
 passed on exact head `b9c1119479c805c02452e4054a3d904649a3ca03`.
 
 P3.1/P3.2 implementation proof:
-[pull-request CI run 30331681309](https://github.com/bignormal/actestra-desktop/actions/runs/30331681309)
+[pull-request CI run 30331681309](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30331681309)
 
 P3.3 implementation proof:
-[pull-request CI run 30335076556](https://github.com/bignormal/actestra-desktop/actions/runs/30335076556)
+[pull-request CI run 30335076556](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30335076556)
 
 P3.4 implementation proof:
-[pull-request CI run 30339662937](https://github.com/bignormal/actestra-desktop/actions/runs/30339662937)
+[pull-request CI run 30339662937](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30339662937)
 
 P3.5 implementation proof:
-[pull-request CI run 30345370507](https://github.com/bignormal/actestra-desktop/actions/runs/30345370507)
+[pull-request CI run 30345370507](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30345370507)
 
 P3.6 implementation proof:
-[pull-request CI run 30350732223](https://github.com/bignormal/actestra-desktop/actions/runs/30350732223)
+[pull-request CI run 30350732223](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30350732223)
 
 Review-remediation proof:
-[pull-request CI run 30374144474](https://github.com/bignormal/actestra-desktop/actions/runs/30374144474)
+[pull-request CI run 30374144474](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30374144474)
 
 Review-closure evidence proof:
-[pull-request CI run 30374447377](https://github.com/bignormal/actestra-desktop/actions/runs/30374447377)
+[pull-request CI run 30374447377](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30374447377)
 
 Ready-state evidence proof:
-[pull-request CI run 30376456379](https://github.com/bignormal/actestra-desktop/actions/runs/30376456379)
+[pull-request CI run 30376456379](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30376456379)
 
 Final pull-request proof:
-[pull-request CI run 30376696055](https://github.com/bignormal/actestra-desktop/actions/runs/30376696055)
+[pull-request CI run 30376696055](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30376696055)
 
 P3 acceptance proof:
-[main CI run 30378191752](https://github.com/bignormal/actestra-desktop/actions/runs/30378191752)
+[main CI run 30378191752](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30378191752)
 passed on exact squash commit `f6833c50eaf5a426948bac7999f93a08b19a425e`.
 
 ## Purpose

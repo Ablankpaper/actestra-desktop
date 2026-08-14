@@ -25,90 +25,90 @@ release infrastructure, or product boundaries with Aera.
 ## Current state
 
 P2 is accepted on `main`.
-[Pull request 2](https://github.com/bignormal/actestra-desktop/pull/2) squash
+[Pull request 2](https://github.com/Ablankpaper/actestra-desktop/pull/2) squash
 merged the independent product shell at
 `76d6a58b20c3e010ee759358f2c86be80bc6a6c1`, and
-[main CI](https://github.com/bignormal/actestra-desktop/actions/runs/30329620829)
+[main CI](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30329620829)
 passes on that exact commit.
 
 Actestra has accepted **P3 — Platform Core and Contracts** on `main`. P3.1
 domain records and lifecycle rules plus the P3.2 version 1 event contract are
 implemented at
 `31dd6e4178eb7641b45be0ee2bccb862a96dac99` and pass
-[PR CI run 30331681309](https://github.com/bignormal/actestra-desktop/actions/runs/30331681309).
+[PR CI run 30331681309](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30331681309).
 P3.3 adds a storage-neutral persistence port, accepted SQLite/migration
 decision, forward-only schema registry, and main-owned adapter at
 `4de756984269624a02fbfdf77e558c958a03c2e0`; exact-head
-[PR CI run 30335076556](https://github.com/bignormal/actestra-desktop/actions/runs/30335076556)
+[PR CI run 30335076556](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30335076556)
 passes. P3.4 adds the protocol-versioned worker boundary, main-owned lifecycle
 supervisor, and deterministic fake at
 `2b1ad9200ff44f2b6be219a8a4b58b0083ebd45b`; exact implementation
-[PR CI run 30339662937](https://github.com/bignormal/actestra-desktop/actions/runs/30339662937)
+[PR CI run 30339662937](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30339662937)
 passes. P3.5 adds privileged-service contracts and deterministic main-owned
 services governed by
 [ADR-0007](docs/architecture/decisions/0007-privileged-service-authorization.md)
 at `cec0cdc554656c021cdff7f2341ddd3f9b5d83dd`; exact implementation
-[PR CI run 30345370507](https://github.com/bignormal/actestra-desktop/actions/runs/30345370507)
+[PR CI run 30345370507](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30345370507)
 passes. P3.6 adds the main-only composition root, SQLite schema version 3
 evidence, terminal-attempt release barrier, closed IPC, and bounded renderer
 projection governed by
 [ADR-0008](docs/architecture/decisions/0008-main-owned-projection-and-ipc.md).
 It is implemented at `950fe0efa2fdc5adc69d013acc9f417d201cb28e`; exact
-[PR CI run 30350732223](https://github.com/bignormal/actestra-desktop/actions/runs/30350732223)
+[PR CI run 30350732223](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30350732223)
 passes. Review remediation is implemented at
 `4fa0fb120a6ceb2c71effd2a552e8d9bbf05d151`; exact
-[PR CI run 30374144474](https://github.com/bignormal/actestra-desktop/actions/runs/30374144474)
+[PR CI run 30374144474](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30374144474)
 passes. The full 67-file independent review and zero-issue review of all
 remediation files are complete.
-[Pull request 3](https://github.com/bignormal/actestra-desktop/pull/3) reached
+[Pull request 3](https://github.com/Ablankpaper/actestra-desktop/pull/3) reached
 final head `71bf3e3fb1d7661fee053ee811279d44f1fdf45f`, passed
-[PR CI run 30376696055](https://github.com/bignormal/actestra-desktop/actions/runs/30376696055),
+[PR CI run 30376696055](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30376696055),
 and squash merged as `f6833c50eaf5a426948bac7999f93a08b19a425e`.
-[Main CI run 30378191752](https://github.com/bignormal/actestra-desktop/actions/runs/30378191752)
+[Main CI run 30378191752](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30378191752)
 passes on that exact squash commit, closing the P3 exit gate. P4.0/F0 and the
 P4.1/F1 identity-and-isolation implementation are CI-backed on
 `feat/aionui-first-foundation`. P4.2/F2 shadow projection implementation
 `632573fa03c34fdb789c85d8efc1ce1e0f8e8177` plus packaged-boundary
 remediation `1478726d62302fa885525024eb4839af5e98b4dd` pass
-[macOS arm64 CI run 30421351204](https://github.com/bignormal/actestra-desktop/actions/runs/30421351204);
+[macOS arm64 CI run 30421351204](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30421351204);
 P4.3/F3.1 approval-decision authority implementation
 `cf61ffb8453a888cdc03f73457ebeaf72708511a` passes
-[macOS arm64 CI run 30425061316](https://github.com/bignormal/actestra-desktop/actions/runs/30425061316)
+[macOS arm64 CI run 30425061316](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30425061316)
 on the same branch. Review remediation
 `e343e83a7c22d8977bb2e9dd06169a69ed9826d5` passes
-[macOS arm64 CI run 30431363721](https://github.com/bignormal/actestra-desktop/actions/runs/30431363721).
-[Pull request 6](https://github.com/bignormal/actestra-desktop/pull/6)
+[macOS arm64 CI run 30431363721](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30431363721).
+[Pull request 6](https://github.com/Ablankpaper/actestra-desktop/pull/6)
 reached final head `70b2f29329fec26bf0e3d6384d8563aedcb7a4ce`, passed
-[PR CI run 30431557027](https://github.com/bignormal/actestra-desktop/actions/runs/30431557027),
+[PR CI run 30431557027](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30431557027),
 completed a scoped 21-file CodeRabbit CLI review with 0 findings, and squash
 merged as `61b9405fc007aa8cb16ec05a65f421cb7d277b51`.
-[Main CI run 30434563810](https://github.com/bignormal/actestra-desktop/actions/runs/30434563810)
+[Main CI run 30434563810](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30434563810)
 passes on that exact squash commit. P4.3/F3.2 approval-delivery policy and
 audit implementation `20e3c0fcada0d072fc35820d43b85c953bf93929` reached
-[PR 7](https://github.com/bignormal/actestra-desktop/pull/7) final head
+[PR 7](https://github.com/Ablankpaper/actestra-desktop/pull/7) final head
 `df821ca203bea7b611fa8fb8092d00a16cabe578` and squash merged as
 `ce19dbe072328e16dcdaf116b8199d5502cb44c6`.
-[Main CI run 30442166290](https://github.com/bignormal/actestra-desktop/actions/runs/30442166290)
+[Main CI run 30442166290](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30442166290)
 passes on that exact merge. F3.3 approval-reconciliation policy and audit
-reached [PR 8](https://github.com/bignormal/actestra-desktop/pull/8) final head
+reached [PR 8](https://github.com/Ablankpaper/actestra-desktop/pull/8) final head
 `3f85e13072f5fb13fb43c9dae94f992bb0b7fb9c` and squash merged as
 `c841ed9cb6a54bcb2e4078ca2be941adce0ac4ad`.
-[Main CI run 30449520722](https://github.com/bignormal/actestra-desktop/actions/runs/30449520722)
+[Main CI run 30449520722](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30449520722)
 passes on that exact merge. A complete local CodeRabbit review of all 18
 changed files raised 0 issues before merge; the explicit remote review was
 rate-limited before review and is not represented as review evidence.
-[Pull request 9](https://github.com/bignormal/actestra-desktop/pull/9) then
+[Pull request 9](https://github.com/Ablankpaper/actestra-desktop/pull/9) then
 recorded the supervised CrewAI P6 direction, reached exact final head
 `d7e615206af0829375db0db1d1fcc6ca205102a8`, and squash merged as
 `327d5ca5abf3a0090bc2b3d3193e2935bbd47f38`.
-[Main CI run 30470505690](https://github.com/bignormal/actestra-desktop/actions/runs/30470505690)
+[Main CI run 30470505690](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30470505690)
 passes on that exact merge.
 
 GW-P4.2 general-work persistence reached
-[pull request 10](https://github.com/bignormal/actestra-desktop/pull/10), passed
+[pull request 10](https://github.com/Ablankpaper/actestra-desktop/pull/10), passed
 exact-head CI run 30475836615, and squash merged as
 `8e32882108b10272c1489c1a46a77cede1cc4fb7`; exact merged-main
-[CI run 30476091907](https://github.com/bignormal/actestra-desktop/actions/runs/30476091907)
+[CI run 30476091907](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30476091907)
 passes. GW-P4.3 is implemented and locally validated on
 `feat/aionui-p4-general-worker`. It advances AgentAdapter to version 2 and
 launches one deterministic General Worker utility process through a separate
@@ -161,7 +161,7 @@ deployed, or accepted.
 - F1 implementation commit
   `836a9f1f81687f091e1c5b92ce30bff167e9da4f` plus resource-only CI
   remediation `462a1b0d920279d42f124fdd28673d77dc55b765` pass
-  [macOS arm64 CI run 30417692550](https://github.com/bignormal/actestra-desktop/actions/runs/30417692550),
+  [macOS arm64 CI run 30417692550](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30417692550),
   including the materialized native build, unsigned bundle, packaged identity,
   and clean-profile smoke.
 - F2 recognizes conversation, task, provider, workspace, approval, artifact,

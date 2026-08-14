@@ -235,7 +235,7 @@ restart, and rollback behavior only.
 Implementation commit
 `cf61ffb8453a888cdc03f73457ebeaf72708511a` is pushed to
 `feat/aionui-first-foundation`.
-[macOS arm64 CI run 30425061316](https://github.com/bignormal/actestra-desktop/actions/runs/30425061316)
+[macOS arm64 CI run 30425061316](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30425061316)
 passes on that exact commit, including root source/test/boundary checks,
 documentation links, downstream materialization and install, strict type
 checks, identity and isolation checks, native production build, unsigned

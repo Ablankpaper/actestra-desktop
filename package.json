@@ -3,10 +3,10 @@
   "version": "0.1.0-alpha.0",
   "private": true,
   "description": "Actestra independent multi-agent desktop workspace",
-  "author": "bignormal",
+  "author": "Ablankpaper",
   "repository": {
     "type": "git",
-    "url": "https://github.com/bignormal/actestra-desktop.git"
+    "url": "https://github.com/Ablankpaper/actestra-desktop.git"
   },
   "type": "module",
   "main": "out/main/index.js",

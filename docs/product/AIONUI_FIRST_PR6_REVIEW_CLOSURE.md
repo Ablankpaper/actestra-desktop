@@ -3,7 +3,7 @@
 Status: Review remediation is implemented at
 `e343e83a7c22d8977bb2e9dd06169a69ed9826d5`, pushed on
 `feat/aionui-first-foundation`, and passes exact-head
-[CI run 30431363721](https://github.com/bignormal/actestra-desktop/actions/runs/30431363721).
+[CI run 30431363721](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30431363721).
 Pull request 6 subsequently reached final head
 `70b2f29329fec26bf0e3d6384d8563aedcb7a4ce`, squash merged as
 `61b9405fc007aa8cb16ec05a65f421cb7d277b51`, and passed exact main CI run

@@ -15,8 +15,8 @@ Exact current accepted head:
 ## Entry evidence
 
 The schedule branch starts from the exact verified Office squash merge for
-[pull request 19](https://github.com/bignormal/actestra-desktop/pull/19).
-[Main CI run 30602821085](https://github.com/bignormal/actestra-desktop/actions/runs/30602821085)
+[pull request 19](https://github.com/Ablankpaper/actestra-desktop/pull/19).
+[Main CI run 30602821085](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30602821085)
 passes on exact commit `505afb2f3916e75c7abb07cdf461bda29a602b9b`.
 
 [ADR-0016](../architecture/decisions/0016-p4-general-work-process-and-content-boundaries.md),
@@ -163,10 +163,10 @@ invalid or terminal path fails deterministically.
 
 The exact GW-P4.3 head
 `b3a3bc7e27d7dab44dadeff6dcedc92cec1b3ee5` passed
-[pull-request CI run 30481670123](https://github.com/bignormal/actestra-desktop/actions/runs/30481670123).
+[pull-request CI run 30481670123](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30481670123).
 It squash merged as `671587813bea18411b6cdc2ee388d94cd18d6c50`;
 exact
-[merged-main CI run 30481890911](https://github.com/bignormal/actestra-desktop/actions/runs/30481890911)
+[merged-main CI run 30481890911](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30481890911)
 passes.
 
 ### GW-P4.4 — Scoped native tools and policy
@@ -238,10 +238,10 @@ no scope or policy bypass.
 
 The exact GW-P4.4 head
 `34f2d2201581c19b3dc67c5a7936f8a411bff9e1` passed
-[pull-request CI run 30486392525](https://github.com/bignormal/actestra-desktop/actions/runs/30486392525).
+[pull-request CI run 30486392525](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30486392525).
 It squash merged as `7ec009c6384a93c17f24e4276469e98cb5f2b71d`;
 exact
-[merged-main CI run 30486544268](https://github.com/bignormal/actestra-desktop/actions/runs/30486544268)
+[merged-main CI run 30486544268](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30486544268)
 passes.
 
 ### GW-P4.5 — Coordination and recovery
