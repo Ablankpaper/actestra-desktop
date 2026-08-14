@@ -136,7 +136,7 @@ and model loopback leases, sandboxed Worker composition, SQLite validation,
 artifact trust roots, and downstream source-copy checks. End with:
 
 ```text
-Repository: github.com/bignormal/actestra-desktop
+Repository: github.com/Ablankpaper/actestra-desktop
 Version: 17acae034d723e45a46dcef264844ed5a27c3da2
 ```
 
@@ -730,7 +730,7 @@ not include diff-specific vulnerability prose in the threat model. Set the
 footer to:
 
 ```text
-Repository: github.com/bignormal/actestra-desktop
+Repository: github.com/Ablankpaper/actestra-desktop
 Version: <exact Task 9 parent SHA>
 ```
 

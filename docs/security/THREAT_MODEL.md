@@ -314,5 +314,5 @@ evidence rather than widening this P7.1 disposition.
 - [Development Sequence](../roadmap/DEVELOPMENT_SEQUENCE.md)
 - [ADR-0027](../architecture/decisions/0027-p7-threat-model-and-abuse-authority.md)
 
-Repository: github.com/bignormal/actestra-desktop
+Repository: github.com/Ablankpaper/actestra-desktop
 Version: 4a461f9b5c6ada45a25983a835fca212388b6f64
