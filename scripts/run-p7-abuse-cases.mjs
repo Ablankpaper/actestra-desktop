@@ -3,6 +3,7 @@ import { resolve, relative, isAbsolute, sep } from "node:path";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { classifyBoundTestReport } from "./p7-abuse-report.mjs";
 
 const ROOT = process.cwd();
 const CATALOG_MODULE = "./tests/security/abuseCaseCatalog.ts";
@@ -105,26 +106,20 @@ function runBoundTests(catalog, files) {
       ["vitest", "run", ...files, "--reporter=json", `--outputFile=${resultPath}`],
       { cwd: ROOT, encoding: "utf8", env: process.env, stdio: "pipe" },
     );
-    if (result.status !== 0 || result.error) {
-      process.stdout.write(result.stdout ?? "");
-      process.stderr.write(result.stderr ?? "");
-      return result.status ?? 1;
-    }
     const report = JSON.parse(readFileSync(resultPath, "utf8"));
-    const assertions = report.testResults.flatMap((suite) => suite.assertionResults ?? []);
-    const byTitle = new Map(assertions.map((assertion) => [assertion.title, assertion]));
-    const missing = catalog.filter((abuseCase) => !byTitle.has(abuseCase.testName));
-    const failed = catalog.filter(
-      (abuseCase) => byTitle.get(abuseCase.testName)?.status !== "passed",
-    );
-    if (missing.length > 0) {
+    const classification = classifyBoundTestReport(catalog, report);
+    if (classification.missingCaseIds.length > 0) {
       failHarness(
-        `catalog cases have no executed assertion: ${missing.map((entry) => entry.id).join(",")}`,
+        `catalog cases have no executed assertion: ${classification.missingCaseIds.join(",")}`,
       );
       return 1;
     }
-    if (failed.length > 0) {
-      failHarness(`catalog cases did not pass: ${failed.map((entry) => entry.id).join(",")}`);
+    if (classification.failedCaseIds.length > 0) {
+      failHarness(`catalog cases did not pass: ${classification.failedCaseIds.join(",")}`);
+      return 1;
+    }
+    if (result.status !== 0 || result.error) {
+      failHarness("an unbound security assertion failed");
       return 1;
     }
     console.info(`P7 local abuse gate passed: ${catalog.length} denied-safe bound cases.`);
