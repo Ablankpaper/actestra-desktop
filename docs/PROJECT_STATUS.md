@@ -1,8 +1,37 @@
 # Project Status
 
-Last updated: 2026-08-14
+Last updated: 2026-08-15
 
 ## Current phase
+
+### 2026-08-15 new-repository main governance enabled
+
+Repository ruleset
+[`20861348`](https://github.com/Ablankpaper/actestra-desktop/rules/20861348)
+is active on the default branch of `Ablankpaper/actestra-desktop`. Changes to
+`main` must enter through a pull request and pass the exact GitHub Actions
+contexts `macOS arm64 foundation` and `Goose runner admission`, both pinned to
+the GitHub Actions integration. Zero approving reviews are required so the
+single-owner workflow does not deadlock. Branch deletion and non-fast-forward
+updates are denied. The `Ablankpaper` owner has an emergency bypass only from
+a pull request; that bypass does not permit direct pushes to `main`.
+
+A real direct-push attempt from a documentation branch ahead of `main` exited
+1 with GitHub error `GH013`: GitHub required a pull request and both required
+status checks. The remote `main` ref remained unchanged at
+`17845d0c7701a31c6e7778b082c42966f056f0f8`. A separate dry-run through
+`old-origin` exited 128 before contacting GitHub because its disabled
+`no_push` protocol has no remote helper. The governed pull-request path is
+exercised by
+[#54](https://github.com/Ablankpaper/actestra-desktop/pull/54).
+
+The canonical local `origin` remains
+`git@github-ablankpaper:Ablankpaper/actestra-desktop.git`. The historical
+`old-origin` retains its former address for read-only redirect diagnostics, but
+its local push URL is disabled so subsequent development cannot accidentally
+use the former-account remote. This is repository-development governance, not
+a release, deployment, candidate, signing, notarization, or new product
+acceptance claim.
 
 ### 2026-08-14 repository authority migration verified
 
