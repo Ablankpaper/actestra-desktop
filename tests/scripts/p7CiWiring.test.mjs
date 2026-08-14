@@ -14,21 +14,28 @@ describe("P7 CI wiring", () => {
   it("runs the real parent-death attack only after the Goose artifact is admitted", () => {
     const aggregate = read("scripts/run-p7-abuse-cases.mjs");
     const gooseRunnerSelector = read("scripts/test-goose-runner.mjs");
+    const vitestConfig = read("vitest.config.ts");
     const selfContainedAttacks = read("tests/security/mcpWorkerProcessAbuse.test.ts");
     const parentDeathPath = path.join(
       repositoryRoot,
-      "tests/security/gooseRunnerParentDeathAbuse.test.ts",
+      "tests/security/gooseRunnerParentDeathAbuse.integration.ts",
     );
 
     expect(selfContainedAttacks).not.toContain(
       "P7-A-PROCESS-002 terminates a real Goose runner when its supervisor dies",
     );
     expect(fs.existsSync(parentDeathPath)).toBe(true);
+    expect(parentDeathPath.endsWith(".integration.ts")).toBe(true);
     expect(fs.readFileSync(parentDeathPath, "utf8")).toContain(
       "P7-A-PROCESS-002 terminates a real Goose runner when its supervisor dies",
     );
-    expect(gooseRunnerSelector).toContain('"tests/security/gooseRunnerParentDeathAbuse.test.ts"');
-    expect(aggregate).not.toContain("gooseRunnerParentDeathAbuse.test.ts");
+    expect(gooseRunnerSelector).toContain(
+      '"tests/security/gooseRunnerParentDeathAbuse.integration.ts"',
+    );
+    expect(aggregate).not.toContain("gooseRunnerParentDeathAbuse.integration.ts");
+    expect(vitestConfig).toContain("ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIR");
+    expect(vitestConfig).toContain("ACTESTRA_GOOSE_RUNNER_MANIFEST_SHA256");
+    expect(vitestConfig).toContain("gooseRunnerParentDeathAbuse.integration.ts");
   });
 
   it("uploads the admitted Goose artifact only from main with bounded storage", () => {
