@@ -8,6 +8,13 @@ const repositoryRoot = path.resolve(import.meta.dirname, "../..");
 const packageJson = JSON.parse(fs.readFileSync(path.join(repositoryRoot, "package.json"), "utf8"));
 const projectStatus = fs.readFileSync(path.join(repositoryRoot, "docs/PROJECT_STATUS.md"), "utf8");
 const ciWorkflow = fs.readFileSync(path.join(repositoryRoot, ".github/workflows/ci.yml"), "utf8");
+const identityPatch = fs.readFileSync(
+  path.join(
+    repositoryRoot,
+    "downstream/aionui-v2.1.41/patches/0001-actestra-identity-and-isolation.mjs",
+  ),
+  "utf8",
+);
 const legacyProductPaths = [
   "apps/desktop/electron.vite.config.ts",
   "apps/desktop/electron-builder.yml",
@@ -20,6 +27,19 @@ const legacyProductPaths = [
 ];
 
 describe("AionUI-first product entrypoints", () => {
+  it("targets the transferred GitHub repository for product and update metadata", () => {
+    expect(packageJson.author).toBe("Ablankpaper");
+    expect(packageJson.repository).toEqual({
+      type: "git",
+      url: "https://github.com/Ablankpaper/actestra-desktop.git",
+    });
+    expect(identityPatch).toContain('name: "Ablankpaper"');
+    expect(identityPatch).toContain('"  owner: iOfficeAI", "  owner: Ablankpaper"');
+    expect(identityPatch).toContain("https://github.com/Ablankpaper/actestra-desktop");
+    expect(identityPatch).not.toContain("https://github.com/bignormal/actestra-desktop");
+    expect(identityPatch).not.toContain('"  owner: iOfficeAI", "  owner: bignormal"');
+  });
+
   it("routes normal development, preview, package, and distribution commands through downstream AionUI", () => {
     const scripts = packageJson.scripts;
 

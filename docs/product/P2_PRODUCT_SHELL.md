@@ -17,15 +17,15 @@ Final PR head: `f972bb6c33c925f3e333a6ee87d20e5bbb72cece`
 Squash merge: `76d6a58b20c3e010ee759358f2c86be80bc6a6c1`
 
 Review surface:
-[merged pull request 2](https://github.com/bignormal/actestra-desktop/pull/2)
+[merged pull request 2](https://github.com/Ablankpaper/actestra-desktop/pull/2)
 
 The local gate and
-[macOS arm64 pull-request CI run 30329423918](https://github.com/bignormal/actestra-desktop/actions/runs/30329423918)
+[macOS arm64 pull-request CI run 30329423918](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30329423918)
 pass on the exact final PR head. GitHub records a successful CodeRabbit status
 and full-diff summary on that head, but no submitted pull-request review or
 inline review thread; acceptance came from the owner merge after CLI
 remediation and exact-head CI, not an independent GitHub approval. The squash merge's
-[main CI run 30329620829](https://github.com/bignormal/actestra-desktop/actions/runs/30329620829)
+[main CI run 30329620829](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30329620829)
 also passes. This document does not claim candidate, release, deployment,
 distribution, or user acceptance.
 

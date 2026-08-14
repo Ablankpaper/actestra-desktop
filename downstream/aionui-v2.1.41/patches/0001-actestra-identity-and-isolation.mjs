@@ -83,8 +83,8 @@ export const ACTESTRA_PRODUCT = Object.freeze({
   executableName: 'Actestra',
   protocol: 'actestra',
   profileLayoutVersion: 1,
-  repositoryUrl: 'https://github.com/bignormal/actestra-desktop',
-  releasesUrl: 'https://github.com/bignormal/actestra-desktop/releases',
+  repositoryUrl: 'https://github.com/Ablankpaper/actestra-desktop',
+  releasesUrl: 'https://github.com/Ablankpaper/actestra-desktop/releases',
 });
 
 export const ACTESTRA_EXTERNAL_EFFECTS = Object.freeze({
@@ -382,11 +382,11 @@ packageJson.name = "actestra-desktop";
 packageJson.version = "0.1.0-alpha.0";
 packageJson.description = "Actestra independent multi-agent desktop workspace";
 packageJson.author = {
-  name: "bignormal",
+  name: "Ablankpaper",
 };
 packageJson.repository = {
   type: "git",
-  url: "https://github.com/bignormal/actestra-desktop.git",
+  url: "https://github.com/Ablankpaper/actestra-desktop.git",
 };
 packageJson.productName = "Actestra";
 write(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
@@ -408,7 +408,7 @@ for (const [before, after] of [
   ["      Name: AionUi", "      Name: Actestra"],
   ["      Icon: AionUi", "      Icon: Actestra"],
   ["      MimeType: x-scheme-handler/aionui;", "      MimeType: x-scheme-handler/actestra;"],
-  ["  owner: iOfficeAI", "  owner: bignormal"],
+  ["  owner: iOfficeAI", "  owner: Ablankpaper"],
   ["  repo: AionUi", "  repo: actestra-desktop"],
 ]) {
   const count = builder.split(before).length - 1;
@@ -1788,7 +1788,7 @@ replaceOnce(
         'X-Title': 'AionUi',
       });`,
   `      expect(config.defaultHeaders).toEqual({
-        'HTTP-Referer': 'https://github.com/bignormal/actestra-desktop',
+        'HTTP-Referer': 'https://github.com/Ablankpaper/actestra-desktop',
         'X-Title': 'Actestra',
       });`,
 );

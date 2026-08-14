@@ -8,7 +8,7 @@ Base: `61b9405fc007aa8cb16ec05a65f421cb7d277b51`
 
 Implementation: `20e3c0fcada0d072fc35820d43b85c953bf93929`
 
-Pull request: [7](https://github.com/bignormal/actestra-desktop/pull/7)
+Pull request: [7](https://github.com/Ablankpaper/actestra-desktop/pull/7)
 
 Final PR head: `df821ca203bea7b611fa8fb8092d00a16cabe578`
 
@@ -125,7 +125,7 @@ Local validation:
 
 Implementation `20e3c0fcada0d072fc35820d43b85c953bf93929` was pushed to
 PR 7. Exact implementation
-[CI run 30437387097](https://github.com/bignormal/actestra-desktop/actions/runs/30437387097)
+[CI run 30437387097](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30437387097)
 passes root source, test, type, boundary and build gates; documentation links;
 materialized strict types and Actestra identity/isolation tests; native
 production build; unsigned legacy-harness bundle; packaged identity/product
@@ -135,14 +135,14 @@ The local CodeRabbit review raised three valid documentation issues. All were
 fixed, and the follow-up completed with zero issues across all 23 changed
 files. Final PR head `df821ca203bea7b611fa8fb8092d00a16cabe578`
 passed
-[CI run 30437723459](https://github.com/bignormal/actestra-desktop/actions/runs/30437723459).
+[CI run 30437723459](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30437723459).
 The Ready-triggered GitHub CodeRabbit run selected all 23 files and completed
 successfully under the Free-plan walkthrough, with no submitted review or
 inline comment; it is not represented as an independent approval.
 
 PR 7 squash merged the exact final head as
 `ce19dbe072328e16dcdaf116b8199d5502cb44c6`.
-[Main CI run 30442166290](https://github.com/bignormal/actestra-desktop/actions/runs/30442166290)
+[Main CI run 30442166290](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30442166290)
 passes on that exact merge, including the root, documentation, materialized
 AionUi, unsigned bundle, package-boundary, and clean-profile smoke gates.
 Signed candidate and live F3.2 desktop evidence remain separate.

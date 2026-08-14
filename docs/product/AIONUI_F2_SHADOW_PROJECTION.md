@@ -5,7 +5,7 @@ Date: 2026-07-29
 Branch: `feat/aionui-first-foundation`
 
 Pull request:
-[merged PR 6](https://github.com/bignormal/actestra-desktop/pull/6)
+[merged PR 6](https://github.com/Ablankpaper/actestra-desktop/pull/6)
 
 ## Result
 
@@ -183,7 +183,7 @@ inert because no native or Actestra-authoritative read path consumes them.
 
 F2 implementation commit
 `632573fa03c34fdb789c85d8efc1ce1e0f8e8177` was pushed through pull request 6.
-[CI run 30421071039](https://github.com/bignormal/actestra-desktop/actions/runs/30421071039)
+[CI run 30421071039](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30421071039)
 passed source, documentation, dependency install, strict types, 14 focused
 tests, native production build, and unsigned bundle creation, then failed the
 legacy harness packaged-boundary check. The old check treated declared F2
@@ -197,7 +197,7 @@ AionUi text only in `out/main/index.js` when the fixed F2 compatibility markers
 are also present; renderer, preload, metadata, and every other textual ASAR
 file remain forbidden.
 
-[Exact-head CI run 30421351204](https://github.com/bignormal/actestra-desktop/actions/runs/30421351204)
+[Exact-head CI run 30421351204](https://github.com/Ablankpaper/actestra-desktop/actions/runs/30421351204)
 passes the complete macOS arm64 job: root checks and boundaries, documentation,
 downstream materialization and install, strict types, all 14 focused tests,
 native production build, unsigned app bundle, packaged identity and product
