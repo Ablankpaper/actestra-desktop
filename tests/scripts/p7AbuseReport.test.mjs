@@ -111,4 +111,38 @@ process.exit(1);
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("emits a bound case ID when Vitest fails before writing its JSON report", () => {
+    const directory = mkdtempSync(path.join(os.tmpdir(), "actestra-p7-report-missing-"));
+    const fakeBunx = path.join(directory, "bunx");
+    const failureCanary = "credential-canary-at-/Users/example/private/workspace";
+    writeFileSync(
+      fakeBunx,
+      `#!/usr/bin/env node
+const isCatalog = process.argv.includes("tests/security/abuseCaseCatalog.test.ts");
+if (isCatalog) process.exit(0);
+console.error(${JSON.stringify(
+        `P7-A-PROCESS-002 terminates a real Goose runner when its supervisor dies: ${failureCanary}`,
+      )});
+process.exit(1);
+`,
+      { mode: 0o700 },
+    );
+    chmodSync(fakeBunx, 0o700);
+
+    try {
+      const result = spawnSync(process.execPath, ["scripts/run-p7-abuse-cases.mjs"], {
+        cwd: repositoryRoot,
+        encoding: "utf8",
+        env: { ...process.env, PATH: `${directory}:${process.env.PATH ?? ""}` },
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("P7-A-PROCESS-002");
+      expect(result.stderr).not.toContain(failureCanary);
+      expect(result.stdout).not.toContain(failureCanary);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });

@@ -185,8 +185,19 @@ describe("P7 renderer, IPC, and credential abuse baseline", () => {
           listener({ url: "https://preview.example.invalid/page" }, (result) =>
             allowed.push(result),
           );
+          listener({ url: "http://127.0.0.1:18791/preview" }, (result) => allowed.push(result));
+          listener({ url: "http://localhost:13400/api/preview" }, (result) => allowed.push(result));
+          listener({ url: "https://localhost:4443/preview" }, (result) => allowed.push(result));
+          listener({ url: "http://127.0.0.1:59999/preview" }, (result) => allowed.push(result));
           listener({ url: "file:///tmp/preview.html" }, (result) => allowed.push(result));
-          expect(allowed).toEqual([{ cancel: false }, { cancel: true }]);
+          expect(allowed).toEqual([
+            { cancel: true },
+            { cancel: false },
+            { cancel: false },
+            { cancel: true },
+            { cancel: true },
+            { cancel: true },
+          ]);
         },
       },
     };
@@ -198,6 +209,7 @@ describe("P7 renderer, IPC, and credential abuse baseline", () => {
         },
       },
       () => guestSession,
+      { backendPort: () => 13400 },
     );
     const preferences: Record<string, unknown> = {
       nodeIntegration: true,
@@ -211,7 +223,7 @@ describe("P7 renderer, IPC, and credential abuse baseline", () => {
     };
     let prevented = false;
     attachListener?.({ preventDefault: () => (prevented = true) }, preferences, {
-      src: "https://preview.example.invalid/page",
+      src: "http://127.0.0.1:18791/preview",
       partition: "persist:ext-settings-safe",
     });
     expect(prevented).toBe(false);
@@ -225,6 +237,28 @@ describe("P7 renderer, IPC, and credential abuse baseline", () => {
       nativeWindowOpen: false,
     });
     expect(preferences).not.toHaveProperty("preload");
+
+    let externalHttpsPrevented = false;
+    attachListener?.(
+      { preventDefault: () => (externalHttpsPrevented = true) },
+      {},
+      {
+        src: "https://preview.example.invalid/page",
+        partition: "persist:ext-settings-safe",
+      },
+    );
+    expect(externalHttpsPrevented).toBe(true);
+
+    let undeclaredLocalPortPrevented = false;
+    attachListener?.(
+      { preventDefault: () => (undeclaredLocalPortPrevented = true) },
+      {},
+      {
+        src: "http://127.0.0.1:59999/preview",
+        partition: "persist:actestra-preview",
+      },
+    );
+    expect(undeclaredLocalPortPrevented).toBe(true);
 
     let missingPartitionPrevented = false;
     attachListener?.(

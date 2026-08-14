@@ -5,6 +5,31 @@ function requireArray(value) {
   return value;
 }
 
+const ABUSE_CASE_ID_PATTERN = /\bP7-A-[A-Z0-9]+-\d{3}\b/gu;
+
+/**
+ * Extract only IDs already declared by the closed catalog. Never forward raw
+ * Vitest output because it can contain credentials, paths, prompts, or tool
+ * arguments. This is also useful when Vitest exits before its JSON reporter
+ * writes a result file.
+ */
+export function extractBoundCaseIds(catalog, ...outputs) {
+  const knownIds = new Set(
+    (Array.isArray(catalog) ? catalog : [])
+      .map((entry) => entry?.id)
+      .filter((id) => typeof id === "string"),
+  );
+  const ids = [];
+  for (const output of outputs) {
+    if (typeof output !== "string") continue;
+    for (const match of output.matchAll(ABUSE_CASE_ID_PATTERN)) {
+      const id = match[0];
+      if (knownIds.has(id) && !ids.includes(id)) ids.push(id);
+    }
+  }
+  return ids;
+}
+
 export function classifyBoundTestReport(catalog, report) {
   const assertions = requireArray(report?.testResults).flatMap((suite) =>
     requireArray(suite?.assertionResults ?? []),

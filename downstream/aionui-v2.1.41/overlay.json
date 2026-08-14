@@ -233,6 +233,18 @@
       ],
       "authorityOwner": "Actestra Main E2E-only security acceptance composition; no Renderer IPC or production authority",
       "rollback": "Regenerate without patch 0017. The P7 packaged smoke entry disappears; normal product, profile, preload, Renderer, and frozen foundation remain unchanged."
+    },
+    {
+      "path": "patches/0018-actestra-webview-service-boundary.mjs",
+      "classification": ["R1"],
+      "domains": [
+        "exact local WebView service and port allowlist",
+        "URL Preview unavailable guidance",
+        "Extension Settings unavailable guidance",
+        "retained OfficeCLI local preview"
+      ],
+      "authorityOwner": "Actestra Main owns WebView guest admission and request cancellation; the AionUI Renderer only mirrors the closed policy to explain unavailable previews",
+      "rollback": "Regenerate without patch 0018. Patch 0017's host-only guest restriction returns, and external or undeclared local WebViews may again fail without an explanatory Renderer state; no frozen-source or profile mutation is required."
     }
   ],
   "sourceCopies": [
@@ -665,6 +677,10 @@
       "destination": "packages/desktop/src/actestra/shared/teamPlannerSidecarProtocol.ts"
     },
     {
+      "source": "apps/desktop/src/shared/webviewPolicy.ts",
+      "destination": "packages/desktop/src/actestra/shared/webviewPolicy.ts"
+    },
+    {
       "source": "apps/desktop/src/utility/orchestration/actestraNativeTeamPlannerEntry.ts",
       "destination": "packages/desktop/src/actestra/utility/orchestration/actestraNativeTeamPlannerEntry.ts"
     },
@@ -855,6 +871,7 @@
     "packages/desktop/src/actestra/shared/generalWorkerProtocol.ts",
     "packages/desktop/src/actestra/shared/gooseRunnerSource.json",
     "packages/desktop/src/actestra/shared/teamPlannerSidecarProtocol.ts",
+    "packages/desktop/src/actestra/shared/webviewPolicy.ts",
     "packages/desktop/src/actestra/utility/orchestration/actestraNativeTeamPlannerEntry.ts",
     "packages/desktop/src/actestra/utility/persistence/persistenceUtilityEntry.ts",
     "packages/desktop/src/actestra/utility/persistence/persistenceUtilityService.ts",
@@ -1021,6 +1038,7 @@
     "tests/unit/actestra/scheduleNativeWiring.test.ts",
     "tests/unit/actestra/scheduleSmoke.test.ts",
     "tests/unit/actestra/teamNativeWiring.test.ts",
+    "tests/unit/actestra/p7WebviewAvailability.test.ts",
     "tests/unit/previews/PreviewContext.dom.test.tsx",
     "tests/unit/actestra/persistenceUtilityClient.test.ts",
     "tests/unit/actestra/providerRendererBoundary.test.ts",

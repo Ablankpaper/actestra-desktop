@@ -1,6 +1,8 @@
 import path from "node:path";
-
-const WEBVIEW_DEVELOPMENT_HOSTS = new Set(["127.0.0.1", "localhost"]);
+import {
+  isAllowedActestraWebviewRequest,
+  isAllowedActestraWebviewSource,
+} from "../../shared/webviewPolicy";
 
 type WebviewAttachEvent = Readonly<{ preventDefault: () => void }>;
 type WebviewPreferences = Record<string, unknown>;
@@ -34,18 +36,6 @@ type WebviewOwner = Readonly<{
   ) => unknown;
 }>;
 
-function isAllowedWebviewSource(rawSource: string): boolean {
-  try {
-    const url = new URL(rawSource);
-    if (url.protocol === "https:" || url.protocol === "file:" || url.protocol === "data:") {
-      return true;
-    }
-    return url.protocol === "http:" && WEBVIEW_DEVELOPMENT_HOSTS.has(url.hostname);
-  } catch {
-    return false;
-  }
-}
-
 function isAllowedWebviewPartition(partition: string | undefined): boolean {
   return (
     partition !== undefined &&
@@ -56,13 +46,21 @@ function isAllowedWebviewPartition(partition: string | undefined): boolean {
 export function installWebviewGuestSecurity(
   owner: WebviewOwner,
   resolveSession: (partition: string | undefined) => WebviewSession,
+  options: Readonly<{ backendPort?: () => number }> = {},
 ): void {
   const configuredSessions = new WeakSet<object>();
   owner.on("will-attach-webview", (event, webPreferences, params) => {
     const localPreview = /^file:|^data:/iu.test(params.src);
     const allowedPartition =
       params.partition === undefined ? localPreview : isAllowedWebviewPartition(params.partition);
-    if (!isAllowedWebviewSource(params.src) || !allowedPartition) {
+    const backendPort = options.backendPort?.();
+    if (
+      !isAllowedActestraWebviewSource(params.src, {
+        backendPort,
+        partition: params.partition,
+      }) ||
+      !allowedPartition
+    ) {
       event.preventDefault();
       return;
     }
@@ -88,17 +86,11 @@ export function installWebviewGuestSecurity(
       guestSession.webRequest.onBeforeRequest(
         { urls: ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"] },
         (details, callback) => {
-          try {
-            const url = new URL(details.url);
-            callback({
-              cancel: !(
-                url.protocol === "https:" ||
-                (url.protocol === "http:" && WEBVIEW_DEVELOPMENT_HOSTS.has(url.hostname))
-              ),
-            });
-          } catch {
-            callback({ cancel: true });
-          }
+          callback({
+            cancel: !isAllowedActestraWebviewRequest(details.url, {
+              backendPort: options.backendPort?.(),
+            }),
+          });
         },
       );
     }

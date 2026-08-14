@@ -94,6 +94,20 @@ describe("AionUi downstream path safety", () => {
         "Provider capability declaration",
       ]),
     });
+    expect(
+      overlay.patches.find(
+        (patch) => patch.path === "patches/0018-actestra-webview-service-boundary.mjs",
+      ),
+    ).toMatchObject({
+      path: "patches/0018-actestra-webview-service-boundary.mjs",
+      classification: expect.arrayContaining(["R1"]),
+      domains: expect.arrayContaining([
+        "exact local WebView service and port allowlist",
+        "URL Preview unavailable guidance",
+        "Extension Settings unavailable guidance",
+        "retained OfficeCLI local preview",
+      ]),
+    });
     expect(overlay.uiContract.layoutChangesAllowed).toBe(true);
     expect(overlay.uiContract.featureEntryRemovalAllowed).toBe(false);
     expect(overlay.expectedChangedFiles).toEqual(
@@ -222,6 +236,10 @@ describe("AionUi downstream path safety", () => {
         {
           source: "apps/desktop/src/shared/teamPlannerSidecarProtocol.ts",
           destination: "packages/desktop/src/actestra/shared/teamPlannerSidecarProtocol.ts",
+        },
+        {
+          source: "apps/desktop/src/shared/webviewPolicy.ts",
+          destination: "packages/desktop/src/actestra/shared/webviewPolicy.ts",
         },
         {
           source: "apps/desktop/src/utility/orchestration/actestraNativeTeamPlannerEntry.ts",

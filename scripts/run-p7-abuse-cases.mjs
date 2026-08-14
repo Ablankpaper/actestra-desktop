@@ -3,7 +3,7 @@ import { resolve, relative, isAbsolute, sep } from "node:path";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { classifyBoundTestReport } from "./p7-abuse-report.mjs";
+import { classifyBoundTestReport, extractBoundCaseIds } from "./p7-abuse-report.mjs";
 
 const ROOT = process.cwd();
 const CATALOG_MODULE = "./tests/security/abuseCaseCatalog.ts";
@@ -106,11 +106,25 @@ function runBoundTests(catalog, files) {
       ["vitest", "run", ...files, "--reporter=json", `--outputFile=${resultPath}`],
       { cwd: ROOT, encoding: "utf8", env: process.env, stdio: "pipe" },
     );
-    const report = JSON.parse(readFileSync(resultPath, "utf8"));
+    let report;
+    try {
+      report = JSON.parse(readFileSync(resultPath, "utf8"));
+    } catch {
+      const observedCaseIds = extractBoundCaseIds(catalog, result.stdout, result.stderr);
+      failHarness(
+        observedCaseIds.length > 0
+          ? `bound test process failed for: ${observedCaseIds.join(",")}`
+          : "vitest result report is missing or invalid",
+      );
+      return 1;
+    }
     const classification = classifyBoundTestReport(catalog, report);
+    const observedCaseIds = extractBoundCaseIds(catalog, result.stdout, result.stderr);
     if (classification.missingCaseIds.length > 0) {
       failHarness(
-        `catalog cases have no executed assertion: ${classification.missingCaseIds.join(",")}`,
+        observedCaseIds.length > 0
+          ? `catalog cases have no executed assertion; observed failure IDs: ${observedCaseIds.join(",")}`
+          : `catalog cases have no executed assertion: ${classification.missingCaseIds.join(",")}`,
       );
       return 1;
     }
@@ -124,9 +138,6 @@ function runBoundTests(catalog, files) {
     }
     console.info(`P7 local abuse gate passed: ${catalog.length} denied-safe bound cases.`);
     return 0;
-  } catch {
-    failHarness("vitest result report is missing or invalid");
-    return 1;
   } finally {
     rmSync(temporaryRoot, { recursive: true, force: true });
   }
