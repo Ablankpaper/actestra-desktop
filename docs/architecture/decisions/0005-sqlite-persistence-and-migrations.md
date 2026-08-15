@@ -102,6 +102,26 @@ Migrations are immutable, contiguous, and forward-only:
 Rollback means restoring a pre-migration backup or shipping a new forward
 migration. Application startup never executes a down migration.
 
+### P7.3 migration recovery backups
+
+P7.3 implements the file-level rollback path referenced above without changing
+the forward-only migration model. Before upgrading an existing Actestra-owned
+database from one supported schema to a newer supported schema, the persistence
+utility copies `state/actestra.sqlite3` into the private
+`state/migration-backups/` directory, records a small recovery manifest with
+only relative paths, schema versions, timestamps, and the backup SHA-256, and
+then runs the existing migration registry.
+
+If startup crashes after the manifest is durable, the next startup validates the
+manifest and backup. A usable current database is kept and the stale manifest is
+cleared; an unreadable or corrupt current database is replaced from the
+validated backup before normal startup continues. If a migration fails in the
+current process after a backup was made, the database file is restored from that
+backup and the original migration error still fails startup. Invalid manifests,
+tampered backups, foreign databases, future schemas, and inconsistent migration
+history remain fail-closed. The renderer and preload bridge receive no backup
+path, SQL, or database authority.
+
 ### Initial schemas
 
 - Version 1 creates Actestra-owned workspace, task, worker, session, approval,
@@ -139,7 +159,8 @@ event envelope as corruption.
   main-process path.
 - Rollback-journal mode permits less read/write concurrency than WAL.
 - Electron 37 must be upgraded before release support claims.
-- Backups, compaction, retention, and at-rest encryption remain later work.
+- Backup retention policy, compaction, and at-rest encryption remain later
+  work.
 
 ## Rejected alternatives
 

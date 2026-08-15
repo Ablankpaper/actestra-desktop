@@ -4,6 +4,38 @@ Last updated: 2026-08-16
 
 ## Current phase
 
+### 2026-08-16 P7.3 pre-merge local implementation gate
+
+P7.3 database backup, migration rollback, and crash-recovery implementation is
+locally complete on branch `codex/p7-3-database-recovery`, based on formal
+`main@a95c26beae604bc11a46d9f2e08569d4f8770dc7`. The scope is intentionally
+narrow: the SQLite persistence utility startup path now creates a private
+pre-migration backup for existing Actestra-owned databases, records a
+SHA-256-bound recovery manifest under the profile's `state/` directory,
+restores that backup if an in-process migration fails, and recovers from a
+pending manifest on the next startup when a crash leaves the current database
+unreadable. It preserves ADR-0005's forward-only migration model, DELETE/FULL
+journal policy, renderer/preload non-authority, foreign/future/corrupt
+fail-closed behavior, and no-down-migration rule. The frozen `foundation/`
+snapshot is unchanged.
+
+Focused P7.3 persistence evidence passes: the new recovery tests plus existing
+SQLite migration, core persistence, persistence-utility service, and
+persistence-utility client suites report 5 files passed and 61 tests passed.
+The full local gate `bun run check` exits 0: format passes, lint reports 0
+warnings and 0 errors, typecheck passes, Electron SQLite passes against
+Electron 37.10.3 / Node 22.21.1 / SQLite 3.50.4, Vitest reports 133 files
+passed / 2 skipped and 1,482 tests passed / 9 skipped, the P7 abuse gate
+passes all 28 cases and 168 exact variants, the smoke harness passes, product
+boundary passes 134 Actestra-owned source files, frozen foundation and
+downstream overlay checks pass, and downstream package exits 0. `docs:check`
+also passes 74 Markdown files.
+
+This is local development-build evidence only. It does not yet claim pull
+request CI, merged-main CI, P7.3 acceptance on formal `main`, P7.4 diagnostic
+export/audit retention, P8, Windows/Linux acceptance, formal
+signing/notarization, release, deployment, or final user acceptance.
+
 ### 2026-08-16 P7.2 development integration gate accepted on main
 
 P7.2 scheme A is accepted into formal `main` through pull request
