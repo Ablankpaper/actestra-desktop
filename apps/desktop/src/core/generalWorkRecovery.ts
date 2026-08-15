@@ -49,6 +49,7 @@ import {
   type ContentReferenceOwner,
   type WorkspaceGrantId,
 } from "./workloadContent";
+import { assertWorkerResourceIncident, type WorkerResourceIncident } from "./workerResourceBudget";
 
 export const GENERAL_WORK_RECOVERY_CONTRACT_VERSION = 1 as const;
 export const MAX_GENERAL_WORK_CHECKPOINT_EVENTS = 128;
@@ -89,6 +90,7 @@ export type GeneralWorkAttemptState = (typeof GENERAL_WORK_ATTEMPT_STATES)[numbe
 export interface GeneralWorkAttemptIncident {
   readonly code: string;
   readonly occurredAt: Instant;
+  readonly resource?: WorkerResourceIncident;
 }
 
 export interface GeneralWorkAttemptRecord {
@@ -413,9 +415,33 @@ function assertAttemptRecord(value: unknown): asserts value is GeneralWorkAttemp
   }
   if (value.incident !== undefined) {
     assertRecord(value.incident, "General-work attempt.incident");
-    assertExactKeys(value.incident, ["code", "occurredAt"], "General-work attempt.incident");
+    assertExactKeys(
+      value.incident,
+      ["code", "occurredAt", "resource"],
+      "General-work attempt.incident",
+    );
     assertStableCode(value.incident.code, "General-work attempt.incident.code");
     assertInstant(value.incident.occurredAt, "General-work attempt.incident.occurredAt");
+    if (value.incident.resource !== undefined) {
+      try {
+        assertWorkerResourceIncident(value.incident.resource);
+      } catch (error) {
+        throw new GeneralWorkRecoveryError(
+          "invalid-contract",
+          "General-work attempt incident resource is invalid",
+          { cause: error },
+        );
+      }
+      if (
+        value.incident.resource.attemptId !== value.sessionId ||
+        value.incident.resource.code !== value.incident.code
+      ) {
+        throw new GeneralWorkRecoveryError(
+          "identity-mismatch",
+          "General-work attempt incident resource identity is inconsistent",
+        );
+      }
+    }
   }
 }
 

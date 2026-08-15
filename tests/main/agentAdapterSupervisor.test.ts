@@ -9,6 +9,7 @@ import {
   sessionId,
   toolRequestId,
   workerId,
+  createWorkerResourceIncident,
   type AgentAdapter,
   type AgentApprovalDecision,
   type AgentCapabilities,
@@ -21,6 +22,7 @@ import {
   type EventPayloadByType,
   type SessionId,
   type ToolRequestId,
+  type WorkerResourceIncident,
 } from "../../apps/desktop/src/core";
 import {
   AgentAdapterSupervisor,
@@ -648,5 +650,97 @@ describe("AgentAdapterSupervisor", () => {
         code: "terminal-reconciliation-failed",
       },
     });
+  });
+
+  it("terminalizes a resource breach once and preserves its bounded incident", async () => {
+    const clock = new DeterministicAgentClock(instant("2026-07-28T08:00:00.000Z"));
+    const adapter = new ManualAgentAdapter();
+    const supervisor = new AgentAdapterSupervisor(adapter, clock, SUPERVISOR_CONFIG);
+    const request = createAgentStartRequest();
+
+    await supervisor.start(request);
+    adapter.emit(controlSignal(request, 1, "ready"));
+    adapter.emit(
+      coreSignal(
+        request,
+        2,
+        attemptEvent(request, 1, "task.started", {
+          from: "ready",
+          to: "running",
+        }),
+      ),
+    );
+    const incident = createWorkerResourceIncident({
+      workerKind: "general",
+      attemptId: request.sessionId,
+      code: "worker-resource-cpu-exceeded",
+      resourceKind: "cpu",
+      observed: 31,
+      limit: 30,
+      termination: "requested",
+    });
+
+    await expect(supervisor.failForResource(request.sessionId, incident)).resolves.toMatchObject({
+      state: "failed",
+      disposed: true,
+      incident: {
+        code: "worker-resource-cpu-exceeded",
+        resource: incident,
+      },
+    });
+    await supervisor.failForResource(request.sessionId, {
+      ...incident,
+      code: "worker-resource-memory-exceeded",
+    });
+    expect(supervisor.snapshot(request.sessionId).incident?.code).toBe(
+      "worker-resource-cpu-exceeded",
+    );
+    expect(supervisor.coreEvents(request.sessionId).map(({ type }) => type)).toEqual([
+      "task.started",
+      "worker.failed",
+      "task.failed",
+    ]);
+    expect(adapter.disposed.has(request.sessionId)).toBe(true);
+  });
+
+  it("rejects malformed resource metadata before terminalizing the attempt", async () => {
+    const clock = new DeterministicAgentClock(instant("2026-07-28T08:00:00.000Z"));
+    const adapter = new ManualAgentAdapter();
+    const supervisor = new AgentAdapterSupervisor(adapter, clock, SUPERVISOR_CONFIG);
+    const request = createAgentStartRequest();
+
+    await supervisor.start(request);
+    adapter.emit(controlSignal(request, 1, "ready"));
+    adapter.emit(
+      coreSignal(
+        request,
+        2,
+        attemptEvent(request, 1, "task.started", {
+          from: "ready",
+          to: "running",
+        }),
+      ),
+    );
+
+    await expect(
+      supervisor.failForResource(request.sessionId, {
+        workerKind: "general",
+        attemptId: request.sessionId,
+        code: "worker-resource-cpu-exceeded",
+        resourceKind: "cpu",
+        observed: Number.NaN,
+        limit: 30,
+        termination: "requested",
+        privatePath: "/private/workspace",
+      } as unknown as WorkerResourceIncident),
+    ).rejects.toMatchObject({ code: "invalid-request" });
+    expect(supervisor.snapshot(request.sessionId)).toMatchObject({
+      state: "running",
+      incident: undefined,
+    });
+    expect(supervisor.coreEvents(request.sessionId).map(({ type }) => type)).toEqual([
+      "task.started",
+    ]);
+    expect(adapter.disposed.has(request.sessionId)).toBe(false);
   });
 });
