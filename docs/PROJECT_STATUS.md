@@ -4,6 +4,39 @@ Last updated: 2026-08-15
 
 ## Current phase
 
+### 2026-08-15 current verification: P7.1 local and packaged development gate
+
+The P7.1 Threat Model and Abuse-Case Baseline is implemented at reviewed
+implementation/test parent
+`632a8a081ac5fb5a6dd28daf59e284bd0455a721` on the isolated branch
+`codex/p7-threat-model-abuse-baseline`. The current local checkout is based on
+`origin/main@ee28c1d9138fa474704b8fd083e2511da64dee3e`; `foundation/` is
+unchanged.
+
+Fresh macOS arm64 evidence on that parent:
+
+- `NODE_OPTIONS=--max-old-space-size=4096 bun run check` exits 0: 122 test
+  files passed, 2 skipped; 1,270 tests passed, 9 skipped; format, zero-warning
+  lint, strict typecheck, Electron SQLite, smoke harness, product boundary,
+  frozen foundation, downstream overlay, and package all pass;
+- `bun run test:security` is self-contained and reports 28/28
+  `denied-safe`; the real Goose parent-death integration is intentionally
+  admitted only by `goose:runner:test` after its artifact and manifest are
+  built, which passes 184/184 focused tests;
+- `dist:dir` exits 0; the arm64 development app has identifier
+  `com.bignormal.actestra`, passes deep strict ad-hoc codesign verification,
+  and package trust verifies the planner, external Goose manifest/SBOM/license
+  and audit roots without source-copy drift;
+- the existing General Work packaged smoke exits 0, and the packaged P7
+  security smoke exits 0 with seven required Layer-4 cases `denied-safe`;
+- the current process and recent private-root scans show no Actestra, AionCore,
+  Goose, Planner, or P7 probe residue.
+
+This is local and packaged development evidence only. The branch has no PR or
+exact-head CI yet; P7.1 is not merged into `main`. P7.2-P7.4, Windows/Linux
+enforcement, formal signing, release, deployment, and final user acceptance
+remain open.
+
 ### 2026-08-15 new-repository main governance enabled
 
 Repository ruleset
@@ -77,35 +110,13 @@ An offline migration bundle remains outside the repository at
 its recorded SHA-256 checksum pass. This repository transfer changes hosting
 authority and canonical links only. It is not a source release, deployment,
 candidate, signing, notarization, or new P6/P7 product-acceptance claim.
-### 2026-08-13 current verification: P7.1 security abuse baseline locally verified
 
-The P7.1 Threat Model and Abuse-Case Baseline is verified on branch
-`codex/p7-threat-model-abuse-baseline` at implementation/test parent
-`04f92b2`. This is a local macOS arm64 development-build gate, not a release
-or cross-platform acceptance.
+### 2026-08-13 initial P7.1 baseline (superseded)
 
-Evidence recorded for this slice:
+The initial P7.1 local snapshot was superseded by the current evidence recorded
+above. Its earlier implementation parent and test counts remain available in
+Git history for provenance; they are not current acceptance evidence.
 
-- the closed catalog contains 28 stable abuse-case IDs and the aggregate local
-  security gate reports 28/28 `denied-safe`;
-- the complete local security/project checks cover 121 test files and 1,248
-  tests, with zero-warning lint, strict typecheck, Electron SQLite, product
-  boundary, frozen-foundation, downstream-overlay, and package checks green;
-- the admitted Goose runner's parent-death/process cleanup cases pass against
-  the real artifact and leave no privileged process residue;
-- the arm64 development app has identifier `com.bignormal.actestra`, an
-  ad-hoc signature, and passes deep strict codesign verification; and
-- packaged trust verification, the existing General Work smoke, and the P7
-  packaged security smoke pass. The packaged security hook physically
-  exercises `P7-A-RENDERER-002`; the remaining cases are local Layer 1-3
-  evidence only.
-
-This closes P7.1's local development baseline only. P7.2 Worker resource and
-process reliability, P7.3 database backup/migration rollback and crash
-recovery, and P7.4 diagnostic export/audit retention remain open. Windows and
-Linux enforcement, exact-head or merged-main CI for this branch, formal
-signing/notarization, release, deployment, and final user acceptance are not
-claimed.
 ### 2026-08-13 current verification: P6 delivery exit accepted on `main`
 
 P6's development-delivery exit gate is accepted. Pull request

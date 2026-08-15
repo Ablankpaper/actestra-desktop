@@ -716,15 +716,15 @@ Team execution evidence.
 
 ## P7 — Security and Reliability Hardening
 
-### P7.1 local development baseline (2026-08-13)
+### P7.1 local development baseline (2026-08-15)
 
 The Threat Model and Abuse-Case Ledger are implemented and locally verified on
-macOS arm64 at implementation/test parent `04f92b2`. The closed catalog has 28
-cases and the aggregate gate reports 28/28 `denied-safe`. The real admitted
-Goose artifact passes parent-death and process cleanup coverage; the ad-hoc
-arm64 development app passes package trust verification, the existing General
-Work smoke, and the packaged P7 security hook for
-`P7-A-RENDERER-002`.
+macOS arm64 at implementation/test parent
+`632a8a081ac5fb5a6dd28daf59e284bd0455a721`. The closed catalog has 28 cases
+and the aggregate gate reports 28/28 `denied-safe`. The real admitted Goose
+artifact passes parent-death and process cleanup coverage; the ad-hoc arm64
+development app passes package trust verification, the existing General Work
+smoke, and the packaged P7 security hook for all seven required Layer-4 cases.
 
 This is the P7.1 development gate only. It does not close the remaining P7
 reliability slices: P7.2 Worker resource/process reliability, P7.3 database

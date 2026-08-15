@@ -1,8 +1,9 @@
 # Actestra Repository Threat Model
 
-**Status:** P7.1 local and packaged-macOS security baseline verified; P7.2-P7.4,
+**Status:** P7.1 local and packaged-macOS development security baseline verified;
+P7.2-P7.4,
 cross-platform P8, release signing, and final acceptance remain open
-**Date:** 2026-08-13
+**Date:** 2026-08-15
 **Scope:** P4-P6 product boundaries and the P7.1 security-abuse baseline
 
 ## Overview
@@ -30,22 +31,25 @@ passed.
 
 ## Verified P7.1 evidence
 
-The reviewed implementation and test parent is `04f92b2`. On macOS arm64:
+The reviewed implementation and test parent is
+`632a8a081ac5fb5a6dd28daf59e284bd0455a721`. On macOS arm64:
 
 - the focused security suite covers all 28 catalog IDs;
 - the aggregate local gate passes 28/28 `denied-safe` cases;
-- the complete local project gate passes 121 test files and 1,248 tests,
+- the complete local project gate passes 122 test files and 1,270 tests,
   zero-warning lint, strict typecheck, Electron SQLite, product boundary,
   frozen foundation, downstream overlay, and package;
-- the admitted Goose runner passes the real parent-death and process cleanup
-  cases, with no privileged process residue;
+- the admitted Goose runner focused gate passes 184 tests, including the real
+  parent-death and process cleanup cases, with no privileged process residue;
 - the development app builds with `DIST_EXIT=0`, has identifier
   `com.bignormal.actestra`, arm64 architecture, and a verified ad-hoc
   signature; and
 - packaged trust verification, the existing General Work smoke, and the
-  packaged P7 security smoke pass. The packaged hook physically exercises
-  `P7-A-RENDERER-002`; the other catalog cases remain covered by their local
-  Layer 1-3 evidence.
+  packaged P7 security smoke pass. The packaged hook physically exercises the
+  seven required Layer-4 cases (`P7-A-RENDERER-002`,
+  `P7-A-CREDENTIAL-001`, `P7-A-CREDENTIAL-003`, `P7-A-WORKER-001`,
+  `P7-A-NETWORK-001`, `P7-A-PROCESS-002`, and `P7-A-ARTIFACT-001`); the other
+  catalog cases remain covered by their local Layer 1-3 evidence.
 
 These are local and packaged development-build results. No exact-head CI,
 merged-main CI, formal signing/notarization, release, deployment, or user
@@ -315,4 +319,4 @@ evidence rather than widening this P7.1 disposition.
 - [ADR-0027](../architecture/decisions/0027-p7-threat-model-and-abuse-authority.md)
 
 Repository: github.com/Ablankpaper/actestra-desktop
-Version: 4a461f9b5c6ada45a25983a835fca212388b6f64
+Version: 632a8a081ac5fb5a6dd28daf59e284bd0455a721
