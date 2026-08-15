@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CODING_FILE_READ_TOOL_ID,
   CODING_FILE_WRITE_TOOL_ID,
+  GOOSE_WORKER_RESOURCE_PROFILE,
   PRIVILEGED_CONTRACT_VERSION,
   WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
   approvalActorId,
@@ -1023,6 +1024,282 @@ describe("P5.2 desktop-main isolated coding composition", () => {
     });
     expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
     expect(await runGit(fixture.repositoryRoot, "status", "--porcelain=v1")).toBe("");
+  }, 15_000);
+
+  it("terminalizes and cleans a storage breach before Artifact publish can complete unchanged", async () => {
+    let fixture!: MainServiceFixture;
+    const closeGoose = vi.fn(async () => undefined);
+    fixture = await openFixture("goose-publish-storage-exceeded", {
+      createToolInvoker(options) {
+        return createGooseCodingToolInvoker(options);
+      },
+      async openGooseSession() {
+        return Object.freeze({
+          info: GOOSE_INFO,
+          privateRoot: path.join(fixture.root, "goose-private", "attempt-storage-exceeded"),
+          session: Object.freeze({
+            sessionId: "goose-desktop-main-publish-storage-exceeded",
+            setupNotificationKinds: Object.freeze([]),
+          }),
+          toolNames: Object.freeze([]),
+          async prompt() {
+            return Object.freeze({ stopReason: "end_turn" as const, updates: Object.freeze([]) });
+          },
+          close: closeGoose,
+        });
+      },
+    });
+    const opened = await fixture.service.openGoose({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-publish-storage-exceeded"),
+      displayName: "P7.2 storage-exceeded coding Artifact publish",
+      commands: {},
+      tests: {},
+      artifact: GOOSE_ARTIFACT,
+      privateRootParent: path.join(fixture.root, "goose-private"),
+      modelId: "actestra-desktop-main-model",
+      modelInvoker: async () =>
+        Object.freeze({
+          type: "message" as const,
+          text: "unused storage-exceeded result",
+          usage: Object.freeze({ promptTokens: 1, completionTokens: 1 }),
+        }),
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+    });
+    await opened.prompt({ text: "Review without changing the source workspace." });
+    const privateRoot = path.dirname(opened.worktreeRoot);
+    const filler = path.join(privateRoot, "storage-flood.bin");
+    fs.writeFileSync(filler, "");
+    fs.truncateSync(filler, GOOSE_WORKER_RESOURCE_PROFILE.maxPrivateStorageBytes + 1);
+    const decisionHandler = vi.fn();
+
+    await expect(opened.publish({ decisionHandler })).rejects.toMatchObject({
+      name: "GooseCodingArtifactPublisherError",
+      code: "worker-resource-storage-exceeded",
+    });
+
+    expect(decisionHandler).not.toHaveBeenCalled();
+    expect(closeGoose).toHaveBeenCalledTimes(1);
+    await expect(fs.promises.stat(opened.worktreeRoot)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(fixture.persistence.loadDomainGraph()).resolves.toMatchObject({
+      tasks: [{ id: fixture.ids.taskId, state: "failed" }],
+      sessions: [{ id: fixture.ids.sessionId, state: "failed" }],
+      workers: [{ id: fixture.ids.workerId, state: "crashed" }],
+      artifacts: [],
+    });
+    const events = await fixture.persistence.replayEvents(opened.streamId);
+    expect(events.slice(-2)).toMatchObject([
+      {
+        type: "worker.failed",
+        payload: {
+          errorCode: "worker-resource-storage-exceeded",
+          retryable: false,
+        },
+      },
+      {
+        type: "task.failed",
+        payload: {
+          errorCode: "worker-resource-storage-exceeded",
+          from: "blocked",
+          to: "failed",
+        },
+      },
+    ]);
+    expect(JSON.stringify(events)).not.toContain(privateRoot);
+    expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
+  }, 15_000);
+
+  it("terminalizes and cleans an oversized patch before Artifact approval", async () => {
+    let fixture!: MainServiceFixture;
+    const closeGoose = vi.fn(async () => undefined);
+    fixture = await openFixture("goose-publish-output-exceeded", {
+      createToolInvoker(options) {
+        return createGooseCodingToolInvoker(options);
+      },
+      async openGooseSession() {
+        return Object.freeze({
+          info: GOOSE_INFO,
+          privateRoot: path.join(fixture.root, "goose-private", "attempt-output-exceeded"),
+          session: Object.freeze({
+            sessionId: "goose-desktop-main-publish-output-exceeded",
+            setupNotificationKinds: Object.freeze([]),
+          }),
+          toolNames: Object.freeze([]),
+          async prompt() {
+            return Object.freeze({ stopReason: "end_turn" as const, updates: Object.freeze([]) });
+          },
+          close: closeGoose,
+        });
+      },
+    });
+    const opened = await fixture.service.openGoose({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-publish-output-exceeded"),
+      displayName: "P7.2 output-exceeded coding Artifact publish",
+      commands: {},
+      tests: {},
+      artifact: GOOSE_ARTIFACT,
+      privateRootParent: path.join(fixture.root, "goose-private"),
+      modelId: "actestra-desktop-main-model",
+      modelInvoker: async () =>
+        Object.freeze({
+          type: "message" as const,
+          text: "unused output-exceeded result",
+          usage: Object.freeze({ promptTokens: 1, completionTokens: 1 }),
+        }),
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+    });
+    fs.writeFileSync(
+      path.join(opened.worktreeRoot, "oversized-patch.txt"),
+      "x".repeat(GOOSE_WORKER_RESOURCE_PROFILE.maxOutputBytes + 1),
+      "utf8",
+    );
+    await opened.prompt({ text: "Review the isolated change." });
+    const decisionHandler = vi.fn();
+
+    await expect(opened.publish({ decisionHandler })).rejects.toMatchObject({
+      name: "GooseCodingArtifactPublisherError",
+      code: "worker-resource-output-exceeded",
+    });
+
+    expect(decisionHandler).not.toHaveBeenCalled();
+    expect(closeGoose).toHaveBeenCalledTimes(1);
+    await expect(fs.promises.stat(opened.worktreeRoot)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(fixture.persistence.loadDomainGraph()).resolves.toMatchObject({
+      tasks: [{ id: fixture.ids.taskId, state: "failed" }],
+      sessions: [{ id: fixture.ids.sessionId, state: "failed" }],
+      workers: [{ id: fixture.ids.workerId, state: "crashed" }],
+      artifacts: [],
+    });
+    const events = await fixture.persistence.replayEvents(opened.streamId);
+    expect(events.slice(-2)).toMatchObject([
+      {
+        type: "worker.failed",
+        payload: { errorCode: "worker-resource-output-exceeded", retryable: false },
+      },
+      {
+        type: "task.failed",
+        payload: { errorCode: "worker-resource-output-exceeded", to: "failed" },
+      },
+    ]);
+    expect(JSON.stringify(events)).not.toContain("oversized-patch.txt");
+    expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
+  }, 15_000);
+
+  it("preserves a Tool Gateway storage breach through durable Goose failure evidence", async () => {
+    let fixture!: MainServiceFixture;
+    fixture = await openFixture("goose-tool-storage-exceeded", {
+      createToolInvoker(options) {
+        return createGooseCodingToolInvoker({
+          ...options,
+          newToolRequestId: () => toolRequestId("request-coding-storage-exceeded"),
+          newToolInputReference: () => toolInputReference("input-coding-storage-exceeded"),
+        });
+      },
+      async openGooseSession(options) {
+        return Object.freeze({
+          info: GOOSE_INFO,
+          privateRoot: path.join(fixture.root, "goose-private", "attempt-tool-storage-exceeded"),
+          session: Object.freeze({
+            sessionId: "goose-desktop-main-tool-storage-exceeded",
+            setupNotificationKinds: Object.freeze([]),
+          }),
+          toolNames: Object.freeze([]),
+          async prompt() {
+            await options.toolInvoker({
+              sessionId: "goose-desktop-main-tool-storage-exceeded",
+              toolCallRequestId: "tool-call-storage-exceeded",
+              toolId: CODING_FILE_WRITE_TOOL_ID,
+              input: Object.freeze({
+                contractVersion: 1,
+                relativePath: "answer.txt",
+                content: "must not be written\n",
+              }),
+              signal: new AbortController().signal,
+            });
+            return Object.freeze({ stopReason: "end_turn" as const, updates: Object.freeze([]) });
+          },
+          async close() {},
+        });
+      },
+    });
+    const opened = await fixture.service.openGoose({
+      repositoryRoot: fixture.repositoryRoot,
+      workspaceId: fixture.ids.workspaceId,
+      grantId: workspaceGrantId("grant-coding-main-tool-storage-exceeded"),
+      displayName: "P7.2 Tool Gateway storage-exceeded evidence",
+      commands: {},
+      tests: {},
+      artifact: GOOSE_ARTIFACT,
+      privateRootParent: path.join(fixture.root, "goose-private"),
+      modelId: "actestra-desktop-main-model",
+      modelInvoker: async () =>
+        Object.freeze({
+          type: "message" as const,
+          text: "unused Tool Gateway storage-exceeded result",
+          usage: Object.freeze({ promptTokens: 1, completionTokens: 1 }),
+        }),
+      taskId: fixture.ids.taskId,
+      sessionId: fixture.ids.sessionId,
+      workerId: fixture.ids.workerId,
+      approvalDecisionHandler: async () =>
+        Object.freeze({
+          decision: "approved" as const,
+          actorId: approvalActorId("local-storage-reviewer"),
+        }),
+    });
+    const privateRoot = path.dirname(opened.worktreeRoot);
+    const filler = path.join(privateRoot, "storage-flood.bin");
+    fs.writeFileSync(filler, "");
+    fs.truncateSync(filler, GOOSE_WORKER_RESOURCE_PROFILE.maxPrivateStorageBytes);
+
+    await expect(opened.prompt({ text: "Attempt one bounded isolated write." })).rejects.toThrow(
+      "Goose coding approval could not be resolved inside the Tool Gateway",
+    );
+
+    const events = await fixture.persistence.replayEvents(opened.streamId);
+    expect(events.slice(-3)).toMatchObject([
+      {
+        type: "tool.failed",
+        payload: {
+          errorCode: "worker-resource-storage-exceeded",
+          mayHaveExecuted: false,
+        },
+      },
+      {
+        type: "worker.failed",
+        payload: {
+          errorCode: "worker-resource-storage-exceeded",
+          retryable: false,
+        },
+      },
+      {
+        type: "task.failed",
+        payload: {
+          errorCode: "worker-resource-storage-exceeded",
+          from: "running",
+          to: "failed",
+        },
+      },
+    ]);
+    expect(events.map(({ type }) => type)).not.toContain("task.completed");
+    await expect(fixture.persistence.loadDomainGraph()).resolves.toMatchObject({
+      tasks: [{ id: fixture.ids.taskId, state: "failed" }],
+      sessions: [{ id: fixture.ids.sessionId, state: "failed" }],
+      workers: [{ id: fixture.ids.workerId, state: "crashed" }],
+      artifacts: [],
+    });
+    expect(fs.readFileSync(path.join(opened.worktreeRoot, "answer.txt"), "utf8")).toBe("before\n");
+    expect(fs.readFileSync(fixture.sourceFile, "utf8")).toBe("before\n");
+    expect(JSON.stringify(events)).not.toContain(privateRoot);
+    await opened.close();
+    await expect(fs.promises.stat(opened.worktreeRoot)).rejects.toMatchObject({ code: "ENOENT" });
   }, 15_000);
 
   it("rejects a worktree change after approval and returns to blocked review", async () => {

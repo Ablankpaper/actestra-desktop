@@ -51,6 +51,12 @@ import {
 } from "../../core";
 import type { IsolatedCodingProcessDefinition } from "./isolatedCodingToolPlatform";
 import { captureIsolatedCodingPatch } from "../workers/isolatedCodingPatch";
+import {
+  WorkerStorageBudgetError,
+  assertProjectedWorkerPrivateStorageWrite,
+  assertWorkerOutputWithinBudget,
+  assertWorkerPrivateStorageWithinBudget,
+} from "../workers/workerStorageBudget";
 
 const execFileAsync = promisify(execFile);
 const GIT_EXECUTABLE = "/usr/bin/git";
@@ -248,6 +254,27 @@ function mapFileError(
   }
 }
 
+function mapWorkerStorageBudgetError(
+  error: unknown,
+  mayHaveExecuted: boolean,
+): ProtectedToolExecutionError | undefined {
+  if (!(error instanceof WorkerStorageBudgetError)) {
+    return undefined;
+  }
+  return executionError(error.code, "Coding Worker resource budget was exceeded", {
+    cause: error,
+    mayHaveExecuted,
+  });
+}
+
+async function assertPrivateStorage(root: string, mayHaveExecuted: boolean): Promise<void> {
+  try {
+    await assertWorkerPrivateStorageWithinBudget(path.dirname(root));
+  } catch (error) {
+    throw mapWorkerStorageBudgetError(error, mayHaveExecuted) ?? error;
+  }
+}
+
 function cancellationFor(request: ToolExecutionRequest): ExecutionCancellation {
   const controller = new AbortController();
   const externalSignal = request.signal;
@@ -397,6 +424,7 @@ async function writeCodingFile(
   let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
   let published = false;
   try {
+    await assertProjectedWorkerPrivateStorageWrite(path.dirname(root), target, bytes.byteLength);
     throwIfCancelled(signal);
     handle = await fs.open(
       temporary,
@@ -413,8 +441,11 @@ async function writeCodingFile(
     }
     await fs.rename(temporary, target);
     published = true;
+    await assertPrivateStorage(root, true);
     return { relativePath: input.relativePath, byteLength: bytes.byteLength };
   } catch (error) {
+    const budgetError = mapWorkerStorageBudgetError(error, published);
+    if (budgetError !== undefined) throw budgetError;
     if (!published) {
       throwIfCancelled(signal);
     }
@@ -1037,6 +1068,11 @@ async function storeOutput(
   signal: AbortSignal,
 ): Promise<ToolOutputReference> {
   throwIfCancelled(signal, mayHaveExecuted);
+  try {
+    assertWorkerOutputWithinBudget(content);
+  } catch (error) {
+    throw mapWorkerStorageBudgetError(error, mayHaveExecuted) ?? error;
+  }
   const outputRef = config.newOutputReference();
   toolOutputReference(outputRef);
   try {
@@ -1069,6 +1105,11 @@ async function storePublishedPatch(
   signal: AbortSignal,
 ): Promise<ToolOutputReference> {
   throwIfCancelled(signal);
+  try {
+    assertWorkerOutputWithinBudget(patch);
+  } catch (error) {
+    throw mapWorkerStorageBudgetError(error, true) ?? error;
+  }
   let stored;
   try {
     stored = await config.persistence.storeContentReference({
@@ -1414,6 +1455,7 @@ export class IsolatedCodingToolExecutor implements ProtectedToolExecutor {
             cancellation.signal,
           );
           mayHaveExecuted = true;
+          await assertPrivateStorage(root, true);
           output = {
             contractVersion: 1,
             type: "terminal",
@@ -1438,6 +1480,7 @@ export class IsolatedCodingToolExecutor implements ProtectedToolExecutor {
             cancellation.signal,
           );
           mayHaveExecuted = true;
+          await assertPrivateStorage(root, true);
           output = {
             contractVersion: 1,
             type: "test",

@@ -35,6 +35,7 @@ import {
 } from "./gooseCodingEvidenceCoordinator";
 import {
   createGooseCodingArtifactPublisher,
+  GooseCodingArtifactPublisherError,
   type GooseCodingPublishOptions,
   type GooseCodingPublishResult,
 } from "./gooseCodingArtifactPublisher";
@@ -600,10 +601,30 @@ export function createIsolatedCodingMainService(
               }
               return result;
             })
-            .catch((error: unknown) => {
+            .catch(async (error: unknown) => {
               publishPromise = undefined;
               admittedPublishOptions = undefined;
               publishController = undefined;
+              if (
+                error instanceof GooseCodingArtifactPublisherError &&
+                (error.code === "worker-resource-output-exceeded" ||
+                  error.code === "worker-resource-storage-exceeded")
+              ) {
+                try {
+                  await exposed.close();
+                } catch (cleanupError) {
+                  throw new IsolatedCodingMainServiceError(
+                    "cleanup-failed",
+                    "Resource-failed Goose coding cleanup did not complete",
+                    {
+                      cause: new AggregateError(
+                        [error, cleanupError],
+                        "Coding resource failure and cleanup failure",
+                      ),
+                    },
+                  );
+                }
+              }
               throw error;
             });
           return publishPromise;

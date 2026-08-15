@@ -154,7 +154,7 @@ export async function launchElectronGeneralWorker(
       transport,
       options.clock ?? new SystemAgentClock(),
       {
-        ...(options.adapter ?? {}),
+        ...options.adapter,
         resourceObservation: () => transport.observeResources(),
         resourceIdentity: () => transport.resourceIdentity(),
       },
