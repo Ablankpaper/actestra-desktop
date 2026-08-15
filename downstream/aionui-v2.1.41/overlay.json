@@ -245,12 +245,27 @@
       ],
       "authorityOwner": "Actestra Main owns WebView guest admission and request cancellation; the AionUI Renderer only mirrors the closed policy to explain unavailable previews",
       "rollback": "Regenerate without patch 0018. Patch 0017's host-only guest restriction returns, and external or undeclared local WebViews may again fail without an explanatory Renderer state; no frozen-source or profile mutation is required."
+    },
+    {
+      "path": "patches/0019-actestra-p7-resource-reliability.mjs",
+      "classification": ["R1"],
+      "domains": [
+        "General Worker resource breach acceptance",
+        "Goose resource and process breach acceptance",
+        "bounded cleanup and redacted evidence"
+      ],
+      "authorityOwner": "Actestra Main E2E-only P7.2 resource acceptance composition; no Renderer, Planner, profile, or production runtime authority",
+      "rollback": "Regenerate without patch 0019. The P7.2 packaged smoke entry disappears while the underlying Worker resource limits remain composed through their existing source copies; normal product startup and frozen foundation remain unchanged."
     }
   ],
   "sourceCopies": [
     {
       "source": "apps/desktop/src/main/security/p7SecuritySmoke.ts",
       "destination": "packages/desktop/src/actestra/main/security/p7SecuritySmoke.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/security/p7ResourceReliabilitySmoke.ts",
+      "destination": "packages/desktop/src/actestra/main/security/p7ResourceReliabilitySmoke.ts"
     },
     {
       "source": "apps/desktop/src/core/agentAdapter.ts",
@@ -271,6 +286,10 @@
     {
       "source": "apps/desktop/src/core/events.ts",
       "destination": "packages/desktop/src/actestra/core/events.ts"
+    },
+    {
+      "source": "apps/desktop/src/core/workerResourceBudget.ts",
+      "destination": "packages/desktop/src/actestra/core/workerResourceBudget.ts"
     },
     {
       "source": "apps/desktop/src/core/generalCapabilityAdmission.ts",
@@ -533,6 +552,14 @@
       "destination": "packages/desktop/src/actestra/main/workers/electronGeneralWorker.ts"
     },
     {
+      "source": "apps/desktop/src/main/workers/workerResourceMonitor.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/workerResourceMonitor.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/workers/workerStorageBudget.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/workerStorageBudget.ts"
+    },
+    {
       "source": "apps/desktop/src/main/workers/utilityProcessTerminalDispatch.ts",
       "destination": "packages/desktop/src/actestra/main/workers/utilityProcessTerminalDispatch.ts"
     },
@@ -781,6 +808,7 @@
     "packages/desktop/src/actestra/core/artifactPatchAccess.ts",
     "packages/desktop/src/actestra/core/domain.ts",
     "packages/desktop/src/actestra/core/events.ts",
+    "packages/desktop/src/actestra/core/workerResourceBudget.ts",
     "packages/desktop/src/actestra/core/generalCapabilityAdmission.ts",
     "packages/desktop/src/actestra/core/generalDraftContract.ts",
     "packages/desktop/src/actestra/core/generalLayeredExecution.ts",
@@ -825,6 +853,7 @@
     "packages/desktop/src/actestra/main/orchestration/teamPlannerSidecarProcess.ts",
     "packages/desktop/src/actestra/main/orchestration/teamWorkspaceGrantContext.ts",
     "packages/desktop/src/actestra/main/persistence/electronPersistenceUtility.ts",
+    "packages/desktop/src/actestra/main/security/p7ResourceReliabilitySmoke.ts",
     "packages/desktop/src/actestra/main/security/p7SecuritySmoke.ts",
     "packages/desktop/src/actestra/main/persistence/persistenceUtilityClient.ts",
     "packages/desktop/src/actestra/main/persistence/persistenceMutationBarrier.ts",
@@ -835,6 +864,8 @@
     "packages/desktop/src/actestra/main/workers/artifactDeliveryService.ts",
     "packages/desktop/src/actestra/main/workers/agentAttemptEvidenceCoordinator.ts",
     "packages/desktop/src/actestra/main/workers/electronGeneralWorker.ts",
+    "packages/desktop/src/actestra/main/workers/workerResourceMonitor.ts",
+    "packages/desktop/src/actestra/main/workers/workerStorageBudget.ts",
     "packages/desktop/src/actestra/main/workers/utilityProcessTerminalDispatch.ts",
     "packages/desktop/src/actestra/main/workers/generalWorkerProbe.ts",
     "packages/desktop/src/actestra/main/workers/generalWorkerProcessAdapter.ts",

@@ -65,6 +65,29 @@ describe("P7 CI wiring", () => {
     expect(trust).not.toContain("sha256(fs.readFileSync(manifestPath))");
   });
 
+  it("runs the P7.2 packaged resource smoke after the P7.1 security smoke", () => {
+    const scripts = readJson("package.json").scripts;
+    expect(scripts["smoke:p7-2-resource-reliability"]).toBe(
+      "node scripts/smoke-p7-2-resource-reliability.mjs",
+    );
+    const workflow = read(".github/workflows/ci.yml");
+    const macosJob = workflow.slice(workflow.indexOf("\n  macos:"));
+    const p71Index = macosJob.indexOf("bun run smoke:p7-security");
+    const p72Index = macosJob.indexOf("bun run smoke:p7-2-resource-reliability");
+    expect(p71Index).toBeGreaterThan(-1);
+    expect(p72Index).toBeGreaterThan(p71Index);
+  });
+
+  it("keeps hostile probe inputs outside package resources and runner trust roots", () => {
+    const smoke = read("scripts/smoke-p7-2-resource-reliability.mjs");
+    const packageJson = read("package.json");
+    const runnerManifest = read("scripts/build-goose-runner.mjs");
+    expect(smoke).toContain("ACTESTRA_P7_RESOURCE_GENERAL_CPU_PROBE");
+    expect(smoke).toContain("ACTESTRA_P7_RESOURCE_GOOSE_FORK_PROBE");
+    expect(packageJson).not.toContain("p7-resource-probes");
+    expect(runnerManifest).not.toContain("p7-resource-probes");
+  });
+
   it("runs package trust in the macOS job with independently supplied roots", () => {
     const workflow = read(".github/workflows/ci.yml");
     const macosJob = workflow.slice(workflow.indexOf("\n  macos:"));

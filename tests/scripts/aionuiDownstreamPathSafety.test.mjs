@@ -108,6 +108,19 @@ describe("AionUi downstream path safety", () => {
         "retained OfficeCLI local preview",
       ]),
     });
+    expect(
+      overlay.patches.find(
+        (patch) => patch.path === "patches/0019-actestra-p7-resource-reliability.mjs",
+      ),
+    ).toMatchObject({
+      path: "patches/0019-actestra-p7-resource-reliability.mjs",
+      classification: ["R1"],
+      domains: expect.arrayContaining([
+        "General Worker resource breach acceptance",
+        "Goose resource and process breach acceptance",
+        "bounded cleanup and redacted evidence",
+      ]),
+    });
     expect(overlay.uiContract.layoutChangesAllowed).toBe(true);
     expect(overlay.uiContract.featureEntryRemovalAllowed).toBe(false);
     expect(overlay.expectedChangedFiles).toEqual(
@@ -246,6 +259,22 @@ describe("AionUi downstream path safety", () => {
           destination:
             "packages/desktop/src/actestra/utility/orchestration/actestraNativeTeamPlannerEntry.ts",
         },
+        {
+          source: "apps/desktop/src/core/workerResourceBudget.ts",
+          destination: "packages/desktop/src/actestra/core/workerResourceBudget.ts",
+        },
+        {
+          source: "apps/desktop/src/main/workers/workerResourceMonitor.ts",
+          destination: "packages/desktop/src/actestra/main/workers/workerResourceMonitor.ts",
+        },
+        {
+          source: "apps/desktop/src/main/workers/workerStorageBudget.ts",
+          destination: "packages/desktop/src/actestra/main/workers/workerStorageBudget.ts",
+        },
+        {
+          source: "apps/desktop/src/main/security/p7ResourceReliabilitySmoke.ts",
+          destination: "packages/desktop/src/actestra/main/security/p7ResourceReliabilitySmoke.ts",
+        },
       ]),
     );
     for (const destination of [
@@ -259,6 +288,7 @@ describe("AionUi downstream path safety", () => {
     expect(JSON.stringify(overlay.sourceCopies)).not.toContain("tests/fixtures");
     expect(JSON.stringify(overlay.sourceCopies)).not.toContain("localAgentCli");
     expect(JSON.stringify(overlay.sourceCopies)).not.toContain("teamPlannerSidecar.mjs");
+    expect(JSON.stringify(overlay.sourceCopies)).not.toContain("p7-resource-probes");
     expect(overlay.invariantFiles).toContain("packages/desktop/src/common/adapter/ipcBridge.ts");
     const checker = fs.readFileSync(
       path.join(repositoryRoot, "scripts/check-aionui-downstream.mjs"),
