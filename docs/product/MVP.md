@@ -169,14 +169,14 @@ directly.
 
 ## Safety baseline
 
-Security status: the first P7.1 threat-model and abuse-case baseline is
-locally verified on macOS arm64 at implementation/test parent
-`a8292e6433eacc3414dcc9408e10df7d6031b9a3`. The 28-case catalog is
-`denied-safe`, and the packaged development smoke physically checks the seven
-required Layer-4 boundaries. Exact-head CI and merge evidence remain open.
-This is not a claim that the complete P7 reliability, backup,
-diagnostic-retention, cross-platform, signing, release, or user-acceptance
-scope is complete; those remain later gates.
+Security and reliability status: the P7.1 threat-model and 28-case abuse
+baseline and the scheme-A P7.2 General/Goose Worker resource controls are
+accepted on `main`. P7.1 physically checks seven required Layer-4 boundaries;
+P7.2 physically checks General CPU/memory and Goose output/storage/fork
+fail-closed behavior on packaged macOS arm64 bytes. This is not a claim that
+P7.3 backup and migration recovery, P7.4 diagnostic retention, cross-platform
+enforcement, formal signing, release, or user acceptance is complete; those
+remain later gates.
 
 | Action                                      | Default policy                                        |
 | ------------------------------------------- | ----------------------------------------------------- |
