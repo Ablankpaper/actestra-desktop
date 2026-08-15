@@ -1,18 +1,23 @@
 export type P7SecurityPlatform = "darwin" | "win32" | "linux";
 export type P7SecurityLayer = 1 | 2 | 3 | 4;
 
+export type AbuseCaseVariant = Readonly<{
+  id: `P7-V-${string}-${string}-${string}`;
+  testFile: string;
+  testName: string;
+  forbiddenEffects: readonly string[];
+  evidenceFields: readonly string[];
+}>;
+
 export type AbuseCase = Readonly<{
   id: `P7-A-${string}-${string}`;
   invariantId: `P7-I-${string}-${string}`;
   risk: "critical" | "high" | "medium" | "low";
   minimumLayer: P7SecurityLayer;
   requiredLayers: readonly P7SecurityLayer[];
-  testFile: string;
-  testName: string;
+  variants: readonly AbuseCaseVariant[];
   expectedBoundary: string;
   expectedIncidentCode: string | null;
-  forbiddenEffects: readonly string[];
-  evidenceFields: readonly string[];
   supportedPlatforms: readonly P7SecurityPlatform[];
   p8Obligation: string | null;
 }>;
@@ -123,15 +128,33 @@ const makeCase = <
   const Id extends AbuseCase["id"],
   const InvariantId extends AbuseCase["invariantId"],
 >(
-  value: Omit<AbuseCase, "id" | "invariantId"> & { id: Id; invariantId: InvariantId },
-): AbuseCase =>
-  freeze({
-    ...value,
-    forbiddenEffects: [...value.forbiddenEffects],
-    evidenceFields: [...value.evidenceFields],
-    supportedPlatforms: [...value.supportedPlatforms],
+  value: Omit<AbuseCase, "id" | "invariantId" | "variants"> & {
+    id: Id;
+    invariantId: InvariantId;
+    testFile: string;
+    variantSuffixes: readonly string[];
+    forbiddenEffects: readonly string[];
+    evidenceFields: readonly string[];
+  },
+): AbuseCase => {
+  const { testFile, variantSuffixes, forbiddenEffects, evidenceFields, ...abuseCase } = value;
+  const variantPrefix = value.id.replace("P7-A-", "P7-V-");
+  return freeze({
+    ...abuseCase,
     requiredLayers: [...value.requiredLayers],
+    variants: variantSuffixes.map((suffix) => {
+      const id = `${variantPrefix}-${suffix}` as AbuseCaseVariant["id"];
+      return {
+        id,
+        testFile,
+        testName: `${value.id} ${id}`,
+        forbiddenEffects: [...forbiddenEffects],
+        evidenceFields: [...evidenceFields],
+      };
+    }),
+    supportedPlatforms: [...value.supportedPlatforms],
   }) as AbuseCase;
+};
 
 export const P7_ABUSE_CASES: readonly AbuseCase[] = freeze([
   makeCase({
@@ -141,7 +164,15 @@ export const P7_ABUSE_CASES: readonly AbuseCase[] = freeze([
     minimumLayer: 1,
     requiredLayers: [1],
     testFile: "tests/security/rendererIpcCredentialAbuse.test.ts",
-    testName: "P7-A-RENDERER-001 rejects privileged renderer imports",
+    variantSuffixes: [
+      "DIRECT-NODE",
+      "DIRECT-ELECTRON",
+      "PRIVILEGED-PROCESS",
+      "SHELL",
+      "PERSISTENCE",
+      "FILESYSTEM",
+      "GIT",
+    ],
     expectedBoundary: "product-boundary-rules",
     expectedIncidentCode: null,
     forbiddenEffects: ["executor-call", "filesystem-read", "shell-spawn"],
@@ -156,7 +187,7 @@ export const P7_ABUSE_CASES: readonly AbuseCase[] = freeze([
     minimumLayer: 1,
     requiredLayers: [1, 4],
     testFile: "tests/security/rendererIpcCredentialAbuse.test.ts",
-    testName: "P7-A-RENDERER-002 rejects renderer network escape",
+    variantSuffixes: ["FETCH", "WEBSOCKET", "EVENTSOURCE", "XMLHTTPREQUEST", "WINDOW-REQUIRE"],
     expectedBoundary: "product-boundary-rules",
     expectedIncidentCode: null,
     forbiddenEffects: ["external-network", "credential-projection", "filesystem-read"],
@@ -171,7 +202,13 @@ export const P7_ABUSE_CASES: readonly AbuseCase[] = freeze([
     minimumLayer: 2,
     requiredLayers: [2],
     testFile: "tests/security/rendererIpcCredentialAbuse.test.ts",
-    testName: "P7-A-IPC-001 rejects untrusted IPC callers",
+    variantSuffixes: [
+      "UNDECLARED-CHANNEL",
+      "STALE-FRAME",
+      "NON-MAIN-FRAME",
+      "WRONG-SENDER",
+      "REQUEST-AFTER-DISPOSAL",
+    ],
     expectedBoundary: "desktopIpc",
     expectedIncidentCode: null,
     forbiddenEffects: NO_EFFECTS,
@@ -186,7 +223,12 @@ export const P7_ABUSE_CASES: readonly AbuseCase[] = freeze([
     minimumLayer: 2,
     requiredLayers: [2],
     testFile: "tests/security/rendererIpcCredentialAbuse.test.ts",
-    testName: "P7-A-IPC-002 rejects malformed IPC payloads",
+    variantSuffixes: [
+      "UNKNOWN-KEYS",
+      "PROTOTYPE-BEARING-INPUT",
+      "UNEXPECTED-ARGUMENTS",
+      "OVERSIZED-PAYLOAD",
+    ],
     expectedBoundary: "desktopIpc payload validator",
     expectedIncidentCode: null,
     forbiddenEffects: ["executor-call", "persistence-write", "credential-projection"],
@@ -201,7 +243,12 @@ export const P7_ABUSE_CASES: readonly AbuseCase[] = freeze([
     minimumLayer: 2,
     requiredLayers: [2, 4],
     testFile: "tests/security/rendererIpcCredentialAbuse.test.ts",
-    testName: "P7-A-CREDENTIAL-001 redacts provider reads",
+    variantSuffixes: [
+      "PROVIDER-LIST-REDACTION",
+      "PROVIDER-READ-REDACTION",
+      "CHROMIUM-NO-STORE",
+      "RENDERER-CACHE-ABSENCE",
+    ],
     expectedBoundary: "Main provider projection",
     expectedIncidentCode: null,
     forbiddenEffects: ["credential-projection", "credential-cache", "renderer-secret"],
@@ -216,7 +263,12 @@ export const P7_ABUSE_CASES: readonly AbuseCase[] = freeze([
     minimumLayer: 2,
     requiredLayers: [2],
     testFile: "tests/security/rendererIpcCredentialAbuse.test.ts",
-    testName: "P7-A-CREDENTIAL-002 rejects credential substitution",
+    variantSuffixes: [
+      "SENTINEL-WRITE-BACK",
+      "CROSS-PROVIDER-SUBSTITUTION",
+      "MISSING-STORED-KEY",
+      "ANONYMOUS-FETCH-FALLBACK",
+    ],
     expectedBoundary: "Main provider credential resolver",
     expectedIncidentCode: null,
     forbiddenEffects: ["credential-write", "cross-provider-effect", "anonymous-effect"],
@@ -231,7 +283,13 @@ export const P7_ABUSE_CASES: readonly AbuseCase[] = freeze([
     minimumLayer: 2,
     requiredLayers: [2, 4],
     testFile: "tests/security/rendererIpcCredentialAbuse.test.ts",
-    testName: "P7-A-CREDENTIAL-003 blocks credential leakage",
+    variantSuffixes: [
+      "RENDERER-LEAKAGE",
+      "LOG-LEAKAGE",
+      "PERSISTENCE-LEAKAGE",
+      "WORKER-ENVIRONMENT-LEAKAGE",
+      "DIAGNOSTIC-LEAKAGE",
+    ],
     expectedBoundary: "credential redaction boundary",
     expectedIncidentCode: null,
     forbiddenEffects: [
@@ -250,7 +308,14 @@ export const P7_ABUSE_CASES: readonly AbuseCase[] = freeze([
     minimumLayer: 2,
     requiredLayers: [2],
     testFile: "tests/security/workspaceToolApprovalAbuse.test.ts",
-    testName: "P7-A-WORKSPACE-001 rejects workspace scope escapes",
+    variantSuffixes: [
+      "TRAVERSAL",
+      "ABSOLUTE-PATH",
+      "EMBEDDED-NUL",
+      "SYMLINK-ESCAPE",
+      "WORKSPACE-EXTERNAL-READ",
+      "WORKSPACE-EXTERNAL-WRITE",
+    ],
     expectedBoundary: "workspace grant canonical path",
     expectedIncidentCode: "workspace-unavailable",
     forbiddenEffects: ["workspace-external-read", "workspace-external-write", "executor-call"],
@@ -265,7 +330,13 @@ export const P7_ABUSE_CASES: readonly AbuseCase[] = freeze([
     minimumLayer: 2,
     requiredLayers: [2],
     testFile: "tests/security/workspaceToolApprovalAbuse.test.ts",
-    testName: "P7-A-WORKSPACE-002 rejects Git identity drift",
+    variantSuffixes: [
+      "REPLACED-GIT-POINTER",
+      "WRONG-CANONICAL-ROOT",
+      "SUBDIRECTORY",
+      "LINKED-WORKTREE",
+      "REVOKED-GRANT",
+    ],
     expectedBoundary: "canonical Git root revalidation",
     expectedIncidentCode: "workspace-unavailable",
     forbiddenEffects: ["workspace-write", "wrong-repository-effect", "grant-retention"],
@@ -280,7 +351,7 @@ export const P7_ABUSE_CASES: readonly AbuseCase[] = freeze([
     minimumLayer: 2,
     requiredLayers: [2],
     testFile: "tests/security/workspaceToolApprovalAbuse.test.ts",
-    testName: "P7-A-WORKSPACE-003 rejects Git hook and state indirection",
+    variantSuffixes: ["HOOKS", "FILTERS", "INCLUDES", "FSMONITOR", "DIRTY-TREE", "HEAD-DRIFT"],
     expectedBoundary: "Git safety preflight",
     expectedIncidentCode: "workspace-unavailable",
     forbiddenEffects: ["hook-execution", "filter-execution", "workspace-write"],
@@ -295,7 +366,12 @@ export const P7_ABUSE_CASES: readonly AbuseCase[] = freeze([
     minimumLayer: 2,
     requiredLayers: [2],
     testFile: "tests/security/workspaceToolApprovalAbuse.test.ts",
-    testName: "P7-A-DELIVERY-001 requires apply approval and revalidation",
+    variantSuffixes: [
+      "SOURCE-WRITE-BEFORE-APPLY-APPROVAL",
+      "CONFLICTING-PATCH",
+      "DIGEST-DRIFT",
+      "MULTI-FILE-ATOMIC-DENIAL",
+    ],
     expectedBoundary: "Main artifact applicator",
     expectedIncidentCode: null,
     forbiddenEffects: ["workspace-write", "executor-call", "partial-apply"],
@@ -310,7 +386,13 @@ export const P7_ABUSE_CASES: readonly AbuseCase[] = freeze([
     minimumLayer: 2,
     requiredLayers: [2],
     testFile: "tests/security/workspaceToolApprovalAbuse.test.ts",
-    testName: "P7-A-DELIVERY-002 makes apply retries idempotent",
+    variantSuffixes: [
+      "CONCURRENT-APPLY",
+      "ALREADY-APPLIED-RETRY",
+      "LOST-RESPONSE",
+      "REPOSITORY-LOCK",
+      "IDEMPOTENT-RECOVERY",
+    ],
     expectedBoundary: "repository lock and artifact applicator",
     expectedIncidentCode: null,
     forbiddenEffects: ["duplicate-workspace-write", "duplicate-audit", "lock-residue"],
@@ -325,7 +407,14 @@ export const P7_ABUSE_CASES: readonly AbuseCase[] = freeze([
     minimumLayer: 2,
     requiredLayers: [2],
     testFile: "tests/security/workspaceToolApprovalAbuse.test.ts",
-    testName: "P7-A-TOOL-001 rejects undeclared or unpolicied tools",
+    variantSuffixes: [
+      "UNKNOWN-TOOL",
+      "MISSING-MANIFEST",
+      "NO-POLICY",
+      "CONFLICTING-POLICY",
+      "MALFORMED-INPUT",
+      "WIDENED-MANIFEST",
+    ],
     expectedBoundary: "ToolGateway manifest and policy",
     expectedIncidentCode: "manifest-unavailable",
     forbiddenEffects: ["executor-call", "approval-creation", "audit-effect"],
@@ -340,7 +429,12 @@ export const P7_ABUSE_CASES: readonly AbuseCase[] = freeze([
     minimumLayer: 2,
     requiredLayers: [2, 3],
     testFile: "tests/security/workspaceToolApprovalAbuse.test.ts",
-    testName: "P7-A-TOOL-002 rejects stale tool authorization",
+    variantSuffixes: [
+      "INVALID-CREDENTIAL-REFERENCE",
+      "STALE-AUTHORIZATION",
+      "EXECUTOR-MISMATCH",
+      "AMBIGUOUS-POST-EFFECT-RETRY",
+    ],
     expectedBoundary: "ToolGateway authorization",
     expectedIncidentCode: "unsupported-tool",
     forbiddenEffects: ["executor-call", "credential-effect", "second-effect"],
@@ -355,7 +449,15 @@ export const P7_ABUSE_CASES: readonly AbuseCase[] = freeze([
     minimumLayer: 2,
     requiredLayers: [2],
     testFile: "tests/security/workspaceToolApprovalAbuse.test.ts",
-    testName: "P7-A-APPROVAL-001 rejects replayed approvals",
+    variantSuffixes: [
+      "DENY",
+      "EXPIRE",
+      "CANCEL",
+      "REUSE",
+      "WRONG-OPERATION",
+      "WRONG-ATTEMPT",
+      "STALE-SNAPSHOT",
+    ],
     expectedBoundary: "approval exact identity gate",
     expectedIncidentCode: null,
     forbiddenEffects: ["executor-call", "approval-reuse", "audit-effect"],
@@ -370,7 +472,20 @@ export const P7_ABUSE_CASES: readonly AbuseCase[] = freeze([
     minimumLayer: 2,
     requiredLayers: [2],
     testFile: "tests/security/workspaceToolApprovalAbuse.test.ts",
-    testName: "P7-A-APPROVAL-002 rejects approval substitution",
+    variantSuffixes: [
+      "PROTECTED-AS-WORKFLOW-FEEDBACK",
+      "PROTECTED-AS-PUBLISH",
+      "PROTECTED-AS-WORKSPACE-APPLY",
+      "WORKFLOW-FEEDBACK-AS-PROTECTED",
+      "WORKFLOW-FEEDBACK-AS-PUBLISH",
+      "WORKFLOW-FEEDBACK-AS-WORKSPACE-APPLY",
+      "PUBLISH-AS-PROTECTED",
+      "PUBLISH-AS-WORKFLOW-FEEDBACK",
+      "PUBLISH-AS-WORKSPACE-APPLY",
+      "WORKSPACE-APPLY-AS-PROTECTED",
+      "WORKSPACE-APPLY-AS-WORKFLOW-FEEDBACK",
+      "WORKSPACE-APPLY-AS-PUBLISH",
+    ],
     expectedBoundary: "approval operation and attempt binding",
     expectedIncidentCode: null,
     forbiddenEffects: ["executor-call", "workspace-write", "approval-reuse"],
@@ -385,7 +500,17 @@ export const P7_ABUSE_CASES: readonly AbuseCase[] = freeze([
     minimumLayer: 3,
     requiredLayers: [3],
     testFile: "tests/security/mcpWorkerProcessAbuse.test.ts",
-    testName: "P7-A-MCP-001 rejects unauthenticated loopback peers",
+    variantSuffixes: [
+      "WRONG-LEASE",
+      "WRONG-TOKEN",
+      "WRONG-HOST",
+      "WRONG-ORIGIN",
+      "WRONG-USER-AGENT",
+      "WRONG-METHOD",
+      "WRONG-CONTENT-TYPE",
+      "WRONG-MODEL",
+      "INVALID-INITIALIZATION-ORDER",
+    ],
     expectedBoundary: "Goose MCP and model loopback lease",
     expectedIncidentCode: "invalid-config",
     forbiddenEffects: ["model-invocation", "tool-invocation", "lease-retention"],
@@ -400,7 +525,16 @@ export const P7_ABUSE_CASES: readonly AbuseCase[] = freeze([
     minimumLayer: 3,
     requiredLayers: [3],
     testFile: "tests/security/mcpWorkerProcessAbuse.test.ts",
-    testName: "P7-A-MCP-002 rejects malformed or oversized protocol frames",
+    variantSuffixes: [
+      "MALFORMED-JSON",
+      "MALFORMED-SSE",
+      "OVERSIZED-BODY",
+      "OVERSIZED-FRAME",
+      "OVERSIZED-TREE",
+      "DUPLICATE-IDENTITY",
+      "REQUEST-AFTER-CLOSE",
+      "IN-FLIGHT-CLOSE",
+    ],
     expectedBoundary: "bounded MCP protocol parser",
     expectedIncidentCode: "invalid-config",
     forbiddenEffects: ["model-invocation", "tool-invocation", "child-process"],
@@ -415,7 +549,12 @@ export const P7_ABUSE_CASES: readonly AbuseCase[] = freeze([
     minimumLayer: 3,
     requiredLayers: [3],
     testFile: "tests/security/mcpWorkerProcessAbuse.test.ts",
-    testName: "P7-A-MCP-003 rejects undeclared and ambiguous model tools",
+    variantSuffixes: [
+      "UNDECLARED-TOOL",
+      "AMBIGUOUS-ALIAS",
+      "INVALID-TOOL-COUNT",
+      "UNMODELED-PROVIDER-FIELD",
+    ],
     expectedBoundary: "Main model and MCP capability admission",
     expectedIncidentCode: "unsupported-tool",
     forbiddenEffects: ["model-invocation", "tool-invocation", "executor-call"],
@@ -430,7 +569,12 @@ export const P7_ABUSE_CASES: readonly AbuseCase[] = freeze([
     minimumLayer: 3,
     requiredLayers: [3, 4],
     testFile: "tests/security/mcpWorkerProcessAbuse.test.ts",
-    testName: "P7-A-WORKER-001 rejects unadmitted Worker capabilities",
+    variantSuffixes: [
+      "UNADMITTED-EXECUTABLE",
+      "UNADMITTED-DIGEST",
+      "WIDENED-CAPABILITIES",
+      "INHERITED-ENVIRONMENT-SECRET",
+    ],
     expectedBoundary: "Worker admission and closed environment",
     expectedIncidentCode: "invalid-config",
     forbiddenEffects: ["worker-environment-secret", "external-network", "child-process"],
@@ -445,7 +589,11 @@ export const P7_ABUSE_CASES: readonly AbuseCase[] = freeze([
     minimumLayer: 3,
     requiredLayers: [3, 4],
     testFile: "tests/security/mcpWorkerProcessAbuse.test.ts",
-    testName: "P7-A-NETWORK-001 blocks undeclared network effects",
+    variantSuffixes: [
+      "RENDERER-EXTERNAL-NETWORK",
+      "WORKER-EXTERNAL-NETWORK",
+      "UNDECLARED-LOOPBACK-DESTINATION",
+    ],
     expectedBoundary: "Renderer and Worker network policy",
     expectedIncidentCode: null,
     forbiddenEffects: ["external-network", "undeclared-loopback", "credential-projection"],
@@ -460,7 +608,15 @@ export const P7_ABUSE_CASES: readonly AbuseCase[] = freeze([
     minimumLayer: 3,
     requiredLayers: [3],
     testFile: "tests/security/mcpWorkerProcessAbuse.test.ts",
-    testName: "P7-A-PROCESS-001 bounds Worker process outcomes",
+    variantSuffixes: [
+      "UNEXPECTED-CHILD",
+      "OUTPUT-OVERFLOW",
+      "TIMEOUT",
+      "CRASH",
+      "CANCELLATION",
+      "NORMAL-LEADER-EXIT",
+      "FAILING-LEADER-EXIT",
+    ],
     expectedBoundary: "supervised Worker lifecycle",
     expectedIncidentCode: "worker-execution-failed",
     forbiddenEffects: PROCESS_NO_EFFECTS,
@@ -475,7 +631,15 @@ export const P7_ABUSE_CASES: readonly AbuseCase[] = freeze([
     minimumLayer: 3,
     requiredLayers: [3, 4],
     testFile: "tests/security/mcpWorkerProcessAbuse.test.ts",
-    testName: "P7-A-PROCESS-002 cleans Worker process groups",
+    variantSuffixes: [
+      "PARENT-DEATH",
+      "CLOSE-RACE",
+      "CLEANUP-RETRY",
+      "RESIDUAL-PROCESS-SCAN",
+      "RESIDUAL-PRIVATE-ROOT-SCAN",
+      "RESIDUAL-WORKTREE-SCAN",
+      "RESIDUAL-REPOSITORY-LOCK-SCAN",
+    ],
     expectedBoundary: "supervisor cleanup and private-root release",
     expectedIncidentCode: "worker-execution-failed",
     forbiddenEffects: ["child-process", "private-root-residue", "lock-residue"],
@@ -490,7 +654,14 @@ export const P7_ABUSE_CASES: readonly AbuseCase[] = freeze([
     minimumLayer: 2,
     requiredLayers: [2],
     testFile: "tests/security/persistenceArtifactRedactionAbuse.test.ts",
-    testName: "P7-A-PERSISTENCE-001 rejects replay and stale records",
+    variantSuffixes: [
+      "STALE-CAS",
+      "CONFLICTING-DUPLICATE",
+      "CROSS-OWNER-RECORD",
+      "CROSS-ATTEMPT-RECORD",
+      "SEQUENCE-REGRESSION",
+      "REPLAY",
+    ],
     expectedBoundary: "SQLite persistence CAS and identity validation",
     expectedIncidentCode: null,
     forbiddenEffects: ["persistence-rewrite", "second-effect", "terminal-completed"],
@@ -505,7 +676,14 @@ export const P7_ABUSE_CASES: readonly AbuseCase[] = freeze([
     minimumLayer: 2,
     requiredLayers: [2],
     testFile: "tests/security/persistenceArtifactRedactionAbuse.test.ts",
-    testName: "P7-A-PERSISTENCE-002 rejects malformed and tampered persistence",
+    variantSuffixes: [
+      "UNKNOWN-KEYS",
+      "TRUNCATED-PROTOCOL",
+      "TRUNCATED-DATABASE",
+      "DIGEST-TAMPER",
+      "INVALID-SQLITE",
+      "CLOSED-PORT",
+    ],
     expectedBoundary: "SQLite protocol and digest validation",
     expectedIncidentCode: null,
     forbiddenEffects: ["persistence-rewrite", "authority-substitution", "second-effect"],
@@ -520,7 +698,16 @@ export const P7_ABUSE_CASES: readonly AbuseCase[] = freeze([
     minimumLayer: 2,
     requiredLayers: [2, 3],
     testFile: "tests/security/persistenceArtifactRedactionAbuse.test.ts",
-    testName: "P7-A-REDACTION-001 removes protected values from evidence",
+    variantSuffixes: [
+      "CREDENTIAL",
+      "PATH",
+      "PROMPT",
+      "COMPLETION",
+      "TOOL-ARGUMENT",
+      "CONTENT-REFERENCE",
+      "PATCH",
+      "ENVIRONMENT-TEXT",
+    ],
     expectedBoundary: "diagnostic and audit redaction",
     expectedIncidentCode: null,
     forbiddenEffects: ["credential-projection", "sensitive-log", "user-path-leak"],
@@ -535,7 +722,14 @@ export const P7_ABUSE_CASES: readonly AbuseCase[] = freeze([
     minimumLayer: 2,
     requiredLayers: [2],
     testFile: "tests/security/persistenceArtifactRedactionAbuse.test.ts",
-    testName: "P7-A-REDACTION-002 prevents false terminal success",
+    variantSuffixes: [
+      "REJECTED-MODEL-FALSE-COMPLETED",
+      "REJECTED-MODEL-FALSE-UNCHANGED",
+      "REJECTED-TOOL-FALSE-COMPLETED",
+      "REJECTED-TOOL-FALSE-UNCHANGED",
+      "REJECTED-WORKER-FALSE-COMPLETED",
+      "REJECTED-WORKER-FALSE-UNCHANGED",
+    ],
     expectedBoundary: "incident and terminal projection",
     expectedIncidentCode: "worker-execution-failed",
     forbiddenEffects: ["terminal-completed", "successful-artifact", "unchanged-projection"],
@@ -550,7 +744,19 @@ export const P7_ABUSE_CASES: readonly AbuseCase[] = freeze([
     minimumLayer: 2,
     requiredLayers: [1, 2, 4],
     testFile: "tests/security/persistenceArtifactRedactionAbuse.test.ts",
-    testName: "P7-A-ARTIFACT-001 rejects untrusted artifact and package substitutions",
+    variantSuffixes: [
+      "SELF-AUTHORIZING-MANIFEST",
+      "WRONG-DIGEST",
+      "WRONG-ARCHITECTURE",
+      "SYMLINK",
+      "UNEXPECTED-FILE",
+      "FEATURE-WIDENING",
+      "UNSAFE-DEPENDENCY",
+      "MISSING-LICENSE",
+      "MISSING-SBOM",
+      "MISSING-AUDIT",
+      "PACKAGED-SOURCE-COPY-DRIFT",
+    ],
     expectedBoundary: "artifact trust root and package verifier",
     expectedIncidentCode: null,
     forbiddenEffects: ["artifact-admission", "feature-widening", "source-copy-drift"],
