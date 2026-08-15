@@ -18,6 +18,11 @@ import {
   type GooseAcpToolDiscoveryOptions,
   type GooseAcpTransport,
 } from "./gooseAcpHandshake";
+import {
+  GOOSE_WORKER_RESOURCE_PROFILE,
+  freezeWorkerResourceBudget,
+  type WorkerResourceBudget,
+} from "../../core";
 import type { AdmittedGooseRunnerArtifact } from "./gooseRunnerArtifact";
 import { createGooseRunnerSandboxLaunch } from "./gooseRunnerSandbox";
 
@@ -25,10 +30,13 @@ const MAX_STDOUT_LINE_BYTES = 64 * 1024;
 const MAX_STDERR_BYTES = 256 * 1024;
 const CLOSE_GRACE_MS = 1_000;
 const TERMINATE_GRACE_MS = 1_000;
+export const GOOSE_NATIVE_RESOURCE_LIMIT_FAILURE_MARKER =
+  "ACTESTRA_GOOSE_RESOURCE_LIMIT_SETUP_FAILED";
 export type GooseRunnerProcessErrorCode =
   | "invalid-options"
   | "artifact-mismatch"
   | "network-policy-unavailable"
+  | "worker-resource-enforcement-unavailable"
   | "spawn-failed"
   | "cleanup-failed";
 
@@ -48,6 +56,7 @@ export interface GooseAcpSpawnOptions {
   readonly workingDirectory: string;
   readonly workspaceDirectory?: string;
   readonly environment: Readonly<Record<string, string>>;
+  readonly resourceBudget: WorkerResourceBudget;
   readonly networkPolicy:
     | "deny-all"
     | {
@@ -59,6 +68,10 @@ export interface GooseAcpSpawnOptions {
 }
 
 export type GooseAcpTransportFactory = (options: GooseAcpSpawnOptions) => GooseAcpTransport;
+
+export interface GooseRunnerResourceFailureMatcher {
+  push(chunk: Uint8Array): boolean;
+}
 
 type GooseChildProcess = ChildProcessByStdio<Writable, Readable, Readable>;
 
@@ -142,6 +155,8 @@ export function createGooseRunnerEnvironment(
     OTEL_TRACES_EXPORTER: "none",
     OTEL_METRICS_EXPORTER: "none",
     OTEL_LOGS_EXPORTER: "none",
+    ACTESTRA_GOOSE_CPU_SECONDS: String(GOOSE_WORKER_RESOURCE_PROFILE.maxCpuSeconds),
+    ACTESTRA_GOOSE_ADDRESS_SPACE_BYTES: String(GOOSE_WORKER_RESOURCE_PROFILE.maxPrivateMemoryBytes),
     ...(stableModelBinding === undefined
       ? {}
       : {
@@ -151,6 +166,96 @@ export function createGooseRunnerEnvironment(
           OPENAI_API_KEY: stableModelBinding.attemptLease,
           NO_PROXY: "127.0.0.1,localhost",
         }),
+  });
+}
+
+function hasExactGooseResourceBudget(value: WorkerResourceBudget): boolean {
+  return (
+    value.maxActiveDurationMs === GOOSE_WORKER_RESOURCE_PROFILE.maxActiveDurationMs &&
+    value.maxCpuSeconds === GOOSE_WORKER_RESOURCE_PROFILE.maxCpuSeconds &&
+    value.maxPrivateMemoryBytes === GOOSE_WORKER_RESOURCE_PROFILE.maxPrivateMemoryBytes &&
+    value.maxOutputBytes === GOOSE_WORKER_RESOURCE_PROFILE.maxOutputBytes &&
+    value.maxPrivateStorageBytes === GOOSE_WORKER_RESOURCE_PROFILE.maxPrivateStorageBytes &&
+    value.maxChildProcesses === GOOSE_WORKER_RESOURCE_PROFILE.maxChildProcesses
+  );
+}
+
+/** Validates Main-created native limit inputs immediately before process launch. */
+export function assertGooseAcpSpawnOptions(
+  options: GooseAcpSpawnOptions | undefined,
+): asserts options is GooseAcpSpawnOptions {
+  if (
+    options === undefined ||
+    !Object.isFrozen(options) ||
+    !Object.isFrozen(options.environment) ||
+    !Object.isFrozen(options.resourceBudget)
+  ) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose native resource launch options must be immutable",
+    );
+  }
+  try {
+    freezeWorkerResourceBudget(options.resourceBudget);
+  } catch {
+    throw new GooseRunnerProcessError("invalid-options", "Goose native resource budget is invalid");
+  }
+  if (!hasExactGooseResourceBudget(options.resourceBudget)) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose native resource budget differs from the admitted profile",
+    );
+  }
+  if (
+    options.environment.ACTESTRA_GOOSE_CPU_SECONDS !==
+      String(options.resourceBudget.maxCpuSeconds) ||
+    options.environment.ACTESTRA_GOOSE_ADDRESS_SPACE_BYTES !==
+      String(options.resourceBudget.maxPrivateMemoryBytes)
+  ) {
+    throw new GooseRunnerProcessError(
+      "worker-resource-enforcement-unavailable",
+      "Goose native resource limits are unavailable before launch",
+    );
+  }
+}
+
+/**
+ * Recognizes only the runner's fixed setup marker. Its state retains no stderr
+ * content, so native diagnostic text never crosses the process boundary.
+ */
+export function createGooseRunnerResourceFailureMatcher(): GooseRunnerResourceFailureMatcher {
+  const marker = Buffer.from(GOOSE_NATIVE_RESOURCE_LIMIT_FAILURE_MARKER, "utf8");
+  const fallback = new Uint8Array(marker.length);
+  for (let index = 1, prefixLength = 0; index < marker.length; ) {
+    if (marker[index] === marker[prefixLength]) {
+      prefixLength += 1;
+      fallback[index] = prefixLength;
+      index += 1;
+    } else if (prefixLength > 0) {
+      prefixLength = fallback[prefixLength - 1] ?? 0;
+    } else {
+      index += 1;
+    }
+  }
+  let matched = 0;
+  let detected = false;
+  return Object.freeze({
+    push(chunk: Uint8Array): boolean {
+      if (detected) return true;
+      for (const byte of chunk) {
+        while (matched > 0 && byte !== marker[matched]) {
+          matched = fallback[matched - 1] ?? 0;
+        }
+        if (byte === marker[matched]) {
+          matched += 1;
+          if (matched === marker.length) {
+            detected = true;
+            return true;
+          }
+        }
+      }
+      return false;
+    },
   });
 }
 
@@ -313,6 +418,7 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
   private readonly errorListeners = new Set<(error: Error) => void>();
   private readonly exitListeners = new Set<(code: number | null, signal: string | null) => void>();
   private readonly exitPromise: Promise<void>;
+  private readonly nativeResourceFailureMatcher = createGooseRunnerResourceFailureMatcher();
   private stdoutBuffer = "";
   private stderrBytes = 0;
   private exited = false;
@@ -340,6 +446,15 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
       }
     });
     child.stderr.on("data", (chunk: Buffer) => {
+      if (this.nativeResourceFailureMatcher.push(chunk)) {
+        this.failTransport(
+          new GooseRunnerProcessError(
+            "worker-resource-enforcement-unavailable",
+            "Goose native resource enforcement is unavailable",
+          ),
+        );
+        return;
+      }
       this.stderrBytes += chunk.byteLength;
       if (this.stderrBytes > MAX_STDERR_BYTES) {
         this.failTransport(new Error("Goose stderr exceeded the bounded diagnostic size"));
@@ -443,6 +558,7 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
 }
 
 function createNodeGooseAcpTransport(options: GooseAcpSpawnOptions): GooseAcpTransport {
+  assertGooseAcpSpawnOptions(options);
   const networkProfile = macosNetworkProfile(options);
   if (
     networkProfile === undefined ||
@@ -631,6 +747,7 @@ export async function openGooseRunnerHandshake(
   let transport: GooseAcpTransport | undefined;
   try {
     prepared = await preparePrivateRoot(options.privateRootParent, options.artifact);
+    const resourceBudget = freezeWorkerResourceBudget(GOOSE_WORKER_RESOURCE_PROFILE);
     const spawnOptions: GooseAcpSpawnOptions = Object.freeze({
       executablePath: prepared.executablePath,
       workingDirectory: prepared.workingDirectory,
@@ -638,6 +755,7 @@ export async function openGooseRunnerHandshake(
         ? {}
         : { workspaceDirectory: admittedWorkspaceDirectory }),
       environment: createGooseRunnerEnvironment(prepared.root, stableModelBinding?.binding),
+      resourceBudget,
       networkPolicy:
         capabilityProxyPort === undefined || stableModelBinding === undefined
           ? "deny-all"
@@ -747,6 +865,14 @@ export async function openGooseRunnerHandshake(
         "Goose handshake failed and one or more cleanup steps also failed",
         { cause: new AggregateError([error, ...cleanupErrors]) },
       );
+    }
+    if (
+      error instanceof GooseAcpHandshakeError &&
+      error.code === "transport-error" &&
+      error.cause instanceof GooseRunnerProcessError &&
+      error.cause.code === "worker-resource-enforcement-unavailable"
+    ) {
+      throw error.cause;
     }
     if (error instanceof GooseAcpHandshakeError || error instanceof GooseRunnerProcessError) {
       throw error;

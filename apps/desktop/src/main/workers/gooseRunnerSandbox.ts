@@ -56,6 +56,7 @@ export function createGooseRunnerSandboxLaunch(
   const profile = [
     "(version 1)",
     "(allow default)",
+    "(deny process-fork)",
     "(deny process-exec)",
     "(deny network*)",
     `(deny file-read* ${MACOS_DENIED_HOST_READ_ROOTS.map(
