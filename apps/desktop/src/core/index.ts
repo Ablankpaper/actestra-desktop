@@ -21,4 +21,5 @@ export * from "./scopedNativeTools";
 export * from "./teamOrchestration";
 export * from "./teamRun";
 export * from "./workloadContent";
+export * from "./workerResourceBudget";
 export * from "./writingArtifact";
