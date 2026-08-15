@@ -76,11 +76,12 @@ describe("P7.2 resource reliability documentation", () => {
     const status = read("docs/PROJECT_STATUS.md");
     expect(status).toContain("### 2026-08-16 P7.2 local implementation gate");
     expect(status).toContain("implementation/test parent `e4a81ff");
-    expect(status).toContain("5 test files and 32 tests pass");
-    expect(status).toContain("downstream `package` compilation exits 0");
-    expect(status).toContain("Packaged `.app` hostile smoke: not yet verified");
-    expect(status).toContain("Exact-head pull-request CI: not yet verified");
-    expect(status).toContain("Merge and merged-main CI: not yet verified");
-    expect(status).toContain("Release, deployment, and user acceptance: not claimed");
+    expect(status).toContain("Focused\nresource/reliability tests pass (`9` files, `60` tests)");
+    expect(status).toContain("smoke:p7-security` exited 0 with all 7 required cases");
+    expect(status).toContain("smoke:p7-2-resource-reliability` exited 0 with all 5 hostile cases");
+    expect(status).toContain("This closes the P7.2 macOS arm64 local packaged-development gate");
+    expect(status).toContain("exact-head pull-request CI, merge and\nmerged-main CI");
+    expect(status).toContain("formal signing/notarization, release, deployment, and final user");
+    expect(status).toContain("P7.3, P7.4, Windows/Linux enforcement, and P8 remain\nopen");
   });
 });

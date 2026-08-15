@@ -92,7 +92,7 @@
 
 - [ ] **Step 1: Write failing launch and metric tests**
 
-  Assert the fixed General profile supplies `--max-old-space-size=256`, records utility PID plus creation time, rejects a metrics source without a provable private-memory field, classifies CPU/memory/active-duration breaches, and preserves the exact incident code in terminal evidence.
+  Assert the fixed General profile supplies `--max-old-space-size=256`, records utility PID plus creation time, rejects a metrics source without a provable memory field (`privateBytes` or `workingSetSize`), classifies CPU/memory/active-duration breaches, and preserves the exact incident code in terminal evidence.
 
 - [ ] **Step 2: Run focused tests and confirm they fail**
 
@@ -139,7 +139,7 @@
 
 - [ ] **Step 3: Implement native limits in the existing runner**
 
-  Pass only validated numeric values through the trusted launch environment, call `setrlimit` before `goose::acp::server::run`, return a stable failure marker on setup failure, and add the explicit sandbox process-fork/exec denial without adding a wrapper or sidecar.
+  Pass only validated numeric values through the trusted launch environment, read the macOS Mach virtual-size launch baseline, apply the checked baseline plus fixed allowance with `setrlimit` before `goose::acp::server::run`, return a stable failure marker on setup failure, and add the explicit sandbox process-fork/exec denial without adding a wrapper or sidecar.
 
 - [ ] **Step 4: Run focused Rust/TypeScript tests and Goose lifecycle tests**
 

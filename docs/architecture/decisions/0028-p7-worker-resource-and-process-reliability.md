@@ -34,8 +34,8 @@ An unavailable enforcement primitive fails closed before launch as
 
 | Worker | Active duration | CPU | Memory | Output | Private storage | Child processes |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| General | 10 minutes | 30 CPU seconds | 512 MiB private memory and a 256 MiB V8 heap cap | 96 KiB | 0 bytes owned directly | 0 |
-| Goose | 30 minutes | 120 CPU seconds | 1 GiB address space | 256 KiB | 512 MiB aggregate and 64 MiB per file | 0 |
+| General | 10 minutes | 30 CPU seconds | 512 MiB admitted memory bound (macOS/Linux working set or Windows private bytes) and a 256 MiB V8 heap cap | 96 KiB | 0 bytes owned directly | 0 |
+| Goose | 30 minutes | 120 CPU seconds | 1 GiB address-space growth above its measured launch baseline | 256 KiB | 512 MiB aggregate and 64 MiB per file | 0 |
 
 The active-duration clock pauses only while the existing human-decision gate is
 held. Approval expiry remains independently bounded, and a pause does not widen
@@ -45,16 +45,23 @@ CPU, memory, output, storage, or process limits.
 
 The General Worker keeps Electron `utilityProcess.fork`, adds the fixed V8 heap
 argument, and is observed through a Main-owned monitor keyed by PID and process
-creation time. Electron's macOS private-memory and CPU metrics feed the existing
-supervisor terminal path. The Worker receives no filesystem, shell, network,
+creation time. Electron's per-process CPU and memory metrics feed the existing
+supervisor terminal path. Where Electron exposes `privateBytes` (Windows), Main
+uses it; on macOS/Linux it normalizes the documented KiB `workingSetSize` to
+bytes as a conservative resident-memory bound. The Worker receives no filesystem, shell, network,
 SQLite, or process-spawn authority.
 
 The Goose Worker keeps the admitted runner, ACP protocol, process group, and
-macOS `sandbox-exec` boundary. The runner applies `setrlimit` before ACP startup;
-the production sandbox denies process fork/exec beyond the admitted runner.
-Main-owned tool and publisher boundaries account for output and private-root
-storage before and after effects. Storage inspection uses bounded `lstat`
-traversal and rejects symbolic links; it does not add shell-based accounting.
+macOS `sandbox-exec` boundary. Before ACP startup, the runner reads its own Mach
+virtual-size baseline and applies `RLIMIT_AS` to the checked sum of that baseline
+and the immutable 1 GiB allowance. This excludes the platform-owned dyld shared
+mapping already present at launch while placing a kernel-enforced bound on new
+address-space growth. Baseline inspection, arithmetic overflow, or `setrlimit`
+failure is `worker-resource-enforcement-unavailable`. The production sandbox
+denies process fork/exec beyond the admitted runner. Main-owned tool and
+publisher boundaries account for output and private-root storage before and
+after effects. Storage inspection uses bounded `lstat` traversal and rejects
+symbolic links; it does not add shell-based accounting.
 
 ### 3. Resource failures are closed, durable terminal outcomes
 
@@ -99,8 +106,8 @@ unverified and cannot be counted as passing evidence.
 
 ### Costs
 
-- macOS metrics, `setrlimit`, and seatbelt behavior require packaged physical
-  evidence in addition to deterministic unit tests.
+- macOS Mach baseline inspection, `setrlimit`, and seatbelt behavior require
+  packaged physical evidence in addition to deterministic unit tests.
 - The fixed values can change only through a reviewed code, documentation, and
   evidence update.
 - Windows and Linux require platform adapters that preserve the same contract

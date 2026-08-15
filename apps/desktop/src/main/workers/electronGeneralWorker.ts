@@ -10,6 +10,30 @@ import {
 import { subscribeDeferredUtilityProcessTerminalEvent } from "./utilityProcessTerminalDispatch";
 import type { WorkerResourceObservation } from "./workerResourceMonitor";
 
+const BYTES_PER_KIB = 1_024;
+
+function normalizeMemoryBytes(memory: ProcessMetric["memory"]): number {
+  if (memory.privateBytes !== undefined) {
+    if (!Number.isFinite(memory.privateBytes) || memory.privateBytes < 0) {
+      throw new Error("General Worker memory observation is unavailable");
+    }
+    return memory.privateBytes;
+  }
+
+  // Electron exposes privateBytes only on Windows. On macOS/Linux the working-set
+  // value is the available per-process bound and is reported in KiB; normalize it
+  // to the byte-based Actestra budget while remaining conservative about resident use.
+  const workingSetKiB = memory.workingSetSize;
+  if (
+    !Number.isFinite(workingSetKiB) ||
+    workingSetKiB < 0 ||
+    workingSetKiB > Number.MAX_SAFE_INTEGER / BYTES_PER_KIB
+  ) {
+    throw new Error("General Worker memory observation is unavailable");
+  }
+  return workingSetKiB * BYTES_PER_KIB;
+}
+
 export interface LaunchElectronGeneralWorkerOptions {
   readonly modulePath: string;
   readonly workingDirectory: string;
@@ -20,6 +44,7 @@ export interface LaunchElectronGeneralWorkerOptions {
 
 class ElectronGeneralWorkerTransport implements GeneralWorkerProcessTransport {
   private expectedCreationTime: number | undefined;
+  private terminalObserved = false;
 
   constructor(
     private readonly child: UtilityProcess,
@@ -48,6 +73,9 @@ class ElectronGeneralWorkerTransport implements GeneralWorkerProcessTransport {
       () => {
         listener();
       },
+      () => {
+        this.terminalObserved = true;
+      },
     );
   }
 
@@ -60,6 +88,9 @@ class ElectronGeneralWorkerTransport implements GeneralWorkerProcessTransport {
         this.child.off("exit", handleExit);
       },
       listener,
+      () => {
+        this.terminalObserved = true;
+      },
     );
   }
 
@@ -76,18 +107,22 @@ class ElectronGeneralWorkerTransport implements GeneralWorkerProcessTransport {
     });
   }
 
-  observeResources(): WorkerResourceObservation {
-    const metric = this.metric();
+  observeResources(): WorkerResourceObservation | null {
+    if (this.terminalObserved) return null;
+    let metric: ProcessMetric;
+    try {
+      metric = this.metric();
+    } catch (error) {
+      if (this.processHasTerminated()) return null;
+      throw error;
+    }
     this.rememberCreationTime(metric.creationTime);
     if (metric.cpu.cumulativeCPUUsage === undefined) {
       throw new Error("General Worker CPU observation is unavailable");
     }
-    if (metric.memory.privateBytes === undefined) {
-      throw new Error("General Worker private-memory observation is unavailable");
-    }
     return Object.freeze({
       cpuSeconds: metric.cpu.cumulativeCPUUsage,
-      privateMemoryBytes: metric.memory.privateBytes,
+      privateMemoryBytes: normalizeMemoryBytes(metric.memory),
     });
   }
 
@@ -101,6 +136,18 @@ class ElectronGeneralWorkerTransport implements GeneralWorkerProcessTransport {
       throw new Error("General Worker process metrics are unavailable");
     }
     return metric;
+  }
+
+  private processHasTerminated(): boolean {
+    if (this.terminalObserved) return true;
+    const pid = this.child.pid;
+    if (typeof pid !== "number" || !Number.isSafeInteger(pid) || pid < 1) return false;
+    try {
+      process.kill(pid, 0);
+      return false;
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code === "ESRCH";
+    }
   }
 
   private rememberCreationTime(creationTime: number): void {

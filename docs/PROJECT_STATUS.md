@@ -8,28 +8,52 @@ Last updated: 2026-08-16
 
 P7.2 is implemented locally on branch `codex/p7-2-resource-reliability` from
 `origin/main@1de868de0192230a0e0776a589c04f9c430ac136`, with reviewed
-implementation/test parent `e4a81ff`. The scope is scheme A: General Worker and
-Goose Worker only. Planner, SQLite utility, Renderer/UI, P7.3, P7.4, and P8 are
-not included, and the frozen `foundation/` snapshot is unchanged.
+implementation/test parent `e4a81ff`; the working tree contains the reviewed
+follow-up fixes for macOS General memory normalization and terminal observation.
+The scope is scheme A: General Worker and Goose Worker only. Planner, SQLite
+utility, Renderer/UI, P7.3, P7.4, and P8 are not included, and the frozen
+`foundation/` snapshot is unchanged.
 
-The immutable budget, supervisor terminalization, General metrics enforcement,
+The immutable budgets, supervisor terminalization, General metrics enforcement,
 Goose native limits and production fork denial, bounded output/private storage,
-downstream composition, and hostile packaged-smoke harness are present. The
-Task 6 compatibility evidence is 5 test files and 32 tests pass; strict
-TypeScript, zero-warning lint, formatting, and downstream materialization pass;
-downstream `package` compilation exits 0. The materialized main bundle contains
-the P7.2 result and failure markers. These results verify source and compilable
-package composition, not physical Electron resource enforcement.
+downstream composition, and hostile packaged-smoke harness are present. Focused
+resource/reliability tests pass (`9` files, `60` tests), and Goose runner tests
+pass (`11` files, `187` tests). The current Rust source also passes
+`cargo test --locked --release` (`6` tests), including the real macOS child
+process limit probe.
 
-- Packaged `.app` hostile smoke: not yet verified.
-- Exact-head pull-request CI: not yet verified.
-- Merge and merged-main CI: not yet verified.
-- Release, deployment, and user acceptance: not claimed.
+Fresh local packaged development evidence:
 
-The next local gate is one final development `.app` build followed by package
-trust, P7.1 compatibility smokes, the five P7.2 hostile probes, and a bounded
-residual-process scan. Results will be recorded only after those exact commands
-run on the final bytes.
+- `bun run downstream:aionui:dist:dir` exited 0. The arm64 app at
+  `.actestra/aionui-v2.1.41/out/mac-arm64/Actestra.app` passed
+  `codesign --verify --deep --strict`; `codesign -dv` reported identifier
+  `com.bignormal.actestra` and `Signature=adhoc`.
+- `bun run verify:p7-package` exited 0 for output SHA-256
+  `dac5c9f39cb2da810341c3c2eb0974d2ef3074c0e5015fc8de5d30b909ee32a0`, with
+  565 files, no source-copy drift, and Goose manifest SHA-256
+  `12f65066da7dcbc23e990b4018a4c415c0a3146fe3c3de52203a649362c8802b`.
+- `bun run smoke:aionui-general-work` exited 0 against that exact app.
+- `smoke:p7-security` exited 0 with all 7 required cases `denied-safe` and
+  redacted when supplied the runner artifact directory and manifest trust root.
+- `smoke:p7-2-resource-reliability` exited 0 with all 5 hostile cases
+  fail-closed and redacted: General CPU, General memory, Goose output, Goose
+  storage, and Goose fork denial.
+- The final residual-process scan found no Actestra, AionCore, Goose runner,
+  planner, General Worker, or P7 probe residue.
+
+The full local gate `bun run check` exited 0: format passed, lint reported
+0 warnings/0 errors, typecheck passed, Electron SQLite passed, Vitest reported
+`132` files passed / `2` skipped and `1479` tests passed / `9` skipped, the P7
+abuse gate passed all 28 cases and 168 exact variants, and boundary, foundation,
+downstream, and package checks passed. The initial two security-smoke attempts
+omitted the required runner trust-root environment variables and were killed by
+the harness timeout; with the documented trust roots supplied, the smoke passed.
+
+This closes the P7.2 macOS arm64 local packaged-development gate for scheme A.
+It is local/package evidence only: exact-head pull-request CI, merge and
+merged-main CI, formal signing/notarization, release, deployment, and final user
+acceptance are not claimed. P7.3, P7.4, Windows/Linux enforcement, and P8 remain
+open.
 
 ### 2026-08-15 P7.1 development integration gate accepted on main
 

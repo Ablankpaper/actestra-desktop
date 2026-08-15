@@ -99,7 +99,7 @@ export interface GeneralWorkerProcessAdapterOptions {
   readonly newToolRequestId?: () => ToolRequestId;
   readonly newEventId?: () => EventId;
   /** Main-owned source used by the resource monitor; Renderer/Worker input cannot provide it. */
-  readonly resourceObservation?: () => WorkerResourceObservation;
+  readonly resourceObservation?: () => WorkerResourceObservation | null;
   readonly resourceIdentity?: () => GeneralWorkerResourceIdentity;
 }
 
@@ -228,7 +228,7 @@ export class GeneralWorkerProcessAdapter implements AgentAdapter {
   private readonly newAttemptToken: () => string;
   private readonly newToolRequestId: () => ToolRequestId;
   private readonly newEventId: () => EventId;
-  private readonly resourceObservation: (() => WorkerResourceObservation) | undefined;
+  private readonly resourceObservation: (() => WorkerResourceObservation | null) | undefined;
   private readonly resourceIdentitySource: (() => GeneralWorkerResourceIdentity) | undefined;
   private readonly unsubscribeMessage: () => void;
   private readonly unsubscribeError: () => void;
@@ -319,7 +319,7 @@ export class GeneralWorkerProcessAdapter implements AgentAdapter {
     return CAPABILITIES;
   }
 
-  observeResources(): WorkerResourceObservation {
+  observeResources(): WorkerResourceObservation | null {
     if (this.resourceObservation === undefined) {
       throw new GeneralWorkerProcessError(
         "unavailable",

@@ -88,8 +88,8 @@ production value requires a reviewed code and evidence change.
 
 | Worker | Active lifetime | CPU budget | Memory budget | Storage budget | Child-process budget |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| General | 10 minutes | 30 CPU seconds | 512 MiB private memory, with a 256 MiB V8 heap cap | 0 bytes owned directly by the Worker | 0 |
-| Goose | 30 minutes | 120 CPU seconds | 1 GiB address-space limit enforced before Goose starts | 512 MiB private-root aggregate, 64 MiB per file | 0 |
+| General | 10 minutes | 30 CPU seconds | 512 MiB admitted memory bound (macOS/Linux working set or Windows private bytes), with a 256 MiB V8 heap cap | 0 bytes owned directly by the Worker | 0 |
+| Goose | 30 minutes | 120 CPU seconds | 1 GiB address-space growth above the measured launch baseline | 512 MiB private-root aggregate, 64 MiB per file | 0 |
 
 Existing wire and protocol caps remain active and are included in the output
 budget rather than replaced:
@@ -107,11 +107,17 @@ storage, and process cleanup remain observable during a pause; a pause cannot
 authorize additional capacity.
 
 The Goose address-space limit is intentionally described as address-space
-enforcement, not as a false exact resident-memory promise. On macOS the native
-runner uses the SDK's `RLIMIT_AS`/`RLIMIT_RSS` contract and records the bounded
-resource kind when the operating system rejects the process. General Worker
-memory uses Electron's macOS `ProcessMetric.memory.private` value and its V8
-heap cap.
+growth enforcement, not as a false exact resident-memory promise. A modern
+macOS arm64 process starts with hundreds of GiB of platform-owned dyld virtual
+mappings, so an absolute 1 GiB `RLIMIT_AS` is below the launch baseline and the
+kernel rejects it. Before creating the async runtime, the native runner reads
+`MACH_TASK_BASIC_INFO.virtual_size` and sets the soft and hard `RLIMIT_AS` to
+the checked sum of that baseline and the fixed 1 GiB allowance. A missing
+baseline, arithmetic overflow, or rejected limit fails closed. General Worker
+memory uses Electron's `privateBytes` where available; on macOS/Linux it uses
+the documented KiB `workingSetSize` normalized to bytes as a conservative
+resident-memory bound, together with its V8 heap cap. Missing or invalid
+memory metrics fail closed.
 
 ### 4. Preserve the existing enforcement authorities
 
@@ -122,7 +128,7 @@ and the existing structured-clone protocol. It adds only:
 
 - a fixed `--max-old-space-size` argument derived from the admitted profile;
 - a Main-owned monitor keyed by the utility PID and creation time;
-- periodic CPU and private-memory observations from Electron app metrics; and
+- periodic CPU and normalized memory observations from Electron app metrics; and
 - the existing adapter terminal path when a budget is exceeded.
 
 The Worker entry graph remains denied filesystem, shell, network, SQLite, and
@@ -138,8 +144,8 @@ attempt-private root, launch it through the existing macOS `sandbox-exec`
 profile, and supervise its process group. It adds only:
 
 - immutable resource values passed through the trusted launch contract;
-- `setrlimit` calls in the existing Actestra Rust runner before the Goose ACP
-  server starts;
+- a Mach launch-baseline query plus `setrlimit` calls in the existing Actestra
+  Rust runner before the Goose ACP server starts;
 - a sandbox denial for process fork/exec beyond the admitted runner; and
 - private-root accounting at the existing Main-owned write and cleanup
   boundaries.
@@ -212,8 +218,8 @@ The implementation must add tests for:
 - active-clock pause/resume around the existing human-decision gate;
 - General Worker V8 argument construction and PID/creation-time metric
   identity;
-- CPU and private-memory breach classification with a fake Electron metrics
-  source;
+- CPU and platform-appropriate memory breach classification with a fake
+  Electron metrics source;
 - Goose native limit setup, failed setup, and bounded signal classification;
 - process-fork/exec denial in the generated macOS sandbox profile;
 - output and private-root aggregate/per-file overflow before and after a write;

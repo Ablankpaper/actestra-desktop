@@ -32,7 +32,8 @@ export interface WorkerResourceMonitorOptions {
   readonly budget: WorkerResourceBudget;
   readonly clock: AgentClock;
   readonly requiredMetrics?: readonly WorkerResourceMetric[];
-  readonly sample: () => WorkerResourceObservation;
+  /** Null means Main has proved the monitored process is already terminal. */
+  readonly sample: () => WorkerResourceObservation | null;
   readonly onBreach: (incident: WorkerResourceIncident) => void | Promise<void>;
   readonly intervalMs?: number;
 }
@@ -246,9 +247,13 @@ export function createWorkerResourceMonitor(
           budget.maxActiveDurationMs,
         );
       } else {
-        let observation: WorkerResourceObservation;
+        let observation: WorkerResourceObservation | null;
         try {
           observation = options.sample();
+          if (observation === null) {
+            stop();
+            return;
+          }
           assertObservation(observation);
           candidate = firstObservationBreach(observation);
         } catch {
