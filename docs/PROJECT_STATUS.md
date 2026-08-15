@@ -7,13 +7,16 @@ Last updated: 2026-08-15
 ### 2026-08-15 P7.1 exact-variant closure in progress
 
 The current local delivery branch is `codex/p7-1-security-closure-final` on
-parent `3f699f215fe3e5442c46fb225045bf43be97fe29`. P7.1 now uses 168 exact
+implementation/test parent
+`96d3796c2c7e0b63286ff4ec42a3ce86abbb0af1`, based on
+`origin/main@ee28c1d9138fa474704b8fd083e2511da64dee3e`. P7.1 now uses 168 exact
 catalog variants rather than treating one broad test per abuse-case row as
-complete. Tasks 1-3 and the Task 4 Workspace/Delivery/Tool Gateway/Approval
-batch are locally bound: Task 4 contributes 55 exact variants plus one
-positive apply control. Its focused and adjacent gate passes 6 files and 141
-tests; formatting, zero-warning lint, strict typecheck, and the 130-source
-product-boundary check also pass.
+complete. Tasks 1-5 are locally bound. Task 4 contributes 55 exact
+Workspace/Delivery/Tool Gateway/Approval variants plus one positive apply
+control; Task 5 contributes all 42 exact MCP/Worker/Network/Process variants.
+Task 5's focused suite passes 42/42, and its seven-file adjacent lifecycle gate
+passes 154/154. Formatting, zero-warning lint, strict typecheck, and the
+130-source product-boundary check also pass.
 
 Task 4 exposed and repaired three concrete problems at existing authority
 boundaries: the security fixture's non-canonical macOS temp path had made its
@@ -25,12 +28,12 @@ executor again. The repaired flow preserves the existing one-shot
 `approval-replayed` classification while preventing an ambiguous second
 effect.
 
-`bun run test:security` is intentionally not green yet: it now reports 79
-unexecuted exact variants, all assigned to the planned Task 5 MCP/Worker/
-Network/Process and Task 6 Persistence/Redaction/Artifact batches. No Task 4
-variant is missing. The older 28/28 packaged evidence below remains historical
-evidence for its reviewed bytes; it does not prove the expanded 168-variant
-catalog. P7.1 therefore remains local, unmerged, unreleased, and not accepted.
+`bun run test:security` is intentionally not green yet: it now reports 37
+unexecuted exact variants, all assigned to the planned Task 6 Persistence/
+Redaction/Artifact batch. No Task 1-5 variant is missing. The older 28/28
+packaged evidence below remains historical evidence for its reviewed bytes; it
+does not prove the expanded 168-variant catalog. P7.1 therefore remains local,
+unmerged, unreleased, and not accepted.
 
 ### 2026-08-15 current verification: P7.1 implementation parent and packaged development gate
 
