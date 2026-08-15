@@ -305,7 +305,7 @@ describe("P5.2 isolated coding worktree", () => {
     expect(await readdir(fixture.managedRoot)).toEqual([]);
   });
 
-  it("disables repository hooks while creating the isolated worktree", async () => {
+  it("rejects repository hooks before creating the isolated worktree", async () => {
     const fixture = await createRepositoryFixture();
     const hookMarker = path.join(fixture.fixtureRoot, "post-checkout-executed.txt");
     const hooksRoot = path.join(fixture.fixtureRoot, "hooks");
@@ -315,14 +315,16 @@ describe("P5.2 isolated coding worktree", () => {
     await chmod(postCheckout, 0o700);
     await runGit(fixture.repositoryRoot, "config", "core.hooksPath", hooksRoot);
 
-    const opened = await createIsolatedCodingWorktree({
-      managedRoot: fixture.managedRoot,
-      repositoryRoot: fixture.repositoryRoot,
+    await expect(
+      createIsolatedCodingWorktree({
+        managedRoot: fixture.managedRoot,
+        repositoryRoot: fixture.repositoryRoot,
+      }),
+    ).rejects.toMatchObject({
+      name: "IsolatedCodingWorktreeError",
+      code: "repository-config-denied",
     });
-    try {
-      await expect(stat(hookMarker)).rejects.toMatchObject({ code: "ENOENT" });
-    } finally {
-      await opened.close();
-    }
+    await expect(stat(hookMarker)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await readdir(fixture.managedRoot)).toEqual([]);
   });
 });
