@@ -29,12 +29,17 @@ import {
   CLOSED_GIT_CONFIG_ARGUMENTS,
   GIT_EXECUTABLE,
   GIT_TIMEOUT_MS,
+  assertPrimaryWorkspaceGitDirectory,
   assertWorkspaceGitBindingUnchanged,
   execWorkspaceGit,
   resolveWorkspaceGitBinding,
   workspaceGitEnvironment,
   type WorkspaceGitBinding,
 } from "./workspaceGitBinding";
+import {
+  requireClosedRepositoryConfiguration,
+  withRepositoryConfigurationLocks,
+} from "./isolatedCodingWorktree";
 import {
   acquireWorkspaceRepositoryLock,
   type WorkspaceRepositoryLock,
@@ -229,65 +234,82 @@ export async function applyArtifactToWorkspace(
       "Destination workspace must be the original checkout, not a linked worktree",
     );
   }
+  try {
+    await assertPrimaryWorkspaceGitDirectory(binding);
+  } catch (error) {
+    throw new ArtifactWorkspaceApplicatorError(
+      "workspace-grant-invalid",
+      "Destination workspace Git metadata is not the primary checkout directory",
+      { cause: error },
+    );
+  }
 
   const environment = workspaceGitEnvironment(binding.workspaceRoot);
 
-  // Step 6: Check HEAD matches base commit
-  const currentHead = (
-    await runGit(options.workspaceRoot, environment, "rev-parse", "--verify", "HEAD^{commit}")
-  ).trim();
-  if (currentHead !== delivery.baseCommit) {
-    throw new ArtifactWorkspaceApplicatorError(
-      "head-drift",
-      "Workspace HEAD has moved since patch was created",
-    );
-  }
-
-  // Step 7: Check workspace is clean
-  const statusOutput = await workspaceStatus(options.workspaceRoot, environment);
-  if (statusOutput.trim().length > 0) {
-    throw new ArtifactWorkspaceApplicatorError(
-      "workspace-dirty",
-      "Workspace has uncommitted changes",
-    );
-  }
-
-  // Step 8: Dry-run patch apply
   try {
-    const { spawn } = await import("node:child_process");
-    const dryRun = spawn(
-      GIT_EXECUTABLE,
-      ["-C", options.workspaceRoot, ...CLOSED_GIT_CONFIG_ARGUMENTS, "apply", "--check"],
-      {
-        env: environment,
-        timeout: GIT_TIMEOUT_MS,
-        stdio: ["pipe", "pipe", "pipe"],
-      },
-    );
-    dryRun.stdin.write(patchContent);
-    dryRun.stdin.end();
-    await new Promise<void>((resolve, reject) => {
-      dryRun.on("exit", (code) => {
-        if (code === 0) {
-          resolve();
-        } else {
-          reject(
-            new ArtifactWorkspaceApplicatorError(
-              "patch-conflict",
-              "Patch dry-run failed - conflicts detected",
-            ),
+    await withRepositoryConfigurationLocks(
+      binding.gitCommonDirectory,
+      binding.gitDirectory,
+      async () => {
+        await requireClosedRepositoryConfiguration(options.workspaceRoot, environment);
+
+        // Step 6: Check HEAD matches base commit
+        const currentHead = (
+          await runGit(options.workspaceRoot, environment, "rev-parse", "--verify", "HEAD^{commit}")
+        ).trim();
+        if (currentHead !== delivery.baseCommit) {
+          throw new ArtifactWorkspaceApplicatorError(
+            "head-drift",
+            "Workspace HEAD has moved since patch was created",
           );
         }
-      });
-      dryRun.on("error", reject);
-    });
+
+        // Step 7: Check workspace is clean
+        const statusOutput = await workspaceStatus(options.workspaceRoot, environment);
+        if (statusOutput.trim().length > 0) {
+          throw new ArtifactWorkspaceApplicatorError(
+            "workspace-dirty",
+            "Workspace has uncommitted changes",
+          );
+        }
+
+        // Step 8: Dry-run patch apply
+        const { spawn } = await import("node:child_process");
+        const dryRun = spawn(
+          GIT_EXECUTABLE,
+          ["-C", options.workspaceRoot, ...CLOSED_GIT_CONFIG_ARGUMENTS, "apply", "--check"],
+          {
+            env: environment,
+            timeout: GIT_TIMEOUT_MS,
+            stdio: ["pipe", "pipe", "pipe"],
+          },
+        );
+        dryRun.stdin.write(patchContent);
+        dryRun.stdin.end();
+        await new Promise<void>((resolve, reject) => {
+          dryRun.on("exit", (code) => {
+            if (code === 0) {
+              resolve();
+            } else {
+              reject(
+                new ArtifactWorkspaceApplicatorError(
+                  "patch-conflict",
+                  "Patch dry-run failed - conflicts detected",
+                ),
+              );
+            }
+          });
+          dryRun.on("error", reject);
+        });
+      },
+    );
   } catch (error) {
     if (error instanceof ArtifactWorkspaceApplicatorError) {
       throw error;
     }
     throw new ArtifactWorkspaceApplicatorError(
-      "patch-conflict",
-      "Patch dry-run failed - conflicts detected",
+      "workspace-grant-invalid",
+      "Destination repository configuration is not safe for artifact apply",
       { cause: error },
     );
   }
@@ -454,10 +476,55 @@ export async function applyArtifactToWorkspace(
   async function applyUnderLock(
     delivery: ArtifactDeliveryRecord,
   ): Promise<ArtifactWorkspaceApplyResult> {
+    try {
+      return await withRepositoryConfigurationLocks(
+        binding.gitCommonDirectory,
+        binding.gitDirectory,
+        async () => {
+          try {
+            await requireClosedRepositoryConfiguration(options.workspaceRoot, environment);
+          } catch (error) {
+            await persistOutcome({
+              state: "failed",
+              approvalId,
+              failureCode: "workspace-grant-invalid",
+              failureMessage: "Repository configuration changed after approval",
+            });
+            throw new ArtifactWorkspaceApplicatorError(
+              "workspace-grant-invalid",
+              "Repository configuration is not safe after approval",
+              { cause: error },
+            );
+          }
+          return applyWithClosedRepositoryConfiguration(delivery);
+        },
+      );
+    } catch (error) {
+      if (error instanceof ArtifactWorkspaceApplicatorError) {
+        throw error;
+      }
+      await persistOutcome({
+        state: "failed",
+        approvalId,
+        failureCode: "workspace-grant-invalid",
+        failureMessage: "Repository configuration could not be locked after approval",
+      });
+      throw new ArtifactWorkspaceApplicatorError(
+        "workspace-grant-invalid",
+        "Repository configuration could not be locked after approval",
+        { cause: error },
+      );
+    }
+  }
+
+  async function applyWithClosedRepositoryConfiguration(
+    delivery: ArtifactDeliveryRecord,
+  ): Promise<ArtifactWorkspaceApplyResult> {
     // The binding is checked again because the approved path is one the user can move, relink or
     // replace while the approval is pending.
     try {
       await assertWorkspaceGitBindingUnchanged(binding);
+      await assertPrimaryWorkspaceGitDirectory(binding);
     } catch (error) {
       await persistOutcome({
         state: "failed",

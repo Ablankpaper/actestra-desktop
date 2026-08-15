@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { realpath } from "node:fs/promises";
+import { lstat, realpath } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -178,5 +178,38 @@ export async function assertWorkspaceGitBindingUnchanged(
     observed.isLinkedWorktree !== expected.isLinkedWorktree
   ) {
     throw new WorkspaceGitBindingError("binding-changed", "Workspace Git binding changed");
+  }
+}
+
+/**
+ * Artifact apply targets only the repository's primary checkout. A `.git` file or symlink can
+ * redirect an otherwise canonical working-tree path to attacker-selected repository metadata, so
+ * the admitted Git directory must be the checkout's own real `.git` directory.
+ */
+export async function assertPrimaryWorkspaceGitDirectory(
+  binding: WorkspaceGitBinding,
+): Promise<void> {
+  const dotGit = path.join(binding.workspaceRoot, ".git");
+  try {
+    const [metadata, canonical] = await Promise.all([lstat(dotGit), realpath(dotGit)]);
+    if (
+      !metadata.isDirectory() ||
+      metadata.isSymbolicLink() ||
+      canonical !== binding.gitDirectory
+    ) {
+      throw new WorkspaceGitBindingError(
+        "binding-changed",
+        "Workspace Git metadata is not the primary checkout directory",
+      );
+    }
+  } catch (error) {
+    if (error instanceof WorkspaceGitBindingError) {
+      throw error;
+    }
+    throw new WorkspaceGitBindingError(
+      "binding-changed",
+      "Workspace primary Git metadata could not be verified",
+      { cause: error },
+    );
   }
 }

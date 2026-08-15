@@ -4,6 +4,34 @@ Last updated: 2026-08-15
 
 ## Current phase
 
+### 2026-08-15 P7.1 exact-variant closure in progress
+
+The current local delivery branch is `codex/p7-1-security-closure-final` on
+parent `3f699f215fe3e5442c46fb225045bf43be97fe29`. P7.1 now uses 168 exact
+catalog variants rather than treating one broad test per abuse-case row as
+complete. Tasks 1-3 and the Task 4 Workspace/Delivery/Tool Gateway/Approval
+batch are locally bound: Task 4 contributes 55 exact variants plus one
+positive apply control. Its focused and adjacent gate passes 6 files and 141
+tests; formatting, zero-warning lint, strict typecheck, and the 130-source
+product-boundary check also pass.
+
+Task 4 exposed and repaired three concrete problems at existing authority
+boundaries: the security fixture's non-canonical macOS temp path had made its
+old apply probes fail before reaching the intended boundary; artifact apply
+accepted a redirected primary `.git` pointer and did not lock/reject dangerous
+repository-local Git configuration before and after approval; and a Tool
+Gateway request whose first result was `mayHaveExecuted: true` could reach the
+executor again. The repaired flow preserves the existing one-shot
+`approval-replayed` classification while preventing an ambiguous second
+effect.
+
+`bun run test:security` is intentionally not green yet: it now reports 79
+unexecuted exact variants, all assigned to the planned Task 5 MCP/Worker/
+Network/Process and Task 6 Persistence/Redaction/Artifact batches. No Task 4
+variant is missing. The older 28/28 packaged evidence below remains historical
+evidence for its reviewed bytes; it does not prove the expanded 168-variant
+catalog. P7.1 therefore remains local, unmerged, unreleased, and not accepted.
+
 ### 2026-08-15 current verification: P7.1 implementation parent and packaged development gate
 
 The P7.1 Threat Model and Abuse-Case Baseline is implemented at reviewed

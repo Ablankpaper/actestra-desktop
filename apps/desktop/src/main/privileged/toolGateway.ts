@@ -31,6 +31,7 @@ import {
   type ToolGateway,
   type ToolGatewayResult,
   type ToolInvocationControl,
+  type ToolRequestId,
 } from "../../core";
 
 export interface PrivilegedToolGatewayConfig {
@@ -100,6 +101,8 @@ function immutableAuthorization(authorization: AuthorizationGrant): Authorizatio
 }
 
 export class PrivilegedToolGateway implements ToolGateway {
+  private readonly executionAttempts = new Map<ToolRequestId, ProtectedOperation>();
+
   constructor(private readonly config: PrivilegedToolGatewayConfig) {}
 
   async invoke(
@@ -169,6 +172,7 @@ export class PrivilegedToolGateway implements ToolGateway {
         "Authorization grant does not match the current operation and policy",
       );
     }
+    this.assertNotPreviouslyExecuted(stableOperation);
     const leases = await this.issueLeases(stableOperation, authorization);
     try {
       await this.appendAudit(
@@ -290,6 +294,12 @@ export class PrivilegedToolGateway implements ToolGateway {
     leases: readonly CredentialLease[],
     signal?: AbortSignal,
   ): Promise<ToolGatewayResult> {
+    try {
+      this.reserveExecution(operation);
+    } catch (error) {
+      await this.releaseBeforeExecution(operation, leases);
+      throw error;
+    }
     let result: ToolExecutionResult;
     try {
       result = await this.config.executor.execute({
@@ -320,9 +330,15 @@ export class PrivilegedToolGateway implements ToolGateway {
         );
       } catch (auditError) {
         await this.releaseAfterExecution(operation, leases);
+        if (!executionError.mayHaveExecuted) {
+          this.releaseExecutionReservation(operation);
+        }
         throw auditError;
       }
       await this.releaseAfterExecution(operation, leases);
+      if (!executionError.mayHaveExecuted) {
+        this.releaseExecutionReservation(operation);
+      }
       throw new PrivilegedServiceError("tool-execution-failed", "Protected tool execution failed", {
         cause: executionError,
         mayHaveExecuted: executionError.mayHaveExecuted,
@@ -349,6 +365,37 @@ export class PrivilegedToolGateway implements ToolGateway {
       authorization,
       result: Object.freeze({ ...result }),
     });
+  }
+
+  private assertNotPreviouslyExecuted(operation: ProtectedOperation): void {
+    const prior = this.executionAttempts.get(operation.requestId);
+    if (prior === undefined) {
+      return;
+    }
+    if (!protectedOperationsEqual(prior, operation)) {
+      throw new PrivilegedServiceError(
+        "approval-mismatch",
+        "A tool request that may have executed cannot be rebound to another operation",
+        { mayHaveExecuted: true },
+      );
+    }
+    throw new PrivilegedServiceError(
+      "tool-execution-failed",
+      "A tool request that may have executed cannot be retried",
+      { mayHaveExecuted: true },
+    );
+  }
+
+  private reserveExecution(operation: ProtectedOperation): void {
+    this.assertNotPreviouslyExecuted(operation);
+    this.executionAttempts.set(operation.requestId, operation);
+  }
+
+  private releaseExecutionReservation(operation: ProtectedOperation): void {
+    const reserved = this.executionAttempts.get(operation.requestId);
+    if (reserved !== undefined && protectedOperationsEqual(reserved, operation)) {
+      this.executionAttempts.delete(operation.requestId);
+    }
   }
 
   private async appendAudit(event: AuditEvent, mayHaveExecuted: boolean): Promise<void> {
