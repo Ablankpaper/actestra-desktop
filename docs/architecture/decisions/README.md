@@ -41,6 +41,7 @@ components or phases.
 | [0024](0024-minimal-goose-acp-runner.md)                       | Accepted                     | Pin Goose v1.45.0 and admit only a minimal Actestra-built stdio ACP runner behind exact artifact, policy, and authority gates            |
 | [0025](0025-goose-rsa-metadata-only-disposition.md)            | Accepted                     | Admit only the exact uncompiled RSA metadata finding when independent graph, artifact, audit, and manifest evidence all remain closed    |
 | [0026](0026-actestra-native-team-planner.md)                   | Accepted                     | Admit one versioned Actestra-owned no-tool planner sidecar while keeping Worker readiness, authority, and P6 acceptance separate         |
+| [0027](0027-p7-threat-model-and-abuse-authority.md)            | Accepted                     | Establish threat model, stable abuse-case IDs, closed outcomes, authority boundaries, and staged P7/P8 obligations                       |
 
 ## Creating an ADR
 

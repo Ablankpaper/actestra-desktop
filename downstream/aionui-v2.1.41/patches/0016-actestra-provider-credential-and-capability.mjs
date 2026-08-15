@@ -245,6 +245,32 @@ replaceOnce(
     ...(isCredentialBearingPath ? { cache: 'no-store' as const } : {}),
   });`,
 );
+
+replaceOnce(
+  "packages/desktop/src/common/adapter/httpBridge.ts",
+  `    if (options?.silentStatuses?.includes(response.status)) {
+      console.debug(\`[httpBridge] \${method} \${path} → \${response.status} (silenced)\`, errorBody);
+    } else {
+      console.error(\`[httpBridge] \${method} \${path} → \${response.status}\`, errorBody);
+    }
+    throw new BackendHttpError({ method, path, status: response.status, body: errorBody });`,
+  `    // Provider responses are credential-bearing even on failure. Never retain
+    // or log a raw error body from that route: gateways may echo authorization
+    // hints or embedded provider URLs.
+    const safeErrorBody = isCredentialBearingPath
+      ? {
+          success: false,
+          error: 'Provider request failed',
+          code: 'provider-request-failed',
+        }
+      : errorBody;
+    if (options?.silentStatuses?.includes(response.status)) {
+      console.debug(\`[httpBridge] \${method} \${path} → \${response.status} (silenced)\`, safeErrorBody);
+    } else {
+      console.error(\`[httpBridge] \${method} \${path} → \${response.status}\`, safeErrorBody);
+    }
+    throw new BackendHttpError({ method, path, status: response.status, body: safeErrorBody });`,
+);
 // ---------------------------------------------------------------------------
 // The process boundary: Renderer provider reads never touch the raw bytes.
 //
@@ -408,8 +434,22 @@ export function redactActestraProviderRecord(provider: unknown): unknown {
   if (typeof provider !== 'object' || provider === null) {
     return provider;
   }
-  const { api_key, bedrock_config, ...rest } = provider as Record<string, unknown>;
+  const { api_key, bedrock_config, base_url, ...rest } = provider as Record<string, unknown>;
   const redacted: Record<string, unknown> = { ...rest };
+  if (typeof base_url === 'string') {
+    try {
+      const parsed = new URL(base_url);
+      if (parsed.username || parsed.password || [...parsed.searchParams.keys()].some((key) => /(?:key|token|secret|auth|password)/iu.test(key))) {
+        redacted.base_url = parsed.protocol + '//' + parsed.host + parsed.pathname;
+      } else {
+        redacted.base_url = base_url;
+      }
+    } catch {
+      redacted.base_url = '[REDACTED]';
+    }
+  } else if (base_url !== undefined) {
+    redacted.base_url = '[REDACTED]';
+  }
   if (api_key !== undefined) {
     // Preserve "a key is configured" without disclosing the secret itself.
     redacted.api_key =

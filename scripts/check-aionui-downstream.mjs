@@ -140,8 +140,12 @@ function main() {
     !overlay.patches.some(
       (patch) => patch.path === "patches/0015-actestra-macos-build-hardening.mjs",
     ) ||
-    overlay.patches.at(-1)?.path !==
-      "patches/0016-actestra-provider-credential-and-capability.mjs" ||
+    !overlay.patches.some(
+      (patch) => patch.path === "patches/0016-actestra-provider-credential-and-capability.mjs",
+    ) ||
+    !overlay.patches.some(
+      (patch) => patch.path === "patches/0017-actestra-p7-security-smoke.mjs",
+    ) ||
     overlay.uiContract.layoutChangesAllowed !== true ||
     overlay.uiContract.featureEntryRemovalAllowed !== false
   ) {
@@ -905,7 +909,9 @@ function main() {
     "actestraNativeTeamPlannerEntry.ts",
     "createRequire(import.meta.url)",
     "actestraNativeTeamPlannerManifest.cjs",
-    "writeActestraTeamPlannerManifest(resolve(__dirname, '../..'))",
+    "configResolved(config: { readonly root: string })",
+    "projectRoot = config.root",
+    "writeActestraTeamPlannerManifest(projectRoot ?? process.cwd())",
     "entryFileNames: '[name].js'",
   ]);
   requireText(path.join(outputRoot, "packages/desktop/src/index.ts"), [

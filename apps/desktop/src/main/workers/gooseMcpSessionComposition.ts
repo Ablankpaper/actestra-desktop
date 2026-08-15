@@ -190,6 +190,7 @@ export async function openGooseMcpSessionComposition(
     runner = await dependencies.openRunnerHandshake({
       artifact: options.artifact,
       privateRootParent: options.privateRootParent,
+      workspaceDirectory: options.workspaceDirectory,
       capabilityProxyUrl: capabilityServer.url,
       modelBinding: {
         baseUrl: modelServer.baseUrl,

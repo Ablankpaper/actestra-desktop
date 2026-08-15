@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { builtinModules } from "node:module";
 import path from "node:path";
+import ts from "typescript";
 
 function escapeRegularExpression(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -21,11 +22,98 @@ const electronImportPattern =
   /(?:\b(?:import|export)\s+(?:(?:type\s+)?[\w*{},\s]+?\s+from\s+)?['"]electron(?:\/[a-zA-Z0-9_./-]+)?['"]|\bimport\s*\(\s*['"]electron(?:\/[a-zA-Z0-9_./-]+)?['"])/;
 const privilegedProcessImportPattern =
   /(?:\b(?:import|export)\s+(?:(?:type\s+)?[\w*{},\s]+?\s+from\s+)?['"](?:\.\.\/)+(?:main|utility)(?:\/|['"])|\bimport\s*\(\s*['"](?:\.\.\/)+(?:main|utility)(?:\/|['"]))/;
+const gitAuthorityPackages = new Set(["isomorphic-git", "simple-git", "dugite", "nodegit"]);
+
+function isGitAuthorityModuleSpecifier(node) {
+  return ts.isStringLiteralLike(node) && isGitAuthoritySpecifierText(node.text);
+}
+
+function isGitAuthoritySpecifierText(value) {
+  const packageRoot = value.split("/", 1)[0];
+  return gitAuthorityPackages.has(packageRoot);
+}
+
+function resolveStaticString(node) {
+  if (ts.isStringLiteralLike(node)) return node.text;
+  if (ts.isParenthesizedExpression(node)) return resolveStaticString(node.expression);
+  if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+    const left = resolveStaticString(node.left);
+    const right = resolveStaticString(node.right);
+    return left === null || right === null ? null : left + right;
+  }
+  if (ts.isTemplateExpression(node)) {
+    let value = node.head.text;
+    for (const span of node.templateSpans) {
+      const expression = resolveStaticString(span.expression);
+      if (expression === null) return null;
+      value += expression + span.literal.text;
+    }
+    return value;
+  }
+  return null;
+}
+
+function importDeclarationCarriesGitAuthority(node) {
+  if (!isGitAuthorityModuleSpecifier(node.moduleSpecifier)) return false;
+  const clause = node.importClause;
+  if (clause === undefined) return true;
+  if (clause.isTypeOnly) return false;
+  if (clause.name !== undefined) return true;
+  const bindings = clause.namedBindings;
+  if (bindings === undefined || ts.isNamespaceImport(bindings)) return true;
+  return bindings.elements.length === 0 || bindings.elements.some((element) => !element.isTypeOnly);
+}
+
+function exportDeclarationCarriesGitAuthority(node) {
+  if (
+    node.moduleSpecifier === undefined ||
+    !isGitAuthorityModuleSpecifier(node.moduleSpecifier) ||
+    node.isTypeOnly
+  ) {
+    return false;
+  }
+  const clause = node.exportClause;
+  if (clause === undefined || ts.isNamespaceExport(clause)) return true;
+  return clause.elements.length === 0 || clause.elements.some((element) => !element.isTypeOnly);
+}
+
+function sourceFileCarriesGitAuthority(source, scriptKind) {
+  const sourceFile = ts.createSourceFile(
+    "actestra-authority-boundary.tsx",
+    source,
+    ts.ScriptTarget.Latest,
+    false,
+    scriptKind,
+  );
+  const visit = (node) => {
+    if (ts.isImportDeclaration(node) && importDeclarationCarriesGitAuthority(node)) return true;
+    if (ts.isExportDeclaration(node) && exportDeclarationCarriesGitAuthority(node)) return true;
+    if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      if (node.arguments.length === 0) return true;
+      const specifier = resolveStaticString(node.arguments[0]);
+      if (specifier === null || isGitAuthoritySpecifierText(specifier)) return true;
+    }
+    return ts.forEachChild(node, visit) === true;
+  };
+  return visit(sourceFile);
+}
+
+function sourceCarriesGitAuthority(source) {
+  return [ts.ScriptKind.TS, ts.ScriptKind.TSX].some((scriptKind) =>
+    sourceFileCarriesGitAuthority(source, scriptKind),
+  );
+}
+
+const gitAuthorityImportPattern = {
+  lastIndex: 0,
+  test: sourceCarriesGitAuthority,
+};
 
 export const rendererPrivilegePatterns = Object.freeze([
   { label: "Electron import", pattern: electronImportPattern },
   { label: "Node import", pattern: nodeBuiltinImportPattern },
   { label: "privileged process import", pattern: privilegedProcessImportPattern },
+  { label: "Git authority import", pattern: gitAuthorityImportPattern },
   { label: "CommonJS require", pattern: /\brequire\s*\(/ },
   { label: "Node process global", pattern: /\bprocess\./ },
   { label: "direct fetch client", pattern: /\bfetch\s*\(/ },
@@ -71,6 +159,7 @@ export const actestraTeamRendererAuthorityPaths = Object.freeze([
 export const preloadPrivilegePatterns = Object.freeze([
   { label: "Node import", pattern: nodeBuiltinImportPattern },
   { label: "privileged process import", pattern: privilegedProcessImportPattern },
+  { label: "Git authority import", pattern: gitAuthorityImportPattern },
   { label: "core privileged import", pattern: /from\s+['"]\.\.\/core(?:\/|['"])/ },
   { label: "CommonJS require", pattern: /\brequire\s*\(/ },
   { label: "Node process global", pattern: /\bprocess\./ },

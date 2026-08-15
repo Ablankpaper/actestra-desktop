@@ -252,7 +252,9 @@ export async function requireClosedRepositoryConfiguration(
     if (
       /^filter\..+\.(?:clean|smudge|process)$/.test(key) ||
       key === "include.path" ||
-      /^includeif\..+\.path$/.test(key)
+      /^includeif\..+\.path$/.test(key) ||
+      key === "core.hookspath" ||
+      key === "core.fsmonitor"
     ) {
       throw new IsolatedCodingWorktreeError(
         "repository-config-denied",

@@ -222,9 +222,36 @@
       ],
       "authorityOwner": "Actestra Main retains sole custody of provider plaintext credentials; the Renderer receives a redacted projection and declares capabilities through the native IProvider contract",
       "rollback": "Regenerate without patch 0016. The native plaintext /api/providers projection, cacheable provider responses, and capability-less provider creation return unchanged; no frozen-source or native-profile mutation is required."
+    },
+    {
+      "path": "patches/0017-actestra-p7-security-smoke.mjs",
+      "classification": ["R1"],
+      "domains": [
+        "packaged P7 Renderer network denial",
+        "webview guest network isolation",
+        "bounded packaged graceful-cleanup evidence"
+      ],
+      "authorityOwner": "Actestra Main E2E-only security acceptance composition; no Renderer IPC or production authority",
+      "rollback": "Regenerate without patch 0017. The P7 packaged smoke entry disappears; normal product, profile, preload, Renderer, and frozen foundation remain unchanged."
+    },
+    {
+      "path": "patches/0018-actestra-webview-service-boundary.mjs",
+      "classification": ["R1"],
+      "domains": [
+        "exact local WebView service and port allowlist",
+        "URL Preview unavailable guidance",
+        "Extension Settings unavailable guidance",
+        "retained OfficeCLI local preview"
+      ],
+      "authorityOwner": "Actestra Main owns WebView guest admission and request cancellation; the AionUI Renderer only mirrors the closed policy to explain unavailable previews",
+      "rollback": "Regenerate without patch 0018. Patch 0017's host-only guest restriction returns, and external or undeclared local WebViews may again fail without an explanatory Renderer state; no frozen-source or profile mutation is required."
     }
   ],
   "sourceCopies": [
+    {
+      "source": "apps/desktop/src/main/security/p7SecuritySmoke.ts",
+      "destination": "packages/desktop/src/actestra/main/security/p7SecuritySmoke.ts"
+    },
     {
       "source": "apps/desktop/src/core/agentAdapter.ts",
       "destination": "packages/desktop/src/actestra/core/agentAdapter.ts"
@@ -566,6 +593,10 @@
       "destination": "packages/desktop/src/actestra/main/workers/gooseRunnerProcess.ts"
     },
     {
+      "source": "apps/desktop/src/main/workers/gooseRunnerSandbox.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/gooseRunnerSandbox.ts"
+    },
+    {
       "source": "apps/desktop/src/main/workers/isolatedCodingMainService.ts",
       "destination": "packages/desktop/src/actestra/main/workers/isolatedCodingMainService.ts"
     },
@@ -644,6 +675,10 @@
     {
       "source": "apps/desktop/src/shared/teamPlannerSidecarProtocol.ts",
       "destination": "packages/desktop/src/actestra/shared/teamPlannerSidecarProtocol.ts"
+    },
+    {
+      "source": "apps/desktop/src/shared/webviewPolicy.ts",
+      "destination": "packages/desktop/src/actestra/shared/webviewPolicy.ts"
     },
     {
       "source": "apps/desktop/src/utility/orchestration/actestraNativeTeamPlannerEntry.ts",
@@ -790,6 +825,7 @@
     "packages/desktop/src/actestra/main/orchestration/teamPlannerSidecarProcess.ts",
     "packages/desktop/src/actestra/main/orchestration/teamWorkspaceGrantContext.ts",
     "packages/desktop/src/actestra/main/persistence/electronPersistenceUtility.ts",
+    "packages/desktop/src/actestra/main/security/p7SecuritySmoke.ts",
     "packages/desktop/src/actestra/main/persistence/persistenceUtilityClient.ts",
     "packages/desktop/src/actestra/main/persistence/persistenceMutationBarrier.ts",
     "packages/desktop/src/actestra/main/workers/agentAdapterSupervisor.ts",
@@ -814,6 +850,7 @@
     "packages/desktop/src/actestra/main/workers/actestraCodingJourneyRuntime.ts",
     "packages/desktop/src/actestra/main/workers/actestraGeneralWorkRuntime.ts",
     "packages/desktop/src/actestra/main/workers/gooseRunnerProcess.ts",
+    "packages/desktop/src/actestra/main/workers/gooseRunnerSandbox.ts",
     "packages/desktop/src/actestra/main/workers/isolatedCodingMainService.ts",
     "packages/desktop/src/actestra/main/workers/isolatedCodingPatch.ts",
     "packages/desktop/src/actestra/main/workers/isolatedCodingWorktree.ts",
@@ -834,6 +871,7 @@
     "packages/desktop/src/actestra/shared/generalWorkerProtocol.ts",
     "packages/desktop/src/actestra/shared/gooseRunnerSource.json",
     "packages/desktop/src/actestra/shared/teamPlannerSidecarProtocol.ts",
+    "packages/desktop/src/actestra/shared/webviewPolicy.ts",
     "packages/desktop/src/actestra/utility/orchestration/actestraNativeTeamPlannerEntry.ts",
     "packages/desktop/src/actestra/utility/persistence/persistenceUtilityEntry.ts",
     "packages/desktop/src/actestra/utility/persistence/persistenceUtilityService.ts",
@@ -941,6 +979,7 @@
     "packages/desktop/src/renderer/pages/team/hooks/teamConfigOptions.ts",
     "packages/desktop/src/renderer/pages/team/hooks/useSiderTeamBadges.ts",
     "packages/desktop/src/renderer/pages/team/hooks/useTeamList.ts",
+    "packages/desktop/src/renderer/components/media/WebviewHost.tsx",
     "packages/desktop/src/renderer/pages/team/hooks/useTeamPendingPermissions.ts",
     "packages/desktop/src/renderer/pages/team/hooks/useTeamRunView.ts",
     "packages/desktop/src/renderer/pages/team/hooks/useTeamSession.ts",
@@ -999,6 +1038,7 @@
     "tests/unit/actestra/scheduleNativeWiring.test.ts",
     "tests/unit/actestra/scheduleSmoke.test.ts",
     "tests/unit/actestra/teamNativeWiring.test.ts",
+    "tests/unit/actestra/p7WebviewAvailability.test.ts",
     "tests/unit/previews/PreviewContext.dom.test.tsx",
     "tests/unit/actestra/persistenceUtilityClient.test.ts",
     "tests/unit/actestra/providerRendererBoundary.test.ts",

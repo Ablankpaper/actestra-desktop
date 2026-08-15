@@ -169,6 +169,15 @@ directly.
 
 ## Safety baseline
 
+Security status: the first P7.1 threat-model and abuse-case baseline is
+locally verified on macOS arm64 at implementation/test parent
+`a8292e6433eacc3414dcc9408e10df7d6031b9a3`. The 28-case catalog is
+`denied-safe`, and the packaged development smoke physically checks the seven
+required Layer-4 boundaries. Exact-head CI and merge evidence remain open.
+This is not a claim that the complete P7 reliability, backup,
+diagnostic-retention, cross-platform, signing, release, or user-acceptance
+scope is complete; those remain later gates.
+
 | Action                                      | Default policy                                        |
 | ------------------------------------------- | ----------------------------------------------------- |
 | Read within an approved workspace           | Allowed and audited                                   |

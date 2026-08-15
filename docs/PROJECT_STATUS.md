@@ -4,6 +4,100 @@ Last updated: 2026-08-15
 
 ## Current phase
 
+### 2026-08-15 P7.1 exact-variant local and packaged gate complete
+
+The current local delivery branch is `codex/p7-1-security-closure-final` on
+reviewed implementation/test parent
+`88d68bcb7881159bee8422693350e6ce9410e2fb`, based on
+`origin/main@ee28c1d9138fa474704b8fd083e2511da64dee3e`. Tasks 1-6 are locally
+bound across all 28 catalog cases and 168 exact variants. Task 4 contributes
+55 exact Workspace/Delivery/Tool Gateway/Approval variants plus one positive
+apply control; Task 5 contributes all 42 exact
+MCP/Worker/Network/Process variants; and Task 6 contributes all 37 exact
+Persistence/Redaction/Artifact variants plus one trusted-artifact positive
+control.
+
+Task 4 exposed and repaired three concrete problems at existing authority
+boundaries: the security fixture's non-canonical macOS temp path had made its
+old apply probes fail before reaching the intended boundary; artifact apply
+accepted a redirected primary `.git` pointer and did not lock/reject dangerous
+repository-local Git configuration before and after approval; and a Tool
+Gateway request whose first result was `mayHaveExecuted: true` could reach the
+executor again. The repaired flow preserves the existing one-shot
+`approval-replayed` classification while preventing an ambiguous second
+effect.
+
+Fresh macOS arm64 evidence on that exact parent:
+
+- `NODE_OPTIONS=--max-old-space-size=4096 bun run check` exits 0: 123 test
+  files pass and 2 skip; 1,429 tests pass and 9 skip; formatting,
+  zero-warning lint, strict typecheck, Electron SQLite, smoke harness,
+  130-source product boundary, frozen foundation, downstream overlay, and
+  package all pass. `bun run test:security` reports all 28 cases and 168 exact
+  variants `denied-safe`. A temporary ignored PATH wrapper added only
+  `--no-cache` to the nested materialized `bun install` to avoid a local Bun
+  1.3.9 proxy-cache hang; no repository configuration or product byte changed.
+- The release Goose runner build exits 0 from a clean, task-local RustSec
+  database at `69f93e1d081d8b6fbee010e48f0b5e0d13661415`. Its manifest SHA-256 is
+  `da415eace135db4275c475ac931b35fe9a34194d803ccf982e505f48fbfd7068`,
+  binds Actestra parent `88d68bc`, records `dirty=false`, and retains only the
+  accepted `RUSTSEC-2023-0071 metadata-only-not-compiled` disposition.
+- `bun run dist:dir` exits 0. The arm64 development app has identifier
+  `com.bignormal.actestra`, passes `codesign --verify --deep --strict`, and has
+  `Signature=adhoc`. Package trust exits 0 for materialized-output digest
+  `f6383c4430ab7e5fbfb041f86571fd7e5b7de911732233f6bf9b345922e6d82c`
+  across 565 files, the external Goose manifest/SBOM/license/audit roots, the
+  packaged planner hook, and 116 source copies with no drift.
+- `bun run smoke:aionui-general-work` exits 0 against that exact app through
+  the schema-22 representative General Work recovery/failure/Artifact suite.
+  `bun run smoke:p7-security` exits 0 with all seven required packaged cases
+  `denied-safe` and redacted.
+- The final process scan contains no Actestra, AionCore, Goose, planner,
+  General Worker, or P7 probe residue. `git diff --check` is clean.
+
+These are local and packaged development-build results only. This
+documentation-only evidence update binds the reviewed product/test parent; the
+branch still requires push, exact-head pull request CI, review, merge, and
+merged-main CI. P7.1 is not yet integrated into `main`, released, deployed, or
+accepted. P7.2-P7.4 and P8 remain open.
+
+### 2026-08-15 earlier 28-case packaged verification (superseded)
+
+The P7.1 Threat Model and Abuse-Case Baseline is implemented at reviewed
+implementation/test parent
+`a8292e6433eacc3414dcc9408e10df7d6031b9a3` on
+`codex/p7-1-security-closure`, based on
+`origin/main@ee28c1d9138fa474704b8fd083e2511da64dee3e`. The frozen
+`foundation/` snapshot is unchanged. Pull request
+[#55](https://github.com/Ablankpaper/actestra-desktop/pull/55) remains open;
+the exact-head CI for this parent has not yet run.
+
+Fresh macOS arm64 evidence on that parent:
+
+- `NODE_OPTIONS=--max-old-space-size=4096 bun run check` exits 0: 123 test
+  files passed, 2 skipped; 1,273 tests passed, 9 skipped; format, zero-warning
+  lint, strict typecheck, Electron SQLite, smoke harness, product boundary,
+  frozen foundation, downstream overlay, and package all pass;
+- `bun run test:security` is self-contained and reports 28/28
+  `denied-safe`; `bun run goose:runner:test` passes 184/184 focused Goose
+  tests, including the real parent-death and process cleanup cases. The
+  admitted manifest binds `a8292e6` and records `dirty=false`;
+- `dist:dir` exits 0 with `AIONUI_HUB_SKIP=1`; the arm64 development app has
+  identifier `com.bignormal.actestra`, passes deep strict ad-hoc codesign
+  verification, and package trust verifies the planner, external Goose
+  manifest/SBOM/license/audit roots, and 116 source-copy checks without drift;
+- the existing General Work packaged smoke exits 0, and the packaged P7
+  security smoke exits 0 with seven required Layer-4 cases `denied-safe`;
+- the current process scan shows no Actestra, AionCore, Goose, Planner, or P7
+  probe residue.
+
+These are local and packaged development-build results only. The previous
+exact-head CI run `31861861143` tested the older head `ee6634e` and failed at
+three materialized type errors; the fixes are included in this parent but
+still require a new exact-head CI run. P7.1 is not merged into `main`.
+P7.2-P7.4, Windows/Linux enforcement, formal signing, release, deployment,
+and final user acceptance remain open.
+
 ### 2026-08-15 new-repository main governance enabled
 
 Repository ruleset
@@ -77,6 +171,12 @@ An offline migration bundle remains outside the repository at
 its recorded SHA-256 checksum pass. This repository transfer changes hosting
 authority and canonical links only. It is not a source release, deployment,
 candidate, signing, notarization, or new P6/P7 product-acceptance claim.
+
+### 2026-08-13 initial P7.1 baseline (superseded)
+
+The initial P7.1 local snapshot was superseded by the current evidence recorded
+above. Its earlier implementation parent and test counts remain available in
+Git history for provenance; they are not current acceptance evidence.
 
 ### 2026-08-13 current verification: P6 delivery exit accepted on `main`
 
