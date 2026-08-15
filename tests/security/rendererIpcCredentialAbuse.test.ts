@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import {
   actestraTeamRendererPrivilegePatterns,
   inspectSourceFilesForPrivilegePatterns,
@@ -10,6 +10,8 @@ import {
   rendererPrivilegePatterns,
   // @ts-ignore The boundary rules are an executable .mjs checker without a declaration file.
 } from "../../scripts/product-boundary-rules.mjs";
+// @ts-ignore The materializer is an executable .mjs fixture bootstrap without a declaration file.
+import { materializeAionUiDownstream } from "../../scripts/materialize-aionui-downstream.mjs";
 import {
   APP_INFO_CHANNEL,
   type AppInfo,
@@ -106,7 +108,25 @@ function scanFixtures(
   }
 }
 
+function ensureMaterializedProviderBoundary(): void {
+  const downstreamRoot = resolve(".actestra/aionui-v2.1.41");
+  const providerBoundary = join(
+    downstreamRoot,
+    "packages/desktop/src/actestra/main/compatibility/providerRendererBoundary.ts",
+  );
+  const providerTest = join(downstreamRoot, "tests/unit/actestra/providerRendererBoundary.test.ts");
+  if (!existsSync(providerBoundary) || !existsSync(providerTest)) {
+    // These cases inspect the applied downstream patch, so bootstrap that
+    // generated fixture when the test is run directly from a clean checkout.
+    materializeAionUiDownstream();
+  }
+}
+
 describe("P7 renderer, IPC, and credential abuse baseline", () => {
+  beforeAll(() => {
+    ensureMaterializedProviderBoundary();
+  });
+
   it("P7-A-RENDERER-001 rejects privileged renderer imports", () => {
     const sources = [
       'import fs from "node:fs"; export const value = fs.readFileSync("x");',
