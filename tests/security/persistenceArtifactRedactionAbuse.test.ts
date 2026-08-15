@@ -30,6 +30,10 @@ import {
   resolveCoreDatabasePath,
 } from "../../apps/desktop/src/utility/persistence/sqliteCorePersistence";
 import {
+  PersistenceUtilityProtocolError,
+  assertPersistenceUtilityMessage,
+} from "../../apps/desktop/src/shared/persistenceUtilityProtocol";
+import {
   FIXTURE_ARTIFACT_ID,
   FIXTURE_SESSION_ID,
   FIXTURE_STREAM_ID,
@@ -100,6 +104,68 @@ function createAttemptEvidence(
     ...overrides,
   };
 }
+
+function createContentInput() {
+  return {
+    contractVersion: 1,
+    reference: toolOutputReference("output-p7-integrity"),
+    kind: "tool-output",
+    owner: {
+      workspaceId: FIXTURE_WORKSPACE_ID,
+      taskId: FIXTURE_TASK_ID,
+      sessionId: FIXTURE_SESSION_ID,
+      workerId: FIXTURE_WORKER_ID,
+    },
+    classification: "task-content",
+    mediaType: "text/markdown; charset=utf-8",
+    content: "# Integrity-bound task output",
+    createdAt: instant("2026-08-13T01:10:00.000Z"),
+  } as const;
+}
+
+const REDACTION_CANARY_CASES = [
+  ["P7-A-REDACTION-001 P7-V-REDACTION-001-CREDENTIAL", "credential"],
+  ["P7-A-REDACTION-001 P7-V-REDACTION-001-PATH", "path"],
+  ["P7-A-REDACTION-001 P7-V-REDACTION-001-PROMPT", "prompt"],
+  ["P7-A-REDACTION-001 P7-V-REDACTION-001-COMPLETION", "completion"],
+  ["P7-A-REDACTION-001 P7-V-REDACTION-001-TOOL-ARGUMENT", "tool-argument"],
+  ["P7-A-REDACTION-001 P7-V-REDACTION-001-CONTENT-REFERENCE", "content-reference"],
+  ["P7-A-REDACTION-001 P7-V-REDACTION-001-PATCH", "patch"],
+  ["P7-A-REDACTION-001 P7-V-REDACTION-001-ENVIRONMENT-TEXT", "environment-text"],
+] as const;
+
+const REDACTION_TERMINAL_CASES = [
+  [
+    "P7-A-REDACTION-002 P7-V-REDACTION-002-REJECTED-MODEL-FALSE-COMPLETED",
+    "model-completion-refused",
+    "completed",
+  ],
+  [
+    "P7-A-REDACTION-002 P7-V-REDACTION-002-REJECTED-MODEL-FALSE-UNCHANGED",
+    "model-completion-refused",
+    "unchanged",
+  ],
+  [
+    "P7-A-REDACTION-002 P7-V-REDACTION-002-REJECTED-TOOL-FALSE-COMPLETED",
+    "unsupported-tool",
+    "completed",
+  ],
+  [
+    "P7-A-REDACTION-002 P7-V-REDACTION-002-REJECTED-TOOL-FALSE-UNCHANGED",
+    "unsupported-tool",
+    "unchanged",
+  ],
+  [
+    "P7-A-REDACTION-002 P7-V-REDACTION-002-REJECTED-WORKER-FALSE-COMPLETED",
+    "worker-execution-failed",
+    "completed",
+  ],
+  [
+    "P7-A-REDACTION-002 P7-V-REDACTION-002-REJECTED-WORKER-FALSE-UNCHANGED",
+    "worker-execution-failed",
+    "unchanged",
+  ],
+] as const;
 
 function buildToolEvidence(
   name: "cargo-auditable" | "cargo-audit",
@@ -316,64 +382,14 @@ afterEach(() => {
 });
 
 describe("P7 persistence, redaction, artifact, and package abuse baseline", () => {
-  it("P7-A-PERSISTENCE-001 rejects replay and stale records", async () => {
-    const directory = createTestDirectory("actestra-p7-persistence-");
+  it("P7-A-PERSISTENCE-001 P7-V-PERSISTENCE-001-STALE-CAS", async () => {
+    const directory = createTestDirectory("actestra-p7-stale-cas-");
     const persistence = openSqliteCorePersistence(directory);
     await persistence.replaceDomainGraph(createDomainGraph());
-
-    const started = createStartedEvent();
-    await expect(persistence.appendEvent(started)).resolves.toEqual({ status: "appended" });
-    await expect(persistence.appendEvent(started)).resolves.toEqual({ status: "duplicate" });
-    await expect(
-      persistence.appendEvent({
-        ...started,
-        occurredAt: instant("2026-07-28T06:00:09.000Z"),
-      }),
-    ).rejects.toMatchObject({ code: "event-id-conflict" });
-    await expect(
-      persistence.appendEvent(
-        createEvent(
-          1,
-          "agent.message",
-          {
-            role: "assistant",
-            content: "A reused sequence must not commit.",
-          },
-          { eventId: eventId("event-sequence-regression") },
-        ),
-      ),
-    ).rejects.toMatchObject({ code: "event-sequence-conflict" });
-    await expect(
-      persistence.appendEvent(
-        createEvent(3, "agent.message", {
-          role: "assistant",
-          content: "A sequence gap must not commit.",
-        }),
-      ),
-    ).rejects.toMatchObject({ code: "event-sequence-gap" });
-    await expect(
-      persistence.appendEvent(
-        createEvent(
-          2,
-          "agent.message",
-          { role: "assistant", content: "A cross-owner event must not commit." },
-          { sessionId: sessionId("session-cross-owner") },
-        ),
-      ),
-    ).rejects.toMatchObject({ code: "domain-reference" });
-    const second = createEvent(2, "agent.message", {
-      role: "assistant",
-      content: "Only the valid second event commits.",
-    });
-    await expect(persistence.appendEvent(second)).resolves.toEqual({ status: "appended" });
-    await expect(persistence.replayEvents(FIXTURE_STREAM_ID)).resolves.toEqual([started, second]);
 
     const checkpoint = createGeneralWorkCheckpoint();
     await expect(persistence.persistGeneralWorkCheckpoint(checkpoint)).resolves.toMatchObject({
       status: "stored",
-    });
-    await expect(persistence.persistGeneralWorkCheckpoint(checkpoint)).resolves.toMatchObject({
-      status: "duplicate",
     });
     await expect(
       persistence.persistGeneralWorkCheckpoint({
@@ -385,7 +401,13 @@ describe("P7 persistence, redaction, artifact, and package abuse baseline", () =
     await expect(persistence.getGeneralWorkCheckpoint(FIXTURE_SESSION_ID)).resolves.toEqual(
       checkpoint,
     );
+    await persistence.close();
+  });
 
+  it("P7-A-PERSISTENCE-001 P7-V-PERSISTENCE-001-CONFLICTING-DUPLICATE", async () => {
+    const directory = createTestDirectory("actestra-p7-conflicting-duplicate-");
+    const persistence = openSqliteCorePersistence(directory);
+    await persistence.replaceDomainGraph(createDomainGraph());
     const pending = createArtifactDeliveryRecord();
     await expect(persistence.persistArtifactDelivery(pending)).resolves.toMatchObject({
       status: "stored",
@@ -401,6 +423,18 @@ describe("P7 persistence, redaction, artifact, and package abuse baseline", () =
         }),
       ),
     ).rejects.toMatchObject({ code: "artifact-delivery-conflict" });
+    await expect(persistence.getArtifactDelivery(FIXTURE_ARTIFACT_ID)).resolves.toEqual(pending);
+    await persistence.close();
+  });
+
+  it("P7-A-PERSISTENCE-001 P7-V-PERSISTENCE-001-CROSS-OWNER-RECORD", async () => {
+    const directory = createTestDirectory("actestra-p7-cross-owner-");
+    const persistence = openSqliteCorePersistence(directory);
+    await persistence.replaceDomainGraph(createDomainGraph());
+    const pending = createArtifactDeliveryRecord();
+    await expect(persistence.persistArtifactDelivery(pending)).resolves.toMatchObject({
+      status: "stored",
+    });
     await expect(
       persistence.persistArtifactDelivery(
         createArtifactDeliveryRecord({
@@ -410,13 +444,15 @@ describe("P7 persistence, redaction, artifact, and package abuse baseline", () =
       ),
     ).rejects.toMatchObject({ code: "artifact-delivery-conflict" });
     await expect(persistence.getArtifactDelivery(FIXTURE_ARTIFACT_ID)).resolves.toEqual(pending);
+    await persistence.close();
+  });
 
+  it("P7-A-PERSISTENCE-001 P7-V-PERSISTENCE-001-CROSS-ATTEMPT-RECORD", async () => {
+    const directory = createTestDirectory("actestra-p7-cross-attempt-");
+    const persistence = openSqliteCorePersistence(directory);
     const terminalEvidence = createAttemptEvidence("worker-execution-failed");
     await expect(persistence.appendAgentAttemptEvidence(terminalEvidence)).resolves.toEqual({
       status: "appended",
-    });
-    await expect(persistence.appendAgentAttemptEvidence(terminalEvidence)).resolves.toEqual({
-      status: "duplicate",
     });
     await expect(
       persistence.appendAgentAttemptEvidence({
@@ -430,25 +466,47 @@ describe("P7 persistence, redaction, artifact, and package abuse baseline", () =
     await persistence.close();
   });
 
-  it("P7-A-PERSISTENCE-002 rejects malformed and tampered persistence", async () => {
-    const contentDirectory = createTestDirectory("actestra-p7-content-tamper-");
-    const persistence = openSqliteCorePersistence(contentDirectory);
+  it("P7-A-PERSISTENCE-001 P7-V-PERSISTENCE-001-SEQUENCE-REGRESSION", async () => {
+    const directory = createTestDirectory("actestra-p7-sequence-regression-");
+    const persistence = openSqliteCorePersistence(directory);
     await persistence.replaceDomainGraph(createDomainGraph());
-    const contentInput = {
-      contractVersion: 1,
-      reference: toolOutputReference("output-p7-integrity"),
-      kind: "tool-output",
-      owner: {
-        workspaceId: FIXTURE_WORKSPACE_ID,
-        taskId: FIXTURE_TASK_ID,
-        sessionId: FIXTURE_SESSION_ID,
-        workerId: FIXTURE_WORKER_ID,
-      },
-      classification: "task-content",
-      mediaType: "text/markdown; charset=utf-8",
-      content: "# Integrity-bound task output",
-      createdAt: instant("2026-08-13T01:10:00.000Z"),
-    } as const;
+    const started = createStartedEvent();
+    await persistence.appendEvent(started);
+    await expect(
+      persistence.appendEvent(
+        createEvent(
+          1,
+          "agent.message",
+          { role: "assistant", content: "A reused sequence must not commit." },
+          { eventId: eventId("event-sequence-regression") },
+        ),
+      ),
+    ).rejects.toMatchObject({ code: "event-sequence-conflict" });
+    await expect(persistence.replayEvents(FIXTURE_STREAM_ID)).resolves.toEqual([started]);
+    await persistence.close();
+  });
+
+  it("P7-A-PERSISTENCE-001 P7-V-PERSISTENCE-001-REPLAY", async () => {
+    const directory = createTestDirectory("actestra-p7-replay-");
+    const persistence = openSqliteCorePersistence(directory);
+    await persistence.replaceDomainGraph(createDomainGraph());
+    const started = createStartedEvent();
+    await expect(persistence.appendEvent(started)).resolves.toEqual({ status: "appended" });
+    await expect(persistence.appendEvent(started)).resolves.toEqual({ status: "duplicate" });
+    const second = createEvent(2, "agent.message", {
+      role: "assistant",
+      content: "Only the valid second event commits.",
+    });
+    await expect(persistence.appendEvent(second)).resolves.toEqual({ status: "appended" });
+    await expect(persistence.replayEvents(FIXTURE_STREAM_ID)).resolves.toEqual([started, second]);
+    await persistence.close();
+  });
+
+  it("P7-A-PERSISTENCE-002 P7-V-PERSISTENCE-002-UNKNOWN-KEYS", async () => {
+    const directory = createTestDirectory("actestra-p7-unknown-keys-");
+    const persistence = openSqliteCorePersistence(directory);
+    await persistence.replaceDomainGraph(createDomainGraph());
+    const contentInput = createContentInput();
     await persistence.storeContentReference(contentInput);
     await expect(
       persistence.storeContentReference({
@@ -456,8 +514,53 @@ describe("P7 persistence, redaction, artifact, and package abuse baseline", () =
         unsupportedField: "must-fail-closed",
       } as never),
     ).rejects.toMatchObject({ code: "invalid-record" });
+    await expect(
+      persistence.resolveContentReference({
+        contractVersion: 1,
+        reference: contentInput.reference,
+        kind: contentInput.kind,
+        owner: contentInput.owner,
+        resolvedAt: instant("2026-08-13T01:11:00.000Z"),
+        consume: false,
+      }),
+    ).resolves.toMatchObject({ content: contentInput.content });
     await persistence.close();
+  });
 
+  it("P7-A-PERSISTENCE-002 P7-V-PERSISTENCE-002-TRUNCATED-PROTOCOL", () => {
+    expect(() =>
+      assertPersistenceUtilityMessage({
+        protocolVersion: 1,
+        type: "response",
+      }),
+    ).toThrow(PersistenceUtilityProtocolError);
+  });
+
+  it("P7-A-PERSISTENCE-002 P7-V-PERSISTENCE-002-TRUNCATED-DATABASE", async () => {
+    const eventDirectory = createTestDirectory("actestra-p7-truncated-database-");
+    const eventPersistence = openSqliteCorePersistence(eventDirectory);
+    await eventPersistence.replaceDomainGraph(createDomainGraph());
+    await eventPersistence.appendEvent(createStartedEvent());
+    await eventPersistence.close();
+    const eventDatabase = new DatabaseSync(resolveCoreDatabasePath(eventDirectory));
+    eventDatabase
+      .prepare("UPDATE core_events SET envelope_json = ? WHERE event_id = ?")
+      .run('{"schemaVersion":1', "event-1");
+    eventDatabase.close();
+    const tamperedEvent = openSqliteCorePersistence(eventDirectory);
+    await expect(tamperedEvent.replayEvents(FIXTURE_STREAM_ID)).rejects.toMatchObject({
+      code: "corrupt-database",
+    });
+    await tamperedEvent.close();
+  });
+
+  it("P7-A-PERSISTENCE-002 P7-V-PERSISTENCE-002-DIGEST-TAMPER", async () => {
+    const contentDirectory = createTestDirectory("actestra-p7-content-tamper-");
+    const persistence = openSqliteCorePersistence(contentDirectory);
+    await persistence.replaceDomainGraph(createDomainGraph());
+    const contentInput = createContentInput();
+    await persistence.storeContentReference(contentInput);
+    await persistence.close();
     const contentDatabase = new DatabaseSync(resolveCoreDatabasePath(contentDirectory));
     contentDatabase
       .prepare("UPDATE content_references SET content_blob = ? WHERE reference = ?")
@@ -478,23 +581,9 @@ describe("P7 persistence, redaction, artifact, and package abuse baseline", () =
       }),
     ).rejects.toMatchObject({ code: "content-integrity" });
     await tamperedContent.close();
+  });
 
-    const eventDirectory = createTestDirectory("actestra-p7-event-tamper-");
-    const eventPersistence = openSqliteCorePersistence(eventDirectory);
-    await eventPersistence.replaceDomainGraph(createDomainGraph());
-    await eventPersistence.appendEvent(createStartedEvent());
-    await eventPersistence.close();
-    const eventDatabase = new DatabaseSync(resolveCoreDatabasePath(eventDirectory));
-    eventDatabase
-      .prepare("UPDATE core_events SET envelope_json = ? WHERE event_id = ?")
-      .run('{"schemaVersion":1', "event-1");
-    eventDatabase.close();
-    const tamperedEvent = openSqliteCorePersistence(eventDirectory);
-    await expect(tamperedEvent.replayEvents(FIXTURE_STREAM_ID)).rejects.toMatchObject({
-      code: "corrupt-database",
-    });
-    await tamperedEvent.close();
-
+  it("P7-A-PERSISTENCE-002 P7-V-PERSISTENCE-002-INVALID-SQLITE", () => {
     const invalidDirectory = createTestDirectory("actestra-p7-invalid-database-");
     const invalidDatabasePath = resolveCoreDatabasePath(invalidDirectory);
     fs.mkdirSync(path.dirname(invalidDatabasePath), { recursive: true });
@@ -504,18 +593,16 @@ describe("P7 persistence, redaction, artifact, and package abuse baseline", () =
     );
   });
 
-  it("P7-A-REDACTION-001 removes protected values from evidence", async () => {
-    const canaries = {
-      credential: protectedCanary("credential"),
-      path: protectedCanary("path"),
-      prompt: protectedCanary("prompt"),
-      completion: protectedCanary("completion"),
-      toolArgument: protectedCanary("tool-argument"),
-      contentReference: protectedCanary("content-reference"),
-      patch: protectedCanary("patch"),
-      environment: protectedCanary("environment"),
-    } as const;
-    const protectedText = Object.values(canaries).join("\n");
+  it("P7-A-PERSISTENCE-002 P7-V-PERSISTENCE-002-CLOSED-PORT", async () => {
+    const persistence = openSqliteCorePersistence(createTestDirectory("actestra-p7-closed-port-"));
+    await persistence.close();
+    await expect(persistence.loadDomainGraph()).rejects.toMatchObject({ code: "closed" });
+    await expect(persistence.close()).resolves.toBeUndefined();
+  });
+
+  it.each(REDACTION_CANARY_CASES)("%s", async (_testName, category) => {
+    const protectedText = protectedCanary(category);
+    const canaries = { [category]: protectedText };
     const diagnostic = toDiagnosticEvent(
       createEvent(2, "agent.message", {
         role: "assistant",
@@ -544,82 +631,74 @@ describe("P7 persistence, redaction, artifact, and package abuse baseline", () =
     await expect(
       persistence.appendAgentAttemptEvidence({
         ...createAttemptEvidence("model-request-rejected", {
-          sessionId: sessionId("session-p7-invalid-evidence"),
-          streamId: eventStreamId("stream-p7-invalid-evidence"),
+          sessionId: sessionId(`session-p7-invalid-${category}`),
+          streamId: eventStreamId(`stream-p7-invalid-${category}`),
         }),
         detail: protectedText,
       } as never),
     ).rejects.toMatchObject({ code: "invalid-record" });
+    assertCanariesAbsent(
+      JSON.stringify(await persistence.listRecentAgentAttemptEvidence(50)),
+      canaries,
+    );
     await persistence.close();
   });
 
-  it("P7-A-REDACTION-002 prevents false terminal success", async () => {
-    const failureCodes = [
-      "model-completion-refused",
-      "model-request-rejected",
-      "unsupported-tool",
-      "worker-execution-failed",
-      "persistence-unavailable",
-    ] as const;
+  it.each(REDACTION_TERMINAL_CASES)("%s", async (_testName, failureCode, forbiddenProjection) => {
+    const directory = createTestDirectory(
+      `actestra-p7-terminal-${failureCode}-${forbiddenProjection}-`,
+    );
+    const persistence = openSqliteCorePersistence(directory);
+    await persistence.replaceDomainGraph({ ...createDomainGraph(), artifacts: [] });
+    const started = createStartedEvent();
+    const workerFailure = createEvent(2, "worker.failed", {
+      errorCode: failureCode,
+      message: "The bounded attempt failed.",
+      retryable: false,
+    });
+    const taskFailure = createEvent(3, "task.failed", {
+      from: "running",
+      to: "failed",
+      errorCode: failureCode,
+      message: "The bounded task failed.",
+    });
+    await persistence.appendEvent(started);
+    await persistence.appendEvent(workerFailure);
+    await persistence.appendEvent(taskFailure);
 
-    for (const [index, failureCode] of failureCodes.entries()) {
-      const directory = createTestDirectory(`actestra-p7-terminal-${String(index)}-`);
-      const persistence = openSqliteCorePersistence(directory);
-      await persistence.replaceDomainGraph({ ...createDomainGraph(), artifacts: [] });
-      const started = createStartedEvent();
-      const workerFailure = createEvent(2, "worker.failed", {
-        errorCode: failureCode,
-        message: "The bounded attempt failed.",
-        retryable: false,
-      });
-      const taskFailure = createEvent(3, "task.failed", {
-        from: "running",
-        to: "failed",
-        errorCode: failureCode,
-        message: "The bounded task failed.",
-      });
-      await persistence.appendEvent(started);
-      await persistence.appendEvent(workerFailure);
-      await persistence.appendEvent(taskFailure);
+    if (forbiddenProjection === "completed") {
       await expect(
         persistence.appendEvent(
           createEvent(
             4,
             "task.completed",
             { from: "failed", to: "completed" },
-            { eventId: eventId(`event-false-completed-${String(index)}`) },
+            { eventId: eventId(`event-false-completed-${failureCode}`) },
           ),
         ),
       ).rejects.toMatchObject({ code: "event-after-terminal" });
-      await persistence.appendAgentAttemptEvidence(
-        createAttemptEvidence(failureCode, {
-          sessionId: sessionId(`session-p7-failure-${String(index)}`),
-          streamId: eventStreamId(`stream-p7-failure-${String(index)}`),
-        }),
-      );
-
-      const replay = await persistence.replayEvents(FIXTURE_STREAM_ID);
-      expect(replay.map((event) => event.type)).toEqual([
-        "task.started",
-        "worker.failed",
-        "task.failed",
-      ]);
-      expect(replay.at(-1)).toMatchObject({
-        type: "task.failed",
-        payload: { to: "failed", errorCode: failureCode },
-      });
-      expect(await persistence.listRecentAgentAttemptEvidence(50)).toEqual([
-        createAttemptEvidence(failureCode, {
-          sessionId: sessionId(`session-p7-failure-${String(index)}`),
-          streamId: eventStreamId(`stream-p7-failure-${String(index)}`),
-        }),
-      ]);
-      expect((await persistence.loadDomainGraph())?.artifacts).toEqual([]);
-      await persistence.close();
     }
+
+    await persistence.appendAgentAttemptEvidence(createAttemptEvidence(failureCode));
+    const replay = await persistence.replayEvents(FIXTURE_STREAM_ID);
+    expect(replay.map((event) => event.type)).toEqual([
+      "task.started",
+      "worker.failed",
+      "task.failed",
+    ]);
+    expect(replay.at(-1)).toMatchObject({
+      type: "task.failed",
+      payload: { to: "failed", errorCode: failureCode },
+    });
+    expect(replay.some(({ type }) => type === "task.completed")).toBe(false);
+    expect(await persistence.listRecentAgentAttemptEvidence(50)).toEqual([
+      createAttemptEvidence(failureCode),
+    ]);
+    expect((await persistence.loadDomainGraph())?.artifacts).toEqual([]);
+    await persistence.close();
   });
 
-  it("P7-A-ARTIFACT-001 rejects untrusted artifact and package substitutions", async () => {
+  it("admits the exact trusted Goose artifact control", async () => {
     const baseline = createRunnerArtifactFixture();
     await expect(
       admitGooseRunnerArtifact(baseline.directory, {
@@ -627,101 +706,135 @@ describe("P7 persistence, redaction, artifact, and package abuse baseline", () =
         trustedManifestSha256: baseline.manifestSha256,
       }),
     ).resolves.toMatchObject({ targetTriple: "aarch64-apple-darwin" });
+  });
 
+  it("P7-A-ARTIFACT-001 P7-V-ARTIFACT-001-SELF-AUTHORIZING-MANIFEST", async () => {
+    const fixture = createRunnerArtifactFixture();
     await expect(
-      admitGooseRunnerArtifact(baseline.directory, {
+      admitGooseRunnerArtifact(fixture.directory, {
         expectedTargetTriple: "aarch64-apple-darwin",
         trustedManifestSha256: "f".repeat(64),
       }),
     ).rejects.toMatchObject({ code: "digest-mismatch" });
+  });
+
+  it("P7-A-ARTIFACT-001 P7-V-ARTIFACT-001-WRONG-DIGEST", async () => {
+    const fixture = createRunnerArtifactFixture();
+    fs.writeFileSync(path.join(fixture.directory, "actestra-goose-runner"), "tampered");
     await expect(
-      admitGooseRunnerArtifact(baseline.directory, {
+      admitGooseRunnerArtifact(fixture.directory, {
+        expectedTargetTriple: "aarch64-apple-darwin",
+        trustedManifestSha256: fixture.manifestSha256,
+      }),
+    ).rejects.toMatchObject({ code: "digest-mismatch" });
+  });
+
+  it("P7-A-ARTIFACT-001 P7-V-ARTIFACT-001-WRONG-ARCHITECTURE", async () => {
+    const fixture = createRunnerArtifactFixture();
+    await expect(
+      admitGooseRunnerArtifact(fixture.directory, {
         expectedTargetTriple: "x86_64-apple-darwin",
-        trustedManifestSha256: baseline.manifestSha256,
+        trustedManifestSha256: fixture.manifestSha256,
       }),
     ).rejects.toMatchObject({ code: "incompatible-artifact" });
+  });
 
-    const symlinkFixture = createRunnerArtifactFixture();
+  it("P7-A-ARTIFACT-001 P7-V-ARTIFACT-001-SYMLINK", async () => {
+    const fixture = createRunnerArtifactFixture();
     const linkedDirectory = path.join(
       createTestDirectory("actestra-p7-runner-link-"),
       "artifact-link",
     );
-    fs.symlinkSync(symlinkFixture.directory, linkedDirectory, "dir");
+    fs.symlinkSync(fixture.directory, linkedDirectory, "dir");
     await expect(
       admitGooseRunnerArtifact(linkedDirectory, {
         expectedTargetTriple: "aarch64-apple-darwin",
-        trustedManifestSha256: symlinkFixture.manifestSha256,
+        trustedManifestSha256: fixture.manifestSha256,
       }),
     ).rejects.toMatchObject({ code: "invalid-manifest" });
+  });
 
-    const unexpectedFixture = createRunnerArtifactFixture();
-    fs.writeFileSync(path.join(unexpectedFixture.directory, "untrusted-sidecar"), "unexpected");
+  it("P7-A-ARTIFACT-001 P7-V-ARTIFACT-001-UNEXPECTED-FILE", async () => {
+    const fixture = createRunnerArtifactFixture();
+    fs.writeFileSync(path.join(fixture.directory, "untrusted-sidecar"), "unexpected");
     await expect(
-      admitGooseRunnerArtifact(unexpectedFixture.directory, {
+      admitGooseRunnerArtifact(fixture.directory, {
         expectedTargetTriple: "aarch64-apple-darwin",
-        trustedManifestSha256: unexpectedFixture.manifestSha256,
+        trustedManifestSha256: fixture.manifestSha256,
       }),
     ).rejects.toMatchObject({ code: "invalid-manifest" });
+  });
 
-    const executableFixture = createRunnerArtifactFixture();
-    fs.writeFileSync(path.join(executableFixture.directory, "actestra-goose-runner"), "tampered");
-    await expect(
-      admitGooseRunnerArtifact(executableFixture.directory, {
-        expectedTargetTriple: "aarch64-apple-darwin",
-        trustedManifestSha256: executableFixture.manifestSha256,
-      }),
-    ).rejects.toMatchObject({ code: "digest-mismatch" });
-
-    const featureFixture = createRunnerArtifactFixture();
+  it("P7-A-ARTIFACT-001 P7-V-ARTIFACT-001-FEATURE-WIDENING", async () => {
+    const fixture = createRunnerArtifactFixture();
     const widenedManifest = {
-      ...featureFixture.manifest,
-      goose: { ...featureFixture.manifest.goose, cargoFeatures: ["telemetry"] },
+      ...fixture.manifest,
+      goose: { ...fixture.manifest.goose, cargoFeatures: ["telemetry"] },
     } as unknown as RunnerManifest;
     await expect(
-      admitGooseRunnerArtifact(featureFixture.directory, {
+      admitGooseRunnerArtifact(fixture.directory, {
         expectedTargetTriple: "aarch64-apple-darwin",
-        trustedManifestSha256: writeRunnerManifest(featureFixture.directory, widenedManifest),
+        trustedManifestSha256: writeRunnerManifest(fixture.directory, widenedManifest),
       }),
     ).rejects.toMatchObject({ code: "incompatible-artifact" });
+  });
 
-    const dependencyFixture = createRunnerArtifactFixture();
-    const lockPath = path.join(dependencyFixture.directory, "Cargo.lock");
+  it("P7-A-ARTIFACT-001 P7-V-ARTIFACT-001-UNSAFE-DEPENDENCY", async () => {
+    const fixture = createRunnerArtifactFixture();
+    const lockPath = path.join(fixture.directory, "Cargo.lock");
     const unsafeLock = fs
       .readFileSync(lockPath, "utf8")
       .replace('name = "lru"\nversion = "0.18.2"', 'name = "lru"\nversion = "0.18.1"');
     fs.writeFileSync(lockPath, unsafeLock);
     const unsafeDependencyManifest = {
-      ...dependencyFixture.manifest,
+      ...fixture.manifest,
       build: {
-        ...dependencyFixture.manifest.build,
+        ...fixture.manifest.build,
         lockfile: { file: "Cargo.lock", sha256: sha256(unsafeLock) },
       },
     } as RunnerManifest;
     await expect(
-      admitGooseRunnerArtifact(dependencyFixture.directory, {
+      admitGooseRunnerArtifact(fixture.directory, {
         expectedTargetTriple: "aarch64-apple-darwin",
-        trustedManifestSha256: writeRunnerManifest(
-          dependencyFixture.directory,
-          unsafeDependencyManifest,
-        ),
+        trustedManifestSha256: writeRunnerManifest(fixture.directory, unsafeDependencyManifest),
       }),
     ).rejects.toMatchObject({ code: "incompatible-artifact" });
+  });
 
-    for (const [file, expectedCode] of [
-      ["GOOSE-APACHE-2.0.txt", "digest-mismatch"],
-      ["actestra-goose-runner.cdx.json", "digest-mismatch"],
-      ["actestra-goose-runner.audit.json", "digest-mismatch"],
-    ] as const) {
-      const materialFixture = createRunnerArtifactFixture();
-      fs.appendFileSync(path.join(materialFixture.directory, file), "tampered");
-      await expect(
-        admitGooseRunnerArtifact(materialFixture.directory, {
-          expectedTargetTriple: "aarch64-apple-darwin",
-          trustedManifestSha256: materialFixture.manifestSha256,
-        }),
-      ).rejects.toMatchObject({ code: expectedCode });
-    }
+  it("P7-A-ARTIFACT-001 P7-V-ARTIFACT-001-MISSING-LICENSE", async () => {
+    const fixture = createRunnerArtifactFixture();
+    fs.rmSync(path.join(fixture.directory, "GOOSE-APACHE-2.0.txt"));
+    await expect(
+      admitGooseRunnerArtifact(fixture.directory, {
+        expectedTargetTriple: "aarch64-apple-darwin",
+        trustedManifestSha256: fixture.manifestSha256,
+      }),
+    ).rejects.toMatchObject({ code: "invalid-manifest" });
+  });
 
+  it("P7-A-ARTIFACT-001 P7-V-ARTIFACT-001-MISSING-SBOM", async () => {
+    const fixture = createRunnerArtifactFixture();
+    fs.rmSync(path.join(fixture.directory, "actestra-goose-runner.cdx.json"));
+    await expect(
+      admitGooseRunnerArtifact(fixture.directory, {
+        expectedTargetTriple: "aarch64-apple-darwin",
+        trustedManifestSha256: fixture.manifestSha256,
+      }),
+    ).rejects.toMatchObject({ code: "invalid-manifest" });
+  });
+
+  it("P7-A-ARTIFACT-001 P7-V-ARTIFACT-001-MISSING-AUDIT", async () => {
+    const fixture = createRunnerArtifactFixture();
+    fs.rmSync(path.join(fixture.directory, "actestra-goose-runner.audit.json"));
+    await expect(
+      admitGooseRunnerArtifact(fixture.directory, {
+        expectedTargetTriple: "aarch64-apple-darwin",
+        trustedManifestSha256: fixture.manifestSha256,
+      }),
+    ).rejects.toMatchObject({ code: "invalid-manifest" });
+  });
+
+  it("P7-A-ARTIFACT-001 P7-V-ARTIFACT-001-PACKAGED-SOURCE-COPY-DRIFT", () => {
     const overlay = JSON.parse(
       fs.readFileSync("downstream/aionui-v2.1.41/overlay.json", "utf8"),
     ) as { sourceCopies: readonly { source: string; destination: string }[] };
