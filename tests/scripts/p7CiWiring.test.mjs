@@ -104,4 +104,17 @@ describe("P7 CI wiring", () => {
       "ACTESTRA_P7_SECURITY_SMOKE_RUNNER_MANIFEST_SHA256: ${{ steps.p7-trust-roots.outputs.manifest_sha256 }}",
     );
   });
+
+  it("keeps the Goose runner source strict-typecheckable in the materialized app", () => {
+    const source = read("apps/desktop/src/main/workers/gooseRunnerProcess.ts");
+    expect(source).toMatch(/\.catch\(\s*\(\): undefined => undefined,?\s*\)/u);
+  });
+
+  it("composes the P7 bridge patch after the persistence path import", () => {
+    const patch = read("downstream/aionui-v2.1.41/patches/0017-actestra-p7-security-smoke.mjs");
+    expect(patch).toContain(
+      "} from 'electron';\nimport fs from 'node:fs';\nimport path from 'node:path';",
+    );
+    expect(patch).toContain("} from 'electron';\nimport path from 'node:path';`,");
+  });
 });

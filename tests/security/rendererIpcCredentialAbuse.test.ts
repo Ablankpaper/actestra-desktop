@@ -221,16 +221,13 @@ describe("P7 renderer, IPC, and credential abuse baseline", () => {
         },
       },
     };
-    installWebviewGuestSecurity(
-      {
-        on: (event: "will-attach-webview", listener: typeof attachListener) => {
-          expect(event).toBe("will-attach-webview");
-          attachListener = listener;
-        },
+    const webviewOwner = {
+      on: (event: "will-attach-webview", listener: typeof attachListener) => {
+        expect(event).toBe("will-attach-webview");
+        attachListener = listener;
       },
-      () => guestSession,
-      { backendPort: () => 13400 },
-    );
+    } as unknown as Parameters<typeof installWebviewGuestSecurity>[0];
+    installWebviewGuestSecurity(webviewOwner, () => guestSession, { backendPort: () => 13400 });
     const preferences: Record<string, unknown> = {
       nodeIntegration: true,
       nodeIntegrationInSubFrames: true,

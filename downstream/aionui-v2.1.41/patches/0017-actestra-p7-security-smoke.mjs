@@ -145,7 +145,8 @@ replaceOnce(
   BrowserWindow,
   ipcMain,
   type IpcMainInvokeEvent,
-} from 'electron';`,
+} from 'electron';
+import path from 'node:path';`,
   `import {
   app,
   BrowserWindow,

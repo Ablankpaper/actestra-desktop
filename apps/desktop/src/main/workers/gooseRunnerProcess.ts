@@ -660,8 +660,9 @@ export async function openGooseRunnerHandshake(
         try {
           if (
             admittedWorkspaceDirectory !== undefined &&
-            (await realpath(sessionOptions.workspaceDirectory).catch(() => undefined)) !==
-              admittedWorkspaceDirectory
+            (await realpath(sessionOptions.workspaceDirectory).catch(
+              (): undefined => undefined,
+            )) !== admittedWorkspaceDirectory
           ) {
             throw new GooseRunnerProcessError(
               "invalid-options",

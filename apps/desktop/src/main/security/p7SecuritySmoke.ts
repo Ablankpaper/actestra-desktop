@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import type { WebContents } from "electron";
 import {
   chmodSync,
   cpSync,
@@ -19,9 +20,6 @@ import { createGooseRunnerEnvironment } from "../workers/gooseRunnerProcess";
 import { admitGooseRunnerArtifact } from "../workers/gooseRunnerArtifact";
 import { createGooseRunnerSandboxLaunch } from "../workers/gooseRunnerSandbox";
 
-type WebviewAttachEvent = Readonly<{ preventDefault: () => void }>;
-type WebviewPreferences = Record<string, unknown>;
-type WebviewParams = Readonly<{ src: string; partition?: string }>;
 type WebviewSession = Readonly<{
   setPermissionRequestHandler: (
     handler: (
@@ -40,16 +38,7 @@ type WebviewSession = Readonly<{
     ) => void;
   };
 }>;
-type WebviewOwner = Readonly<{
-  on: (
-    event: "will-attach-webview",
-    listener: (
-      event: WebviewAttachEvent,
-      webPreferences: WebviewPreferences,
-      params: WebviewParams,
-    ) => void,
-  ) => unknown;
-}>;
+type WebviewOwner = Pick<WebContents, "on">;
 
 function isAllowedWebviewPartition(partition: string | undefined): boolean {
   return (
@@ -79,9 +68,10 @@ export function installWebviewGuestSecurity(
       event.preventDefault();
       return;
     }
-    delete webPreferences.preload;
-    delete webPreferences.preloadURL;
-    delete webPreferences.preloadPath;
+    const mutablePreferences = webPreferences as Record<string, unknown>;
+    delete mutablePreferences.preload;
+    delete mutablePreferences.preloadURL;
+    delete mutablePreferences.preloadPath;
     Object.assign(webPreferences, {
       nodeIntegration: false,
       nodeIntegrationInSubFrames: false,
