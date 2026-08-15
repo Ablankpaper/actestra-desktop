@@ -21,11 +21,14 @@ const electronImportPattern =
   /(?:\b(?:import|export)\s+(?:(?:type\s+)?[\w*{},\s]+?\s+from\s+)?['"]electron(?:\/[a-zA-Z0-9_./-]+)?['"]|\bimport\s*\(\s*['"]electron(?:\/[a-zA-Z0-9_./-]+)?['"])/;
 const privilegedProcessImportPattern =
   /(?:\b(?:import|export)\s+(?:(?:type\s+)?[\w*{},\s]+?\s+from\s+)?['"](?:\.\.\/)+(?:main|utility)(?:\/|['"])|\bimport\s*\(\s*['"](?:\.\.\/)+(?:main|utility)(?:\/|['"]))/;
+const gitAuthorityImportPattern =
+  /(?:\bimport\s+(?!type\b)(?:[\w*{},\s]+?\s+from\s+)?['"](?:isomorphic-git|simple-git|dugite|nodegit)(?:\/[a-zA-Z0-9_./-]+)?['"]|\bexport\s+(?!type\b)[\w*{},\s]+?\s+from\s+['"](?:isomorphic-git|simple-git|dugite|nodegit)(?:\/[a-zA-Z0-9_./-]+)?['"]|\bimport\s*\(\s*['"](?:isomorphic-git|simple-git|dugite|nodegit)(?:\/[a-zA-Z0-9_./-]+)?['"])/;
 
 export const rendererPrivilegePatterns = Object.freeze([
   { label: "Electron import", pattern: electronImportPattern },
   { label: "Node import", pattern: nodeBuiltinImportPattern },
   { label: "privileged process import", pattern: privilegedProcessImportPattern },
+  { label: "Git authority import", pattern: gitAuthorityImportPattern },
   { label: "CommonJS require", pattern: /\brequire\s*\(/ },
   { label: "Node process global", pattern: /\bprocess\./ },
   { label: "direct fetch client", pattern: /\bfetch\s*\(/ },
@@ -71,6 +74,7 @@ export const actestraTeamRendererAuthorityPaths = Object.freeze([
 export const preloadPrivilegePatterns = Object.freeze([
   { label: "Node import", pattern: nodeBuiltinImportPattern },
   { label: "privileged process import", pattern: privilegedProcessImportPattern },
+  { label: "Git authority import", pattern: gitAuthorityImportPattern },
   { label: "core privileged import", pattern: /from\s+['"]\.\.\/core(?:\/|['"])/ },
   { label: "CommonJS require", pattern: /\brequire\s*\(/ },
   { label: "Node process global", pattern: /\bprocess\./ },

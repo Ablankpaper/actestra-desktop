@@ -19,6 +19,12 @@ const rendererNodeImportRule = rendererPrivilegePatterns.find(
 const electronImportRule = rendererPrivilegePatterns.find(
   (rule) => rule.label === "Electron import",
 );
+const rendererGitAuthorityImportRule = rendererPrivilegePatterns.find(
+  (rule) => rule.label === "Git authority import",
+);
+const preloadGitAuthorityImportRule = preloadPrivilegePatterns.find(
+  (rule) => rule.label === "Git authority import",
+);
 
 describe("product boundary rules", () => {
   it("accepts the declared AionUi schedule compatibility source boundary", () => {
@@ -68,6 +74,27 @@ describe("product boundary rules", () => {
       'import("electron");',
     ]) {
       expect(electronImportRule.pattern.test(source), source).toBe(true);
+    }
+  });
+
+  it("rejects runtime Git authority imports without matching ordinary Git UI text or types", () => {
+    expect(rendererGitAuthorityImportRule).toBeDefined();
+    expect(preloadGitAuthorityImportRule).toBeDefined();
+    for (const source of [
+      'import git from "isomorphic-git";',
+      'export { simpleGit } from "simple-git";',
+      'const git = import("dugite");',
+    ]) {
+      expect(rendererGitAuthorityImportRule?.pattern.test(source), source).toBe(true);
+      expect(preloadGitAuthorityImportRule?.pattern.test(source), source).toBe(true);
+    }
+    for (const source of [
+      'export const label = "Git status";',
+      'import type { GitStatus } from "@/renderer/types";',
+      'import parseGitUrl from "git-url-parse";',
+    ]) {
+      expect(rendererGitAuthorityImportRule?.pattern.test(source), source).toBe(false);
+      expect(preloadGitAuthorityImportRule?.pattern.test(source), source).toBe(false);
     }
   });
 
