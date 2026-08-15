@@ -4,19 +4,18 @@ Last updated: 2026-08-15
 
 ## Current phase
 
-### 2026-08-15 P7.1 exact-variant local gate complete
+### 2026-08-15 P7.1 exact-variant local and packaged gate complete
 
 The current local delivery branch is `codex/p7-1-security-closure-final` on
-implementation/test parent
-`2301dfc7a5da1cdd5cf102110fdc9ce0d0173ec4`, based on
-`origin/main@ee28c1d9138fa474704b8fd083e2511da64dee3e`. P7.1 now uses 168 exact
-catalog variants rather than treating one broad test per abuse-case row as
-complete. Tasks 1-6 are locally bound. Task 4 contributes 55 exact
-Workspace/Delivery/Tool Gateway/Approval variants plus one positive apply
-control; Task 5 contributes all 42 exact MCP/Worker/Network/Process variants.
-Task 5's focused suite passes 42/42, and its seven-file adjacent lifecycle gate
-passes 154/154. Formatting, zero-warning lint, strict typecheck, and the
-130-source product-boundary check also pass.
+reviewed implementation/test parent
+`88d68bcb7881159bee8422693350e6ce9410e2fb`, based on
+`origin/main@ee28c1d9138fa474704b8fd083e2511da64dee3e`. Tasks 1-6 are locally
+bound across all 28 catalog cases and 168 exact variants. Task 4 contributes
+55 exact Workspace/Delivery/Tool Gateway/Approval variants plus one positive
+apply control; Task 5 contributes all 42 exact
+MCP/Worker/Network/Process variants; and Task 6 contributes all 37 exact
+Persistence/Redaction/Artifact variants plus one trusted-artifact positive
+control.
 
 Task 4 exposed and repaired three concrete problems at existing authority
 boundaries: the security fixture's non-canonical macOS temp path had made its
@@ -28,21 +27,41 @@ executor again. The repaired flow preserves the existing one-shot
 `approval-replayed` classification while preventing an ambiguous second
 effect.
 
-Task 6 binds all 37 exact Persistence/Redaction/Artifact variants. Its focused
-suite passes 38/38 including one trusted-artifact positive control, and its
-eight-file adjacent persistence, protocol, incident, orchestrator, artifact,
-and downstream suite passes 134/134. `bun run test:security` exits 0 with all
-28 cases and 168 exact variants `denied-safe`; the frozen AionUI foundation and
-downstream overlay checks also pass. No Task 6 attack exposed a production
-defect, so this batch changes only the existing security test file.
+Fresh macOS arm64 evidence on that exact parent:
 
-The older 28/28 packaged evidence below remains historical evidence for its
-reviewed bytes; it does not prove this expanded 168-variant parent. A fresh
-root `check`, development app build, General Work smoke, packaged P7 smoke,
-exact-head CI, review, merge, and merged-main CI remain required. P7.1 is still
-local, unmerged, unreleased, and not accepted.
+- `NODE_OPTIONS=--max-old-space-size=4096 bun run check` exits 0: 123 test
+  files pass and 2 skip; 1,429 tests pass and 9 skip; formatting,
+  zero-warning lint, strict typecheck, Electron SQLite, smoke harness,
+  130-source product boundary, frozen foundation, downstream overlay, and
+  package all pass. `bun run test:security` reports all 28 cases and 168 exact
+  variants `denied-safe`. A temporary ignored PATH wrapper added only
+  `--no-cache` to the nested materialized `bun install` to avoid a local Bun
+  1.3.9 proxy-cache hang; no repository configuration or product byte changed.
+- The release Goose runner build exits 0 from a clean, task-local RustSec
+  database at `69f93e1d081d8b6fbee010e48f0b5e0d13661415`. Its manifest SHA-256 is
+  `da415eace135db4275c475ac931b35fe9a34194d803ccf982e505f48fbfd7068`,
+  binds Actestra parent `88d68bc`, records `dirty=false`, and retains only the
+  accepted `RUSTSEC-2023-0071 metadata-only-not-compiled` disposition.
+- `bun run dist:dir` exits 0. The arm64 development app has identifier
+  `com.bignormal.actestra`, passes `codesign --verify --deep --strict`, and has
+  `Signature=adhoc`. Package trust exits 0 for materialized-output digest
+  `f6383c4430ab7e5fbfb041f86571fd7e5b7de911732233f6bf9b345922e6d82c`
+  across 565 files, the external Goose manifest/SBOM/license/audit roots, the
+  packaged planner hook, and 116 source copies with no drift.
+- `bun run smoke:aionui-general-work` exits 0 against that exact app through
+  the schema-22 representative General Work recovery/failure/Artifact suite.
+  `bun run smoke:p7-security` exits 0 with all seven required packaged cases
+  `denied-safe` and redacted.
+- The final process scan contains no Actestra, AionCore, Goose, planner,
+  General Worker, or P7 probe residue. `git diff --check` is clean.
 
-### 2026-08-15 current verification: P7.1 implementation parent and packaged development gate
+These are local and packaged development-build results only. This
+documentation-only evidence update binds the reviewed product/test parent; the
+branch still requires push, exact-head pull request CI, review, merge, and
+merged-main CI. P7.1 is not yet integrated into `main`, released, deployed, or
+accepted. P7.2-P7.4 and P8 remain open.
+
+### 2026-08-15 earlier 28-case packaged verification (superseded)
 
 The P7.1 Threat Model and Abuse-Case Baseline is implemented at reviewed
 implementation/test parent

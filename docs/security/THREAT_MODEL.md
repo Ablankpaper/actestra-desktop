@@ -32,20 +32,26 @@ passed.
 ## Verified P7.1 evidence
 
 The reviewed implementation and test parent is
-`a8292e6433eacc3414dcc9408e10df7d6031b9a3`. On macOS arm64:
+`88d68bcb7881159bee8422693350e6ce9410e2fb`. On macOS arm64:
 
-- the focused security suite covers all 28 catalog IDs;
-- the aggregate local gate passes 28/28 `denied-safe` cases;
-- the complete local project gate passes 123 test files and 1,273 tests,
+- the focused security suite covers all 28 catalog IDs and 168 exact variants;
+- the aggregate local gate passes 28/28 cases and 168/168 exact variants as
+  `denied-safe`;
+- the complete local project gate passes 123 test files and 1,429 tests,
   zero-warning lint, strict typecheck, Electron SQLite, product boundary,
   frozen foundation, downstream overlay, and package;
-- the admitted Goose runner focused gate passes 184 tests, including the real
-  parent-death and process cleanup cases, with no privileged process residue;
+- the admitted Goose runner release build binds this clean parent through
+  manifest SHA-256
+  `da415eace135db4275c475ac931b35fe9a34194d803ccf982e505f48fbfd7068`
+  and a clean RustSec database at
+  `69f93e1d081d8b6fbee010e48f0b5e0d13661415`;
 - the development app builds with `DIST_EXIT=0`, has identifier
   `com.bignormal.actestra`, arm64 architecture, and a verified ad-hoc
   signature; and
-- packaged trust verification, the existing General Work smoke, and the
-  packaged P7 security smoke pass. The packaged hook physically exercises the
+- packaged trust verifies 565 materialized files, the external Goose trust
+  roots, the planner hook, and 116 source copies without drift. The schema-22
+  General Work smoke and packaged P7 security smoke pass. The packaged hook
+  physically exercises the
   seven required Layer-4 cases (`P7-A-RENDERER-002`,
   `P7-A-CREDENTIAL-001`, `P7-A-CREDENTIAL-003`, `P7-A-WORKER-001`,
   `P7-A-NETWORK-001`, `P7-A-PROCESS-002`, and `P7-A-ARTIFACT-001`); the other
@@ -319,4 +325,4 @@ evidence rather than widening this P7.1 disposition.
 - [ADR-0027](../architecture/decisions/0027-p7-threat-model-and-abuse-authority.md)
 
 Repository: github.com/Ablankpaper/actestra-desktop
-Version: 632a8a081ac5fb5a6dd28daf59e284bd0455a721
+Version: 88d68bcb7881159bee8422693350e6ce9410e2fb

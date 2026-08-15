@@ -1,8 +1,8 @@
 # P7.1 Abuse-Case Ledger
 
-**Status:** P7.1 local abuse baseline verified; all 28 catalog cases are
-`denied-safe` on macOS. Packaged Layer 4 physically exercises the seven
-required cases `P7-A-RENDERER-002`, `P7-A-CREDENTIAL-001`,
+**Status:** P7.1 local abuse baseline verified; all 28 catalog cases and 168
+exact variants are `denied-safe` on macOS. Packaged Layer 4 physically
+exercises the seven required cases `P7-A-RENDERER-002`, `P7-A-CREDENTIAL-001`,
 `P7-A-CREDENTIAL-003`, `P7-A-WORKER-001`, `P7-A-NETWORK-001`,
 `P7-A-PROCESS-002`, and `P7-A-ARTIFACT-001`; Windows/Linux remain P8
 obligations.
