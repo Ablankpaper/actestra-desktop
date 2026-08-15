@@ -2,7 +2,10 @@
 
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { describe, expect, it } from "vitest";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { describe, expect, it, vi } from "vitest";
 import {
   P7_EXPECTED_RENDERER_BRIDGE_KEYS,
   P7_PACKAGED_SECURITY_CASES,
@@ -15,6 +18,92 @@ import {
 } from "../../apps/desktop/src/main/security/p7SecuritySmoke";
 
 describe("P7 packaged security smoke contract", () => {
+  it("runs the real sandbox denial probe without executing from a denied host root", async () => {
+    const module = await import("../../apps/desktop/src/main/security/p7SecuritySmoke");
+    const runProbe = (
+      module as typeof module & {
+        runP7SandboxBoundaryProbe?: (
+          isolation: Readonly<{
+            hostReadProbe: string;
+            target: string;
+          }>,
+        ) => Promise<Readonly<{ hostReadDenied: boolean; networkDenied: boolean }>>;
+      }
+    ).runP7SandboxBoundaryProbe;
+    expect(runProbe).toEqual(expect.any(Function));
+    if (runProbe === undefined) return;
+
+    const fixture = await mkdtemp(path.join(os.tmpdir(), "actestra-p7-sandbox-probe-test-"));
+    try {
+      const hostReadProbe = path.join(fixture, "protected-host-read.txt");
+      await writeFile(hostReadProbe, "protected host bytes");
+
+      await expect(
+        runProbe({
+          hostReadProbe,
+          target: "http://192.0.2.1:9/p7-denied",
+        }),
+      ).resolves.toEqual({ hostReadDenied: true, networkDenied: true });
+      await expect(readFile(hostReadProbe, "utf8")).resolves.toBe("protected host bytes");
+    } finally {
+      await rm(fixture, { force: true, recursive: true });
+    }
+  });
+
+  it("kills a real sandboxed probe process group from an executable outside denied roots", async () => {
+    const module = await import("../../apps/desktop/src/main/security/p7SecuritySmoke");
+    const runProbe = (
+      module as typeof module & {
+        runP7ProcessCleanupBoundaryProbe?: () => Promise<
+          Readonly<{ id: string; outcome: string; sideEffectCount: number }>
+        >;
+      }
+    ).runP7ProcessCleanupBoundaryProbe;
+    expect(runProbe).toEqual(expect.any(Function));
+    if (runProbe === undefined) return;
+
+    await expect(runProbe()).resolves.toMatchObject({
+      id: "P7-A-PROCESS-002",
+      outcome: "denied-safe",
+      sideEffectCount: 0,
+    });
+  });
+
+  it("does not signal a process group again while its leader is exiting", async () => {
+    const module = await import("../../apps/desktop/src/main/security/p7SecuritySmoke");
+    const runProbe = (
+      module as typeof module & {
+        runP7ProcessCleanupBoundaryProbe?: () => Promise<
+          Readonly<{ id: string; outcome: string; sideEffectCount: number }>
+        >;
+      }
+    ).runP7ProcessCleanupBoundaryProbe;
+    expect(runProbe).toEqual(expect.any(Function));
+    if (runProbe === undefined) return;
+
+    const originalKill = process.kill.bind(process);
+    let groupKillCount = 0;
+    const kill = vi.spyOn(process, "kill").mockImplementation(((processId, signal) => {
+      if (processId < 0 && signal === "SIGKILL") {
+        groupKillCount += 1;
+        if (groupKillCount === 2) {
+          throw Object.assign(new Error("process group is still exiting"), { code: "EPERM" });
+        }
+      }
+      return originalKill(processId, signal);
+    }) as typeof process.kill);
+    try {
+      await expect(runProbe()).resolves.toMatchObject({
+        id: "P7-A-PROCESS-002",
+        outcome: "denied-safe",
+        sideEffectCount: 0,
+      });
+    } finally {
+      kill.mockRestore();
+    }
+    expect(groupKillCount).toBe(1);
+  });
+
   it("does not confuse a live descendant with a missing process group", async () => {
     const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
       stdio: "ignore",

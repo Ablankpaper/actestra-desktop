@@ -1,5 +1,15 @@
 import { spawn } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  cpSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import {
   isAllowedActestraWebviewRequest,
@@ -490,12 +500,18 @@ export async function runP7ProviderCredentialSmoke(
   ]);
 }
 
-function processGroupIsAlive(processId: number): boolean {
+function processGroupIsAlive(
+  processId: number,
+  leaderHasExited: () => boolean = () => false,
+): boolean {
   try {
     process.kill(-processId, 0);
     return true;
   } catch (error) {
-    return (error as NodeJS.ErrnoException).code !== "ESRCH";
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ESRCH") return false;
+    if (code === "EPERM") return !leaderHasExited();
+    throw error;
   }
 }
 
@@ -548,34 +564,78 @@ export function isP7HostReadDeniedCode(code: unknown): boolean {
   return code === "EPERM" || code === "EACCES";
 }
 
-async function runSandboxNetworkProbe(
-  isolation: P7SecuritySmokeIsolation,
+const P7_SANDBOX_PROBE_EXECUTABLE = "/usr/bin/perl";
+const P7_SANDBOX_PROBE_PRIVATE_PARENT = "/private/var/tmp";
+
+function createP7SandboxProbePrivateRoot(prefix: string): string {
+  const canonicalParent = realpathSync(P7_SANDBOX_PROBE_PRIVATE_PARENT);
+  if (
+    canonicalParent !== P7_SANDBOX_PROBE_PRIVATE_PARENT ||
+    !statSync(canonicalParent).isDirectory()
+  ) {
+    throw new Error("P7 sandbox probe private parent is unavailable");
+  }
+  const privateRoot = mkdtempSync(path.join(canonicalParent, prefix));
+  chmodSync(privateRoot, 0o700);
+  return privateRoot;
+}
+
+export async function runP7SandboxBoundaryProbe(
+  isolation: Readonly<{ hostReadProbe: string; target: string }>,
 ): Promise<Readonly<{ networkDenied: boolean; hostReadDenied: boolean }>> {
   if (process.platform !== "darwin") throw new Error("P7 sandbox probe is unavailable");
   const hostReadProbePath = isolation.hostReadProbe;
   readFileSync(hostReadProbePath);
-  const privateRoot = path.join(isolation.temp, "p7-worker-sandbox");
-  mkdirSync(privateRoot, { recursive: true, mode: 0o700 });
+  const target = new URL(isolation.target);
+  const targetPort = Number(target.port);
+  if (
+    target.protocol !== "http:" ||
+    !/^\d{1,3}(?:\.\d{1,3}){3}$/u.test(target.hostname) ||
+    !Number.isSafeInteger(targetPort) ||
+    targetPort < 1 ||
+    targetPort > 65_535
+  ) {
+    throw new Error("P7 sandbox probe target is invalid");
+  }
+  const privateRoot = createP7SandboxProbePrivateRoot("actestra-p7-worker-sandbox-");
   const resultPath = path.join(privateRoot, "probe-result.json");
   const launch = createGooseRunnerSandboxLaunch({
-    executablePath: process.execPath,
+    executablePath: P7_SANDBOX_PROBE_EXECUTABLE,
     privateRoot,
     networkPorts: [],
   });
-  const script = `const fs = require('node:fs');
-(async () => {
-  let networkDenied = false;
-  try { await fetch(${JSON.stringify(isolation.target)}, { signal: AbortSignal.timeout(1500) }); }
-  catch { networkDenied = true; }
-  let hostReadDenied = false;
-  try { fs.readFileSync(${JSON.stringify(hostReadProbePath)}); }
-  catch (error) { hostReadDenied = ["EPERM","EACCES"].includes(error?.code); }
-  fs.writeFileSync(${JSON.stringify(resultPath)}, JSON.stringify({ networkDenied, hostReadDenied }));
-})().catch(() => process.exit(2));`;
-  const child = spawn(launch.executable, [...launch.args, "-e", script], {
-    detached: true,
-    env: { ELECTRON_RUN_AS_NODE: "1", PATH: process.env.PATH ?? "" },
-    stdio: "ignore",
+  const script = `use IO::Socket::INET;
+my ($result_path, $host, $port, $host_read_path) = @ARGV;
+my $socket = IO::Socket::INET->new(PeerAddr => $host, PeerPort => $port, Proto => "tcp", Timeout => 1.5);
+my $network_denied = defined($socket) ? "false" : "true";
+close($socket) if defined($socket);
+my $host_read_denied = "false";
+if (!open(my $host_file, "<", $host_read_path)) {
+  $host_read_denied = ($!{EPERM} || $!{EACCES}) ? "true" : "false";
+}
+open(my $result_file, ">", $result_path) or exit 2;
+print $result_file '{"networkDenied":' . $network_denied . ',"hostReadDenied":' . $host_read_denied . '}';
+close($result_file) or exit 2;`;
+  const child = spawn(
+    launch.executable,
+    [
+      ...launch.args,
+      "-e",
+      script,
+      resultPath,
+      target.hostname,
+      String(targetPort),
+      hostReadProbePath,
+    ],
+    {
+      detached: true,
+      env: { PATH: process.env.PATH ?? "" },
+      stdio: "ignore",
+    },
+  );
+  let leaderExited = false;
+  child.once("exit", () => {
+    leaderExited = true;
   });
   try {
     await waitForExit(child, 5_000);
@@ -584,12 +644,19 @@ async function runSandboxNetworkProbe(
       readonly hostReadDenied?: unknown;
     };
     if (value.networkDenied !== true || value.hostReadDenied !== true) {
-      throw new Error("P7 Worker sandbox boundary was not physically denied");
+      throw new Error(
+        `P7 Worker sandbox boundary was not physically denied (${String(value.networkDenied)}/${String(value.hostReadDenied)})`,
+      );
     }
     return { networkDenied: true, hostReadDenied: true };
   } finally {
-    if (child.pid !== undefined && processGroupIsAlive(child.pid)) killProcessGroup(child.pid);
-    rmSync(privateRoot, { recursive: true, force: true });
+    try {
+      if (child.pid !== undefined && processGroupIsAlive(child.pid, () => leaderExited)) {
+        killProcessGroup(child.pid);
+      }
+    } finally {
+      rmSync(privateRoot, { recursive: true, force: true });
+    }
   }
 }
 
@@ -638,27 +705,33 @@ async function runP7ArtifactTrustSmoke(
   throw new Error("P7 artifact admission accepted a tampered manifest");
 }
 
-async function runP7ProcessCleanupSmoke(
-  isolation: P7SecuritySmokeIsolation,
-): Promise<P7SecuritySmokeResult> {
+export async function runP7ProcessCleanupBoundaryProbe(): Promise<P7SecuritySmokeResult> {
   if (process.platform !== "darwin") throw new Error("P7 process-group probe is unavailable");
-  const privateRoot = path.join(isolation.temp, "p7-process-cleanup");
-  mkdirSync(privateRoot, { recursive: true, mode: 0o700 });
+  const privateRoot = createP7SandboxProbePrivateRoot("actestra-p7-process-cleanup-");
   const descendantPidPath = path.join(privateRoot, "descendant.pid");
   const launch = createGooseRunnerSandboxLaunch({
-    executablePath: process.execPath,
+    executablePath: P7_SANDBOX_PROBE_EXECUTABLE,
     privateRoot,
     networkPorts: [],
   });
-  const childScript = `const fs = require('node:fs');
-const { spawn } = require('node:child_process');
-const descendant = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
-fs.writeFileSync(${JSON.stringify(descendantPidPath)}, String(descendant.pid));
-setInterval(() => {}, 1000);`;
-  const child = spawn(launch.executable, [...launch.args, "-e", childScript], {
+  const childScript = `my ($pid_path) = @ARGV;
+my $descendant = fork();
+exit 2 if !defined($descendant);
+if ($descendant == 0) {
+  while (1) { sleep 1; }
+}
+open(my $pid_file, ">", $pid_path) or exit 3;
+print $pid_file $descendant;
+close($pid_file) or exit 3;
+while (1) { sleep 1; }`;
+  const child = spawn(launch.executable, [...launch.args, "-e", childScript, descendantPidPath], {
     detached: true,
-    env: { ELECTRON_RUN_AS_NODE: "1", PATH: process.env.PATH ?? "" },
+    env: { PATH: process.env.PATH ?? "" },
     stdio: "ignore",
+  });
+  let leaderExited = false;
+  child.once("exit", () => {
+    leaderExited = true;
   });
   try {
     if (child.pid === undefined) throw new Error("P7 process probe has no leader");
@@ -674,15 +747,21 @@ setInterval(() => {}, 1000);`;
       throw new Error("P7 process probe produced an invalid descendant");
     }
     const childExit = new Promise<void>((resolve) => {
+      if (leaderExited) {
+        resolve();
+        return;
+      }
       child.once("exit", () => resolve());
     });
     killProcessGroup(child.pid);
-    // A second cleanup request must remain harmless when the group disappeared
-    // between the two observations.
-    killProcessGroup(child.pid);
     await childExit;
     await waitForP7ProcessGone(descendantPid, 2_000);
-    if (processGroupIsAlive(child.pid)) throw new Error("P7 process group survived cleanup");
+    // A second cleanup request is deliberately idempotent after the leader exits;
+    // signaling a stale/reused PGID would risk affecting an unrelated process.
+    if (!leaderExited) killProcessGroup(child.pid);
+    if (processGroupIsAlive(child.pid, () => leaderExited)) {
+      throw new Error("P7 process group survived cleanup");
+    }
     if (!existsSync(descendantPidPath)) {
       throw new Error("P7 process probe lost its cleanup evidence");
     }
@@ -690,8 +769,13 @@ setInterval(() => {}, 1000);`;
     if (existsSync(privateRoot)) throw new Error("P7 process private root survived cleanup");
     return p7SecuritySmokeResult("P7-A-PROCESS-002");
   } finally {
-    if (child.pid !== undefined && processGroupIsAlive(child.pid)) killProcessGroup(child.pid);
-    rmSync(privateRoot, { recursive: true, force: true });
+    try {
+      if (child.pid !== undefined && processGroupIsAlive(child.pid, () => leaderExited)) {
+        killProcessGroup(child.pid);
+      }
+    } finally {
+      rmSync(privateRoot, { recursive: true, force: true });
+    }
   }
 }
 
@@ -704,7 +788,7 @@ export async function runP7PackagedSecuritySmoke(
 ): Promise<readonly P7SecuritySmokeResult[]> {
   const renderer = await runP7RendererNetworkSmoke(options.webContents, options.isolation.target);
   const credential = await runP7ProviderCredentialSmoke(options.webContents);
-  const sandbox = await runSandboxNetworkProbe(options.isolation);
+  const sandbox = await runP7SandboxBoundaryProbe(options.isolation);
   const worker = await runP7WorkerAdmissionSmoke(options.isolation);
   const network =
     sandbox.networkDenied && sandbox.hostReadDenied
@@ -712,7 +796,7 @@ export async function runP7PackagedSecuritySmoke(
       : (() => {
           throw new Error("P7 Worker network boundary was not physically denied");
         })();
-  const processCleanup = await runP7ProcessCleanupSmoke(options.isolation);
+  const processCleanup = await runP7ProcessCleanupBoundaryProbe();
   const artifact = await runP7ArtifactTrustSmoke(options.isolation, options.packagedAppAsar);
   return Object.freeze([renderer, ...credential, worker, network, processCleanup, artifact]);
 }
