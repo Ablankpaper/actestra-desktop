@@ -140,9 +140,12 @@ import {
   type WorkspaceGrant,
   type WorkspaceState,
 } from "../../core";
-import { migrateSqliteDatabase } from "./sqliteMigrations";
+import { CURRENT_CORE_SCHEMA_VERSION, migrateSqliteDatabase } from "./sqliteMigrations";
 
 export const CORE_DATABASE_FILENAME = "actestra.sqlite3";
+export const CORE_DATABASE_MIGRATION_BACKUP_DIRECTORY = "migration-backups";
+export const CORE_DATABASE_MIGRATION_RECOVERY_MANIFEST_FILENAME =
+  "actestra.sqlite3.migration-recovery.json";
 const STATE_DIRECTORY = "state";
 const SQLITE_BUSY_TIMEOUT_MS = 5_000;
 const CORE_EVENT_COLUMNS = `
@@ -1545,6 +1548,309 @@ function verifyNoForeignKeyViolations(database: DatabaseSync): void {
 
 export function resolveCoreDatabasePath(userDataPath: string): string {
   return path.join(userDataPath, STATE_DIRECTORY, CORE_DATABASE_FILENAME);
+}
+
+interface OpenMigratedSqliteDatabaseOptions {
+  readonly migrations?: Parameters<typeof migrateSqliteDatabase>[1];
+  readonly appliedAt?: string;
+}
+
+interface MigrationRecoveryManifest {
+  readonly schemaVersion: 1;
+  readonly databaseBasename: string;
+  readonly backupRelativePath: string;
+  readonly backupSha256: string;
+  readonly fromVersion: number;
+  readonly toVersion: number;
+  readonly createdAt: string;
+}
+
+function databaseHeaderNumber(
+  database: DatabaseSync,
+  name: "application_id" | "user_version",
+): number {
+  const row = database.prepare(`PRAGMA ${name}`).get() as SqliteRow | undefined;
+  const value = row === undefined ? undefined : Object.values(row)[0];
+
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new PersistenceError("corrupt-database", `SQLite PRAGMA ${name} is invalid`);
+  }
+
+  return value;
+}
+
+function fileSha256(filePath: string): string {
+  return createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+}
+
+function recoveryManifestPath(databasePath: string): string {
+  return path.join(path.dirname(databasePath), CORE_DATABASE_MIGRATION_RECOVERY_MANIFEST_FILENAME);
+}
+
+function backupDirectoryPath(databasePath: string): string {
+  return path.join(path.dirname(databasePath), CORE_DATABASE_MIGRATION_BACKUP_DIRECTORY);
+}
+
+function resolveManifestBackupPath(
+  databasePath: string,
+  manifest: MigrationRecoveryManifest,
+): string {
+  const resolvedBackupRoot = path.resolve(backupDirectoryPath(databasePath));
+  const resolvedBackupPath = path.resolve(path.dirname(databasePath), manifest.backupRelativePath);
+
+  if (
+    resolvedBackupPath !== resolvedBackupRoot &&
+    !resolvedBackupPath.startsWith(`${resolvedBackupRoot}${path.sep}`)
+  ) {
+    throw new PersistenceError("corrupt-database", "Actestra migration backup path is invalid");
+  }
+
+  return resolvedBackupPath;
+}
+
+function assertRelativeBackupPath(relativePath: string): void {
+  if (
+    path.isAbsolute(relativePath) ||
+    relativePath.length === 0 ||
+    relativePath.split(/[\\/]/u).includes("..")
+  ) {
+    throw new PersistenceError("corrupt-database", "Actestra migration backup path is invalid");
+  }
+}
+
+function assertMigrationRecoveryManifest(value: unknown): MigrationRecoveryManifest {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Actestra migration recovery manifest is invalid",
+    );
+  }
+
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  const expected = [
+    "backupRelativePath",
+    "backupSha256",
+    "createdAt",
+    "databaseBasename",
+    "fromVersion",
+    "schemaVersion",
+    "toVersion",
+  ].sort();
+  if (!isDeepStrictEqual(keys, expected)) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Actestra migration recovery manifest is invalid",
+    );
+  }
+
+  if (
+    record.schemaVersion !== 1 ||
+    record.databaseBasename !== CORE_DATABASE_FILENAME ||
+    typeof record.backupRelativePath !== "string" ||
+    typeof record.backupSha256 !== "string" ||
+    !/^[0-9a-f]{64}$/u.test(record.backupSha256) ||
+    typeof record.fromVersion !== "number" ||
+    !Number.isSafeInteger(record.fromVersion) ||
+    record.fromVersion < 1 ||
+    typeof record.toVersion !== "number" ||
+    !Number.isSafeInteger(record.toVersion) ||
+    record.toVersion <= record.fromVersion ||
+    typeof record.createdAt !== "string" ||
+    record.createdAt.trim().length === 0
+  ) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Actestra migration recovery manifest is invalid",
+    );
+  }
+
+  assertRelativeBackupPath(record.backupRelativePath);
+  return record as unknown as MigrationRecoveryManifest;
+}
+
+function readMigrationRecoveryManifest(manifestPath: string): MigrationRecoveryManifest {
+  try {
+    return assertMigrationRecoveryManifest(JSON.parse(fs.readFileSync(manifestPath, "utf8")));
+  } catch (error) {
+    if (error instanceof PersistenceError) {
+      throw error;
+    }
+    throw new PersistenceError(
+      "corrupt-database",
+      "Actestra migration recovery manifest is unreadable",
+      {
+        cause: error,
+      },
+    );
+  }
+}
+
+function writeMigrationRecoveryManifest(
+  databasePath: string,
+  manifest: MigrationRecoveryManifest,
+): void {
+  const manifestPath = recoveryManifestPath(databasePath);
+  const temporaryPath = `${manifestPath}.tmp-${process.pid}-${Date.now()}`;
+  fs.writeFileSync(temporaryPath, `${JSON.stringify(manifest)}\n`, {
+    mode: 0o600,
+  });
+  fs.renameSync(temporaryPath, manifestPath);
+  fs.chmodSync(manifestPath, 0o600);
+}
+
+function removeFileIfPresent(filePath: string): void {
+  try {
+    fs.rmSync(filePath, { force: true });
+  } catch {
+    // The caller's database outcome is more important than temporary cleanup.
+  }
+}
+
+function copyDatabaseFileAtomically(sourcePath: string, destinationPath: string): void {
+  const temporaryPath = `${destinationPath}.tmp-${process.pid}-${Date.now()}`;
+  try {
+    fs.copyFileSync(sourcePath, temporaryPath);
+    fs.chmodSync(temporaryPath, 0o600);
+    fs.renameSync(temporaryPath, destinationPath);
+  } catch (error) {
+    removeFileIfPresent(temporaryPath);
+    throw error;
+  }
+}
+
+function isUsableSqliteDatabase(databasePath: string): boolean {
+  if (!fs.existsSync(databasePath)) {
+    return false;
+  }
+
+  let database: DatabaseSync | undefined;
+  try {
+    assertDatabaseFile(databasePath);
+    database = new DatabaseSync(databasePath, {
+      allowExtension: false,
+      enableDoubleQuotedStringLiterals: false,
+      enableForeignKeyConstraints: true,
+    });
+    configureDatabase(database);
+    const quickCheck = database.prepare("PRAGMA quick_check").get() as SqliteRow | undefined;
+    return quickCheck !== undefined && Object.values(quickCheck)[0] === "ok";
+  } catch {
+    return false;
+  } finally {
+    try {
+      database?.close();
+    } catch {
+      // Best-effort probe cleanup.
+    }
+  }
+}
+
+function recoverPendingMigrationBackup(databasePath: string): void {
+  const manifestPath = recoveryManifestPath(databasePath);
+  if (!fs.existsSync(manifestPath)) {
+    return;
+  }
+
+  const manifest = readMigrationRecoveryManifest(manifestPath);
+  const resolvedBackupPath = resolveManifestBackupPath(databasePath, manifest);
+  assertDatabaseFile(resolvedBackupPath);
+  if (fileSha256(resolvedBackupPath) !== manifest.backupSha256) {
+    throw new PersistenceError("corrupt-database", "Actestra migration backup failed integrity");
+  }
+
+  if (!isUsableSqliteDatabase(databasePath)) {
+    copyDatabaseFileAtomically(resolvedBackupPath, databasePath);
+  }
+
+  removeFileIfPresent(manifestPath);
+}
+
+function createMigrationBackup(databasePath: string, fromVersion: number, toVersion: number): void {
+  if (fromVersion < 1 || toVersion <= fromVersion) {
+    return;
+  }
+
+  const backupDirectory = backupDirectoryPath(databasePath);
+  fs.mkdirSync(backupDirectory, { recursive: true, mode: 0o700 });
+  const backupBasename = `${CORE_DATABASE_FILENAME}.v${fromVersion}-to-v${toVersion}.${Date.now()}.sqlite3`;
+  const backupPath = path.join(backupDirectory, backupBasename);
+  copyDatabaseFileAtomically(databasePath, backupPath);
+  const manifest: MigrationRecoveryManifest = {
+    schemaVersion: 1,
+    databaseBasename: CORE_DATABASE_FILENAME,
+    backupRelativePath: path.join(CORE_DATABASE_MIGRATION_BACKUP_DIRECTORY, backupBasename),
+    backupSha256: fileSha256(backupPath),
+    fromVersion,
+    toVersion,
+    createdAt: new Date().toISOString(),
+  };
+  writeMigrationRecoveryManifest(databasePath, manifest);
+}
+
+function restoreMigrationBackup(databasePath: string): void {
+  const manifestPath = recoveryManifestPath(databasePath);
+  const manifest = readMigrationRecoveryManifest(manifestPath);
+  const backupPath = resolveManifestBackupPath(databasePath, manifest);
+  assertDatabaseFile(backupPath);
+  if (fileSha256(backupPath) !== manifest.backupSha256) {
+    throw new PersistenceError("corrupt-database", "Actestra migration backup failed integrity");
+  }
+  copyDatabaseFileAtomically(backupPath, databasePath);
+  removeFileIfPresent(manifestPath);
+}
+
+export function openMigratedSqliteDatabase(
+  databasePath: string,
+  options: OpenMigratedSqliteDatabaseOptions = {},
+): DatabaseSync {
+  recoverPendingMigrationBackup(databasePath);
+
+  const migrations = options.migrations;
+  const targetVersion = migrations?.at(-1)?.version ?? CURRENT_CORE_SCHEMA_VERSION;
+  let database: DatabaseSync | undefined;
+  let backupCreated = false;
+
+  try {
+    database = new DatabaseSync(databasePath, {
+      allowExtension: false,
+      enableDoubleQuotedStringLiterals: false,
+      enableForeignKeyConstraints: true,
+    });
+    assertDatabaseFile(databasePath);
+    configureDatabase(database);
+    const fromVersion = databaseHeaderNumber(database, "user_version");
+    if (fromVersion > 0 && fromVersion < targetVersion) {
+      database.close();
+      database = undefined;
+      createMigrationBackup(databasePath, fromVersion, targetVersion);
+      backupCreated = true;
+      database = new DatabaseSync(databasePath, {
+        allowExtension: false,
+        enableDoubleQuotedStringLiterals: false,
+        enableForeignKeyConstraints: true,
+      });
+      assertDatabaseFile(databasePath);
+      configureDatabase(database);
+    }
+    migrateSqliteDatabase(database, migrations, options.appliedAt);
+    removeFileIfPresent(recoveryManifestPath(databasePath));
+    return database;
+  } catch (error) {
+    try {
+      database?.close();
+    } catch {
+      // Preserve the original open or migration error.
+    }
+    if (backupCreated) {
+      try {
+        restoreMigrationBackup(databasePath);
+      } catch {
+        // Preserve the original migration failure for the caller.
+      }
+    }
+    throw error;
+  }
 }
 
 let persistenceInstanceCounter = 0;
@@ -5177,14 +5483,7 @@ export function openSqliteCorePersistence(userDataPath: string): ActestraPersist
 
   let database: DatabaseSync | undefined;
   try {
-    database = new DatabaseSync(databasePath, {
-      allowExtension: false,
-      enableDoubleQuotedStringLiterals: false,
-      enableForeignKeyConstraints: true,
-    });
-    assertDatabaseFile(databasePath);
-    configureDatabase(database);
-    migrateSqliteDatabase(database);
+    database = openMigratedSqliteDatabase(databasePath);
     return new SqliteCorePersistence(database);
   } catch (error) {
     try {
