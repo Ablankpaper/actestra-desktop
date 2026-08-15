@@ -81,16 +81,31 @@ describe("product boundary rules", () => {
     expect(rendererGitAuthorityImportRule).toBeDefined();
     expect(preloadGitAuthorityImportRule).toBeDefined();
     for (const packageName of ["isomorphic-git", "simple-git", "dugite", "nodegit"]) {
+      const splitAt = Math.max(1, Math.floor(packageName.length / 2));
+      const computedPackageName = `${JSON.stringify(packageName.slice(0, splitAt))} + ${JSON.stringify(packageName.slice(splitAt))}`;
+      const escapedPackageName = packageName.replace("g", String.raw`\u0067`);
+      const hexEscapedPackageName = packageName.replace("g", String.raw`\x67`);
       for (const source of [
         `import "${packageName}";`,
+        `import "${escapedPackageName}";`,
+        `import "${hexEscapedPackageName}";`,
         `import git from "${packageName}";`,
+        `import type from "${packageName}";`,
+        `import type, { git } from "${packageName}";`,
+        `import gít from "${packageName}";`,
+        String.raw`import g\u0069t from "${packageName}";`,
         `import { git } from "${packageName}";`,
+        `import { "git" as runtimeGit } from "${packageName}";`,
         `import * as git from "${packageName}";`,
         `import { type Git, git } from "${packageName}";`,
         `export { git } from "${packageName}";`,
+        `export { "git" as runtimeGit } from "${packageName}";`,
         `export * from "${packageName}";`,
+        `export * from "${escapedPackageName}";`,
         `export { type Git, git } from "${packageName}";`,
         `const git = import("${packageName}");`,
+        `const escapedGit = import("${escapedPackageName}");`,
+        `const computedGit = import(${computedPackageName});`,
       ]) {
         expect(rendererGitAuthorityImportRule?.pattern.test(source), source).toBe(true);
         expect(preloadGitAuthorityImportRule?.pattern.test(source), source).toBe(true);
@@ -104,10 +119,100 @@ describe("product boundary rules", () => {
       'export type { Repository } from "nodegit";',
       'export { type Repository } from "nodegit";',
       'import parseGitUrl from "git-url-parse";',
+      'const parser = import("safe-" + "package");',
     ]) {
       expect(rendererGitAuthorityImportRule?.pattern.test(source), source).toBe(false);
       expect(preloadGitAuthorityImportRule?.pattern.test(source), source).toBe(false);
     }
+  });
+
+  it("rejects comment-bearing runtime Git imports across every supported package and form", () => {
+    expect(rendererGitAuthorityImportRule).toBeDefined();
+    expect(preloadGitAuthorityImportRule).toBeDefined();
+    for (const packageName of ["isomorphic-git", "simple-git", "dugite", "nodegit"]) {
+      for (const source of [
+        `import /* side effect */ "${packageName}";`,
+        `import git /* default */ from "${packageName}";`,
+        `import { git /* named */ } from "${packageName}";`,
+        `import { git, /* type-only */ type Git } from "${packageName}";`,
+        `import { /* runtime */ git, /* type-only */ type Git } from "${packageName}";`,
+        `import * /* namespace */ as git from "${packageName}";`,
+        `export { git /* re-export */ } from "${packageName}";`,
+        `export { git, /* type-only */ type Git } from "${packageName}";`,
+        `export { /* runtime */ git, /* type-only */ type Git } from "${packageName}";`,
+        `export /* star re-export */ * from "${packageName}";`,
+        `const git = import(/* dynamic */ "${packageName}");`,
+        `import { // carriage return\r git } from "${packageName}";`,
+        `import { // line separator\u2028 git } from "${packageName}";`,
+        `import { // paragraph separator\u2029 git } from "${packageName}";`,
+      ]) {
+        expect(rendererGitAuthorityImportRule?.pattern.test(source), source).toBe(true);
+        expect(preloadGitAuthorityImportRule?.pattern.test(source), source).toBe(true);
+      }
+    }
+  });
+
+  it("fails closed when a dynamic import specifier cannot be resolved statically", () => {
+    for (const source of [
+      'const moduleName = "./local-module"; import(moduleName);',
+      'import("./safe-module", import("simple-git"));',
+      'import("./safe-module", { with: import("simple-git") });',
+    ]) {
+      expect(rendererGitAuthorityImportRule?.pattern.test(source), source).toBe(true);
+      expect(preloadGitAuthorityImportRule?.pattern.test(source), source).toBe(true);
+    }
+  });
+
+  it("detects Git authority after TypeScript-only angle-bracket assertions", () => {
+    for (const source of [
+      'const value = <string>input; import git from "simple-git";',
+      'const value = <string>input; export * from "nodegit";',
+      'const value = <string>input; import("dugite");',
+    ]) {
+      expect(rendererGitAuthorityImportRule?.pattern.test(source), source).toBe(true);
+      expect(preloadGitAuthorityImportRule?.pattern.test(source), source).toBe(true);
+    }
+  });
+
+  it("keeps comment-bearing pure type-only Git imports outside the runtime boundary", () => {
+    expect(rendererGitAuthorityImportRule).toBeDefined();
+    expect(preloadGitAuthorityImportRule).toBeDefined();
+    for (const source of [
+      'import /* type-only */ type { Git } from "simple-git";',
+      'import { /* type-only */ type Git } from "simple-git";',
+      'export { /* type-only */ type Repository } from "nodegit";',
+    ]) {
+      expect(rendererGitAuthorityImportRule?.pattern.test(source), source).toBe(false);
+      expect(preloadGitAuthorityImportRule?.pattern.test(source), source).toBe(false);
+    }
+  });
+
+  it("bounds comment-dense Git import scans without regex backtracking", () => {
+    const repositoryRoot = path.resolve(import.meta.dirname, "../..");
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "--eval",
+        `
+          import { rendererPrivilegePatterns } from "./scripts/product-boundary-rules.mjs";
+          const rule = rendererPrivilegePatterns.find(
+            (candidate) => candidate.label === "Git authority import",
+          );
+          const comments = "/*x*/".repeat(64);
+          if (rule.pattern.test('import {' + comments + ' git } from "safe-package";')) {
+            process.exit(2);
+          }
+          if (!rule.pattern.test('import {' + comments + ' git } from "simple-git";')) {
+            process.exit(3);
+          }
+        `,
+      ],
+      { cwd: repositoryRoot, encoding: "utf8", timeout: 5_000 },
+    );
+
+    expect(result.error, `${result.stdout}\n${result.stderr}`).toBeUndefined();
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
   });
 
   it("scans the declared downstream renderer files for direct privileged authority", () => {
