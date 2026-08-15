@@ -4,7 +4,36 @@ Last updated: 2026-08-15
 
 ## Current phase
 
-### 2026-08-15 P7.1 exact-variant local and packaged gate complete
+### 2026-08-15 P7.1 development integration gate accepted on main
+
+P7.1 is accepted into formal `main` through pull request
+[#56](https://github.com/Ablankpaper/actestra-desktop/pull/56). Its exact head
+`1311e15498a00ec0fe21cfb6d1ea447f02e6ead3` passed required pull-request CI
+run
+[`31882496420`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/31882496420):
+`Goose runner admission` passed in 15m14s and `macOS arm64 foundation` passed
+in 21m08s. GitHub recorded no submitted review or inline review comment, and
+the pull request was mergeable with both required contexts green.
+
+The governed squash merge produced formal-main commit
+`d7db878ce0385a14dae579bea3fe299e17e856b7`. Its independent merged-main CI
+run
+[`31883431956`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/31883431956)
+also passes both required jobs: `Goose runner admission` in 19m03s and
+`macOS arm64 foundation` in 25m34s. The latter re-ran the complete source,
+test, boundary, documentation, materialized AionUI, package, trusted-runner,
+package-trust, General Work smoke, and seven-case packaged P7 security smoke
+chain against the squash result. The main-only Goose artifact upload also
+succeeded with the configured three-day retention.
+
+This closes the macOS arm64 P7.1 development integration gate. It does not
+claim P7.2-P7.4, P8, Windows/Linux acceptance, formal signing or notarization,
+release, deployment, or final user acceptance. The only CI annotation is the
+non-blocking GitHub Actions Node 20 deprecation notice for pinned upstream
+actions that GitHub forced onto Node 24; both jobs remain green. P7.2 is the
+next phase.
+
+### 2026-08-15 P7.1 exact-variant pre-merge local and packaged gate (superseded)
 
 The current local delivery branch is `codex/p7-1-security-closure-final` on
 reviewed implementation/test parent
@@ -55,11 +84,10 @@ Fresh macOS arm64 evidence on that exact parent:
 - The final process scan contains no Actestra, AionCore, Goose, planner,
   General Worker, or P7 probe residue. `git diff --check` is clean.
 
-These are local and packaged development-build results only. This
-documentation-only evidence update binds the reviewed product/test parent; the
-branch still requires push, exact-head pull request CI, review, merge, and
-merged-main CI. P7.1 is not yet integrated into `main`, released, deployed, or
-accepted. P7.2-P7.4 and P8 remain open.
+These are local and packaged development-build results on the reviewed
+product/test parent. Pull request #56 and the merged-main evidence above
+supersede this pre-merge status. The evidence does not prove release,
+deployment, or final user acceptance; P7.2-P7.4 and P8 remain open.
 
 ### 2026-08-15 earlier 28-case packaged verification (superseded)
 
@@ -69,8 +97,8 @@ implementation/test parent
 `codex/p7-1-security-closure`, based on
 `origin/main@ee28c1d9138fa474704b8fd083e2511da64dee3e`. The frozen
 `foundation/` snapshot is unchanged. Pull request
-[#55](https://github.com/Ablankpaper/actestra-desktop/pull/55) remains open;
-the exact-head CI for this parent has not yet run.
+[#55](https://github.com/Ablankpaper/actestra-desktop/pull/55) is closed as
+superseded by pull request #56; its exact-head CI tested only the older parent.
 
 Fresh macOS arm64 evidence on that parent:
 
@@ -91,12 +119,11 @@ Fresh macOS arm64 evidence on that parent:
 - the current process scan shows no Actestra, AionCore, Goose, Planner, or P7
   probe residue.
 
-These are local and packaged development-build results only. The previous
+These are historical local and packaged development-build results only. The
 exact-head CI run `31861861143` tested the older head `ee6634e` and failed at
-three materialized type errors; the fixes are included in this parent but
-still require a new exact-head CI run. P7.1 is not merged into `main`.
-P7.2-P7.4, Windows/Linux enforcement, formal signing, release, deployment,
-and final user acceptance remain open.
+three materialized type errors. The final pull-request and merged-main closure
+above supersedes this record. P7.2-P7.4, Windows/Linux enforcement, formal
+signing, release, deployment, and final user acceptance remain open.
 
 ### 2026-08-15 new-repository main governance enabled
 
