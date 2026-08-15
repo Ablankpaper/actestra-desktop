@@ -334,7 +334,6 @@ function rendererProviderCacheProbe(): Readonly<Record<string, unknown>> {
     process.stdout.write(JSON.stringify({
       fetchCount,
       listCount,
-      resourceCount: fetchCount,
       projectionIsRedacted: result?.[0]?.api_key === "[REDACTED]",
     }));
   `);
@@ -429,6 +428,33 @@ function providerHookProbe(
     import { mock } from "bun:test";
     const mode = ${JSON.stringify(mode)};
     const calls = [];
+    const requests = [];
+    console.debug = () => {};
+    console.error = () => {};
+    console.warn = () => {};
+    delete globalThis.document;
+    globalThis.window = { __backendPort: 13400 };
+    globalThis.fetch = async (url, init = {}) => {
+      let body = null;
+      if (typeof init.body === "string" && init.body.length > 0) {
+        body = JSON.parse(init.body);
+      }
+      const serializedBody = JSON.stringify(body);
+      requests.push({
+        path: new URL(String(url)).pathname,
+        bodyKeys:
+          typeof body === "object" && body !== null ? Object.keys(body).sort() : [],
+        credentialBody:
+          /(?:api[_-]?key|authorization|token|secret|password)/iu.test(serializedBody),
+      });
+      return new Response(JSON.stringify({ data: { models: [] } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    };
+    const { httpRequest } = await import(
+      "./packages/desktop/src/common/adapter/httpBridge.ts"
+    );
     mock.module("swr", () => ({
       default: (key, fetcher) => ({ key, fetcher }),
     }));
@@ -438,13 +464,17 @@ function providerHookProbe(
           fetchProviderModels: {
             invoke: async (value) => {
               calls.push({ kind: "stored", value });
-              return { models: [] };
+              return httpRequest(
+                "POST",
+                "/api/providers/" + encodeURIComponent(value.id) + "/models",
+                { try_fix: value.try_fix }
+              );
             },
           },
           fetchModelList: {
             invoke: async (value) => {
               calls.push({ kind: "anonymous", value });
-              return { models: [] };
+              return httpRequest("POST", "/api/providers/fetch-models", value);
             },
           },
         },
@@ -474,6 +504,10 @@ function providerHookProbe(
       providerIds: calls
         .filter((call) => call.kind === "stored")
         .map((call) => call.value.id),
+      fetchCount: requests.length,
+      requestPaths: requests.map((request) => request.path),
+      requestBodyKeys: requests.map((request) => request.bodyKeys),
+      credentialBodyCount: requests.filter((request) => request.credentialBody).length,
       modelCount: response.models.length,
     }));
   `);
@@ -941,7 +975,6 @@ window.require("node:fs").writeFileSync("/private/actestra-p7-denied", "denied")
     expect(rendererProviderCacheProbe()).toMatchObject({
       fetchCount: 0,
       listCount: 1,
-      resourceCount: 0,
       projectionIsRedacted: true,
     });
   });
@@ -976,6 +1009,10 @@ window.require("node:fs").writeFileSync("/private/actestra-p7-denied", "denied")
       storedCount: 1,
       anonymousCount: 0,
       providerIds: ["provider-b"],
+      fetchCount: 1,
+      requestPaths: ["/api/providers/provider-b/models"],
+      requestBodyKeys: [["try_fix"]],
+      credentialBodyCount: 0,
       modelCount: 0,
     });
   });
@@ -985,6 +1022,10 @@ window.require("node:fs").writeFileSync("/private/actestra-p7-denied", "denied")
       storedCount: 0,
       anonymousCount: 0,
       providerIds: [],
+      fetchCount: 0,
+      requestPaths: [],
+      requestBodyKeys: [],
+      credentialBodyCount: 0,
       modelCount: 0,
     });
   });
@@ -994,12 +1035,20 @@ window.require("node:fs").writeFileSync("/private/actestra-p7-denied", "denied")
       storedCount: 0,
       anonymousCount: 0,
       providerIds: [],
+      fetchCount: 0,
+      requestPaths: [],
+      requestBodyKeys: [],
+      credentialBodyCount: 0,
       modelCount: 0,
     });
     expect(providerHookProbe("stored-provider-a")).toMatchObject({
       storedCount: 1,
       anonymousCount: 0,
       providerIds: ["provider-a"],
+      fetchCount: 1,
+      requestPaths: ["/api/providers/provider-a/models"],
+      requestBodyKeys: [["try_fix"]],
+      credentialBodyCount: 0,
       modelCount: 0,
     });
   });

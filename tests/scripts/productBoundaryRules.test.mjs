@@ -80,17 +80,29 @@ describe("product boundary rules", () => {
   it("rejects runtime Git authority imports without matching ordinary Git UI text or types", () => {
     expect(rendererGitAuthorityImportRule).toBeDefined();
     expect(preloadGitAuthorityImportRule).toBeDefined();
-    for (const source of [
-      'import git from "isomorphic-git";',
-      'export { simpleGit } from "simple-git";',
-      'const git = import("dugite");',
-    ]) {
-      expect(rendererGitAuthorityImportRule?.pattern.test(source), source).toBe(true);
-      expect(preloadGitAuthorityImportRule?.pattern.test(source), source).toBe(true);
+    for (const packageName of ["isomorphic-git", "simple-git", "dugite", "nodegit"]) {
+      for (const source of [
+        `import "${packageName}";`,
+        `import git from "${packageName}";`,
+        `import { git } from "${packageName}";`,
+        `import * as git from "${packageName}";`,
+        `import { type Git, git } from "${packageName}";`,
+        `export { git } from "${packageName}";`,
+        `export * from "${packageName}";`,
+        `export { type Git, git } from "${packageName}";`,
+        `const git = import("${packageName}");`,
+      ]) {
+        expect(rendererGitAuthorityImportRule?.pattern.test(source), source).toBe(true);
+        expect(preloadGitAuthorityImportRule?.pattern.test(source), source).toBe(true);
+      }
     }
     for (const source of [
       'export const label = "Git status";',
       'import type { GitStatus } from "@/renderer/types";',
+      'import type { Git } from "simple-git";',
+      'import { type Git } from "simple-git";',
+      'export type { Repository } from "nodegit";',
+      'export { type Repository } from "nodegit";',
       'import parseGitUrl from "git-url-parse";',
     ]) {
       expect(rendererGitAuthorityImportRule?.pattern.test(source), source).toBe(false);

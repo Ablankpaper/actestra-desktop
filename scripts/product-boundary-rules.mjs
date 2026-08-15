@@ -21,8 +21,11 @@ const electronImportPattern =
   /(?:\b(?:import|export)\s+(?:(?:type\s+)?[\w*{},\s]+?\s+from\s+)?['"]electron(?:\/[a-zA-Z0-9_./-]+)?['"]|\bimport\s*\(\s*['"]electron(?:\/[a-zA-Z0-9_./-]+)?['"])/;
 const privilegedProcessImportPattern =
   /(?:\b(?:import|export)\s+(?:(?:type\s+)?[\w*{},\s]+?\s+from\s+)?['"](?:\.\.\/)+(?:main|utility)(?:\/|['"])|\bimport\s*\(\s*['"](?:\.\.\/)+(?:main|utility)(?:\/|['"]))/;
-const gitAuthorityImportPattern =
-  /(?:\bimport\s+(?!type\b)(?:[\w*{},\s]+?\s+from\s+)?['"](?:isomorphic-git|simple-git|dugite|nodegit)(?:\/[a-zA-Z0-9_./-]+)?['"]|\bexport\s+(?!type\b)[\w*{},\s]+?\s+from\s+['"](?:isomorphic-git|simple-git|dugite|nodegit)(?:\/[a-zA-Z0-9_./-]+)?['"]|\bimport\s*\(\s*['"](?:isomorphic-git|simple-git|dugite|nodegit)(?:\/[a-zA-Z0-9_./-]+)?['"])/;
+const gitAuthorityPackageSpecifier = String.raw`(?:isomorphic-git|simple-git|dugite|nodegit)(?:\/[a-zA-Z0-9_./-]+)?`;
+const typeOnlyNamedBindings = String.raw`\{\s*type\s+[\w$]+(?:\s+as\s+[\w$]+)?(?:\s*,\s*type\s+[\w$]+(?:\s+as\s+[\w$]+)?)*\s*,?\s*\}`;
+const gitAuthorityImportPattern = new RegExp(
+  String.raw`(?:\bimport\s+(?!type\b)(?!${typeOnlyNamedBindings}\s+from\b)(?:[\w$*{},\s]+?\s+from\s+)?['"]${gitAuthorityPackageSpecifier}['"]|\bexport\s+(?!type\b)(?!${typeOnlyNamedBindings}\s+from\b)[\w$*{},\s]+?\s+from\s+['"]${gitAuthorityPackageSpecifier}['"]|\bimport\s*\(\s*['"]${gitAuthorityPackageSpecifier}['"])`,
+);
 
 export const rendererPrivilegePatterns = Object.freeze([
   { label: "Electron import", pattern: electronImportPattern },
