@@ -4,12 +4,46 @@ Last updated: 2026-08-16
 
 ## Current phase
 
-### 2026-08-16 P7.2 local implementation gate
+### 2026-08-16 P7.2 development integration gate accepted on main
 
-P7.2 is implemented locally on branch `codex/p7-2-resource-reliability` from
-`origin/main@1de868de0192230a0e0776a589c04f9c430ac136`, with reviewed
-implementation/test parent `e4a81ff`; the working tree contains the reviewed
-follow-up fixes for macOS General memory normalization and terminal observation.
+P7.2 scheme A is accepted into formal `main` through pull request
+[#58](https://github.com/Ablankpaper/actestra-desktop/pull/58). Its exact head
+`69dde6adfd44188eec475a55ae02cbab893103b4` passed required pull-request CI
+run
+[`31900510574`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/31900510574):
+`Goose runner admission` passed in 15m27s and `macOS arm64 foundation` passed
+in 22m43s. The latter completed package trust, General Work, seven-case P7.1,
+and five-case P7.2 packaged smoke on the exact pull-request bytes. The
+main-only Goose artifact upload was skipped as designed. GitHub recorded no
+submitted review, inline review comment, or issue comment, and both required
+contexts were green before merge.
+
+The governed squash merge produced formal-main commit
+`dc904b7b9cf7d0c64c563bcc732547f0ff27ce13`. Its independent merged-main CI
+run
+[`31901651415`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/31901651415)
+also passes both required jobs: `Goose runner admission` in 14m48s and
+`macOS arm64 foundation` in 23m57s. The macOS job repeated the complete source,
+test, boundary, documentation, materialized AionUI, package, trusted-runner,
+package-trust, General Work, P7.1 security, and P7.2 hostile-resource smoke
+chain against the squash result. The main-only Goose artifact upload succeeded
+with the configured three-day retention.
+
+This closes the macOS arm64 P7.2 development integration gate for the General
+Worker and Goose Worker only. It does not add Planner, SQLite utility, or
+Renderer/UI scope and does not claim P7.3, P7.4, P8, Windows/Linux enforcement,
+formal signing/notarization, release, deployment, or final user acceptance. The
+only CI annotation is the non-blocking GitHub Actions Node 20 deprecation notice
+for pinned upstream actions that GitHub forced onto Node 24; both jobs remain
+green. P7.3 is the next ordered phase.
+
+### 2026-08-16 P7.2 pre-merge local implementation gate (superseded)
+
+The pre-merge P7.2 implementation was built on branch
+`codex/p7-2-resource-reliability` from
+`origin/main@1de868de0192230a0e0776a589c04f9c430ac136`, with final exact head
+`69dde6adfd44188eec475a55ae02cbab893103b4` after the reviewed macOS General
+memory-normalization and terminal-observation fixes.
 The scope is scheme A: General Worker and Goose Worker only. Planner, SQLite
 utility, Renderer/UI, P7.3, P7.4, and P8 are not included, and the frozen
 `foundation/` snapshot is unchanged.
@@ -49,11 +83,11 @@ downstream, and package checks passed. The initial two security-smoke attempts
 omitted the required runner trust-root environment variables and were killed by
 the harness timeout; with the documented trust roots supplied, the smoke passed.
 
-This closes the P7.2 macOS arm64 local packaged-development gate for scheme A.
-It is local/package evidence only: exact-head pull-request CI, merge and
-merged-main CI, formal signing/notarization, release, deployment, and final user
-acceptance are not claimed. P7.3, P7.4, Windows/Linux enforcement, and P8 remain
-open.
+These local and packaged development-build results are superseded by the pull
+request and merged-main evidence above. They remain provenance for the exact
+implementation but do not prove formal signing/notarization, release,
+deployment, or final user acceptance. P7.3, P7.4, Windows/Linux enforcement,
+and P8 remain open.
 
 ### 2026-08-15 P7.1 development integration gate accepted on main
 

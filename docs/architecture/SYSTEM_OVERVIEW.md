@@ -22,19 +22,22 @@ request 56, squash merge `d7db878ce0385a14dae579bea3fe299e17e856b7`, and
 passing exact-head and merged-main CI. Its 28-case abuse catalog and seven-case
 packaged macOS smoke remain the accepted security baseline.
 
-P7.2 Worker resource/process reliability now has a local implementation for the
-General Worker and Goose Worker only. Main owns their fixed profiles and the
-closed terminal vocabulary: `worker-resource-cpu-exceeded`,
+P7.2 Worker resource/process reliability is accepted on `main` for the General
+Worker and Goose Worker only through pull request 58, exact head
+`69dde6adfd44188eec475a55ae02cbab893103b4`, squash merge
+`dc904b7b9cf7d0c64c563bcc732547f0ff27ce13`, and passing pull-request and
+merged-main CI runs 31900510574 and 31901651415. Main owns their fixed profiles
+and the closed terminal vocabulary: `worker-resource-cpu-exceeded`,
 `worker-resource-memory-exceeded`, `worker-resource-output-exceeded`,
 `worker-resource-timeout`, `worker-resource-storage-exceeded`,
 `worker-process-tree-violated`, and
 `worker-resource-enforcement-unavailable`. The implementation preserves the
 existing Electron utility process, Goose runner, supervisor, Tool Gateway,
-macOS sandbox, and downstream overlay boundaries. Final packaged hostile smoke,
-pull-request CI, merge, and merged-main CI remain open. P7.3 database backup and
-migration rollback, P7.4 diagnostic export and audit retention, Windows/Linux
-enforcement, formal signing, release, deployment, and final user acceptance
-remain outside the verified system state.
+macOS sandbox, and downstream overlay boundaries. The accepted macOS job
+includes package trust plus General CPU/memory and Goose output/storage/fork
+hostile smoke. P7.3 database backup and migration rollback, P7.4 diagnostic
+export and audit retention, Windows/Linux enforcement, formal signing, release,
+deployment, and final user acceptance remain outside the verified system state.
 
 ## Context
 

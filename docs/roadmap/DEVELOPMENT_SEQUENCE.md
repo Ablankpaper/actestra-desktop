@@ -724,13 +724,13 @@ passing exact-head and merged-main CI. The closed catalog has 28 cases; the
 macOS arm64 package passes trust verification, the existing General Work smoke,
 and the packaged P7 security hook for all seven required Layer-4 cases.
 
-This is the P7.1 development gate only. It does not close the remaining P7
-reliability slices: P7.2 Worker resource/process reliability, P7.3 database
-backup, migration rollback, and crash recovery, or P7.4 diagnostic export and
-audit retention. Windows/Linux acceptance, formal signing/notarization,
+This P7.1 gate did not itself close the remaining P7 reliability slices. P7.2
+Worker resource/process reliability is accepted below; P7.3 database backup,
+migration rollback, and crash recovery and P7.4 diagnostic export and audit
+retention remain open. Windows/Linux acceptance, formal signing/notarization,
 release, deployment, and final user acceptance remain separate gates.
 
-### P7.2 local implementation gate
+### P7.2 development integration gate (2026-08-16)
 
 P7.2 applies fixed Main-owned resource profiles to General Worker and Goose Worker only.
 It reuses Electron `utilityProcess`, the admitted Goose runner, Supervisor, Tool
@@ -738,12 +738,15 @@ Gateway, macOS sandbox, process-group cleanup, and downstream overlay. It does
 not add Renderer controls or extend the Planner sidecar or SQLite persistence
 utility.
 
-The local source, focused tests, downstream materialization, and downstream
-package compilation are verified at implementation/test parent `e4a81ff`.
-Packaged hostile-process acceptance remains open until one final `.app` build
-proves the General CPU/memory and Goose output/storage/fork probes on the same
-bytes. Exact-head pull-request CI, merge, and merged-main CI remain separate
-later gates. P7.3 and P7.4 remain separate and are not started by this slice.
+The gate is accepted on `main` through pull request 58 at exact head
+`69dde6adfd44188eec475a55ae02cbab893103b4`, pull-request CI run 31900510574,
+squash merge `dc904b7b9cf7d0c64c563bcc732547f0ff27ce13`, and merged-main CI run
+31901651415. Both CI runs pass the required Goose and macOS jobs; the macOS job
+verifies package trust and the General CPU/memory and Goose
+output/storage/fork probes against the exact packaged bytes. P7.3 and P7.4
+remain separate and are not started by this slice. Windows/Linux enforcement,
+formal signing/notarization, release, deployment, and final user acceptance
+remain later gates.
 
 ### Deliverables
 

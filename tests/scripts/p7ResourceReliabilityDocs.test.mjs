@@ -59,29 +59,42 @@ describe("P7.2 resource reliability documentation", () => {
     expect(adr).toContain("Rollback");
   });
 
-  it("updates current architecture and roadmap without claiming packaged or CI closure", () => {
+  it("records accepted integration without widening scheme A", () => {
     const overview = read("docs/architecture/SYSTEM_OVERVIEW.md");
     const roadmap = read("docs/roadmap/DEVELOPMENT_SEQUENCE.md");
     expect(overview).not.toContain("Exact-head CI and merge evidence for this parent remain open");
     expect(overview).toContain("P7.1 development integration gate is accepted on `main`");
     expect(overview).toContain("P7.2 Worker resource/process reliability");
     for (const code of incidentCodes) expect(overview).toContain(code);
-    expect(roadmap).toContain("### P7.2 local implementation gate");
+    expect(overview).toContain("P7.2 Worker resource/process reliability is accepted on `main`");
+    expect(overview).toContain("31901651415");
+    expect(roadmap).toContain("### P7.2 development integration gate (2026-08-16)");
     expect(roadmap).toContain("General Worker and Goose Worker only");
-    expect(roadmap).toContain("Packaged hostile-process acceptance remains open");
-    expect(roadmap).toContain("P7.3 and P7.4 remain separate");
+    expect(roadmap).toContain("31900510574");
+    expect(roadmap).toContain("31901651415");
+    expect(roadmap).not.toContain("Packaged hostile-process acceptance remains open");
+    expect(roadmap).toContain("P7.3 and P7.4");
+    expect(roadmap).toContain("remain separate and are not started by this slice");
   });
 
-  it("separates verified local evidence from every unverified delivery layer", () => {
+  it("separates integrated evidence from local provenance and later gates", () => {
     const status = read("docs/PROJECT_STATUS.md");
-    expect(status).toContain("### 2026-08-16 P7.2 local implementation gate");
-    expect(status).toContain("implementation/test parent `e4a81ff");
+    expect(status).toContain("### 2026-08-16 P7.2 development integration gate accepted on main");
+    expect(status).toContain("[#58](https://github.com/Ablankpaper/actestra-desktop/pull/58)");
+    expect(status).toContain("`69dde6adfd44188eec475a55ae02cbab893103b4`");
+    expect(status).toContain("`31900510574`");
+    expect(status).toContain("`dc904b7b9cf7d0c64c563bcc732547f0ff27ce13`");
+    expect(status).toContain("`31901651415`");
+    expect(status).toContain(
+      "### 2026-08-16 P7.2 pre-merge local implementation gate (superseded)",
+    );
     expect(status).toContain("Focused\nresource/reliability tests pass (`9` files, `60` tests)");
     expect(status).toContain("smoke:p7-security` exited 0 with all 7 required cases");
     expect(status).toContain("smoke:p7-2-resource-reliability` exited 0 with all 5 hostile cases");
-    expect(status).toContain("This closes the P7.2 macOS arm64 local packaged-development gate");
-    expect(status).toContain("exact-head pull-request CI, merge and\nmerged-main CI");
-    expect(status).toContain("formal signing/notarization, release, deployment, and final user");
-    expect(status).toContain("P7.3, P7.4, Windows/Linux enforcement, and P8 remain\nopen");
+    expect(status).toContain("This closes the macOS arm64 P7.2 development integration gate");
+    expect(status).toContain("does not claim P7.3, P7.4, P8, Windows/Linux enforcement");
+    expect(status).toContain(
+      "formal signing/notarization, release, deployment, or final user acceptance",
+    );
   });
 });
