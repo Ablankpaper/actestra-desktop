@@ -20,6 +20,7 @@ import {
   TASK_OUTPUT_WRITE_TEXT_TOOL_ID,
   WORKSPACE_READ_TEXT_TOOL_ID,
   WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
+  GENERAL_WORKER_RESOURCE_PROFILE,
   artifactId,
   compareInstants,
   correlationId,
@@ -57,6 +58,10 @@ import {
   GENERAL_WORKER_ADAPTER_KIND,
   type GeneralWorkerProcessAdapter,
 } from "../workers/generalWorkerProcessAdapter";
+import {
+  createWorkerResourceMonitor,
+  type WorkerResourceMonitor,
+} from "../workers/workerResourceMonitor";
 import type {
   AionUiGeneralWorkNativeContext,
   AionUiGeneralWorkNativeContextPort,
@@ -92,6 +97,7 @@ interface ActiveJourney {
   readonly coordinator: GeneralWorkCoordinator;
   readonly sessionId: ReturnType<typeof sessionId>;
   readonly completion: Promise<void>;
+  readonly resourceMonitor?: WorkerResourceMonitor;
 }
 
 type AionUiGeneralWorkNativeContextResolver = (
@@ -1061,6 +1067,7 @@ export class AionUiGeneralWorkJourneyService {
       nativeTools: this.config.nativeTools,
       unreplacedCrashDisposition: "failed",
     });
+    let resourceMonitor: WorkerResourceMonitor | undefined;
     try {
       await supervisor.start({
         workspaceId: identities.workspaceId,
@@ -1079,6 +1086,20 @@ export class AionUiGeneralWorkJourneyService {
       if (isTerminalAgentAttemptState(supervisor.snapshot(identities.sessionId).state)) {
         const refused = await coordinator.finalizeAttempt(identities.sessionId);
         return this.buildProjection(task, graph, refused.checkpoint);
+      }
+      if (adapter.hasResourceObservation()) {
+        resourceMonitor = createWorkerResourceMonitor({
+          workerKind: "general",
+          attemptId: identities.sessionId,
+          budget: GENERAL_WORKER_RESOURCE_PROFILE,
+          clock: this.config.clock,
+          requiredMetrics: ["cpuSeconds", "privateMemoryBytes"],
+          sample: () => adapter.observeResources(),
+          onBreach: async (incident) => {
+            await supervisor.failForResource(identities.sessionId, incident);
+          },
+        });
+        resourceMonitor.start();
       }
       const checkpoint = await coordinator.checkpointAttempt(identities.sessionId);
       await adapter.releaseModel(identities.sessionId);
@@ -1330,6 +1351,7 @@ export class AionUiGeneralWorkJourneyService {
           throw error;
         })
         .finally(async () => {
+          resourceMonitor?.stop();
           await adapter.close().catch((): undefined => undefined);
           if (this.activeJourneys.get(identities.taskId) === active) {
             this.activeJourneys.delete(identities.taskId);
@@ -1341,11 +1363,13 @@ export class AionUiGeneralWorkJourneyService {
         coordinator,
         sessionId: identities.sessionId,
         completion,
+        ...(resourceMonitor === undefined ? {} : { resourceMonitor }),
       });
       this.activeJourneys.set(identities.taskId, active);
       void completion.catch((): undefined => undefined);
       return projection;
     } catch (error) {
+      resourceMonitor?.stop();
       await adapter.close().catch((): undefined => undefined);
       throw error;
     }

@@ -984,6 +984,103 @@ describe("AionUiGeneralWorkJourneyService", () => {
     expect(modelEffect).toBeGreaterThan(firstActiveCheckpoint);
   });
 
+  it("terminalizes a live General journey when its Main-owned CPU budget is exceeded", async () => {
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "actestra-aionui-journey-service-test-"),
+    );
+    testDirectories.push(directory);
+    const persistence = (await openTestPersistenceUtility(directory)).client;
+    persistenceClients.push(persistence);
+    const workspaceRoot = path.join(directory, "workspace");
+    fs.mkdirSync(workspaceRoot);
+    const clock = new DeterministicAgentClock(instant("2026-08-15T14:30:00.000Z"));
+    const nativeTools = createScopedNativeToolPlatform({ persistence, clock });
+    const invoke = vi.fn<TrustedActestraGeneralWorkRuntime["invoke"]>(
+      async () =>
+        new Promise((resolve) => {
+          setTimeout(() => {
+            resolve({
+              content: JSON.stringify({
+                status: "completed",
+                markdown: "# Too late\n\nThis result crossed the CPU boundary.\n",
+              }),
+            });
+          }, 1_200);
+        }),
+    );
+    let workerEventSequence = 0;
+    const service = new AionUiGeneralWorkJourneyService({
+      persistence,
+      nativeTools,
+      clock,
+      nativeContext: {
+        resolve: async () => ({
+          rootPath: fs.realpathSync(workspaceRoot),
+          displayName: "AionUI resource-bound workspace",
+        }),
+      },
+      launchWorker: async ({ requestId }) =>
+        (
+          await openTestGeneralWorker(clock, {
+            executionMode: "model-writing-artifact",
+            modelRuntime: Object.freeze({ modelId: "actestra.test.model", invoke }),
+            resourceObservation: () => ({
+              cpuSeconds: 31,
+              privateMemoryBytes: 4_096,
+            }),
+            newAttemptToken: () => "attempt-aionui-resource-budget",
+            newToolRequestId: () => requestId,
+            newEventId: () =>
+              eventId(`event-aionui-resource-budget-${String(++workerEventSequence)}`),
+          })
+        ).adapter,
+    });
+    const nativeConversationId = "conversation-native-resource-budget";
+
+    await service.submitFromTrustedContext(
+      {
+        contractVersion: 1,
+        nativeConversationId,
+        submissionId: "submission-native-resource-budget",
+        journeyKind: "writing-artifact",
+        prompt: [
+          "Title: Resource boundary",
+          "Audience: Reliability review",
+          "Purpose: Prove the General CPU terminal path.",
+          "Point: Preserve resource-specific failure evidence.",
+        ].join("\n"),
+      },
+      { rootPath: workspaceRoot, displayName: "AionUI resource-bound workspace" },
+    );
+    await service.waitForIdle();
+
+    await expect(service.list(nativeConversationId)).resolves.toEqual([
+      expect.objectContaining({
+        status: "failed",
+        canCancel: false,
+        incidentCode: "worker-resource-cpu-exceeded",
+        artifacts: [],
+      }),
+    ]);
+    const graph = await persistence.loadDomainGraph();
+    const checkpoint = await persistence.getGeneralWorkCheckpoint(graph.sessions[0]!.id);
+    expect(checkpoint).toMatchObject({
+      phase: "finalized",
+      attempt: {
+        state: "failed",
+        incident: {
+          code: "worker-resource-cpu-exceeded",
+          resource: {
+            workerKind: "general",
+            resourceKind: "cpu",
+            observed: 31,
+            limit: 30,
+          },
+        },
+      },
+    });
+  });
+
   it("turns one model-authored draft into a document Artifact the user can preview", async () => {
     const directory = fs.mkdtempSync(
       path.join(os.tmpdir(), "actestra-aionui-journey-service-test-"),
