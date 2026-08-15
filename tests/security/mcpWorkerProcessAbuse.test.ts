@@ -176,9 +176,11 @@ async function createProcessGroupFixture(): Promise<{
   await Promise.all([mkdir(artifactDirectory), mkdir(privateRootParent)]);
   const executablePath = path.join(artifactDirectory, "actestra-goose-runner");
   const sourcePath = path.join(directory, "process-group.c");
+  // Production Goose denies fork. This fixture records that denial while the
+  // E2E-only P7.1 smoke separately proves process-group descendant cleanup.
   // The compiled C fixture needs JSON escape sequences that TypeScript does not consume.
   // eslint-disable-next-line no-useless-escape
-  const source = `#include <signal.h>\n#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <unistd.h>\nint main(void) {\n  pid_t descendant = fork();\n  if (descendant == 0) { signal(SIGTERM, SIG_IGN); while (1) pause(); }\n  const char *root = getenv("GOOSE_PATH_ROOT"); char statePath[4096]; snprintf(statePath, sizeof(statePath), "%s/work/process-state.json", root == NULL ? "." : root);\n  FILE *state = fopen(statePath, "w"); if (state == NULL) return 2; fprintf(state, "{\\\"leaderPid\\\":%d,\\\"descendantPid\\\":%d}", getpid(), descendant); fclose(state);\n  const char *response = "{\\\"jsonrpc\\\":\\\"2.0\\\",\\\"id\\\":\\\"actestra-goose-initialize-1\\\",\\\"result\\\":{\\\"protocolVersion\\\":1,\\\"agentCapabilities\\\":{\\\"loadSession\\\":true,\\\"promptCapabilities\\\":{\\\"image\\\":true,\\\"audio\\\":false,\\\"embeddedContext\\\":true},\\\"mcpCapabilities\\\":{\\\"http\\\":true,\\\"sse\\\":false},\\\"sessionCapabilities\\\":{\\\"list\\\":{},\\\"close\\\":{}},\\\"auth\\\":{}},\\\"authMethods\\\":[{\\\"id\\\":\\\"goose-provider\\\",\\\"name\\\":\\\"Configure Provider\\\",\\\"description\\\":\\\"Run \\\`goose configure\\\` to set up your AI provider and API key\\\"}],\\\"agentInfo\\\":{\\\"name\\\":\\\"goose\\\",\\\"version\\\":\\\"1.45.0\\\"}}}"; dprintf(STDOUT_FILENO, "%s\\n", response); char buffer[4096]; while (read(STDIN_FILENO, buffer, sizeof(buffer)) > 0) {} return 0; }\n`;
+  const source = `#include <signal.h>\n#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <unistd.h>\nint main(void) {\n  pid_t descendant = fork();\n  if (descendant == 0) { signal(SIGTERM, SIG_IGN); while (1) pause(); }\n  int forkDenied = descendant < 0;\n  const char *root = getenv("GOOSE_PATH_ROOT"); char statePath[4096]; snprintf(statePath, sizeof(statePath), "%s/work/process-state.json", root == NULL ? "." : root);\n  FILE *state = fopen(statePath, "w"); if (state == NULL) return 2; fprintf(state, "{\\\"leaderPid\\\":%d,\\\"descendantPid\\\":%d,\\\"forkDenied\\\":%s}", getpid(), descendant, forkDenied ? "true" : "false"); fclose(state);\n  const char *response = "{\\\"jsonrpc\\\":\\\"2.0\\\",\\\"id\\\":\\\"actestra-goose-initialize-1\\\",\\\"result\\\":{\\\"protocolVersion\\\":1,\\\"agentCapabilities\\\":{\\\"loadSession\\\":true,\\\"promptCapabilities\\\":{\\\"image\\\":true,\\\"audio\\\":false,\\\"embeddedContext\\\":true},\\\"mcpCapabilities\\\":{\\\"http\\\":true,\\\"sse\\\":false},\\\"sessionCapabilities\\\":{\\\"list\\\":{},\\\"close\\\":{}},\\\"auth\\\":{}},\\\"authMethods\\\":[{\\\"id\\\":\\\"goose-provider\\\",\\\"name\\\":\\\"Configure Provider\\\",\\\"description\\\":\\\"Run \\\`goose configure\\\` to set up your AI provider and API key\\\"}],\\\"agentInfo\\\":{\\\"name\\\":\\\"goose\\\",\\\"version\\\":\\\"1.45.0\\\"}}}"; dprintf(STDOUT_FILENO, "%s\\n", response); char buffer[4096]; while (read(STDIN_FILENO, buffer, sizeof(buffer)) > 0) {} return 0; }\n`;
   await writeFile(sourcePath, source);
   const compile = spawnSync("clang", [sourcePath, "-o", executablePath], { encoding: "utf8" });
   if (compile.status !== 0) throw new Error(`process fixture compile failed: ${compile.stderr}`);
@@ -256,7 +258,7 @@ async function createParentDeathFixture(): Promise<{
   })
     .replaceAll("\\", "\\\\")
     .replaceAll('"', '\\"');
-  const source = `#include <signal.h>\n#include <stdio.h>\n#include <stdlib.h>\n#include <unistd.h>\nint main(void) {\n  pid_t descendant = fork();\n  if (descendant < 0) return 2;\n  if (descendant == 0) { while (1) pause(); }\n  dprintf(STDOUT_FILENO, "%s\\n", "${initializeResult}");\n  char byte; while (read(3, &byte, 1) > 0) {}\n  kill(0, SIGKILL);\n  return 0;\n}\n`;
+  const source = `#include <signal.h>\n#include <stdio.h>\n#include <stdlib.h>\n#include <unistd.h>\nint main(void) {\n  dprintf(STDOUT_FILENO, "%s\\n", "${initializeResult}");\n  char byte; while (read(3, &byte, 1) > 0) {}\n  kill(0, SIGKILL);\n  return 0;\n}\n`;
   await writeFile(sourcePath, source);
   const compile = spawnSync("clang", [sourcePath, "-o", executablePath], { encoding: "utf8" });
   if (compile.status !== 0) {
@@ -1240,13 +1242,17 @@ describe("P7 MCP, Worker, network, and process abuse baseline", () => {
     });
     const processState = JSON.parse(
       await readFile(path.join(opened.privateRoot, "work", "process-state.json"), "utf8"),
-    ) as { readonly leaderPid: number; readonly descendantPid: number };
+    ) as {
+      readonly leaderPid: number;
+      readonly descendantPid: number;
+      readonly forkDenied: boolean;
+    };
     fixtureProcessGroups.add(processState.leaderPid);
     try {
-      expect(processIsAlive(processState.descendantPid)).toBe(true);
+      expect(processState).toMatchObject({ descendantPid: -1, forkDenied: true });
+      expect(processIsAlive(processState.leaderPid)).toBe(true);
       await opened.close();
       await expectProcessGone(processState.leaderPid);
-      await expectProcessGone(processState.descendantPid);
       expect(await readdir(fixture.privateRootParent)).toEqual([]);
       fixtureProcessGroups.delete(processState.leaderPid);
     } finally {
@@ -1301,12 +1307,16 @@ describe("P7 MCP, Worker, network, and process abuse baseline", () => {
     });
     const processState = JSON.parse(
       await readFile(path.join(opened.privateRoot, "work", "process-state.json"), "utf8"),
-    ) as { readonly leaderPid: number; readonly descendantPid: number };
+    ) as {
+      readonly leaderPid: number;
+      readonly descendantPid: number;
+      readonly forkDenied: boolean;
+    };
     fixtureProcessGroups.add(processState.leaderPid);
     try {
+      expect(processState).toMatchObject({ descendantPid: -1, forkDenied: true });
       await opened.close();
       await expectProcessGone(processState.leaderPid);
-      await expectProcessGone(processState.descendantPid);
       expect(await readdir(fixture.privateRootParent)).toEqual([]);
       fixtureProcessGroups.delete(processState.leaderPid);
     } finally {
@@ -1400,14 +1410,14 @@ describe("P7 MCP, Worker, network, and process abuse baseline", () => {
     ) as {
       readonly leaderPid: number;
       readonly descendantPid: number;
+      readonly forkDenied: boolean;
     };
     fixtureProcessGroups.add(processState.leaderPid);
     try {
+      expect(processState).toMatchObject({ descendantPid: -1, forkDenied: true });
       expect(processIsAlive(processState.leaderPid)).toBe(true);
-      expect(processIsAlive(processState.descendantPid)).toBe(true);
       await Promise.all([opened.close(), opened.close(), opened.close()]);
       await expectProcessGone(processState.leaderPid);
-      await expectProcessGone(processState.descendantPid);
       expect(await readdir(fixture.privateRootParent)).toEqual([]);
       fixtureProcessGroups.delete(processState.leaderPid);
     } finally {
@@ -1451,12 +1461,16 @@ describe("P7 MCP, Worker, network, and process abuse baseline", () => {
     });
     const processState = JSON.parse(
       await readFile(path.join(opened.privateRoot, "work", "process-state.json"), "utf8"),
-    ) as { readonly leaderPid: number; readonly descendantPid: number };
+    ) as {
+      readonly leaderPid: number;
+      readonly descendantPid: number;
+      readonly forkDenied: boolean;
+    };
     fixtureProcessGroups.add(processState.leaderPid);
     try {
+      expect(processState).toMatchObject({ descendantPid: -1, forkDenied: true });
       await opened.close();
       await expectProcessGone(processState.leaderPid);
-      await expectProcessGone(processState.descendantPid);
       expect(() => process.kill(-processState.leaderPid, 0)).toThrow(
         expect.objectContaining({ code: "ESRCH" }),
       );
