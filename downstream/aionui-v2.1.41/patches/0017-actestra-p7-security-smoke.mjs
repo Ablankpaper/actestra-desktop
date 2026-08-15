@@ -152,7 +152,8 @@ replaceOnce(
   ipcMain,
   type IpcMainInvokeEvent,
 } from 'electron';
-import fs from 'node:fs';`,
+import fs from 'node:fs';
+import path from 'node:path';`,
 );
 
 replaceOnce(
@@ -167,7 +168,7 @@ replaceOnce(
 } from './actestraGeneralWorkSmoke';
 import {
   resolveP7SecuritySmokeIsolation,
-  runP7RendererNetworkSmoke,
+  runP7PackagedSecuritySmoke,
 } from '@/actestra/main/security/p7SecuritySmoke';`,
 );
 
@@ -202,17 +203,21 @@ replaceOnce(
   }
   p7SecuritySmokeStarted = true;
   try {
-    const renderer = await runP7RendererNetworkSmoke(
-      currentWindow.webContents,
-      p7SecuritySmokeIsolation.target,
-    );
-    console.info('ACTESTRA_P7_SECURITY_SMOKE_RESULT ' + JSON.stringify(renderer));
+    const results = await runP7PackagedSecuritySmoke({
+      webContents: currentWindow.webContents,
+      isolation: p7SecuritySmokeIsolation,
+      packagedAppAsar: path.join(process.resourcesPath, 'app.asar'),
+    });
+    for (const result of results) {
+      console.info('ACTESTRA_P7_SECURITY_SMOKE_RESULT ' + JSON.stringify(result));
+    }
     fs.writeFileSync(
       p7SecuritySmokeIsolation.evidence,
       JSON.stringify({
         schemaVersion: 1,
-        ids: [renderer.id],
-        outcomes: [renderer.outcome],
+        ids: results.map((result) => result.id),
+        outcomes: results.map((result) => result.outcome),
+        sideEffectCounts: results.map((result) => result.sideEffectCount),
         redacted: true,
       }),
       { encoding: 'utf8', mode: 0o600 },

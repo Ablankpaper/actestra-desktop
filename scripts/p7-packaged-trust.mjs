@@ -3,14 +3,28 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
-import { extractFile } from "@electron/asar";
+import { extractFile, listPackage } from "@electron/asar";
 import { admitGooseRunnerArtifact } from "../apps/desktop/src/main/workers/gooseRunnerArtifact.ts";
 
 const APP_IDENTIFIER = "com.bignormal.actestra";
 const APP_EXECUTABLE = "Actestra";
-const P7_HOOK_MARKERS = ["ACTESTRA_P7_SECURITY_SMOKE_RESULT", "P7-A-RENDERER-002"];
+export const P7_HOOK_MARKERS = Object.freeze([
+  "ACTESTRA_P7_SECURITY_SMOKE_RESULT",
+  "P7-A-RENDERER-002",
+  "P7-A-CREDENTIAL-001",
+  "P7-A-CREDENTIAL-003",
+  "P7-A-WORKER-001",
+  "P7-A-NETWORK-001",
+  "P7-A-PROCESS-002",
+  "P7-A-ARTIFACT-001",
+]);
+// electron-builder writes the native app bundle back under out/mac-*, and the
+// bundle/frameworks legitimately contain symlinks. The trust root must bind
+// only the Vite source outputs that are copied into app.asar's out/ namespace.
+const MATERIALIZED_SOURCE_OUTPUTS = ["main", "preload", "renderer"];
 const PLANNER_ENTRY = "out/main/actestra-team-planner.js";
 const PLANNER_MANIFEST = "out/main/actestra-team-planner.manifest.json";
+const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -31,6 +45,105 @@ function defaultRunCommand(command, args) {
 
 function requiredFile(filePath, label) {
   if (!fs.statSync(filePath, { throwIfNoEntry: false })?.isFile()) fail(`${label} is missing`);
+}
+
+function requiredExternalSha256(value, label) {
+  if (typeof value !== "string" || !SHA256_PATTERN.test(value)) {
+    fail(`${label} is required from the caller trust root`);
+  }
+  return value;
+}
+
+function collectOutputEntries(root) {
+  const outputRoot = path.join(root, "out");
+  if (!fs.lstatSync(outputRoot, { throwIfNoEntry: false })?.isDirectory()) {
+    fail("materialized package output is missing");
+  }
+  const entries = [];
+  function visit(directory, relativeDirectory) {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const relative = relativeDirectory
+        ? `${relativeDirectory}/${entry.name}`
+        : `out/${entry.name}`;
+      const filePath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        visit(filePath, relative);
+      } else if (entry.isFile()) {
+        entries.push({ relative, bytes: fs.readFileSync(filePath) });
+      } else {
+        fail("materialized package output contains a non-regular entry");
+      }
+    }
+  }
+  for (const outputName of MATERIALIZED_SOURCE_OUTPUTS) {
+    const sourceRoot = path.join(outputRoot, outputName);
+    if (!fs.lstatSync(sourceRoot, { throwIfNoEntry: false })?.isDirectory()) {
+      fail(`materialized source output ${outputName} is missing`);
+    }
+    visit(sourceRoot, `out/${outputName}`);
+  }
+  if (entries.length === 0) fail("materialized package output is empty");
+  return entries.sort((left, right) => left.relative.localeCompare(right.relative));
+}
+
+function digestEntries(entries) {
+  const digest = createHash("sha256");
+  for (const entry of entries) {
+    digest.update(entry.relative);
+    digest.update("\0");
+    digest.update(String(entry.bytes.length));
+    digest.update("\0");
+    digest.update(entry.bytes);
+  }
+  return digest.digest("hex");
+}
+
+/**
+ * Compute the caller-supplied package-output trust root. This is intentionally
+ * exported so CI/build orchestration can calculate it in a separate step;
+ * the verifier never falls back to calculating its own trust root.
+ */
+export function computeMaterializedOutputSha256(materializedRoot) {
+  return digestEntries(collectOutputEntries(materializedRoot));
+}
+
+function collectPackagedOutputEntries(archive) {
+  const entries = [];
+  for (const rawPath of listPackage(archive)) {
+    const relative = rawPath.replace(/^\/+/, "");
+    if (!relative.startsWith("out/")) continue;
+    try {
+      entries.push({ relative, bytes: extractFile(archive, relative) });
+    } catch {
+      // Directory entries are listed by @electron/asar but cannot be extracted.
+    }
+  }
+  if (entries.length === 0) fail("packaged app output is missing");
+  return entries.sort((left, right) => left.relative.localeCompare(right.relative));
+}
+
+function verifyPackagedOutputBinding(archive, materializedRoot, trustedSha256) {
+  const callerDigest = requiredExternalSha256(trustedSha256, "packaged output trust root");
+  const materializedEntries = collectOutputEntries(materializedRoot);
+  const materializedDigest = digestEntries(materializedEntries);
+  if (materializedDigest !== callerDigest) {
+    fail("packaged output digest is outside the caller trust root");
+  }
+  const packagedEntries = collectPackagedOutputEntries(archive);
+  if (
+    materializedEntries.length !== packagedEntries.length ||
+    materializedEntries.some(
+      (entry, index) =>
+        packagedEntries[index]?.relative !== entry.relative ||
+        !packagedEntries[index].bytes.equals(entry.bytes),
+    )
+  ) {
+    fail("packaged output drift detected");
+  }
+  if (digestEntries(packagedEntries) !== callerDigest) {
+    fail("packaged output digest is outside the caller trust root");
+  }
+  return { sha256: callerDigest, files: materializedEntries.length };
 }
 
 function containedPath(root, relativePath, label) {
@@ -148,12 +261,21 @@ export async function inspectP7PackagedTrust(options) {
   const app = verifyPackagedApp(options.appBundle, runCommand);
   verifyPackage();
   const planner = verifyPlannerAndP7Markers(app.archive);
+  const output = verifyPackagedOutputBinding(
+    app.archive,
+    options.materializedRoot,
+    options.trustedPackagedOutputSha256,
+  );
   const admit = options.admitRunnerArtifact ?? admitGooseRunnerArtifact;
+  const trustedRunnerManifestSha256 = requiredExternalSha256(
+    options.trustedRunnerManifestSha256,
+    "Goose runner manifest digest",
+  );
   let admitted;
   try {
     admitted = await admit(options.runnerArtifactDirectory, {
       expectedTargetTriple: options.expectedTargetTriple,
-      trustedManifestSha256: options.trustedRunnerManifestSha256,
+      trustedManifestSha256: trustedRunnerManifestSha256,
     });
   } catch (error) {
     fail(
@@ -167,6 +289,7 @@ export async function inspectP7PackagedTrust(options) {
     schemaVersion: 1,
     app: { ...app, packageVerification: "passed" },
     planner,
+    output,
     gooseRunner: {
       packaged: false,
       disposition: "external-admitted",
@@ -195,15 +318,8 @@ if (import.meta.main) {
     (expectedTargetTriple === undefined
       ? undefined
       : path.join(repositoryRoot, ".actestra", "goose-runner", expectedTargetTriple));
-  const manifestPath =
-    runnerArtifactDirectory === undefined
-      ? undefined
-      : path.join(runnerArtifactDirectory, "actestra-goose-runner.manifest.json");
-  const trustedRunnerManifestSha256 =
-    process.env.ACTESTRA_GOOSE_RUNNER_MANIFEST_SHA256 ??
-    (manifestPath === undefined || !fs.existsSync(manifestPath)
-      ? undefined
-      : sha256(fs.readFileSync(manifestPath)));
+  const trustedRunnerManifestSha256 = process.env.ACTESTRA_GOOSE_RUNNER_MANIFEST_SHA256;
+  const trustedPackagedOutputSha256 = process.env.ACTESTRA_AIONUI_PACKAGED_OUTPUT_SHA256;
   const overlayPath = path.join(
     repositoryRoot,
     ".actestra",
@@ -216,17 +332,20 @@ if (import.meta.main) {
   if (
     !runnerArtifactDirectory ||
     !trustedRunnerManifestSha256 ||
+    !trustedPackagedOutputSha256 ||
     !expectedTargetTriple ||
     !overlay ||
     !Array.isArray(overlay.sourceCopies)
   )
     fail(
-      "app, runner artifact, manifest digest, target, and materialized source-copy contract are required",
+      "app, runner artifact, external manifest/output digests, target, and materialized source-copy contract are required",
     );
   inspectP7PackagedTrust({
     appBundle,
+    materializedRoot: path.join(repositoryRoot, ".actestra", "aionui-v2.1.41"),
     runnerArtifactDirectory,
     trustedRunnerManifestSha256,
+    trustedPackagedOutputSha256,
     expectedTargetTriple,
     sourceCopies: {
       repositoryRoot,

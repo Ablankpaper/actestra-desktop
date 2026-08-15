@@ -43,6 +43,8 @@
     "downstream:aionui:dev": "bun run downstream:aionui:materialize && bun run --cwd .actestra/aionui-v2.1.41 dev",
     "docs:check": "node scripts/check-doc-links.mjs",
     "verify:package": "node scripts/verify-packaged-app.mjs",
+    "verify:p7-package": "bun scripts/p7-packaged-trust.mjs",
+    "p7:package-output-digest": "bun scripts/p7-package-output-digest.mjs",
     "smoke:package": "node scripts/smoke-packaged-app.mjs",
     "smoke:aionui-general-work": "node scripts/smoke-aionui-general-work.mjs",
     "smoke:p7-security": "node scripts/smoke-p7-security.mjs",

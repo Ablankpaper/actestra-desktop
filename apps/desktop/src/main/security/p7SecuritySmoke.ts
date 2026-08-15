@@ -1,8 +1,13 @@
+import { spawn } from "node:child_process";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
   isAllowedActestraWebviewRequest,
   isAllowedActestraWebviewSource,
 } from "../../shared/webviewPolicy";
+import { createGooseRunnerEnvironment } from "../workers/gooseRunnerProcess";
+import { admitGooseRunnerArtifact } from "../workers/gooseRunnerArtifact";
+import { createGooseRunnerSandboxLaunch } from "../workers/gooseRunnerSandbox";
 
 type WebviewAttachEvent = Readonly<{ preventDefault: () => void }>;
 type WebviewPreferences = Record<string, unknown>;
@@ -97,7 +102,15 @@ export function installWebviewGuestSecurity(
   });
 }
 
-export const P7_PACKAGED_SECURITY_CASES = Object.freeze(["P7-A-RENDERER-002"] as const);
+export const P7_PACKAGED_SECURITY_CASES = Object.freeze([
+  "P7-A-RENDERER-002",
+  "P7-A-CREDENTIAL-001",
+  "P7-A-CREDENTIAL-003",
+  "P7-A-WORKER-001",
+  "P7-A-NETWORK-001",
+  "P7-A-PROCESS-002",
+  "P7-A-ARTIFACT-001",
+] as const);
 export const P7_EXPECTED_RENDERER_BRIDGE_KEYS = Object.freeze([
   "actestraProviderGet",
   "actestraProviderList",
@@ -119,7 +132,10 @@ export type P7SecuritySmokeIsolation = Readonly<{
   sentinel: string;
   workspace: string;
   evidence: string;
+  hostReadProbe: string;
   target: string;
+  runnerArtifactDirectory: string;
+  runnerManifestSha256: string;
 }>;
 
 function isStrictlyInside(root: string, candidate: string): boolean {
@@ -145,7 +161,12 @@ export function resolveP7SecuritySmokeIsolation(
   const sentinel = environment.ACTESTRA_P7_SECURITY_SMOKE_SENTINEL?.trim();
   const workspace = environment.ACTESTRA_P7_SECURITY_SMOKE_WORKSPACE?.trim();
   const evidence = environment.ACTESTRA_P7_SECURITY_SMOKE_EVIDENCE?.trim();
+  const hostReadProbe = environment.ACTESTRA_P7_SECURITY_SMOKE_HOST_READ_PROBE?.trim();
   const target = environment.ACTESTRA_P7_SECURITY_SMOKE_TARGET?.trim();
+  const runnerArtifactDirectory =
+    environment.ACTESTRA_P7_SECURITY_SMOKE_RUNNER_ARTIFACT_DIRECTORY?.trim();
+  const runnerManifestSha256 =
+    environment.ACTESTRA_P7_SECURITY_SMOKE_RUNNER_MANIFEST_SHA256?.trim();
   if (
     root === undefined ||
     userData === undefined ||
@@ -154,7 +175,10 @@ export function resolveP7SecuritySmokeIsolation(
     sentinel === undefined ||
     workspace === undefined ||
     evidence === undefined ||
+    hostReadProbe === undefined ||
     target === undefined ||
+    runnerArtifactDirectory === undefined ||
+    runnerManifestSha256 === undefined ||
     !path.isAbsolute(root) ||
     !path.isAbsolute(userData) ||
     !path.isAbsolute(home) ||
@@ -164,7 +188,12 @@ export function resolveP7SecuritySmokeIsolation(
     !isStrictlyInside(root, temp) ||
     !isStrictlyInside(root, sentinel) ||
     !isStrictlyInside(root, workspace) ||
-    !isStrictlyInside(root, evidence)
+    !isStrictlyInside(root, evidence) ||
+    !path.isAbsolute(hostReadProbe) ||
+    hostReadProbe === root ||
+    isStrictlyInside(root, hostReadProbe) ||
+    !path.isAbsolute(runnerArtifactDirectory) ||
+    !/^[a-f0-9]{64}$/u.test(runnerManifestSha256)
   ) {
     return null;
   }
@@ -194,7 +223,10 @@ export function resolveP7SecuritySmokeIsolation(
     sentinel,
     workspace,
     evidence,
+    hostReadProbe,
     target,
+    runnerArtifactDirectory,
+    runnerManifestSha256,
   });
 }
 
@@ -337,4 +369,350 @@ export async function runP7RendererNetworkSmoke(
     throw new Error("P7 Renderer network boundary was not physically denied");
   }
   return p7SecuritySmokeResult("P7-A-RENDERER-002");
+}
+
+type ProviderCredentialProbe = Readonly<{
+  providerIpcAvailable: boolean;
+  redacted: boolean;
+  directFetchRejected: boolean;
+  noDirectProviderResource: boolean;
+  providerResourceKinds: readonly unknown[];
+  leakageCount: number;
+}>;
+
+export type P7ProviderResourceSummary = Readonly<{
+  valid: boolean;
+  providerResourceCount: number;
+  unexpectedProviderResourceCount: number;
+}>;
+
+/**
+ * The packaged probe deliberately attempts one blocked Provider request. Some
+ * Chromium versions retain that cancelled request in Resource Timing, so the
+ * probe reports only bounded classifications instead of raw URLs. A timing
+ * labelled `probe` is expected; every other Provider timing is unexpected.
+ */
+export function summarizeP7ProviderResourceKinds(
+  values: readonly unknown[],
+): P7ProviderResourceSummary {
+  const valid = values.every((value) => value === "probe" || value === "unexpected");
+  const unexpectedProviderResourceCount = values.filter((value) => value !== "probe").length;
+  return Object.freeze({
+    valid,
+    providerResourceCount: values.length,
+    unexpectedProviderResourceCount,
+  });
+}
+
+type ProviderCredentialProbePort = Readonly<{
+  executeJavaScript(source: string, userGesture?: boolean): Promise<unknown>;
+}>;
+
+export async function runP7ProviderCredentialSmoke(
+  webContents: ProviderCredentialProbePort,
+): Promise<readonly P7SecuritySmokeResult[]> {
+  const result = await webContents.executeJavaScript(
+    `(() => (async () => {
+      const api = window.electronAPI ?? {};
+      const listProviders = api.actestraProviderList;
+      if (typeof listProviders !== 'function') {
+        return { providerIpcAvailable: false, redacted: false, directFetchRejected: false, noDirectProviderResource: false, leakageCount: 1 };
+      }
+      let providers;
+      try {
+        providers = await listProviders();
+      } catch {
+        return { providerIpcAvailable: true, redacted: false, directFetchRejected: false, noDirectProviderResource: false, leakageCount: 1 };
+      }
+      let leakageCount = 0;
+      const isCredentialKey = (key) => /^(?:api[_-]?key|access[_-]?key[_-]?id|secret[_-]?access[_-]?key|token|password)$/iu.test(key);
+      const isAllowedRedactedCredential = (value) => value === undefined || value === '' || value === '[REDACTED]';
+      const visit = (value) => {
+        if (Array.isArray(value)) {
+          for (const item of value) visit(item);
+          return;
+        }
+        if (typeof value !== 'object' || value === null) return;
+        for (const [key, child] of Object.entries(value)) {
+          if (isCredentialKey(key) && !isAllowedRedactedCredential(child)) leakageCount += 1;
+          if (!isCredentialKey(key)) visit(child);
+        }
+      };
+      visit(providers);
+      let directFetchRejected = false;
+      const port = window.__backendPort;
+      if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw new Error('backend port unavailable');
+      const providerProbeUrl = 'http://127.0.0.1:' + String(port) + '/api/providers';
+      try {
+        await fetch(providerProbeUrl);
+      } catch {
+        directFetchRejected = true;
+      }
+      const providerResourceKinds = performance
+        .getEntriesByType('resource')
+        .map((entry) => {
+          const name = String(entry.name);
+          if (!name.includes('/api/providers')) return null;
+          return name === providerProbeUrl ? 'probe' : 'unexpected';
+        })
+        .filter((kind) => kind !== null);
+      const noDirectProviderResource = providerResourceKinds.every((kind) => kind === 'probe');
+      return {
+        providerIpcAvailable: true,
+        redacted: Array.isArray(providers) && leakageCount === 0,
+        directFetchRejected,
+        noDirectProviderResource,
+        providerResourceKinds,
+        leakageCount,
+      };
+    })())()`,
+    true,
+  );
+  if (
+    typeof result !== "object" ||
+    result === null ||
+    Array.isArray(result) ||
+    (result as ProviderCredentialProbe).providerIpcAvailable !== true ||
+    (result as ProviderCredentialProbe).redacted !== true ||
+    (result as ProviderCredentialProbe).directFetchRejected !== true ||
+    !Array.isArray((result as ProviderCredentialProbe).providerResourceKinds) ||
+    !summarizeP7ProviderResourceKinds((result as ProviderCredentialProbe).providerResourceKinds)
+      .valid ||
+    summarizeP7ProviderResourceKinds((result as ProviderCredentialProbe).providerResourceKinds)
+      .unexpectedProviderResourceCount !== 0 ||
+    (result as ProviderCredentialProbe).leakageCount !== 0
+  ) {
+    throw new Error("P7 Provider credential boundary was not physically denied");
+  }
+  return Object.freeze([
+    p7SecuritySmokeResult("P7-A-CREDENTIAL-001"),
+    p7SecuritySmokeResult("P7-A-CREDENTIAL-003"),
+  ]);
+}
+
+function processGroupIsAlive(processId: number): boolean {
+  try {
+    process.kill(-processId, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== "ESRCH";
+  }
+}
+
+function processIsAlive(processId: number): boolean {
+  try {
+    process.kill(processId, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== "ESRCH";
+  }
+}
+
+export async function waitForP7ProcessGone(processId: number, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (processIsAlive(processId) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  if (processIsAlive(processId)) {
+    throw new Error("P7 process cleanup left a descendant alive");
+  }
+}
+
+function killProcessGroup(processId: number): void {
+  try {
+    process.kill(-processId, "SIGKILL");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+  }
+}
+
+async function waitForExit(child: ReturnType<typeof spawn>, timeoutMs: number): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("P7 sandbox probe timed out")), timeoutMs);
+    child.once("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.once("exit", (code, signal) => {
+      clearTimeout(timer);
+      if (code !== 0 || signal !== null) {
+        reject(new Error("P7 sandbox probe exited unexpectedly"));
+      } else {
+        resolve();
+      }
+    });
+  });
+}
+
+export function isP7HostReadDeniedCode(code: unknown): boolean {
+  return code === "EPERM" || code === "EACCES";
+}
+
+async function runSandboxNetworkProbe(
+  isolation: P7SecuritySmokeIsolation,
+): Promise<Readonly<{ networkDenied: boolean; hostReadDenied: boolean }>> {
+  if (process.platform !== "darwin") throw new Error("P7 sandbox probe is unavailable");
+  const hostReadProbePath = isolation.hostReadProbe;
+  readFileSync(hostReadProbePath);
+  const privateRoot = path.join(isolation.temp, "p7-worker-sandbox");
+  mkdirSync(privateRoot, { recursive: true, mode: 0o700 });
+  const resultPath = path.join(privateRoot, "probe-result.json");
+  const launch = createGooseRunnerSandboxLaunch({
+    executablePath: process.execPath,
+    privateRoot,
+    networkPorts: [],
+  });
+  const script = `const fs = require('node:fs');
+(async () => {
+  let networkDenied = false;
+  try { await fetch(${JSON.stringify(isolation.target)}, { signal: AbortSignal.timeout(1500) }); }
+  catch { networkDenied = true; }
+  let hostReadDenied = false;
+  try { fs.readFileSync(${JSON.stringify(hostReadProbePath)}); }
+  catch (error) { hostReadDenied = ["EPERM","EACCES"].includes(error?.code); }
+  fs.writeFileSync(${JSON.stringify(resultPath)}, JSON.stringify({ networkDenied, hostReadDenied }));
+})().catch(() => process.exit(2));`;
+  const child = spawn(launch.executable, [...launch.args, "-e", script], {
+    detached: true,
+    env: { ELECTRON_RUN_AS_NODE: "1", PATH: process.env.PATH ?? "" },
+    stdio: "ignore",
+  });
+  try {
+    await waitForExit(child, 5_000);
+    const value = JSON.parse(readFileSync(resultPath, "utf8")) as {
+      readonly networkDenied?: unknown;
+      readonly hostReadDenied?: unknown;
+    };
+    if (value.networkDenied !== true || value.hostReadDenied !== true) {
+      throw new Error("P7 Worker sandbox boundary was not physically denied");
+    }
+    return { networkDenied: true, hostReadDenied: true };
+  } finally {
+    if (child.pid !== undefined && processGroupIsAlive(child.pid)) killProcessGroup(child.pid);
+    rmSync(privateRoot, { recursive: true, force: true });
+  }
+}
+
+async function runP7WorkerAdmissionSmoke(
+  isolation: P7SecuritySmokeIsolation,
+): Promise<P7SecuritySmokeResult> {
+  const artifact = await admitGooseRunnerArtifact(isolation.runnerArtifactDirectory, {
+    trustedManifestSha256: isolation.runnerManifestSha256,
+    expectedTargetTriple: process.arch === "arm64" ? "aarch64-apple-darwin" : "x86_64-apple-darwin",
+  });
+  const privateRoot = path.join(isolation.temp, "p7-worker-environment");
+  const environment = createGooseRunnerEnvironment(privateRoot);
+  const serialized = JSON.stringify(environment);
+  if (
+    artifact.targetTriple.length === 0 ||
+    environment.GOOSE_PATH_ROOT !== privateRoot ||
+    /(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD|AUTHORIZATION)/iu.test(serialized) ||
+    Object.hasOwn(environment, "OPENAI_API_KEY")
+  ) {
+    throw new Error("P7 Worker admission widened the environment");
+  }
+  return p7SecuritySmokeResult("P7-A-WORKER-001");
+}
+
+async function runP7ArtifactTrustSmoke(
+  isolation: P7SecuritySmokeIsolation,
+  packagedAppAsar: string,
+): Promise<P7SecuritySmokeResult> {
+  if (!existsSync(packagedAppAsar)) throw new Error("P7 packaged app archive is missing");
+  const tamperedDirectory = path.join(isolation.temp, "p7-tampered-runner");
+  cpSync(isolation.runnerArtifactDirectory, tamperedDirectory, { recursive: true });
+  const manifestPath = path.join(tamperedDirectory, "actestra-goose-runner.manifest.json");
+  const manifest = readFileSync(manifestPath);
+  writeFileSync(manifestPath, Buffer.concat([manifest, Buffer.from("\n")]), { mode: 0o600 });
+  try {
+    await admitGooseRunnerArtifact(tamperedDirectory, {
+      trustedManifestSha256: isolation.runnerManifestSha256,
+      expectedTargetTriple:
+        process.arch === "arm64" ? "aarch64-apple-darwin" : "x86_64-apple-darwin",
+    });
+  } catch {
+    return p7SecuritySmokeResult("P7-A-ARTIFACT-001");
+  } finally {
+    rmSync(tamperedDirectory, { recursive: true, force: true });
+  }
+  throw new Error("P7 artifact admission accepted a tampered manifest");
+}
+
+async function runP7ProcessCleanupSmoke(
+  isolation: P7SecuritySmokeIsolation,
+): Promise<P7SecuritySmokeResult> {
+  if (process.platform !== "darwin") throw new Error("P7 process-group probe is unavailable");
+  const privateRoot = path.join(isolation.temp, "p7-process-cleanup");
+  mkdirSync(privateRoot, { recursive: true, mode: 0o700 });
+  const descendantPidPath = path.join(privateRoot, "descendant.pid");
+  const launch = createGooseRunnerSandboxLaunch({
+    executablePath: process.execPath,
+    privateRoot,
+    networkPorts: [],
+  });
+  const childScript = `const fs = require('node:fs');
+const { spawn } = require('node:child_process');
+const descendant = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+fs.writeFileSync(${JSON.stringify(descendantPidPath)}, String(descendant.pid));
+setInterval(() => {}, 1000);`;
+  const child = spawn(launch.executable, [...launch.args, "-e", childScript], {
+    detached: true,
+    env: { ELECTRON_RUN_AS_NODE: "1", PATH: process.env.PATH ?? "" },
+    stdio: "ignore",
+  });
+  try {
+    if (child.pid === undefined) throw new Error("P7 process probe has no leader");
+    const deadline = Date.now() + 2_000;
+    while (!existsSync(descendantPidPath) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    if (!existsSync(descendantPidPath)) {
+      throw new Error("P7 process probe did not create a descendant");
+    }
+    const descendantPid = Number(readFileSync(descendantPidPath, "utf8").trim());
+    if (!Number.isSafeInteger(descendantPid) || descendantPid <= 0) {
+      throw new Error("P7 process probe produced an invalid descendant");
+    }
+    const childExit = new Promise<void>((resolve) => {
+      child.once("exit", () => resolve());
+    });
+    killProcessGroup(child.pid);
+    // A second cleanup request must remain harmless when the group disappeared
+    // between the two observations.
+    killProcessGroup(child.pid);
+    await childExit;
+    await waitForP7ProcessGone(descendantPid, 2_000);
+    if (processGroupIsAlive(child.pid)) throw new Error("P7 process group survived cleanup");
+    if (!existsSync(descendantPidPath)) {
+      throw new Error("P7 process probe lost its cleanup evidence");
+    }
+    rmSync(privateRoot, { recursive: true, force: true });
+    if (existsSync(privateRoot)) throw new Error("P7 process private root survived cleanup");
+    return p7SecuritySmokeResult("P7-A-PROCESS-002");
+  } finally {
+    if (child.pid !== undefined && processGroupIsAlive(child.pid)) killProcessGroup(child.pid);
+    rmSync(privateRoot, { recursive: true, force: true });
+  }
+}
+
+export async function runP7PackagedSecuritySmoke(
+  options: Readonly<{
+    webContents: ProviderCredentialProbePort;
+    isolation: P7SecuritySmokeIsolation;
+    packagedAppAsar: string;
+  }>,
+): Promise<readonly P7SecuritySmokeResult[]> {
+  const renderer = await runP7RendererNetworkSmoke(options.webContents, options.isolation.target);
+  const credential = await runP7ProviderCredentialSmoke(options.webContents);
+  const sandbox = await runSandboxNetworkProbe(options.isolation);
+  const worker = await runP7WorkerAdmissionSmoke(options.isolation);
+  const network =
+    sandbox.networkDenied && sandbox.hostReadDenied
+      ? p7SecuritySmokeResult("P7-A-NETWORK-001")
+      : (() => {
+          throw new Error("P7 Worker network boundary was not physically denied");
+        })();
+  const processCleanup = await runP7ProcessCleanupSmoke(options.isolation);
+  const artifact = await runP7ArtifactTrustSmoke(options.isolation, options.packagedAppAsar);
+  return Object.freeze([renderer, ...credential, worker, network, processCleanup, artifact]);
 }

@@ -7,12 +7,48 @@ import { spawn, spawnSync } from "node:child_process";
 
 const repositoryRoot = process.cwd();
 const marker = "ACTESTRA_P7_SECURITY_SMOKE_RESULT ";
-const packagedCaseIds = ["P7-A-RENDERER-002"];
+
+function loadPackagedCaseIds() {
+  const result = spawnSync(
+    "bun",
+    [
+      "-e",
+      "import { P7_ABUSE_CASES } from './tests/security/abuseCaseCatalog.ts'; process.stdout.write(JSON.stringify(P7_ABUSE_CASES));",
+    ],
+    { cwd: repositoryRoot, encoding: "utf8", stdio: "pipe" },
+  );
+  if (result.status !== 0 || result.error) {
+    throw new Error("security catalog could not be loaded");
+  }
+  let catalog;
+  try {
+    catalog = JSON.parse(result.stdout);
+  } catch {
+    throw new Error("security catalog output is invalid");
+  }
+  if (!Array.isArray(catalog)) throw new Error("security catalog is not an array");
+  const ids = catalog
+    .filter(
+      (entry) =>
+        typeof entry?.id === "string" &&
+        Array.isArray(entry.requiredLayers) &&
+        entry.requiredLayers.includes(4),
+    )
+    .map((entry) => entry.id);
+  if (ids.length === 0 || new Set(ids).size !== ids.length) {
+    throw new Error("packaged security catalog layer set is not closed");
+  }
+  return Object.freeze(ids);
+}
+
+const packagedCaseIds = loadPackagedCaseIds();
 const timeoutMs = Number(process.env.ACTESTRA_P7_SECURITY_SMOKE_TIMEOUT_MS ?? 60_000);
 const maxOutputBytes = Number(
   process.env.ACTESTRA_P7_SECURITY_SMOKE_MAX_OUTPUT_BYTES ?? 2 * 1024 * 1024,
 );
 const appArgument = process.argv[2];
+const runnerArtifactDirectory = process.env.ACTESTRA_P7_SECURITY_SMOKE_RUNNER_ARTIFACT_DIRECTORY;
+const runnerManifestSha256 = process.env.ACTESTRA_P7_SECURITY_SMOKE_RUNNER_MANIFEST_SHA256;
 
 function fail(message) {
   console.error(`P7 packaged security smoke: evidence-incomplete: ${message}`);
@@ -61,7 +97,14 @@ function sanitizedEnvironment(isolation) {
     ACTESTRA_P7_SECURITY_SMOKE_SENTINEL: isolation.sentinel,
     ACTESTRA_P7_SECURITY_SMOKE_WORKSPACE: isolation.workspace,
     ACTESTRA_P7_SECURITY_SMOKE_EVIDENCE: isolation.evidence,
+    ACTESTRA_P7_SECURITY_SMOKE_HOST_READ_PROBE: isolation.hostReadProbe,
     ACTESTRA_P7_SECURITY_SMOKE_TARGET: isolation.target,
+    ...(runnerArtifactDirectory === undefined
+      ? {}
+      : { ACTESTRA_P7_SECURITY_SMOKE_RUNNER_ARTIFACT_DIRECTORY: runnerArtifactDirectory }),
+    ...(runnerManifestSha256 === undefined
+      ? {}
+      : { ACTESTRA_P7_SECURITY_SMOKE_RUNNER_MANIFEST_SHA256: runnerManifestSha256 }),
     HOME: isolation.home,
     TMPDIR: isolation.temp,
   };
@@ -101,14 +144,17 @@ async function createIsolation() {
   const address = server.address();
   if (address === null || typeof address === "string")
     throw new Error("hostile listener failed to bind");
+  const hostReadRoot = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-p7-host-read-"));
   const isolation = {
     root,
+    hostReadRoot,
     userData: path.join(root, "user-data"),
     home: path.join(root, "home"),
     temp: path.join(root, "temp"),
     workspace: path.join(root, "workspace"),
     sentinel: path.join(root, "protected-sentinel.txt"),
     evidence: path.join(root, "p7-evidence.json"),
+    hostReadProbe: path.join(hostReadRoot, "protected-host-read.txt"),
     target: `http://${hostileAddress}:${address.port}/p7-denied`,
     hostileHits: 0,
     server,
@@ -122,6 +168,7 @@ async function createIsolation() {
     fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
   }
   fs.writeFileSync(isolation.sentinel, "P7 protected sentinel\n", { mode: 0o600 });
+  fs.writeFileSync(isolation.hostReadProbe, "P7 protected host read\n", { mode: 0o600 });
   fs.writeFileSync(path.join(isolation.workspace, "tracked.txt"), "P7 protected Git file\n");
   git("git", ["init", "-q"], isolation.workspace);
   git("git", ["config", "user.email", "p7-smoke@example.invalid"], isolation.workspace);
@@ -188,15 +235,43 @@ function assertProtectedState(isolation, sentinelBytes, head) {
   }
 }
 
-function validateDurableEvidence(isolation) {
+function arraysEqual(left, right) {
+  return (
+    Array.isArray(left) &&
+    Array.isArray(right) &&
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
+  );
+}
+
+function validateDurableEvidence(isolation, results) {
   const contents = fs.readFileSync(isolation.evidence, "utf8");
-  const evidence = JSON.parse(contents);
+  let evidence;
+  try {
+    evidence = JSON.parse(contents);
+  } catch {
+    throw new Error("durable security evidence is missing or invalid");
+  }
+  const expectedIds = results.map((result) => result.id);
+  const expectedOutcomes = results.map((result) => result.outcome);
+  const expectedSideEffectCounts = results.map((result) => result.sideEffectCount);
+  const exactKeys = ["ids", "outcomes", "redacted", "schemaVersion", "sideEffectCounts"];
+  const actualKeys =
+    typeof evidence === "object" && evidence !== null && !Array.isArray(evidence)
+      ? Object.keys(evidence).sort()
+      : [];
   if (
+    actualKeys.join("\0") !== exactKeys.join("\0") ||
     evidence?.schemaVersion !== 1 ||
     evidence.redacted !== true ||
-    !Array.isArray(evidence.ids) ||
+    !arraysEqual(evidence.ids, expectedIds) ||
+    !arraysEqual(evidence.outcomes, expectedOutcomes) ||
+    !arraysEqual(evidence.sideEffectCounts, expectedSideEffectCounts) ||
     evidence.ids.length !== packagedCaseIds.length ||
-    evidence.ids.some((id) => !packagedCaseIds.includes(id))
+    evidence.ids.some((id) => !packagedCaseIds.includes(id)) ||
+    new Set(evidence.ids).size !== packagedCaseIds.length ||
+    evidence.outcomes.some((outcome) => outcome !== "denied-safe") ||
+    evidence.sideEffectCounts.some((count) => !Number.isSafeInteger(count) || count !== 0)
   ) {
     throw new Error("durable security evidence is missing or invalid");
   }
@@ -243,7 +318,7 @@ function validateResults(output) {
 }
 
 async function main() {
-  if (packagedCaseIds.length !== 1 || new Set(packagedCaseIds).size !== 1) {
+  if (packagedCaseIds.length === 0 || new Set(packagedCaseIds).size !== packagedCaseIds.length) {
     throw new Error("packaged case set is not closed");
   }
   const executable = appExecutable(appArgument);
@@ -293,8 +368,8 @@ async function main() {
         `app exited before acceptance: ${String(outcome.code)}/${String(outcome.signal)}`,
       );
     }
-    validateResults(output);
-    validateDurableEvidence(isolation);
+    const results = validateResults(output);
+    validateDurableEvidence(isolation, results);
     assertProtectedState(isolation, sentinelBytes, head);
     assertHostileListenerUnused(isolation);
     assertNoResidue(isolation, observedPids);
@@ -308,6 +383,7 @@ async function main() {
     }
     killOwnedResidue(isolation);
     fs.rmSync(isolation.root, { recursive: true, force: true });
+    fs.rmSync(isolation.hostReadRoot, { recursive: true, force: true });
   }
 }
 

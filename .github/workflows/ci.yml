@@ -127,8 +127,32 @@ jobs:
       - name: Verify packaged identity and product boundary
         run: bun run verify:package -- .actestra/aionui-v2.1.41/out/mac-arm64/Actestra.app
 
+      - name: Install pinned Goose runner audit tools for package trust
+        run: bun run goose:runner:tools
+
+      - name: Build and admit Goose runner for package trust
+        run: bun run goose:runner:build
+
+      - name: Compute external package trust roots
+        id: p7-trust-roots
+        shell: bash
+        run: |
+          echo "manifest_sha256=$(shasum -a 256 .actestra/goose-runner/aarch64-apple-darwin/actestra-goose-runner.manifest.json | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+          echo "output_sha256=$(bun scripts/p7-package-output-digest.mjs)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify P7 packaged package trust
+        run: bun run verify:p7-package
+        env:
+          ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIRECTORY: .actestra/goose-runner/aarch64-apple-darwin
+          ACTESTRA_GOOSE_RUNNER_TARGET_TRIPLE: aarch64-apple-darwin
+          ACTESTRA_GOOSE_RUNNER_MANIFEST_SHA256: ${{ steps.p7-trust-roots.outputs.manifest_sha256 }}
+          ACTESTRA_AIONUI_PACKAGED_OUTPUT_SHA256: ${{ steps.p7-trust-roots.outputs.output_sha256 }}
+
       - name: Smoke materialized AionUi General Work from clean profiles
         run: bun run smoke:aionui-general-work
 
       - name: Smoke packaged P7 security boundaries from clean profiles
         run: bun run smoke:p7-security
+        env:
+          ACTESTRA_P7_SECURITY_SMOKE_RUNNER_ARTIFACT_DIRECTORY: ${{ github.workspace }}/.actestra/goose-runner/aarch64-apple-darwin
+          ACTESTRA_P7_SECURITY_SMOKE_RUNNER_MANIFEST_SHA256: ${{ steps.p7-trust-roots.outputs.manifest_sha256 }}

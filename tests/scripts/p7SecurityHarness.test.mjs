@@ -8,7 +8,15 @@ import { describe, expect, it } from "vitest";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const script = path.join(root, "scripts/smoke-p7-security.mjs");
-const packagedIds = ["P7-A-RENDERER-002"];
+const packagedIds = [
+  "P7-A-RENDERER-002",
+  "P7-A-CREDENTIAL-001",
+  "P7-A-CREDENTIAL-003",
+  "P7-A-WORKER-001",
+  "P7-A-NETWORK-001",
+  "P7-A-PROCESS-002",
+  "P7-A-ARTIFACT-001",
+];
 
 function fakeApp({
   results = packagedIds,
@@ -17,6 +25,7 @@ function fakeApp({
   malformedMarker = false,
   outcome = "denied-safe",
   durableEvidence = true,
+  durableEvidencePatch = {},
   mutateSentinel = false,
   mutateGit = false,
   spawnResidual = false,
@@ -51,7 +60,14 @@ ${
 for (const name of ["ACTESTRA_USER_DATA_DIR", "ACTESTRA_E2E_HOME_DIR", "ACTESTRA_E2E_TEMP_DIR", "HOME", "TMPDIR"]) {
   const value = process.env[name];
   if (!isolationRoot || !value || path.relative(isolationRoot, value).startsWith("..")) process.exit(41);
-}`
+}
+const hostReadProbe = process.env.ACTESTRA_P7_SECURITY_SMOKE_HOST_READ_PROBE;
+if (
+  !hostReadProbe ||
+  !path.isAbsolute(hostReadProbe) ||
+  !path.relative(isolationRoot, hostReadProbe).startsWith("..") ||
+  !fs.statSync(hostReadProbe, { throwIfNoEntry: false })?.isFile()
+) process.exit(42);`
     : ""
 }
 ${secret ? "console.log('sk-abcdefghijklmnop1234567890');" : ""}
@@ -61,7 +77,7 @@ ${mutateSentinel ? "fs.writeFileSync(process.env.ACTESTRA_P7_SECURITY_SMOKE_SENT
 ${mutateGit ? "fs.writeFileSync(path.join(process.env.ACTESTRA_P7_SECURITY_SMOKE_WORKSPACE, 'tracked.txt'), 'changed');" : ""}
 ${
   durableEvidence
-    ? `fs.writeFileSync(process.env.ACTESTRA_P7_SECURITY_SMOKE_EVIDENCE, JSON.stringify({ schemaVersion: 1, ids: ${JSON.stringify(results)}, outcomes: ${JSON.stringify(results.map(() => outcome))}, redacted: true }));`
+    ? `fs.writeFileSync(process.env.ACTESTRA_P7_SECURITY_SMOKE_EVIDENCE, JSON.stringify({ schemaVersion: 1, ids: ${JSON.stringify(results)}, outcomes: ${JSON.stringify(results.map(() => outcome))}, sideEffectCounts: ${JSON.stringify(results.map(() => 0))}, redacted: true, ...${JSON.stringify(durableEvidencePatch)} }));`
     : ""
 }
 ${spawnResidual ? "spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)', process.env.ACTESTRA_E2E_ISOLATION_ROOT], { detached: true, stdio: 'ignore' }).unref();" : ""}
@@ -108,6 +124,8 @@ function run(app, overrides = {}) {
     ACTESTRA_P7_SECURITY_SMOKE_SENTINEL: isolation.sentinel,
     ACTESTRA_P7_SECURITY_SMOKE_WORKSPACE: isolation.workspace,
     ACTESTRA_P7_SECURITY_SMOKE_EVIDENCE: isolation.evidence,
+    ACTESTRA_P7_SECURITY_SMOKE_RUNNER_ARTIFACT_DIRECTORY: path.join(root, "runner"),
+    ACTESTRA_P7_SECURITY_SMOKE_RUNNER_MANIFEST_SHA256: "a".repeat(64),
   };
   const result = spawnSync(process.execPath, [script, app], {
     encoding: "utf8",
@@ -131,7 +149,7 @@ describe("packaged P7 security harness", () => {
   it("accepts only a complete redacted denied-safe catalog with independent evidence", () => {
     withFixture({}, (result) => {
       expect(result.status).toBe(0);
-      expect(result.stdout).toContain("1 denied-safe");
+      expect(result.stdout).toContain("7 denied-safe");
     });
   });
 
@@ -147,6 +165,27 @@ describe("packaged P7 security harness", () => {
     ["unknown case", { results: [...packagedIds.slice(1), "P7-A-UNKNOWN-999"] }],
     ["unsupported outcome", { outcome: "unsupported-platform" }],
     ["non-denied outcome", { outcome: "security-boundary-violated" }],
+    [
+      "durable duplicate ID",
+      { durableEvidencePatch: { ids: [...packagedIds.slice(0, -1), packagedIds[0]] } },
+    ],
+    [
+      "durable outcome drift",
+      {
+        durableEvidencePatch: {
+          outcomes: [...packagedIds.slice(0, -1).map(() => "denied-safe"), "unsupported-platform"],
+        },
+      },
+    ],
+    [
+      "durable side-effect drift",
+      {
+        durableEvidencePatch: {
+          sideEffectCounts: [...packagedIds.slice(0, -1).map(() => 0), 1],
+        },
+      },
+    ],
+    ["durable extra field", { durableEvidencePatch: { workspacePath: "/Users/private" } }],
     ["early exit", { exitCode: 1 }],
     ["secret output", { secret: true }],
     ["malformed marker", { malformedMarker: true }],

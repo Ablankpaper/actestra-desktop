@@ -54,6 +54,7 @@ const EXPECTED_CASE_KEYS = [
   "invariantId",
   "risk",
   "minimumLayer",
+  "requiredLayers",
   "testFile",
   "testName",
   "expectedBoundary",
@@ -63,6 +64,37 @@ const EXPECTED_CASE_KEYS = [
   "supportedPlatforms",
   "p8Obligation",
 ] as const;
+
+const EXPECTED_REQUIRED_LAYERS: Readonly<Record<string, readonly number[]>> = {
+  "P7-A-RENDERER-001": [1],
+  "P7-A-RENDERER-002": [1, 4],
+  "P7-A-IPC-001": [2],
+  "P7-A-IPC-002": [2],
+  "P7-A-CREDENTIAL-001": [2, 4],
+  "P7-A-CREDENTIAL-002": [2],
+  "P7-A-CREDENTIAL-003": [2, 4],
+  "P7-A-WORKSPACE-001": [2],
+  "P7-A-WORKSPACE-002": [2],
+  "P7-A-WORKSPACE-003": [2],
+  "P7-A-DELIVERY-001": [2],
+  "P7-A-DELIVERY-002": [2],
+  "P7-A-TOOL-001": [2],
+  "P7-A-TOOL-002": [2, 3],
+  "P7-A-APPROVAL-001": [2],
+  "P7-A-APPROVAL-002": [2],
+  "P7-A-MCP-001": [3],
+  "P7-A-MCP-002": [3],
+  "P7-A-MCP-003": [3],
+  "P7-A-WORKER-001": [3, 4],
+  "P7-A-NETWORK-001": [3, 4],
+  "P7-A-PROCESS-001": [3],
+  "P7-A-PROCESS-002": [3, 4],
+  "P7-A-PERSISTENCE-001": [2],
+  "P7-A-PERSISTENCE-002": [2],
+  "P7-A-REDACTION-001": [2, 3],
+  "P7-A-REDACTION-002": [2],
+  "P7-A-ARTIFACT-001": [1, 2, 4],
+};
 
 describe("P7 abuse-case catalog contract", () => {
   it("exports the closed invariant and outcome vocabularies", () => {
@@ -93,6 +125,14 @@ describe("P7 abuse-case catalog contract", () => {
       expect(EXPECTED_INVARIANT_IDS).toContain(abuseCase.invariantId);
       expect(["critical", "high", "medium", "low"]).toContain(abuseCase.risk);
       expect([1, 2, 3, 4]).toContain(abuseCase.minimumLayer);
+      expect(abuseCase.requiredLayers).toEqual(EXPECTED_REQUIRED_LAYERS[abuseCase.id]);
+      expect(abuseCase.requiredLayers).toContain(abuseCase.minimumLayer);
+      expect(abuseCase.requiredLayers).not.toHaveLength(0);
+      expect(
+        abuseCase.requiredLayers.every(
+          (layer, index, layers) => [1, 2, 3, 4].includes(layer) && layers.indexOf(layer) === index,
+        ),
+      ).toBe(true);
       expect(abuseCase.testFile).toMatch(/^tests\/security\/[^/]+\.test\.(?:ts|mjs)$/u);
       expect(abuseCase.testFile).not.toContain("..");
       expect(abuseCase.testName).toContain(abuseCase.id);
