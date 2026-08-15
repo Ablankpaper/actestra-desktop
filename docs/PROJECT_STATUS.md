@@ -4,14 +4,14 @@ Last updated: 2026-08-15
 
 ## Current phase
 
-### 2026-08-15 P7.1 exact-variant closure in progress
+### 2026-08-15 P7.1 exact-variant local gate complete
 
 The current local delivery branch is `codex/p7-1-security-closure-final` on
 implementation/test parent
-`96d3796c2c7e0b63286ff4ec42a3ce86abbb0af1`, based on
+`2301dfc7a5da1cdd5cf102110fdc9ce0d0173ec4`, based on
 `origin/main@ee28c1d9138fa474704b8fd083e2511da64dee3e`. P7.1 now uses 168 exact
 catalog variants rather than treating one broad test per abuse-case row as
-complete. Tasks 1-5 are locally bound. Task 4 contributes 55 exact
+complete. Tasks 1-6 are locally bound. Task 4 contributes 55 exact
 Workspace/Delivery/Tool Gateway/Approval variants plus one positive apply
 control; Task 5 contributes all 42 exact MCP/Worker/Network/Process variants.
 Task 5's focused suite passes 42/42, and its seven-file adjacent lifecycle gate
@@ -28,12 +28,19 @@ executor again. The repaired flow preserves the existing one-shot
 `approval-replayed` classification while preventing an ambiguous second
 effect.
 
-`bun run test:security` is intentionally not green yet: it now reports 37
-unexecuted exact variants, all assigned to the planned Task 6 Persistence/
-Redaction/Artifact batch. No Task 1-5 variant is missing. The older 28/28
-packaged evidence below remains historical evidence for its reviewed bytes; it
-does not prove the expanded 168-variant catalog. P7.1 therefore remains local,
-unmerged, unreleased, and not accepted.
+Task 6 binds all 37 exact Persistence/Redaction/Artifact variants. Its focused
+suite passes 38/38 including one trusted-artifact positive control, and its
+eight-file adjacent persistence, protocol, incident, orchestrator, artifact,
+and downstream suite passes 134/134. `bun run test:security` exits 0 with all
+28 cases and 168 exact variants `denied-safe`; the frozen AionUI foundation and
+downstream overlay checks also pass. No Task 6 attack exposed a production
+defect, so this batch changes only the existing security test file.
+
+The older 28/28 packaged evidence below remains historical evidence for its
+reviewed bytes; it does not prove this expanded 168-variant parent. A fresh
+root `check`, development app build, General Work smoke, packaged P7 smoke,
+exact-head CI, review, merge, and merged-main CI remain required. P7.1 is still
+local, unmerged, unreleased, and not accepted.
 
 ### 2026-08-15 current verification: P7.1 implementation parent and packaged development gate
 
