@@ -406,6 +406,9 @@ describe("P7 abuse-case catalog contract", () => {
 
   it("keeps every case and variant metadata-only and structurally closed", () => {
     const bindings = new Set<string>();
+    const p8Obligation = P7_ABUSE_CASES[0]?.p8Obligation;
+    expect(p8Obligation).toEqual(expect.any(String));
+    expect(p8Obligation?.length).toBeGreaterThan(0);
     for (const abuseCase of P7_ABUSE_CASES) {
       expect(Object.keys(abuseCase).sort()).toEqual([...EXPECTED_CASE_KEYS].sort());
       expect(abuseCase.id).toMatch(/^P7-A-[A-Z]+-\d{3}$/u);
@@ -426,19 +429,8 @@ describe("P7 abuse-case catalog contract", () => {
         abuseCase.expectedIncidentCode === null ||
           typeof abuseCase.expectedIncidentCode === "string",
       ).toBe(true);
-      expect(abuseCase.supportedPlatforms).toContain("darwin");
-      expect(
-        abuseCase.supportedPlatforms.every((platform) =>
-          ["darwin", "win32", "linux"].includes(platform),
-        ),
-      ).toBe(true);
-      if (
-        !abuseCase.supportedPlatforms.includes("win32") ||
-        !abuseCase.supportedPlatforms.includes("linux")
-      ) {
-        expect(abuseCase.p8Obligation).toEqual(expect.any(String));
-        expect(abuseCase.p8Obligation?.length).toBeGreaterThan(0);
-      }
+      expect(abuseCase.supportedPlatforms).toEqual(["darwin"]);
+      expect(abuseCase.p8Obligation).toBe(p8Obligation);
 
       const expectedVariantPrefix = abuseCase.id.replace("P7-A-", "P7-V-");
       for (const variant of abuseCase.variants) {
