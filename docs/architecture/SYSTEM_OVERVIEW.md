@@ -17,17 +17,24 @@ delivery batch recorded in project status. A generic supervised planner
 boundary exists locally, but CrewAI itself is not imported, admitted, or
 packaged.
 
-The current P7.1 security baseline is verified locally on macOS arm64 at
-implementation/test parent
-`a8292e6433eacc3414dcc9408e10df7d6031b9a3` on the P7.1 delivery branch:
-all 28 catalog abuse cases are `denied-safe`, the development package passes
-trust checks, and the packaged security hook exercises the seven required
-Layer-4 cases. Exact-head CI and merge evidence for this parent remain open;
-this is a development verification boundary only.
-P7.2 Worker resource/process reliability, P7.3 database backup and migration
-rollback, P7.4 diagnostic export and audit retention, Windows/Linux enforcement,
-formal signing, release, deployment, and final user acceptance remain outside
-the verified system state.
+The P7.1 development integration gate is accepted on `main` through pull
+request 56, squash merge `d7db878ce0385a14dae579bea3fe299e17e856b7`, and
+passing exact-head and merged-main CI. Its 28-case abuse catalog and seven-case
+packaged macOS smoke remain the accepted security baseline.
+
+P7.2 Worker resource/process reliability now has a local implementation for the
+General Worker and Goose Worker only. Main owns their fixed profiles and the
+closed terminal vocabulary: `worker-resource-cpu-exceeded`,
+`worker-resource-memory-exceeded`, `worker-resource-output-exceeded`,
+`worker-resource-timeout`, `worker-resource-storage-exceeded`,
+`worker-process-tree-violated`, and
+`worker-resource-enforcement-unavailable`. The implementation preserves the
+existing Electron utility process, Goose runner, supervisor, Tool Gateway,
+macOS sandbox, and downstream overlay boundaries. Final packaged hostile smoke,
+pull-request CI, merge, and merged-main CI remain open. P7.3 database backup and
+migration rollback, P7.4 diagnostic export and audit retention, Windows/Linux
+enforcement, formal signing, release, deployment, and final user acceptance
+remain outside the verified system state.
 
 ## Context
 

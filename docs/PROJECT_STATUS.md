@@ -1,8 +1,35 @@
 # Project Status
 
-Last updated: 2026-08-15
+Last updated: 2026-08-16
 
 ## Current phase
+
+### 2026-08-16 P7.2 local implementation gate
+
+P7.2 is implemented locally on branch `codex/p7-2-resource-reliability` from
+`origin/main@1de868de0192230a0e0776a589c04f9c430ac136`, with reviewed
+implementation/test parent `e4a81ff`. The scope is scheme A: General Worker and
+Goose Worker only. Planner, SQLite utility, Renderer/UI, P7.3, P7.4, and P8 are
+not included, and the frozen `foundation/` snapshot is unchanged.
+
+The immutable budget, supervisor terminalization, General metrics enforcement,
+Goose native limits and production fork denial, bounded output/private storage,
+downstream composition, and hostile packaged-smoke harness are present. The
+Task 6 compatibility evidence is 5 test files and 32 tests pass; strict
+TypeScript, zero-warning lint, formatting, and downstream materialization pass;
+downstream `package` compilation exits 0. The materialized main bundle contains
+the P7.2 result and failure markers. These results verify source and compilable
+package composition, not physical Electron resource enforcement.
+
+- Packaged `.app` hostile smoke: not yet verified.
+- Exact-head pull-request CI: not yet verified.
+- Merge and merged-main CI: not yet verified.
+- Release, deployment, and user acceptance: not claimed.
+
+The next local gate is one final development `.app` build followed by package
+trust, P7.1 compatibility smokes, the five P7.2 hostile probes, and a bounded
+residual-process scan. Results will be recorded only after those exact commands
+run on the final bytes.
 
 ### 2026-08-15 P7.1 development integration gate accepted on main
 
