@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   AgentAdapterError,
+  createWorkerResourceIncident,
   type AgentAttemptEvidence,
   type CoreEvent,
   type PersistEventResult,
@@ -148,5 +149,40 @@ describe("terminal agent attempt evidence release", () => {
       AgentAdapterError,
     );
     expect(supervisor.snapshot(FIXTURE_AGENT_SESSION_ID).state).toBe("running");
+  });
+
+  it("persists bounded resource incident metadata before releasing supervisor memory", async () => {
+    const { adapter, supervisor, store, coordinator } = createHarness();
+    adapter.registerPlan(FIXTURE_AGENT_SESSION_ID, {
+      steps: [],
+    });
+    await supervisor.start(createAgentStartRequest());
+    const incident = createWorkerResourceIncident({
+      workerKind: "general",
+      attemptId: FIXTURE_AGENT_SESSION_ID,
+      code: "worker-resource-memory-exceeded",
+      resourceKind: "private-memory",
+      observed: 536_870_913,
+      limit: 536_870_912,
+      termination: "forced",
+    });
+
+    await supervisor.failForResource(FIXTURE_AGENT_SESSION_ID, incident);
+
+    await expect(coordinator.persistAndRelease(FIXTURE_AGENT_SESSION_ID)).resolves.toMatchObject({
+      evidence: {
+        state: "failed",
+        incident: {
+          code: "worker-resource-memory-exceeded",
+          resource: incident,
+        },
+      },
+    });
+    const encoded = JSON.stringify(store.attempts);
+    expect(encoded).not.toContain("prompt");
+    expect(encoded).not.toContain("output");
+    expect(encoded).not.toContain("path");
+    expect(encoded).not.toContain("credential");
+    expect(supervisor.listAttempts()).toEqual([]);
   });
 });

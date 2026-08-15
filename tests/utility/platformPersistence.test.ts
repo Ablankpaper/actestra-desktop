@@ -183,6 +183,50 @@ describe("SQLite platform evidence", () => {
     await reopened.close();
   });
 
+  it("round-trips bounded resource incident metadata and rejects extra private fields", async () => {
+    const userDataPath = createTestDirectory();
+    const persistence = openSqliteCorePersistence(userDataPath);
+    const resource = {
+      workerKind: "general",
+      attemptId: sessionId("session-platform-resource"),
+      code: "worker-resource-memory-exceeded",
+      resourceKind: "private-memory",
+      observed: 536_870_913,
+      limit: 536_870_912,
+      termination: "forced",
+    } as const;
+    const evidence = createAttemptEvidence({
+      sessionId: resource.attemptId,
+      state: "failed",
+      taskState: "failed",
+      incident: {
+        code: resource.code,
+        occurredAt: instant("2026-07-28T09:00:02.000Z"),
+        resource,
+      },
+    } as unknown as Partial<AgentAttemptEvidence>);
+
+    await expect(persistence.appendAgentAttemptEvidence(evidence)).resolves.toEqual({
+      status: "appended",
+    });
+    await expect(persistence.listRecentAgentAttemptEvidence(50)).resolves.toEqual([evidence]);
+    await expect(
+      persistence.appendAgentAttemptEvidence({
+        ...evidence,
+        sessionId: sessionId("session-platform-resource-private"),
+        incident: {
+          ...evidence.incident,
+          resource: {
+            ...resource,
+            attemptId: sessionId("session-platform-resource-private"),
+            path: "/private/workspace",
+          },
+        },
+      } as unknown as AgentAttemptEvidence),
+    ).rejects.toMatchObject({ code: "invalid-record" });
+    await persistence.close();
+  });
+
   it("rejects a corrupted indexed evidence projection", async () => {
     const userDataPath = createTestDirectory();
     const persistence = openSqliteCorePersistence(userDataPath);

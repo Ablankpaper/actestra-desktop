@@ -131,6 +131,9 @@ function immutableAttempt(snapshot: AgentAttemptSnapshot): GeneralWorkAttemptRec
           incident: Object.freeze({
             code: snapshot.incident.code,
             occurredAt: snapshot.incident.occurredAt,
+            ...(snapshot.incident.resource === undefined
+              ? {}
+              : { resource: Object.freeze({ ...snapshot.incident.resource }) }),
           }),
         }),
   });

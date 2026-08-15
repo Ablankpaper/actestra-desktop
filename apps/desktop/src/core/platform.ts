@@ -22,6 +22,7 @@ import {
   type AuditRecord,
   type AuditRecordId,
 } from "./privilegedServices";
+import { assertWorkerResourceIncident, type WorkerResourceIncident } from "./workerResourceBudget";
 
 export const PLATFORM_EVIDENCE_CONTRACT_VERSION = 1 as const;
 
@@ -39,6 +40,7 @@ export type TerminalAgentAttemptState = (typeof TERMINAL_AGENT_ATTEMPT_STATES)[n
 export interface AgentSupervisorIncidentEvidence {
   readonly code: string;
   readonly occurredAt: Instant;
+  readonly resource?: WorkerResourceIncident;
 }
 
 export interface AgentAttemptEvidence {
@@ -144,9 +146,12 @@ function assertNonNegativeSafeInteger(value: unknown, label: string): asserts va
   }
 }
 
-function assertIncident(value: unknown): asserts value is AgentSupervisorIncidentEvidence {
+function assertIncident(
+  value: unknown,
+  attemptId: SessionId,
+): asserts value is AgentSupervisorIncidentEvidence {
   assertRecord(value, "Agent attempt evidence.incident");
-  assertExactKeys(value, ["code", "occurredAt"], "Agent attempt evidence.incident");
+  assertExactKeys(value, ["code", "occurredAt", "resource"], "Agent attempt evidence.incident");
   if (
     typeof value.code !== "string" ||
     value.code.length === 0 ||
@@ -159,6 +164,20 @@ function assertIncident(value: unknown): asserts value is AgentSupervisorInciden
     );
   }
   assertInstant(value.occurredAt, "Agent attempt evidence.incident.occurredAt");
+  if (value.resource !== undefined) {
+    try {
+      assertWorkerResourceIncident(value.resource);
+    } catch (error) {
+      throw new PlatformEvidenceError("Agent attempt evidence.incident.resource is invalid", {
+        cause: error,
+      });
+    }
+    if (value.resource.attemptId !== attemptId || value.resource.code !== value.code) {
+      throw new PlatformEvidenceError(
+        "Agent attempt evidence incident resource identity is inconsistent",
+      );
+    }
+  }
 }
 
 const TASK_STATES: readonly TaskState[] = [
@@ -212,6 +231,7 @@ export function assertAgentAttemptEvidence(value: unknown): asserts value is Age
   assertIdentifier(value.taskId, taskId, "Agent attempt evidence.taskId");
   assertIdentifier(value.correlationId, correlationId, "Agent attempt evidence.correlationId");
   assertIdentifier(value.sessionId, sessionId, "Agent attempt evidence.sessionId");
+  const evidenceSessionId = value.sessionId as SessionId;
   assertIdentifier(value.workerId, workerId, "Agent attempt evidence.workerId");
   assertIdentifier(value.streamId, eventStreamId, "Agent attempt evidence.streamId");
 
@@ -274,7 +294,7 @@ export function assertAgentAttemptEvidence(value: unknown): asserts value is Age
     throw new PlatformEvidenceError("Only cancelled attempt evidence may be force-cancelled");
   }
   if (value.incident !== undefined) {
-    assertIncident(value.incident);
+    assertIncident(value.incident, evidenceSessionId);
     if (compareInstants(value.incident.occurredAt, value.startedAt) < 0) {
       throw new PlatformEvidenceError("Agent attempt incident cannot predate the attempt");
     }

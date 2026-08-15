@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
   CODING_ARTIFACT_PUBLISH_TOOL_ID,
@@ -37,12 +38,19 @@ import {
   type IsolatedCodingPatchSnapshot,
 } from "./isolatedCodingPatch";
 import { GooseCodingEvidenceCoordinator } from "./gooseCodingEvidenceCoordinator";
+import {
+  WorkerStorageBudgetError,
+  assertWorkerOutputWithinBudget,
+  assertWorkerPrivateStorageWithinBudget,
+  type WorkerStorageBudgetErrorCode,
+} from "./workerStorageBudget";
 
 export type GooseCodingArtifactPublisherErrorCode =
   | "invalid-config"
   | "invalid-decision"
   | "persistence-failed"
-  | "gateway-failed";
+  | "gateway-failed"
+  | WorkerStorageBudgetErrorCode;
 
 export class GooseCodingArtifactPublisherError extends Error {
   constructor(
@@ -241,6 +249,53 @@ function publicSnapshot(snapshot: IsolatedCodingPatchSnapshot): GooseCodingPubli
   });
 }
 
+async function assertPublishStorageBudget(
+  config: CreateGooseCodingArtifactPublisherOptions,
+): Promise<void> {
+  try {
+    await assertWorkerPrivateStorageWithinBudget(path.dirname(config.worktreeRoot));
+  } catch (error) {
+    if (error instanceof WorkerStorageBudgetError) {
+      const message = "The isolated Coding Worker exceeded its private storage boundary.";
+      await config.evidence.failPrompt({ errorCode: error.code, message });
+      throw new GooseCodingArtifactPublisherError(
+        error.code,
+        "Coding Artifact publish exceeded the Worker storage budget",
+        { cause: error },
+      );
+    }
+    throw new GooseCodingArtifactPublisherError(
+      "gateway-failed",
+      "Coding Artifact publish exceeded the Worker storage budget",
+      { cause: error },
+    );
+  }
+}
+
+async function assertPublishOutputBudget(
+  config: CreateGooseCodingArtifactPublisherOptions,
+  content: string,
+): Promise<void> {
+  try {
+    assertWorkerOutputWithinBudget(content);
+  } catch (error) {
+    if (error instanceof WorkerStorageBudgetError) {
+      const message = "The isolated Coding Worker exceeded its output boundary.";
+      await config.evidence.failPrompt({ errorCode: error.code, message });
+      throw new GooseCodingArtifactPublisherError(
+        error.code,
+        "Coding Artifact publish exceeded the Worker output budget",
+        { cause: error },
+      );
+    }
+    throw new GooseCodingArtifactPublisherError(
+      "gateway-failed",
+      "Coding Artifact publish exceeded the Worker output budget",
+      { cause: error },
+    );
+  }
+}
+
 export function createGooseCodingArtifactPublisher(
   config: CreateGooseCodingArtifactPublisherOptions,
 ): GooseCodingArtifactPublisher {
@@ -267,15 +322,18 @@ export function createGooseCodingArtifactPublisher(
         );
       }
       publishPromise ??= (async () => {
+        await assertPublishStorageBudget(config);
         const snapshot = await captureIsolatedCodingPatch({
           worktreeRoot: config.worktreeRoot,
           gitDirectory: config.gitDirectory,
           gitCommonDirectory: config.gitCommonDirectory,
         });
+        await assertPublishStorageBudget(config);
         if (snapshot.patchByteLength === 0) {
           await config.evidence.completeReadOnlyReview();
           return Object.freeze({ status: "unchanged", baseCommit: snapshot.baseCommit });
         }
+        await assertPublishOutputBudget(config, snapshot.patch);
         const digest = digestFor(config, snapshot);
         const requestId = toolRequestId(`request-coding-publish-${digest}`);
         const inputRef = toolInputReference(`coding-publish-input-${digest}`);
@@ -418,11 +476,14 @@ export function createGooseCodingArtifactPublisher(
           await config.evidence.completeDeniedPublish(operation);
           return Object.freeze({ status: "denied", approval: resolved });
         }
+        await assertPublishStorageBudget(config);
         const approvedSnapshot = await captureIsolatedCodingPatch({
           worktreeRoot: config.worktreeRoot,
           gitDirectory: config.gitDirectory,
           gitCommonDirectory: config.gitCommonDirectory,
         });
+        await assertPublishStorageBudget(config);
+        await assertPublishOutputBudget(config, approvedSnapshot.patch);
         if (!isDeepStrictEqual(approvedSnapshot, snapshot)) {
           await config.evidence.completeInvalidatedPublish(operation);
           throw new GooseCodingArtifactPublisherError(

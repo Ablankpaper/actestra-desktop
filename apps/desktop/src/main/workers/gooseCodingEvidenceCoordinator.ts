@@ -39,6 +39,7 @@ import {
   type TaskState,
   type ToolRequestId,
   type WorkerId,
+  type WorkerResourceIncidentCode,
   type WorkerState,
   type WorkspaceId,
 } from "../../core";
@@ -84,6 +85,16 @@ const DEFAULT_PROMPT_FAILURE_INCIDENT: GooseCodingPromptFailureIncident = Object
   errorCode: "goose-prompt-failed",
   message: "The isolated Goose prompt failed before review evidence was available.",
 });
+
+const WORKER_RESOURCE_FAILURE_CODES: ReadonlySet<WorkerResourceIncidentCode> = new Set([
+  "worker-resource-cpu-exceeded",
+  "worker-resource-memory-exceeded",
+  "worker-resource-output-exceeded",
+  "worker-resource-timeout",
+  "worker-resource-storage-exceeded",
+  "worker-process-tree-violated",
+  "worker-resource-enforcement-unavailable",
+]);
 
 function resolvePromptFailureIncident(
   incident: GooseCodingPromptFailureIncident | undefined,
@@ -608,7 +619,32 @@ export class GooseCodingEvidenceCoordinator implements GooseCodingToolEvidenceRe
         mayHaveExecuted: failure.mayHaveExecuted,
       });
       this.toolStates.set(operation.requestId, "terminal");
+      const resourceFailure = WORKER_RESOURCE_FAILURE_CODES.has(
+        failure.errorCode as WorkerResourceIncidentCode,
+      );
+      if (resourceFailure) {
+        this.queueEvent("worker.failed", {
+          errorCode: failure.errorCode,
+          message: failure.message,
+          retryable: false,
+        });
+        this.queueEvent("task.failed", {
+          from: "running",
+          to: "failed",
+          errorCode: failure.errorCode,
+          message: failure.message,
+        });
+      }
       await this.flushEvents();
+      if (resourceFailure) {
+        await this.reconcileProjection(
+          Object.freeze({
+            taskState: "failed",
+            sessionState: "failed",
+            workerState: "crashed",
+          }),
+        );
+      }
     });
   }
 

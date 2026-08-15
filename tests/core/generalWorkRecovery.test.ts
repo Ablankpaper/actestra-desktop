@@ -54,6 +54,68 @@ describe("general-work recovery contract", () => {
     expect(() => assertGeneralWorkCheckpointTransition(active, terminal)).not.toThrow();
   });
 
+  it("accepts only bounded resource incident metadata in a terminal checkpoint", () => {
+    const active = createGeneralWorkCheckpoint();
+    const resource = {
+      workerKind: "general",
+      attemptId: active.attempt.sessionId,
+      code: "worker-resource-cpu-exceeded",
+      resourceKind: "cpu",
+      observed: 31,
+      limit: 30,
+      termination: "requested",
+    } as const;
+    const terminal = {
+      ...active,
+      phase: "terminal-pending",
+      revision: 2,
+      attempt: {
+        ...active.attempt,
+        state: "failed",
+        taskState: "failed",
+        lastCoreEventSequence: 6,
+        disposed: true,
+        incident: {
+          code: resource.code,
+          occurredAt: instant("2026-07-28T06:00:06.000Z"),
+          resource,
+        },
+      },
+      events: [
+        ...active.events,
+        createEvent(5, "worker.failed", {
+          errorCode: resource.code,
+          message: "The Worker exceeded a resource boundary.",
+          retryable: false,
+        }),
+        createEvent(6, "task.failed", {
+          from: "blocked",
+          to: "failed",
+          errorCode: resource.code,
+          message: "The Worker exceeded a resource boundary.",
+        }),
+      ],
+      updatedAt: instant("2026-07-28T06:00:06.000Z"),
+    } as const;
+
+    expect(() => assertGeneralWorkCheckpoint(terminal)).not.toThrow();
+    expect(() =>
+      assertGeneralWorkCheckpoint({
+        ...terminal,
+        attempt: {
+          ...terminal.attempt,
+          incident: {
+            ...terminal.attempt.incident,
+            resource: {
+              ...resource,
+              path: "/private/workspace",
+            },
+          },
+        },
+      }),
+    ).toThrow(GeneralWorkRecoveryError);
+  });
+
   it("rejects identity reuse, skipped revisions, and active disposed records", () => {
     const active = createGeneralWorkCheckpoint();
     for (const invalid of [

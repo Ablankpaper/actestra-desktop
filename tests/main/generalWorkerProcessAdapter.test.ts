@@ -92,6 +92,30 @@ describe("General Worker process AgentAdapter v2", () => {
     expect(transport.killCount).toBeGreaterThanOrEqual(1);
   });
 
+  it("exposes only an explicitly provided bounded resource observation source", async () => {
+    const agentClock = clock();
+    const { adapter } = await openTestGeneralWorker(agentClock, {
+      executionMode: "no-tool-complete",
+      resourceObservation: () => ({
+        cpuSeconds: 3,
+        privateMemoryBytes: 4_096,
+      }),
+    });
+    expect(adapter.observeResources()).toEqual({
+      cpuSeconds: 3,
+      privateMemoryBytes: 4_096,
+    });
+    await adapter.close();
+
+    const withoutSource = await openTestGeneralWorker(clock(), {
+      executionMode: "no-tool-complete",
+    });
+    expect(() => withoutSource.adapter.observeResources()).toThrow(
+      "General Worker resource observation is unavailable",
+    );
+    await withoutSource.adapter.close();
+  });
+
   it("maps one typed tool result without giving the worker raw content", async () => {
     const agentClock = clock();
     const requestIdValue = toolRequestId("general-worker-tool-request");

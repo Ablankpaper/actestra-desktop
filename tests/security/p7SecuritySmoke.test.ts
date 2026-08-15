@@ -50,7 +50,7 @@ describe("P7 packaged security smoke contract", () => {
     }
   });
 
-  it("kills a real sandboxed probe process group from an executable outside denied roots", async () => {
+  it("kills a real E2E-only probe process group without weakening the production sandbox", async () => {
     const module = await import("../../apps/desktop/src/main/security/p7SecuritySmoke");
     const runProbe = (
       module as typeof module & {

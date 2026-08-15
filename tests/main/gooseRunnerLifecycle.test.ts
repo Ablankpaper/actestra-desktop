@@ -71,6 +71,8 @@ describe("Goose runner private lifecycle", () => {
       OTEL_TRACES_EXPORTER: "none",
       OTEL_METRICS_EXPORTER: "none",
       OTEL_LOGS_EXPORTER: "none",
+      ACTESTRA_GOOSE_CPU_SECONDS: "120",
+      ACTESTRA_GOOSE_ADDRESS_SPACE_BYTES: "1073741824",
     });
   });
 
@@ -180,6 +182,8 @@ describe("Goose runner private lifecycle", () => {
         "GOOSE_DISABLE_SESSION_NAMING",
         "GOOSE_PATH_ROOT",
         "GOOSE_TELEMETRY_OFF",
+        "ACTESTRA_GOOSE_CPU_SECONDS",
+        "ACTESTRA_GOOSE_ADDRESS_SPACE_BYTES",
         "HOME",
         "OTEL_LOGS_EXPORTER",
         "OTEL_METRICS_EXPORTER",

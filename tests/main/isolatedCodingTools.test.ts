@@ -40,6 +40,7 @@ import {
   type ToolId,
   type WorkspaceGrant,
 } from "../../apps/desktop/src/core";
+import { GOOSE_WORKER_RESOURCE_PROFILE } from "../../apps/desktop/src/core/workerResourceBudget";
 import { openTestPersistenceUtility } from "../fixtures/persistenceUtility";
 import {
   createIsolatedCodingToolPlatform,
@@ -420,6 +421,63 @@ afterEach(async () => {
 });
 
 describe("P5.2 isolated coding capability proxy", () => {
+  it("rejects a file write whose projected private-root usage exceeds the Goose storage budget", async () => {
+    const harness = await openHarness("storage-prewrite");
+    const fillerPath = path.join(path.dirname(harness.worktree.worktreeRoot), "filler.bin");
+    await fs.promises.writeFile(fillerPath, "");
+    await fs.promises.truncate(fillerPath, GOOSE_WORKER_RESOURCE_PROFILE.maxPrivateStorageBytes);
+
+    await expect(approveAndInvoke(harness, harness.operation)).rejects.toMatchObject({
+      code: "tool-execution-failed",
+      mayHaveExecuted: false,
+      cause: { errorCode: "worker-resource-storage-exceeded" },
+    });
+    expect(fs.readFileSync(path.join(harness.worktree.worktreeRoot, "answer.txt"), "utf8")).toBe(
+      "before\n",
+    );
+    expect(fs.readFileSync(harness.sourceFile, "utf8")).toBe("before\n");
+  });
+
+  it("fails after an approved process writes beyond the private-root storage budget", async () => {
+    const harness = await openHarness("storage-postprocess", {
+      commands: (worktreeRoot) => ({
+        storage_flood: {
+          executablePath: process.execPath,
+          args: Object.freeze([
+            "-e",
+            "const fs=require('node:fs');const fd=fs.openSync(process.argv[1],'w');fs.writeSync(fd,Buffer.from([0]),0,1,Number(process.argv[2])-1);fs.closeSync(fd);",
+            path.join(worktreeRoot, "storage-flood.bin"),
+            String(GOOSE_WORKER_RESOURCE_PROFILE.maxPrivateStorageBytes + 1),
+          ]),
+        },
+      }),
+    });
+    const operation = operationFor(
+      harness,
+      "storage-postprocess-terminal",
+      CODING_TERMINAL_TOOL_ID,
+      "shell.execute",
+    );
+    await storeInput(harness, operation, {
+      contractVersion: 1,
+      commandId: "storage_flood",
+    });
+
+    const error = await approveAndInvoke(harness, operation).then(
+      () => undefined,
+      (cause: unknown) => cause,
+    );
+    expect(error).toMatchObject({
+      code: "tool-execution-failed",
+      mayHaveExecuted: true,
+    });
+    expect((error as Error).cause).toMatchObject({
+      errorCode: "worker-resource-storage-exceeded",
+      mayHaveExecuted: true,
+    });
+    expect(await runGit(harness.sourceRoot, "status", "--porcelain=v1")).toBe("");
+  });
+
   it("modifies only the isolated worktree after consuming one exact approval", async () => {
     const harness = await openHarness("write-approval");
 

@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
 import {
   AGENT_CAPABILITIES,
   AgentAdapterError,
+  REQUIRED_REDACTION_BY_EVENT_TYPE,
   advanceCoreEventStreamState,
   assertAgentApprovalDecision,
   assertAgentCapabilities,
@@ -8,7 +10,9 @@ import {
   assertAgentSignal,
   assertAgentStartRequest,
   assertAgentToolResult,
+  assertWorkerResourceIncident,
   createCoreEventStreamState,
+  eventId,
   instant,
   toolRequestId,
   type AgentAdapter,
@@ -26,6 +30,8 @@ import {
   type CoreEvent,
   type CoreEventStreamState,
   type EventStreamId,
+  type EventPayloadByType,
+  type CoreEventType,
   type Instant,
   type SessionId,
   type TaskState,
@@ -34,6 +40,8 @@ import {
   type UnsubscribeAgentSignals,
   type WorkerId,
   type WorkspaceId,
+  type WorkerResourceIncident,
+  type WorkerResourceIncidentCode,
 } from "../../core";
 
 export interface AgentAdapterSupervisorConfig {
@@ -60,6 +68,7 @@ export type AgentAttemptState =
 
 export type AgentSupervisorIncidentCode =
   | AgentAdapterErrorCode
+  | WorkerResourceIncidentCode
   | "startup-timeout"
   | "heartbeat-timeout"
   | "cancellation-ack-timeout";
@@ -68,6 +77,7 @@ export interface AgentSupervisorIncident {
   readonly code: AgentSupervisorIncidentCode;
   readonly message: string;
   readonly occurredAt: Instant;
+  readonly resource?: WorkerResourceIncident;
 }
 
 export interface AgentAttemptSnapshot {
@@ -545,6 +555,66 @@ export class AgentAdapterSupervisor {
     return attempt.pendingTool.requestId;
   }
 
+  async failForResource(
+    session: SessionId,
+    incident: WorkerResourceIncident,
+  ): Promise<AgentAttemptSnapshot> {
+    try {
+      assertWorkerResourceIncident(incident);
+    } catch (error) {
+      throw new AgentAdapterError("invalid-request", "Worker resource incident is invalid", {
+        cause: error,
+      });
+    }
+    const attempt = this.requireAttempt(session);
+    if (incident.attemptId !== session) {
+      throw new AgentAdapterError(
+        "invalid-request",
+        "Worker resource incident does not match the supervised session",
+      );
+    }
+    if (attempt.disposed || TERMINAL_ATTEMPT_STATES.includes(attempt.state)) {
+      return this.snapshot(session);
+    }
+    const taskState = attempt.coreState.taskState;
+    if (taskState !== "running" && taskState !== "blocked") {
+      throw new AgentAdapterError(
+        "invalid-state",
+        `Session ${session} cannot record a resource breach before its task is active`,
+      );
+    }
+    const occurredAt = this.now();
+    const message = "The Worker exceeded an immutable resource or process boundary.";
+    this.appendMainOwnedEvent(
+      attempt,
+      "worker.failed",
+      {
+        errorCode: incident.code,
+        message,
+        retryable: false,
+      },
+      occurredAt,
+    );
+    this.appendMainOwnedEvent(
+      attempt,
+      "task.failed",
+      {
+        from: taskState,
+        to: "failed",
+        errorCode: incident.code,
+        message,
+      },
+      occurredAt,
+    );
+    attempt.pendingApproval = undefined;
+    attempt.pendingTool = undefined;
+    attempt.crashRetryable = false;
+    attempt.state = "failed";
+    attempt.incident = this.incident(incident.code, message, occurredAt, incident);
+    await this.cleanup(attempt);
+    return this.snapshot(session);
+  }
+
   private async startAttempt(
     request: AgentStartRequest,
     restartCount: number,
@@ -872,7 +942,34 @@ export class AgentAdapterSupervisor {
         { cause: error },
       );
     }
-    attempt.events.push(immutableEvent(event));
+    attempt.events.push(immutableEvent(event as CoreEvent));
+  }
+
+  private appendMainOwnedEvent<Type extends CoreEventType>(
+    attempt: SupervisedAttempt,
+    type: Type,
+    payload: EventPayloadByType[Type],
+    occurredAt: Instant,
+  ): void {
+    const event = {
+      schemaVersion: 1,
+      eventId: eventId(`resource-${randomUUID()}`),
+      streamId: attempt.request.streamId,
+      sequence: (attempt.coreState.previous?.sequence ?? 0) + 1,
+      occurredAt,
+      workspaceId: attempt.request.workspaceId,
+      taskId: attempt.request.taskId,
+      sessionId: attempt.request.sessionId,
+      workerId: attempt.request.workerId,
+      correlationId: attempt.request.correlationId,
+      type,
+      redaction: REQUIRED_REDACTION_BY_EVENT_TYPE[type],
+      payload,
+    } as CoreEvent<Type>;
+    attempt.coreState = advanceCoreEventStreamState(attempt.coreState, event);
+    attempt.events.push(immutableEvent(event as CoreEvent));
+    attempt.lastSignalAt = occurredAt;
+    attempt.lastObservedAt = occurredAt;
   }
 
   private reconcileBlockedSignal(
@@ -1110,11 +1207,13 @@ export class AgentAdapterSupervisor {
     code: AgentSupervisorIncidentCode,
     message: string,
     occurredAt: Instant,
+    resource?: WorkerResourceIncident,
   ): AgentSupervisorIncident {
     return Object.freeze({
       code,
       message,
       occurredAt,
+      ...(resource === undefined ? {} : { resource: Object.freeze({ ...resource }) }),
     });
   }
 

@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import {
   PRIVILEGED_CONTRACT_VERSION,
+  PrivilegedServiceError,
+  ProtectedToolExecutionError,
   WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
   approvalActorId,
   assertApprovalRequestSnapshot,
@@ -29,8 +31,10 @@ import {
   type ToolRequestId,
   type UserApprovalDecision,
   type WorkerId,
+  type WorkerResourceIncidentCode,
 } from "../../core";
 import type { IsolatedCodingMainSession } from "./isolatedCodingMainService";
+import { WorkerStorageBudgetError, assertWorkerOutputWithinBudget } from "./workerStorageBudget";
 import type {
   GooseMcpToolCall,
   GooseMcpToolInvocationResult,
@@ -282,18 +286,45 @@ function approvalDeniedResult(): GooseMcpToolInvocationResult {
 }
 
 function normalizedFailure(error: unknown): GooseCodingToolFailureEvidence {
+  const resourceCode = workerResourceFailureCode(error);
   const code =
-    isRecord(error) &&
+    resourceCode ??
+    (isRecord(error) &&
     typeof error.code === "string" &&
     /^[a-z0-9][a-z0-9-]{0,127}$/u.test(error.code)
       ? error.code
-      : "coding-tool-failed";
+      : "coding-tool-failed");
   return Object.freeze({
     errorCode: code,
     message: "The closed coding capability failed inside the Actestra Tool Gateway.",
     mayHaveExecuted:
       isRecord(error) && typeof error.mayHaveExecuted === "boolean" ? error.mayHaveExecuted : false,
   });
+}
+
+const WORKER_RESOURCE_FAILURE_CODES: ReadonlySet<WorkerResourceIncidentCode> = new Set([
+  "worker-resource-cpu-exceeded",
+  "worker-resource-memory-exceeded",
+  "worker-resource-output-exceeded",
+  "worker-resource-timeout",
+  "worker-resource-storage-exceeded",
+  "worker-process-tree-violated",
+  "worker-resource-enforcement-unavailable",
+]);
+
+function workerResourceFailureCode(error: unknown): WorkerResourceIncidentCode | undefined {
+  const executionError =
+    error instanceof PrivilegedServiceError &&
+    error.code === "tool-execution-failed" &&
+    error.cause instanceof ProtectedToolExecutionError
+      ? error.cause
+      : error instanceof ProtectedToolExecutionError
+        ? error
+        : undefined;
+  return executionError !== undefined &&
+    WORKER_RESOURCE_FAILURE_CODES.has(executionError.errorCode as WorkerResourceIncidentCode)
+    ? (executionError.errorCode as WorkerResourceIncidentCode)
+    : undefined;
 }
 
 function matchesApprovalResolution(
@@ -609,6 +640,7 @@ export function createGooseCodingToolInvoker(
     }
     let normalizedOutput: string;
     try {
+      assertWorkerOutputWithinBudget(resolved.content);
       const parsed = JSON.parse(resolved.content) as unknown;
       if (!isRecord(parsed) || parsed.contractVersion !== 1) {
         throw new Error("Coding tool output must use contract version 1");
@@ -621,7 +653,8 @@ export function createGooseCodingToolInvoker(
             options.evidenceRecorder!.recordFailed(
               operation,
               Object.freeze({
-                errorCode: "coding-output-invalid",
+                errorCode:
+                  error instanceof WorkerStorageBudgetError ? error.code : "coding-output-invalid",
                 message: "The executed coding capability returned invalid normalized output.",
                 mayHaveExecuted: true,
               }),

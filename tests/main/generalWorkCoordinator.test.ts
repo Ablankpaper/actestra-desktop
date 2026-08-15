@@ -9,6 +9,7 @@ import {
   MAX_GENERAL_WORK_CHECKPOINT_EVENTS,
   artifactId,
   correlationId,
+  createWorkerResourceIncident,
   eventId,
   eventStreamId,
   instant,
@@ -671,6 +672,44 @@ describe("GeneralWorkCoordinator", () => {
     const events = await reopened.replayEvents(harness.request.streamId);
     expect(events.slice(-2).map(({ type }) => type)).toEqual(["worker.failed", "task.failed"]);
     await reopened.close();
+  });
+
+  it("preserves a resource incident through checkpoint, evidence, and final release", async () => {
+    const harness = await openHarness("resource-incident");
+    const incident = createWorkerResourceIncident({
+      workerKind: "general",
+      attemptId: harness.request.sessionId,
+      code: "worker-resource-cpu-exceeded",
+      resourceKind: "cpu",
+      observed: 31,
+      limit: 30,
+      termination: "requested",
+    });
+
+    await harness.supervisor.failForResource(harness.request.sessionId, incident);
+
+    await expect(
+      harness.coordinator.finalizeAttempt(harness.request.sessionId),
+    ).resolves.toMatchObject({
+      checkpoint: {
+        phase: "finalized",
+        attempt: {
+          state: "failed",
+          incident: {
+            code: incident.code,
+            resource: incident,
+          },
+        },
+      },
+    });
+    await expect(harness.persistence.listRecentAgentAttemptEvidence(50)).resolves.toMatchObject([
+      {
+        incident: {
+          code: incident.code,
+          resource: incident,
+        },
+      },
+    ]);
   });
 
   it("records an interrupted create-only tool as explicitly may-have-executed", async () => {

@@ -2,6 +2,114 @@ use std::env;
 use std::io::Read;
 use std::os::unix::io::FromRawFd;
 
+const CPU_LIMIT_ENVIRONMENT_KEY: &str = "ACTESTRA_GOOSE_CPU_SECONDS";
+const ADDRESS_SPACE_LIMIT_ENVIRONMENT_KEY: &str = "ACTESTRA_GOOSE_ADDRESS_SPACE_BYTES";
+const CPU_LIMIT_SECONDS: u64 = 120;
+const ADDRESS_SPACE_LIMIT_BYTES: u64 = 1_073_741_824;
+const RESOURCE_LIMIT_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_RESOURCE_LIMIT_SETUP_FAILED";
+
+#[derive(Clone, Copy)]
+struct NativeResourceLimits {
+    cpu_seconds: u64,
+    address_space_bytes: u64,
+}
+
+fn parse_exact_limit<F>(read_environment: &mut F, key: &str, expected: u64) -> Result<u64, ()>
+where
+    F: FnMut(&str) -> Option<String>,
+{
+    let value = read_environment(key).ok_or(())?;
+    if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(());
+    }
+    let parsed = value.parse::<u64>().map_err(|_| ())?;
+    if parsed != expected || parsed > libc::rlim_t::MAX as u64 {
+        return Err(());
+    }
+    Ok(parsed)
+}
+
+fn parse_resource_limits_with<F>(mut read_environment: F) -> Result<NativeResourceLimits, ()>
+where
+    F: FnMut(&str) -> Option<String>,
+{
+    Ok(NativeResourceLimits {
+        cpu_seconds: parse_exact_limit(
+            &mut read_environment,
+            CPU_LIMIT_ENVIRONMENT_KEY,
+            CPU_LIMIT_SECONDS,
+        )?,
+        address_space_bytes: parse_exact_limit(
+            &mut read_environment,
+            ADDRESS_SPACE_LIMIT_ENVIRONMENT_KEY,
+            ADDRESS_SPACE_LIMIT_BYTES,
+        )?,
+    })
+}
+
+fn apply_resource_limits_with<F>(
+    limits: NativeResourceLimits,
+    launch_baseline_bytes: u64,
+    mut set_limit: F,
+) -> Result<(), ()>
+where
+    F: FnMut(i32, u64, u64) -> libc::c_int,
+{
+    let address_space_cap = launch_baseline_bytes
+        .checked_add(limits.address_space_bytes)
+        .filter(|value| *value <= libc::rlim_t::MAX as u64)
+        .ok_or(())?;
+    if set_limit(
+        libc::RLIMIT_CPU as i32,
+        limits.cpu_seconds,
+        limits.cpu_seconds,
+    ) != 0
+    {
+        return Err(());
+    }
+    if set_limit(libc::RLIMIT_AS as i32, address_space_cap, address_space_cap) != 0 {
+        return Err(());
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+#[allow(deprecated)]
+fn current_virtual_size_bytes() -> Result<u64, ()> {
+    let mut info = std::mem::MaybeUninit::<libc::mach_task_basic_info_data_t>::uninit();
+    let mut count = libc::MACH_TASK_BASIC_INFO_COUNT;
+    let status = unsafe {
+        libc::task_info(
+            libc::mach_task_self(),
+            libc::MACH_TASK_BASIC_INFO,
+            info.as_mut_ptr().cast::<libc::integer_t>(),
+            &mut count,
+        )
+    };
+    if status != libc::KERN_SUCCESS || count != libc::MACH_TASK_BASIC_INFO_COUNT {
+        return Err(());
+    }
+    let info = unsafe { info.assume_init() };
+    Ok(info.virtual_size as u64)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn current_virtual_size_bytes() -> Result<u64, ()> {
+    Err(())
+}
+
+fn apply_resource_limits() -> Result<(), ()> {
+    let limits = parse_resource_limits_with(|key| env::var(key).ok())?;
+    let launch_baseline_bytes = current_virtual_size_bytes()?;
+    apply_resource_limits_with(limits, launch_baseline_bytes, |resource, soft, hard| {
+        let limit = libc::rlimit {
+            rlim_cur: soft as libc::rlim_t,
+            rlim_max: hard as libc::rlim_t,
+        };
+        unsafe { libc::setrlimit(resource as _, &limit) }
+    })
+}
+
 fn watch_parent_liveness() {
     let Ok(raw_fd) = env::var("ACTESTRA_PARENT_LIVENESS_FD") else {
         return;
@@ -54,11 +162,208 @@ fn watch_parent_liveness() {
     });
 }
 
-#[tokio::main(flavor = "multi_thread", worker_threads = 2)]
-async fn main() {
-    watch_parent_liveness();
-    if let Err(error) = goose::acp::server::run(Vec::new(), false).await {
-        eprintln!("ACTESTRA_GOOSE_RUNNER_FAILED: {error:#}");
+fn main() {
+    if apply_resource_limits().is_err() {
+        eprintln!("{RESOURCE_LIMIT_FAILURE_MARKER}");
         std::process::exit(1);
+    }
+    let runtime = match tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(_) => {
+            eprintln!("ACTESTRA_GOOSE_RUNNER_FAILED: could not create async runtime");
+            std::process::exit(1);
+        }
+    };
+    runtime.block_on(async {
+        watch_parent_liveness();
+        if let Err(error) = goose::acp::server::run(Vec::new(), false).await {
+            eprintln!("ACTESTRA_GOOSE_RUNNER_FAILED: {error:#}");
+            std::process::exit(1);
+        }
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn exact_environment() -> HashMap<&'static str, String> {
+        HashMap::from([
+            (CPU_LIMIT_ENVIRONMENT_KEY, "120".to_string()),
+            (
+                ADDRESS_SPACE_LIMIT_ENVIRONMENT_KEY,
+                "1073741824".to_string(),
+            ),
+        ])
+    }
+
+    #[test]
+    fn parses_only_the_fixed_native_resource_profile() {
+        let environment = exact_environment();
+        let limits = parse_resource_limits_with(|key| environment.get(key).cloned()).unwrap();
+
+        assert_eq!(limits.cpu_seconds, 120);
+        assert_eq!(limits.address_space_bytes, 1_073_741_824);
+    }
+
+    #[test]
+    fn rejects_missing_invalid_zero_widened_and_overflowing_limits() {
+        for value in [
+            None,
+            Some(""),
+            Some("0"),
+            Some("121"),
+            Some("-1"),
+            Some("1.5"),
+            Some("18446744073709551616"),
+        ] {
+            let mut environment = exact_environment();
+            match value {
+                Some(value) => {
+                    environment.insert(CPU_LIMIT_ENVIRONMENT_KEY, value.to_string());
+                }
+                None => {
+                    environment.remove(CPU_LIMIT_ENVIRONMENT_KEY);
+                }
+            }
+            assert!(parse_resource_limits_with(|key| environment.get(key).cloned()).is_err());
+        }
+
+        for value in [
+            None,
+            Some(""),
+            Some("0"),
+            Some("1073741825"),
+            Some("-1"),
+            Some("1.5"),
+            Some("18446744073709551616"),
+        ] {
+            let mut environment = exact_environment();
+            match value {
+                Some(value) => {
+                    environment.insert(ADDRESS_SPACE_LIMIT_ENVIRONMENT_KEY, value.to_string());
+                }
+                None => {
+                    environment.remove(ADDRESS_SPACE_LIMIT_ENVIRONMENT_KEY);
+                }
+            }
+            assert!(parse_resource_limits_with(|key| environment.get(key).cloned()).is_err());
+        }
+    }
+
+    #[test]
+    fn applies_cpu_and_additional_address_space_as_equal_soft_and_hard_limits() {
+        let limits = NativeResourceLimits {
+            cpu_seconds: 120,
+            address_space_bytes: 1_073_741_824,
+        };
+        let launch_baseline_bytes = 445_746_348_032;
+        let mut calls = Vec::new();
+
+        apply_resource_limits_with(limits, launch_baseline_bytes, |resource, soft, hard| {
+            calls.push((resource, soft, hard));
+            0
+        })
+        .unwrap();
+
+        assert_eq!(
+            calls,
+            vec![
+                (libc::RLIMIT_CPU as i32, 120, 120),
+                (
+                    libc::RLIMIT_AS as i32,
+                    launch_baseline_bytes + 1_073_741_824,
+                    launch_baseline_bytes + 1_073_741_824,
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn rejects_an_address_space_cap_that_cannot_be_represented() {
+        let limits = NativeResourceLimits {
+            cpu_seconds: 120,
+            address_space_bytes: 1_073_741_824,
+        };
+        let mut called = false;
+
+        assert!(
+            apply_resource_limits_with(limits, u64::MAX, |_resource, _soft, _hard| {
+                called = true;
+                0
+            })
+            .is_err()
+        );
+        assert!(!called);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn applies_native_limits_in_a_real_macos_child_process() {
+        const CHILD_KEY: &str = "ACTESTRA_GOOSE_RESOURCE_LIMIT_KERNEL_CHILD";
+        if env::var(CHILD_KEY).as_deref() == Ok("1") {
+            if apply_resource_limits().is_err() {
+                std::process::exit(91);
+            }
+            let mut address_space = libc::rlimit {
+                rlim_cur: 0,
+                rlim_max: 0,
+            };
+            if unsafe { libc::getrlimit(libc::RLIMIT_AS, &mut address_space) } != 0
+                || address_space.rlim_cur <= ADDRESS_SPACE_LIMIT_BYTES as libc::rlim_t
+                || address_space.rlim_cur != address_space.rlim_max
+            {
+                std::process::exit(92);
+            }
+            return;
+        }
+
+        let status = std::process::Command::new(std::env::current_exe().unwrap())
+            .arg("--exact")
+            .arg("tests::applies_native_limits_in_a_real_macos_child_process")
+            .arg("--nocapture")
+            .env(CHILD_KEY, "1")
+            .env(CPU_LIMIT_ENVIRONMENT_KEY, CPU_LIMIT_SECONDS.to_string())
+            .env(
+                ADDRESS_SPACE_LIMIT_ENVIRONMENT_KEY,
+                ADDRESS_SPACE_LIMIT_BYTES.to_string(),
+            )
+            .status()
+            .unwrap();
+
+        assert!(
+            status.success(),
+            "real macOS resource setup failed: {status}"
+        );
+    }
+
+    #[test]
+    fn fails_closed_when_either_native_limit_cannot_be_applied() {
+        let limits = NativeResourceLimits {
+            cpu_seconds: 120,
+            address_space_bytes: 1_073_741_824,
+        };
+        assert!(
+            apply_resource_limits_with(limits, 445_746_348_032, |_resource, _soft, _hard| -1)
+                .is_err()
+        );
+
+        let mut call_count = 0;
+        assert!(
+            apply_resource_limits_with(limits, 445_746_348_032, |_resource, _soft, _hard| {
+                call_count += 1;
+                if call_count == 1 {
+                    0
+                } else {
+                    -1
+                }
+            },)
+            .is_err()
+        );
     }
 }

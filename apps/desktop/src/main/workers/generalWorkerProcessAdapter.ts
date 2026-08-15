@@ -52,6 +52,7 @@ import {
   ActestraGeneralWorkModelError,
   type TrustedActestraGeneralWorkRuntime,
 } from "./actestraGeneralWorkRuntime";
+import type { WorkerResourceObservation } from "./workerResourceMonitor";
 
 export type GeneralWorkerProcessErrorCode =
   | "startup-timeout"
@@ -78,6 +79,11 @@ export interface GeneralWorkerProcessTransport {
   kill(): boolean;
 }
 
+export interface GeneralWorkerResourceIdentity {
+  readonly pid: number;
+  readonly creationTime: number;
+}
+
 export interface GeneralWorkerProcessAdapterOptions {
   readonly startupTimeoutMs?: number;
   readonly requestTimeoutMs?: number;
@@ -92,6 +98,9 @@ export interface GeneralWorkerProcessAdapterOptions {
   readonly newAttemptToken?: () => string;
   readonly newToolRequestId?: () => ToolRequestId;
   readonly newEventId?: () => EventId;
+  /** Main-owned source used by the resource monitor; Renderer/Worker input cannot provide it. */
+  readonly resourceObservation?: () => WorkerResourceObservation | null;
+  readonly resourceIdentity?: () => GeneralWorkerResourceIdentity;
 }
 
 interface PendingRequest {
@@ -219,6 +228,8 @@ export class GeneralWorkerProcessAdapter implements AgentAdapter {
   private readonly newAttemptToken: () => string;
   private readonly newToolRequestId: () => ToolRequestId;
   private readonly newEventId: () => EventId;
+  private readonly resourceObservation: (() => WorkerResourceObservation | null) | undefined;
+  private readonly resourceIdentitySource: (() => GeneralWorkerResourceIdentity) | undefined;
   private readonly unsubscribeMessage: () => void;
   private readonly unsubscribeError: () => void;
   private readonly unsubscribeExit: () => void;
@@ -248,6 +259,8 @@ export class GeneralWorkerProcessAdapter implements AgentAdapter {
     this.newAttemptToken = options.newAttemptToken ?? defaultAttemptToken;
     this.newToolRequestId = options.newToolRequestId ?? defaultToolRequestId;
     this.newEventId = options.newEventId ?? defaultEventId;
+    this.resourceObservation = options.resourceObservation;
+    this.resourceIdentitySource = options.resourceIdentity;
     assertPositiveDuration(this.startupTimeoutMs, "General Worker startup timeout");
     assertPositiveDuration(this.requestTimeoutMs, "General Worker request timeout");
     assertPositiveDuration(this.modelTimeoutMs, "General Worker model timeout");
@@ -304,6 +317,30 @@ export class GeneralWorkerProcessAdapter implements AgentAdapter {
   async capabilities(): Promise<AgentCapabilities> {
     this.assertAvailable();
     return CAPABILITIES;
+  }
+
+  observeResources(): WorkerResourceObservation | null {
+    if (this.resourceObservation === undefined) {
+      throw new GeneralWorkerProcessError(
+        "unavailable",
+        "General Worker resource observation is unavailable",
+      );
+    }
+    return this.resourceObservation();
+  }
+
+  hasResourceObservation(): boolean {
+    return this.resourceObservation !== undefined;
+  }
+
+  resourceIdentity(): GeneralWorkerResourceIdentity {
+    if (this.resourceIdentitySource === undefined) {
+      throw new GeneralWorkerProcessError(
+        "unavailable",
+        "General Worker resource identity is unavailable",
+      );
+    }
+    return this.resourceIdentitySource();
   }
 
   async start(request: AgentStartRequest): Promise<void> {

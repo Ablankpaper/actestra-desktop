@@ -699,11 +699,6 @@ export async function runP7ProcessCleanupBoundaryProbe(): Promise<P7SecuritySmok
   if (process.platform !== "darwin") throw new Error("P7 process-group probe is unavailable");
   const privateRoot = createP7SandboxProbePrivateRoot("actestra-p7-process-cleanup-");
   const descendantPidPath = path.join(privateRoot, "descendant.pid");
-  const launch = createGooseRunnerSandboxLaunch({
-    executablePath: P7_SANDBOX_PROBE_EXECUTABLE,
-    privateRoot,
-    networkPorts: [],
-  });
   const childScript = `my ($pid_path) = @ARGV;
 my $descendant = fork();
 exit 2 if !defined($descendant);
@@ -714,7 +709,10 @@ open(my $pid_file, ">", $pid_path) or exit 3;
 print $pid_file $descendant;
 close($pid_file) or exit 3;
 while (1) { sleep 1; }`;
-  const child = spawn(launch.executable, [...launch.args, "-e", childScript, descendantPidPath], {
+  // This is an E2E-only cleanup fixture, deliberately outside the production
+  // Goose sandbox. The production profile denies fork, so it cannot also be
+  // the fixture used to prove that process-group cleanup reaches descendants.
+  const child = spawn(P7_SANDBOX_PROBE_EXECUTABLE, ["-e", childScript, descendantPidPath], {
     detached: true,
     env: { PATH: process.env.PATH ?? "" },
     stdio: "ignore",

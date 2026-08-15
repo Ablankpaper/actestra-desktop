@@ -6,6 +6,7 @@ export function subscribeDeferredUtilityProcessTerminalEvent<Arguments extends u
   register: (listener: UtilityProcessTerminalListener<Arguments>) => void,
   unregister: (listener: UtilityProcessTerminalListener<Arguments>) => void,
   listener: UtilityProcessTerminalListener<Arguments>,
+  onTrigger?: UtilityProcessTerminalListener<Arguments>,
 ): () => void {
   let active = true;
   let triggered = false;
@@ -16,6 +17,7 @@ export function subscribeDeferredUtilityProcessTerminalEvent<Arguments extends u
       return;
     }
     triggered = true;
+    onTrigger?.(...arguments_);
     scheduled = setImmediate(() => {
       scheduled = null;
       if (active) {
