@@ -720,11 +720,12 @@ Team execution evidence.
 
 The Threat Model and Abuse-Case Ledger are implemented and locally verified on
 macOS arm64 at implementation/test parent
-`632a8a081ac5fb5a6dd28daf59e284bd0455a721`. The closed catalog has 28 cases
+`a8292e6433eacc3414dcc9408e10df7d6031b9a3`. The closed catalog has 28 cases
 and the aggregate gate reports 28/28 `denied-safe`. The real admitted Goose
 artifact passes parent-death and process cleanup coverage; the ad-hoc arm64
 development app passes package trust verification, the existing General Work
 smoke, and the packaged P7 security hook for all seven required Layer-4 cases.
+Exact-head CI and merge evidence remain open.
 
 This is the P7.1 development gate only. It does not close the remaining P7
 reliability slices: P7.2 Worker resource/process reliability, P7.3 database

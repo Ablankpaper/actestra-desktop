@@ -171,9 +171,10 @@ directly.
 
 Security status: the first P7.1 threat-model and abuse-case baseline is
 locally verified on macOS arm64 at implementation/test parent
-`632a8a081ac5fb5a6dd28daf59e284bd0455a721`. The 28-case catalog is
+`a8292e6433eacc3414dcc9408e10df7d6031b9a3`. The 28-case catalog is
 `denied-safe`, and the packaged development smoke physically checks the seven
-required Layer-4 boundaries. This is not a claim that the complete P7 reliability, backup,
+required Layer-4 boundaries. Exact-head CI and merge evidence remain open.
+This is not a claim that the complete P7 reliability, backup,
 diagnostic-retention, cross-platform, signing, release, or user-acceptance
 scope is complete; those remain later gates.
 

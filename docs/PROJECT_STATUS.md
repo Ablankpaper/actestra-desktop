@@ -4,38 +4,42 @@ Last updated: 2026-08-15
 
 ## Current phase
 
-### 2026-08-15 current verification: P7.1 local and packaged development gate
+### 2026-08-15 current verification: P7.1 implementation parent and packaged development gate
 
 The P7.1 Threat Model and Abuse-Case Baseline is implemented at reviewed
 implementation/test parent
-`632a8a081ac5fb5a6dd28daf59e284bd0455a721` on the isolated branch
-`codex/p7-threat-model-abuse-baseline`. The current local checkout is based on
-`origin/main@ee28c1d9138fa474704b8fd083e2511da64dee3e`; `foundation/` is
-unchanged.
+`a8292e6433eacc3414dcc9408e10df7d6031b9a3` on
+`codex/p7-1-security-closure`, based on
+`origin/main@ee28c1d9138fa474704b8fd083e2511da64dee3e`. The frozen
+`foundation/` snapshot is unchanged. Pull request
+[#55](https://github.com/Ablankpaper/actestra-desktop/pull/55) remains open;
+the exact-head CI for this parent has not yet run.
 
 Fresh macOS arm64 evidence on that parent:
 
-- `NODE_OPTIONS=--max-old-space-size=4096 bun run check` exits 0: 122 test
-  files passed, 2 skipped; 1,270 tests passed, 9 skipped; format, zero-warning
+- `NODE_OPTIONS=--max-old-space-size=4096 bun run check` exits 0: 123 test
+  files passed, 2 skipped; 1,273 tests passed, 9 skipped; format, zero-warning
   lint, strict typecheck, Electron SQLite, smoke harness, product boundary,
   frozen foundation, downstream overlay, and package all pass;
 - `bun run test:security` is self-contained and reports 28/28
-  `denied-safe`; the real Goose parent-death integration is intentionally
-  admitted only by `goose:runner:test` after its artifact and manifest are
-  built, which passes 184/184 focused tests;
-- `dist:dir` exits 0; the arm64 development app has identifier
-  `com.bignormal.actestra`, passes deep strict ad-hoc codesign verification,
-  and package trust verifies the planner, external Goose manifest/SBOM/license
-  and audit roots without source-copy drift;
+  `denied-safe`; `bun run goose:runner:test` passes 184/184 focused Goose
+  tests, including the real parent-death and process cleanup cases. The
+  admitted manifest binds `a8292e6` and records `dirty=false`;
+- `dist:dir` exits 0 with `AIONUI_HUB_SKIP=1`; the arm64 development app has
+  identifier `com.bignormal.actestra`, passes deep strict ad-hoc codesign
+  verification, and package trust verifies the planner, external Goose
+  manifest/SBOM/license/audit roots, and 116 source-copy checks without drift;
 - the existing General Work packaged smoke exits 0, and the packaged P7
   security smoke exits 0 with seven required Layer-4 cases `denied-safe`;
-- the current process and recent private-root scans show no Actestra, AionCore,
-  Goose, Planner, or P7 probe residue.
+- the current process scan shows no Actestra, AionCore, Goose, Planner, or P7
+  probe residue.
 
-This is local and packaged development evidence only. The branch has no PR or
-exact-head CI yet; P7.1 is not merged into `main`. P7.2-P7.4, Windows/Linux
-enforcement, formal signing, release, deployment, and final user acceptance
-remain open.
+These are local and packaged development-build results only. The previous
+exact-head CI run `31861861143` tested the older head `ee6634e` and failed at
+three materialized type errors; the fixes are included in this parent but
+still require a new exact-head CI run. P7.1 is not merged into `main`.
+P7.2-P7.4, Windows/Linux enforcement, formal signing, release, deployment,
+and final user acceptance remain open.
 
 ### 2026-08-15 new-repository main governance enabled
 

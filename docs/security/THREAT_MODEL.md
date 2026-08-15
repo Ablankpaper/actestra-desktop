@@ -32,11 +32,11 @@ passed.
 ## Verified P7.1 evidence
 
 The reviewed implementation and test parent is
-`632a8a081ac5fb5a6dd28daf59e284bd0455a721`. On macOS arm64:
+`a8292e6433eacc3414dcc9408e10df7d6031b9a3`. On macOS arm64:
 
 - the focused security suite covers all 28 catalog IDs;
 - the aggregate local gate passes 28/28 `denied-safe` cases;
-- the complete local project gate passes 122 test files and 1,270 tests,
+- the complete local project gate passes 123 test files and 1,273 tests,
   zero-warning lint, strict typecheck, Electron SQLite, product boundary,
   frozen foundation, downstream overlay, and package;
 - the admitted Goose runner focused gate passes 184 tests, including the real
@@ -51,9 +51,9 @@ The reviewed implementation and test parent is
   `P7-A-NETWORK-001`, `P7-A-PROCESS-002`, and `P7-A-ARTIFACT-001`); the other
   catalog cases remain covered by their local Layer 1-3 evidence.
 
-These are local and packaged development-build results. No exact-head CI,
-merged-main CI, formal signing/notarization, release, deployment, or user
-acceptance is claimed here.
+These are local and packaged development-build results. No exact-head CI for
+this parent, merged-main CI, formal signing/notarization, release, deployment,
+or user acceptance is claimed here.
 
 ## Threat Model, Trust Boundaries, and Assumptions
 

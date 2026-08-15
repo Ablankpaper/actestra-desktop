@@ -19,10 +19,11 @@ packaged.
 
 The current P7.1 security baseline is verified locally on macOS arm64 at
 implementation/test parent
-`632a8a081ac5fb5a6dd28daf59e284bd0455a721`: all 28 catalog abuse cases are
-`denied-safe`, the development package passes trust checks, and the packaged
-security hook exercises the seven required Layer-4 cases. This is a
-development verification boundary only.
+`a8292e6433eacc3414dcc9408e10df7d6031b9a3` on the P7.1 delivery branch:
+all 28 catalog abuse cases are `denied-safe`, the development package passes
+trust checks, and the packaged security hook exercises the seven required
+Layer-4 cases. Exact-head CI and merge evidence for this parent remain open;
+this is a development verification boundary only.
 P7.2 Worker resource/process reliability, P7.3 database backup and migration
 rollback, P7.4 diagnostic export and audit retention, Windows/Linux enforcement,
 formal signing, release, deployment, and final user acceptance remain outside
