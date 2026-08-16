@@ -48,6 +48,7 @@ import {
 import {
   ARTIFACT_WORKSPACE_APPLICATOR_ERROR_CODES,
   CORE_CONTRACT_ERROR_CODES,
+  DIAGNOSTIC_EXPORT_MAX_AUDIT_EVENTS,
   PERSISTENCE_ERROR_CODES,
   assertAgentAttemptEvidence,
   assertAdmittedTeamPlan,
@@ -68,6 +69,7 @@ import {
   assertRemoveTeamDefinitionResult,
   assertReplaceTeamDefinitionResult,
   assertPersistWorkspaceGrantResult,
+  assertPrivilegedAuditRetentionState,
   assertResolveContentReferenceInput,
   assertResolvedContentReference,
   assertStoreContentReferenceInput,
@@ -96,6 +98,7 @@ import {
   type DomainGraph,
   type EventStreamId,
   type GeneralWorkCheckpoint,
+  type Instant,
   type PersistGeneralWorkCheckpointResult,
   type PersistContentReferenceResult,
   type PersistAdmittedTeamPlanResult,
@@ -112,6 +115,7 @@ import {
   type PersistenceErrorCode,
   type PersistWorkspaceGrantResult,
   type PrivilegedAuditSummary,
+  type PrivilegedAuditRetentionState,
   type ResolveContentReferenceInput,
   type ResolvedContentReference,
   type StoreContentReferenceInput,
@@ -173,6 +177,22 @@ export interface PersistenceUtilityOperationMap {
       readonly evidence: AgentAttemptEvidence;
     };
     readonly result: PersistEvidenceResult;
+  };
+  readonly "maintain-privileged-audit": {
+    readonly request: {
+      readonly now: Instant;
+    };
+    readonly result: PrivilegedAuditRetentionState;
+  };
+  readonly "list-privileged-audit": {
+    readonly request: {
+      readonly limit: number;
+    };
+    readonly result: readonly AuditRecord[];
+  };
+  readonly "read-privileged-audit-retention-state": {
+    readonly request: Record<string, never>;
+    readonly result: PrivilegedAuditRetentionState;
   };
   readonly "summarize-privileged-audit": {
     readonly request: Record<string, never>;
@@ -510,6 +530,9 @@ export const PERSISTENCE_UTILITY_OPERATIONS = [
   "replay-events",
   "append-privileged-audit",
   "append-agent-attempt-evidence",
+  "maintain-privileged-audit",
+  "list-privileged-audit",
+  "read-privileged-audit-retention-state",
   "summarize-privileged-audit",
   "list-agent-attempt-evidence",
   "append-aionui-shadow-evidence",
@@ -817,6 +840,14 @@ function assertScheduleProtocolValue(assertion: () => void, label: string): void
   }
 }
 
+function assertPrivilegedAuditProtocolValue(assertion: () => void, label: string): void {
+  try {
+    assertion();
+  } catch (error) {
+    throw new PersistenceUtilityProtocolError(`${label} is invalid`, { cause: error });
+  }
+}
+
 function assertTeamProtocolValue(assertion: () => void, label: string): void {
   try {
     assertion();
@@ -945,6 +976,7 @@ function assertRequestPayload(request: PersistenceUtilityRequest): void {
       }
       return;
     case "load-domain-graph":
+    case "read-privileged-audit-retention-state":
     case "summarize-privileged-audit":
     case "summarize-aionui-shadow-evidence":
     case "summarize-aionui-approval-authority":
@@ -981,6 +1013,20 @@ function assertRequestPayload(request: PersistenceUtilityRequest): void {
       assertRecord(payload, "append-agent-attempt-evidence request");
       assertExactKeys(payload, ["evidence"], "append-agent-attempt-evidence request");
       assertAgentAttemptEvidence(payload.evidence);
+      return;
+    case "maintain-privileged-audit":
+      assertRecord(payload, "maintain-privileged-audit request");
+      assertExactKeys(payload, ["now"], "maintain-privileged-audit request");
+      assertCanonicalInstant(payload.now, "maintain-privileged-audit now");
+      return;
+    case "list-privileged-audit":
+      assertRecord(payload, "list-privileged-audit request");
+      assertExactKeys(payload, ["limit"], "list-privileged-audit request");
+      assertBoundedLimit(
+        payload.limit,
+        DIAGNOSTIC_EXPORT_MAX_AUDIT_EVENTS,
+        "list-privileged-audit limit",
+      );
       return;
     case "list-agent-attempt-evidence":
       assertRecord(payload, "list-agent-attempt-evidence request");
@@ -1439,6 +1485,24 @@ function assertSuccessResult(operation: PersistenceUtilityOperation, result: unk
       return;
     case "append-privileged-audit":
       assertAuditRecord(result);
+      return;
+    case "maintain-privileged-audit":
+    case "read-privileged-audit-retention-state":
+      assertPrivilegedAuditProtocolValue(
+        () => assertPrivilegedAuditRetentionState(result),
+        `${operation} result`,
+      );
+      return;
+    case "list-privileged-audit":
+      if (!Array.isArray(result) || result.length > DIAGNOSTIC_EXPORT_MAX_AUDIT_EVENTS) {
+        throw new PersistenceUtilityProtocolError("list-privileged-audit result is invalid");
+      }
+      result.forEach((record) => {
+        assertPrivilegedAuditProtocolValue(
+          () => assertAuditRecord(record),
+          "list-privileged-audit record",
+        );
+      });
       return;
     case "summarize-privileged-audit":
       assertGaplessSummary(result, "Privileged audit summary");

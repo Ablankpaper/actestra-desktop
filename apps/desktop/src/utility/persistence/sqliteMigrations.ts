@@ -3,7 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { PersistenceError } from "../../core";
 
 export const ACTESTRA_SQLITE_APPLICATION_ID = 1_095_980_114;
-export const CURRENT_CORE_SCHEMA_VERSION = 22;
+export const CURRENT_CORE_SCHEMA_VERSION = 23;
 
 export interface SqliteMigration {
   readonly version: number;
@@ -1043,6 +1043,55 @@ export const CORE_SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
     name: "artifact-delivery-destination-workspace",
     sql: `
       ALTER TABLE artifact_deliveries ADD COLUMN destination_workspace_id TEXT;
+    `,
+  },
+  {
+    version: 23,
+    name: "privileged-audit-integrity-and-retention",
+    sql: `
+      CREATE TABLE privileged_audit_integrity (
+        sequence INTEGER PRIMARY KEY CHECK (sequence > 0),
+        previous_sha256 TEXT NOT NULL CHECK (
+          length(previous_sha256) = 64 AND previous_sha256 NOT GLOB '*[^0-9a-f]*'
+        ),
+        chain_sha256 TEXT NOT NULL CHECK (
+          length(chain_sha256) = 64 AND chain_sha256 NOT GLOB '*[^0-9a-f]*'
+        ),
+        FOREIGN KEY (sequence) REFERENCES privileged_audit_records(sequence) ON DELETE CASCADE
+      ) STRICT;
+
+      CREATE TABLE privileged_audit_retention_state (
+        singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+        contract_version INTEGER NOT NULL CHECK (contract_version = 1),
+        policy_version INTEGER NOT NULL CHECK (policy_version = 1),
+        max_age_days INTEGER NOT NULL CHECK (max_age_days = 90),
+        max_record_count INTEGER NOT NULL CHECK (max_record_count = 100000),
+        pruned_record_count INTEGER NOT NULL CHECK (pruned_record_count >= 0),
+        anchor_sequence INTEGER NOT NULL CHECK (anchor_sequence >= 0),
+        anchor_sha256 TEXT NOT NULL CHECK (
+          length(anchor_sha256) = 64 AND anchor_sha256 NOT GLOB '*[^0-9a-f]*'
+        ),
+        last_sequence INTEGER NOT NULL CHECK (last_sequence >= 0),
+        chain_head_sha256 TEXT NOT NULL CHECK (
+          length(chain_head_sha256) = 64 AND chain_head_sha256 NOT GLOB '*[^0-9a-f]*'
+        ),
+        last_maintained_at TEXT NOT NULL,
+        CHECK (anchor_sequence = pruned_record_count),
+        CHECK (last_sequence >= anchor_sequence)
+      ) STRICT;
+
+      INSERT INTO privileged_audit_retention_state (
+        singleton, contract_version, policy_version, max_age_days,
+        max_record_count, pruned_record_count, anchor_sequence, anchor_sha256,
+        last_sequence, chain_head_sha256, last_maintained_at
+      )
+      SELECT
+        1, 1, 1, 90, 100000, 0, 0,
+        '4eab5dc1aa1804c942a382c85b6c77673f44b46cae57082957c1ffc0a9af61c1',
+        COALESCE(MAX(sequence), 0),
+        '4eab5dc1aa1804c942a382c85b6c77673f44b46cae57082957c1ffc0a9af61c1',
+        '1970-01-01T00:00:00.000Z'
+      FROM privileged_audit_records;
     `,
   },
 ] as const;

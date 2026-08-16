@@ -117,6 +117,9 @@ function failingAuditPersistence(
       return persistence.appendPrivilegedAudit(input);
     },
     appendAgentAttemptEvidence: (evidence) => persistence.appendAgentAttemptEvidence(evidence),
+    maintainPrivilegedAudit: (now) => persistence.maintainPrivilegedAudit(now),
+    listRecentPrivilegedAudit: (limit) => persistence.listRecentPrivilegedAudit(limit),
+    readPrivilegedAuditRetentionState: () => persistence.readPrivilegedAuditRetentionState(),
     summarizePrivilegedAudit: () => persistence.summarizePrivilegedAudit(),
     listRecentAgentAttemptEvidence: (limit) => persistence.listRecentAgentAttemptEvidence(limit),
   };

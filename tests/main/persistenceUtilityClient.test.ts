@@ -155,6 +155,51 @@ afterEach(() => {
 });
 
 describe("persistence utility client", () => {
+  it("round-trips bounded P7.4 audit retention and rejects malformed evidence", async () => {
+    const { client, transport } = await openTestPersistenceUtility(createTestDirectory());
+    expect(client.maintainPrivilegedAudit).toBeTypeOf("function");
+    expect(client.listRecentPrivilegedAudit).toBeTypeOf("function");
+    expect(client.readPrivilegedAuditRetentionState).toBeTypeOf("function");
+
+    const initial = await client.readPrivilegedAuditRetentionState();
+    expect(initial).toMatchObject({
+      retainedRecordCount: 0,
+      prunedRecordCount: 0,
+      lastSequence: 0,
+    });
+    await expect(client.listRecentPrivilegedAudit(1_000)).resolves.toEqual([]);
+    const nextMaintenance = instant(
+      new Date(Date.parse(initial.lastMaintainedAt) + 1_000).toISOString(),
+    );
+    await expect(client.maintainPrivilegedAudit(nextMaintenance)).resolves.toMatchObject({
+      lastMaintainedAt: nextMaintenance,
+    });
+
+    transport.transformNextResponse((response) => {
+      if (
+        response.type !== "response" ||
+        response.status !== "ok" ||
+        response.operation !== "read-privileged-audit-retention-state"
+      ) {
+        throw new Error("Expected a successful audit-retention response");
+      }
+      return {
+        ...response,
+        result: {
+          ...response.result,
+          rawDatabasePath: "/private/actestra.sqlite3",
+        },
+      };
+    });
+    await expect(client.readPrivilegedAuditRetentionState()).rejects.toMatchObject({
+      code: "invalid-message",
+    });
+    await expect(client.listRecentPrivilegedAudit(1)).rejects.toMatchObject({
+      code: "unavailable",
+    });
+    await client.close();
+  });
+
   it("preserves AionUI shadow evidence and approval authority through the utility boundary", async () => {
     const { client } = await openTestPersistenceUtility(createTestDirectory());
     await expect(

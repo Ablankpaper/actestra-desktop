@@ -62,6 +62,7 @@ import {
   type PersistEvidenceResult,
   type PersistEventResult,
   type PersistWorkspaceGrantResult,
+  type PrivilegedAuditRetentionState,
   type PrivilegedAuditSummary,
   type ResolveContentReferenceInput,
   type ResolvedContentReference,
@@ -258,6 +259,18 @@ export class PersistenceUtilityClient
 
   async appendAgentAttemptEvidence(evidence: AgentAttemptEvidence): Promise<PersistEvidenceResult> {
     return this.invoke("append-agent-attempt-evidence", { evidence });
+  }
+
+  async maintainPrivilegedAudit(now: Instant): Promise<PrivilegedAuditRetentionState> {
+    return this.invoke("maintain-privileged-audit", { now });
+  }
+
+  async listRecentPrivilegedAudit(limit: number): Promise<readonly AuditRecord[]> {
+    return this.invoke("list-privileged-audit", { limit });
+  }
+
+  async readPrivilegedAuditRetentionState(): Promise<PrivilegedAuditRetentionState> {
+    return this.invoke("read-privileged-audit-retention-state", {});
   }
 
   async summarizePrivilegedAudit(): Promise<PrivilegedAuditSummary> {

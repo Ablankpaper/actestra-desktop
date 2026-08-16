@@ -159,3 +159,6 @@ jobs:
 
       - name: Smoke packaged P7.2 Worker resource boundaries from a clean profile
         run: bun run smoke:p7-2-resource-reliability
+
+      - name: Smoke packaged P7.4 diagnostic export and audit retention from a clean profile
+        run: bun run smoke:p7-4-diagnostic-audit

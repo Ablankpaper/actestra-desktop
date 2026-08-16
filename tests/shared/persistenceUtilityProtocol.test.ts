@@ -18,6 +18,98 @@ import {
 } from "../../apps/desktop/src/core";
 
 describe("persistence utility protocol", () => {
+  it("admits only the three bounded P7.4 privileged-audit operations and results", () => {
+    const retention = {
+      contractVersion: 1,
+      policyVersion: 1,
+      maxAgeDays: 90,
+      maxRecordCount: 100_000,
+      retainedRecordCount: 0,
+      prunedRecordCount: 0,
+      firstRetainedSequence: null,
+      lastSequence: 0,
+      chainHeadSha256: "a".repeat(64),
+      lastMaintainedAt: instant("2026-08-16T07:00:00.000Z"),
+    } as const;
+    const requests = [
+      {
+        operation: "maintain-privileged-audit",
+        payload: { now: instant("2026-08-16T07:00:00.000Z") },
+      },
+      { operation: "list-privileged-audit", payload: { limit: 1_000 } },
+      { operation: "read-privileged-audit-retention-state", payload: {} },
+    ] as const;
+    requests.forEach((request, index) => {
+      expect(() =>
+        assertPersistenceUtilityRequest({
+          protocolVersion: 1,
+          type: "request",
+          requestId: `persistence-p7-4-request-${String(index + 1)}`,
+          ...request,
+        }),
+      ).not.toThrow();
+    });
+
+    const responses = [
+      { operation: "maintain-privileged-audit", result: retention },
+      { operation: "list-privileged-audit", result: [] },
+      { operation: "read-privileged-audit-retention-state", result: retention },
+    ] as const;
+    responses.forEach((response, index) => {
+      expect(() =>
+        assertPersistenceUtilityMessage({
+          protocolVersion: 1,
+          type: "response",
+          requestId: `persistence-p7-4-response-${String(index + 1)}`,
+          status: "ok",
+          ...response,
+        }),
+      ).not.toThrow();
+    });
+
+    for (const request of [
+      { operation: "maintain-privileged-audit", payload: { now: "not-an-instant" } },
+      {
+        operation: "maintain-privileged-audit",
+        payload: { now: "2026-08-16T07:00:00.000Z", callerPolicy: { maxAgeDays: 365 } },
+      },
+      { operation: "list-privileged-audit", payload: { limit: 0 } },
+      { operation: "list-privileged-audit", payload: { limit: 1_001 } },
+      { operation: "read-privileged-audit-retention-state", payload: { includeRaw: true } },
+    ]) {
+      expect(() =>
+        assertPersistenceUtilityRequest({
+          protocolVersion: 1,
+          type: "request",
+          requestId: "persistence-p7-4-rejected",
+          ...request,
+        }),
+      ).toThrow(PersistenceUtilityProtocolError);
+    }
+
+    for (const response of [
+      {
+        operation: "maintain-privileged-audit",
+        result: { ...retention, chainHeadSha256: "not-a-digest" },
+      },
+      { operation: "list-privileged-audit", result: [{}] },
+      {
+        operation: "read-privileged-audit-retention-state",
+        result: { ...retention, retainedRecordCount: 1 },
+      },
+    ]) {
+      expect(() =>
+        assertPersistenceUtilityMessage({
+          protocolVersion: 1,
+          type: "response",
+          requestId: "persistence-p7-4-result-rejected",
+          status: "ok",
+          ...response,
+        }),
+      ).toThrow(PersistenceUtilityProtocolError);
+    }
+  });
+
   it("accepts only the fourteen closed Team persistence operations through schema 17", async () => {
     const { team, accepted } = await createTeamRunFixture("protocol");
     const binding = normalizeTeamExperienceBinding({

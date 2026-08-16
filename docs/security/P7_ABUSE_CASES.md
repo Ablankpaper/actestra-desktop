@@ -1,15 +1,15 @@
 # P7.1 Abuse-Case Ledger
 
-**Status:** P7.1 local abuse baseline verified; all 28 catalog cases and 168
-exact variants are `denied-safe` on macOS. Packaged Layer 4 physically
+**Status:** Final P7 product-source review preserves all 28 catalog cases and
+168 exact variants as `denied-safe` on macOS. Packaged Layer 4 physically
 exercises the seven required cases `P7-A-RENDERER-002`, `P7-A-CREDENTIAL-001`,
 `P7-A-CREDENTIAL-003`, `P7-A-WORKER-001`, `P7-A-NETWORK-001`,
-`P7-A-PROCESS-002`, and `P7-A-ARTIFACT-001`; Windows/Linux remain P8
-obligations.
-**Date:** 2026-08-15
-**Scope:** P7.1 security and abuse-case baseline
+`P7-A-PROCESS-002`, and `P7-A-ARTIFACT-001`; P7.4 separately verifies the
+diagnostic/audit boundary. Windows/Linux remain P8 obligations.
+**Date:** 2026-08-16
+**Scope:** P7.1 ledger retained through the final P7.4 product-source review
 
-This ledger is the human-readable companion to the machine catalog planned in
+This ledger is the human-readable companion to the machine catalog in
 `tests/security/abuseCaseCatalog.ts`. IDs, invariants, risk, expected boundary,
 forbidden effects, and platform obligations are stable review fields. Existing
 tests may satisfy a row only when the catalog binds the exact test name and the
@@ -18,6 +18,14 @@ test proves both rejection and the listed no-side-effect evidence.
 The disposition below records the executable local evidence. The packaged
 security hook independently exercises the seven Layer-4 rows named above; it
 does not turn the other local rows into packaged or cross-platform claims.
+
+The final product-source review is bound to
+`7b0c27f4af3bb4e0e0049a03646af19c4fa9acc2`. All 14 invariant IDs remain
+represented, all 28 cases and 168 variants still pass, and P7.4 adds no new
+catalog disposition or weakened forbidden-effect rule. The same packaged app
+also passes the P7.4 diagnostic/audit smoke. Exact-head pull-request CI,
+merge, merged-main CI, P8, formal signing/notarization, release, deployment,
+and final user acceptance remain separate evidence.
 
 ## Result vocabulary
 
@@ -89,3 +97,4 @@ P8 work and are not included in the P7.1 success count.
 - [P7 Security and Reliability Hardening Design](../superpowers/specs/2026-08-13-p7-security-hardening-design.md)
 - [P7.1 Implementation Plan](../superpowers/plans/2026-08-13-p7-1-threat-model-abuse-baseline.md)
 - [ADR-0027](../architecture/decisions/0027-p7-threat-model-and-abuse-authority.md)
+- [ADR-0029](../architecture/decisions/0029-p7-diagnostic-export-and-audit-retention.md)
