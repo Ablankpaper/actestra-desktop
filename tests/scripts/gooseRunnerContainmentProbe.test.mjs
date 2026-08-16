@@ -82,14 +82,23 @@ describe("Goose native containment probe contract", () => {
     expect(source).toContain("MS_PRIVATE");
   });
 
-  it("requires a deny policy and hostile process-creation probe, not an allow-all seccomp check", () => {
+  it("requires an x86-64 thread-aware seccomp policy", () => {
     const source = fs.readFileSync(linuxContainmentPath, "utf8");
-    expect(source).toContain("install_process_creation_filter");
-    expect(source).toContain("run_process_tree_probe");
-    expect(source).toContain("SECCOMP_RET_ERRNO");
-    for (const syscall of ["SYS_clone", "SYS_clone3", "SYS_fork", "SYS_vfork", "SYS_execve"]) {
-      expect(source).toContain(syscall);
+    for (const token of [
+      "AUDIT_ARCH_X86_64",
+      "X32_SYSCALL_BIT",
+      "CLONE_THREAD",
+      "CLONE_SIGHAND",
+      "CLONE_VM",
+      "SECCOMP_RET_KILL_PROCESS",
+      "SECCOMP_RET_ERRNO | libc::ENOSYS as u32",
+      "SECCOMP_RET_ERRNO | libc::EPERM as u32",
+      "install_process_creation_filter",
+    ]) {
+      expect(source).toContain(token);
     }
+    expect(source).toContain("BPF_JSET");
+    expect(source).toContain("BPF_AND");
     expect(source).not.toContain("can_install_seccomp_filter");
   });
 

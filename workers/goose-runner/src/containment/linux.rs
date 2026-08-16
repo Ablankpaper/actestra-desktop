@@ -39,10 +39,21 @@ const BPF_W: u16 = 0x00;
 const BPF_ABS: u16 = 0x20;
 const BPF_JMP: u16 = 0x05;
 const BPF_JEQ: u16 = 0x10;
+const BPF_JSET: u16 = 0x40;
+const BPF_ALU: u16 = 0x04;
+const BPF_AND: u16 = 0x50;
 const BPF_K: u16 = 0x00;
 const BPF_RET_K: u16 = 0x06;
 const SECCOMP_RET_ERRNO: u32 = 0x0005_0000;
 const SECCOMP_RET_ALLOW: u32 = 0x7fff_0000;
+const SECCOMP_RET_KILL_PROCESS: u32 = 0x8000_0000;
+const AUDIT_ARCH_X86_64: u32 = 0xc000_003e;
+const X32_SYSCALL_BIT: u32 = 0x4000_0000;
+const SECCOMP_DATA_NR_OFFSET: u32 = 0;
+const SECCOMP_DATA_ARCH_OFFSET: u32 = 4;
+const SECCOMP_DATA_ARG0_OFFSET: u32 = 16;
+const REQUIRED_THREAD_CLONE_FLAGS: u32 =
+    (libc::CLONE_THREAD | libc::CLONE_SIGHAND | libc::CLONE_VM) as u32;
 const CGROUP_V2_ROOT: &str = "/sys/fs/cgroup";
 const CGROUP_CPU_CONTROLLER: &str = "cpu";
 const CGROUP_MEMORY_CONTROLLER: &str = "memory";
@@ -388,46 +399,50 @@ fn filesystem_failure_code(reason: &str) -> i32 {
     }
 }
 
-fn process_creation_syscalls() -> [libc::c_long; 6] {
-    [
-        libc::SYS_clone,
-        libc::SYS_clone3,
-        libc::SYS_fork,
-        libc::SYS_vfork,
-        libc::SYS_execve,
-        libc::SYS_execveat,
-    ]
+fn bpf_statement(code: u16, value: u32) -> SockFilter {
+    SockFilter {
+        code,
+        jump_true: 0,
+        jump_false: 0,
+        value,
+    }
+}
+
+fn bpf_jump(code: u16, value: u32, jump_true: u8, jump_false: u8) -> SockFilter {
+    SockFilter {
+        code,
+        jump_true,
+        jump_false,
+        value,
+    }
 }
 
 fn process_creation_filter() -> Vec<SockFilter> {
-    let mut filter = Vec::with_capacity(process_creation_syscalls().len() * 2 + 2);
-    filter.push(SockFilter {
-        code: BPF_LD | BPF_W | BPF_ABS,
-        jump_true: 0,
-        jump_false: 0,
-        value: 0,
-    });
-    for syscall in process_creation_syscalls() {
-        filter.push(SockFilter {
-            code: BPF_JMP | BPF_JEQ | BPF_K,
-            jump_true: 0,
-            jump_false: 1,
-            value: syscall as u32,
-        });
-        filter.push(SockFilter {
-            code: BPF_RET_K,
-            jump_true: 0,
-            jump_false: 0,
-            value: SECCOMP_RET_ERRNO | libc::EPERM as u32,
-        });
-    }
-    filter.push(SockFilter {
-        code: BPF_RET_K,
-        jump_true: 0,
-        jump_false: 0,
-        value: SECCOMP_RET_ALLOW,
-    });
-    filter
+    vec![
+        bpf_statement(BPF_LD | BPF_W | BPF_ABS, SECCOMP_DATA_ARCH_OFFSET),
+        bpf_jump(BPF_JMP | BPF_JEQ | BPF_K, AUDIT_ARCH_X86_64, 1, 0),
+        bpf_statement(BPF_RET_K, SECCOMP_RET_KILL_PROCESS),
+        bpf_statement(BPF_LD | BPF_W | BPF_ABS, SECCOMP_DATA_NR_OFFSET),
+        bpf_jump(BPF_JMP | BPF_JSET | BPF_K, X32_SYSCALL_BIT, 0, 1),
+        bpf_statement(BPF_RET_K, SECCOMP_RET_KILL_PROCESS),
+        bpf_jump(BPF_JMP | BPF_JEQ | BPF_K, libc::SYS_clone as u32, 0, 5),
+        bpf_statement(BPF_LD | BPF_W | BPF_ABS, SECCOMP_DATA_ARG0_OFFSET),
+        bpf_statement(BPF_ALU | BPF_AND | BPF_K, REQUIRED_THREAD_CLONE_FLAGS),
+        bpf_jump(BPF_JMP | BPF_JEQ | BPF_K, REQUIRED_THREAD_CLONE_FLAGS, 1, 0),
+        bpf_statement(BPF_RET_K, SECCOMP_RET_ERRNO | libc::EPERM as u32),
+        bpf_statement(BPF_RET_K, SECCOMP_RET_ALLOW),
+        bpf_jump(BPF_JMP | BPF_JEQ | BPF_K, libc::SYS_clone3 as u32, 0, 1),
+        bpf_statement(BPF_RET_K, SECCOMP_RET_ERRNO | libc::ENOSYS as u32),
+        bpf_jump(BPF_JMP | BPF_JEQ | BPF_K, libc::SYS_fork as u32, 0, 1),
+        bpf_statement(BPF_RET_K, SECCOMP_RET_ERRNO | libc::EPERM as u32),
+        bpf_jump(BPF_JMP | BPF_JEQ | BPF_K, libc::SYS_vfork as u32, 0, 1),
+        bpf_statement(BPF_RET_K, SECCOMP_RET_ERRNO | libc::EPERM as u32),
+        bpf_jump(BPF_JMP | BPF_JEQ | BPF_K, libc::SYS_execve as u32, 0, 1),
+        bpf_statement(BPF_RET_K, SECCOMP_RET_ERRNO | libc::EPERM as u32),
+        bpf_jump(BPF_JMP | BPF_JEQ | BPF_K, libc::SYS_execveat as u32, 0, 1),
+        bpf_statement(BPF_RET_K, SECCOMP_RET_ERRNO | libc::EPERM as u32),
+        bpf_statement(BPF_RET_K, SECCOMP_RET_ALLOW),
+    ]
 }
 
 fn install_process_creation_filter() -> Result<(), &'static str> {
@@ -1080,8 +1095,10 @@ mod tests {
         bounded_hex, bounded_target, landlock_available_from_result, memory_limit_from_baseline,
         parse_decimal_control, parse_unified_cgroup_path, process_creation_filter,
         resource_probe_failure_code, run_cleanup_probe, run_parent_death_probe,
-        run_process_tree_probe, run_resource_probe, ResourceProbeFailure, BPF_JEQ, BPF_JMP,
-        BPF_RET_K, SECCOMP_RET_ALLOW, SECCOMP_RET_ERRNO,
+        run_process_tree_probe, run_resource_probe, ResourceProbeFailure, AUDIT_ARCH_X86_64,
+        BPF_ALU, BPF_AND, BPF_JEQ, BPF_JMP, BPF_JSET, BPF_K, BPF_RET_K,
+        REQUIRED_THREAD_CLONE_FLAGS, SECCOMP_DATA_ARCH_OFFSET, SECCOMP_RET_ALLOW,
+        SECCOMP_RET_ERRNO, SECCOMP_RET_KILL_PROCESS, X32_SYSCALL_BIT,
     };
 
     #[test]
@@ -1107,26 +1124,21 @@ mod tests {
     }
 
     #[test]
-    fn process_filter_denies_creation_and_exec_but_allows_other_syscalls() {
+    fn process_filter_guards_architecture_x32_and_thread_clone_flags() {
         let filter = process_creation_filter();
-        assert_eq!(
-            filter.first().map(|instruction| instruction.code),
-            Some(0x20)
-        );
-        let deny_values: Vec<u32> = filter
-            .iter()
-            .filter(|instruction| instruction.code == (BPF_JMP | BPF_JEQ))
-            .map(|instruction| instruction.value)
-            .collect();
-        assert_eq!(deny_values.len(), 6);
-        assert!(filter.iter().any(|instruction| {
-            instruction.code == BPF_RET_K
-                && instruction.value == (SECCOMP_RET_ERRNO | libc::EPERM as u32)
-        }));
-        assert_eq!(
-            filter.last().map(|instruction| instruction.value),
-            Some(SECCOMP_RET_ALLOW)
-        );
+        assert_eq!(filter.len(), 23);
+        assert_eq!(filter[0].value, SECCOMP_DATA_ARCH_OFFSET);
+        assert_eq!(filter[1].value, AUDIT_ARCH_X86_64);
+        assert_eq!(filter[2].value, SECCOMP_RET_KILL_PROCESS);
+        assert_eq!(filter[4].code, BPF_JMP | BPF_JSET | BPF_K);
+        assert_eq!(filter[4].value, X32_SYSCALL_BIT);
+        assert_eq!(filter[8].code, BPF_ALU | BPF_AND | BPF_K);
+        assert_eq!(filter[8].value, REQUIRED_THREAD_CLONE_FLAGS);
+        assert_eq!(filter[13].value, SECCOMP_RET_ERRNO | libc::ENOSYS as u32);
+        for index in [10, 15, 17, 19, 21] {
+            assert_eq!(filter[index].value, SECCOMP_RET_ERRNO | libc::EPERM as u32);
+        }
+        assert_eq!(filter[22].value, SECCOMP_RET_ALLOW);
     }
 
     #[test]
