@@ -10,9 +10,10 @@
 
 ---
 
-### Task 1: Record the P7.4 authority and closed contracts
+## Task 1: Record the P7.4 authority and closed contracts
 
 **Files:**
+
 - Create: `docs/architecture/decisions/0029-p7-diagnostic-export-and-audit-retention.md`
 - Modify: `docs/architecture/decisions/README.md`
 - Create: `apps/desktop/src/core/diagnosticEvidence.ts`
@@ -28,9 +29,10 @@
 - [ ] Run the focused contract test and adjacent core tests GREEN.
 - [ ] Record the authority, explicit-consent rule, redaction exclusions, schema migration, rollback, macOS/P8 boundary, and non-claims in ADR-0029.
 
-### Task 2: Add schema-23 audit-chain and retention state
+## Task 2: Add schema-23 audit-chain and retention state
 
 **Files:**
+
 - Modify: `apps/desktop/src/utility/persistence/sqliteMigrations.ts`
 - Modify: `apps/desktop/src/utility/persistence/sqliteCorePersistence.ts`
 - Test: `tests/utility/sqliteMigrations.test.ts`
@@ -43,9 +45,10 @@
 - [ ] Keep `summarizePrivilegedAudit()` compatible by reporting total accepted records (`pruned + retained`) and the immutable last sequence.
 - [ ] Run both focused suites GREEN, reopen the database, and rerun the tamper cases.
 
-### Task 3: Carry the new operations through the utility protocol
+## Task 3: Carry the new operations through the utility protocol
 
 **Files:**
+
 - Modify: `apps/desktop/src/shared/persistenceUtilityProtocol.ts`
 - Modify: `apps/desktop/src/utility/persistence/persistenceUtilityService.ts`
 - Modify: `apps/desktop/src/main/persistence/persistenceUtilityClient.ts`
@@ -58,9 +61,10 @@
 - [ ] Make utility startup run one retention/integrity maintenance pass using its injected clock before reporting ready.
 - [ ] Run protocol, service, client, and persistence tests GREEN.
 
-### Task 4: Build the Main-owned local diagnostic exporter
+## Task 4: Build the Main-owned local diagnostic exporter
 
 **Files:**
+
 - Create: `apps/desktop/src/main/diagnostics/diagnosticExportService.ts`
 - Create: `apps/desktop/src/compatibility/aionui/diagnosticExport.ts`
 - Modify: `apps/desktop/src/compatibility/aionui/index.ts`
@@ -72,9 +76,10 @@
 - [ ] Main must never return the selected path or report bytes. The report must never contain credential references, provider data, prompts/completions, tool arguments/output references, patches, raw IDs, environment values, or user paths.
 - [ ] Run focused tests GREEN and scan encoded fixtures for the forbidden sentinels.
 
-### Task 5: Add the AionUI-native explicit-consent surface
+## Task 5: Add the AionUI-native explicit-consent surface
 
 **Files:**
+
 - Create: `downstream/aionui-v2.1.41/patches/0020-actestra-p7-diagnostic-export.mjs`
 - Modify: `downstream/aionui-v2.1.41/overlay.json`
 - Modify: `scripts/check-aionui-downstream.mjs`
@@ -88,9 +93,10 @@
 - [ ] Classify the patch R1, record rollback, and extend downstream exact-path/authority checks.
 - [ ] Materialize and run the two focused AionUI tests, typecheck, downstream check, and foundation check GREEN.
 
-### Task 6: Add packaged P7.4 acceptance
+## Task 6: Add packaged P7.4 acceptance
 
 **Files:**
+
 - Create: `apps/desktop/src/main/security/p7DiagnosticAuditSmoke.ts`
 - Create: `scripts/smoke-p7-4-diagnostic-audit.mjs`
 - Modify: `package.json`
@@ -104,9 +110,10 @@
 - [ ] Add `smoke:p7-4-diagnostic-audit` after P7.2 smoke in macOS CI; it must exercise the exact packaged app and fresh isolated profile.
 - [ ] Run focused harness and packaged hook tests GREEN.
 
-### Task 7: Complete local and packaged verification
+## Task 7: Complete local and packaged verification
 
 **Files:**
+
 - Modify only defects demonstrated by the specified gates.
 
 - [ ] Run focused core, persistence, protocol, Main, compatibility, downstream, security, and harness suites.
@@ -115,9 +122,10 @@
 - [ ] Run existing General Work, P7.1 security, P7.2 resource, and new P7.4 packaged smoke against the same app bytes.
 - [ ] Verify no credential/path/content sentinel in source diff, logs, or report and no residual Actestra/AionCore/General/Goose/Planner process.
 
-### Task 8: Final P7 security review, documentation, and governed integration
+## Task 8: Final P7 security review, documentation, and governed integration
 
 **Files:**
+
 - Modify: `docs/security/THREAT_MODEL.md`
 - Modify: `docs/security/P7_ABUSE_CASES.md`
 - Modify: `docs/architecture/SYSTEM_OVERVIEW.md`

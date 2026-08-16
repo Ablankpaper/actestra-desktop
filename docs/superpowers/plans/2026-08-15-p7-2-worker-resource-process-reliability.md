@@ -10,9 +10,10 @@
 
 ---
 
-### Task 1: Add the immutable budget and incident contract
+## Task 1: Add the immutable budget and incident contract
 
 **Files:**
+
 - Create: `apps/desktop/src/core/workerResourceBudget.ts`
 - Modify: `apps/desktop/src/core/index.ts`
 - Test: `tests/core/workerResourceBudget.test.ts`
@@ -44,9 +45,10 @@
   git commit -m "feat: define p7.2 worker resource budget contract"
   ```
 
-### Task 2: Make supervisor terminalization resource-aware
+## Task 2: Make supervisor terminalization resource-aware
 
 **Files:**
+
 - Create: `apps/desktop/src/main/workers/workerResourceMonitor.ts`
 - Modify: `apps/desktop/src/main/workers/agentAdapterSupervisor.ts`
 - Modify: `apps/desktop/src/core/agentAdapter.ts`
@@ -80,9 +82,10 @@
   git commit -m "feat: terminalize worker resource breaches through supervisor"
   ```
 
-### Task 3: Enforce and monitor the General Worker budget
+## Task 3: Enforce and monitor the General Worker budget
 
 **Files:**
+
 - Modify: `apps/desktop/src/main/workers/electronGeneralWorker.ts`
 - Modify: `apps/desktop/src/main/workers/generalWorkerProcessAdapter.ts`
 - Modify: `apps/desktop/src/main/workers/generalWorkCoordinator.ts`
@@ -117,9 +120,10 @@
   git commit -m "feat: enforce general worker resource budget"
   ```
 
-### Task 4: Enforce Goose native limits and process-tree denial
+## Task 4: Enforce Goose native limits and process-tree denial
 
 **Files:**
+
 - Modify: `workers/goose-runner/src/main.rs`
 - Modify: `workers/goose-runner/Cargo.toml`
 - Modify: `apps/desktop/src/main/workers/gooseRunnerProcess.ts`
@@ -154,9 +158,10 @@
   git commit -m "feat: enforce goose worker resource limits"
   ```
 
-### Task 5: Bound output and Goose private-root storage
+## Task 5: Bound output and Goose private-root storage
 
 **Files:**
+
 - Create: `apps/desktop/src/main/workers/workerStorageBudget.ts`
 - Modify: `apps/desktop/src/main/workers/gooseCodingToolInvoker.ts`
 - Modify: `apps/desktop/src/main/workers/gooseCodingArtifactPublisher.ts`
@@ -192,9 +197,10 @@
   git commit -m "feat: enforce worker output and private storage bounds"
   ```
 
-### Task 6: Add hostile local probes and downstream composition
+## Task 6: Add hostile local probes and downstream composition
 
 **Files:**
+
 - Create: `scripts/smoke-p7-2-resource-reliability.mjs`
 - Create: `tests/security/p7ResourceReliabilitySmoke.test.ts`
 - Create: `downstream/aionui-v2.1.41/patches/0019-actestra-p7-resource-reliability.mjs`
@@ -229,9 +235,10 @@
   git commit -m "test: add packaged p7.2 resource reliability smoke"
   ```
 
-### Task 7: Record ADR and phase evidence
+## Task 7: Record ADR and phase evidence
 
 **Files:**
+
 - Create: `docs/architecture/decisions/0028-p7-worker-resource-and-process-reliability.md`
 - Modify: `docs/architecture/decisions/README.md`
 - Modify: `docs/architecture/SYSTEM_OVERVIEW.md`
