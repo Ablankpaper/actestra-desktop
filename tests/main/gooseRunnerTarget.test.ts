@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -9,6 +9,10 @@ const repositoryRoot = path.resolve(import.meta.dirname, "../..");
 const targetModulePath = path.join(
   repositoryRoot,
   "apps/desktop/src/main/workers/gooseRunnerTarget.ts",
+);
+const processModulePath = path.join(
+  repositoryRoot,
+  "apps/desktop/src/main/workers/gooseRunnerProcess.ts",
 );
 
 const expectedBuildTargets = [
@@ -160,6 +164,21 @@ describe("Goose runner native build targets", () => {
         "Goose runner build target identities are ambiguous",
       ],
     });
+  });
+
+  it("uses the shared runtime ceiling before any private-root or transport side effect", () => {
+    const source = readFileSync(processModulePath, "utf8");
+    const runtimeResolution = source.indexOf(
+      "resolveGooseRunnerRuntimeTarget(process.platform, process.arch)",
+    );
+    const privateRootPreparation = source.indexOf(
+      "prepared = await preparePrivateRoot(options.privateRootParent, options.artifact)",
+    );
+
+    expect(source).toContain('from "./gooseRunnerTarget"');
+    expect(source).not.toContain("function currentTargetTriple()");
+    expect(runtimeResolution).toBeGreaterThan(-1);
+    expect(runtimeResolution).toBeLessThan(privateRootPreparation);
   });
 
   it("pins complete build-tool asset evidence for every admitted host", () => {

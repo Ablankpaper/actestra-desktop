@@ -4,10 +4,10 @@ import { access, lstat, readFile, readdir, realpath } from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
 import path from "node:path";
 import sourceContract from "../../shared/gooseRunnerSource.json";
+import { resolveGooseRunnerBuildTargetByTriple } from "./gooseRunnerTarget";
 
 export const GOOSE_RUNNER_MANIFEST_FILE = "actestra-goose-runner.manifest.json" as const;
 
-const EXECUTABLE_BASENAMES = new Set(["actestra-goose-runner", "actestra-goose-runner.exe"]);
 const LOCKFILE_NAME = "Cargo.lock";
 const LICENSE_FILE_NAME = "GOOSE-APACHE-2.0.txt";
 const SBOM_FILE_NAME = "actestra-goose-runner.cdx.json";
@@ -20,11 +20,6 @@ const MAX_AUDIT_BYTES = 16 * 1024 * 1024;
 const MAX_EXECUTABLE_BYTES = 512 * 1024 * 1024;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 const COMMIT_PATTERN = /^[a-f0-9]{40}$/;
-const BUILD_TOOL_HOST_BY_TARGET: Readonly<Record<string, string>> = Object.freeze({
-  "aarch64-apple-darwin": "darwin-arm64",
-  "x86_64-apple-darwin": "darwin-x64",
-});
-
 export type GooseRunnerArtifactErrorCode =
   | "missing-artifact"
   | "invalid-manifest"
@@ -126,18 +121,16 @@ function requireExactJson(value: unknown, expected: unknown, label: string): voi
 function validateBuildToolEvidence(
   value: unknown,
   expected: Readonly<{ version: string; commit: string }>,
-  targetTriple: string,
+  buildToolHost: string,
   toolName: "cargo-auditable" | "cargo-audit",
   label: string,
 ): void {
   const evidence = requireRecord(value, label);
   requireExactKeys(evidence, ["version", "commit", "archiveSha256", "executableSha256"], label);
-  const host = BUILD_TOOL_HOST_BY_TARGET[targetTriple];
   const assetContracts = sourceContract.buildToolAssets as Readonly<
     Record<string, readonly { name: string; sha256: string }[]>
   >;
-  const asset =
-    host === undefined ? undefined : assetContracts[host]?.find((item) => item.name === toolName);
+  const asset = assetContracts[buildToolHost]?.find((item) => item.name === toolName);
   if (
     evidence.version !== expected.version ||
     evidence.commit !== expected.commit ||
@@ -341,7 +334,7 @@ function validateRsaDisposition(value: unknown, expectedSource: string, label: s
   }
 }
 
-function validateAudit(value: unknown, targetTriple: string): number {
+function validateAudit(value: unknown, targetTriple: string, buildToolHost: string): number {
   const audit = requireRecord(value, "Goose runner audit report");
   requireExactKeys(
     audit,
@@ -357,7 +350,7 @@ function validateAudit(value: unknown, targetTriple: string): number {
   validateBuildToolEvidence(
     audit.cargoAudit,
     sourceContract.buildTools.cargoAudit,
-    targetTriple,
+    buildToolHost,
     "cargo-audit",
     "Goose runner cargo-audit pin",
   );
@@ -590,6 +583,13 @@ export async function admitGooseRunnerArtifact(
       `Goose runner target ${targetTriple} does not match ${options.expectedTargetTriple}`,
     );
   }
+  const buildTarget = resolveGooseRunnerBuildTargetByTriple(targetTriple);
+  if (buildTarget === undefined) {
+    throw new GooseRunnerArtifactError(
+      "incompatible-artifact",
+      "Goose runner target is outside the admitted native build matrix",
+    );
+  }
 
   requireExactJson(manifest.goose, sourceContract.goose, "Goose source and feature pin");
   requireExactJson(manifest.acp, sourceContract.acp, "Goose ACP pin");
@@ -597,10 +597,10 @@ export async function admitGooseRunnerArtifact(
   const executable = requireRecord(runner.executable, "Goose runner executable");
   requireExactKeys(executable, ["file", "sha256", "size"], "Goose runner executable");
   const executableFile = requireString(executable.file, "Goose runner executable file");
-  if (!EXECUTABLE_BASENAMES.has(executableFile)) {
+  if (executableFile !== buildTarget.executableFile) {
     throw new GooseRunnerArtifactError(
-      "invalid-manifest",
-      "Goose runner executable must use its fixed platform basename",
+      "incompatible-artifact",
+      "Goose runner executable does not match the admitted target contract",
     );
   }
   const expectedFiles = new Set([
@@ -673,7 +673,7 @@ export async function admitGooseRunnerArtifact(
   validateBuildToolEvidence(
     build.cargoAuditable,
     sourceContract.buildTools.cargoAuditable,
-    targetTriple,
+    buildTarget.buildToolHost,
     "cargo-auditable",
     "Goose runner cargo-auditable pin",
   );
@@ -737,6 +737,7 @@ export async function admitGooseRunnerArtifact(
   const auditedActiveDependencyCount = validateAudit(
     parseJson(auditBuffer, "Goose runner audit"),
     targetTriple,
+    buildTarget.buildToolHost,
   );
   if (sbomComponentCount !== auditedActiveDependencyCount) {
     throw new GooseRunnerArtifactError(

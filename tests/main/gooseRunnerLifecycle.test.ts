@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { chmod, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AdmittedGooseRunnerArtifact } from "../../apps/desktop/src/main/workers/gooseRunnerArtifact";
 import {
   createGooseRunnerEnvironment,
@@ -120,28 +120,30 @@ describe("Goose runner private lifecycle", () => {
     expect(await readdir(fixture.privateRootParent)).toEqual([]);
   });
 
-  it("rejects a runner built for another host before creating a private root", async () => {
-    const fixture = await createLifecycleFixture();
+  it.each(["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"])(
+    "rejects a matching %s build before creating a private root or transport",
+    async (targetTriple) => {
+      const fixture = await createLifecycleFixture();
+      const transportFactory = vi.fn(() => new LoopbackGooseAcpTransport());
 
-    await expect(
-      openGooseRunnerHandshake({
-        artifact: {
-          ...fixture.artifact,
-          targetTriple:
-            fixtureTargetTriple === "aarch64-apple-darwin"
-              ? "x86_64-apple-darwin"
-              : "aarch64-apple-darwin",
-        },
-        privateRootParent: fixture.privateRootParent,
-        transportFactory: () => new LoopbackGooseAcpTransport(),
-      }),
-    ).rejects.toMatchObject({
-      name: "GooseRunnerProcessError",
-      code: "network-policy-unavailable",
-    });
+      await expect(
+        openGooseRunnerHandshake({
+          artifact: {
+            ...fixture.artifact,
+            targetTriple,
+          },
+          privateRootParent: fixture.privateRootParent,
+          transportFactory,
+        }),
+      ).rejects.toMatchObject({
+        name: "GooseRunnerProcessError",
+        code: "network-policy-unavailable",
+      });
 
-    expect(await readdir(fixture.privateRootParent)).toEqual([]);
-  });
+      expect(transportFactory).not.toHaveBeenCalled();
+      expect(await readdir(fixture.privateRootParent)).toEqual([]);
+    },
+  );
 
   it("removes the private root after a version rejection without touching a repository", async () => {
     const fixture = await createLifecycleFixture();

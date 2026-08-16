@@ -25,6 +25,7 @@ import {
 } from "../../core";
 import type { AdmittedGooseRunnerArtifact } from "./gooseRunnerArtifact";
 import { createGooseRunnerSandboxLaunch } from "./gooseRunnerSandbox";
+import { resolveGooseRunnerRuntimeTarget } from "./gooseRunnerTarget";
 
 const MAX_STDOUT_LINE_BYTES = 64 * 1024;
 const MAX_STDERR_BYTES = 256 * 1024;
@@ -102,19 +103,6 @@ export interface OpenGooseRunnerHandshakeResult {
 
 function isAbsoluteDirectory(value: string): boolean {
   return typeof value === "string" && path.isAbsolute(value);
-}
-
-function currentTargetTriple(): string | undefined {
-  if (process.platform !== "darwin") {
-    return undefined;
-  }
-  if (process.arch === "arm64") {
-    return "aarch64-apple-darwin";
-  }
-  if (process.arch === "x64") {
-    return "x86_64-apple-darwin";
-  }
-  return undefined;
 }
 
 async function sha256File(filePath: string): Promise<string> {
@@ -706,11 +694,11 @@ async function closeAndRemove(connection: GooseAcpConnection, privateRoot: strin
 export async function openGooseRunnerHandshake(
   options: OpenGooseRunnerHandshakeOptions,
 ): Promise<OpenGooseRunnerHandshakeResult> {
-  const hostTargetTriple = currentTargetTriple();
-  if (hostTargetTriple === undefined || options.artifact.targetTriple !== hostTargetTriple) {
+  const runtimeTarget = resolveGooseRunnerRuntimeTarget(process.platform, process.arch);
+  if (runtimeTarget === undefined || options.artifact.targetTriple !== runtimeTarget.targetTriple) {
     throw new GooseRunnerProcessError(
       "network-policy-unavailable",
-      "P5.1 requires a Goose runner built for the current supported macOS host",
+      "The current host lacks admitted Goose runtime containment",
     );
   }
   const capabilityProxyPort =
