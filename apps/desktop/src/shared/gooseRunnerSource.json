@@ -21,6 +21,36 @@
     "rustcCommit": "31fca3adb283cc9dfd56b49cdee9a96eb9c96ffd",
     "rustfmt": "rustfmt 1.9.0-stable (31fca3adb2 2026-06-26)"
   },
+  "buildTargets": [
+    {
+      "platform": "darwin",
+      "architecture": "arm64",
+      "targetTriple": "aarch64-apple-darwin",
+      "buildToolHost": "darwin-arm64",
+      "executableFile": "actestra-goose-runner"
+    },
+    {
+      "platform": "darwin",
+      "architecture": "x64",
+      "targetTriple": "x86_64-apple-darwin",
+      "buildToolHost": "darwin-x64",
+      "executableFile": "actestra-goose-runner"
+    },
+    {
+      "platform": "win32",
+      "architecture": "x64",
+      "targetTriple": "x86_64-pc-windows-msvc",
+      "buildToolHost": "win32-x64",
+      "executableFile": "actestra-goose-runner.exe"
+    },
+    {
+      "platform": "linux",
+      "architecture": "x64",
+      "targetTriple": "x86_64-unknown-linux-gnu",
+      "buildToolHost": "linux-x64",
+      "executableFile": "actestra-goose-runner"
+    }
+  ],
   "buildTools": {
     "cargoAuditable": {
       "version": "0.7.4",
