@@ -40,4 +40,14 @@ describe("Goose runner native source portability", () => {
     expect(source).toContain("fn reads_a_real_linux_virtual_size_baseline()");
     expect(source).toContain("fn keeps_windows_native_resource_enforcement_unavailable()");
   });
+
+  it("installs the Linux process policy before constructing Tokio", () => {
+    const source = fs.readFileSync(runnerSourcePath, "utf8");
+    const containment = fs.readFileSync(containmentModulePath, "utf8");
+    expect(containment).toContain("pub(crate) use linux::install_process_creation_filter");
+    const policy = source.indexOf("install_process_creation_filter()");
+    const runtime = source.indexOf("tokio::runtime::Builder::new_multi_thread()");
+    expect(policy).toBeGreaterThan(-1);
+    expect(runtime).toBeGreaterThan(policy);
+  });
 });

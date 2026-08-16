@@ -68,6 +68,8 @@ where
     })
 }
 
+#[cfg(target_os = "linux")]
+pub(crate) use linux::install_process_creation_filter;
 #[cfg(unix)]
 pub(crate) use unix::{apply_resource_limits, apply_resource_limits_with, watch_parent_liveness};
 #[cfg(windows)]

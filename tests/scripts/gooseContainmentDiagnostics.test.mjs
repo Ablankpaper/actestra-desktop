@@ -4,6 +4,27 @@ import { describe, expect, it } from "vitest";
 import { classifyGooseContainmentProbeStderr } from "../../scripts/gooseContainmentEvidence.mjs";
 
 describe("Goose containment probe diagnostics", () => {
+  it("accepts only the closed process-stage vocabulary", () => {
+    for (const code of [
+      "process-seccomp-unavailable",
+      "process-thread-unavailable",
+      "process-creation-not-denied",
+      "process-exec-not-denied",
+      "process-probe-cleanup-failed",
+    ]) {
+      expect(
+        classifyGooseContainmentProbeStderr(
+          `Goose process-tree probe failed at bounded stage ${code}\n`,
+        ),
+      ).toBe(code);
+    }
+    expect(
+      classifyGooseContainmentProbeStderr(
+        "Goose process-tree probe failed at bounded stage process-private-path\n",
+      ),
+    ).toBeUndefined();
+  });
+
   it("accepts only the closed resource-stage vocabulary", () => {
     expect(
       classifyGooseContainmentProbeStderr(

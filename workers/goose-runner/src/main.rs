@@ -2,6 +2,8 @@ use std::env;
 mod containment;
 #[cfg(all(unix, test))]
 use containment::apply_resource_limits_with;
+#[cfg(target_os = "linux")]
+use containment::install_process_creation_filter;
 use containment::RESOURCE_LIMIT_FAILURE_MARKER;
 #[cfg(unix)]
 use containment::{apply_resource_limits, watch_parent_liveness};
@@ -21,6 +23,11 @@ fn main() {
         return;
     }
     if apply_resource_limits().is_err() {
+        eprintln!("{RESOURCE_LIMIT_FAILURE_MARKER}");
+        std::process::exit(1);
+    }
+    #[cfg(target_os = "linux")]
+    if install_process_creation_filter().is_err() {
         eprintln!("{RESOURCE_LIMIT_FAILURE_MARKER}");
         std::process::exit(1);
     }

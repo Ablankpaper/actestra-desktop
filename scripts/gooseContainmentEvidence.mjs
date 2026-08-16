@@ -27,6 +27,11 @@ const CAPABILITY_KEYS = Object.freeze([
 const CONTAINMENT_RECORD_KEYS = Object.freeze(EVIDENCE_KEYS.filter((key) => key !== "status"));
 const MAX_PROBE_DIAGNOSTIC_BYTES = 64 * 1024;
 export const GOOSE_CONTAINMENT_PROBE_DIAGNOSTIC_CODES = Object.freeze([
+  "process-creation-not-denied",
+  "process-exec-not-denied",
+  "process-probe-cleanup-failed",
+  "process-seccomp-unavailable",
+  "process-thread-unavailable",
   "resource-cgroup-attach-failed",
   "resource-cgroup-baseline-invalid",
   "resource-cgroup-cleanup-failed",
@@ -42,7 +47,7 @@ export const GOOSE_CONTAINMENT_PROBE_DIAGNOSTIC_CODES = Object.freeze([
   "resource-process-count-not-enforced",
   "resource-rlimit-unavailable",
 ]);
-const RESOURCE_PROBE_DIAGNOSTIC_CODES = new Set(GOOSE_CONTAINMENT_PROBE_DIAGNOSTIC_CODES);
+const PROBE_DIAGNOSTIC_CODES = new Set(GOOSE_CONTAINMENT_PROBE_DIAGNOSTIC_CODES);
 
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -62,7 +67,7 @@ function invalid(code) {
 }
 
 /**
- * Reduce native probe stderr to one fixed resource-stage code. Raw stderr is
+ * Reduce native probe stderr to one fixed process/resource-stage code. Raw stderr is
  * never returned because it may contain platform-owned paths or diagnostics.
  */
 export function classifyGooseContainmentProbeStderr(value) {
@@ -70,9 +75,11 @@ export function classifyGooseContainmentProbeStderr(value) {
     return undefined;
   }
   const matches = [
-    ...value.matchAll(/^Goose resource probe failed at bounded stage (resource-[a-z-]+)$/gmu),
+    ...value.matchAll(
+      /^Goose (?:process-tree|resource) probe failed at bounded stage ((?:process|resource)-[a-z-]+)$/gmu,
+    ),
   ];
-  if (matches.length !== 1 || !RESOURCE_PROBE_DIAGNOSTIC_CODES.has(matches[0][1])) {
+  if (matches.length !== 1 || !PROBE_DIAGNOSTIC_CODES.has(matches[0][1])) {
     return undefined;
   }
   return matches[0][1];

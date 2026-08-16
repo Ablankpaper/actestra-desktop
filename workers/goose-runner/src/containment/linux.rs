@@ -65,6 +65,25 @@ const CGROUP2_SUPER_MAGIC: u64 = 0x6367_7270;
 const CGROUP_PROBE_CPU_MAX: &str = "100000 100000";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ProcessProbeFailure {
+    SeccompUnavailable,
+    ThreadUnavailable,
+    CreationNotDenied,
+    ExecNotDenied,
+    CleanupFailed,
+}
+
+fn process_probe_failure_code(failure: ProcessProbeFailure) -> &'static str {
+    match failure {
+        ProcessProbeFailure::SeccompUnavailable => "process-seccomp-unavailable",
+        ProcessProbeFailure::ThreadUnavailable => "process-thread-unavailable",
+        ProcessProbeFailure::CreationNotDenied => "process-creation-not-denied",
+        ProcessProbeFailure::ExecNotDenied => "process-exec-not-denied",
+        ProcessProbeFailure::CleanupFailed => "process-probe-cleanup-failed",
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ResourceProbeFailure {
     RlimitUnavailable,
     CgroupV2Unavailable,
@@ -445,7 +464,7 @@ fn process_creation_filter() -> Vec<SockFilter> {
     ]
 }
 
-fn install_process_creation_filter() -> Result<(), &'static str> {
+pub(crate) fn install_process_creation_filter() -> Result<(), &'static str> {
     if unsafe { libc::prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) } != 0 {
         return Err("seccomp-no-new-privs");
     }
@@ -476,17 +495,37 @@ fn install_process_creation_filter() -> Result<(), &'static str> {
     Ok(())
 }
 
-fn process_filter_failure_code(reason: &str) -> i32 {
-    match reason {
-        "seccomp-no-new-privs" => 1,
-        "seccomp-filter-too-large" => 2,
-        "seccomp-install-permission" => 3,
-        "seccomp-install-invalid" => 4,
-        "seccomp-install-pointer" => 5,
-        "seccomp-install-unavailable" => 6,
-        "seccomp-install" => 7,
-        _ => 99,
+fn syscall_errno(result: libc::c_long, expected: i32) -> bool {
+    result == -1 && std::io::Error::last_os_error().raw_os_error() == Some(expected)
+}
+
+fn wait_for_child_exit(child: libc::pid_t) -> Option<i32> {
+    let mut status = 0;
+    loop {
+        let waited = unsafe { libc::waitpid(child, &mut status, 0) };
+        if waited == child {
+            return libc::WIFEXITED(status).then(|| libc::WEXITSTATUS(status));
+        }
+        if waited < 0 && std::io::Error::last_os_error().raw_os_error() == Some(libc::EINTR) {
+            continue;
+        }
+        unsafe {
+            libc::kill(child, libc::SIGKILL);
+            libc::waitpid(child, std::ptr::null_mut(), 0);
+        }
+        return None;
     }
+}
+
+fn finish_creation_probe(result: libc::c_long) -> bool {
+    if result == 0 {
+        unsafe { libc::_exit(80) };
+    }
+    if result > 0 {
+        let _ = wait_for_child_exit(result as libc::pid_t);
+        return false;
+    }
+    syscall_errno(result, libc::EPERM)
 }
 
 fn run_process_tree_probe() -> bool {
@@ -495,50 +534,75 @@ fn run_process_tree_probe() -> bool {
         return false;
     }
     if child == 0 {
-        if let Err(reason) = install_process_creation_filter() {
-            unsafe { libc::_exit(10 + process_filter_failure_code(reason)) };
+        if install_process_creation_filter().is_err() {
+            unsafe { libc::_exit(20) };
         }
-        let fork_result = unsafe { libc::fork() };
-        if fork_result >= 0 || std::io::Error::last_os_error().raw_os_error() != Some(libc::EPERM) {
-            if fork_result == 0 {
-                unsafe { libc::_exit(11) };
-            }
-            unsafe { libc::_exit(12) };
+        if std::thread::spawn(|| 7_u8).join() != Ok(7_u8) {
+            unsafe { libc::_exit(21) };
         }
-        let executable = match std::ffi::CString::new("/bin/true") {
+
+        let clone_result = unsafe { libc::syscall(libc::SYS_clone, libc::SIGCHLD, 0, 0, 0, 0) };
+        if !finish_creation_probe(clone_result)
+            || !finish_creation_probe(unsafe { libc::syscall(libc::SYS_fork) })
+            || !finish_creation_probe(unsafe { libc::syscall(libc::SYS_vfork) })
+            || !syscall_errno(
+                unsafe { libc::syscall(libc::SYS_clone3, std::ptr::null::<c_void>(), 0) },
+                libc::ENOSYS,
+            )
+        {
+            unsafe { libc::_exit(22) };
+        }
+
+        let executable = match CString::new("/bin/false") {
             Ok(value) => value,
-            Err(_) => unsafe {
-                libc::_exit(13);
-            },
+            Err(_) => unsafe { libc::_exit(23) },
         };
-        let mut argv = [executable.as_ptr(), std::ptr::null()];
-        let mut envp = [std::ptr::null()];
-        let exec_result =
-            unsafe { libc::execve(executable.as_ptr(), argv.as_mut_ptr(), envp.as_mut_ptr()) };
-        let exec_errno = std::io::Error::last_os_error().raw_os_error();
-        if exec_result == 0 || exec_errno != Some(libc::EPERM) {
-            let code = match exec_errno {
-                Some(libc::EFAULT) => 1,
-                Some(libc::ENOENT) => 2,
-                Some(libc::EACCES) => 3,
-                Some(libc::ENOSYS) => 4,
-                _ => 9,
-            };
-            unsafe { libc::_exit(14 + code) };
+        let argv = [executable.as_ptr(), std::ptr::null()];
+        let envp = [std::ptr::null::<libc::c_char>()];
+        let execve = unsafe {
+            libc::syscall(
+                libc::SYS_execve,
+                executable.as_ptr(),
+                argv.as_ptr(),
+                envp.as_ptr(),
+            )
+        };
+        if !syscall_errno(execve, libc::EPERM) {
+            unsafe { libc::_exit(23) };
+        }
+        let execveat = unsafe {
+            libc::syscall(
+                libc::SYS_execveat,
+                libc::AT_FDCWD,
+                executable.as_ptr(),
+                argv.as_ptr(),
+                envp.as_ptr(),
+                0,
+            )
+        };
+        if !syscall_errno(execveat, libc::EPERM) {
+            unsafe { libc::_exit(23) };
         }
         unsafe { libc::_exit(0) };
     }
-    let mut status = 0;
-    let waited = (unsafe { libc::waitpid(child, &mut status, 0) }) == child;
-    let exit_code = if waited && libc::WIFEXITED(status) {
-        libc::WEXITSTATUS(status)
-    } else {
-        -1
+    let failure = match wait_for_child_exit(child) {
+        Some(0) => None,
+        Some(20) => Some(ProcessProbeFailure::SeccompUnavailable),
+        Some(21) => Some(ProcessProbeFailure::ThreadUnavailable),
+        Some(22 | 80) => Some(ProcessProbeFailure::CreationNotDenied),
+        Some(1 | 23) => Some(ProcessProbeFailure::ExecNotDenied),
+        _ => Some(ProcessProbeFailure::CleanupFailed),
     };
-    if env::var("ACTESTRA_GOOSE_CONTAINMENT_DEBUG").as_deref() == Ok("1") && exit_code != 0 {
-        eprintln!("Goose process-tree probe failed at bounded stage {exit_code}");
+    if let Some(failure) = failure {
+        if env::var("ACTESTRA_GOOSE_CONTAINMENT_DEBUG").as_deref() == Ok("1") {
+            eprintln!(
+                "Goose process-tree probe failed at bounded stage {}",
+                process_probe_failure_code(failure)
+            );
+        }
+        return false;
     }
-    waited && libc::WIFEXITED(status) && exit_code == 0
+    true
 }
 
 fn connect_ipv4(address: [u8; 4], port: u16) -> bool {
