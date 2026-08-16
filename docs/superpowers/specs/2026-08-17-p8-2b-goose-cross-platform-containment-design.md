@@ -120,6 +120,31 @@ Unknown fields, mutable objects, non-canonical paths, non-loopback endpoints,
 target mismatches, widened budgets, or missing parent-liveness data reject the
 attempt before any worker process or private root is exposed.
 
+### Artifact-bound capability evidence
+
+Native probe output is not trusted merely because it exists in CI. The runner
+manifest must therefore gain a versioned `containment` record bound by the
+manifest digest and the exact executable digest. The record contains only the
+contract version, target triple, source commit, probe implementation digest,
+and the six closed capability booleans (`filesystem`, `network`,
+`processTree`, `resources`, `parentDeath`, and `cleanup`). It contains no paths,
+tokens, environment values, or probe payloads.
+
+The Main artifact verifier accepts the existing P8.2a manifest shape for the
+Darwin compatibility path, but Windows/Linux runtime admission requires the
+new containment record and an exact target/executable/source binding. A
+manifest or sidecar that is not included in the admitted artifact directory,
+or whose digest does not match the trusted manifest, cannot enable runtime
+authority. This keeps build admission and runtime containment separate while
+making the capability decision reproducible after restart and on a packaged
+machine.
+
+The admitted artifact object carries the validated record to the runtime
+predicate; no process-global or in-memory capability flag is a trust root.
+The predicate compares the record's target triple, source commit, executable
+digest, and contract version with the already admitted artifact before allowing
+Windows/Linux launch.
+
 The transport bridge is deliberately narrow. The worker may send only the
 existing authenticated MCP/model HTTP protocol through the per-attempt local
 bridge. The bridge performs no arbitrary URL forwarding and does not grant the

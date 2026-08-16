@@ -54,14 +54,14 @@ provider run. Those are later P8.2/P8.3/P8.4 plans.
 
 - `workers/goose-runner/Cargo.toml` and `Cargo.lock` — only pinned native API
   crates required by the accepted backend; no unreviewed sandbox binary.
+- `apps/desktop/src/main/workers/gooseRunnerArtifact.ts` and its fixtures —
+  bind the versioned containment record to the manifest and executable digest.
 - `workers/goose-runner/src/main.rs` — call the common containment setup before
   starting Goose ACP and preserve the fixed failure marker.
 - `apps/desktop/src/main/workers/gooseRunnerProcess.ts` — use the contract and
   platform adapter before private-root staging/transport creation.
 - `apps/desktop/src/main/workers/gooseRunnerTarget.ts` — admit runtime targets
   only when the native adapter has a verified capability record.
-- `apps/desktop/src/main/workers/gooseRunnerArtifact.ts` — bind any launcher
-  bytes to the existing manifest, digest, SBOM, license, and executable checks.
 - `tests/main/gooseRunnerLifecycle.test.ts` and
   `tests/main/gooseRunnerResource.test.ts` — preserve macOS behavior and add
   cross-platform pre-root and resource regressions.
@@ -147,14 +147,33 @@ export interface GooseContainmentLaunch {
   readonly parentLiveness: Readonly<{ kind: "inherited-ipc"; token: string }>;
 }
 
+export interface GooseContainmentEvidence {
+  readonly contractVersion: 1;
+  readonly targetTriple: string;
+  readonly sourceCommit: string;
+  readonly probeSha256: string;
+  readonly executableSha256: string;
+  readonly filesystem: true;
+  readonly network: true;
+  readonly processTree: true;
+  readonly resources: true;
+  readonly parentDeath: true;
+  readonly cleanup: true;
+}
+
 export function assertGooseContainmentLaunch(value: unknown): asserts value is GooseContainmentLaunch;
-export function hasVerifiedGooseContainment(targetTriple: string): boolean;
+export function hasVerifiedGooseContainment(
+  evidence: GooseContainmentEvidence | undefined,
+  artifact: Readonly<{ targetTriple: string; executableSha256: string; sourceCommit: string }>,
+): boolean;
 ~~~
 
 Use the existing canonical-path and fixed-budget helpers. Do not accept an
-arbitrary URL, environment value, port list, or caller-selected limit. Keep the
-capability registry private to Main and initialize Windows/Linux as unverified
-until native probe evidence is persisted for the exact artifact digest.
+arbitrary URL, environment value, port list, or caller-selected limit. Do not
+use an in-memory capability flag as a trust root. Windows/Linux remain
+unverified until the exact Artifact manifest contains a containment record with
+the contract version, target triple, source commit, probe implementation
+digest, executable digest binding, and all six closed capability booleans.
 
 - [ ] **Step 4: Wire the contract without widening runtime admission.**
 
@@ -356,33 +375,47 @@ Commit:
 feat: add Windows Goose containment probe
 ~~~
 
-## Task 5: Integrate verified backends into Main and ACP
+## Task 5: Bind probe evidence and integrate verified backends into Main and ACP
 
 **Files:**
 
 - Modify: `apps/desktop/src/main/workers/gooseRunnerTarget.ts`
 - Modify: `apps/desktop/src/main/workers/gooseRunnerProcess.ts`
 - Modify: `apps/desktop/src/main/workers/gooseRunnerArtifact.ts`
+- Modify: `tests/main/gooseRunnerArtifact.test.ts`
 - Modify: `workers/goose-runner/src/main.rs`
 - Modify: `tests/main/gooseRunnerLifecycle.test.ts`
 - Modify: `tests/main/gooseRunnerResource.test.ts`
 
-- [ ] **Step 1: Add failing integration tests for each verified target.**
+- [ ] **Step 1: Add failing manifest/evidence tests.**
+
+Extend the exact manifest contract with a versioned `containment` record whose
+keys are exactly `contractVersion`, `targetTriple`, `sourceCommit`,
+`probeSha256`, `executableSha256`, `filesystem`, `network`, `processTree`,
+`resources`, `parentDeath`, and `cleanup`. Require all six booleans to be true
+for non-Darwin runtime admission, bind the target/source/executable values to
+the admitted artifact, and reject unknown keys, stale source commits, probe
+digest drift, or any false capability. Preserve the existing P8.2a Darwin
+compatibility path until a rebuilt Darwin artifact carries the new record.
+
+- [ ] **Step 2: Add failing integration tests for each verified target.**
 
 Parameterize the existing lifecycle fixture by target triple and assert that a
 verified target performs an ACP initialize/open-session over the authenticated
 bridge, while an unverified or mismatched digest fails before private-root
 creation. Assert that no transport factory is called on failure.
 
-- [ ] **Step 2: Admit only exact probe evidence.**
+- [ ] **Step 3: Admit only exact probe evidence.**
 
-Bind a native probe result to the exact source commit, target triple,
-executable digest, and containment contract version. Update
-`resolveGooseRunnerRuntimeTarget()` to return Windows/Linux only when all six
-containment booleans are true for that exact artifact. Do not infer capability
-from the host OS or build target alone.
+Bind the manifest containment record to the exact source commit, target triple,
+executable digest, probe implementation digest, and containment contract
+version. Return the evidence as part of `AdmittedGooseRunnerArtifact`, then
+pass that record into the runtime-admission predicate. Update
+`resolveGooseRunnerRuntimeTarget()` (or its artifact-aware wrapper) to return
+Windows/Linux only when all six containment booleans are true for that exact
+artifact. Do not infer capability from the host OS or build target alone.
 
-- [ ] **Step 3: Integrate the platform transport.**
+- [ ] **Step 4: Integrate the platform transport.**
 
 Replace the unconditional `/usr/bin/sandbox-exec` branch with the selected
 adapter while retaining the existing `GooseAcpTransport` frame limits,
@@ -390,14 +423,14 @@ resource-failure matcher, handshake timeout, process-tree close, and private
 root cleanup. Preserve macOS launch arguments byte-for-byte where no shared
 contract change is required.
 
-- [ ] **Step 4: Verify real ACP and terminal paths.**
+- [ ] **Step 5: Verify real ACP and terminal paths.**
 
 Run the exact runner artifact with the deterministic authenticated loopback
 provider, then exercise tool denial, cancellation, crash/restart, parent death,
 resource failure, and cleanup. Assert durable failure codes do not drift to
 completed or unchanged.
 
-- [ ] **Step 5: Commit.**
+- [ ] **Step 6: Commit.**
 
 ~~~
 feat: admit verified Goose containment runtimes
@@ -471,5 +504,3 @@ P8.2b and overall P8.2 remain open and leave the resolver refusal in place.
 - **Type consistency:** The `GooseContainmentLaunch` fields, Rust
   `ContainmentConfig`, probe result keys, and target resolver evidence binding
   use the same semantic fields and target triples throughout.
-
-
