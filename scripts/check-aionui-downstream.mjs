@@ -337,6 +337,7 @@ function main() {
     "packages/desktop/src/actestra/main/workers/gooseRunnerArtifact.ts",
     "packages/desktop/src/actestra/main/workers/actestraCodingJourneyRuntime.ts",
     "packages/desktop/src/actestra/main/workers/gooseRunnerProcess.ts",
+    "packages/desktop/src/actestra/main/workers/gooseRunnerTarget.ts",
     "packages/desktop/src/actestra/main/workers/isolatedCodingMainService.ts",
     "packages/desktop/src/actestra/main/workers/isolatedCodingWorktree.ts",
     "packages/desktop/src/actestra/main/privileged/isolatedCodingToolExecutor.ts",

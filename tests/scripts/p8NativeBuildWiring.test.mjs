@@ -25,4 +25,19 @@ describe("P8 native Goose build wiring", () => {
     expect(verifier).not.toContain("gooseRunnerProcess");
     expect(verifier).not.toContain("openGooseRunnerHandshake");
   });
+
+  it("materializes the shared target boundary as an exact Actestra-owned source copy", () => {
+    const overlay = JSON.parse(read("downstream/aionui-v2.1.41/overlay.json"));
+    const source = "apps/desktop/src/main/workers/gooseRunnerTarget.ts";
+    const destination = "packages/desktop/src/actestra/main/workers/gooseRunnerTarget.ts";
+    const checker = read("scripts/check-aionui-downstream.mjs");
+    const artifactAdmission = read("apps/desktop/src/main/workers/gooseRunnerArtifact.ts");
+    const runtimeProcess = read("apps/desktop/src/main/workers/gooseRunnerProcess.ts");
+
+    expect(overlay.sourceCopies).toContainEqual({ source, destination });
+    expect(overlay.expectedChangedFiles).toContain(destination);
+    expect(checker).toContain(destination);
+    expect(artifactAdmission).toContain('from "./gooseRunnerTarget"');
+    expect(runtimeProcess).toContain('from "./gooseRunnerTarget"');
+  });
 });
