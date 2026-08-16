@@ -54,6 +54,7 @@
     "goose:runner:tools": "node scripts/install-goose-runner-tools.mjs",
     "goose:runner:format:check": "cargo fmt --manifest-path workers/goose-runner/Cargo.toml -- --check",
     "goose:runner:build": "node scripts/build-goose-runner.mjs",
+    "goose:runner:admit-build": "bun scripts/admit-goose-runner-build.ts",
     "goose:runner:test": "node scripts/test-goose-runner.mjs",
     "goose:runner:check": "bun run goose:runner:format:check && bun run goose:runner:tools && bun run goose:runner:build && bun run goose:runner:test",
     "check": "bun run format:check && bun run lint && bun run typecheck && bun run p8:contract:check && bun run test:electron-sqlite && bun run test && bun run test:security && bun run test:smoke-harness && bun run boundary:check && bun run foundation:aionui:check && bun run downstream:aionui:check && bun run package"
