@@ -36,4 +36,26 @@ describe("P8.1 acceptance documentation", () => {
     expect(product).toContain("P8.3");
     expect(product).toContain("P8.4");
   });
+
+  it("keeps architecture, MVP, roadmap, and verified status on the same staged contract", () => {
+    const overview = read("docs/architecture/SYSTEM_OVERVIEW.md");
+    const mvp = read("docs/product/MVP.md");
+    const roadmap = read("docs/roadmap/DEVELOPMENT_SEQUENCE.md");
+    const status = read("docs/PROJECT_STATUS.md");
+    for (const source of [overview, mvp, roadmap, status]) {
+      for (const id of ["macos-15-arm64", "windows-11-x64", "ubuntu-24.04-x64"]) {
+        expect(source).toContain(id);
+      }
+      expect(source).toContain("P8.1");
+      expect(source).toContain("P8.2");
+      expect(source).toContain("P8.3");
+      expect(source).toContain("P8.4");
+    }
+    expect(overview).toContain("current accepted runtime remains macOS arm64 only");
+    expect(mvp).toContain("CI build evidence does not replace clean-machine acceptance");
+    expect(roadmap).toContain("### P8.1 - Acceptance contract and platform matrix");
+    expect(status).toContain("P8.1 acceptance contract implementation");
+    expect(status).toContain("does not claim a Windows or Linux build");
+    expect(status).toContain("formal signing, notarization, candidate, release, deployment");
+  });
 });

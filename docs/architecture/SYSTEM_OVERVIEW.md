@@ -57,9 +57,19 @@ local-only diagnostic export and returns only a closed status to Renderer. The
 merged-main macOS arm64 job passes package trust, General Work, P7.1 security,
 P7.2 resource/process, and P7.4 diagnostic/audit packaged smokes and publishes
 the main-only Goose artifact. This closes the macOS arm64 P7 development
-integration sequence. P8 Windows/Linux work, formal signing and notarization,
-release, deployment, and final user acceptance remain outside the verified
-system state.
+integration sequence.
+
+ADR-0030 defines P8.1 as a contract-only internal-beta matrix for
+`macos-15-arm64`, `windows-11-x64`, and `ubuntu-24.04-x64`. P8.1 owns the
+machine-checked contract and documentation; P8.2 owns native package/runtime,
+journey, and platform-security evidence; P8.3 owns candidate integrity,
+signing/notarization, and update rollback; P8.4 owns clean-machine lifecycle
+and real-provider internal acceptance. The matrix is an acceptance obligation;
+the current accepted runtime remains macOS arm64 only until P8.2 supplies
+native Windows and Linux evidence. It preserves the existing AionUi, Renderer,
+Main/Core, Tool Gateway, Goose, persistence, and Worker boundaries. Formal
+signing, notarization, candidate creation, release, deployment, distribution,
+and user acceptance remain outside the verified system state.
 
 ## Context
 

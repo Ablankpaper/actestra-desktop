@@ -212,3 +212,19 @@ The MVP is ready for internal alpha only when:
 8. fresh-user acceptance is recorded separately from CI and packaging proof.
 9. the AionUi retention matrix has no unexplained missing functional entry,
    route, bridge domain, or user-visible behavior in the exact candidate.
+
+## P8 internal-beta acceptance contract
+
+P8 begins with the closed P8.1 target contract:
+`macos-15-arm64`, `windows-11-x64`, and `ubuntu-24.04-x64`. P8.1 establishes
+the matrix and its fail-closed verifier only. P8.2 must provide native package,
+General, Goose, Team, approval, recovery, privacy, cancellation, and P7
+platform-boundary evidence; P8.3 must bind a candidate to integrity, SBOM,
+provenance, signing/notarization, update, and rollback evidence; P8.4 must
+prove clean-machine install, upgrade, uninstall, real-provider acceptance, and
+internal-beta operations.
+
+CI build evidence does not replace clean-machine acceptance. `verified` is the
+only passing matrix state; skipped, unsupported, incomplete, or build-only
+results do not advance internal-beta readiness. P8.1 is not itself an
+internal-beta release claim, and P8.2 through P8.4 remain separate gates.
