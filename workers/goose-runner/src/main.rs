@@ -11,6 +11,10 @@ use containment::{
 };
 
 fn main() {
+    if env::var("ACTESTRA_GOOSE_CONTAINMENT_PROBE").as_deref() == Ok("1") {
+        println!("{}", containment::run_containment_probe());
+        return;
+    }
     if apply_resource_limits().is_err() {
         eprintln!("{RESOURCE_LIMIT_FAILURE_MARKER}");
         std::process::exit(1);

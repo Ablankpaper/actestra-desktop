@@ -1,5 +1,7 @@
 use std::path::Path;
 
+#[cfg(target_os = "linux")]
+pub(crate) mod linux;
 #[cfg(unix)]
 pub(crate) mod unix;
 #[cfg(windows)]
@@ -70,6 +72,19 @@ where
 pub(crate) use unix::{apply_resource_limits, apply_resource_limits_with, watch_parent_liveness};
 #[cfg(windows)]
 pub(crate) use windows::{apply_resource_limits, watch_parent_liveness};
+
+pub(crate) fn run_containment_probe() -> String {
+    #[cfg(target_os = "linux")]
+    {
+        return linux::run_linux_containment_probe();
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        String::from(
+            r#"{"contractVersion":1,"targetTriple":"","sourceCommit":"","probeSha256":"","executableSha256":"","filesystem":false,"network":false,"processTree":false,"resources":false,"parentDeath":false,"cleanup":false,"status":"unsupported-platform"}"#,
+        )
+    }
+}
 
 pub(crate) fn assert_containment_config(config: &ContainmentConfig) -> Result<(), ()> {
     if !is_private_path(&config.private_root)
