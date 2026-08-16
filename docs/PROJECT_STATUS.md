@@ -4,6 +4,40 @@ Last updated: 2026-08-16
 
 ## Current phase
 
+### 2026-08-16 P7 development integration gate accepted on main
+
+P7.4 diagnostic export and privileged-audit retention is accepted on formal
+`main` through pull request
+[#62](https://github.com/Ablankpaper/actestra-desktop/pull/62). Its exact head
+`27590471e75086dbbf24ff29eab23aeb7f32ffed` passed both required jobs in
+pull-request CI run
+[`31941498806`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/31941498806):
+`Goose runner admission` completed at 2026-08-16T10:41:00Z and
+`macOS arm64 foundation` completed at 2026-08-16T10:43:24Z. The latter
+repeated the source, test, boundary, documentation, materialized AionUI,
+package, package-trust, General Work, P7.1 security, P7.2 resource, and P7.4
+diagnostic/audit gates against the exact pull-request bytes.
+
+The governed squash merge produced formal-main commit
+`fc7b4683794934a6a650aecd90a7d00de1cf4280`. Its independent merged-main CI
+run
+[`31942456848`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/31942456848)
+also passed both required jobs: `Goose runner admission` completed at
+2026-08-16T11:03:17Z and `macOS arm64 foundation` completed at
+2026-08-16T11:08:30Z. The main-only artifact
+`actestra-goose-runner-macOS-ARM64` is not expired, contains 20,900,993 bytes,
+has digest
+`sha256:659d051aa1d95711064ca9bbe57d7f966ede8983f2556a6a41a0ef2b80c459fa`,
+and expires at 2026-08-19T11:03:09Z.
+
+This closes the macOS arm64 P7 development integration sequence recorded by
+ADR-0027 through ADR-0029: the P7.1 threat model and abuse catalog, P7.2 fixed
+General/Goose resource and process controls, P7.3 SQLite migration recovery,
+and P7.4 explicit local diagnostic export plus bounded integrity-checked audit
+retention are accepted on `main`. P8 Windows/Linux acceptance, formal signing
+and notarization, candidate creation, release, deployment, distribution, and
+final user acceptance remain separate and unclaimed.
+
 ### 2026-08-16 P7.4 pre-merge local and packaged development gate
 
 P7.4 diagnostic export and privileged-audit retention is implemented on branch
@@ -42,7 +76,7 @@ harness timeout; rerunning with the documented P7-specific runner artifact and
 manifest variables passed. Neither failure is product evidence.
 
 Pull request
-[#62](https://github.com/Ablankpaper/actestra-desktop/pull/62) is open. Its
+[#62](https://github.com/Ablankpaper/actestra-desktop/pull/62) was opened. Its
 first remote head, `3d810fbf8b051145302c6d7487d3064c44ac052d`, correctly
 failed `macOS arm64 foundation` in pull-request CI run
 [`31940590085`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/31940590085).
@@ -72,13 +106,14 @@ and in 20 consecutive repetitions, and a second complete `bun run check`
 passed; no package-trust authority or product logic was changed for that
 load-related fixture flake.
 
-These results are local and packaged development-build evidence, not formal P7
-integration. This separate revision-binding documentation change does not alter
-the reviewed product bytes. Fresh exact-head pull-request CI for the revision
-containing the clock-fixture fix and this record, governed merge, independent
-merged-main CI, and the main-only Goose artifact remain required before P7 can
-be called closed. P8, Windows/Linux acceptance, formal signing/notarization,
-release, deployment, distribution, and final user acceptance remain unclaimed.
+These results were local and packaged development-build evidence, not formal
+P7 integration. This separate revision-binding documentation change did not
+alter the reviewed product bytes. At that pre-merge record, fresh exact-head
+pull-request CI for the revision containing the clock-fixture fix, governed
+merge, independent merged-main CI, and the main-only Goose artifact remained
+required. Their accepted evidence is recorded in the integration section
+above. P8, Windows/Linux acceptance, formal signing/notarization, release,
+deployment, distribution, and final user acceptance remain unclaimed.
 
 ### 2026-08-16 P7.3 development integration gate accepted on main
 
@@ -313,7 +348,8 @@ Fresh macOS arm64 evidence on that exact parent:
 These are local and packaged development-build results on the reviewed
 product/test parent. Pull request #56 and the merged-main evidence above
 supersede this pre-merge status. The evidence does not prove release,
-deployment, or final user acceptance; P7.2-P7.4 and P8 remain open.
+deployment, or final user acceptance. At that record P7.2-P7.4 and P8 remained
+open; the accepted sections above now supersede P7.2-P7.4.
 
 ### 2026-08-15 earlier 28-case packaged verification (superseded)
 
@@ -4136,13 +4172,14 @@ The ordered implementation index and P3 non-claims are in
    license/NOTICE/SBOM/`pip-audit`, telemetry/network denial, cleanup,
    packaging, and cross-platform smoke pass. Do not give a planner process,
    renderer, worktree, credential, approval, tool, or durable-state authority.
-10. Bind P7.4 to product-source parent
-    `7b0c27f4af3bb4e0e0049a03646af19c4fa9acc2`, preserve all 14 P7.1
-    invariants, 28 abuse cases, and 168 exact variants, and integrate only
-    through a separate documentation commit, both exact-head required checks,
-    governed squash merge, independent merged-main checks, and the main-only
-    Goose artifact. Do not promote local or ad-hoc packaged development
-    evidence to P7 integration, P8, release, deployment, or user acceptance.
+10. Preserve P7.4 product-source parent
+    `7b0c27f4af3bb4e0e0049a03646af19c4fa9acc2`, pull-request 62 exact head
+    `27590471e75086dbbf24ff29eab23aeb7f32ffed`, exact-head CI 31941498806,
+    squash merge `fc7b4683794934a6a650aecd90a7d00de1cf4280`, merged-main CI
+    31942456848, and the main-only Goose artifact together with all 14 P7.1
+    invariants, 28 abuse cases, and 168 exact variants. Do not promote the P7
+    macOS development integration gate to P8, release, deployment, or user
+    acceptance.
 
 ## Open decisions
 

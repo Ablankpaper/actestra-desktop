@@ -47,17 +47,19 @@ migration-failure restore, and pending-manifest startup recovery without giving
 renderer or preload code any database, SQL, backup-path, or filesystem
 authority.
 
-P7.4 diagnostic export and privileged-audit retention is implemented and
-locally verified at product-source parent
-`7b0c27f4af3bb4e0e0049a03646af19c4fa9acc2`. Schema 23 adds the verified
+P7.4 diagnostic export and privileged-audit retention is accepted on `main`
+through pull request 62, exact head
+`27590471e75086dbbf24ff29eab23aeb7f32ffed`, squash merge
+`fc7b4683794934a6a650aecd90a7d00de1cf4280`, and passing pull-request and
+merged-main CI runs 31941498806 and 31942456848. Schema 23 adds the verified
 audit chain and retained-prefix anchor; Electron Main owns explicit-consent,
 local-only diagnostic export and returns only a closed status to Renderer. The
-same ad-hoc-signed macOS arm64 development app passes General Work, P7.1
-security, P7.2 resource/process, and P7.4 diagnostic/audit packaged smokes.
-This is pre-merge development evidence: exact-head pull-request CI, governed
-merge, independent merged-main CI, P8 Windows/Linux work, formal signing and
-notarization, release, deployment, and final user acceptance remain outside the
-verified system state.
+merged-main macOS arm64 job passes package trust, General Work, P7.1 security,
+P7.2 resource/process, and P7.4 diagnostic/audit packaged smokes and publishes
+the main-only Goose artifact. This closes the macOS arm64 P7 development
+integration sequence. P8 Windows/Linux work, formal signing and notarization,
+release, deployment, and final user acceptance remain outside the verified
+system state.
 
 ## Context
 
