@@ -271,6 +271,57 @@ verify. Windows remains a separate later slice for Job Object, restricted
 identity, named-pipe bridge, and hostile-probe completion. P8.2b, P8.2, P8.3,
 and P8.4 remain open.
 
+### 2026-08-17 P8.2b Linux process/resource equivalence implementation (local only)
+
+The unprivileged Linux process/resource replacement is implemented locally on
+`codex/p8-2b-runtime-containment` through implementation head
+`dd87665fc51e04d4e40d441bd84a5aacb67f17cf`. The six-commit reviewed sequence
+is design `aed9e54d9409ddf0440e71bdb98caea29b5576e4`, plan
+`9bfeb200efac303711e8e06b26926cf05d19f363`, thread-aware process policy
+`90f04463d306a946cbafd21163c9eb267825daf6`, production startup enforcement
+`3bf9d580c0fff54af497a43bd6873fe802ef4df8`, RLIMIT resource equivalence
+`ebd3bea6f8e38896ee31b590f49572b4332457f6`, and bounded partial-stage evidence
+`dd87665fc51e04d4e40d441bd84a5aacb67f17cf`.
+
+The Linux runner now applies the fixed 120 CPU-second and baseline-plus-1-GiB
+address-space hard limits, then installs one x86-64 classic-BPF seccomp policy
+before constructing Tokio or starting the parent-liveness thread. The same
+installer is used by the native hostile probe. It permits only legacy clone
+calls carrying the required thread-group, shared-signal, and shared-memory
+flags; returns `ENOSYS` for `clone3`; and denies non-thread clone, fork, vfork,
+execve, and execveat. The resource probe reads the real Linux virtual-size
+baseline, verifies the exact `RLIMIT_CPU` and `RLIMIT_AS` values, and requires
+hard-limit widening to fail with `EPERM`. Mandatory cgroup-v2 delegation and
+the thread-counting `pids.max` assumption are removed from the evidence path.
+
+The native JSON now preserves measured `processTree` and `resources` booleans
+instead of hiding them behind the overall result. This does not weaken the
+gate: `complete` remains hard-coded false, status remains
+`evidence-incomplete`, the validator still binds only `verified` evidence with
+all six capabilities true, and incomplete manifests remain byte-for-byte
+unchanged. Only the closed `process-evidence-incomplete`,
+`resource-evidence-incomplete`, and `remaining-evidence-incomplete` outcomes
+cross the Node boundary; raw platform output and paths remain excluded.
+
+Fresh local evidence for these exact implementation bytes is 9 focused test
+files / 69 tests passed, Goose Rust macOS release tests 8/8 passed, Rust and
+project formatting passed, lint reported 0 warnings/errors, TypeScript
+typecheck passed, documentation links passed, and actionlint v1.7.7 run through
+Go against `.github/workflows/ci.yml` exited 0 without diagnostics. The single
+full `bun run check` exited 0 with 150 test files passed / 2 skipped and 1,589
+tests passed / 9 skipped; the P8 contract, Electron SQLite, 28-case /
+168-variant P7 abuse gate, smoke harness, product boundary, frozen foundation,
+downstream overlay, and package stages all passed.
+
+This is local macOS development evidence only. No Ubuntu 24.04 runner has
+executed these new bytes, so Linux `processTree` or `resources` is not yet a
+target-native verified result. Linux runtime admission and the resolver remain
+disabled, no containment manifest is bound, and authenticated ACP composition,
+filesystem/network production composition, target-native parent-death and
+cleanup, Electron packaging, Windows containment, P8.2b, P8.2, P8.3, and P8.4
+remain open. No foundation, Renderer, preload, provider, persistence, or UI
+authority changed.
+
 ### 2026-08-16 P8.1 acceptance contract accepted on main
 
 P8.1 is accepted on formal `main` through pull request
