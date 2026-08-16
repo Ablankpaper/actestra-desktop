@@ -118,30 +118,30 @@ describe("Goose native containment probe contract", () => {
     expect(source).toContain("ErrorKind::NotFound");
   });
 
-  it("requires delegated cgroup v2 limits and a hostile zero-child-process probe", () => {
+  it("requires exact non-widenable RLIMIT evidence without mandatory cgroup authority", () => {
     const source = fs.readFileSync(linuxContainmentPath, "utf8");
-    for (const control of [
-      "cgroup.controllers",
+    for (const token of [
+      "run_rlimit_resource_probe",
+      "current_virtual_size_bytes",
+      "apply_resource_limits_with",
+      "RLIMIT_CPU",
+      "RLIMIT_AS",
+      "resource-rlimit-mismatch",
+      "resource-rlimit-widening-not-denied",
+    ]) {
+      expect(source).toContain(token);
+    }
+    for (const token of [
+      "run_cgroup_v2_resource_probe",
       "cgroup.subtree_control",
       "cgroup.procs",
       "cpu.max",
-      "memory.current",
       "memory.max",
-      "pids.current",
       "pids.max",
     ]) {
-      expect(source).toContain(control);
+      expect(source).not.toContain(token);
     }
-    expect(source).toContain("run_cgroup_v2_resource_probe");
-    expect(source).toContain("ADDRESS_SPACE_LIMIT_BYTES");
-    expect(source).toContain("CPU_LIMIT_SECONDS");
-    expect(source).toContain("resource_probe_failure_code");
-    expect(source).toContain("resource-cgroup-controller-not-delegated");
-    expect(source).toContain("resource-process-count-not-enforced");
-    expect(source).toContain("cleanup_cgroup_probe_ownership");
-    expect(source).not.toContain("let _ = remove_dir(&group)");
     expect(source).toContain("let complete = false");
-    expect(source).not.toContain("resource-{error}");
   });
 
   it("accepts only complete evidence bound to the exact runner artifact", () => {

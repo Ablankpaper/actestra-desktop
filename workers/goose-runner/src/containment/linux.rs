@@ -1,6 +1,6 @@
 use std::env;
 use std::ffi::CString;
-use std::fs::{create_dir, read_to_string, remove_dir, remove_dir_all, write};
+use std::fs::{remove_dir_all, write};
 use std::net::TcpListener;
 use std::os::fd::AsRawFd;
 use std::os::fd::RawFd;
@@ -54,16 +54,6 @@ const SECCOMP_DATA_ARCH_OFFSET: u32 = 4;
 const SECCOMP_DATA_ARG0_OFFSET: u32 = 16;
 const REQUIRED_THREAD_CLONE_FLAGS: u32 =
     (libc::CLONE_THREAD | libc::CLONE_SIGHAND | libc::CLONE_VM) as u32;
-const CGROUP_V2_ROOT: &str = "/sys/fs/cgroup";
-const CGROUP_CPU_CONTROLLER: &str = "cpu";
-const CGROUP_MEMORY_CONTROLLER: &str = "memory";
-const CGROUP_PIDS_CONTROLLER: &str = "pids";
-const CGROUP2_SUPER_MAGIC: u64 = 0x6367_7270;
-// This is a probe-only supplemental rate cap. The fixed 120 CPU-second
-// contract remains enforced by RLIMIT_CPU; cpu.max has no cumulative-seconds
-// semantic and is never treated as a replacement for that limit.
-const CGROUP_PROBE_CPU_MAX: &str = "100000 100000";
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ProcessProbeFailure {
     SeccompUnavailable,
@@ -86,43 +76,17 @@ fn process_probe_failure_code(failure: ProcessProbeFailure) -> &'static str {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ResourceProbeFailure {
     RlimitUnavailable,
-    CgroupV2Unavailable,
-    CgroupPathInvalid,
-    CgroupControllerUnavailable,
-    CgroupControllerNotDelegated,
-    CgroupCreateFailed,
-    CgroupAttachFailed,
-    CgroupBaselineInvalid,
-    CgroupLimitFailed,
-    CgroupFilesystemBoundaryUnavailable,
-    CgroupWideningNotDenied,
-    ProcessCountNotEnforced,
-    CgroupWaitFailed,
-    CgroupCleanupFailed,
+    RlimitMismatch,
+    RlimitWideningNotDenied,
+    CleanupFailed,
 }
 
 fn resource_probe_failure_code(failure: ResourceProbeFailure) -> &'static str {
     match failure {
         ResourceProbeFailure::RlimitUnavailable => "resource-rlimit-unavailable",
-        ResourceProbeFailure::CgroupV2Unavailable => "resource-cgroup-v2-unavailable",
-        ResourceProbeFailure::CgroupPathInvalid => "resource-cgroup-path-invalid",
-        ResourceProbeFailure::CgroupControllerUnavailable => {
-            "resource-cgroup-controller-unavailable"
-        }
-        ResourceProbeFailure::CgroupControllerNotDelegated => {
-            "resource-cgroup-controller-not-delegated"
-        }
-        ResourceProbeFailure::CgroupCreateFailed => "resource-cgroup-create-failed",
-        ResourceProbeFailure::CgroupAttachFailed => "resource-cgroup-attach-failed",
-        ResourceProbeFailure::CgroupBaselineInvalid => "resource-cgroup-baseline-invalid",
-        ResourceProbeFailure::CgroupLimitFailed => "resource-cgroup-limit-failed",
-        ResourceProbeFailure::CgroupFilesystemBoundaryUnavailable => {
-            "resource-cgroup-filesystem-boundary-unavailable"
-        }
-        ResourceProbeFailure::CgroupWideningNotDenied => "resource-cgroup-widening-not-denied",
-        ResourceProbeFailure::ProcessCountNotEnforced => "resource-process-count-not-enforced",
-        ResourceProbeFailure::CgroupWaitFailed => "resource-cgroup-wait-failed",
-        ResourceProbeFailure::CgroupCleanupFailed => "resource-cgroup-cleanup-failed",
+        ResourceProbeFailure::RlimitMismatch => "resource-rlimit-mismatch",
+        ResourceProbeFailure::RlimitWideningNotDenied => "resource-rlimit-widening-not-denied",
+        ResourceProbeFailure::CleanupFailed => "resource-probe-cleanup-failed",
     }
 }
 
@@ -681,317 +645,53 @@ fn run_network_isolation_probe() -> bool {
         && libc::WEXITSTATUS(status) == 0
 }
 
-fn parse_unified_cgroup_path(value: &str) -> Result<String, ResourceProbeFailure> {
-    let mut unified_path = None;
-    for line in value.lines() {
-        let mut fields = line.splitn(3, ':');
-        let hierarchy = fields.next();
-        let controllers = fields.next();
-        let path = fields.next();
-        if hierarchy == Some("0") && controllers == Some("") {
-            let path = path.ok_or(ResourceProbeFailure::CgroupPathInvalid)?;
-            if !path.starts_with('/')
-                || path
-                    .split('/')
-                    .any(|component| component == "." || component == "..")
-            {
-                return Err(ResourceProbeFailure::CgroupPathInvalid);
-            }
-            if unified_path.replace(path.to_string()).is_some() {
-                return Err(ResourceProbeFailure::CgroupPathInvalid);
-            }
-        }
-    }
-    unified_path.ok_or(ResourceProbeFailure::CgroupV2Unavailable)
-}
-
-fn has_controller(value: &str, controller: &str) -> bool {
-    value.split_whitespace().any(|item| item == controller)
-}
-
-fn memory_limit_from_baseline(baseline: u64) -> Result<u64, ResourceProbeFailure> {
-    baseline
-        .checked_add(super::ADDRESS_SPACE_LIMIT_BYTES)
-        .ok_or(ResourceProbeFailure::CgroupBaselineInvalid)
-}
-
-fn is_cgroup_v2_mount(root: &Path) -> bool {
-    let bytes = root.as_os_str().as_bytes();
-    let Ok(path) = CString::new(bytes) else {
+fn hard_limit_cannot_be_raised(resource: libc::__rlimit_resource_t, limit: libc::rlimit) -> bool {
+    let Some(raised_max) = limit.rlim_max.checked_add(1) else {
         return false;
     };
-    let mut stats = std::mem::MaybeUninit::<libc::statfs>::zeroed();
-    let result = unsafe { libc::statfs(path.as_ptr(), stats.as_mut_ptr()) };
-    if result != 0 {
-        return false;
-    }
-    let stats = unsafe { stats.assume_init() };
-    stats.f_type as u64 == CGROUP2_SUPER_MAGIC
-}
-
-fn current_cgroup_directory() -> Result<PathBuf, ResourceProbeFailure> {
-    let membership = read_to_string("/proc/self/cgroup")
-        .map_err(|_| ResourceProbeFailure::CgroupV2Unavailable)?;
-    let relative = parse_unified_cgroup_path(&membership)?;
-    let root = std::fs::canonicalize(CGROUP_V2_ROOT)
-        .map_err(|_| ResourceProbeFailure::CgroupV2Unavailable)?;
-    if !is_cgroup_v2_mount(&root) {
-        return Err(ResourceProbeFailure::CgroupV2Unavailable);
-    }
-    let relative = relative.trim_start_matches('/');
-    let directory = std::fs::canonicalize(root.join(relative))
-        .map_err(|_| ResourceProbeFailure::CgroupPathInvalid)?;
-    if !directory.starts_with(&root) {
-        return Err(ResourceProbeFailure::CgroupPathInvalid);
-    }
-    Ok(directory)
-}
-
-fn require_delegated_controllers(directory: &Path) -> Result<(), ResourceProbeFailure> {
-    let available = read_to_string(directory.join("cgroup.controllers"))
-        .map_err(|_| ResourceProbeFailure::CgroupControllerUnavailable)?;
-    let subtree = read_to_string(directory.join("cgroup.subtree_control"))
-        .map_err(|_| ResourceProbeFailure::CgroupControllerNotDelegated)?;
-    for controller in [
-        CGROUP_CPU_CONTROLLER,
-        CGROUP_MEMORY_CONTROLLER,
-        CGROUP_PIDS_CONTROLLER,
-    ] {
-        if !has_controller(&available, controller) {
-            return Err(ResourceProbeFailure::CgroupControllerUnavailable);
-        }
-        if !has_controller(&subtree, controller) {
-            return Err(ResourceProbeFailure::CgroupControllerNotDelegated);
-        }
-    }
-    Ok(())
-}
-
-fn parse_decimal_control(
-    value: &str,
-    failure: ResourceProbeFailure,
-) -> Result<u64, ResourceProbeFailure> {
-    if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
-        return Err(failure);
-    }
-    value.parse::<u64>().map_err(|_| failure)
-}
-
-fn write_cgroup_control(path: &Path, value: &str) -> Result<(), ResourceProbeFailure> {
-    write(path, value.as_bytes()).map_err(|_| ResourceProbeFailure::CgroupLimitFailed)
-}
-
-fn terminate_and_wait(child: libc::pid_t) {
-    unsafe {
-        libc::kill(child, libc::SIGKILL);
-        libc::waitpid(child, std::ptr::null_mut(), 0);
-    }
-}
-
-fn cleanup_cgroup_probe_ownership(group: &Path, root: &Path) -> Result<(), ResourceProbeFailure> {
-    let group_removed = match remove_dir(group) {
-        Ok(()) => true,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => !group.exists(),
-        Err(_) => false,
+    let raised = libc::rlimit {
+        rlim_cur: limit.rlim_cur,
+        rlim_max: raised_max,
     };
-    let root_removed = match remove_dir_all(root) {
-        Ok(()) => true,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
-        Err(_) => false,
-    } && !root.exists();
-    if group_removed && root_removed {
-        Ok(())
-    } else {
-        Err(ResourceProbeFailure::CgroupCleanupFailed)
-    }
+    (unsafe { libc::setrlimit(resource, &raised) }) != 0
+        && std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
 }
 
-fn run_cgroup_v2_resource_probe() -> Result<(), ResourceProbeFailure> {
-    let current = current_cgroup_directory()?;
-    require_delegated_controllers(&current)?;
-    let group = current.join(format!("actestra-goose-probe-{}", unsafe {
-        libc::getpid()
-    }));
-    create_dir(&group).map_err(|_| ResourceProbeFailure::CgroupCreateFailed)?;
-    let root = env::temp_dir().join(format!("actestra-goose-cgroup-{}", unsafe {
-        libc::getpid()
-    }));
-    let private_root = root.join("private");
-    let workspace_root = root.join("workspace");
-
-    let mut pipe_fds = [0; 2];
-    if unsafe { libc::pipe(pipe_fds.as_mut_ptr()) } != 0 {
-        return cleanup_cgroup_probe_ownership(&group, &root)
-            .and(Err(ResourceProbeFailure::CgroupCreateFailed));
-    }
-    if std::fs::create_dir_all(&private_root).is_err()
-        || std::fs::create_dir_all(&workspace_root).is_err()
-    {
-        unsafe {
-            libc::close(pipe_fds[0]);
-            libc::close(pipe_fds[1]);
-        }
-        return cleanup_cgroup_probe_ownership(&group, &root)
-            .and(Err(ResourceProbeFailure::CgroupCreateFailed));
-    }
-
+fn run_rlimit_resource_probe() -> Result<(), ResourceProbeFailure> {
     let child = unsafe { libc::fork() };
     if child < 0 {
-        unsafe {
-            libc::close(pipe_fds[0]);
-            libc::close(pipe_fds[1]);
-        }
-        return cleanup_cgroup_probe_ownership(&group, &root)
-            .and(Err(ResourceProbeFailure::CgroupCreateFailed));
-    }
-    if child == 0 {
-        unsafe { libc::close(pipe_fds[1]) };
-        let mut ready = [0_u8; 1];
-        let read_result = unsafe {
-            libc::read(
-                pipe_fds[0],
-                ready.as_mut_ptr().cast::<c_void>(),
-                ready.len(),
-            )
-        };
-        unsafe { libc::close(pipe_fds[0]) };
-        if read_result != 1 {
-            unsafe { libc::_exit(20) };
-        }
-        if prepare_linux_filesystem_containment_with_failure(&private_root, &workspace_root)
-            .is_err()
-        {
-            unsafe { libc::_exit(21) };
-        }
-        let widening_denied = write(group.join("cpu.max"), b"max 100000").is_err()
-            && write(group.join("memory.max"), b"max").is_err()
-            && write(group.join("pids.max"), b"max").is_err();
-        if !widening_denied {
-            unsafe { libc::_exit(22) };
-        }
-        let fork_result = unsafe { libc::fork() };
-        let fork_errno = std::io::Error::last_os_error().raw_os_error();
-        if fork_result >= 0 {
-            if fork_result == 0 {
-                unsafe { libc::_exit(23) };
-            }
-            terminate_and_wait(fork_result);
-            unsafe { libc::_exit(24) };
-        }
-        if fork_errno != Some(libc::EAGAIN) {
-            unsafe { libc::_exit(24) };
-        }
-        unsafe { libc::_exit(0) };
-    }
-
-    unsafe { libc::close(pipe_fds[0]) };
-    let mut failure = None;
-    if write(group.join("cgroup.procs"), child.to_string().as_bytes()).is_err() {
-        failure = Some(ResourceProbeFailure::CgroupAttachFailed);
-    }
-    let pids_current = if failure.is_none() {
-        read_to_string(group.join("pids.current"))
-            .ok()
-            .and_then(|value| {
-                parse_decimal_control(value.trim(), ResourceProbeFailure::CgroupBaselineInvalid)
-                    .ok()
-            })
-    } else {
-        None
-    };
-    let memory_current = if failure.is_none() {
-        read_to_string(group.join("memory.current"))
-            .ok()
-            .and_then(|value| {
-                parse_decimal_control(value.trim(), ResourceProbeFailure::CgroupBaselineInvalid)
-                    .ok()
-            })
-    } else {
-        None
-    };
-    let memory_limit = memory_current.and_then(|value| memory_limit_from_baseline(value).ok());
-    if failure.is_none() && (pids_current.is_none() || memory_current.is_none()) {
-        failure = Some(ResourceProbeFailure::CgroupBaselineInvalid);
-    }
-    if failure.is_none() && pids_current == Some(0) {
-        failure = Some(ResourceProbeFailure::CgroupBaselineInvalid);
-    }
-    if failure.is_none() && memory_limit.is_none() {
-        failure = Some(ResourceProbeFailure::CgroupBaselineInvalid);
-    }
-    if failure.is_none() {
-        let pids_limit = pids_current.unwrap_or_default().to_string();
-        if write_cgroup_control(&group.join("cpu.max"), CGROUP_PROBE_CPU_MAX).is_err()
-            || write_cgroup_control(
-                &group.join("memory.max"),
-                &memory_limit.unwrap_or_default().to_string(),
-            )
-            .is_err()
-            || write_cgroup_control(&group.join("pids.max"), &pids_limit).is_err()
-        {
-            failure = Some(ResourceProbeFailure::CgroupLimitFailed);
-        }
-    }
-    if failure.is_none() {
-        let cpu_max = read_to_string(group.join("cpu.max")).ok();
-        let memory_max = read_to_string(group.join("memory.max")).ok();
-        let pids_max = read_to_string(group.join("pids.max")).ok();
-        if cpu_max.as_deref().map(str::trim) != Some(CGROUP_PROBE_CPU_MAX)
-            || memory_max.as_deref().and_then(|value| {
-                parse_decimal_control(value.trim(), ResourceProbeFailure::CgroupLimitFailed).ok()
-            }) != memory_limit
-            || pids_max.as_deref().and_then(|value| {
-                parse_decimal_control(value.trim(), ResourceProbeFailure::CgroupLimitFailed).ok()
-            }) != pids_current
-        {
-            failure = Some(ResourceProbeFailure::CgroupLimitFailed);
-        }
-    }
-    if failure.is_none() {
-        let ready = [1_u8];
-        if unsafe { libc::write(pipe_fds[1], ready.as_ptr().cast::<c_void>(), ready.len()) } != 1 {
-            failure = Some(ResourceProbeFailure::CgroupWaitFailed);
-        }
-    }
-    unsafe { libc::close(pipe_fds[1]) };
-    let mut status = 0;
-    let waited = unsafe { libc::waitpid(child, &mut status, 0) } == child;
-    if !waited {
-        terminate_and_wait(child);
-        failure = Some(ResourceProbeFailure::CgroupWaitFailed);
-    } else if failure.is_none() {
-        let exit_code = if libc::WIFEXITED(status) {
-            libc::WEXITSTATUS(status)
-        } else {
-            -1
-        };
-        failure = match exit_code {
-            0 => None,
-            21 => Some(ResourceProbeFailure::CgroupFilesystemBoundaryUnavailable),
-            22 => Some(ResourceProbeFailure::CgroupWideningNotDenied),
-            23 | 24 => Some(ResourceProbeFailure::ProcessCountNotEnforced),
-            _ => Some(ResourceProbeFailure::CgroupWaitFailed),
-        };
-    }
-    cleanup_cgroup_probe_ownership(&group, &root)?;
-    failure.map_or(Ok(()), Err)
-}
-
-fn run_rlimit_resource_probe() -> bool {
-    let child = unsafe { libc::fork() };
-    if child < 0 {
-        return false;
+        return Err(ResourceProbeFailure::CleanupFailed);
     }
     if child == 0 {
         env::set_var(
-            "ACTESTRA_GOOSE_CPU_SECONDS",
+            super::CPU_LIMIT_ENVIRONMENT_KEY,
             super::CPU_LIMIT_SECONDS.to_string(),
         );
         env::set_var(
-            "ACTESTRA_GOOSE_ADDRESS_SPACE_BYTES",
+            super::ADDRESS_SPACE_LIMIT_ENVIRONMENT_KEY,
             super::ADDRESS_SPACE_LIMIT_BYTES.to_string(),
         );
-        if super::unix::apply_resource_limits().is_err() {
+        let limits = match super::parse_resource_limits_with(|key| env::var(key).ok()) {
+            Ok(value) => value,
+            Err(()) => unsafe { libc::_exit(20) },
+        };
+        let baseline = match super::unix::current_virtual_size_bytes() {
+            Ok(value) => value,
+            Err(()) => unsafe { libc::_exit(20) },
+        };
+        let expected_address_space = match baseline.checked_add(super::ADDRESS_SPACE_LIMIT_BYTES) {
+            Some(value) => value,
+            None => unsafe { libc::_exit(20) },
+        };
+        if super::unix::apply_resource_limits_with(limits, baseline, |resource, soft, hard| {
+            let limit = libc::rlimit {
+                rlim_cur: soft as libc::rlim_t,
+                rlim_max: hard as libc::rlim_t,
+            };
+            unsafe { libc::setrlimit(resource as _, &limit) }
+        })
+        .is_err()
+        {
             unsafe { libc::_exit(20) };
         }
         let mut cpu = libc::rlimit {
@@ -1002,33 +702,35 @@ fn run_rlimit_resource_probe() -> bool {
             rlim_cur: 0,
             rlim_max: 0,
         };
-        let valid = unsafe {
+        let read_exact = unsafe {
             libc::getrlimit(libc::RLIMIT_CPU, &mut cpu) == 0
                 && libc::getrlimit(libc::RLIMIT_AS, &mut address_space) == 0
                 && cpu.rlim_cur == super::CPU_LIMIT_SECONDS
                 && cpu.rlim_max == super::CPU_LIMIT_SECONDS
-                && address_space.rlim_cur == address_space.rlim_max
-                && address_space.rlim_cur > super::ADDRESS_SPACE_LIMIT_BYTES
+                && address_space.rlim_cur == expected_address_space
+                && address_space.rlim_max == expected_address_space
         };
-        unsafe { libc::_exit(if valid { 0 } else { 21 }) };
+        if !read_exact {
+            unsafe { libc::_exit(21) };
+        }
+        if !hard_limit_cannot_be_raised(libc::RLIMIT_CPU, cpu)
+            || !hard_limit_cannot_be_raised(libc::RLIMIT_AS, address_space)
+        {
+            unsafe { libc::_exit(22) };
+        }
+        unsafe { libc::_exit(0) };
     }
-    let mut status = 0;
-    (unsafe { libc::waitpid(child, &mut status, 0) }) == child
-        && libc::WIFEXITED(status)
-        && libc::WEXITSTATUS(status) == 0
+    match wait_for_child_exit(child) {
+        Some(0) => Ok(()),
+        Some(20) => Err(ResourceProbeFailure::RlimitUnavailable),
+        Some(21) => Err(ResourceProbeFailure::RlimitMismatch),
+        Some(22) => Err(ResourceProbeFailure::RlimitWideningNotDenied),
+        _ => Err(ResourceProbeFailure::CleanupFailed),
+    }
 }
 
 fn run_resource_probe() -> bool {
-    if !run_rlimit_resource_probe() {
-        if env::var("ACTESTRA_GOOSE_CONTAINMENT_DEBUG").as_deref() == Ok("1") {
-            eprintln!(
-                "Goose resource probe failed at bounded stage {}",
-                resource_probe_failure_code(ResourceProbeFailure::RlimitUnavailable)
-            );
-        }
-        return false;
-    }
-    if let Err(failure) = run_cgroup_v2_resource_probe() {
+    if let Err(failure) = run_rlimit_resource_probe() {
         if env::var("ACTESTRA_GOOSE_CONTAINMENT_DEBUG").as_deref() == Ok("1") {
             eprintln!(
                 "Goose resource probe failed at bounded stage {}",
@@ -1156,13 +858,12 @@ pub(crate) fn run_linux_containment_probe() -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        bounded_hex, bounded_target, landlock_available_from_result, memory_limit_from_baseline,
-        parse_decimal_control, parse_unified_cgroup_path, process_creation_filter,
+        bounded_hex, bounded_target, landlock_available_from_result, process_creation_filter,
         resource_probe_failure_code, run_cleanup_probe, run_parent_death_probe,
         run_process_tree_probe, run_resource_probe, ResourceProbeFailure, AUDIT_ARCH_X86_64,
-        BPF_ALU, BPF_AND, BPF_JEQ, BPF_JMP, BPF_JSET, BPF_K, BPF_RET_K,
-        REQUIRED_THREAD_CLONE_FLAGS, SECCOMP_DATA_ARCH_OFFSET, SECCOMP_RET_ALLOW,
-        SECCOMP_RET_ERRNO, SECCOMP_RET_KILL_PROCESS, X32_SYSCALL_BIT,
+        BPF_ALU, BPF_AND, BPF_JEQ, BPF_JMP, BPF_JSET, BPF_K, REQUIRED_THREAD_CLONE_FLAGS,
+        SECCOMP_DATA_ARCH_OFFSET, SECCOMP_RET_ALLOW, SECCOMP_RET_ERRNO, SECCOMP_RET_KILL_PROCESS,
+        X32_SYSCALL_BIT,
     };
 
     #[test]
@@ -1226,46 +927,27 @@ mod tests {
     }
 
     #[test]
-    fn parses_only_one_safe_unified_cgroup_membership() {
-        assert_eq!(
-            parse_unified_cgroup_path("11:cpu:/legacy\n0::/user.slice/actestra"),
-            Ok("/user.slice/actestra".to_string())
-        );
-        for value in [
-            "11:cpu:/legacy",
-            "0:cpu:/wrong",
-            "0::relative",
-            "0::/../escape",
-            "0::/safe\n0::/duplicate",
-        ] {
-            assert!(parse_unified_cgroup_path(value).is_err());
-        }
-    }
-
-    #[test]
-    fn keeps_the_memory_allowance_arithmetic_checked() {
-        assert_eq!(
-            memory_limit_from_baseline(0).unwrap(),
-            super::super::ADDRESS_SPACE_LIMIT_BYTES
-        );
-        assert!(memory_limit_from_baseline(u64::MAX).is_err());
-        assert!(parse_decimal_control("1", ResourceProbeFailure::CgroupBaselineInvalid).is_ok());
-        assert!(parse_decimal_control("", ResourceProbeFailure::CgroupBaselineInvalid).is_err());
-        assert!(parse_decimal_control("1.0", ResourceProbeFailure::CgroupBaselineInvalid).is_err());
-    }
-
-    #[test]
     fn resource_failure_diagnostics_are_closed_and_redacted() {
-        for failure in [
-            ResourceProbeFailure::RlimitUnavailable,
-            ResourceProbeFailure::CgroupV2Unavailable,
-            ResourceProbeFailure::CgroupControllerNotDelegated,
-            ResourceProbeFailure::CgroupWideningNotDenied,
-            ResourceProbeFailure::ProcessCountNotEnforced,
-            ResourceProbeFailure::CgroupCleanupFailed,
-        ] {
-            let code = resource_probe_failure_code(failure);
-            assert!(code.starts_with("resource-"));
+        let expected = [
+            (
+                ResourceProbeFailure::RlimitUnavailable,
+                "resource-rlimit-unavailable",
+            ),
+            (
+                ResourceProbeFailure::RlimitMismatch,
+                "resource-rlimit-mismatch",
+            ),
+            (
+                ResourceProbeFailure::RlimitWideningNotDenied,
+                "resource-rlimit-widening-not-denied",
+            ),
+            (
+                ResourceProbeFailure::CleanupFailed,
+                "resource-probe-cleanup-failed",
+            ),
+        ];
+        for (failure, code) in expected {
+            assert_eq!(resource_probe_failure_code(failure), code);
             assert!(!code.contains('/'));
             assert!(!code.contains(' '));
         }

@@ -26,25 +26,32 @@ describe("Goose containment probe diagnostics", () => {
   });
 
   it("accepts only the closed resource-stage vocabulary", () => {
+    for (const code of [
+      "resource-rlimit-unavailable",
+      "resource-rlimit-mismatch",
+      "resource-rlimit-widening-not-denied",
+      "resource-probe-cleanup-failed",
+    ]) {
+      expect(
+        classifyGooseContainmentProbeStderr(
+          `Goose resource probe failed at bounded stage ${code}\n`,
+        ),
+      ).toBe(code);
+    }
     expect(
       classifyGooseContainmentProbeStderr(
         "Goose resource probe failed at bounded stage resource-cgroup-controller-not-delegated\n",
       ),
-    ).toBe("resource-cgroup-controller-not-delegated");
-    expect(
-      classifyGooseContainmentProbeStderr(
-        "Goose resource probe failed at bounded stage resource-process-count-not-enforced\n",
-      ),
-    ).toBe("resource-process-count-not-enforced");
+    ).toBeUndefined();
   });
 
   it("drops raw, unknown, oversized, and path-bearing diagnostics", () => {
     for (const value of [
       undefined,
-      "resource-cgroup-controller-not-delegated",
+      "resource-rlimit-unavailable",
       "Goose resource probe failed at bounded stage /Users/private/secret\n",
       "Goose resource probe failed at bounded stage resource-invented-code\n",
-      `Goose resource probe failed at bounded stage resource-cgroup-limit-failed\n${"x".repeat(65 * 1024)}`,
+      `Goose resource probe failed at bounded stage resource-rlimit-mismatch\n${"x".repeat(65 * 1024)}`,
     ]) {
       expect(classifyGooseContainmentProbeStderr(value)).toBeUndefined();
     }

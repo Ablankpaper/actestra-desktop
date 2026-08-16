@@ -32,20 +32,10 @@ export const GOOSE_CONTAINMENT_PROBE_DIAGNOSTIC_CODES = Object.freeze([
   "process-probe-cleanup-failed",
   "process-seccomp-unavailable",
   "process-thread-unavailable",
-  "resource-cgroup-attach-failed",
-  "resource-cgroup-baseline-invalid",
-  "resource-cgroup-cleanup-failed",
-  "resource-cgroup-controller-not-delegated",
-  "resource-cgroup-controller-unavailable",
-  "resource-cgroup-create-failed",
-  "resource-cgroup-filesystem-boundary-unavailable",
-  "resource-cgroup-limit-failed",
-  "resource-cgroup-path-invalid",
-  "resource-cgroup-v2-unavailable",
-  "resource-cgroup-wait-failed",
-  "resource-cgroup-widening-not-denied",
-  "resource-process-count-not-enforced",
+  "resource-probe-cleanup-failed",
+  "resource-rlimit-mismatch",
   "resource-rlimit-unavailable",
+  "resource-rlimit-widening-not-denied",
 ]);
 const PROBE_DIAGNOSTIC_CODES = new Set(GOOSE_CONTAINMENT_PROBE_DIAGNOSTIC_CODES);
 

@@ -152,7 +152,7 @@ describe("Goose containment evidence binding", () => {
       undefined,
       "probe",
       undefined,
-      "/Users/private/secret\nGoose resource probe failed at bounded stage resource-cgroup-controller-not-delegated\n",
+      "/Users/private/secret\nGoose resource probe failed at bounded stage resource-rlimit-mismatch\n",
     );
     try {
       const manifestPath = path.join(fixture.directory, "actestra-goose-runner.manifest.json");
@@ -163,7 +163,7 @@ describe("Goose containment evidence binding", () => {
       });
       expect(result.status).toBe(2);
       expect(result.stdout).toBe("");
-      expect(result.stderr).toBe("Goose containment resource-cgroup-controller-not-delegated\n");
+      expect(result.stderr).toBe("Goose containment resource-rlimit-mismatch\n");
       expect(result.stderr).not.toContain("/Users/private/secret");
       expect(await readFile(manifestPath, "utf8")).toBe(before);
     } finally {
