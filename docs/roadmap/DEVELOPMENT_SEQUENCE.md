@@ -768,6 +768,33 @@ and audit retention remains open. Windows/Linux enforcement, formal
 signing/notarization, release, deployment, and final user acceptance remain
 later gates.
 
+### P7.4 pre-merge local and packaged development gate (2026-08-16)
+
+P7.4 adds one explicit-consent, local-only diagnostic export and fixed
+privileged-audit retention behind the existing Main and SQLite utility
+authorities. Schema 23 chains retained audit records, preserves a verifiable
+deleted-prefix anchor, prunes only complete terminal request groups under the
+fixed 90-day / 100,000-record policy, and fails closed on corruption or unsafe
+hard-cap enforcement. Renderer receives only `saved`, `cancelled`, or
+`rejected`; it receives no destination path, report bytes, raw audit records,
+SQLite access, logs, credentials, or generic filesystem authority.
+
+The reviewed product-source parent is
+`ae3ff15ad3d4d6ceaf0da418bd07e4c979f5759f`. Focused P7.4 verification passes
+14 files / 117 tests. `bun run check` exits 0 with 138 test files passed / 2
+skipped and 1,516 tests passed / 9 skipped. The unchanged P7.1 gate still
+passes all 14 invariants, 28 cases, and 168 exact variants as `denied-safe`.
+The same strict-verified ad-hoc macOS arm64 development app passes General
+Work, the seven-case P7.1 security smoke, the five-case P7.2 resource smoke,
+and the P7.4 diagnostic/audit smoke. The frozen `foundation/` snapshot is
+unchanged and no privileged process remains after verification.
+
+This records a local and packaged development gate only. P7.4 and the overall
+P7 phase remain pre-merge until the documentation revision, exact-head
+pull-request CI, governed merge, and independent merged-main CI pass. P8,
+Windows/Linux acceptance, formal signing/notarization, release, deployment,
+and final user acceptance remain separate gates.
+
 ### Deliverables
 
 - Threat model and abuse-case suite.

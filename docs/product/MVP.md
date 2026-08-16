@@ -171,14 +171,18 @@ directly.
 
 Security and reliability status: the P7.1 threat-model and 28-case abuse
 baseline, the scheme-A P7.2 General/Goose Worker resource controls, and the
-P7.3 SQLite backup/migration recovery slice are accepted on `main`. P7.1
-physically checks seven required Layer-4 boundaries; P7.2 physically checks
-General CPU/memory and Goose output/storage/fork fail-closed behavior on
-packaged macOS arm64 bytes; P7.3 physically checks persistence-utility
-pre-migration backup, failed-migration restore, pending-manifest crash
-recovery, and tampered-backup fail-closed behavior. This is not a claim that
-P7.4 diagnostic retention, cross-platform enforcement, formal signing, release,
-or user acceptance is complete; those remain later gates.
+P7.3 SQLite backup/migration recovery slice are accepted on `main`. P7.4 local
+diagnostic export and privileged-audit retention is implemented and verified
+on macOS arm64 at product-source parent
+`ae3ff15ad3d4d6ceaf0da418bd07e4c979f5759f`, but is not yet integrated into
+`main`. P7.1 physically checks seven required Layer-4 boundaries; P7.2 checks
+General CPU/memory and Goose output/storage/fork fail-closed behavior; P7.3
+checks pre-migration backup, failed-migration restore, pending-manifest crash
+recovery, and tampered-backup fail-closed behavior; P7.4 checks explicit local
+export, closed metadata/redaction, schema-23 audit-chain integrity, and bounded
+complete-group retention against the packaged development app. Exact-head CI,
+merge, merged-main CI, cross-platform enforcement, formal signing and
+notarization, release, deployment, and user acceptance remain later gates.
 
 | Action                                      | Default policy                                        |
 | ------------------------------------------- | ----------------------------------------------------- |

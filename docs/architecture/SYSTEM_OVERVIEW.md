@@ -45,9 +45,19 @@ merged-main CI runs 31906809232 and 31907989900. The persistence utility owns
 private pre-migration backups, SHA-256-bound recovery manifests,
 migration-failure restore, and pending-manifest startup recovery without giving
 renderer or preload code any database, SQL, backup-path, or filesystem
-authority. P7.4 diagnostic export and audit retention, Windows/Linux
-enforcement, formal signing, release, deployment, and final user acceptance
-remain outside the verified system state.
+authority.
+
+P7.4 diagnostic export and privileged-audit retention is implemented and
+locally verified at product-source parent
+`ae3ff15ad3d4d6ceaf0da418bd07e4c979f5759f`. Schema 23 adds the verified
+audit chain and retained-prefix anchor; Electron Main owns explicit-consent,
+local-only diagnostic export and returns only a closed status to Renderer. The
+same ad-hoc-signed macOS arm64 development app passes General Work, P7.1
+security, P7.2 resource/process, and P7.4 diagnostic/audit packaged smokes.
+This is pre-merge development evidence: exact-head pull-request CI, governed
+merge, independent merged-main CI, P8 Windows/Linux work, formal signing and
+notarization, release, deployment, and final user acceptance remain outside the
+verified system state.
 
 ## Context
 
@@ -516,12 +526,16 @@ pending deliveries to uncertain before Team bridge registration rather than
 resending them. Renderer storage contains only the nonce and request
 fingerprint, never delivery authority or message content.
 
-The current Actestra-owned persistence utility is schema 22. Forward
+The current P7.4 Actestra-owned persistence utility is schema 23. Forward
 migrations after schema 17 add immutable Team experience binding,
 artifact-delivery authority (including distinct patch-owner and destination
-grants), and persisted General v1 capability requirements. Schema 17 remains
-the historical standard-Team message-delivery migration; it is not the current
-Actestra database version used by packaged smoke.
+grants), persisted General v1 capability requirements, and the privileged-audit
+integrity chain plus retained-prefix state. Schema 23 verifies every retained
+row before read, summary, export, or maintenance; it prunes only one contiguous
+oldest prefix of complete terminal request groups under the fixed 90-day and
+100,000-record policy. Schema 17 remains the historical standard-Team
+message-delivery migration; it is not the current Actestra database version
+used by packaged smoke.
 
 Coding delivery remains split by authority: an isolated Goose worktree produces
 a patch Artifact, while only a separately approved Main operation can apply it

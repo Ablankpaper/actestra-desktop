@@ -1,10 +1,11 @@
 # Actestra Repository Threat Model
 
-**Status:** P7.1 local and packaged-macOS development security baseline verified;
-P7.2-P7.4,
-cross-platform P8, release signing, and final acceptance remain open
-**Date:** 2026-08-15
-**Scope:** P4-P6 product boundaries and the P7.1 security-abuse baseline
+**Status:** P7.1-P7.4 product-source review and local plus packaged-macOS
+development gates verified; exact-head pull-request CI, merge, merged-main CI,
+cross-platform P8, formal signing/notarization, release, deployment, and final
+acceptance remain open
+**Date:** 2026-08-16
+**Scope:** P4-P6 product boundaries and the P7.1-P7.4 macOS development evidence
 
 ## Overview
 
@@ -17,49 +18,55 @@ supervised, no-tool planner. The frozen `foundation/` snapshot is not a
 runtime trust root that may be edited by P7.
 
 P7.1 turns the existing authority model into a repository-scoped threat model
-and an executable abuse-case baseline. It does not introduce another policy
-engine, approval system, sandbox, persistence authority, Worker protocol,
-credential store, or application UI. The goal is to demonstrate that hostile
-Renderer input, provider/model output, Worker messages, local peers, files,
-Git state, persisted bytes, and packaged artifacts are rejected at the owning
-boundary without protected side effects.
+and executable abuse-case baseline. P7.2 adds fixed General/Goose resource and
+process controls, P7.3 adds private migration backup and crash recovery, and
+P7.4 adds an explicit-consent local diagnostic export plus integrity-checked,
+bounded privileged-audit retention. These slices reuse the existing owning
+boundaries; they do not introduce another policy engine, approval system,
+sandbox, Worker protocol, credential store, persistence authority, or separate
+application UI.
 
-This document describes the verified P7.1 baseline at the reviewed source
-revision. It does not claim that all of P7, cross-platform enforcement, formal
-release signing, distribution, deployment, or final user acceptance has
-passed.
+This document describes the final P7 product-source review at the implementation
+parent named below. P7 is not yet integrated until the separate documentation
+commit, exact-head pull-request CI, governed merge, and independent merged-main
+CI are complete. Cross-platform enforcement, formal release signing,
+distribution, deployment, and final user acceptance are also not claimed.
 
-## Verified P7.1 evidence
+## Verified P7 development evidence
 
-The reviewed implementation and test parent is
-`88d68bcb7881159bee8422693350e6ce9410e2fb`. On macOS arm64:
+The reviewed product-source and test parent is
+`ae3ff15ad3d4d6ceaf0da418bd07e4c979f5759f`. On macOS arm64:
 
-- the focused security suite covers all 28 catalog IDs and 168 exact variants;
-- the aggregate local gate passes 28/28 cases and 168/168 exact variants as
+- all 14 stable invariants still map to the closed 28-case catalog, and the
+  security gate passes 28/28 cases and 168/168 exact variants as
   `denied-safe`;
-- the complete local project gate passes 123 test files and 1,429 tests,
-  zero-warning lint, strict typecheck, Electron SQLite, product boundary,
-  frozen foundation, downstream overlay, and package;
-- the admitted Goose runner release build binds this clean parent through
-  manifest SHA-256
-  `da415eace135db4275c475ac931b35fe9a34194d803ccf982e505f48fbfd7068`
-  and a clean RustSec database at
-  `69f93e1d081d8b6fbee010e48f0b5e0d13661415`;
-- the development app builds with `DIST_EXIT=0`, has identifier
-  `com.bignormal.actestra`, arm64 architecture, and a verified ad-hoc
+- the P7.4 focused gate passes 14 test files and 117 tests;
+- `bun run check` exits 0 with 138 test files passed / 2 skipped and 1,516
+  tests passed / 9 skipped, zero-warning lint, strict typecheck, Electron
+  SQLite, security, smoke-harness, product-boundary, frozen-foundation,
+  downstream-overlay, and package gates green;
+- schema 23 chains privileged-audit rows, preserves a verifiable retained-prefix
+  anchor, prunes only complete terminal request groups under the fixed 90-day /
+  100,000-record policy, and fails closed on corruption or an unsafe hard-cap
+  state;
+- the Main-owned exporter writes only a bounded, aliased, metadata-only JSON
+  report after explicit consent and native save selection; Renderer receives
+  only `saved`, `cancelled`, or `rejected` and no path, bytes, persistence, or
+  filesystem authority;
+- `bun run dist:dir` exits 0, the exact development app has identifier
+  `com.bignormal.actestra`, arm64 architecture, and a strict verified ad-hoc
   signature; and
-- packaged trust verifies 565 materialized files, the external Goose trust
-  roots, the planner hook, and 116 source copies without drift. The schema-22
-  General Work smoke and packaged P7 security smoke pass. The packaged hook
-  physically exercises the
-  seven required Layer-4 cases (`P7-A-RENDERER-002`,
-  `P7-A-CREDENTIAL-001`, `P7-A-CREDENTIAL-003`, `P7-A-WORKER-001`,
-  `P7-A-NETWORK-001`, `P7-A-PROCESS-002`, and `P7-A-ARTIFACT-001`); the other
-  catalog cases remain covered by their local Layer 1-3 evidence.
+- the same packaged app passes schema-23 General Work, the seven required
+  Layer-4 security cases, five P7.2 resource/process cases, and the P7.4
+  diagnostic/audit smoke. The security smoke admits the existing real Goose
+  runner through manifest SHA-256
+  `7195e5f7f0d72c78e36a380ee1db8f02cfc03e1fcc874d5000445ef93b2089a7`.
 
-These are local and packaged development-build results. No exact-head CI for
-this parent, merged-main CI, formal signing/notarization, release, deployment,
-or user acceptance is claimed here.
+The catalog cases and their dispositions were not weakened by P7.4, and the
+frozen `foundation/` snapshot remains unchanged. These are local and packaged
+development-build results. No exact-head CI for this parent, merge,
+merged-main CI, formal signing/notarization, release, deployment, or user
+acceptance is claimed here.
 
 ## Threat Model, Trust Boundaries, and Assumptions
 
@@ -79,8 +86,9 @@ The threat model protects:
 - Main-owned IPC and bounded Renderer projections;
 - Worker process groups, private roots, closed environments, loopback leases,
   sandbox profiles, and cleanup state; and
-- logs, incidents, diagnostics, packaged resources, source-copy provenance,
-  licenses, SBOMs, and build evidence.
+- logs, incidents, bounded diagnostic reports, privileged-audit chain and
+  retention anchors, packaged resources, source-copy provenance, licenses,
+  SBOMs, and build evidence.
 
 ### Trusted authorities
 
@@ -94,7 +102,8 @@ checks succeed:
    audit checks;
 5. an exact admitted Goose runner or planner artifact whose external trust
    root, digest, and target identity match; and
-6. the user for the one explicit protected decision displayed by the product.
+6. the user for each exact protected decision and for the separate explicit
+   local-diagnostic export consent and native save selection.
 
 A user decision authorizes only that exact operation, attempt, and approval
 record. It does not grant a broader workspace, credential, process, or tool
@@ -222,11 +231,13 @@ supervision, and cleanup verification form the boundary.
 Persisted bytes may be replayed, stale, conflicting, cross-owner, truncated,
 tampered, or structurally valid but unauthorized. Incidents and diagnostics
 may accidentally include credentials, paths, prompt/completion text, tool
-arguments, content references, patches, or environment values. SQLite
-validation, compare-and-swap ordering, ownership checks, durable terminal
-records, redaction, bounded evidence fields, artifact digests, package identity,
-source-copy checks, licenses, SBOMs, and audit evidence prevent a durable or
-packaged substitution from becoming authority.
+arguments, content references, patches, environment values, or linkable raw
+identifiers. SQLite validation, compare-and-swap ordering, ownership checks,
+durable terminal records, schema-23 audit-chain verification, fixed
+complete-group retention, per-export aliases, exact metadata validators,
+private atomic writes, artifact digests, package identity, source-copy checks,
+licenses, SBOMs, and audit evidence prevent a durable, diagnostic, or packaged
+substitution from becoming authority.
 
 ### Attacker stories
 
@@ -250,6 +261,10 @@ packaged substitution from becoming authority.
 7. A packaged manifest points to a substituted executable or unexpected file.
    External digest, target, shape, source-copy, and license checks fail before
    admission.
+8. A diagnostic export encounters a symlink destination, corrupt audit link,
+   unresolved retention overflow, raw identifier, path, credential-shaped
+   value, or oversized report. Main rejects the export and creates no widened
+   report or Renderer authority.
 
 ## Severity Calibration
 
@@ -283,7 +298,7 @@ metadata, or missing coverage for a boundary independently proven elsewhere.
 They still require an owner and target batch; they cannot disappear from the
 ledger.
 
-## P7.1 Evidence and Outcome Rules
+## P7 Evidence and Outcome Rules
 
 The P7.1 outcome vocabulary is closed:
 
@@ -310,10 +325,10 @@ prompt or completion text, tool arguments, content references, raw patches,
 absolute user paths, environment values, or private Worker state.
 
 The P7.1 catalog and ledger were initialized as `evidence-incomplete`; this
-reviewed revision binds them to the exact implementation/test parent and
-records local and packaged development evidence separately from CI, merge,
-release, deployment, and user acceptance. Future P7 slices must add their own
-evidence rather than widening this P7.1 disposition.
+reviewed revision re-audits every invariant and case against the final P7
+product-source parent without widening its disposition. P7.2-P7.4 add their
+own local and packaged evidence and keep CI, merge, release, deployment, and
+user acceptance separate.
 
 ## Related Authority
 
@@ -323,6 +338,8 @@ evidence rather than widening this P7.1 disposition.
 - [MVP Definition](../product/MVP.md)
 - [Development Sequence](../roadmap/DEVELOPMENT_SEQUENCE.md)
 - [ADR-0027](../architecture/decisions/0027-p7-threat-model-and-abuse-authority.md)
+- [ADR-0028](../architecture/decisions/0028-p7-worker-resource-and-process-reliability.md)
+- [ADR-0029](../architecture/decisions/0029-p7-diagnostic-export-and-audit-retention.md)
 
 Repository: github.com/Ablankpaper/actestra-desktop
-Version: 88d68bcb7881159bee8422693350e6ce9410e2fb
+Version: ae3ff15ad3d4d6ceaf0da418bd07e4c979f5759f

@@ -4,6 +4,52 @@ Last updated: 2026-08-16
 
 ## Current phase
 
+### 2026-08-16 P7.4 pre-merge local and packaged development gate
+
+P7.4 diagnostic export and privileged-audit retention is implemented on branch
+`codex/p7-4-diagnostic-audit`, based on formal
+`origin/main@257863ee23cbdf28bdb5fba8d4f42a79accbfeb6`. The reviewed
+product-source and test parent is
+`ae3ff15ad3d4d6ceaf0da418bd07e4c979f5759f`. The scope follows ADR-0029:
+schema 23 adds a domain-separated SHA-256 chain and retained-prefix anchor for
+privileged audit records; the persistence utility applies the fixed 90-day /
+100,000-record policy only to a contiguous oldest prefix of complete terminal
+request groups; Electron Main creates one bounded metadata-only report after
+explicit consent and native destination selection; Renderer receives only
+`saved`, `cancelled`, or `rejected`. The frozen `foundation/` snapshot is
+unchanged.
+
+Focused P7.4 verification passes 14 files / 117 tests. The complete local gate
+`bun run check` exits 0: format and typecheck pass, lint reports 0 warnings and
+0 errors, Electron SQLite passes, Vitest reports 138 files passed / 2 skipped
+and 1,516 tests passed / 9 skipped, the P7 security gate preserves all 14
+invariants and passes all 28 cases / 168 exact variants as `denied-safe`, and
+the smoke-harness, product-boundary, frozen-foundation, downstream-overlay, and
+package gates pass.
+
+The complete root `bun run dist:dir` exits 0. The resulting macOS arm64
+development app reports identifier `com.bignormal.actestra`,
+`Signature=adhoc`, and passes `codesign --verify --deep --strict`. Against
+that same app, `smoke:aionui-general-work`, `smoke:p7-security` (7 required
+Layer-4 cases), `smoke:p7-2-resource-reliability` (5 cases), and
+`smoke:p7-4-diagnostic-audit` all exit 0. The final scan finds no residual
+Actestra, AionCore, Goose, Planner, General Worker, or security-probe process.
+One earlier build attempt timed out while downloading Electron directly; the
+successful full root build used the exact matching local Electron cache and a
+proxy only for Electron's validation request. One earlier P7.1 security-smoke
+attempt used the wrong environment-variable names and was killed by the
+harness timeout; rerunning with the documented P7-specific runner artifact and
+manifest variables passed. Neither failure is product evidence.
+
+These results are local and packaged development-build evidence, not formal P7
+integration. This separate revision-binding documentation change does not alter
+the reviewed product bytes. At this pre-merge record the branch has not yet
+been pushed or opened as a pull request. Exact-head pull-request CI, governed
+merge, independent merged-main CI, and the main-only Goose artifact remain
+required before P7 can be called closed. P8, Windows/Linux acceptance, formal
+signing/notarization, release, deployment, distribution, and final user
+acceptance remain unclaimed.
+
 ### 2026-08-16 P7.3 development integration gate accepted on main
 
 P7.3 database backup, migration rollback, and crash-recovery is accepted into
@@ -4060,6 +4106,13 @@ The ordered implementation index and P3 non-claims are in
    license/NOTICE/SBOM/`pip-audit`, telemetry/network denial, cleanup,
    packaging, and cross-platform smoke pass. Do not give a planner process,
    renderer, worktree, credential, approval, tool, or durable-state authority.
+10. Bind P7.4 to product-source parent
+    `ae3ff15ad3d4d6ceaf0da418bd07e4c979f5759f`, preserve all 14 P7.1
+    invariants, 28 abuse cases, and 168 exact variants, and integrate only
+    through a separate documentation commit, both exact-head required checks,
+    governed squash merge, independent merged-main checks, and the main-only
+    Goose artifact. Do not promote local or ad-hoc packaged development
+    evidence to P7 integration, P8, release, deployment, or user acceptance.
 
 ## Open decisions
 
@@ -4095,16 +4148,17 @@ The ordered implementation index and P3 non-claims are in
   rate-limited before reviewing the final four-document status range. Its
   successful status is limit-handling evidence; exact final-head CI run
   30376696055 passed.
-- The current local branch runs schemas 1 through 22 in the dedicated
+- The current P7.4 local branch runs schemas 1 through 23 in the dedicated
   persistence utility. Schema 14 owns canonical admitted plans; schema 15 owns
   Team definitions, current run heads, and append-only revisions; schema 16
   binds each Team identity to its Main/Core `standard` or `orchestrated`
   experience; schema 17 owns standard-Team message-delivery intent; schemas
   18-20 and 22 own Artifact delivery/apply identity and destination authority;
-  and schema 21 owns General Work requirements. The downstream main retains the
-  accepted shadow, confirmation, General Work, coding, and schedule boundaries
-  and locally adds one fixed Team request/event provider. The provider returns
-  only bounded Team DTOs,
+  schema 21 owns General Work requirements; and schema 23 owns the
+  privileged-audit chain and retained-prefix state. The downstream main retains
+  the accepted shadow, confirmation, General Work, coding, and schedule
+  boundaries and locally adds one fixed Team request/event provider. The
+  provider returns only bounded Team DTOs,
   explanations, valid actions, messages, and Artifact references. It exposes no
   renderer-selected filesystem path, generic protected operation, generic tool
   transport, credential value, Worker/process identifier, private summary, or
