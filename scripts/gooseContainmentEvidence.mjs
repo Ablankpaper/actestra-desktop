@@ -28,14 +28,17 @@ const CONTAINMENT_RECORD_KEYS = Object.freeze(EVIDENCE_KEYS.filter((key) => key 
 const MAX_PROBE_DIAGNOSTIC_BYTES = 64 * 1024;
 export const GOOSE_CONTAINMENT_PROBE_DIAGNOSTIC_CODES = Object.freeze([
   "process-creation-not-denied",
+  "process-evidence-incomplete",
   "process-exec-not-denied",
   "process-probe-cleanup-failed",
   "process-seccomp-unavailable",
   "process-thread-unavailable",
   "resource-probe-cleanup-failed",
+  "resource-evidence-incomplete",
   "resource-rlimit-mismatch",
   "resource-rlimit-unavailable",
   "resource-rlimit-widening-not-denied",
+  "remaining-evidence-incomplete",
 ]);
 const PROBE_DIAGNOSTIC_CODES = new Set(GOOSE_CONTAINMENT_PROBE_DIAGNOSTIC_CODES);
 
@@ -73,6 +76,25 @@ export function classifyGooseContainmentProbeStderr(value) {
     return undefined;
   }
   return matches[0][1];
+}
+
+/**
+ * Classify a schema-valid but deliberately incomplete probe without treating
+ * any measured stage as full containment admission. The caller must still
+ * keep the non-zero incomplete outcome and leave the artifact unbound.
+ */
+export function classifyGooseContainmentIncompleteEvidence(value) {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, EVIDENCE_KEYS) ||
+    value.status !== "evidence-incomplete" ||
+    CAPABILITY_KEYS.some((key) => typeof value[key] !== "boolean")
+  ) {
+    return undefined;
+  }
+  if (value.processTree !== true) return "process-evidence-incomplete";
+  if (value.resources !== true) return "resource-evidence-incomplete";
+  return "remaining-evidence-incomplete";
 }
 
 /**

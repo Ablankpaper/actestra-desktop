@@ -5,6 +5,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import {
+  classifyGooseContainmentIncompleteEvidence,
   classifyGooseContainmentProbeStderr,
   validateGooseContainmentEvidence,
 } from "./gooseContainmentEvidence.mjs";
@@ -99,7 +100,11 @@ if (probeSourceRelativePath === undefined) {
     probeSha256,
   });
   if (!validation.ok) {
-    const diagnostic = classifyGooseContainmentProbeStderr(result.stderr);
+    const diagnostic =
+      classifyGooseContainmentProbeStderr(result.stderr) ??
+      (validation.code === "evidence-incomplete"
+        ? classifyGooseContainmentIncompleteEvidence(evidence)
+        : undefined);
     process.stderr.write(`Goose containment ${diagnostic ?? validation.code}\n`);
     process.exitCode = 2;
   } else {

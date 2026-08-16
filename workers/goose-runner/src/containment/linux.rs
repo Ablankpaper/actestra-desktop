@@ -845,12 +845,12 @@ pub(crate) fn run_linux_containment_probe() -> String {
         source_commit,
         probe_sha256,
         executable_sha256,
-        filesystem_available && complete,
-        network_namespace_available && complete,
-        process_tree_available && complete,
-        resources_available && complete,
-        parent_death_available && complete,
-        cleanup && complete,
+        filesystem_available,
+        network_namespace_available,
+        process_tree_available,
+        resources_available,
+        parent_death_available,
+        cleanup,
         if complete { "verified" } else { "evidence-incomplete" },
     )
 }

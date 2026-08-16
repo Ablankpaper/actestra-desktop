@@ -10,6 +10,22 @@ import { describe, expect, it } from "vitest";
 const repositoryRoot = path.resolve(import.meta.dirname, "../..");
 const binderPath = path.join(repositoryRoot, "scripts/record-goose-runner-containment.mjs");
 const targetTriple = "x86_64-unknown-linux-gnu";
+const VERIFIED_CAPABILITIES = Object.freeze({
+  cleanup: true,
+  filesystem: true,
+  network: true,
+  parentDeath: true,
+  processTree: true,
+  resources: true,
+});
+const INCOMPLETE_CAPABILITIES = Object.freeze({
+  cleanup: false,
+  filesystem: false,
+  network: false,
+  parentDeath: false,
+  processTree: false,
+  resources: false,
+});
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -25,7 +41,7 @@ function currentCommit() {
 }
 
 async function createFixture(
-  evidenceFlags = "true",
+  capabilities = VERIFIED_CAPABILITIES,
   parent = path.join(repositoryRoot, ".actestra", "goose-runner"),
   executableFile = "probe",
   probeSha256,
@@ -36,7 +52,10 @@ async function createFixture(
   const probeDigestExpression = probeSha256 ?? "$ACTESTRA_GOOSE_PROBE_SHA256";
   const diagnostic =
     probeStderr === undefined ? "" : `printf '%b' ${JSON.stringify(probeStderr)} >&2\n`;
-  const executable = `#!/bin/sh\n${diagnostic}printf '{"contractVersion":1,"targetTriple":"%s","sourceCommit":"%s","probeSha256":"%s","executableSha256":"%s","filesystem":${evidenceFlags},"network":${evidenceFlags},"processTree":${evidenceFlags},"resources":${evidenceFlags},"parentDeath":${evidenceFlags},"cleanup":${evidenceFlags},"status":"${evidenceFlags === "true" ? "verified" : "evidence-incomplete"}"}' "$ACTESTRA_GOOSE_TARGET_TRIPLE" "$ACTESTRA_GOOSE_SOURCE_COMMIT" "${probeDigestExpression}" "$ACTESTRA_GOOSE_EXECUTABLE_SHA256"\n`;
+  const status = Object.values(capabilities).every((value) => value === true)
+    ? "verified"
+    : "evidence-incomplete";
+  const executable = `#!/bin/sh\n${diagnostic}printf '{"contractVersion":1,"targetTriple":"%s","sourceCommit":"%s","probeSha256":"%s","executableSha256":"%s","filesystem":${String(capabilities.filesystem)},"network":${String(capabilities.network)},"processTree":${String(capabilities.processTree)},"resources":${String(capabilities.resources)},"parentDeath":${String(capabilities.parentDeath)},"cleanup":${String(capabilities.cleanup)},"status":"${status}"}' "$ACTESTRA_GOOSE_TARGET_TRIPLE" "$ACTESTRA_GOOSE_SOURCE_COMMIT" "${probeDigestExpression}" "$ACTESTRA_GOOSE_EXECUTABLE_SHA256"\n`;
   const executableBytes = Buffer.from(executable, "utf8");
   await writeFile(path.join(directory, "probe"), executableBytes, { mode: 0o700 });
   await chmod(path.join(directory, "probe"), 0o700);
@@ -129,7 +148,7 @@ describe("Goose containment evidence binding", () => {
   });
 
   it("leaves the manifest untouched when the native probe is incomplete", async () => {
-    const fixture = await createFixture("false");
+    const fixture = await createFixture(INCOMPLETE_CAPABILITIES);
     try {
       const manifestPath = path.join(fixture.directory, "actestra-goose-runner.manifest.json");
       const before = await readFile(manifestPath, "utf8");
@@ -139,7 +158,29 @@ describe("Goose containment evidence binding", () => {
       });
       expect(result.status).toBe(2);
       expect(result.stdout).toBe("");
-      expect(result.stderr).toBe("Goose containment evidence-incomplete\n");
+      expect(result.stderr).toBe("Goose containment process-evidence-incomplete\n");
+      expect(await readFile(manifestPath, "utf8")).toBe(before);
+    } finally {
+      await rm(fixture.directory, { recursive: true, force: true });
+    }
+  });
+
+  it("reports bounded remaining evidence when process and resources pass without binding", async () => {
+    const fixture = await createFixture({
+      ...INCOMPLETE_CAPABILITIES,
+      processTree: true,
+      resources: true,
+    });
+    try {
+      const manifestPath = path.join(fixture.directory, "actestra-goose-runner.manifest.json");
+      const before = await readFile(manifestPath, "utf8");
+      const result = spawnSync("node", [binderPath, targetTriple, fixture.directory], {
+        cwd: repositoryRoot,
+        encoding: "utf8",
+      });
+      expect(result.status).toBe(2);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toBe("Goose containment remaining-evidence-incomplete\n");
       expect(await readFile(manifestPath, "utf8")).toBe(before);
     } finally {
       await rm(fixture.directory, { recursive: true, force: true });
@@ -148,7 +189,7 @@ describe("Goose containment evidence binding", () => {
 
   it("reports only a closed native resource blocker and drops raw probe stderr", async () => {
     const fixture = await createFixture(
-      "false",
+      INCOMPLETE_CAPABILITIES,
       undefined,
       "probe",
       undefined,
@@ -172,7 +213,7 @@ describe("Goose containment evidence binding", () => {
   });
 
   it("leaves the manifest untouched when the probe implementation digest drifts", async () => {
-    const fixture = await createFixture("true", undefined, "probe", "0".repeat(64));
+    const fixture = await createFixture(VERIFIED_CAPABILITIES, undefined, "probe", "0".repeat(64));
     try {
       const manifestPath = path.join(fixture.directory, "actestra-goose-runner.manifest.json");
       const before = await readFile(manifestPath, "utf8");
@@ -190,7 +231,7 @@ describe("Goose containment evidence binding", () => {
   });
 
   it("rejects an artifact directory outside the owned runner root without mutation", async () => {
-    const fixture = await createFixture("true", os.tmpdir());
+    const fixture = await createFixture(VERIFIED_CAPABILITIES, os.tmpdir());
     try {
       const manifestPath = path.join(fixture.directory, "actestra-goose-runner.manifest.json");
       const before = await readFile(manifestPath, "utf8");

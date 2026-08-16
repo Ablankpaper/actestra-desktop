@@ -40,6 +40,7 @@ describe("P8 native Goose containment acceptance gate", () => {
     const probe = read("scripts/test-goose-runner-containment.mjs");
     const acceptance = read("scripts/run-goose-runner-containment.mjs");
     expect(probe).toContain("classifyGooseContainmentProbeStderr");
+    expect(probe).toContain("classifyGooseContainmentIncompleteEvidence");
     expect(probe).toContain('ACTESTRA_GOOSE_CONTAINMENT_DEBUG: "1"');
     expect(acceptance).toContain("GOOSE_CONTAINMENT_PROBE_DIAGNOSTIC_CODES");
     expect(acceptance).not.toContain("process.stderr.write(result.stderr");

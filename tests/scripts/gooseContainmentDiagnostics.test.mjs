@@ -1,7 +1,10 @@
 // @vitest-environment node
 
 import { describe, expect, it } from "vitest";
-import { classifyGooseContainmentProbeStderr } from "../../scripts/gooseContainmentEvidence.mjs";
+import {
+  classifyGooseContainmentIncompleteEvidence,
+  classifyGooseContainmentProbeStderr,
+} from "../../scripts/gooseContainmentEvidence.mjs";
 
 describe("Goose containment probe diagnostics", () => {
   it("accepts only the closed process-stage vocabulary", () => {
@@ -55,5 +58,31 @@ describe("Goose containment probe diagnostics", () => {
     ]) {
       expect(classifyGooseContainmentProbeStderr(value)).toBeUndefined();
     }
+  });
+
+  it("classifies bounded partial stages without declaring containment verified", () => {
+    const evidence = {
+      cleanup: false,
+      contractVersion: 1,
+      executableSha256: "c".repeat(64),
+      filesystem: false,
+      network: false,
+      parentDeath: false,
+      probeSha256: "b".repeat(64),
+      processTree: true,
+      resources: true,
+      sourceCommit: "a".repeat(40),
+      status: "evidence-incomplete",
+      targetTriple: "x86_64-unknown-linux-gnu",
+    };
+    expect(classifyGooseContainmentIncompleteEvidence(evidence)).toBe(
+      "remaining-evidence-incomplete",
+    );
+    expect(classifyGooseContainmentIncompleteEvidence({ ...evidence, processTree: false })).toBe(
+      "process-evidence-incomplete",
+    );
+    expect(classifyGooseContainmentIncompleteEvidence({ ...evidence, resources: false })).toBe(
+      "resource-evidence-incomplete",
+    );
   });
 });

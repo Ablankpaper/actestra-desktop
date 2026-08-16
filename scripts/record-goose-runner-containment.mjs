@@ -5,6 +5,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import {
+  classifyGooseContainmentIncompleteEvidence,
   classifyGooseContainmentProbeStderr,
   GOOSE_CONTAINMENT_PROBE_DIAGNOSTIC_CODES,
   validateGooseContainmentEvidence,
@@ -239,7 +240,13 @@ async function bindContainment() {
     probeSha256,
   });
   if (!validation.ok) {
-    fixedFailure(classifyGooseContainmentProbeStderr(result.stderr) ?? validation.code);
+    const diagnostic =
+      classifyGooseContainmentProbeStderr(result.stderr) ??
+      (validation.code === "evidence-incomplete"
+        ? classifyGooseContainmentIncompleteEvidence(evidence)
+        : undefined) ??
+      validation.code;
+    fixedFailure(diagnostic);
     return;
   }
 

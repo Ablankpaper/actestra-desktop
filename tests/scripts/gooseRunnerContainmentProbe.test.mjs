@@ -142,6 +142,8 @@ describe("Goose native containment probe contract", () => {
       expect(source).not.toContain(token);
     }
     expect(source).toContain("let complete = false");
+    expect(source).not.toContain("process_tree_available && complete");
+    expect(source).not.toContain("resources_available && complete");
   });
 
   it("accepts only complete evidence bound to the exact runner artifact", () => {
