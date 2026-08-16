@@ -4,51 +4,62 @@ Last updated: 2026-08-17
 
 ## Current phase
 
-### 2026-08-17 P8.2a native Goose build admission local gate
+### 2026-08-17 P8.2a native Goose build admission accepted on main
 
-The first P8.2 slice is locally ready for target-native CI on branch
-`codex/p8-2-cross-platform-runtime`, based on formal
-`origin/main@2f1be05b861234696ffb2fd7434a73f38c3223df`. The reviewed product and CI
-head is `255be645f78bfa0d8818f4d82dd6e36499c63860`. P8.2a adds one closed
-host-to-target contract for macOS arm64/x64, Windows x64 MSVC, and Linux x64
-GNU; exact pinned native cargo-auditable and cargo-audit assets; a minimally
-portable Goose wrapper source; native build-artifact admission; and two
-35-minute build-only CI probes on `windows-2025` and `ubuntu-24.04`. The shared
-target boundary is materialized as an exact Actestra-owned downstream source
-copy. The frozen `foundation/` snapshot, Renderer, provider, persistence,
-approval, and Tool Gateway authorities are unchanged.
+P8.2a is accepted as a development-integration slice through pull request
+[#66](https://github.com/Ablankpaper/actestra-desktop/pull/66). Its exact head
+`00477af46497c717b1299994fcde18d2df0df341` passed pull-request CI run
+[`31959966388`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/31959966388)
+with all four jobs green: Ubuntu x64 Goose build probe
+(`95196338813`, completed 2026-08-16T17:06:40Z), Goose runner admission
+(`95196338835`, 2026-08-16T17:09:56Z), Windows x64 Goose build probe
+(`95196338837`, 2026-08-16T17:12:11Z), and macOS arm64 foundation
+(`95196338841`, 2026-08-16T17:16:34Z). The governed squash merge produced
+formal-main commit `dbc964044871bea7fabb5c5a484ac6d941c61500`.
 
-Build admission does not grant runtime authority. The current runtime resolver
-still admits only Darwin, and a matching Windows or Linux build Artifact fails
-with `network-policy-unavailable` before a private attempt root or transport is
-created. The native CI probes install the pinned tools, format and compile the
-runner, preserve `Cargo.lock`, run focused admission tests, and independently
-admit the emitted Artifact. They do not run Goose ACP, Electron packaging,
-packaged journeys, artifact upload, signing, publishing, or release commands.
+The independent merged-main CI run
+[`31961253627`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/31961253627)
+was bound to that merge commit and also passed all four jobs: Goose runner
+admission (`95199466482`, 14m38s), Ubuntu x64 probe (`95199466540`, 12m30s),
+Windows x64 probe (`95199466541`, 18m17s), and macOS arm64 foundation
+(`95199466589`, 24m54s). The main-only artifact
+`actestra-goose-runner-macOS-ARM64` is not expired, is 20,900,996 bytes, has
+digest
+`sha256:03baea8bd5c12048d5ca016258e107b3d809b65ded9f7e571d757a0b0fc0c436`,
+and expires at 2026-08-19T17:34:07Z.
 
-Local macOS arm64 evidence is green. The focused target, Artifact, lifecycle,
-P7 CI, and P8 wiring collection passes 5 files / 44 tests. Rust 1.96.1 reports
-host `aarch64-apple-darwin`; release tests pass 6/6 and `cargo check --locked`
-passes. The independently admitted emitted Artifact reports target
-`aarch64-apple-darwin`, manifest SHA-256
-`6aba191bd29141a350723bf1f2afa47b9651ce650853c0583e2da96f628dbde6`,
-executable SHA-256
-`b71479bca94b12791529dc711b1ddefff17bd8ede8663265e51b708332ac77dd`, and
-63,929,736 executable bytes. The downstream check passes with 368 declared
-files and 125 reviewed source copies. The complete `bun run check` exits 0:
-format, zero-warning lint, typecheck, the P8 contract, Electron SQLite, P7
-abuse, smoke-harness, boundary, frozen-foundation, downstream, and package
-gates pass; Vitest reports 145 files passed / 2 skipped and 1,541 tests passed /
-9 skipped. `docs:check` resolves all links in 81 Markdown files, and
-`git diff --check` passes.
+P8.2a closes the native build/admission boundary for the declared targets. The
+native probes installed the pinned Rust 1.96.1 and audit assets, preserved
+`Cargo.lock`, compiled the portable wrapper, and independently admitted the
+emitted Artifact. Their exact admission evidence was:
 
-Windows/Linux commands have not yet run until exact-head CI executes them.
-P8.2 runtime, packaging, product journeys, containment, and P7 platform
-obligations remain open. P8.3 and P8.4 are unchanged. This record is local
-development evidence only: it does not claim a governed pull request,
-exact-head native CI, merge, merged-main CI, candidate, release, deployment,
-distribution, clean-machine acceptance, real-provider acceptance, or final
-user acceptance.
+- `x86_64-unknown-linux-gnu` / `actestra-goose-runner`: manifest
+  `d2558f24d07605eb477e80eb13d3ba01fce533c606c9290c506f5c9cc58862e0`,
+  executable `d5f807fa7488cbc4b6838378cee1936c697d66b461b7b31b12e839c86ba939f0`,
+  74,084,096 bytes.
+- `x86_64-pc-windows-msvc` / `actestra-goose-runner.exe`: manifest
+  `cccbc70b6554dec4533082b7ed2e5cf7d30fb2c8ce1230fa5004d520c5de8597`,
+  executable `c31ec181431d1870d2e7b8b59f74e2883ea87950ff31a9a9595f0c6851112a7e`,
+  132,608 bytes.
+- `aarch64-apple-darwin` / `actestra-goose-runner`: package-trust build
+  manifest `ca6b2a8852d389ed21ebb11758113d9539c785492d8118dd2beb252b0b7c4d93`,
+  executable `23900a388900716878908fed94b41807a5b3bdf54769fc3824dddda1e2812992`,
+  63,928,920 bytes. The packaged verifier reported `manifest`, SBOM, license,
+  audit, and source-copy checks verified.
+
+The fresh exact-head local gate also passed: `bun run check` exited 0 with 145
+files passed / 2 skipped and 1,541 tests passed / 9 skipped, zero lint
+warnings, and clean `git diff --check`. The PR and merged-main macOS jobs also
+re-ran the materialized AionUi build, package identity/trust checks, General
+Work smoke, P7 security/resource/diagnostic smoke, and no-orphan cleanup.
+
+This closes P8.2a only. Build admission does not grant runtime authority: the
+current resolver still admits only Darwin, and matching Windows/Linux Artifacts
+fail closed with `network-policy-unavailable` before a private attempt root or
+transport is created. Windows/Linux runtime containment, Electron packaging,
+product journeys, P7 platform obligations, P8.2 overall, P8.3, P8.4, candidate,
+signing/notarization, release, deployment, distribution, clean-machine,
+real-provider, and final user acceptance remain open.
 
 ### 2026-08-16 P8.1 acceptance contract accepted on main
 
