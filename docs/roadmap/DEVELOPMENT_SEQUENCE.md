@@ -744,10 +744,10 @@ The gate is accepted on `main` through pull request 58 at exact head
 squash merge `dc904b7b9cf7d0c64c563bcc732547f0ff27ce13`, and merged-main CI run
 31901651415. Both CI runs pass the required Goose and macOS jobs; the macOS job
 verifies package trust and the General CPU/memory and Goose
-output/storage/fork probes against the exact packaged bytes. P7.3 and P7.4 are
-separate accepted slices below; they are not evidence supplied by P7.2.
-Windows/Linux enforcement, formal signing/notarization, release, deployment,
-and final user acceptance remain later gates.
+output/storage/fork probes against the exact packaged bytes. P7.3 and P7.4
+remain separate and are not started by this slice; both are accepted
+separately below. Windows/Linux enforcement, formal signing/notarization,
+release, deployment, and final user acceptance remain later gates.
 
 ### P7.3 development integration gate (2026-08-16)
 
