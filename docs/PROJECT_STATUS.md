@@ -226,6 +226,51 @@ local evidence was collected before any target-native containment job ran, so
 P8.2b and overall P8.2 remain open and non-Darwin runtime admission remains
 fail closed.
 
+### 2026-08-17 P8.2b target-native diagnostic PR (gate remains open)
+
+Draft pull request
+[#68](https://github.com/Ablankpaper/actestra-desktop/pull/68) publishes exact
+branch head `815c8e1e908d39996ccec772b1df0a249d227b2f`. Its pull-request CI run
+[`31977086293`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/31977086293)
+completed with the intended evidence separation: the macOS arm64 foundation
+job `95238089254`, Ubuntu x64 build-only job `95238089263`, Windows x64
+build-only job `95238089265`, and Goose runner admission job `95238089270` all
+passed. The two new target-native containment jobs failed closed, so the
+overall run is correctly red rather than treating build admission as runtime
+acceptance.
+
+Ubuntu containment job `95238089303` independently built and admitted an
+`x86_64-unknown-linux-gnu` Artifact with manifest SHA-256
+`aceb4fc7d7460bfa789b07ae2d3a4dfd952b4d50325f7e3c052fa40f9abf5064`,
+executable SHA-256
+`dd3ba07b5479e59d5bd402023174634fcfc6811d57c5a3fd44e673579b256c78`,
+and executable size 74,131,792 bytes. Its native acceptance returned only the
+closed code `resource-cgroup-controller-not-delegated` and exited 2. This
+establishes that the Ubuntu 24.04 hosted runner does not delegate the required
+`cpu`, `memory`, and `pids` controllers to the current unprivileged cgroup; it
+does not justify mutating a shared parent cgroup, adding root authority, or
+weakening the resource contract.
+
+Windows containment job `95238089313` independently built and admitted an
+`x86_64-pc-windows-msvc` Artifact with manifest SHA-256
+`d0ea05e39058c75097a8d5279e15b868b11d674eefc8dd0db898e921b4fd3f38`,
+executable SHA-256
+`816d7897041c121f9b86828341a902664c1fa7d4b4e05e668eec84253d66e914`,
+and executable size 137,216 bytes. Its native acceptance returned the closed
+code `evidence-incomplete` and terminated nonzero, matching the current
+Windows scaffold. Neither failed job uploaded a success-only containment
+Artifact, and the completed run has no published evidence Artifact.
+
+The next Linux slice must replace the unavailable cgroup delegation assumption
+with a reviewed product-owned, unprivileged resource/process authority or an
+equivalent enforcement composition. It must permit the runner's required
+Tokio threads while denying new processes and exec, retain the fixed cumulative
+CPU and address-space limits, prove parent-death and cleanup on native Ubuntu,
+and keep Linux runtime admission disabled until all six exact evidence fields
+verify. Windows remains a separate later slice for Job Object, restricted
+identity, named-pipe bridge, and hostile-probe completion. P8.2b, P8.2, P8.3,
+and P8.4 remain open.
+
 ### 2026-08-16 P8.1 acceptance contract accepted on main
 
 P8.1 is accepted on formal `main` through pull request
