@@ -1,6 +1,7 @@
 // @vitest-environment node
 
-import { existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -140,5 +141,26 @@ describe("P8.1 platform matrix", () => {
     expect(P8_PLATFORM_MATRIX.requiredJourneys.every(Object.isFrozen)).toBe(true);
     expect(Object.isFrozen(P8_PLATFORM_MATRIX.requiredEvidence)).toBe(true);
     expect(P8_PLATFORM_MATRIX.requiredEvidence.every(Object.isFrozen)).toBe(true);
+  });
+
+  it("runs a bounded explicit checker from the complete root gate", () => {
+    const checkerPath = path.join(root, "scripts/check-p8-platform-matrix.mjs");
+    expect(existsSync(checkerPath)).toBe(true);
+    if (!existsSync(checkerPath)) return;
+    const run = spawnSync(process.execPath, [checkerPath], {
+      cwd: root,
+      encoding: "utf8",
+    });
+    expect(run.status).toBe(0);
+    expect(run.stderr).toBe("");
+    expect(run.stdout.trim()).toBe(
+      "P8.1 platform contract passed: 3 targets, 14 journeys, 7 evidence classes.",
+    );
+    const scripts = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")).scripts;
+    expect(scripts["p8:contract:check"]).toBe("node scripts/check-p8-platform-matrix.mjs");
+    expect(scripts.check).toContain("bun run p8:contract:check");
+    expect(scripts.check.indexOf("bun run p8:contract:check")).toBeLessThan(
+      scripts.check.indexOf("bun run test:electron-sqlite"),
+    );
   });
 });
