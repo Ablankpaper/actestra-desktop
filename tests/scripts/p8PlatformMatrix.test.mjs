@@ -93,4 +93,52 @@ describe("P8.1 platform matrix", () => {
     });
     expect(validateP8PlatformMatrix(P8_PLATFORM_MATRIX)).toEqual([]);
   });
+
+  it("rejects widening, missing evidence, malformed targets, conflation, and skip-as-pass", async () => {
+    expect(existsSync(contractPath)).toBe(true);
+    if (!existsSync(contractPath)) return;
+    const { P8_PLATFORM_MATRIX, validateP8PlatformMatrix } = await import(contractPath);
+    const mutate = (apply) => {
+      const candidate = structuredClone(P8_PLATFORM_MATRIX);
+      apply(candidate);
+      return validateP8PlatformMatrix(candidate);
+    };
+
+    expect(
+      mutate((value) => value.targets.push({ ...value.targets[0], id: "macos-15-x64" })),
+    ).toContain("target-count");
+    expect(mutate((value) => value.requiredJourneys.pop())).toContain("journey-count");
+    expect(
+      mutate((value) => {
+        value.targets[1].id = value.targets[0].id;
+      }),
+    ).toContain("target-ids");
+    expect(
+      mutate((value) => {
+        value.targets[0] = null;
+      }),
+    ).toContain("target-ids");
+    expect(
+      mutate((value) => {
+        value.targets[2].acceptanceEnvironment = value.targets[2].ciRunner;
+      }),
+    ).toContain("target-builder-acceptance-conflated:ubuntu-24.04-x64");
+    expect(
+      mutate((value) => {
+        value.evidenceStates[0] = "skipped";
+      }),
+    ).toContain("evidence-states");
+    expect(
+      mutate((value) => {
+        value.unexpected = true;
+      }),
+    ).toContain("root-keys");
+    expect(Object.isFrozen(P8_PLATFORM_MATRIX)).toBe(true);
+    expect(Object.isFrozen(P8_PLATFORM_MATRIX.targets)).toBe(true);
+    expect(P8_PLATFORM_MATRIX.targets.every(Object.isFrozen)).toBe(true);
+    expect(Object.isFrozen(P8_PLATFORM_MATRIX.requiredJourneys)).toBe(true);
+    expect(P8_PLATFORM_MATRIX.requiredJourneys.every(Object.isFrozen)).toBe(true);
+    expect(Object.isFrozen(P8_PLATFORM_MATRIX.requiredEvidence)).toBe(true);
+    expect(P8_PLATFORM_MATRIX.requiredEvidence.every(Object.isFrozen)).toBe(true);
+  });
 });
