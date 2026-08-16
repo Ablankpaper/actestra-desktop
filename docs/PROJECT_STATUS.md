@@ -4,7 +4,39 @@ Last updated: 2026-08-16
 
 ## Current phase
 
-### 2026-08-16 P8.1 acceptance contract implementation
+### 2026-08-16 P8.1 acceptance contract accepted on main
+
+P8.1 is accepted on formal `main` through pull request
+[#64](https://github.com/Ablankpaper/actestra-desktop/pull/64). Its exact head
+`d62d2138f09e4cdb1242858fa3be3b29103096a9` passed both required jobs in
+pull-request CI run
+[`31950580690`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/31950580690):
+`Goose runner admission` completed at 2026-08-16T13:59:47Z and
+`macOS arm64 foundation` completed at 2026-08-16T14:08:03Z. The latter
+repeated source, test, boundary, documentation, materialized AionUI, package,
+package-trust, General Work, P7.1 security, P7.2 resource, and P7.4
+diagnostic/audit gates against the exact pull-request bytes.
+
+The governed squash merge produced formal-main commit
+`5555c84ffaf2ad506aa09604dbdca13707125fa8`. Its independent merged-main CI
+run
+[`31951854272`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/31951854272)
+also passed both required jobs: `Goose runner admission` completed at
+2026-08-16T14:21:29Z and `macOS arm64 foundation` completed at
+2026-08-16T14:28:25Z. The main-only artifact
+`actestra-goose-runner-macOS-ARM64` is not expired, contains 20,900,993 bytes,
+has digest
+`sha256:faebcf486fe30f3c0affb68e981f26270eeb8cb39fa5d3343de9b6e6fe890038`,
+and expires at 2026-08-19T14:21:23Z.
+
+This accepts ADR-0030, the exact three-target P8 matrix, its fail-closed root
+gate, and aligned source-of-truth documents. It does not establish a Windows
+or Linux runtime, cross-platform CI package matrix, signing/notarization,
+candidate, release, deployment, distribution, clean-machine acceptance,
+real-provider acceptance, or final user acceptance. P8.2 is the next open
+batch; P8.3 and P8.4 remain later gates.
+
+### 2026-08-16 P8.1 pre-merge local gate
 
 P8.1 acceptance contract implementation is in local development on branch
 `codex/p8-1-acceptance-contract`, based on formal
@@ -28,9 +60,9 @@ frozen `foundation/` snapshot and product runtime are unchanged by this batch.
 
 This record does not claim a Windows or Linux build. It also does not claim
 formal signing, notarization, candidate, release, deployment, distribution, or
-user acceptance. P8.1 is not accepted on `main` until a governed pull request,
-exact-head CI, squash merge, and independent merged-main CI provide those
-separate facts.
+user acceptance. At that record P8.1 still awaited a governed pull request,
+exact-head CI, squash merge, and independent merged-main CI; the current
+section above records those later facts.
 
 ### 2026-08-16 P7 development integration gate accepted on main
 
