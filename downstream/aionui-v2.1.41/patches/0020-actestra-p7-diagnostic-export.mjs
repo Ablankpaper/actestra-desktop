@@ -36,6 +36,23 @@ function replaceOnce(relativePath, before, after) {
   write(relativePath, contents.slice(0, first) + after + contents.slice(first + before.length));
 }
 
+const persistenceClientTestPath = "tests/unit/actestra/persistenceUtilityClient.test.ts";
+
+replaceOnce(
+  persistenceClientTestPath,
+  `import { afterEach, describe, expect, it } from 'vitest';`,
+  `import { afterEach, describe, expect, it } from 'vitest';
+import { instant } from '@/actestra/core';`,
+);
+
+replaceOnce(
+  persistenceClientTestPath,
+  `  private readonly service = new PersistenceUtilityService();`,
+  `  private readonly service = new PersistenceUtilityService(
+    Object.freeze({ now: () => instant('2026-07-29T02:00:00.000Z') }),
+  );`,
+);
+
 writeNew(
   "tests/unit/actestra/diagnosticExportBridge.test.ts",
   `// @vitest-environment node
