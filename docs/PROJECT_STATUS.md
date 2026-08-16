@@ -16,11 +16,15 @@ journey evidence, P8.3 for candidate integrity/signing/update evidence, and
 P8.4 for lifecycle and real-provider internal acceptance.
 
 The local P8.1 implementation adds the immutable matrix, its bounded checker,
-ADR-0030, the human-readable product matrix, and regression tests. Its focused
-local evidence is `bun run p8:contract:check`, the two P8 test files, and
-`bun run docs:check`; the complete root gate is recorded only after it runs on
-the final P8.1 bytes. The frozen `foundation/` snapshot and product runtime are
-unchanged by this batch.
+ADR-0030, the human-readable product matrix, and regression tests. Focused
+local verification passes the explicit 3-target / 14-journey / 7-evidence-class
+checker, 2 test files / 5 tests, and the 80-file documentation link check.
+The complete root `bun run check` exits 0: formatting, zero-warning lint,
+typecheck, the P8.1 checker, Electron SQLite, smoke harness, product boundary,
+frozen foundation, downstream overlay, and package gates pass; Vitest reports
+140 files passed / 2 skipped and 1,521 tests passed / 9 skipped; and the P7
+abuse gate preserves all 28 cases / 168 exact variants as `denied-safe`. The
+frozen `foundation/` snapshot and product runtime are unchanged by this batch.
 
 This record does not claim a Windows or Linux build. It also does not claim
 formal signing, notarization, candidate, release, deployment, distribution, or

@@ -841,7 +841,7 @@ git diff --check
 git status -sb
 git diff --name-only origin/main...HEAD
 git diff --name-only origin/main...HEAD -- foundation/
-rg -n 'TBD|TODO|implement later|fill in details' \
+rg -n 'T[B]D|T[O]DO|implement l[a]ter|fill in d[e]tails' \
   docs/superpowers/specs/2026-08-16-p8-cross-platform-internal-beta-design.md \
   docs/superpowers/plans/2026-08-16-p8-1-acceptance-contract-platform-matrix.md \
   docs/product/P8_CROSS_PLATFORM_INTERNAL_BETA.md \
