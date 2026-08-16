@@ -832,6 +832,12 @@ not a successful target result.
 
 ### P8.1 - Acceptance contract and platform matrix
 
+Status: accepted on `main` through pull request 64, exact head
+`d62d2138f09e4cdb1242858fa3be3b29103096a9`, pull-request CI run
+`31950580690`, squash merge `5555c84ffaf2ad506aa09604dbdca13707125fa8`,
+and merged-main CI run `31951854272`. This closes the contract gate only; P8.2
+is the next open batch.
+
 - Record ADR-0030, the human-readable matrix, a machine-readable contract,
   fail-closed checker, focused tests, and aligned source-of-truth documents.
 - Define the target IDs, package formats, General, Goose, Team, approval,
