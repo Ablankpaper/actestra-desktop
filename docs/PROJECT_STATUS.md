@@ -65,7 +65,8 @@ real-provider, and final user acceptance remain open.
 
 The isolated implementation worktree
 `/Users/zizimutou/actestra-worktrees/p8-2b-runtime-containment` is on
-`codex/p8-2b-runtime-containment` at `ca64b8e`.
+`codex/p8-2b-runtime-containment` at `b22b99d` (the implementation slice is
+`ca64b8e`).
 The shared launch contract and Rust containment boundary are preserved in the
 preceding commits `c8d2c26` and `40fb687`. This slice adds a Linux-only
 feasibility-probe entry point and a bounded evidence validator. The validator
