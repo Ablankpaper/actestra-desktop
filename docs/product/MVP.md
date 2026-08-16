@@ -170,13 +170,15 @@ directly.
 ## Safety baseline
 
 Security and reliability status: the P7.1 threat-model and 28-case abuse
-baseline and the scheme-A P7.2 General/Goose Worker resource controls are
-accepted on `main`. P7.1 physically checks seven required Layer-4 boundaries;
-P7.2 physically checks General CPU/memory and Goose output/storage/fork
-fail-closed behavior on packaged macOS arm64 bytes. This is not a claim that
-P7.3 backup and migration recovery, P7.4 diagnostic retention, cross-platform
-enforcement, formal signing, release, or user acceptance is complete; those
-remain later gates.
+baseline, the scheme-A P7.2 General/Goose Worker resource controls, and the
+P7.3 SQLite backup/migration recovery slice are accepted on `main`. P7.1
+physically checks seven required Layer-4 boundaries; P7.2 physically checks
+General CPU/memory and Goose output/storage/fork fail-closed behavior on
+packaged macOS arm64 bytes; P7.3 physically checks persistence-utility
+pre-migration backup, failed-migration restore, pending-manifest crash
+recovery, and tampered-backup fail-closed behavior. This is not a claim that
+P7.4 diagnostic retention, cross-platform enforcement, formal signing, release,
+or user acceptance is complete; those remain later gates.
 
 | Action                                      | Default policy                                        |
 | ------------------------------------------- | ----------------------------------------------------- |

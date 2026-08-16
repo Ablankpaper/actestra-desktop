@@ -35,9 +35,19 @@ and the closed terminal vocabulary: `worker-resource-cpu-exceeded`,
 existing Electron utility process, Goose runner, supervisor, Tool Gateway,
 macOS sandbox, and downstream overlay boundaries. The accepted macOS job
 includes package trust plus General CPU/memory and Goose output/storage/fork
-hostile smoke. P7.3 database backup and migration rollback, P7.4 diagnostic
-export and audit retention, Windows/Linux enforcement, formal signing, release,
-deployment, and final user acceptance remain outside the verified system state.
+hostile smoke.
+
+P7.3 database backup, migration rollback, and crash recovery is accepted on
+`main` for the SQLite persistence utility only through pull request 60, exact
+head `e4f548f3d5ba3d5fd1e02882b0beaa928241e9e0`, squash merge
+`7418d4d6bb348f9c80961343ec49807fbfdab4ad`, and passing pull-request and
+merged-main CI runs 31906809232 and 31907989900. The persistence utility owns
+private pre-migration backups, SHA-256-bound recovery manifests,
+migration-failure restore, and pending-manifest startup recovery without giving
+renderer or preload code any database, SQL, backup-path, or filesystem
+authority. P7.4 diagnostic export and audit retention, Windows/Linux
+enforcement, formal signing, release, deployment, and final user acceptance
+remain outside the verified system state.
 
 ## Context
 

@@ -4,6 +4,39 @@ Last updated: 2026-08-16
 
 ## Current phase
 
+### 2026-08-16 P7.3 development integration gate accepted on main
+
+P7.3 database backup, migration rollback, and crash-recovery is accepted into
+formal `main` through pull request
+[#60](https://github.com/Ablankpaper/actestra-desktop/pull/60). Its exact head
+`e4f548f3d5ba3d5fd1e02882b0beaa928241e9e0` passed required pull-request CI
+run
+[`31906809232`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/31906809232):
+`Goose runner admission` passed at 2026-08-15T20:44:49Z and
+`macOS arm64 foundation` passed at 2026-08-15T20:53:30Z. The latter repeated
+source, test, boundary, documentation, materialized AionUI, package,
+package-trust, General Work, P7.1 security, and P7.2 resource smoke gates
+against the exact pull-request bytes.
+
+The governed squash merge produced formal-main commit
+`7418d4d6bb348f9c80961343ec49807fbfdab4ad`. Its independent merged-main CI
+run
+[`31907989900`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/31907989900)
+also passes both required jobs: `Goose runner admission` completed at
+2026-08-15T21:10:11Z and `macOS arm64 foundation` completed at
+2026-08-15T21:15:45Z. The main-only Goose artifact upload succeeded as
+`actestra-goose-runner-macOS-ARM64`, not expired, with expiration
+2026-08-18T21:10:04Z.
+
+This closes the macOS arm64 P7.3 development integration gate for the SQLite
+persistence utility. It adds private pre-migration backups, SHA-256-bound
+recovery manifests, migration-failure restore, and pending-manifest crash
+recovery while preserving ADR-0005's forward-only migration model and renderer
+non-authority. It does not add Renderer/UI, Planner, General/Goose resource
+scope, P7.4 diagnostic export/audit retention, P8, Windows/Linux enforcement,
+formal signing/notarization, release, deployment, or final user acceptance.
+P7.4 is the next ordered phase.
+
 ### 2026-08-16 P7.3 pre-merge local implementation gate
 
 P7.3 database backup, migration rollback, and crash-recovery implementation is

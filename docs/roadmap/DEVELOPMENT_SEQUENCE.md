@@ -725,10 +725,11 @@ macOS arm64 package passes trust verification, the existing General Work smoke,
 and the packaged P7 security hook for all seven required Layer-4 cases.
 
 This P7.1 gate did not itself close the remaining P7 reliability slices. P7.2
-Worker resource/process reliability is accepted below; P7.3 database backup,
-migration rollback, and crash recovery and P7.4 diagnostic export and audit
-retention remain open. Windows/Linux acceptance, formal signing/notarization,
-release, deployment, and final user acceptance remain separate gates.
+Worker resource/process reliability and P7.3 database backup, migration
+rollback, and crash recovery are accepted below. P7.4 diagnostic export and
+audit retention remains open. Windows/Linux acceptance, formal
+signing/notarization, release, deployment, and final user acceptance remain
+separate gates.
 
 ### P7.2 development integration gate (2026-08-16)
 
@@ -747,6 +748,25 @@ output/storage/fork probes against the exact packaged bytes. P7.3 and P7.4
 remain separate and are not started by this slice. Windows/Linux enforcement,
 formal signing/notarization, release, deployment, and final user acceptance
 remain later gates.
+
+### P7.3 development integration gate (2026-08-16)
+
+P7.3 applies private file-level migration recovery to the SQLite persistence
+utility only. It creates SHA-256-bound pre-migration backups for existing
+Actestra-owned databases, restores the original database if an in-process
+migration fails, and recovers an unreadable current database from a pending
+manifest after a startup crash. It preserves ADR-0005's forward-only migration
+model, DELETE/FULL journal policy, and renderer/preload non-authority.
+
+The gate is accepted on `main` through pull request 60 at exact head
+`e4f548f3d5ba3d5fd1e02882b0beaa928241e9e0`, pull-request CI run
+31906809232, squash merge `7418d4d6bb348f9c80961343ec49807fbfdab4ad`, and
+merged-main CI run 31907989900. Both CI runs pass the required Goose and macOS
+jobs; the macOS job repeats package trust, General Work, P7.1 security, and
+P7.2 resource smokes against the exact packaged bytes. P7.4 diagnostic export
+and audit retention remains open. Windows/Linux enforcement, formal
+signing/notarization, release, deployment, and final user acceptance remain
+later gates.
 
 ### Deliverables
 
