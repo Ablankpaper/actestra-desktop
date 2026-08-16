@@ -174,7 +174,7 @@ baseline, the scheme-A P7.2 General/Goose Worker resource controls, and the
 P7.3 SQLite backup/migration recovery slice are accepted on `main`. P7.4 local
 diagnostic export and privileged-audit retention is implemented and verified
 on macOS arm64 at product-source parent
-`ae3ff15ad3d4d6ceaf0da418bd07e4c979f5759f`, but is not yet integrated into
+`7b0c27f4af3bb4e0e0049a03646af19c4fa9acc2`, but is not yet integrated into
 `main`. P7.1 physically checks seven required Layer-4 boundaries; P7.2 checks
 General CPU/memory and Goose output/storage/fork fail-closed behavior; P7.3
 checks pre-migration backup, failed-migration restore, pending-manifest crash

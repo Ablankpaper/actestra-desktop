@@ -49,7 +49,7 @@ authority.
 
 P7.4 diagnostic export and privileged-audit retention is implemented and
 locally verified at product-source parent
-`ae3ff15ad3d4d6ceaf0da418bd07e4c979f5759f`. Schema 23 adds the verified
+`7b0c27f4af3bb4e0e0049a03646af19c4fa9acc2`. Schema 23 adds the verified
 audit chain and retained-prefix anchor; Electron Main owns explicit-consent,
 local-only diagnostic export and returns only a closed status to Renderer. The
 same ad-hoc-signed macOS arm64 development app passes General Work, P7.1

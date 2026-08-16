@@ -20,7 +20,7 @@ security hook independently exercises the seven Layer-4 rows named above; it
 does not turn the other local rows into packaged or cross-platform claims.
 
 The final product-source review is bound to
-`ae3ff15ad3d4d6ceaf0da418bd07e4c979f5759f`. All 14 invariant IDs remain
+`7b0c27f4af3bb4e0e0049a03646af19c4fa9acc2`. All 14 invariant IDs remain
 represented, all 28 cases and 168 variants still pass, and P7.4 adds no new
 catalog disposition or weakened forbidden-effect rule. The same packaged app
 also passes the P7.4 diagnostic/audit smoke. Exact-head pull-request CI,

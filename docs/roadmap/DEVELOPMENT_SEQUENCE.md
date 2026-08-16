@@ -780,7 +780,7 @@ hard-cap enforcement. Renderer receives only `saved`, `cancelled`, or
 SQLite access, logs, credentials, or generic filesystem authority.
 
 The reviewed product-source parent is
-`ae3ff15ad3d4d6ceaf0da418bd07e4c979f5759f`. Focused P7.4 verification passes
+`7b0c27f4af3bb4e0e0049a03646af19c4fa9acc2`. Focused P7.4 verification passes
 14 files / 117 tests. `bun run check` exits 0 with 138 test files passed / 2
 skipped and 1,516 tests passed / 9 skipped. The unchanged P7.1 gate still
 passes all 14 invariants, 28 cases, and 168 exact variants as `denied-safe`.

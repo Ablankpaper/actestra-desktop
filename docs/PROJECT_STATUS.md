@@ -10,7 +10,7 @@ P7.4 diagnostic export and privileged-audit retention is implemented on branch
 `codex/p7-4-diagnostic-audit`, based on formal
 `origin/main@257863ee23cbdf28bdb5fba8d4f42a79accbfeb6`. The reviewed
 product-source and test parent is
-`ae3ff15ad3d4d6ceaf0da418bd07e4c979f5759f`. The scope follows ADR-0029:
+`7b0c27f4af3bb4e0e0049a03646af19c4fa9acc2`. The scope follows ADR-0029:
 schema 23 adds a domain-separated SHA-256 chain and retained-prefix anchor for
 privileged audit records; the persistence utility applies the fixed 90-day /
 100,000-record policy only to a contiguous oldest prefix of complete terminal
@@ -41,14 +41,44 @@ attempt used the wrong environment-variable names and was killed by the
 harness timeout; rerunning with the documented P7-specific runner artifact and
 manifest variables passed. Neither failure is product evidence.
 
+Pull request
+[#62](https://github.com/Ablankpaper/actestra-desktop/pull/62) is open. Its
+first remote head, `3d810fbf8b051145302c6d7487d3064c44ac052d`, correctly
+failed `macOS arm64 foundation` in pull-request CI run
+[`31940590085`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/31940590085).
+The same run's `Goose runner admission` job passed, including the real ACP
+handshake and cleanup; as expected for a pull request, it did not upload the
+main-only runner artifact.
+The root `bun run check`, documentation links, and materialized application
+typecheck passed, but the materialized AionUI identity/isolation collection
+reported 45 files and 248 tests passed plus one failure in
+`persistenceUtilityClient.test.ts`; subsequent build, package, trust, and smoke
+steps were skipped. P7.4 made `PrivilegedClock` a required dependency of
+`PersistenceUtilityService`, while the historical downstream patch 0006 test
+fixture still constructed that service without a clock. The missing fixture
+dependency reached `clock.now()` and was deliberately redacted at the utility
+boundary as `operation-failed`.
+
+Commit `7b0c27f4af3bb4e0e0049a03646af19c4fa9acc2` fixes that composition gap in
+downstream patch 0020 by injecting a deterministic test clock; it does not make
+the production clock optional. The original materialized test changes from
+one failure to one pass, the related materialized collection passes 44 files /
+238 tests, the root-side clock and persistence collection passes 3 files / 26
+tests, `downstream:aionui:check` exits 0, and the complete `bun run check`
+result remains the 138-file / 1,516-test result recorded above. One earlier
+full-gate attempt saw the isolated `p7PackagedTrust.test.mjs` fixture report
+packaged-output drift under parallel load. That file then passed in isolation
+and in 20 consecutive repetitions, and a second complete `bun run check`
+passed; no package-trust authority or product logic was changed for that
+load-related fixture flake.
+
 These results are local and packaged development-build evidence, not formal P7
 integration. This separate revision-binding documentation change does not alter
-the reviewed product bytes. At this pre-merge record the branch has not yet
-been pushed or opened as a pull request. Exact-head pull-request CI, governed
-merge, independent merged-main CI, and the main-only Goose artifact remain
-required before P7 can be called closed. P8, Windows/Linux acceptance, formal
-signing/notarization, release, deployment, distribution, and final user
-acceptance remain unclaimed.
+the reviewed product bytes. Fresh exact-head pull-request CI for the revision
+containing the clock-fixture fix and this record, governed merge, independent
+merged-main CI, and the main-only Goose artifact remain required before P7 can
+be called closed. P8, Windows/Linux acceptance, formal signing/notarization,
+release, deployment, distribution, and final user acceptance remain unclaimed.
 
 ### 2026-08-16 P7.3 development integration gate accepted on main
 
@@ -4107,7 +4137,7 @@ The ordered implementation index and P3 non-claims are in
    packaging, and cross-platform smoke pass. Do not give a planner process,
    renderer, worktree, credential, approval, tool, or durable-state authority.
 10. Bind P7.4 to product-source parent
-    `ae3ff15ad3d4d6ceaf0da418bd07e4c979f5759f`, preserve all 14 P7.1
+    `7b0c27f4af3bb4e0e0049a03646af19c4fa9acc2`, preserve all 14 P7.1
     invariants, 28 abuse cases, and 168 exact variants, and integrate only
     through a separate documentation commit, both exact-head required checks,
     governed squash merge, independent merged-main checks, and the main-only

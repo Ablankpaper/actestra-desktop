@@ -35,7 +35,7 @@ distribution, deployment, and final user acceptance are also not claimed.
 ## Verified P7 development evidence
 
 The reviewed product-source and test parent is
-`ae3ff15ad3d4d6ceaf0da418bd07e4c979f5759f`. On macOS arm64:
+`7b0c27f4af3bb4e0e0049a03646af19c4fa9acc2`. On macOS arm64:
 
 - all 14 stable invariants still map to the closed 28-case catalog, and the
   security gate passes 28/28 cases and 168/168 exact variants as
@@ -342,4 +342,4 @@ user acceptance separate.
 - [ADR-0029](../architecture/decisions/0029-p7-diagnostic-export-and-audit-retention.md)
 
 Repository: github.com/Ablankpaper/actestra-desktop
-Version: ae3ff15ad3d4d6ceaf0da418bd07e4c979f5759f
+Version: 7b0c27f4af3bb4e0e0049a03646af19c4fa9acc2
