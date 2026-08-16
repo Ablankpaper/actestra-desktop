@@ -62,7 +62,7 @@ describe("Actestra SQLite migrations", () => {
       fromVersion: 0,
       toVersion: CURRENT_CORE_SCHEMA_VERSION,
       appliedVersions: [
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
       ],
     });
     expect(pragmaNumber(database, "application_id")).toBe(ACTESTRA_SQLITE_APPLICATION_ID);
@@ -159,6 +159,10 @@ describe("Actestra SQLite migrations", () => {
       {
         version: 22,
         name: "artifact-delivery-destination-workspace",
+      },
+      {
+        version: 23,
+        name: "privileged-audit-integrity-and-retention",
       },
     ]);
     expect(
@@ -1059,8 +1063,8 @@ describe("Actestra SQLite migrations", () => {
 
     expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
       fromVersion: 17,
-      toVersion: 22,
-      appliedVersions: [18, 19, 20, 21, 22],
+      toVersion: 23,
+      appliedVersions: [18, 19, 20, 21, 22, 23],
     });
     const columns = database
       .prepare("PRAGMA table_info(artifact_deliveries)")
@@ -1131,6 +1135,75 @@ describe("Actestra SQLite migrations", () => {
       state: "pending",
       verified_head: null,
     });
+  });
+
+  it("adds schema 23 privileged-audit integrity and singleton retention state", () => {
+    const database = createDatabase();
+    migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS.slice(0, 22), APPLIED_AT);
+    database
+      .prepare(
+        `INSERT INTO privileged_audit_records (
+           sequence, record_id, occurred_at, request_id, workspace_id, task_id,
+           session_id, worker_id, tool_id, action, resource_kind, event_type,
+           redaction, record_json
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        1,
+        "audit-schema-22",
+        APPLIED_AT,
+        "request-schema-22",
+        "workspace-schema-22",
+        "task-schema-22",
+        "session-schema-22",
+        "worker-schema-22",
+        "tool-schema-22",
+        "workspace.read",
+        "workspace",
+        "tool.completed",
+        "metadata",
+        JSON.stringify({ legacy: true }),
+      );
+
+    expect(migrateSqliteDatabase(database, CORE_SQLITE_MIGRATIONS, APPLIED_AT)).toEqual({
+      fromVersion: 22,
+      toVersion: 23,
+      appliedVersions: [23],
+    });
+    expect(
+      database
+        .prepare(
+          `SELECT name
+           FROM sqlite_schema
+           WHERE type = 'table' AND name IN (
+             'privileged_audit_integrity',
+             'privileged_audit_retention_state'
+           )
+           ORDER BY name`,
+        )
+        .all(),
+    ).toEqual([
+      { name: "privileged_audit_integrity" },
+      { name: "privileged_audit_retention_state" },
+    ]);
+    expect(
+      database.prepare("SELECT * FROM privileged_audit_retention_state WHERE singleton = 1").get(),
+    ).toEqual({
+      singleton: 1,
+      contract_version: 1,
+      policy_version: 1,
+      max_age_days: 90,
+      max_record_count: 100_000,
+      pruned_record_count: 0,
+      anchor_sequence: 0,
+      anchor_sha256: "4eab5dc1aa1804c942a382c85b6c77673f44b46cae57082957c1ffc0a9af61c1",
+      last_sequence: 1,
+      chain_head_sha256: "4eab5dc1aa1804c942a382c85b6c77673f44b46cae57082957c1ffc0a9af61c1",
+      last_maintained_at: "1970-01-01T00:00:00.000Z",
+    });
+    expect(database.prepare("SELECT record_id FROM privileged_audit_records").all()).toEqual([
+      { record_id: "audit-schema-22" },
+    ]);
   });
 
   it("rejects a future schema without changing its version", () => {

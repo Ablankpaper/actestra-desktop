@@ -256,6 +256,18 @@
       ],
       "authorityOwner": "Actestra Main E2E-only P7.2 resource acceptance composition; no Renderer, Planner, profile, or production runtime authority",
       "rollback": "Regenerate without patch 0019. The P7.2 packaged smoke entry disappears while the underlying Worker resource limits remain composed through their existing source copies; normal product startup and frozen foundation remain unchanged."
+    },
+    {
+      "path": "patches/0020-actestra-p7-diagnostic-export.mjs",
+      "classification": ["R1"],
+      "domains": [
+        "explicit-consent local diagnostic export",
+        "fixed current-main-frame diagnostic IPC",
+        "metadata-only audit and terminal-attempt evidence",
+        "packaged P7.4 diagnostic and audit acceptance"
+      ],
+      "authorityOwner": "Actestra Main owns diagnostic evidence collection, native destination selection, private atomic file output, and the fixed Renderer-visible status projection",
+      "rollback": "Regenerate without patch 0020 to remove the About diagnostics entry, fixed preload operation, Main IPC composition, and P7.4 packaged acceptance hook. Schema v23 audit integrity and retention state remain authoritative and inert; no frozen source, native AionUI profile, exported report, or prior audit evidence is rewritten."
     }
   ],
   "sourceCopies": [
@@ -266,6 +278,14 @@
     {
       "source": "apps/desktop/src/main/security/p7ResourceReliabilitySmoke.ts",
       "destination": "packages/desktop/src/actestra/main/security/p7ResourceReliabilitySmoke.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/security/p7DiagnosticAuditSmoke.ts",
+      "destination": "packages/desktop/src/actestra/main/security/p7DiagnosticAuditSmoke.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/diagnostics/diagnosticExportService.ts",
+      "destination": "packages/desktop/src/actestra/main/diagnostics/diagnosticExportService.ts"
     },
     {
       "source": "apps/desktop/src/core/agentAdapter.ts",
@@ -282,6 +302,10 @@
     {
       "source": "apps/desktop/src/core/domain.ts",
       "destination": "packages/desktop/src/actestra/core/domain.ts"
+    },
+    {
+      "source": "apps/desktop/src/core/diagnosticEvidence.ts",
+      "destination": "packages/desktop/src/actestra/core/diagnosticEvidence.ts"
     },
     {
       "source": "apps/desktop/src/core/events.ts",
@@ -402,6 +426,10 @@
     {
       "source": "apps/desktop/src/compatibility/aionui/codingJourney.ts",
       "destination": "packages/desktop/src/actestra/compatibility/aionui/codingJourney.ts"
+    },
+    {
+      "source": "apps/desktop/src/compatibility/aionui/diagnosticExport.ts",
+      "destination": "packages/desktop/src/actestra/compatibility/aionui/diagnosticExport.ts"
     },
     {
       "source": "apps/desktop/src/compatibility/aionui/nativeObservations.ts",
@@ -791,6 +819,7 @@
     "packages/desktop/src/actestra/compatibility/aionui/approvalAuthority.ts",
     "packages/desktop/src/actestra/compatibility/aionui/codingAgent.ts",
     "packages/desktop/src/actestra/compatibility/aionui/codingJourney.ts",
+    "packages/desktop/src/actestra/compatibility/aionui/diagnosticExport.ts",
     "packages/desktop/src/actestra/compatibility/aionui/generalWorkBridge.ts",
     "packages/desktop/src/actestra/compatibility/aionui/generalWorkIdentity.ts",
     "packages/desktop/src/actestra/compatibility/aionui/generalWorkJourney.ts",
@@ -807,6 +836,7 @@
     "packages/desktop/src/actestra/core/artifactDelivery.ts",
     "packages/desktop/src/actestra/core/artifactPatchAccess.ts",
     "packages/desktop/src/actestra/core/domain.ts",
+    "packages/desktop/src/actestra/core/diagnosticEvidence.ts",
     "packages/desktop/src/actestra/core/events.ts",
     "packages/desktop/src/actestra/core/workerResourceBudget.ts",
     "packages/desktop/src/actestra/core/generalCapabilityAdmission.ts",
@@ -853,10 +883,12 @@
     "packages/desktop/src/actestra/main/orchestration/teamPlannerSidecarProcess.ts",
     "packages/desktop/src/actestra/main/orchestration/teamWorkspaceGrantContext.ts",
     "packages/desktop/src/actestra/main/persistence/electronPersistenceUtility.ts",
+    "packages/desktop/src/actestra/main/security/p7DiagnosticAuditSmoke.ts",
     "packages/desktop/src/actestra/main/security/p7ResourceReliabilitySmoke.ts",
     "packages/desktop/src/actestra/main/security/p7SecuritySmoke.ts",
     "packages/desktop/src/actestra/main/persistence/persistenceUtilityClient.ts",
     "packages/desktop/src/actestra/main/persistence/persistenceMutationBarrier.ts",
+    "packages/desktop/src/actestra/main/diagnostics/diagnosticExportService.ts",
     "packages/desktop/src/actestra/main/workers/agentAdapterSupervisor.ts",
     "packages/desktop/src/actestra/main/workers/artifactWorkspaceApplicator.ts",
     "packages/desktop/src/actestra/main/workers/workspaceGitBinding.ts",
@@ -960,6 +992,8 @@
     "packages/desktop/src/renderer/components/settings/SettingsModal/contents/AboutModalContent.tsx",
     "packages/desktop/src/renderer/components/settings/SettingsModal/contents/FeedbackReportModal.tsx",
     "packages/desktop/src/renderer/components/settings/useUpdateNotificationController.ts",
+    "packages/desktop/src/renderer/services/i18n/locales/en-US/settings.json",
+    "packages/desktop/src/renderer/services/i18n/locales/zh-CN/settings.json",
     "packages/desktop/src/renderer/hooks/agent/useModeModeList.ts",
     "packages/desktop/src/renderer/hooks/agent/useManagedAgents.ts",
     "packages/desktop/src/renderer/hooks/agent/useAcpConfigOptions.ts",
@@ -1073,6 +1107,8 @@
     "tests/unit/previews/PreviewContext.dom.test.tsx",
     "tests/unit/actestra/persistenceUtilityClient.test.ts",
     "tests/unit/actestra/providerRendererBoundary.test.ts",
+    "tests/unit/actestra/diagnosticExport.dom.test.tsx",
+    "tests/unit/actestra/diagnosticExportBridge.test.ts",
     "tests/unit/actestra/shadowPersistence.test.ts",
     "tests/unit/actestra/shadowProjection.test.ts",
     "tests/unit/actestra/shadowPublisher.test.ts",

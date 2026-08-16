@@ -37,6 +37,68 @@ afterEach(() => {
 });
 
 describe("persistence utility schedule service", () => {
+  it("maintains audit integrity on open and dispatches the bounded P7.4 evidence reads", async () => {
+    const userDataPath = createTestDirectory();
+    const openedAt = instant("2026-08-16T07:15:00.000Z");
+    const service = new PersistenceUtilityService(
+      Object.freeze({
+        now: () => openedAt,
+      }),
+    );
+
+    await expect(
+      service.handle({
+        protocolVersion: 1,
+        type: "request",
+        requestId: "p7-4-service-open",
+        operation: "open",
+        payload: { userDataPath },
+      }),
+    ).resolves.toMatchObject({
+      status: "ok",
+      result: { schemaVersion: CURRENT_CORE_SCHEMA_VERSION },
+    });
+    await expect(
+      service.handle({
+        protocolVersion: 1,
+        type: "request",
+        requestId: "p7-4-service-retention",
+        operation: "read-privileged-audit-retention-state",
+        payload: {},
+      }),
+    ).resolves.toMatchObject({
+      status: "ok",
+      result: {
+        retainedRecordCount: 0,
+        prunedRecordCount: 0,
+        lastSequence: 0,
+        lastMaintainedAt: openedAt,
+      },
+    });
+    await expect(
+      service.handle({
+        protocolVersion: 1,
+        type: "request",
+        requestId: "p7-4-service-list",
+        operation: "list-privileged-audit",
+        payload: { limit: 1_000 },
+      }),
+    ).resolves.toMatchObject({ status: "ok", result: [] });
+    await expect(
+      service.handle({
+        protocolVersion: 1,
+        type: "request",
+        requestId: "p7-4-service-maintain",
+        operation: "maintain-privileged-audit",
+        payload: { now: "2026-08-16T07:16:00.000Z" },
+      }),
+    ).resolves.toMatchObject({
+      status: "ok",
+      result: { lastMaintainedAt: "2026-08-16T07:16:00.000Z" },
+    });
+    await service.shutdown();
+  });
+
   it("dispatches schema 15 Team definitions and append-only run snapshots", async () => {
     const userDataPath = createTestDirectory();
     const service = new PersistenceUtilityService(testClock);

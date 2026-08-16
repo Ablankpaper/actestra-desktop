@@ -125,7 +125,18 @@ export class PersistenceUtilityService {
           "Persistence utility user data path must be absolute",
         );
       }
-      this.persistence = this.openPersistence(request.payload.userDataPath);
+      const opened = this.openPersistence(request.payload.userDataPath);
+      try {
+        await opened.maintainPrivilegedAudit(this.clock.now());
+      } catch (error) {
+        try {
+          await opened.close();
+        } catch {
+          // Preserve the integrity or retention failure that blocked startup.
+        }
+        throw error;
+      }
+      this.persistence = opened;
       return {
         schemaVersion: CURRENT_CORE_SCHEMA_VERSION,
       };
@@ -149,6 +160,12 @@ export class PersistenceUtilityService {
         return persistence.appendPrivilegedAudit(request.payload.input);
       case "append-agent-attempt-evidence":
         return persistence.appendAgentAttemptEvidence(request.payload.evidence);
+      case "maintain-privileged-audit":
+        return persistence.maintainPrivilegedAudit(request.payload.now);
+      case "list-privileged-audit":
+        return persistence.listRecentPrivilegedAudit(request.payload.limit);
+      case "read-privileged-audit-retention-state":
+        return persistence.readPrivilegedAuditRetentionState();
       case "summarize-privileged-audit":
         return persistence.summarizePrivilegedAudit();
       case "list-agent-attempt-evidence":

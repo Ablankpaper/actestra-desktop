@@ -47,6 +47,8 @@ import {
 } from "../../compatibility/aionui";
 import {
   CoreContractError,
+  AUDIT_RETENTION_POLICY,
+  DIAGNOSTIC_EXPORT_MAX_AUDIT_EVENTS,
   MAX_RECOVERABLE_GENERAL_WORK_CHECKPOINTS,
   PersistenceError,
   WorkloadContentError,
@@ -63,6 +65,7 @@ import {
   assertGeneralWorkCheckpointTransition,
   assertInitialTeamRunSnapshot,
   assertIdempotentCoreEventDelivery,
+  assertPrivilegedAuditRetentionState,
   assertResolveContentReferenceInput,
   assertStoreContentReferenceInput,
   assertTeamRunRevisionTransition,
@@ -112,6 +115,7 @@ import {
   type DomainGraph,
   type EventStreamId,
   type GeneralWorkCheckpoint,
+  type Instant,
   type PersistArtifactDeliveryResult,
   type PersistGeneralWorkCheckpointResult,
   type PersistContentReferenceResult,
@@ -126,6 +130,7 @@ import {
   type PersistEventResult,
   type PersistWorkspaceGrantResult,
   type PrivilegedAuditSummary,
+  type PrivilegedAuditRetentionState,
   type ResolveContentReferenceInput,
   type ResolvedContentReference,
   type SessionState,
@@ -157,6 +162,10 @@ const PRIVILEGED_AUDIT_COLUMNS = `
   session_id, worker_id, tool_id, action, resource_kind, event_type,
   redaction, record_json
 `;
+const PRIVILEGED_AUDIT_CHAIN_DOMAIN = "actestra:privileged-audit-chain:v1";
+const PRIVILEGED_AUDIT_CHAIN_GENESIS_SHA256 =
+  "4eab5dc1aa1804c942a382c85b6c77673f44b46cae57082957c1ffc0a9af61c1";
+const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1_000;
 const AGENT_ATTEMPT_EVIDENCE_COLUMNS = `
   sequence, session_id, workspace_id, task_id, worker_id, stream_id, state,
   last_core_event_sequence, incident_code, redaction, evidence_json
@@ -441,6 +450,306 @@ function parseStoredAuditRecord(row: SqliteRow): AuditRecord {
   }
 
   return deepFreeze(value);
+}
+
+interface StoredPrivilegedAuditRetentionState {
+  readonly prunedRecordCount: number;
+  readonly anchorSequence: number;
+  readonly anchorSha256: string;
+  readonly lastSequence: number;
+  readonly chainHeadSha256: string;
+  readonly lastMaintainedAt: Instant;
+}
+
+interface VerifiedPrivilegedAuditState {
+  readonly stored: StoredPrivilegedAuditRetentionState;
+  readonly state: PrivilegedAuditRetentionState;
+  readonly records: readonly AuditRecord[];
+  readonly rows: readonly SqliteRow[];
+}
+
+function requiredSha256(row: SqliteRow, field: string): string {
+  const value = requiredString(row, field);
+  if (!/^[0-9a-f]{64}$/u.test(value)) {
+    throw new PersistenceError(
+      "corrupt-database",
+      `Actestra database field ${field} must be a lowercase SHA-256 digest`,
+    );
+  }
+  return value;
+}
+
+function requiredStoredInstant(row: SqliteRow, field: string): Instant {
+  try {
+    return instant(requiredString(row, field));
+  } catch (error) {
+    throw new PersistenceError(
+      "corrupt-database",
+      `Actestra database field ${field} must be a canonical instant`,
+      { cause: error },
+    );
+  }
+}
+
+function privilegedAuditChainSha256(
+  previousSha256: string,
+  sequence: number,
+  encodedRecord: string,
+): string {
+  return createHash("sha256")
+    .update(PRIVILEGED_AUDIT_CHAIN_DOMAIN, "utf8")
+    .update("\0", "utf8")
+    .update(previousSha256, "utf8")
+    .update("\0", "utf8")
+    .update(String(sequence), "utf8")
+    .update("\0", "utf8")
+    .update(encodedRecord, "utf8")
+    .digest("hex");
+}
+
+function readStoredPrivilegedAuditRetentionState(
+  database: DatabaseSync,
+): StoredPrivilegedAuditRetentionState {
+  const rows = asRows(
+    database
+      .prepare(
+        `SELECT singleton, contract_version, policy_version, max_age_days,
+                max_record_count, pruned_record_count, anchor_sequence,
+                anchor_sha256, last_sequence, chain_head_sha256,
+                last_maintained_at
+         FROM privileged_audit_retention_state`,
+      )
+      .all(),
+  );
+  if (rows.length !== 1) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Privileged audit retention requires exactly one durable state row",
+    );
+  }
+
+  const row = rows[0] as SqliteRow;
+  if (
+    requiredNumber(row, "singleton") !== 1 ||
+    requiredNumber(row, "contract_version") !== AUDIT_RETENTION_POLICY.contractVersion ||
+    requiredNumber(row, "policy_version") !== AUDIT_RETENTION_POLICY.policyVersion ||
+    requiredNumber(row, "max_age_days") !== AUDIT_RETENTION_POLICY.maxAgeDays ||
+    requiredNumber(row, "max_record_count") !== AUDIT_RETENTION_POLICY.maxRecordCount
+  ) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Privileged audit retention state violates the fixed product policy",
+    );
+  }
+
+  const stored = Object.freeze({
+    prunedRecordCount: requiredNumber(row, "pruned_record_count"),
+    anchorSequence: requiredNumber(row, "anchor_sequence"),
+    anchorSha256: requiredSha256(row, "anchor_sha256"),
+    lastSequence: requiredNumber(row, "last_sequence"),
+    chainHeadSha256: requiredSha256(row, "chain_head_sha256"),
+    lastMaintainedAt: requiredStoredInstant(row, "last_maintained_at"),
+  });
+  if (
+    stored.prunedRecordCount < 0 ||
+    stored.anchorSequence !== stored.prunedRecordCount ||
+    stored.lastSequence < stored.anchorSequence ||
+    (stored.prunedRecordCount === 0 &&
+      stored.anchorSha256 !== PRIVILEGED_AUDIT_CHAIN_GENESIS_SHA256)
+  ) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Privileged audit retention anchor is inconsistent",
+    );
+  }
+  return stored;
+}
+
+function loadPrivilegedAuditRows(database: DatabaseSync): readonly SqliteRow[] {
+  return asRows(
+    database
+      .prepare(
+        `SELECT ${PRIVILEGED_AUDIT_COLUMNS}
+         FROM privileged_audit_records
+         ORDER BY sequence`,
+      )
+      .all(),
+  );
+}
+
+function verifyPrivilegedAuditIntegrity(database: DatabaseSync): VerifiedPrivilegedAuditState {
+  const stored = readStoredPrivilegedAuditRetentionState(database);
+  const rows = loadPrivilegedAuditRows(database);
+  const integrityRows = asRows(
+    database
+      .prepare(
+        `SELECT sequence, previous_sha256, chain_sha256
+         FROM privileged_audit_integrity
+         ORDER BY sequence`,
+      )
+      .all(),
+  );
+  if (rows.length !== integrityRows.length) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Privileged audit records and integrity links differ in length",
+    );
+  }
+  if (stored.prunedRecordCount + rows.length !== stored.lastSequence) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Privileged audit retained and pruned counts are inconsistent",
+    );
+  }
+
+  const records: AuditRecord[] = [];
+  let previousSha256 = stored.anchorSha256;
+  let previousOccurredAt: Instant | undefined;
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index] as SqliteRow;
+    const integrityRow = integrityRows[index] as SqliteRow;
+    const expectedSequence = stored.prunedRecordCount + index + 1;
+    const record = parseStoredAuditRecord(row);
+    if (
+      record.sequence !== expectedSequence ||
+      requiredNumber(integrityRow, "sequence") !== expectedSequence ||
+      requiredSha256(integrityRow, "previous_sha256") !== previousSha256
+    ) {
+      throw new PersistenceError(
+        "corrupt-database",
+        "Privileged audit retained sequence or chain predecessor is inconsistent",
+      );
+    }
+    if (
+      previousOccurredAt !== undefined &&
+      compareInstants(record.occurredAt, previousOccurredAt) < 0
+    ) {
+      throw new PersistenceError(
+        "corrupt-database",
+        "Privileged audit retained time moves backwards",
+      );
+    }
+    const expectedSha256 = privilegedAuditChainSha256(
+      previousSha256,
+      expectedSequence,
+      requiredString(row, "record_json"),
+    );
+    if (requiredSha256(integrityRow, "chain_sha256") !== expectedSha256) {
+      throw new PersistenceError(
+        "corrupt-database",
+        "Privileged audit chain digest is inconsistent",
+      );
+    }
+    previousSha256 = expectedSha256;
+    previousOccurredAt = record.occurredAt;
+    records.push(record);
+  }
+
+  if (previousSha256 !== stored.chainHeadSha256) {
+    throw new PersistenceError("corrupt-database", "Privileged audit chain head is inconsistent");
+  }
+
+  const state = deepFreeze({
+    contractVersion: AUDIT_RETENTION_POLICY.contractVersion,
+    policyVersion: AUDIT_RETENTION_POLICY.policyVersion,
+    maxAgeDays: AUDIT_RETENTION_POLICY.maxAgeDays,
+    maxRecordCount: AUDIT_RETENTION_POLICY.maxRecordCount,
+    retainedRecordCount: records.length,
+    prunedRecordCount: stored.prunedRecordCount,
+    firstRetainedSequence: records.length === 0 ? null : stored.prunedRecordCount + 1,
+    lastSequence: stored.lastSequence,
+    chainHeadSha256: stored.chainHeadSha256,
+    lastMaintainedAt: stored.lastMaintainedAt,
+  } satisfies PrivilegedAuditRetentionState);
+  try {
+    assertPrivilegedAuditRetentionState(state);
+  } catch (error) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Privileged audit retention state violates its core contract",
+      { cause: error },
+    );
+  }
+  return Object.freeze({
+    stored,
+    state,
+    records: Object.freeze(records),
+    rows,
+  });
+}
+
+function initializeOrVerifyPrivilegedAuditIntegrity(database: DatabaseSync): void {
+  const stored = readStoredPrivilegedAuditRetentionState(database);
+  const rows = loadPrivilegedAuditRows(database);
+  const integrityCountRow = database
+    .prepare("SELECT COUNT(*) AS record_count FROM privileged_audit_integrity")
+    .get() as SqliteRow;
+  const integrityCount = requiredNumber(integrityCountRow, "record_count");
+  const legacyInitialization =
+    rows.length > 0 &&
+    integrityCount === 0 &&
+    stored.prunedRecordCount === 0 &&
+    stored.anchorSequence === 0 &&
+    stored.anchorSha256 === PRIVILEGED_AUDIT_CHAIN_GENESIS_SHA256 &&
+    stored.chainHeadSha256 === PRIVILEGED_AUDIT_CHAIN_GENESIS_SHA256;
+
+  if (!legacyInitialization) {
+    verifyPrivilegedAuditIntegrity(database);
+    return;
+  }
+  if (stored.lastSequence !== rows.length) {
+    throw new PersistenceError(
+      "corrupt-database",
+      "Legacy privileged audit sequence is not gapless",
+    );
+  }
+
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    const insert = database.prepare(
+      `INSERT INTO privileged_audit_integrity (
+         sequence, previous_sha256, chain_sha256
+       ) VALUES (?, ?, ?)`,
+    );
+    let previousSha256 = PRIVILEGED_AUDIT_CHAIN_GENESIS_SHA256;
+    for (let index = 0; index < rows.length; index += 1) {
+      const row = rows[index] as SqliteRow;
+      const record = parseStoredAuditRecord(row);
+      const expectedSequence = index + 1;
+      if (record.sequence !== expectedSequence) {
+        throw new PersistenceError(
+          "corrupt-database",
+          "Legacy privileged audit sequence is not gapless",
+        );
+      }
+      const chainSha256 = privilegedAuditChainSha256(
+        previousSha256,
+        expectedSequence,
+        requiredString(row, "record_json"),
+      );
+      insert.run(expectedSequence, previousSha256, chainSha256);
+      previousSha256 = chainSha256;
+    }
+    database
+      .prepare(
+        `UPDATE privileged_audit_retention_state
+         SET chain_head_sha256 = ?
+         WHERE singleton = 1`,
+      )
+      .run(previousSha256);
+    database.exec("COMMIT");
+  } catch (error) {
+    rollback(database);
+    if (error instanceof PersistenceError) {
+      throw error;
+    }
+    throw new PersistenceError(
+      "corrupt-database",
+      "Actestra could not initialize privileged audit integrity",
+      { cause: error },
+    );
+  }
+  verifyPrivilegedAuditIntegrity(database);
 }
 
 function parseStoredAgentAttemptEvidence(row: SqliteRow): AgentAttemptEvidence {
@@ -1863,6 +2172,7 @@ class SqliteCorePersistence implements ActestraPersistencePort {
   constructor(database: DatabaseSync) {
     this.database = database;
     this.instanceId = ++persistenceInstanceCounter;
+    initializeOrVerifyPrivilegedAuditIntegrity(database);
   }
 
   private requireDatabase(): DatabaseSync {
@@ -2412,6 +2722,8 @@ class SqliteCorePersistence implements ActestraPersistencePort {
       });
     }
 
+    const verifiedBeforeAppend = verifyPrivilegedAuditIntegrity(database);
+
     database.exec("BEGIN IMMEDIATE");
     try {
       const existingRow = database
@@ -2436,30 +2748,17 @@ class SqliteCorePersistence implements ActestraPersistencePort {
         );
       }
 
-      const summary = database
-        .prepare(
-          `SELECT COUNT(*) AS record_count, COALESCE(MAX(sequence), 0) AS last_sequence
-           FROM privileged_audit_records`,
-        )
-        .get() as SqliteRow;
-      const recordCount = requiredNumber(summary, "record_count");
-      const lastSequence = requiredNumber(summary, "last_sequence");
-      if (recordCount !== lastSequence || lastSequence >= Number.MAX_SAFE_INTEGER) {
-        throw new PersistenceError("corrupt-database", "Privileged audit sequence is not gapless");
+      const lastSequence = verifiedBeforeAppend.stored.lastSequence;
+      if (lastSequence >= Number.MAX_SAFE_INTEGER) {
+        throw new PersistenceError("corrupt-database", "Privileged audit sequence is exhausted");
       }
-
-      const previous = database
-        .prepare(
-          `SELECT ${PRIVILEGED_AUDIT_COLUMNS}
-           FROM privileged_audit_records
-           ORDER BY sequence DESC
-           LIMIT 1`,
-        )
-        .get() as SqliteRow | undefined;
-      if (
-        previous !== undefined &&
-        compareInstants(input.occurredAt, instant(requiredString(previous, "occurred_at"))) < 0
-      ) {
+      const lastRetained = verifiedBeforeAppend.records.at(-1);
+      const timeFloor =
+        lastRetained?.occurredAt ??
+        (verifiedBeforeAppend.stored.prunedRecordCount > 0
+          ? verifiedBeforeAppend.stored.lastMaintainedAt
+          : undefined);
+      if (timeFloor !== undefined && compareInstants(input.occurredAt, timeFloor) < 0) {
         throw new PersistenceError("invalid-record", "Privileged audit time cannot move backwards");
       }
 
@@ -2472,6 +2771,12 @@ class SqliteCorePersistence implements ActestraPersistencePort {
         event: structuredClone(input.event),
       } satisfies AuditRecord);
       assertAuditRecord(record);
+      const encodedRecord = JSON.stringify(record);
+      const chainSha256 = privilegedAuditChainSha256(
+        verifiedBeforeAppend.stored.chainHeadSha256,
+        record.sequence,
+        encodedRecord,
+      );
       database
         .prepare(
           `INSERT INTO privileged_audit_records (
@@ -2494,8 +2799,33 @@ class SqliteCorePersistence implements ActestraPersistencePort {
           record.event.context.resourceKind,
           record.event.type,
           record.redaction,
-          JSON.stringify(record),
+          encodedRecord,
         );
+      database
+        .prepare(
+          `INSERT INTO privileged_audit_integrity (
+             sequence, previous_sha256, chain_sha256
+           ) VALUES (?, ?, ?)`,
+        )
+        .run(record.sequence, verifiedBeforeAppend.stored.chainHeadSha256, chainSha256);
+      const update = database
+        .prepare(
+          `UPDATE privileged_audit_retention_state
+           SET last_sequence = ?, chain_head_sha256 = ?
+           WHERE singleton = 1 AND last_sequence = ? AND chain_head_sha256 = ?`,
+        )
+        .run(
+          record.sequence,
+          chainSha256,
+          verifiedBeforeAppend.stored.lastSequence,
+          verifiedBeforeAppend.stored.chainHeadSha256,
+        );
+      if (update.changes !== 1) {
+        throw new PersistenceError(
+          "evidence-conflict",
+          "Privileged audit retention state changed during append",
+        );
+      }
       database.exec("COMMIT");
       return record;
     } catch (error) {
@@ -2589,21 +2919,177 @@ class SqliteCorePersistence implements ActestraPersistencePort {
     }
   }
 
-  async summarizePrivilegedAudit(): Promise<PrivilegedAuditSummary> {
+  async maintainPrivilegedAudit(now: Instant): Promise<PrivilegedAuditRetentionState> {
     const database = this.requireDatabase();
-    const row = database
-      .prepare(
-        `SELECT COUNT(*) AS record_count, COALESCE(MAX(sequence), 0) AS last_sequence
-         FROM privileged_audit_records`,
-      )
-      .get() as SqliteRow;
-    const summary = Object.freeze({
-      recordCount: requiredNumber(row, "record_count"),
-      lastSequence: requiredNumber(row, "last_sequence"),
-    });
-    if (summary.recordCount !== summary.lastSequence) {
-      throw new PersistenceError("corrupt-database", "Privileged audit sequence is not gapless");
+    let maintainedAt: Instant;
+    try {
+      maintainedAt = instant(now);
+    } catch (error) {
+      throw new PersistenceError("invalid-record", "Privileged audit maintenance time is invalid", {
+        cause: error,
+      });
     }
+
+    const verified = verifyPrivilegedAuditIntegrity(database);
+    if (compareInstants(maintainedAt, verified.stored.lastMaintainedAt) < 0) {
+      throw new PersistenceError(
+        "invalid-record",
+        "Privileged audit maintenance time cannot move backwards",
+      );
+    }
+
+    const requestEnds = new Map<
+      string,
+      { readonly sequence: number; readonly terminal: boolean }
+    >();
+    for (const record of verified.records) {
+      requestEnds.set(record.event.context.requestId, {
+        sequence: record.sequence,
+        terminal: record.event.type === "tool.completed" || record.event.type === "tool.failed",
+      });
+    }
+
+    const safeBoundaries: number[] = [];
+    let furthestSeenRequestEnd = verified.stored.prunedRecordCount;
+    let everySeenRequestIsTerminal = true;
+    for (const record of verified.records) {
+      const requestEnd = requestEnds.get(record.event.context.requestId);
+      if (requestEnd === undefined) {
+        throw new PersistenceError(
+          "corrupt-database",
+          "Privileged audit request grouping is inconsistent",
+        );
+      }
+      furthestSeenRequestEnd = Math.max(furthestSeenRequestEnd, requestEnd.sequence);
+      everySeenRequestIsTerminal &&= requestEnd.terminal;
+      if (everySeenRequestIsTerminal && furthestSeenRequestEnd === record.sequence) {
+        safeBoundaries.push(record.sequence);
+      }
+    }
+
+    const cutoffMilliseconds =
+      Date.parse(maintainedAt) - AUDIT_RETENTION_POLICY.maxAgeDays * MILLISECONDS_PER_DAY;
+    let ageEligibleSequence = verified.stored.prunedRecordCount;
+    for (const record of verified.records) {
+      if (Date.parse(record.occurredAt) >= cutoffMilliseconds) {
+        break;
+      }
+      ageEligibleSequence = record.sequence;
+    }
+    const ageBoundary =
+      safeBoundaries.filter((sequence) => sequence <= ageEligibleSequence).at(-1) ??
+      verified.stored.prunedRecordCount;
+
+    const requiredCountDeletion = Math.max(
+      0,
+      verified.records.length - AUDIT_RETENTION_POLICY.maxRecordCount,
+    );
+    const countBoundary =
+      requiredCountDeletion === 0
+        ? verified.stored.prunedRecordCount
+        : safeBoundaries.find(
+            (sequence) => sequence - verified.stored.prunedRecordCount >= requiredCountDeletion,
+          );
+    if (countBoundary === undefined) {
+      throw new PersistenceError(
+        "corrupt-database",
+        "Privileged audit hard cap cannot be enforced without deleting unresolved evidence",
+      );
+    }
+    const pruneBoundary = Math.max(ageBoundary, countBoundary);
+    const deleteCount = pruneBoundary - verified.stored.prunedRecordCount;
+    const anchorSha256 =
+      deleteCount === 0
+        ? verified.stored.anchorSha256
+        : requiredSha256(
+            database
+              .prepare(
+                `SELECT chain_sha256
+                 FROM privileged_audit_integrity
+                 WHERE sequence = ?`,
+              )
+              .get(pruneBoundary) as SqliteRow,
+            "chain_sha256",
+          );
+
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      if (deleteCount > 0) {
+        const deletion = database
+          .prepare("DELETE FROM privileged_audit_records WHERE sequence <= ?")
+          .run(pruneBoundary);
+        if (deletion.changes !== deleteCount) {
+          throw new PersistenceError(
+            "corrupt-database",
+            "Privileged audit retention deleted an unexpected record count",
+          );
+        }
+      }
+      const update = database
+        .prepare(
+          `UPDATE privileged_audit_retention_state
+           SET pruned_record_count = ?, anchor_sequence = ?, anchor_sha256 = ?,
+               last_maintained_at = ?
+           WHERE singleton = 1
+             AND pruned_record_count = ?
+             AND last_sequence = ?
+             AND chain_head_sha256 = ?
+             AND last_maintained_at = ?`,
+        )
+        .run(
+          pruneBoundary,
+          pruneBoundary,
+          anchorSha256,
+          maintainedAt,
+          verified.stored.prunedRecordCount,
+          verified.stored.lastSequence,
+          verified.stored.chainHeadSha256,
+          verified.stored.lastMaintainedAt,
+        );
+      if (update.changes !== 1) {
+        throw new PersistenceError(
+          "evidence-conflict",
+          "Privileged audit retention state changed during maintenance",
+        );
+      }
+      verifyNoForeignKeyViolations(database);
+      database.exec("COMMIT");
+    } catch (error) {
+      rollback(database);
+      if (error instanceof PersistenceError) {
+        throw error;
+      }
+      throw new PersistenceError(
+        "corrupt-database",
+        "Actestra could not maintain privileged audit retention",
+        { cause: error },
+      );
+    }
+    return verifyPrivilegedAuditIntegrity(database).state;
+  }
+
+  async listRecentPrivilegedAudit(limit: number): Promise<readonly AuditRecord[]> {
+    const database = this.requireDatabase();
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > DIAGNOSTIC_EXPORT_MAX_AUDIT_EVENTS) {
+      throw new PersistenceError(
+        "invalid-record",
+        `Privileged audit limit must be between 1 and ${DIAGNOSTIC_EXPORT_MAX_AUDIT_EVENTS}`,
+      );
+    }
+    const records = verifyPrivilegedAuditIntegrity(database).records;
+    return Object.freeze(records.slice(-limit).reverse());
+  }
+
+  async readPrivilegedAuditRetentionState(): Promise<PrivilegedAuditRetentionState> {
+    return verifyPrivilegedAuditIntegrity(this.requireDatabase()).state;
+  }
+
+  async summarizePrivilegedAudit(): Promise<PrivilegedAuditSummary> {
+    const verified = verifyPrivilegedAuditIntegrity(this.requireDatabase());
+    const summary = Object.freeze({
+      recordCount: verified.state.prunedRecordCount + verified.state.retainedRecordCount,
+      lastSequence: verified.state.lastSequence,
+    });
     return summary;
   }
 

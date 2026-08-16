@@ -49,6 +49,7 @@
     "smoke:aionui-general-work": "node scripts/smoke-aionui-general-work.mjs",
     "smoke:p7-security": "node scripts/smoke-p7-security.mjs",
     "smoke:p7-2-resource-reliability": "node scripts/smoke-p7-2-resource-reliability.mjs",
+    "smoke:p7-4-diagnostic-audit": "node scripts/smoke-p7-4-diagnostic-audit.mjs",
     "goose:runner:tools": "node scripts/install-goose-runner-tools.mjs",
     "goose:runner:format:check": "cargo fmt --manifest-path workers/goose-runner/Cargo.toml -- --check",
     "goose:runner:build": "node scripts/build-goose-runner.mjs",

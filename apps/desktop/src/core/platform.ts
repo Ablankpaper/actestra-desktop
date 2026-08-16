@@ -23,6 +23,7 @@ import {
   type AuditRecordId,
 } from "./privilegedServices";
 import { assertWorkerResourceIncident, type WorkerResourceIncident } from "./workerResourceBudget";
+import type { PrivilegedAuditRetentionState } from "./diagnosticEvidence";
 
 export const PLATFORM_EVIDENCE_CONTRACT_VERSION = 1 as const;
 
@@ -88,6 +89,9 @@ export interface PlatformEvidencePersistencePort {
    * return duplicate, while conflicting terminal evidence must fail closed.
    */
   appendAgentAttemptEvidence(evidence: AgentAttemptEvidence): Promise<PersistEvidenceResult>;
+  maintainPrivilegedAudit(now: Instant): Promise<PrivilegedAuditRetentionState>;
+  listRecentPrivilegedAudit(limit: number): Promise<readonly AuditRecord[]>;
+  readPrivilegedAuditRetentionState(): Promise<PrivilegedAuditRetentionState>;
   summarizePrivilegedAudit(): Promise<PrivilegedAuditSummary>;
   listRecentAgentAttemptEvidence(limit: number): Promise<readonly AgentAttemptEvidence[]>;
 }

@@ -78,6 +78,19 @@ describe("P7 CI wiring", () => {
     expect(p72Index).toBeGreaterThan(p71Index);
   });
 
+  it("runs the P7.4 packaged diagnostic smoke after the P7.2 resource smoke", () => {
+    const scripts = readJson("package.json").scripts;
+    expect(scripts["smoke:p7-4-diagnostic-audit"]).toBe(
+      "node scripts/smoke-p7-4-diagnostic-audit.mjs",
+    );
+    const workflow = read(".github/workflows/ci.yml");
+    const macosJob = workflow.slice(workflow.indexOf("\n  macos:"));
+    const p72Index = macosJob.indexOf("bun run smoke:p7-2-resource-reliability");
+    const p74Index = macosJob.indexOf("bun run smoke:p7-4-diagnostic-audit");
+    expect(p72Index).toBeGreaterThan(-1);
+    expect(p74Index).toBeGreaterThan(p72Index);
+  });
+
   it("keeps hostile probe inputs outside package resources and runner trust roots", () => {
     const smoke = read("scripts/smoke-p7-2-resource-reliability.mjs");
     const packageJson = read("package.json");

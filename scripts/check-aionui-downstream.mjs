@@ -146,6 +146,9 @@ function main() {
     !overlay.patches.some(
       (patch) => patch.path === "patches/0017-actestra-p7-security-smoke.mjs",
     ) ||
+    !overlay.patches.some(
+      (patch) => patch.path === "patches/0020-actestra-p7-diagnostic-export.mjs",
+    ) ||
     overlay.uiContract.layoutChangesAllowed !== true ||
     overlay.uiContract.featureEntryRemovalAllowed !== false
   ) {
@@ -172,6 +175,28 @@ function main() {
     }
   }
 
+  const diagnosticExportPatch = overlay.patches.find(
+    (patch) => patch.path === "patches/0020-actestra-p7-diagnostic-export.mjs",
+  );
+  if (
+    diagnosticExportPatch.classification.length !== 1 ||
+    diagnosticExportPatch.classification[0] !== "R1" ||
+    !diagnosticExportPatch.authorityOwner.includes("Actestra Main") ||
+    !diagnosticExportPatch.rollback.includes("Regenerate without patch 0020")
+  ) {
+    throw new Error("Invalid P7.4 diagnostic-export downstream authority metadata");
+  }
+  for (const domain of [
+    "explicit-consent local diagnostic export",
+    "fixed current-main-frame diagnostic IPC",
+    "metadata-only audit and terminal-attempt evidence",
+    "packaged P7.4 diagnostic and audit acceptance",
+  ]) {
+    if (!diagnosticExportPatch.domains.includes(domain)) {
+      throw new Error(`P7.4 diagnostic patch is missing reviewed domain: ${domain}`);
+    }
+  }
+
   for (const patch of overlay.patches) {
     resolveContainedPath(path.dirname(overlayPath), patch.path, "AionUi downstream patch metadata");
     if (
@@ -182,6 +207,21 @@ function main() {
     ) {
       throw new Error(`Incomplete downstream patch metadata: ${patch.path}`);
     }
+  }
+
+  const repositoryPackage = readJson(path.join(repositoryRoot, "package.json"));
+  if (
+    repositoryPackage.scripts?.["smoke:p7-4-diagnostic-audit"] !==
+    "node scripts/smoke-p7-4-diagnostic-audit.mjs"
+  ) {
+    throw new Error("Missing P7.4 packaged diagnostic smoke script");
+  }
+  const workflow = fs.readFileSync(path.join(repositoryRoot, ".github/workflows/ci.yml"), "utf8");
+  const macosJob = workflow.slice(workflow.indexOf("\n  macos:"));
+  const p72SmokeIndex = macosJob.indexOf("bun run smoke:p7-2-resource-reliability");
+  const p74SmokeIndex = macosJob.indexOf("bun run smoke:p7-4-diagnostic-audit");
+  if (p72SmokeIndex === -1 || p74SmokeIndex <= p72SmokeIndex) {
+    throw new Error("P7.4 packaged diagnostic smoke must follow the P7.2 smoke in macOS CI");
   }
 
   const sourceFiles = new Set(listFiles(sourceRoot));
@@ -334,6 +374,16 @@ function main() {
   ]) {
     if (!sourceCopyDestinations.has(requiredTeamSourceCopy)) {
       throw new Error(`Missing Team-work source copy: ${requiredTeamSourceCopy}`);
+    }
+  }
+  for (const requiredDiagnosticSourceCopy of [
+    "packages/desktop/src/actestra/core/diagnosticEvidence.ts",
+    "packages/desktop/src/actestra/compatibility/aionui/diagnosticExport.ts",
+    "packages/desktop/src/actestra/main/diagnostics/diagnosticExportService.ts",
+    "packages/desktop/src/actestra/main/security/p7DiagnosticAuditSmoke.ts",
+  ]) {
+    if (!sourceCopyDestinations.has(requiredDiagnosticSourceCopy)) {
+      throw new Error(`Missing P7.4 diagnostic source copy: ${requiredDiagnosticSourceCopy}`);
     }
   }
   const plannerManifestDestination =
@@ -498,7 +548,35 @@ function main() {
     "ipcRenderer.invoke(ACTESTRA_SCHEDULE_REQUEST_CHANNEL, request)",
     "ipcRenderer.on(ACTESTRA_SCHEDULE_EVENT_CHANNEL, listener)",
     "ipcRenderer.off(ACTESTRA_SCHEDULE_EVENT_CHANNEL, listener)",
+    "contextBridge.exposeInMainWorld('actestraDiagnostics'",
+    "exportReport: async () =>",
+    "ipcRenderer.invoke(AIONUI_DIAGNOSTIC_EXPORT_CHANNEL)",
+    "assertAionUiDiagnosticExportResult(result)",
   ]);
+  rejectText(path.join(outputRoot, "packages/desktop/src/preload/main.ts"), [
+    "exportReport: async (path",
+    "showSaveDialog",
+    "DiagnosticExportService",
+    "openSqliteCorePersistence",
+    "node:sqlite",
+    "DatabaseSync",
+    "node:fs",
+  ]);
+  requireText(
+    path.join(outputRoot, "packages/desktop/src/actestra/compatibility/aionui/diagnosticExport.ts"),
+    [
+      'AIONUI_DIAGNOSTIC_EXPORT_CHANNEL = "actestra:diagnostic-export"',
+      "args.length !== 0",
+      "event.sender === webContents",
+      "event.senderFrame === webContents.mainFrame",
+      "options.ipcMain.removeHandler(AIONUI_DIAGNOSTIC_EXPORT_CHANNEL)",
+      'return Object.freeze({ status: "rejected" })',
+    ],
+  );
+  rejectText(
+    path.join(outputRoot, "packages/desktop/src/actestra/compatibility/aionui/diagnosticExport.ts"),
+    ["filePath", "reportBytes", "reportContent", "node:fs", "node:sqlite", "fetch("],
+  );
   requireText(
     path.join(outputRoot, "packages/desktop/src/actestra/compatibility/aionui/teamBridge.ts"),
     [
@@ -591,6 +669,16 @@ function main() {
       "ActestraTeamComposition",
       "configureActestraTeamRuntime",
       "registerRecoveredTeamBridge",
+      "DiagnosticExportService",
+      "registerAionUiDiagnosticExportIpc",
+      "disposeDiagnosticExportIpc",
+      "dialog.showSaveDialog",
+      "resolveP7DiagnosticAuditSmokeIsolation",
+      "runP7PackagedDiagnosticAuditSmoke",
+      "P7_DIAGNOSTIC_AUDIT_SMOKE_MARKER",
+      "p7DiagnosticAuditSmokeStarted",
+      "ACTESTRA_P7_DIAGNOSTIC_AUDIT_FAILED",
+      "void startP7DiagnosticAuditSmoke()",
       "[Actestra schedule] Recovery unavailable at startup",
       "[Actestra general work] Recovery unavailable at startup",
       "nativeFallback",
@@ -601,6 +689,58 @@ function main() {
     path.join(outputRoot, "packages/desktop/src/process/services/actestraShadowBridge.ts"),
     ["openSqliteCorePersistence", "node:sqlite", "DatabaseSync"],
   );
+  requireText(
+    path.join(outputRoot, "packages/desktop/src/actestra/main/security/p7DiagnosticAuditSmoke.ts"),
+    [
+      "P7_DIAGNOSTIC_AUDIT_SMOKE_MARKER",
+      "ACTESTRA_P7_DIAGNOSTIC_AUDIT_SMOKE",
+      "resolveP7DiagnosticAuditSmokeIsolation",
+      "runP7PackagedDiagnosticAuditSmoke",
+      "new DiagnosticExportService",
+      "readPrivilegedAuditRetentionState",
+    ],
+  );
+  const diagnosticAboutPath = path.join(
+    outputRoot,
+    "packages/desktop/src/renderer/components/settings/SettingsModal/contents/AboutModalContent.tsx",
+  );
+  requireText(diagnosticAboutPath, [
+    "data-testid='actestra-diagnostic-export-card'",
+    "data-testid='actestra-diagnostic-export-consent'",
+    "window.actestraDiagnostics",
+    "bridge.exportReport()",
+    "settings.diagnosticExportLocalOnly",
+    "settings.diagnosticExportIncludes",
+    "settings.diagnosticExportExcludes",
+    "settings.diagnosticExportNoUpload",
+    "FeedbackReportModal",
+  ]);
+  rejectText(diagnosticAboutPath, [
+    "AIONUI_DIAGNOSTIC_EXPORT_CHANNEL",
+    "ipcRenderer",
+    "showSaveDialog",
+    "DiagnosticExportService",
+    "openSqliteCorePersistence",
+    "node:sqlite",
+    "DatabaseSync",
+    "node:fs",
+    "reportBytes",
+    "reportContent",
+  ]);
+  for (const locale of ["en-US", "zh-CN"]) {
+    requireText(
+      path.join(
+        outputRoot,
+        `packages/desktop/src/renderer/services/i18n/locales/${locale}/settings.json`,
+      ),
+      [
+        '"diagnosticExportLocalOnly"',
+        '"diagnosticExportIncludes"',
+        '"diagnosticExportExcludes"',
+        '"diagnosticExportNoUpload"',
+      ],
+    );
+  }
   requireText(
     path.join(outputRoot, "packages/desktop/src/process/services/actestraTeamComposition.ts"),
     [
@@ -893,7 +1033,7 @@ function main() {
     "missed-occurrence",
     "schedule-smoke-interrupted-claim",
     "schedule-skill-unsupported",
-    "expectedPersistenceSchemaVersion = 22",
+    "expectedPersistenceSchemaVersion = 23",
   ]);
   rejectText(path.join(repositoryRoot, "scripts/smoke-aionui-general-work.mjs"), [
     "Electron.app",
@@ -1101,7 +1241,10 @@ function main() {
   requireText(
     path.join(outputRoot, "packages/desktop/src/actestra/utility/persistence/sqliteMigrations.ts"),
     [
-      "CURRENT_CORE_SCHEMA_VERSION = 22",
+      "CURRENT_CORE_SCHEMA_VERSION = 23",
+      "privileged-audit-integrity-and-retention",
+      "privileged_audit_integrity",
+      "privileged_audit_retention_state",
       "artifact-delivery-split-authority",
       "artifact-delivery-patch-owner-identity",
       "patch_owner_grant_id",
@@ -1160,6 +1303,10 @@ function main() {
       "persistTeamDefinition",
       "persistTeamRunSnapshot",
       "listRecoverableTeamRuns",
+      "PRIVILEGED_AUDIT_CHAIN_DOMAIN",
+      "maintainPrivilegedAudit",
+      "listRecentPrivilegedAudit",
+      "readPrivilegedAuditRetentionState",
     ],
   );
   requireText(path.join(outputRoot, "packages/desktop/src/actestra/core/generalWorkRecovery.ts"), [

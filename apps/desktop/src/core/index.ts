@@ -2,6 +2,7 @@ export * from "./agentAdapter";
 export * from "./artifactDelivery";
 export * from "./artifactPatchAccess";
 export * from "./domain";
+export * from "./diagnosticEvidence";
 export * from "./events";
 export * from "./generalCapabilityAdmission";
 export * from "./generalDraftContract";

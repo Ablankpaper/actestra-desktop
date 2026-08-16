@@ -59,8 +59,8 @@ function assert(condition, message) {
 try {
   const packagedSmokeSource = fs.readFileSync(smokeScript, "utf8");
   assert(
-    packagedSmokeSource.includes("const expectedPersistenceSchemaVersion = 22;"),
-    "Packaged shell smoke must validate the current schema 22 database",
+    packagedSmokeSource.includes("const expectedPersistenceSchemaVersion = 23;"),
+    "Packaged shell smoke must validate the current schema 23 database",
   );
 
   const generalWorkSmokeSource = fs.readFileSync(generalWorkSmokeScript, "utf8");
@@ -69,8 +69,8 @@ try {
     "General Work target-app smoke must keep a bounded one-minute startup deadline",
   );
   assert(
-    generalWorkSmokeSource.includes("const expectedPersistenceSchemaVersion = 22;"),
-    "General Work target-app smoke must validate the current schema 22 database",
+    generalWorkSmokeSource.includes("const expectedPersistenceSchemaVersion = 23;"),
+    "General Work target-app smoke must validate the current schema 23 database",
   );
   assert(
     generalWorkSmokeSource.includes('"actestra-input.txt"') &&
@@ -280,7 +280,7 @@ const database = new DatabaseSync(path.join(stateDirectory, "actestra.sqlite3"))
 database.exec(\`
   CREATE TABLE workspace_grants (id TEXT PRIMARY KEY) STRICT;
   CREATE TABLE content_references (id TEXT PRIMARY KEY) STRICT;
-  PRAGMA user_version = 22;
+  PRAGMA user_version = 23;
 \`);
 database.close();
 console.log("ACTESTRA_PERSISTENCE_UTILITY_READY");

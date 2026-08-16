@@ -161,6 +161,36 @@ describe("AionUi downstream path safety", () => {
         "tests/unit/renderer/team/ActestraTeamWorkspace.dom.test.tsx",
       ]),
     );
+    expect(
+      overlay.patches.find(
+        (patch) => patch.path === "patches/0020-actestra-p7-diagnostic-export.mjs",
+      ),
+    ).toMatchObject({
+      classification: ["R1"],
+      domains: expect.arrayContaining([
+        "explicit-consent local diagnostic export",
+        "fixed current-main-frame diagnostic IPC",
+        "metadata-only audit and terminal-attempt evidence",
+      ]),
+      authorityOwner: expect.stringContaining("Actestra Main"),
+      rollback: expect.stringContaining("Regenerate without patch 0020"),
+    });
+    expect(overlay.sourceCopies).toEqual(
+      expect.arrayContaining([
+        {
+          source: "apps/desktop/src/core/diagnosticEvidence.ts",
+          destination: "packages/desktop/src/actestra/core/diagnosticEvidence.ts",
+        },
+        {
+          source: "apps/desktop/src/compatibility/aionui/diagnosticExport.ts",
+          destination: "packages/desktop/src/actestra/compatibility/aionui/diagnosticExport.ts",
+        },
+        {
+          source: "apps/desktop/src/main/diagnostics/diagnosticExportService.ts",
+          destination: "packages/desktop/src/actestra/main/diagnostics/diagnosticExportService.ts",
+        },
+      ]),
+    );
     expect(overlay.sourceCopies).toEqual(
       expect.arrayContaining([
         {
@@ -275,7 +305,14 @@ describe("AionUi downstream path safety", () => {
           source: "apps/desktop/src/main/security/p7ResourceReliabilitySmoke.ts",
           destination: "packages/desktop/src/actestra/main/security/p7ResourceReliabilitySmoke.ts",
         },
+        {
+          source: "apps/desktop/src/main/security/p7DiagnosticAuditSmoke.ts",
+          destination: "packages/desktop/src/actestra/main/security/p7DiagnosticAuditSmoke.ts",
+        },
       ]),
+    );
+    expect(overlay.expectedChangedFiles).toContain(
+      "packages/desktop/src/actestra/main/security/p7DiagnosticAuditSmoke.ts",
     );
     for (const destination of [
       "packages/desktop/src/actestra/main/orchestration/localClaudeProductRuntime.ts",
@@ -296,5 +333,10 @@ describe("AionUi downstream path safety", () => {
     );
     expect(checker).toContain('"data?.activities"');
     expect(checker).toContain('"restores durable user and Worker activity"');
+    expect(checker).toContain('"patches/0020-actestra-p7-diagnostic-export.mjs"');
+    expect(checker).toContain("Missing P7.4 diagnostic source copy");
+    expect(checker).toContain("ACTESTRA_P7_DIAGNOSTIC_AUDIT_SMOKE");
+    expect(checker).toContain("P7_DIAGNOSTIC_AUDIT_SMOKE_MARKER");
+    expect(checker).toContain("actestraDiagnostics");
   });
 });
