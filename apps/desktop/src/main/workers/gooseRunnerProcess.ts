@@ -24,7 +24,10 @@ import {
   type WorkerResourceBudget,
 } from "../../core";
 import type { AdmittedGooseRunnerArtifact } from "./gooseRunnerArtifact";
-import { assertGooseContainmentLaunch } from "./gooseRunnerContainment";
+import {
+  assertGooseContainmentLaunch,
+  hasVerifiedGooseContainment,
+} from "./gooseRunnerContainment";
 import { createGooseRunnerSandboxLaunch } from "./gooseRunnerSandbox";
 import { resolveGooseRunnerRuntimeTarget } from "./gooseRunnerTarget";
 
@@ -700,6 +703,17 @@ export async function openGooseRunnerHandshake(
     throw new GooseRunnerProcessError(
       "network-policy-unavailable",
       "The current host lacks admitted Goose runtime containment",
+    );
+  }
+  const containmentVerified = hasVerifiedGooseContainment(options.artifact.containment, {
+    targetTriple: options.artifact.targetTriple,
+    executableSha256: options.artifact.executableSha256,
+    sourceCommit: options.artifact.sourceCommit ?? "",
+  });
+  if (runtimeTarget.platform !== "darwin" && !containmentVerified) {
+    throw new GooseRunnerProcessError(
+      "network-policy-unavailable",
+      "The admitted Goose artifact lacks exact native containment evidence",
     );
   }
   const capabilityProxyPort =

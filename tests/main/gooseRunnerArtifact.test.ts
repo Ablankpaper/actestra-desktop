@@ -313,6 +313,7 @@ describe("Goose runner artifact admission", () => {
 
     expect(artifact.containment).toEqual(containment);
     expect(Object.isFrozen(artifact.containment)).toBe(true);
+    expect(artifact.sourceCommit).toBe(manifest.provenance.actestraCommit);
   });
 
   it.each([

@@ -37,15 +37,26 @@ const advisoryDatabasePath = path.join(
 );
 
 const sourceTreeFiles = [
+  "apps/desktop/src/main/workers/gooseRunnerContainment.ts",
   "apps/desktop/src/main/workers/gooseRunnerArtifact.ts",
+  "apps/desktop/src/main/workers/gooseRunnerProcess.ts",
+  "apps/desktop/src/main/workers/gooseRunnerTarget.ts",
   "apps/desktop/src/shared/gooseRunnerSource.json",
   "scripts/build-goose-runner.mjs",
+  "scripts/gooseContainmentEvidence.mjs",
   "scripts/install-goose-runner-tools.mjs",
+  "scripts/record-goose-runner-containment.mjs",
+  "scripts/run-goose-runner-containment.mjs",
+  "scripts/test-goose-runner-containment.mjs",
   "workers/goose-runner/Cargo.lock",
   "workers/goose-runner/Cargo.toml",
   "workers/goose-runner/PATCHES.md",
   "workers/goose-runner/licenses/GOOSE-APACHE-2.0.txt",
   "workers/goose-runner/rust-toolchain.toml",
+  "workers/goose-runner/src/containment/linux.rs",
+  "workers/goose-runner/src/containment/mod.rs",
+  "workers/goose-runner/src/containment/unix.rs",
+  "workers/goose-runner/src/containment/windows.rs",
   "workers/goose-runner/src/main.rs",
 ];
 

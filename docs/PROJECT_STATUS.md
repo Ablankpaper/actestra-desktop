@@ -92,6 +92,140 @@ fail-closed behavior is unchanged. The next required work is a real Ubuntu
 backend and native CI evidence, followed by binding the six booleans to the
 exact runner manifest before any non-Darwin runtime can be admitted.
 
+### 2026-08-17 P8.2b local hardening follow-up (not an acceptance)
+
+The local-hardening follow-up was developed on
+`codex/p8-2b-runtime-containment` from formal
+`HEAD 39566b342ca2c8492199d600247265df592463ce`. The evidence binder now uses a
+closed failure-code set: an unexpected filesystem or runtime exception falls
+back to `containment-bind-failed` and never echoes an OS error message or path.
+A regression deliberately runs the binder against an unreadable manifest and
+asserts both the fixed code and the absence of the fixture path.
+
+Fresh local evidence for this follow-up is 8 focused files / 68 tests passed,
+TypeScript typecheck passed, lint reported 0 warnings/errors, format check
+passed, Rust format check passed, Rust macOS tests passed (8/8), and
+`git diff --check` passed. This is development-worktree evidence only; it is
+not a pull-request or merged-main result.
+
+The first complete-gate attempt exposed a real downstream integration omission:
+the new `gooseRunnerContainment.ts` source was not present in the materialized
+AionUi overlay. The overlay now declares that source copy and its expected
+destination. A fresh `bun run check` then exited 0: 148 test files passed / 2
+skipped, 1,573 tests passed / 9 skipped; downstream reported 369 declared files
+and 126 reviewed source copies; and the materialized package completed.
+
+The runtime gate remains open. The Linux probe still deliberately emits
+`evidence-incomplete` (`complete = false`) because the authenticated Main MCP
+and model bridge, cgroup/process-count enforcement, and full descendant
+parent-death evidence are not implemented as a packaged runtime composition.
+The Docker/LinuxKit run is not native Ubuntu evidence (its seccomp hostile
+probe returns the fixed environment-limitation stage), so it cannot advance a
+target. Windows still has only the fail-closed scaffold: no Job Object,
+restricted identity, named-pipe bridge, or native hostile probe. The resolver
+therefore remains Darwin-only, and no Linux/Windows Artifact may start a
+private root or ACP transport.
+
+The digest-binding follow-up was revalidated after the latest test addition:
+the focused containment evidence/probe suite passed 2 files / 19 tests, the
+Rust macOS containment tests passed 8/8, and format, lint (0 warnings/errors),
+TypeScript typecheck, documentation links, Rust format, and `git diff --check`
+all passed. A fresh full `bun run check` completed its 148-test-file suite
+with 1,575 passed / 9 skipped, preserved the 28-case / 168-variant P7 abuse
+gate, and completed the downstream boundary and package stages. A separate
+`bun run package` also exited 0. These were development-worktree results
+collected before target-native pull-request evidence; they do not change the
+native-runtime non-claims above.
+
+This follow-up also adds a bounded `goose:runner:containment:accept` command.
+The existing pull-request workflow now keeps its Windows/Linux build-only jobs
+unchanged and adds separate `goose-containment-windows` and
+`goose-containment-linux` jobs. Each containment job independently builds and
+admits the exact native Artifact on its target host, binds the probe record,
+reruns the probe, and fails on incomplete or unsupported evidence. The jobs use
+no provider credentials and upload only bounded successful containment
+metadata. On this macOS host the command correctly returns
+`target-unsupported` (exit 2). No target-native containment job has run yet, so
+this is pull-request workflow/entry-point wiring, not Linux or Windows
+acceptance.
+
+After adding this acceptance slice, the fresh local gate still exits 0: Vitest
+reports 149 files passed / 2 skipped and 1,579 tests passed / 9 skipped; lint
+remains 0 warnings/errors; the P7 abuse gate remains 28 cases / 168 variants;
+and the downstream, foundation, boundary, and package stages all complete.
+
+### 2026-08-17 P8.2b Linux cgroup-v2 feasibility slice (not an acceptance)
+
+The same isolated `codex/p8-2b-runtime-containment` worktree now adds a
+Linux-only cgroup-v2 resource and process-count probe without enabling Linux
+runtime admission. The probe verifies the real cgroup-v2 filesystem magic,
+parses one bounded unified membership, and requires `cpu`, `memory`, and
+`pids` to be already delegated by the host. It does not mutate a shared
+parent's `cgroup.subtree_control`. Inside an attempt-named child cgroup it
+binds a supplemental `cpu.max` rate probe, a checked
+`memory.current + 1 GiB` `memory.max`, and `pids.max` equal to the measured
+single-task baseline. The cumulative 120 CPU-second and 1 GiB address-space
+growth contract remains independently enforced by the existing
+`RLIMIT_CPU`/`RLIMIT_AS` stage; the cgroup CPU rate is not treated as a
+replacement for that contract.
+
+The hostile child is held until Main-side setup is complete, enters the
+existing Landlock filesystem boundary, proves it cannot rewrite `cpu.max`,
+`memory.max`, or `pids.max`, then requires a new `fork()` to fail with
+`EAGAIN`. Every setup, delegation, baseline, limit, widening, process-count,
+wait, and cleanup failure maps to a fixed `resource-*` code. The Node evidence
+binder and native acceptance wrapper accept only that closed vocabulary and
+never forward raw probe stderr, paths, or platform errors. The child cgroup
+and probe roots must both be removed before the stage can pass.
+
+TDD evidence for this slice includes the expected pre-implementation RED, then
+7 focused files / 61 tests GREEN after the early-failure cleanup regressions,
+macOS Goose Rust tests 8/8 GREEN, Rust format GREEN, format check GREEN, lint 0
+warnings/errors, TypeScript typecheck GREEN, and `git diff --check` GREEN.
+Because this Mac lacks the Linux C cross compiler, the full Goose cross-check
+stops in the existing `zstd-sys` build dependency; an isolated dependency-free
+Linux-target wrapper nevertheless compiles the actual `linux.rs` and its test
+code with `cargo check --tests`. That wrapper is compile evidence only, not a
+native Ubuntu execution. The macOS acceptance entry remains correctly
+fail-closed as `target-unsupported` with exit 2.
+
+A fresh complete `bun run check` exits 0 after this slice: 150 test files pass
+/ 2 skip, 1,584 tests pass / 9 skip, the P7 abuse gate remains 28 cases / 168
+exact variants, and Electron SQLite, smoke harness, boundary, frozen
+foundation, downstream overlay, and package all pass.
+
+This does not close the Linux feasibility or runtime gate. The native Ubuntu
+workflow has not run this exact source and Artifact; the probe still emits
+`complete = false`; the authenticated Main MCP/model bridge, a production
+composition that reconciles Goose's required runtime threads with zero child
+processes, full descendant-tree parent-death evidence, ACP/runtime integration,
+and target-native denial/cancel/crash/recovery/cleanup remain open. Windows is
+unchanged and still lacks its Job Object, restricted identity, named-pipe
+bridge, and native hostile evidence. The resolver remains Darwin-only.
+
+The final local audit corrected two additional trust-boundary defects before
+the branch was prepared for review. The Windows Bun setup action is now pinned
+to the same complete 40-hex commit as the other jobs, with a regression that
+rejects every shortened action reference. An existing containment record is
+also revalidated against the current probe source digest both when binding and
+when the final acceptance command reads it, so source drift cannot reuse stale
+evidence. The old standalone manual workflow was removed; the native jobs now
+run as independent jobs in the existing pull-request workflow while preserving
+the build-only jobs' no-upload contract.
+
+Fresh evidence after those corrections is 9 focused files / 67 tests passed,
+Goose Rust macOS release tests 8/8 passed, the dependency-free wrapper around
+the actual Linux containment module passed
+`cargo check --target x86_64-unknown-linux-gnu --tests`, Rust formatting passed,
+and `actionlint v1.7.7 .github/workflows/ci.yml` exited 0. The final local
+`bun run check` also exited 0 with 150 test files passed / 2 skipped and 1,585
+tests passed / 9 skipped; format, lint (0 warnings/errors), typecheck, the P8
+contract, Electron SQLite, P7 abuse cases, smoke harness, product boundary,
+frozen foundation, downstream overlay, and package stages all passed. This
+local evidence was collected before any target-native containment job ran, so
+P8.2b and overall P8.2 remain open and non-Darwin runtime admission remains
+fail closed.
+
 ### 2026-08-16 P8.1 acceptance contract accepted on main
 
 P8.1 is accepted on formal `main` through pull request

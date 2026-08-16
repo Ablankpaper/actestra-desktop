@@ -11,8 +11,18 @@ const linuxContainmentPath = path.join(
   "workers/goose-runner/src/containment/linux.rs",
 );
 const probeRunnerPath = path.join(repositoryRoot, "scripts/test-goose-runner-containment.mjs");
+const evidenceBinderPath = path.join(repositoryRoot, "scripts/record-goose-runner-containment.mjs");
 
 describe("Goose native containment probe contract", () => {
+  it("exposes the artifact-binding command without making it part of the macOS gate", () => {
+    const scripts = JSON.parse(
+      fs.readFileSync(path.join(repositoryRoot, "package.json"), "utf8"),
+    ).scripts;
+    expect(scripts["goose:runner:containment"]).toBe(
+      "node scripts/record-goose-runner-containment.mjs",
+    );
+  });
+
   it("declares the bounded Linux probe and exact six-capability result", () => {
     expect(fs.existsSync(linuxContainmentPath)).toBe(true);
     expect(fs.existsSync(probeRunnerPath)).toBe(true);
@@ -51,6 +61,80 @@ describe("Goose native containment probe contract", () => {
     expect(runner).toContain("Buffer.byteLength(result.stdout");
   });
 
+  it("binds only a verified native probe to the exact manifest atomically", () => {
+    expect(fs.existsSync(evidenceBinderPath)).toBe(true);
+    if (!fs.existsSync(evidenceBinderPath)) return;
+    const binder = fs.readFileSync(evidenceBinderPath, "utf8");
+    expect(binder).toContain("validateGooseContainmentEvidence");
+    expect(binder).toContain("rename");
+    expect(binder).toContain("containment");
+    expect(binder).toContain("process.exitCode = 2");
+    expect(binder).toContain("JSON.stringify(nextManifest");
+    expect(binder).toContain("validation.ok");
+  });
+
+  it("requires a real Landlock filesystem rule setup, not only a syscall probe", () => {
+    const source = fs.readFileSync(linuxContainmentPath, "utf8");
+    expect(source).toContain("prepare_linux_filesystem_containment");
+    expect(source).toContain("landlock_restrict_self");
+    expect(source).toContain("LANDLOCK_ADD_RULE_SYSCALL");
+    expect(source).toContain("CLONE_NEWUSER");
+    expect(source).toContain("MS_PRIVATE");
+  });
+
+  it("requires a deny policy and hostile process-creation probe, not an allow-all seccomp check", () => {
+    const source = fs.readFileSync(linuxContainmentPath, "utf8");
+    expect(source).toContain("install_process_creation_filter");
+    expect(source).toContain("run_process_tree_probe");
+    expect(source).toContain("SECCOMP_RET_ERRNO");
+    for (const syscall of ["SYS_clone", "SYS_clone3", "SYS_fork", "SYS_vfork", "SYS_execve"]) {
+      expect(source).toContain(syscall);
+    }
+    expect(source).not.toContain("can_install_seccomp_filter");
+  });
+
+  it("requires hostile network, resource, parent-death, and cleanup probes", () => {
+    const source = fs.readFileSync(linuxContainmentPath, "utf8");
+    for (const stage of [
+      "run_network_isolation_probe",
+      "run_resource_probe",
+      "run_parent_death_probe",
+      "run_cleanup_probe",
+    ]) {
+      expect(source).toContain(stage);
+    }
+    expect(source).toContain("CLONE_NEWNET");
+    expect(source).toContain("ACTESTRA_PARENT_LIVENESS_FD");
+    expect(source).toContain("WNOHANG");
+    expect(source).toContain("ErrorKind::NotFound");
+  });
+
+  it("requires delegated cgroup v2 limits and a hostile zero-child-process probe", () => {
+    const source = fs.readFileSync(linuxContainmentPath, "utf8");
+    for (const control of [
+      "cgroup.controllers",
+      "cgroup.subtree_control",
+      "cgroup.procs",
+      "cpu.max",
+      "memory.current",
+      "memory.max",
+      "pids.current",
+      "pids.max",
+    ]) {
+      expect(source).toContain(control);
+    }
+    expect(source).toContain("run_cgroup_v2_resource_probe");
+    expect(source).toContain("ADDRESS_SPACE_LIMIT_BYTES");
+    expect(source).toContain("CPU_LIMIT_SECONDS");
+    expect(source).toContain("resource_probe_failure_code");
+    expect(source).toContain("resource-cgroup-controller-not-delegated");
+    expect(source).toContain("resource-process-count-not-enforced");
+    expect(source).toContain("cleanup_cgroup_probe_ownership");
+    expect(source).not.toContain("let _ = remove_dir(&group)");
+    expect(source).toContain("let complete = false");
+    expect(source).not.toContain("resource-{error}");
+  });
+
   it("accepts only complete evidence bound to the exact runner artifact", () => {
     const evidence = {
       contractVersion: 1,
@@ -72,8 +156,35 @@ describe("Goose native containment probe contract", () => {
         targetTriple: evidence.targetTriple,
         sourceCommit: evidence.sourceCommit,
         executableSha256: evidence.executableSha256,
+        probeSha256: evidence.probeSha256,
       }),
     ).toEqual({ ok: true });
+  });
+
+  it("rejects evidence whose probe digest differs from the bound implementation", () => {
+    const evidence = {
+      contractVersion: 1,
+      targetTriple: "x86_64-unknown-linux-gnu",
+      sourceCommit: "a".repeat(40),
+      probeSha256: "b".repeat(64),
+      executableSha256: "c".repeat(64),
+      filesystem: true,
+      network: true,
+      processTree: true,
+      resources: true,
+      parentDeath: true,
+      cleanup: true,
+      status: "verified",
+    };
+
+    expect(
+      validateGooseContainmentEvidence(evidence, {
+        targetTriple: evidence.targetTriple,
+        sourceCommit: evidence.sourceCommit,
+        executableSha256: evidence.executableSha256,
+        probeSha256: "d".repeat(64),
+      }),
+    ).toEqual({ ok: false, code: "artifact-mismatch" });
   });
 
   it("rejects incomplete, mismatched, and widened evidence without echoing values", () => {

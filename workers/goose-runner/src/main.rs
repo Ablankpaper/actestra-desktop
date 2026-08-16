@@ -1,14 +1,19 @@
 use std::env;
 mod containment;
+#[cfg(all(unix, test))]
+use containment::apply_resource_limits_with;
+use containment::RESOURCE_LIMIT_FAILURE_MARKER;
 #[cfg(unix)]
-use containment::{apply_resource_limits, apply_resource_limits_with, watch_parent_liveness};
+use containment::{apply_resource_limits, watch_parent_liveness};
 #[cfg(windows)]
 use containment::{apply_resource_limits, watch_parent_liveness};
+#[cfg(test)]
 use containment::{
-    parse_resource_limits_with, NativeResourceLimits, ADDRESS_SPACE_LIMIT_BYTES,
-    ADDRESS_SPACE_LIMIT_ENVIRONMENT_KEY, CPU_LIMIT_ENVIRONMENT_KEY, CPU_LIMIT_SECONDS,
-    RESOURCE_LIMIT_FAILURE_MARKER,
+    parse_resource_limits_with, NativeResourceLimits, ADDRESS_SPACE_LIMIT_ENVIRONMENT_KEY,
+    CPU_LIMIT_ENVIRONMENT_KEY,
 };
+#[cfg(all(test, target_os = "macos"))]
+use containment::{ADDRESS_SPACE_LIMIT_BYTES, CPU_LIMIT_SECONDS};
 
 fn main() {
     if env::var("ACTESTRA_GOOSE_CONTAINMENT_PROBE").as_deref() == Ok("1") {

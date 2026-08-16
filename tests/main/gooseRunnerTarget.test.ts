@@ -171,6 +171,7 @@ describe("Goose runner native build targets", () => {
     const runtimeResolution = source.indexOf(
       "resolveGooseRunnerRuntimeTarget(process.platform, process.arch)",
     );
+    const containmentResolution = source.indexOf("hasVerifiedGooseContainment(");
     const privateRootPreparation = source.indexOf(
       "prepared = await preparePrivateRoot(options.privateRootParent, options.artifact)",
     );
@@ -179,6 +180,8 @@ describe("Goose runner native build targets", () => {
     expect(source).not.toContain("function currentTargetTriple()");
     expect(runtimeResolution).toBeGreaterThan(-1);
     expect(runtimeResolution).toBeLessThan(privateRootPreparation);
+    expect(containmentResolution).toBeGreaterThan(-1);
+    expect(containmentResolution).toBeLessThan(privateRootPreparation);
   });
 
   it("pins complete build-tool asset evidence for every admitted host", () => {

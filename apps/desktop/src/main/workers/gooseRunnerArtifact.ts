@@ -51,6 +51,8 @@ export interface AdmittedGooseRunnerArtifact {
   readonly executableSha256: string;
   readonly executableSize: number;
   readonly targetTriple: string;
+  /** Exact Actestra source commit recorded by the artifact provenance. */
+  readonly sourceCommit?: string;
   readonly gooseCommit: typeof sourceContract.goose.commit;
   readonly gooseVersion: typeof sourceContract.goose.version;
   readonly manifestPath: string;
@@ -867,6 +869,7 @@ export async function admitGooseRunnerArtifact(
     executableSha256,
     executableSize: executableStat.size,
     targetTriple,
+    sourceCommit: provenance.actestraCommit as string,
     gooseCommit: sourceContract.goose.commit,
     gooseVersion: sourceContract.goose.version,
     manifestPath,
