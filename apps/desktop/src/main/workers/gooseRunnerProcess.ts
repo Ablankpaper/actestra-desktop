@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { spawn, type ChildProcessByStdio } from "node:child_process";
 import { constants as fsConstants, createReadStream, realpathSync } from "node:fs";
 import { chmod, copyFile, lstat, mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
@@ -24,6 +24,7 @@ import {
   type WorkerResourceBudget,
 } from "../../core";
 import type { AdmittedGooseRunnerArtifact } from "./gooseRunnerArtifact";
+import { assertGooseContainmentLaunch } from "./gooseRunnerContainment";
 import { createGooseRunnerSandboxLaunch } from "./gooseRunnerSandbox";
 import { resolveGooseRunnerRuntimeTarget } from "./gooseRunnerTarget";
 
@@ -754,6 +755,32 @@ export async function openGooseRunnerHandshake(
               modelProxyPort: stableModelBinding.port,
             }),
     });
+    assertGooseContainmentLaunch(
+      Object.freeze({
+        platform: runtimeTarget.platform,
+        architecture: runtimeTarget.architecture,
+        targetTriple: runtimeTarget.targetTriple,
+        executablePath: prepared.executablePath,
+        privateRoot: prepared.root,
+        ...(admittedWorkspaceDirectory === undefined
+          ? {}
+          : { workspaceDirectory: admittedWorkspaceDirectory }),
+        networkPolicy:
+          spawnOptions.networkPolicy === "deny-all"
+            ? "deny-all"
+            : Object.freeze({
+                kind: "loopback-session",
+                host: "127.0.0.1",
+                capabilityProxyPort: spawnOptions.networkPolicy.capabilityProxyPort,
+                modelProxyPort: spawnOptions.networkPolicy.modelProxyPort,
+              }),
+        resourceBudget,
+        parentLiveness: Object.freeze({
+          kind: "inherited-ipc",
+          token: randomBytes(16).toString("hex"),
+        }),
+      }),
+    );
     transport = (options.transportFactory ?? createNodeGooseAcpTransport)(spawnOptions);
     const connection = await connectGooseAcp(transport, {
       timeoutMs: options.handshakeTimeoutMs,
