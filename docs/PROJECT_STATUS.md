@@ -1,8 +1,54 @@
 # Project Status
 
-Last updated: 2026-08-16
+Last updated: 2026-08-17
 
 ## Current phase
+
+### 2026-08-17 P8.2a native Goose build admission local gate
+
+The first P8.2 slice is locally ready for target-native CI on branch
+`codex/p8-2-cross-platform-runtime`, based on formal
+`origin/main@2f1be05b861234696ffb2fd7434a73f38c3223df`. The reviewed product and CI
+head is `255be645f78bfa0d8818f4d82dd6e36499c63860`. P8.2a adds one closed
+host-to-target contract for macOS arm64/x64, Windows x64 MSVC, and Linux x64
+GNU; exact pinned native cargo-auditable and cargo-audit assets; a minimally
+portable Goose wrapper source; native build-artifact admission; and two
+35-minute build-only CI probes on `windows-2025` and `ubuntu-24.04`. The shared
+target boundary is materialized as an exact Actestra-owned downstream source
+copy. The frozen `foundation/` snapshot, Renderer, provider, persistence,
+approval, and Tool Gateway authorities are unchanged.
+
+Build admission does not grant runtime authority. The current runtime resolver
+still admits only Darwin, and a matching Windows or Linux build Artifact fails
+with `network-policy-unavailable` before a private attempt root or transport is
+created. The native CI probes install the pinned tools, format and compile the
+runner, preserve `Cargo.lock`, run focused admission tests, and independently
+admit the emitted Artifact. They do not run Goose ACP, Electron packaging,
+packaged journeys, artifact upload, signing, publishing, or release commands.
+
+Local macOS arm64 evidence is green. The focused target, Artifact, lifecycle,
+P7 CI, and P8 wiring collection passes 5 files / 44 tests. Rust 1.96.1 reports
+host `aarch64-apple-darwin`; release tests pass 6/6 and `cargo check --locked`
+passes. The independently admitted emitted Artifact reports target
+`aarch64-apple-darwin`, manifest SHA-256
+`6aba191bd29141a350723bf1f2afa47b9651ce650853c0583e2da96f628dbde6`,
+executable SHA-256
+`b71479bca94b12791529dc711b1ddefff17bd8ede8663265e51b708332ac77dd`, and
+63,929,736 executable bytes. The downstream check passes with 368 declared
+files and 125 reviewed source copies. The complete `bun run check` exits 0:
+format, zero-warning lint, typecheck, the P8 contract, Electron SQLite, P7
+abuse, smoke-harness, boundary, frozen-foundation, downstream, and package
+gates pass; Vitest reports 145 files passed / 2 skipped and 1,541 tests passed /
+9 skipped. `docs:check` resolves all links in 81 Markdown files, and
+`git diff --check` passes.
+
+Windows/Linux commands have not yet run until exact-head CI executes them.
+P8.2 runtime, packaging, product journeys, containment, and P7 platform
+obligations remain open. P8.3 and P8.4 are unchanged. This record is local
+development evidence only: it does not claim a governed pull request,
+exact-head native CI, merge, merged-main CI, candidate, release, deployment,
+distribution, clean-machine acceptance, real-provider acceptance, or final
+user acceptance.
 
 ### 2026-08-16 P8.1 acceptance contract accepted on main
 
