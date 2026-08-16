@@ -1,198 +1,14 @@
 use std::env;
+mod containment;
 #[cfg(unix)]
-use std::io::Read;
-#[cfg(unix)]
-use std::os::fd::FromRawFd;
-
-const CPU_LIMIT_ENVIRONMENT_KEY: &str = "ACTESTRA_GOOSE_CPU_SECONDS";
-const ADDRESS_SPACE_LIMIT_ENVIRONMENT_KEY: &str = "ACTESTRA_GOOSE_ADDRESS_SPACE_BYTES";
-const CPU_LIMIT_SECONDS: u64 = 120;
-const ADDRESS_SPACE_LIMIT_BYTES: u64 = 1_073_741_824;
-const RESOURCE_LIMIT_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_RESOURCE_LIMIT_SETUP_FAILED";
-
-#[derive(Clone, Copy)]
-struct NativeResourceLimits {
-    cpu_seconds: u64,
-    address_space_bytes: u64,
-}
-
-fn parse_exact_limit<F>(read_environment: &mut F, key: &str, expected: u64) -> Result<u64, ()>
-where
-    F: FnMut(&str) -> Option<String>,
-{
-    let value = read_environment(key).ok_or(())?;
-    if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
-        return Err(());
-    }
-    let parsed = value.parse::<u64>().map_err(|_| ())?;
-    if parsed != expected {
-        return Err(());
-    }
-    Ok(parsed)
-}
-
-fn parse_resource_limits_with<F>(mut read_environment: F) -> Result<NativeResourceLimits, ()>
-where
-    F: FnMut(&str) -> Option<String>,
-{
-    Ok(NativeResourceLimits {
-        cpu_seconds: parse_exact_limit(
-            &mut read_environment,
-            CPU_LIMIT_ENVIRONMENT_KEY,
-            CPU_LIMIT_SECONDS,
-        )?,
-        address_space_bytes: parse_exact_limit(
-            &mut read_environment,
-            ADDRESS_SPACE_LIMIT_ENVIRONMENT_KEY,
-            ADDRESS_SPACE_LIMIT_BYTES,
-        )?,
-    })
-}
-
-#[cfg(unix)]
-fn apply_resource_limits_with<F>(
-    limits: NativeResourceLimits,
-    launch_baseline_bytes: u64,
-    mut set_limit: F,
-) -> Result<(), ()>
-where
-    F: FnMut(i32, u64, u64) -> libc::c_int,
-{
-    let address_space_cap = launch_baseline_bytes
-        .checked_add(limits.address_space_bytes)
-        .filter(|value| *value <= libc::rlim_t::MAX as u64)
-        .ok_or(())?;
-    if set_limit(
-        libc::RLIMIT_CPU as i32,
-        limits.cpu_seconds,
-        limits.cpu_seconds,
-    ) != 0
-    {
-        return Err(());
-    }
-    if set_limit(libc::RLIMIT_AS as i32, address_space_cap, address_space_cap) != 0 {
-        return Err(());
-    }
-    Ok(())
-}
-
-#[cfg(target_os = "macos")]
-#[allow(deprecated)]
-fn current_virtual_size_bytes() -> Result<u64, ()> {
-    let mut info = std::mem::MaybeUninit::<libc::mach_task_basic_info_data_t>::uninit();
-    let mut count = libc::MACH_TASK_BASIC_INFO_COUNT;
-    let status = unsafe {
-        libc::task_info(
-            libc::mach_task_self(),
-            libc::MACH_TASK_BASIC_INFO,
-            info.as_mut_ptr().cast::<libc::integer_t>(),
-            &mut count,
-        )
-    };
-    if status != libc::KERN_SUCCESS || count != libc::MACH_TASK_BASIC_INFO_COUNT {
-        return Err(());
-    }
-    let info = unsafe { info.assume_init() };
-    Ok(info.virtual_size as u64)
-}
-
-#[cfg(target_os = "linux")]
-fn virtual_size_bytes_from_statm(statm: &str, page_size: i64) -> Result<u64, ()> {
-    if page_size <= 0 {
-        return Err(());
-    }
-    let pages = statm.split_whitespace().next().ok_or(())?;
-    if pages.is_empty() || !pages.bytes().all(|byte| byte.is_ascii_digit()) {
-        return Err(());
-    }
-    let pages = pages.parse::<u64>().map_err(|_| ())?;
-    if pages == 0 {
-        return Err(());
-    }
-    pages.checked_mul(page_size as u64).ok_or(())
-}
-
-#[cfg(target_os = "linux")]
-fn current_virtual_size_bytes() -> Result<u64, ()> {
-    let statm = std::fs::read_to_string("/proc/self/statm").map_err(|_| ())?;
-    let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
-    virtual_size_bytes_from_statm(&statm, page_size)
-}
-
-#[cfg(unix)]
-fn apply_resource_limits() -> Result<(), ()> {
-    let limits = parse_resource_limits_with(|key| env::var(key).ok())?;
-    let launch_baseline_bytes = current_virtual_size_bytes()?;
-    apply_resource_limits_with(limits, launch_baseline_bytes, |resource, soft, hard| {
-        let limit = libc::rlimit {
-            rlim_cur: soft as libc::rlim_t,
-            rlim_max: hard as libc::rlim_t,
-        };
-        unsafe { libc::setrlimit(resource as _, &limit) }
-    })
-}
-
+use containment::{apply_resource_limits, apply_resource_limits_with, watch_parent_liveness};
 #[cfg(windows)]
-fn apply_resource_limits() -> Result<(), ()> {
-    parse_resource_limits_with(|key| env::var(key).ok())?;
-    Err(())
-}
-
-#[cfg(unix)]
-fn watch_parent_liveness() {
-    let Ok(raw_fd) = env::var("ACTESTRA_PARENT_LIVENESS_FD") else {
-        return;
-    };
-    let Ok(raw_fd) = raw_fd.parse::<i32>() else {
-        return;
-    };
-    let process_id = unsafe { libc::getpid() };
-    // sandbox-exec normally preserves the detached process group, but make
-    // that ownership explicit before accepting the liveness channel. This
-    // prevents a parent-death cleanup from ever signalling the supervisor's
-    // group if a launcher changes its process-group semantics.
-    let mut process_group = unsafe { libc::getpgrp() };
-    // A detached macOS child is commonly already a session/process-group
-    // leader. Calling setpgid on that session leader returns EPERM even
-    // though the desired isolation is already in place. Only establish a
-    // group when the launcher has not done so for us.
-    if process_group != process_id {
-        if unsafe { libc::setpgid(0, process_id) } != 0 {
-            eprintln!("ACTESTRA_GOOSE_RUNNER_FAILED: could not establish process group");
-            std::process::exit(1);
-        }
-        process_group = unsafe { libc::getpgrp() };
-    }
-    if process_group != process_id {
-        eprintln!("ACTESTRA_GOOSE_RUNNER_FAILED: runner is not its process-group leader");
-        std::process::exit(1);
-    }
-    std::thread::spawn(move || {
-        // SAFETY: fd 3 is opened by Main as the read end of a CLOEXEC pipe and
-        // remains owned by this runner until the supervisor disappears.
-        let mut pipe = unsafe { std::fs::File::from_raw_fd(raw_fd) };
-        let mut byte = [0_u8; 1];
-        loop {
-            match pipe.read(&mut byte) {
-                Ok(0) => {
-                    // The runner is the process-group leader. Terminate the
-                    // complete group before exiting so descendants cannot be
-                    // orphaned when Main dies unexpectedly.
-                    unsafe {
-                        libc::signal(libc::SIGTERM, libc::SIG_IGN);
-                        libc::kill(-process_group, libc::SIGTERM);
-                    }
-                    std::process::exit(0);
-                }
-                Ok(_) => {}
-                Err(_) => return,
-            }
-        }
-    });
-}
-
-#[cfg(windows)]
-fn watch_parent_liveness() {}
+use containment::{apply_resource_limits, watch_parent_liveness};
+use containment::{
+    parse_resource_limits_with, NativeResourceLimits, ADDRESS_SPACE_LIMIT_BYTES,
+    ADDRESS_SPACE_LIMIT_ENVIRONMENT_KEY, CPU_LIMIT_ENVIRONMENT_KEY, CPU_LIMIT_SECONDS,
+    RESOURCE_LIMIT_FAILURE_MARKER,
+};
 
 fn main() {
     if apply_resource_limits().is_err() {
@@ -221,6 +37,10 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_os = "linux")]
+    use super::containment::unix::current_virtual_size_bytes;
+    #[cfg(target_os = "linux")]
+    use super::containment::unix::virtual_size_bytes_from_statm;
     use super::*;
     use std::collections::HashMap;
 
@@ -422,5 +242,40 @@ mod tests {
             },)
             .is_err()
         );
+    }
+}
+
+#[cfg(test)]
+mod containment_contract_tests {
+    use super::containment::{assert_containment_config, ContainmentConfig, ContainmentNetwork};
+
+    #[test]
+    fn accepts_only_the_fixed_private_root_and_network_contract() {
+        let config = ContainmentConfig {
+            private_root: "/owned/attempt".to_string(),
+            workspace_root: Some("/owned/worktree".to_string()),
+            network: ContainmentNetwork::DenyAll,
+            cpu_seconds: 120,
+            address_space_bytes: 1_073_741_824,
+            parent_liveness: true,
+        };
+
+        assert_containment_config(&config).unwrap();
+    }
+
+    #[test]
+    fn rejects_widened_budget_and_missing_parent_liveness() {
+        let mut config = ContainmentConfig {
+            private_root: "/owned/attempt".to_string(),
+            workspace_root: None,
+            network: ContainmentNetwork::DenyAll,
+            cpu_seconds: 121,
+            address_space_bytes: 1_073_741_824,
+            parent_liveness: false,
+        };
+
+        assert!(assert_containment_config(&config).is_err());
+        config.cpu_seconds = 120;
+        assert!(assert_containment_config(&config).is_err());
     }
 }
