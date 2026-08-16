@@ -44,6 +44,7 @@ components or phases.
 | [0027](0027-p7-threat-model-and-abuse-authority.md)            | Accepted                     | Establish threat model, stable abuse-case IDs, closed outcomes, authority boundaries, and staged P7/P8 obligations                       |
 | [0028](0028-p7-worker-resource-and-process-reliability.md)     | Accepted                     | Bound General and Goose Worker CPU, memory, duration, output, storage, and process trees through current Main-owned authorities          |
 | [0029](0029-p7-diagnostic-export-and-audit-retention.md)       | Accepted                     | Export explicit-consent local metadata diagnostics and enforce bounded, integrity-checked privileged-audit retention                     |
+| [0030](0030-p8-cross-platform-internal-beta-acceptance.md)     | Accepted                     | Establish the exact P8 internal-beta target matrix, evidence vocabulary, staged ownership, and non-claims                               |
 
 ## Creating an ADR
 

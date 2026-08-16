@@ -825,6 +825,42 @@ remain separate gates.
 - Clean-machine install, upgrade, uninstall, and fresh-profile acceptance.
 - Internal beta runbook and issue intake.
 
+The initial closed target set is `macos-15-arm64`, `windows-11-x64`, and
+`ubuntu-24.04-x64`. CI builders and clean-machine acceptance environments are
+separate evidence layers. A package, skipped test, or unsupported platform is
+not a successful target result.
+
+### P8.1 - Acceptance contract and platform matrix
+
+- Record ADR-0030, the human-readable matrix, a machine-readable contract,
+  fail-closed checker, focused tests, and aligned source-of-truth documents.
+- Define the target IDs, package formats, General, Goose, Team, approval,
+  recovery, privacy, cancellation/no-orphan, P7, clean-machine, and
+  real-provider obligations.
+- Do not implement a Windows/Linux runtime, CI matrix, candidate, signing,
+  notarization, release, deployment, distribution, or user acceptance.
+
+### P8.2 - Native package and runtime matrix
+
+- Implement and execute target-native package/runtime, primary journey,
+  cleanup, recovery, privacy, and P7 platform-boundary evidence for every
+  accepted target.
+- Treat deterministic loopback provider evidence as CI transport evidence, not
+  real-provider acceptance.
+
+### P8.3 - Candidate integrity and update trust
+
+- Bind exact candidate bytes to digests, SBOM, provenance, license/NOTICE,
+  signing/notarization where applicable, update metadata, and rollback proof.
+
+### P8.4 - Clean-machine internal acceptance
+
+- Prove install, upgrade, uninstall, fresh-profile, real-provider, runbook,
+  and issue-intake evidence on the exact accepted targets.
+
+P8.2, P8.3, and P8.4 are not started by P8.1. Each later batch must record its
+own exact target and artifact evidence.
+
 ### Exit gate
 
 - Exact source commits map to verified candidate artifacts.

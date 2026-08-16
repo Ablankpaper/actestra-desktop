@@ -4,6 +4,34 @@ Last updated: 2026-08-16
 
 ## Current phase
 
+### 2026-08-16 P8.1 acceptance contract implementation
+
+P8.1 acceptance contract implementation is in local development on branch
+`codex/p8-1-acceptance-contract`, based on formal
+`origin/main@d6e7dc63d5d95fc8435d6f5da0240b0a529cb0cd`. It establishes a
+machine-checked acceptance obligation for exactly `macos-15-arm64`,
+`windows-11-x64`, and `ubuntu-24.04-x64`. The contract separates CI builders
+from clean-machine acceptance and reserves P8.2 for native package/runtime and
+journey evidence, P8.3 for candidate integrity/signing/update evidence, and
+P8.4 for lifecycle and real-provider internal acceptance.
+
+The local P8.1 implementation adds the immutable matrix, its bounded checker,
+ADR-0030, the human-readable product matrix, and regression tests. Focused
+local verification passes the explicit 3-target / 14-journey / 7-evidence-class
+checker, 2 test files / 5 tests, and the 80-file documentation link check.
+The complete root `bun run check` exits 0: formatting, zero-warning lint,
+typecheck, the P8.1 checker, Electron SQLite, smoke harness, product boundary,
+frozen foundation, downstream overlay, and package gates pass; Vitest reports
+140 files passed / 2 skipped and 1,521 tests passed / 9 skipped; and the P7
+abuse gate preserves all 28 cases / 168 exact variants as `denied-safe`. The
+frozen `foundation/` snapshot and product runtime are unchanged by this batch.
+
+This record does not claim a Windows or Linux build. It also does not claim
+formal signing, notarization, candidate, release, deployment, distribution, or
+user acceptance. P8.1 is not accepted on `main` until a governed pull request,
+exact-head CI, squash merge, and independent merged-main CI provide those
+separate facts.
+
 ### 2026-08-16 P7 development integration gate accepted on main
 
 P7.4 diagnostic export and privileged-audit retention is accepted on formal
