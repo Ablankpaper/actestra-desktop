@@ -848,6 +848,27 @@ is the next open batch.
 
 ### P8.2 - Native package and runtime matrix
 
+Status: P8.2a native Goose build and Artifact admission is locally ready for
+target-native CI on branch `codex/p8-2-cross-platform-runtime`, based on
+formal `origin/main@2f1be05b861234696ffb2fd7434a73f38c3223df`, with reviewed
+product and CI head `255be645f78bfa0d8818f4d82dd6e36499c63860`.
+
+- P8.2a defines the closed native Goose target table, admits exact pinned build
+  tools on macOS, Windows x64, and Linux x64, compiles the minimal wrapper
+  source on the native host, independently admits the emitted Artifact, and
+  declares build-only probes on `windows-2025` and `ubuntu-24.04`.
+- Local macOS arm64 evidence passes 5 focused files / 44 tests, Rust 1.96.1
+  release tests 6/6, emitted-Artifact admission, the downstream overlay, the
+  complete 145-file / 1,541-test root gate, and the 81-file documentation gate.
+- Build support remains separate from runtime containment. Windows and Linux
+  matching Artifacts fail before private-root or transport creation; the native
+  probe jobs contain no ACP runtime, Electron package, journey, upload,
+  signing, publishing, or release step.
+
+Windows/Linux commands have not yet run until exact-head CI executes them.
+P8.2 runtime, packaging, product journeys, containment, and P7 platform
+obligations remain open. P8.3 and P8.4 are unchanged.
+
 - Implement and execute target-native package/runtime, primary journey,
   cleanup, recovery, privacy, and P7 platform-boundary evidence for every
   accepted target.
@@ -864,8 +885,10 @@ is the next open batch.
 - Prove install, upgrade, uninstall, fresh-profile, real-provider, runbook,
   and issue-intake evidence on the exact accepted targets.
 
-P8.2, P8.3, and P8.4 are not started by P8.1. Each later batch must record its
-own exact target and artifact evidence.
+P8.1 did not start the later implementation gates. P8.2a now has local
+build-admission evidence only; P8.2 remains open, and P8.3 and P8.4 have not
+started. Each later batch must record its own exact target and Artifact
+evidence.
 
 ### Exit gate
 

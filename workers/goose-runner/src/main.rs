@@ -1,6 +1,8 @@
 use std::env;
+#[cfg(unix)]
 use std::io::Read;
-use std::os::unix::io::FromRawFd;
+#[cfg(unix)]
+use std::os::fd::FromRawFd;
 
 const CPU_LIMIT_ENVIRONMENT_KEY: &str = "ACTESTRA_GOOSE_CPU_SECONDS";
 const ADDRESS_SPACE_LIMIT_ENVIRONMENT_KEY: &str = "ACTESTRA_GOOSE_ADDRESS_SPACE_BYTES";
@@ -23,7 +25,7 @@ where
         return Err(());
     }
     let parsed = value.parse::<u64>().map_err(|_| ())?;
-    if parsed != expected || parsed > libc::rlim_t::MAX as u64 {
+    if parsed != expected {
         return Err(());
     }
     Ok(parsed)
@@ -47,6 +49,7 @@ where
     })
 }
 
+#[cfg(unix)]
 fn apply_resource_limits_with<F>(
     limits: NativeResourceLimits,
     launch_baseline_bytes: u64,
@@ -93,11 +96,30 @@ fn current_virtual_size_bytes() -> Result<u64, ()> {
     Ok(info.virtual_size as u64)
 }
 
-#[cfg(not(target_os = "macos"))]
-fn current_virtual_size_bytes() -> Result<u64, ()> {
-    Err(())
+#[cfg(target_os = "linux")]
+fn virtual_size_bytes_from_statm(statm: &str, page_size: i64) -> Result<u64, ()> {
+    if page_size <= 0 {
+        return Err(());
+    }
+    let pages = statm.split_whitespace().next().ok_or(())?;
+    if pages.is_empty() || !pages.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(());
+    }
+    let pages = pages.parse::<u64>().map_err(|_| ())?;
+    if pages == 0 {
+        return Err(());
+    }
+    pages.checked_mul(page_size as u64).ok_or(())
 }
 
+#[cfg(target_os = "linux")]
+fn current_virtual_size_bytes() -> Result<u64, ()> {
+    let statm = std::fs::read_to_string("/proc/self/statm").map_err(|_| ())?;
+    let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+    virtual_size_bytes_from_statm(&statm, page_size)
+}
+
+#[cfg(unix)]
 fn apply_resource_limits() -> Result<(), ()> {
     let limits = parse_resource_limits_with(|key| env::var(key).ok())?;
     let launch_baseline_bytes = current_virtual_size_bytes()?;
@@ -110,6 +132,13 @@ fn apply_resource_limits() -> Result<(), ()> {
     })
 }
 
+#[cfg(windows)]
+fn apply_resource_limits() -> Result<(), ()> {
+    parse_resource_limits_with(|key| env::var(key).ok())?;
+    Err(())
+}
+
+#[cfg(unix)]
 fn watch_parent_liveness() {
     let Ok(raw_fd) = env::var("ACTESTRA_PARENT_LIVENESS_FD") else {
         return;
@@ -161,6 +190,9 @@ fn watch_parent_liveness() {
         }
     });
 }
+
+#[cfg(windows)]
+fn watch_parent_liveness() {}
 
 fn main() {
     if apply_resource_limits().is_err() {
@@ -256,6 +288,7 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     #[test]
     fn applies_cpu_and_additional_address_space_as_equal_soft_and_hard_limits() {
         let limits = NativeResourceLimits {
@@ -284,6 +317,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn rejects_an_address_space_cap_that_cannot_be_represented() {
         let limits = NativeResourceLimits {
@@ -342,6 +376,29 @@ mod tests {
         );
     }
 
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn reads_a_real_linux_virtual_size_baseline() {
+        assert!(current_virtual_size_bytes().unwrap() > 0);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn rejects_invalid_linux_virtual_size_inputs() {
+        for value in ["", "0", "-1", "invalid", "18446744073709551616"] {
+            assert!(virtual_size_bytes_from_statm(value, 4096).is_err());
+        }
+        assert!(virtual_size_bytes_from_statm("1", 0).is_err());
+        assert!(virtual_size_bytes_from_statm(&u64::MAX.to_string(), 2).is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn keeps_windows_native_resource_enforcement_unavailable() {
+        assert!(apply_resource_limits().is_err());
+    }
+
+    #[cfg(unix)]
     #[test]
     fn fails_closed_when_either_native_limit_cannot_be_applied() {
         let limits = NativeResourceLimits {

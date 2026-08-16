@@ -21,6 +21,36 @@
     "rustcCommit": "31fca3adb283cc9dfd56b49cdee9a96eb9c96ffd",
     "rustfmt": "rustfmt 1.9.0-stable (31fca3adb2 2026-06-26)"
   },
+  "buildTargets": [
+    {
+      "platform": "darwin",
+      "architecture": "arm64",
+      "targetTriple": "aarch64-apple-darwin",
+      "buildToolHost": "darwin-arm64",
+      "executableFile": "actestra-goose-runner"
+    },
+    {
+      "platform": "darwin",
+      "architecture": "x64",
+      "targetTriple": "x86_64-apple-darwin",
+      "buildToolHost": "darwin-x64",
+      "executableFile": "actestra-goose-runner"
+    },
+    {
+      "platform": "win32",
+      "architecture": "x64",
+      "targetTriple": "x86_64-pc-windows-msvc",
+      "buildToolHost": "win32-x64",
+      "executableFile": "actestra-goose-runner.exe"
+    },
+    {
+      "platform": "linux",
+      "architecture": "x64",
+      "targetTriple": "x86_64-unknown-linux-gnu",
+      "buildToolHost": "linux-x64",
+      "executableFile": "actestra-goose-runner"
+    }
+  ],
   "buildTools": {
     "cargoAuditable": {
       "version": "0.7.4",
@@ -37,13 +67,23 @@
         "name": "cargo-auditable",
         "archive": "cargo-auditable-aarch64-apple-darwin.tar.xz",
         "size": 389720,
-        "sha256": "fade0f3befebce7b54a46edfa31bea27789ea2136c51e662c2922b10f9d6f701"
+        "sha256": "fade0f3befebce7b54a46edfa31bea27789ea2136c51e662c2922b10f9d6f701",
+        "repository": "rust-secure-code/cargo-auditable",
+        "assetId": 366985535,
+        "url": "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.4/cargo-auditable-aarch64-apple-darwin.tar.xz",
+        "executableFile": "cargo-auditable",
+        "expectedVersion": "cargo-auditable 0.7.4"
       },
       {
         "name": "cargo-audit",
         "archive": "cargo-audit-aarch64-apple-darwin-v0.22.2.tgz",
         "size": 5954803,
-        "sha256": "ec7ca4263769593df4d909be85b94a6b79efa2897be5d2bb8ebd516e823175af"
+        "sha256": "ec7ca4263769593df4d909be85b94a6b79efa2897be5d2bb8ebd516e823175af",
+        "repository": "rustsec/rustsec",
+        "assetId": 439291477,
+        "url": "https://github.com/rustsec/rustsec/releases/download/cargo-audit/v0.22.2/cargo-audit-aarch64-apple-darwin-v0.22.2.tgz",
+        "executableFile": "cargo-audit",
+        "expectedVersion": "cargo-audit 0.22.2"
       }
     ],
     "darwin-x64": [
@@ -51,13 +91,71 @@
         "name": "cargo-auditable",
         "archive": "cargo-auditable-x86_64-apple-darwin.tar.xz",
         "size": 431300,
-        "sha256": "2a1e73d769b2ab6c027178d11c6ba6bf3ad7c1e756910b349b513583da9d52bc"
+        "sha256": "2a1e73d769b2ab6c027178d11c6ba6bf3ad7c1e756910b349b513583da9d52bc",
+        "repository": "rust-secure-code/cargo-auditable",
+        "assetId": 366985540,
+        "url": "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.4/cargo-auditable-x86_64-apple-darwin.tar.xz",
+        "executableFile": "cargo-auditable",
+        "expectedVersion": "cargo-auditable 0.7.4"
       },
       {
         "name": "cargo-audit",
         "archive": "cargo-audit-x86_64-apple-darwin-v0.22.2.tgz",
         "size": 6357453,
-        "sha256": "847831323de932155b226ab60ee4a180e13e5d007a019f0d4b7b4d89a6de2ab2"
+        "sha256": "847831323de932155b226ab60ee4a180e13e5d007a019f0d4b7b4d89a6de2ab2",
+        "repository": "rustsec/rustsec",
+        "assetId": 439292734,
+        "url": "https://github.com/rustsec/rustsec/releases/download/cargo-audit/v0.22.2/cargo-audit-x86_64-apple-darwin-v0.22.2.tgz",
+        "executableFile": "cargo-audit",
+        "expectedVersion": "cargo-audit 0.22.2"
+      }
+    ],
+    "win32-x64": [
+      {
+        "name": "cargo-auditable",
+        "archive": "cargo-auditable-x86_64-pc-windows-msvc.zip",
+        "size": 485072,
+        "sha256": "e2da8d873978982381269c27be8b76cfd4084fbf99c43bd83231ac9c714488bb",
+        "repository": "rust-secure-code/cargo-auditable",
+        "assetId": 366985543,
+        "url": "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.4/cargo-auditable-x86_64-pc-windows-msvc.zip",
+        "executableFile": "cargo-auditable.exe",
+        "expectedVersion": "cargo-auditable 0.7.4"
+      },
+      {
+        "name": "cargo-audit",
+        "archive": "cargo-audit-x86_64-pc-windows-msvc-v0.22.2.zip",
+        "size": 6192256,
+        "sha256": "0a7316540862c13d954f648917ceacca593747baed6eec180fafa590be2710ab",
+        "repository": "rustsec/rustsec",
+        "assetId": 439294720,
+        "url": "https://github.com/rustsec/rustsec/releases/download/cargo-audit/v0.22.2/cargo-audit-x86_64-pc-windows-msvc-v0.22.2.zip",
+        "executableFile": "cargo-audit.exe",
+        "expectedVersion": "cargo-audit 0.22.2"
+      }
+    ],
+    "linux-x64": [
+      {
+        "name": "cargo-auditable",
+        "archive": "cargo-auditable-x86_64-unknown-linux-gnu.tar.xz",
+        "size": 458196,
+        "sha256": "fbc6c3779f2f4040578f76e8a77a73ab6d31187e3ef1558ced00dc81d2a0f080",
+        "repository": "rust-secure-code/cargo-auditable",
+        "assetId": 366985552,
+        "url": "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.4/cargo-auditable-x86_64-unknown-linux-gnu.tar.xz",
+        "executableFile": "cargo-auditable",
+        "expectedVersion": "cargo-auditable 0.7.4"
+      },
+      {
+        "name": "cargo-audit",
+        "archive": "cargo-audit-x86_64-unknown-linux-gnu-v0.22.2.tgz",
+        "size": 6554209,
+        "sha256": "ab28a1bdb54db4d5d8ad5981cf1f959410370b3d28250dbd35f6a44248620e39",
+        "repository": "rustsec/rustsec",
+        "assetId": 439291614,
+        "url": "https://github.com/rustsec/rustsec/releases/download/cargo-audit/v0.22.2/cargo-audit-x86_64-unknown-linux-gnu-v0.22.2.tgz",
+        "executableFile": "cargo-audit",
+        "expectedVersion": "cargo-audit 0.22.2"
       }
     ]
   },

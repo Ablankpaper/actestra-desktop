@@ -10,6 +10,25 @@ import {
 } from "../../apps/desktop/src/main/workers/gooseRunnerArtifact";
 
 const fixtureDirectories: string[] = [];
+type FixtureTarget = Readonly<{
+  targetTriple: string;
+  buildToolHost: string;
+  executableFile: string;
+}>;
+
+function requireFixtureTarget(targetTriple: string): FixtureTarget {
+  const target = sourceContract.buildTargets.find(
+    (candidate) => candidate.targetTriple === targetTriple,
+  );
+  if (target === undefined) {
+    throw new Error(`Missing ${targetTriple} fixture target`);
+  }
+  return target;
+}
+
+const defaultFixtureTarget = requireFixtureTarget("aarch64-apple-darwin");
+const windowsFixtureTarget = requireFixtureTarget("x86_64-pc-windows-msvc");
+const linuxFixtureTarget = requireFixtureTarget("x86_64-unknown-linux-gnu");
 
 function sha256(value: string | Buffer): string {
   return createHash("sha256").update(value).digest("hex");
@@ -19,10 +38,11 @@ function buildToolEvidence(
   name: "cargo-auditable" | "cargo-audit",
   pin: Readonly<{ version: string; commit: string }>,
   executableDigestCharacter: string,
+  buildToolHost = defaultFixtureTarget.buildToolHost,
 ) {
-  const asset = sourceContract.buildToolAssets["darwin-arm64"].find(
-    (candidate) => candidate.name === name,
-  );
+  const asset = sourceContract.buildToolAssets[
+    buildToolHost as keyof typeof sourceContract.buildToolAssets
+  ]?.find((candidate) => candidate.name === name);
   if (asset === undefined) {
     throw new Error(`Missing ${name} fixture asset`);
   }
@@ -33,14 +53,26 @@ function buildToolEvidence(
   };
 }
 
-function admissionOptions(trustedManifestSha256: string) {
+function admissionOptions(
+  trustedManifestSha256: string,
+  targetTriple = defaultFixtureTarget.targetTriple,
+) {
   return {
-    expectedTargetTriple: "aarch64-apple-darwin",
+    expectedTargetTriple: targetTriple,
     trustedManifestSha256,
   } as const;
 }
 
-async function createArtifactFixture() {
+async function createArtifactFixture(
+  options: Readonly<{
+    target?: FixtureTarget;
+    executableFile?: string;
+    buildToolHost?: string;
+  }> = {},
+) {
+  const target = options.target ?? defaultFixtureTarget;
+  const executableFile = options.executableFile ?? target.executableFile;
+  const buildToolHost = options.buildToolHost ?? target.buildToolHost;
   const directory = await mkdtemp(path.join(os.tmpdir(), "actestra-goose-artifact-"));
   fixtureDirectories.push(directory);
 
@@ -96,14 +128,19 @@ async function createArtifactFixture() {
   });
   const audit = JSON.stringify({
     contractVersion: 1,
-    cargoAudit: buildToolEvidence("cargo-audit", sourceContract.buildTools.cargoAudit, "a"),
+    cargoAudit: buildToolEvidence(
+      "cargo-audit",
+      sourceContract.buildTools.cargoAudit,
+      "a",
+      buildToolHost,
+    ),
     advisoryDatabase: {
       commit: "1111111111111111111111111111111111111111",
       fetchedAt: "2026-08-01T07:59:00.000Z",
       checkedAt: "2026-08-01T08:00:00.000Z",
     },
     reachability: {
-      targetTriple: "aarch64-apple-darwin",
+      targetTriple: target.targetTriple,
       activeDependencyCount: 1,
       cargoTreeDependencyCount: 1,
       compilerArtifactPackageCount: 2,
@@ -144,22 +181,22 @@ async function createArtifactFixture() {
   });
 
   await Promise.all([
-    writeFile(path.join(directory, "actestra-goose-runner"), executable),
+    writeFile(path.join(directory, executableFile), executable),
     writeFile(path.join(directory, "Cargo.lock"), lockfile),
     writeFile(path.join(directory, "GOOSE-APACHE-2.0.txt"), license),
     writeFile(path.join(directory, "actestra-goose-runner.cdx.json"), sbom),
     writeFile(path.join(directory, "actestra-goose-runner.audit.json"), audit),
   ]);
-  await chmod(path.join(directory, "actestra-goose-runner"), 0o755);
+  await chmod(path.join(directory, executableFile), 0o755);
 
   const manifest = {
     contractVersion: 1,
     runner: {
       name: sourceContract.runner.name,
       version: sourceContract.runner.version,
-      targetTriple: "aarch64-apple-darwin",
+      targetTriple: target.targetTriple,
       executable: {
-        file: "actestra-goose-runner",
+        file: executableFile,
         sha256: sha256(executable),
         size: executable.byteLength,
       },
@@ -173,6 +210,7 @@ async function createArtifactFixture() {
         "cargo-auditable",
         sourceContract.buildTools.cargoAuditable,
         "b",
+        buildToolHost,
       ),
       lockfile: {
         file: "Cargo.lock",
@@ -230,6 +268,71 @@ describe("Goose runner artifact admission", () => {
       gooseVersion: sourceContract.goose.version,
     });
     expect(artifact.executablePath).toBe(path.join(canonicalDirectory, "actestra-goose-runner"));
+  });
+
+  it.each([windowsFixtureTarget, linuxFixtureTarget])(
+    "admits an exact native $targetTriple runner bundle",
+    async (target) => {
+      const { directory, manifestSha256 } = await createArtifactFixture({ target });
+      const artifact = await admitGooseRunnerArtifact(
+        directory,
+        admissionOptions(manifestSha256, target.targetTriple),
+      );
+      const canonicalDirectory = await realpath(directory);
+
+      expect(artifact).toMatchObject({
+        directory: canonicalDirectory,
+        targetTriple: target.targetTriple,
+      });
+      expect(artifact.executablePath).toBe(path.join(canonicalDirectory, target.executableFile));
+    },
+  );
+
+  it("rejects executable suffix substitution for an admitted target", async () => {
+    const { directory, manifestSha256 } = await createArtifactFixture({
+      target: windowsFixtureTarget,
+      executableFile: "actestra-goose-runner",
+    });
+
+    await expect(
+      admitGooseRunnerArtifact(
+        directory,
+        admissionOptions(manifestSha256, windowsFixtureTarget.targetTriple),
+      ),
+    ).rejects.toThrow("Goose runner executable does not match the admitted target contract");
+  });
+
+  it("rejects build-tool host substitution for an admitted target", async () => {
+    const { directory, manifestSha256 } = await createArtifactFixture({
+      target: windowsFixtureTarget,
+      buildToolHost: linuxFixtureTarget.buildToolHost,
+    });
+
+    await expect(
+      admitGooseRunnerArtifact(
+        directory,
+        admissionOptions(manifestSha256, windowsFixtureTarget.targetTriple),
+      ),
+    ).rejects.toMatchObject({
+      name: "GooseRunnerArtifactError",
+      code: "incompatible-artifact",
+    });
+  });
+
+  it("rejects a self-consistent artifact for an unknown target triple", async () => {
+    const unknownTarget: FixtureTarget = {
+      targetTriple: "x86_64-unknown-linux-musl",
+      buildToolHost: linuxFixtureTarget.buildToolHost,
+      executableFile: "actestra-goose-runner",
+    };
+    const { directory, manifestSha256 } = await createArtifactFixture({ target: unknownTarget });
+
+    await expect(
+      admitGooseRunnerArtifact(
+        directory,
+        admissionOptions(manifestSha256, unknownTarget.targetTriple),
+      ),
+    ).rejects.toThrow("Goose runner target is outside the admitted native build matrix");
   });
 
   it("rejects a self-consistent artifact outside the caller trust root", async () => {

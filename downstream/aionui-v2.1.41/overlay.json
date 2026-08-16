@@ -648,6 +648,10 @@
       "destination": "packages/desktop/src/actestra/main/workers/gooseRunnerProcess.ts"
     },
     {
+      "source": "apps/desktop/src/main/workers/gooseRunnerTarget.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/gooseRunnerTarget.ts"
+    },
+    {
       "source": "apps/desktop/src/main/workers/gooseRunnerSandbox.ts",
       "destination": "packages/desktop/src/actestra/main/workers/gooseRunnerSandbox.ts"
     },
@@ -913,6 +917,7 @@
     "packages/desktop/src/actestra/main/workers/actestraCodingJourneyRuntime.ts",
     "packages/desktop/src/actestra/main/workers/actestraGeneralWorkRuntime.ts",
     "packages/desktop/src/actestra/main/workers/gooseRunnerProcess.ts",
+    "packages/desktop/src/actestra/main/workers/gooseRunnerTarget.ts",
     "packages/desktop/src/actestra/main/workers/gooseRunnerSandbox.ts",
     "packages/desktop/src/actestra/main/workers/isolatedCodingMainService.ts",
     "packages/desktop/src/actestra/main/workers/isolatedCodingPatch.ts",

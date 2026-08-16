@@ -5,6 +5,7 @@ import os from "node:os";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import { resolveGooseRunnerToolInstallContract } from "./install-goose-runner-tools.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const runnerRoot = path.join(repositoryRoot, "workers", "goose-runner");
@@ -17,10 +18,19 @@ const sourceContractPath = path.join(
   "gooseRunnerSource.json",
 );
 const sourceContract = JSON.parse(await readFile(sourceContractPath, "utf8"));
-const hostKey = `${process.platform}-${process.arch}`;
+const buildTarget = resolveGooseRunnerToolInstallContract(process.platform, process.arch);
+const hostKey = buildTarget.host;
 const toolDirectory = path.join(repositoryRoot, ".actestra", "goose-runner-tools", hostKey, "bin");
-const cargoAuditPath = path.join(toolDirectory, "cargo-audit");
-const cargoAuditablePath = path.join(toolDirectory, "cargo-auditable");
+function installedToolPath(asset) {
+  return path.join(toolDirectory, asset.executableFile);
+}
+const cargoAuditAsset = buildTarget.assets.find(({ name }) => name === "cargo-audit");
+const cargoAuditableAsset = buildTarget.assets.find(({ name }) => name === "cargo-auditable");
+if (cargoAuditAsset === undefined || cargoAuditableAsset === undefined) {
+  throw new Error("Goose runner build failed: native build-tool contract is incomplete");
+}
+const cargoAuditPath = installedToolPath(cargoAuditAsset);
+const cargoAuditablePath = installedToolPath(cargoAuditableAsset);
 const advisoryDatabasePath = path.join(
   process.env.CARGO_HOME ?? path.join(os.homedir(), ".cargo"),
   "advisory-db",
@@ -389,7 +399,7 @@ const toolManifest = JSON.parse(
     fail("pinned build tools are not installed; run goose:runner:tools"),
   ),
 );
-const expectedAssets = sourceContract.buildToolAssets[hostKey];
+const expectedAssets = buildTarget.assets;
 if (
   toolManifest.contractVersion !== 1 ||
   toolManifest.host !== hostKey ||
@@ -440,11 +450,12 @@ if (!rustVersion.includes("1.96.1")) {
   fail(`Cargo toolchain is not 1.96.1: ${rustVersion.trim()}`);
 }
 const rustcVersion = await requireSuccess("rustc", ["-Vv"], { cwd: runnerRoot });
-const targetTriple = rustcVersion.match(/^host: (.+)$/m)?.[1];
+const rustcHost = rustcVersion.match(/^host: (.+)$/m)?.[1];
 const rustcCommit = rustcVersion.match(/^commit-hash: (.+)$/m)?.[1];
-if (targetTriple === undefined || rustcCommit !== sourceContract.rust.rustcCommit) {
-  fail("Rust host or compiler commit does not match the source contract");
+if (rustcHost !== buildTarget.targetTriple || rustcCommit !== sourceContract.rust.rustcCommit) {
+  fail("Rust host target or compiler commit does not match the source contract");
 }
+const targetTriple = buildTarget.targetTriple;
 const rustfmtVersion = (await requireSuccess("rustfmt", ["--version"], { cwd: runnerRoot })).trim();
 if (rustfmtVersion !== sourceContract.rust.rustfmt) {
   fail(`Rust formatter does not match the source contract: ${rustfmtVersion}`);
@@ -452,7 +463,7 @@ if (rustfmtVersion !== sourceContract.rust.rustfmt) {
 
 const buildEnvironment = {
   ...process.env,
-  PATH: `${toolDirectory}:${process.env.PATH ?? ""}`,
+  PATH: [toolDirectory, process.env.PATH ?? ""].filter(Boolean).join(path.delimiter),
   CARGO_NET_GIT_FETCH_WITH_CLI: "true",
 };
 const buildOutput = await requireSuccess(
@@ -465,8 +476,7 @@ const buildOutput = await requireSuccess(
 );
 const compiledPackageIds = compilerArtifactPackageIds(buildOutput);
 
-const executableName =
-  process.platform === "win32" ? "actestra-goose-runner.exe" : "actestra-goose-runner";
+const executableName = buildTarget.executableFile;
 const builtExecutable = path.join(runnerRoot, "target", "release", executableName);
 const sourceDigest = await sourceTreeSha256();
 const builtAt = new Date().toISOString();
