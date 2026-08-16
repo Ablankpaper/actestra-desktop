@@ -725,11 +725,11 @@ macOS arm64 package passes trust verification, the existing General Work smoke,
 and the packaged P7 security hook for all seven required Layer-4 cases.
 
 This P7.1 gate did not itself close the remaining P7 reliability slices. P7.2
-Worker resource/process reliability and P7.3 database backup, migration
-rollback, and crash recovery are accepted below. P7.4 diagnostic export and
-audit retention remains open. Windows/Linux acceptance, formal
-signing/notarization, release, deployment, and final user acceptance remain
-separate gates.
+Worker resource/process reliability, P7.3 database backup/migration recovery,
+and P7.4 diagnostic export/audit retention are accepted below. Together they
+close the macOS arm64 P7 development integration sequence. Windows/Linux
+acceptance, formal signing/notarization, release, deployment, and final user
+acceptance remain separate gates.
 
 ### P7.2 development integration gate (2026-08-16)
 
@@ -744,10 +744,10 @@ The gate is accepted on `main` through pull request 58 at exact head
 squash merge `dc904b7b9cf7d0c64c563bcc732547f0ff27ce13`, and merged-main CI run
 31901651415. Both CI runs pass the required Goose and macOS jobs; the macOS job
 verifies package trust and the General CPU/memory and Goose
-output/storage/fork probes against the exact packaged bytes. P7.3 and P7.4
-remain separate and are not started by this slice. Windows/Linux enforcement,
-formal signing/notarization, release, deployment, and final user acceptance
-remain later gates.
+output/storage/fork probes against the exact packaged bytes. P7.3 and P7.4 are
+separate accepted slices below; they are not evidence supplied by P7.2.
+Windows/Linux enforcement, formal signing/notarization, release, deployment,
+and final user acceptance remain later gates.
 
 ### P7.3 development integration gate (2026-08-16)
 
@@ -764,11 +764,11 @@ The gate is accepted on `main` through pull request 60 at exact head
 merged-main CI run 31907989900. Both CI runs pass the required Goose and macOS
 jobs; the macOS job repeats package trust, General Work, P7.1 security, and
 P7.2 resource smokes against the exact packaged bytes. P7.4 diagnostic export
-and audit retention remains open. Windows/Linux enforcement, formal
-signing/notarization, release, deployment, and final user acceptance remain
-later gates.
+and audit retention is accepted separately below; it is not evidence supplied
+by P7.3. Windows/Linux enforcement, formal signing/notarization, release,
+deployment, and final user acceptance remain later gates.
 
-### P7.4 pre-merge local and packaged development gate (2026-08-16)
+### P7.4 development integration gate (2026-08-16)
 
 P7.4 adds one explicit-consent, local-only diagnostic export and fixed
 privileged-audit retention behind the existing Main and SQLite utility
@@ -789,11 +789,16 @@ Work, the seven-case P7.1 security smoke, the five-case P7.2 resource smoke,
 and the P7.4 diagnostic/audit smoke. The frozen `foundation/` snapshot is
 unchanged and no privileged process remains after verification.
 
-This records a local and packaged development gate only. P7.4 and the overall
-P7 phase remain pre-merge until the documentation revision, exact-head
-pull-request CI, governed merge, and independent merged-main CI pass. P8,
-Windows/Linux acceptance, formal signing/notarization, release, deployment,
-and final user acceptance remain separate gates.
+The gate is accepted on `main` through pull request 62 at exact head
+`27590471e75086dbbf24ff29eab23aeb7f32ffed`, pull-request CI run 31941498806,
+squash merge `fc7b4683794934a6a650aecd90a7d00de1cf4280`, and merged-main CI
+run 31942456848. Both CI runs pass the required Goose and macOS jobs; the
+merged-main macOS job repeats package trust, General Work, P7.1 security, P7.2
+resource, and P7.4 diagnostic/audit smokes against the exact packaged bytes.
+The merged-main Goose job publishes the main-only artifact. This closes the
+macOS arm64 P7 development integration sequence. P8, Windows/Linux acceptance,
+formal signing/notarization, release, deployment, and final user acceptance
+remain separate gates.
 
 ### Deliverables
 

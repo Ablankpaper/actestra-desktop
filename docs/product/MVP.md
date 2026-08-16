@@ -172,17 +172,18 @@ directly.
 Security and reliability status: the P7.1 threat-model and 28-case abuse
 baseline, the scheme-A P7.2 General/Goose Worker resource controls, and the
 P7.3 SQLite backup/migration recovery slice are accepted on `main`. P7.4 local
-diagnostic export and privileged-audit retention is implemented and verified
-on macOS arm64 at product-source parent
-`7b0c27f4af3bb4e0e0049a03646af19c4fa9acc2`, but is not yet integrated into
-`main`. P7.1 physically checks seven required Layer-4 boundaries; P7.2 checks
-General CPU/memory and Goose output/storage/fork fail-closed behavior; P7.3
-checks pre-migration backup, failed-migration restore, pending-manifest crash
-recovery, and tampered-backup fail-closed behavior; P7.4 checks explicit local
-export, closed metadata/redaction, schema-23 audit-chain integrity, and bounded
-complete-group retention against the packaged development app. Exact-head CI,
-merge, merged-main CI, cross-platform enforcement, formal signing and
-notarization, release, deployment, and user acceptance remain later gates.
+diagnostic export and privileged-audit retention is also accepted on `main`
+through pull request 62, squash merge
+`fc7b4683794934a6a650aecd90a7d00de1cf4280`, and passing pull-request and
+merged-main CI. P7.1 physically checks seven required Layer-4 boundaries; P7.2
+checks General CPU/memory and Goose output/storage/fork fail-closed behavior;
+P7.3 checks pre-migration backup, failed-migration restore, pending-manifest
+crash recovery, and tampered-backup fail-closed behavior; P7.4 checks explicit
+local export, closed metadata/redaction, schema-23 audit-chain integrity, and
+bounded complete-group retention against the packaged development app. This
+closes the macOS arm64 P7 development integration sequence. Cross-platform P8
+enforcement, formal signing and notarization, release, deployment, and user
+acceptance remain later gates.
 
 | Action                                      | Default policy                                        |
 | ------------------------------------------- | ----------------------------------------------------- |
