@@ -61,6 +61,36 @@ product journeys, P7 platform obligations, P8.2 overall, P8.3, P8.4, candidate,
 signing/notarization, release, deployment, distribution, clean-machine,
 real-provider, and final user acceptance remain open.
 
+### 2026-08-17 P8.2b Linux containment probe scaffold (not an acceptance)
+
+The isolated implementation worktree
+`/Users/zizimutou/actestra-worktrees/p8-2b-runtime-containment` is on
+`codex/p8-2b-runtime-containment` at `ca64b8e`.
+The shared launch contract and Rust containment boundary are preserved in the
+preceding commits `c8d2c26` and `40fb687`. This slice adds a Linux-only
+feasibility-probe entry point and a bounded evidence validator. The validator
+requires the exact probe key set, binds target/source/executable digests, and
+returns only closed reason codes; the probe runner also bounds output and
+checks the exact regular executable digest before launch. Landlock capability
+classification now requires a positive ABI result, and probe metadata accepts
+only bounded safe target/digest strings. The Linux backend deliberately keeps
+all six capabilities false and reports `evidence-incomplete` until the native
+filesystem, network, process, resource, parent-death, and cleanup hostile
+probes are implemented and run on Ubuntu.
+
+Local evidence for this scaffold: 6 focused test files / 49 tests passed,
+Rust macOS debug tests 8/8 passed (including the existing native resource
+child), TypeScript typecheck passed, lint reported 0 warnings/errors, format
+check passed, and `git diff --check` passed. This is local evidence only.
+
+This record does not claim Linux or Windows compilation, native containment,
+hostile-probe denial, an artifact-bound manifest containment record, runtime
+admission, ACP on either non-Darwin target, packaging, or Electron acceptance.
+The resolver remains Darwin-only and the non-Darwin `network-policy-unavailable`
+fail-closed behavior is unchanged. The next required work is a real Ubuntu
+backend and native CI evidence, followed by binding the six booleans to the
+exact runner manifest before any non-Darwin runtime can be admitted.
+
 ### 2026-08-16 P8.1 acceptance contract accepted on main
 
 P8.1 is accepted on formal `main` through pull request
