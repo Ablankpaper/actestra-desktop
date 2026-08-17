@@ -620,6 +620,10 @@
       "destination": "packages/desktop/src/actestra/main/workers/gooseCodingEvidenceCoordinator.ts"
     },
     {
+      "source": "apps/desktop/src/main/workers/gooseBridgeSocket.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/gooseBridgeSocket.ts"
+    },
+    {
       "source": "apps/desktop/src/main/workers/gooseLoopbackModelServer.ts",
       "destination": "packages/desktop/src/actestra/main/workers/gooseLoopbackModelServer.ts"
     },
@@ -914,6 +918,7 @@
     "packages/desktop/src/actestra/main/workers/gooseCodingToolInvoker.ts",
     "packages/desktop/src/actestra/main/workers/gooseCodingArtifactPublisher.ts",
     "packages/desktop/src/actestra/main/workers/gooseCodingEvidenceCoordinator.ts",
+    "packages/desktop/src/actestra/main/workers/gooseBridgeSocket.ts",
     "packages/desktop/src/actestra/main/workers/gooseLoopbackModelServer.ts",
     "packages/desktop/src/actestra/main/workers/gooseMcpCapabilityServer.ts",
     "packages/desktop/src/actestra/main/workers/gooseMcpSessionComposition.ts",

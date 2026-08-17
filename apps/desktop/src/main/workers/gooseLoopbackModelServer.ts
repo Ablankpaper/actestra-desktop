@@ -12,8 +12,14 @@ import {
   type ActestraMainModelUsage,
 } from "../model/actestraMainModelBroker";
 import { snapshotBoundedActestraMainModelJsonValue } from "../model/actestraMainModelJson";
+import {
+  closeGooseBridgeServer,
+  GooseBridgeSocketError,
+  listenGooseBridgeServer,
+  type GooseBridgeListenerOptions,
+  type GooseBridgeServerBinding,
+} from "./gooseBridgeSocket";
 
-const LOOPBACK_HOST = "127.0.0.1";
 const MODEL_CATALOG_PATH = "/v1/models";
 const CHAT_COMPLETIONS_PATH = "/v1/chat/completions";
 const RESPONSES_PATH = "/v1/responses";
@@ -41,6 +47,8 @@ export interface StartGooseLoopbackModelServerOptions {
   readonly modelId: string;
   readonly attemptLease: string;
   readonly invokeModel: GooseLoopbackModelInvoker;
+  readonly socketPath?: string;
+  readonly loopbackPort?: number;
 }
 
 export type GooseLoopbackModelUsage = ActestraMainModelUsage;
@@ -85,15 +93,20 @@ function validateOptions(options: StartGooseLoopbackModelServerOptions): {
   readonly modelId: string;
   readonly attemptLease: string;
   readonly invokeModel: GooseLoopbackModelInvoker;
+  readonly socketPath?: string;
+  readonly loopbackPort?: number;
 } {
   if (typeof options !== "object" || options === null || Array.isArray(options)) {
     throw invalidConfig("Goose loopback model server options must be an object");
   }
   const keys = Reflect.ownKeys(options);
   if (
-    keys.length !== 3 ||
+    keys.length < 3 ||
+    keys.length > 5 ||
     keys.some(
-      (key) => typeof key !== "string" || !["modelId", "attemptLease", "invokeModel"].includes(key),
+      (key) =>
+        typeof key !== "string" ||
+        !["modelId", "attemptLease", "invokeModel", "socketPath", "loopbackPort"].includes(key),
     )
   ) {
     throw invalidConfig("Goose loopback model server options contain unsupported fields");
@@ -120,10 +133,25 @@ function validateOptions(options: StartGooseLoopbackModelServerOptions): {
   if (typeof invokeModel !== "function") {
     throw invalidConfig("Goose loopback model invoker is invalid");
   }
+  const socketPath = Object.hasOwn(options, "socketPath")
+    ? ownDataProperty(options, "socketPath")
+    : undefined;
+  const loopbackPort = Object.hasOwn(options, "loopbackPort")
+    ? ownDataProperty(options, "loopbackPort")
+    : undefined;
+  if ((socketPath === undefined) !== (loopbackPort === undefined)) {
+    throw invalidConfig("Goose loopback model socket path and loopback port must be paired");
+  }
   return Object.freeze({
     modelId,
     attemptLease,
     invokeModel: invokeModel as GooseLoopbackModelInvoker,
+    ...(socketPath === undefined
+      ? {}
+      : {
+          socketPath: socketPath as string,
+          loopbackPort: loopbackPort as number,
+        }),
   });
 }
 
@@ -965,21 +993,6 @@ function serializeResponsesCompletion(
   );
 }
 
-function closeHttpServer(server: http.Server, sockets: Set<Socket>): Promise<void> {
-  for (const socket of sockets) {
-    socket.destroy();
-  }
-  return new Promise((resolve, reject) => {
-    server.close((error) => {
-      if (error !== undefined) {
-        reject(error);
-      } else {
-        resolve();
-      }
-    });
-  });
-}
-
 export async function startGooseLoopbackModelServer(
   options: StartGooseLoopbackModelServerOptions,
 ): Promise<GooseLoopbackModelServer> {
@@ -1002,6 +1015,7 @@ export async function startGooseLoopbackModelServer(
   let rejectedRequestCount = 0;
   let servedInferenceCount = 0;
   let closed = false;
+  let serverBinding: GooseBridgeServerBinding;
 
   const server = http.createServer((request, response) => {
     if (closed) {
@@ -1147,30 +1161,25 @@ export async function startGooseLoopbackModelServer(
   });
 
   try {
-    await new Promise<void>((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(0, LOOPBACK_HOST, resolve);
-    });
+    const listenerOptions: GooseBridgeListenerOptions | undefined =
+      config.socketPath === undefined
+        ? undefined
+        : Object.freeze({ socketPath: config.socketPath, loopbackPort: config.loopbackPort });
+    serverBinding = await listenGooseBridgeServer(server, listenerOptions);
   } catch (error) {
     for (const socket of sockets) {
       socket.destroy();
     }
     throw new GooseLoopbackModelServerError(
-      "listen-failed",
+      error instanceof GooseBridgeSocketError && error.code === "invalid-config"
+        ? "invalid-config"
+        : "listen-failed",
       "Goose loopback model server could not listen on the admitted host",
       { cause: error },
     );
   }
-  const address = server.address();
-  if (address === null || typeof address === "string") {
-    await closeHttpServer(server, sockets);
-    throw new GooseLoopbackModelServerError(
-      "listen-failed",
-      "Goose loopback model server returned an incompatible listener address",
-    );
-  }
-  expectedHost = `${LOOPBACK_HOST}:${String(address.port)}`;
-  const baseUrl = `http://${expectedHost}/v1`;
+  expectedHost = serverBinding.host;
+  const baseUrl = `http://${serverBinding.host}/v1`;
   let closePromise: Promise<void> | undefined;
   return Object.freeze({
     baseUrl,
@@ -1192,10 +1201,10 @@ export async function startGooseLoopbackModelServer(
     close(): Promise<void> {
       closePromise ??= (async () => {
         closed = true;
+        const serverClosed = closeGooseBridgeServer(server, sockets, serverBinding);
         for (const controller of activeInvocationControllers) {
           controller.abort();
         }
-        const serverClosed = closeHttpServer(server, sockets);
         await Promise.allSettled(activeInvocations);
         await serverClosed;
       })();

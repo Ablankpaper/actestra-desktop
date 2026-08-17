@@ -2,6 +2,7 @@
 
 import http from "node:http";
 import net from "node:net";
+import { lstat, mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -140,6 +141,66 @@ afterEach(async () => {
 });
 
 describe("Goose authenticated loopback MCP capability server", () => {
+  it("serves the unchanged MCP handler through one Main-owned Unix socket", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "actestra-mcp-unix-"));
+    const bridgeDirectory = path.join(root, "bridge");
+    const socketPath = path.join(bridgeDirectory, "mcp.sock");
+    await mkdir(bridgeDirectory, { mode: 0o700 });
+    const server = await startGooseMcpCapabilityServer({
+      attemptLease: ATTEMPT_LEASE,
+      commandIds: ["format-check"],
+      testIds: ["focused-tests"],
+      workspaceDirectory: WORKSPACE_DIRECTORY,
+      invokeTool: defaultToolInvoker,
+      socketPath,
+      loopbackPort: 43_123,
+    });
+    servers.add(server);
+    try {
+      expect(server.url).toBe("http://127.0.0.1:43123/mcp");
+      const body = JSON.stringify(initializeMessage());
+      const response = await new Promise<McpHttpResponse>((resolve, reject) => {
+        const request = http.request(
+          {
+            socketPath,
+            path: "/mcp",
+            method: "POST",
+            headers: {
+              Accept: "text/event-stream, application/json",
+              Authorization: `Bearer ${ATTEMPT_LEASE}`,
+              "Content-Length": Buffer.byteLength(body),
+              "Content-Type": "application/json",
+              Host: "127.0.0.1:43123",
+              "User-Agent": "goose/1.45.0",
+            },
+          },
+          (incoming) => {
+            const chunks: Buffer[] = [];
+            incoming.on("data", (chunk: Buffer) => chunks.push(chunk));
+            incoming.once("end", () =>
+              resolve({
+                status: incoming.statusCode ?? 0,
+                headers: incoming.headers,
+                body: Buffer.concat(chunks).toString("utf8"),
+              }),
+            );
+          },
+        );
+        request.once("error", reject);
+        request.end(body);
+      });
+      expect(response.status).toBe(200);
+      expect(JSON.parse(response.body)).toMatchObject({
+        result: { protocolVersion: MCP_PROTOCOL_VERSION },
+      });
+    } finally {
+      await server.close();
+      servers.delete(server);
+      await expect(lstat(socketPath)).rejects.toMatchObject({ code: "ENOENT" });
+      await rm(root, { recursive: true });
+    }
+  });
+
   it("serves only the six closed coding schemas after the exact MCP initialization sequence", async () => {
     const server = await openServer();
 
