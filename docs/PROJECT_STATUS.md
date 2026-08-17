@@ -353,6 +353,47 @@ skipped. The next and only advancing key is a new exact-head pull-request run;
 Linux admission remains disabled, `complete` remains false, and no incomplete
 containment record may be bound.
 
+### 2026-08-17 P8.2b Linux runtime composition Task 4 (local implementation, gate remains open)
+
+Task 1–3's Main-owned Unix bridge, Linux namespace relay, and lifecycle
+composition are joined by the local Task 4 change at commit `21cd915`. The
+Node ACP transport now recognizes both fixed native setup markers: a Linux
+bridge failure remains `network-policy-unavailable`, while the existing native
+resource marker remains `worker-resource-enforcement-unavailable`. The
+handshake unwraps either code without collapsing it to `transport-error`,
+`spawn-failed`, or a successful turn. No raw stderr, path, socket name, or
+environment value crosses the boundary.
+
+The acceptance contract now explicitly locks that Linux probe output remains
+`complete = false` / `evidence-incomplete`, incomplete output cannot mutate a
+runner manifest, source commit/executable SHA-256/probe SHA-256 are all bound
+to the exact runner and probe implementation, and containment evidence upload
+is success-only. The Darwin-only resolver and the non-Darwin pre-root
+`network-policy-unavailable` stop are unchanged.
+
+Fresh local evidence for this exact implementation is:
+
+- the combined Main/bridge/lifecycle/composition/containment/portability and
+  evidence suite passed 12 files / 167 tests;
+- `cargo test --manifest-path workers/goose-runner/Cargo.toml --locked --offline`
+  exited 0 (14 runner unit tests and the macOS native-limit child test passed);
+- `bun run check` exited 0: 151 test files passed / 2 skipped, 1,616 tests
+  passed / 9 skipped; P8 contract, Electron SQLite, P7 abuse (28 cases / 168
+  variants), smoke harness, boundary, foundation, downstream, and package all
+  passed; format, lint (0 warnings/errors), typecheck, Rust format, actionlint,
+  and `git diff --check` also passed.
+
+The artifact-dependent `bun run goose:runner:test` command was attempted but
+could not start because this worktree has no generated macOS runner manifest at
+`.actestra/goose-runner/aarch64-apple-darwin/actestra-goose-runner.manifest.json`;
+this is missing local build output, not a reported Rust test failure. No fresh
+Ubuntu 24.04 native job has executed this exact commit, the Linux probe has not
+produced admissible complete evidence, and no containment manifest is bound.
+Therefore P8.2b, overall P8.2, Windows containment, P8.3, P8.4, packaged
+Electron/provider acceptance, candidate, release, and final user acceptance
+remain open. No `foundation/`, Renderer, preload, provider, persistence, or UI
+authority changed.
+
 ### 2026-08-16 P8.1 acceptance contract accepted on main
 
 P8.1 is accepted on formal `main` through pull request
