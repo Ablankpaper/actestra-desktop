@@ -143,6 +143,27 @@ describe("Goose native integration evidence", () => {
         "parent-death-model-owner-unresolved",
         "integration-parent-death-model-owner-unresolved-failed",
       ],
+      [
+        "parent-death-capability-owner-not-listed",
+        "integration-parent-death-capability-owner-not-listed-failed",
+      ],
+      [
+        "parent-death-model-owner-not-listed",
+        "integration-parent-death-model-owner-not-listed-failed",
+      ],
+      [
+        "parent-death-capability-owner-no-visible-process",
+        "integration-parent-death-capability-owner-no-visible-process-failed",
+      ],
+      [
+        "parent-death-model-owner-no-visible-process",
+        "integration-parent-death-model-owner-no-visible-process-failed",
+      ],
+      [
+        "parent-death-capability-owner-scan-failed",
+        "integration-parent-death-capability-owner-scan-failed",
+      ],
+      ["parent-death-model-owner-scan-failed", "integration-parent-death-model-owner-scan-failed"],
       ["parent-death-runner-not-exited", "integration-parent-death-runner-not-exited-failed"],
       ["parent-death-capability-socket", "integration-parent-death-capability-socket-failed"],
       ["parent-death-model-socket", "integration-parent-death-model-socket-failed"],

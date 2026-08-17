@@ -100,6 +100,12 @@ type NativeIntegrationFailureStage =
   | "parent-death-model-orphan-owner"
   | "parent-death-capability-owner-unresolved"
   | "parent-death-model-owner-unresolved"
+  | "parent-death-capability-owner-not-listed"
+  | "parent-death-model-owner-not-listed"
+  | "parent-death-capability-owner-no-visible-process"
+  | "parent-death-model-owner-no-visible-process"
+  | "parent-death-capability-owner-scan-failed"
+  | "parent-death-model-owner-scan-failed"
   | "parent-death-runner-not-exited"
   | "parent-death-capability-socket"
   | "parent-death-model-socket"
@@ -563,7 +569,14 @@ async function unixSocketAcceptsConnections(socketPath: string): Promise<boolean
   });
 }
 
-async function readLinuxUnixSocketOwnerProcessIds(socketPath: string): Promise<Set<number>> {
+interface LinuxUnixSocketOwnerScan {
+  readonly listed: boolean;
+  readonly owners: ReadonlySet<number>;
+}
+
+async function readLinuxUnixSocketOwnerProcessIds(
+  socketPath: string,
+): Promise<LinuxUnixSocketOwnerScan> {
   const table = await readFile("/proc/net/unix", "utf8");
   if (Buffer.byteLength(table, "utf8") > 1024 * 1024) {
     throw new Error("native integration Unix socket table exceeded its bound");
@@ -580,7 +593,7 @@ async function readLinuxUnixSocketOwnerProcessIds(socketPath: string): Promise<S
     );
   const inode = entry?.[6];
   if (inode === undefined || !/^[1-9][0-9]*$/u.test(inode)) {
-    return new Set();
+    return Object.freeze({ listed: false, owners: new Set<number>() });
   }
   const processes = await readdir("/proc", { withFileTypes: true });
   if (processes.length > 4_096) {
@@ -607,7 +620,7 @@ async function readLinuxUnixSocketOwnerProcessIds(socketPath: string): Promise<S
       }
     }
   }
-  return owners;
+  return Object.freeze({ listed: true, owners });
 }
 
 const evidence: NativeIntegrationEvidence = {
@@ -889,8 +902,9 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
       ).catch((): undefined => undefined);
       if (
         capabilityOwners === undefined ||
-        capabilityOwners.size !== 1 ||
-        !capabilityOwners.has(supervisorPid)
+        !capabilityOwners.listed ||
+        capabilityOwners.owners.size !== 1 ||
+        !capabilityOwners.owners.has(supervisorPid)
       ) {
         await markFailureStage("parent-death-capability-owner-mismatch");
         throw new Error("native integration capability listener ownership was invalid");
@@ -898,7 +912,12 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
       const modelOwners = await readLinuxUnixSocketOwnerProcessIds(state!.modelSocketPath).catch(
         (): undefined => undefined,
       );
-      if (modelOwners === undefined || modelOwners.size !== 1 || !modelOwners.has(supervisorPid)) {
+      if (
+        modelOwners === undefined ||
+        !modelOwners.listed ||
+        modelOwners.owners.size !== 1 ||
+        !modelOwners.owners.has(supervisorPid)
+      ) {
         await markFailureStage("parent-death-model-owner-mismatch");
         throw new Error("native integration model listener ownership was invalid");
       }
@@ -917,25 +936,33 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
       }
       await markFailureStage("parent-death-capability-socket");
       if (await unixSocketAcceptsConnections(state!.capabilitySocketPath)) {
-        const owners = await readLinuxUnixSocketOwnerProcessIds(state!.capabilitySocketPath).catch(
+        const scan = await readLinuxUnixSocketOwnerProcessIds(state!.capabilitySocketPath).catch(
           (): undefined => undefined,
         );
-        if (owners !== undefined && owners.size > 0) {
+        if (scan === undefined) {
+          await markFailureStage("parent-death-capability-owner-scan-failed");
+        } else if (!scan.listed) {
+          await markFailureStage("parent-death-capability-owner-not-listed");
+        } else if (scan.owners.size > 0) {
           await markFailureStage("parent-death-capability-orphan-owner");
         } else {
-          await markFailureStage("parent-death-capability-owner-unresolved");
+          await markFailureStage("parent-death-capability-owner-no-visible-process");
         }
         throw new Error("native integration capability listener survived supervisor death");
       }
       await markFailureStage("parent-death-model-socket");
       if (await unixSocketAcceptsConnections(state!.modelSocketPath)) {
-        const owners = await readLinuxUnixSocketOwnerProcessIds(state!.modelSocketPath).catch(
+        const scan = await readLinuxUnixSocketOwnerProcessIds(state!.modelSocketPath).catch(
           (): undefined => undefined,
         );
-        if (owners !== undefined && owners.size > 0) {
+        if (scan === undefined) {
+          await markFailureStage("parent-death-model-owner-scan-failed");
+        } else if (!scan.listed) {
+          await markFailureStage("parent-death-model-owner-not-listed");
+        } else if (scan.owners.size > 0) {
           await markFailureStage("parent-death-model-orphan-owner");
         } else {
-          await markFailureStage("parent-death-model-owner-unresolved");
+          await markFailureStage("parent-death-model-owner-no-visible-process");
         }
         throw new Error("native integration model listener survived supervisor death");
       }
