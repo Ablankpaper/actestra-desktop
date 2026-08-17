@@ -20,6 +20,7 @@ import { EXPECTED_GOOSE_INITIALIZE_RESULT, LoopbackGooseAcpTransport } from "../
 const fixtureDirectories: string[] = [];
 const fixtureTargetTriple = process.arch === "x64" ? "x86_64-apple-darwin" : "aarch64-apple-darwin";
 const fixtureTemporaryRoot = process.platform === "win32" ? os.tmpdir() : "/tmp";
+const linuxIt = process.platform === "win32" ? it.skip : it;
 
 class FailingCloseGooseAcpTransport extends LoopbackGooseAcpTransport {
   override async close(): Promise<void> {
@@ -328,7 +329,7 @@ describe("Goose runner private lifecycle", () => {
     },
   );
 
-  it("uses the fixed Linux package executable without creating an attempt bin", async () => {
+  linuxIt("uses the fixed Linux package executable without creating an attempt bin", async () => {
     const fixture = await createLifecycleFixture();
     const transport = new LoopbackGooseAcpTransport();
     const executableSha256 = fixture.artifact.executableSha256;
