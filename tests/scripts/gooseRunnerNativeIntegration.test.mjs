@@ -159,6 +159,10 @@ describe("P8.2b Linux authenticated Goose integration gate", () => {
       "integration-parent-death-model-owner-no-visible-process-failed",
       "integration-parent-death-capability-owner-scan-failed",
       "integration-parent-death-model-owner-scan-failed",
+      "integration-parent-death-capability-owner-fd-inaccessible-failed",
+      "integration-parent-death-model-owner-fd-inaccessible-failed",
+      "integration-parent-death-capability-owner-process-race-failed",
+      "integration-parent-death-model-owner-process-race-failed",
       "integration-parent-death-runner-not-exited-failed",
       "integration-parent-death-capability-socket-failed",
       "integration-parent-death-model-socket-failed",
@@ -191,6 +195,12 @@ describe("P8.2b Linux authenticated Goose integration gate", () => {
     );
     expect(integration).toContain('markFailureStage("parent-death-capability-owner-scan-failed")');
     expect(integration).toContain('markFailureStage("parent-death-model-owner-scan-failed")');
+    expect(integration).toContain(
+      'markFailureStage("parent-death-capability-owner-fd-inaccessible")',
+    );
+    expect(integration).toContain('markFailureStage("parent-death-model-owner-fd-inaccessible")');
+    expect(integration).toContain('markFailureStage("parent-death-capability-owner-process-race")');
+    expect(integration).toContain('markFailureStage("parent-death-model-owner-process-race")');
     expect(integration).toContain('markFailureStage("parent-death-runner-not-exited")');
     expect(integration).toContain('markFailureStage("parent-death-capability-socket")');
     expect(integration).toContain('markFailureStage("parent-death-model-socket")');

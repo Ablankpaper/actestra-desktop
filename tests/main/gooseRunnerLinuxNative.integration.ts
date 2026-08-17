@@ -106,6 +106,10 @@ type NativeIntegrationFailureStage =
   | "parent-death-model-owner-no-visible-process"
   | "parent-death-capability-owner-scan-failed"
   | "parent-death-model-owner-scan-failed"
+  | "parent-death-capability-owner-fd-inaccessible"
+  | "parent-death-model-owner-fd-inaccessible"
+  | "parent-death-capability-owner-process-race"
+  | "parent-death-model-owner-process-race"
   | "parent-death-runner-not-exited"
   | "parent-death-capability-socket"
   | "parent-death-model-socket"
@@ -572,6 +576,8 @@ async function unixSocketAcceptsConnections(socketPath: string): Promise<boolean
 interface LinuxUnixSocketOwnerScan {
   readonly listed: boolean;
   readonly owners: ReadonlySet<number>;
+  readonly inaccessible: boolean;
+  readonly processRace: boolean;
 }
 
 async function readLinuxUnixSocketOwnerProcessIds(
@@ -593,18 +599,31 @@ async function readLinuxUnixSocketOwnerProcessIds(
     );
   const inode = entry?.[6];
   if (inode === undefined || !/^[1-9][0-9]*$/u.test(inode)) {
-    return Object.freeze({ listed: false, owners: new Set<number>() });
+    return Object.freeze({
+      listed: false,
+      owners: new Set<number>(),
+      inaccessible: false,
+      processRace: false,
+    });
   }
   const processes = await readdir("/proc", { withFileTypes: true });
   if (processes.length > 4_096) {
     throw new Error("native integration process table exceeded its bound");
   }
   const owners = new Set<number>();
+  let inaccessible = false;
+  let processRace = false;
   const socketDescriptor = `socket:[${inode}]`;
   for (const processEntry of processes) {
     if (!processEntry.isDirectory() || !/^[1-9][0-9]*$/u.test(processEntry.name)) continue;
     const descriptors = await readdir(path.join("/proc", processEntry.name, "fd")).catch(
-      (): undefined => undefined,
+      (error: unknown): undefined => {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === "EACCES" || code === "EPERM") inaccessible = true;
+        else if (code === "ENOENT") processRace = true;
+        else throw error;
+        return undefined;
+      },
     );
     if (descriptors === undefined) continue;
     if (descriptors.length > 4_096) {
@@ -612,7 +631,13 @@ async function readLinuxUnixSocketOwnerProcessIds(
     }
     for (const descriptor of descriptors) {
       const target = await readlink(path.join("/proc", processEntry.name, "fd", descriptor)).catch(
-        (): undefined => undefined,
+        (error: unknown): undefined => {
+          const code = (error as NodeJS.ErrnoException).code;
+          if (code === "EACCES" || code === "EPERM") inaccessible = true;
+          else if (code === "ENOENT") processRace = true;
+          else throw error;
+          return undefined;
+        },
       );
       if (target === socketDescriptor) {
         owners.add(Number(processEntry.name));
@@ -620,7 +645,7 @@ async function readLinuxUnixSocketOwnerProcessIds(
       }
     }
   }
-  return Object.freeze({ listed: true, owners });
+  return Object.freeze({ listed: true, owners, inaccessible, processRace });
 }
 
 const evidence: NativeIntegrationEvidence = {
@@ -945,6 +970,10 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
           await markFailureStage("parent-death-capability-owner-not-listed");
         } else if (scan.owners.size > 0) {
           await markFailureStage("parent-death-capability-orphan-owner");
+        } else if (scan.inaccessible) {
+          await markFailureStage("parent-death-capability-owner-fd-inaccessible");
+        } else if (scan.processRace) {
+          await markFailureStage("parent-death-capability-owner-process-race");
         } else {
           await markFailureStage("parent-death-capability-owner-no-visible-process");
         }
@@ -961,6 +990,10 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
           await markFailureStage("parent-death-model-owner-not-listed");
         } else if (scan.owners.size > 0) {
           await markFailureStage("parent-death-model-orphan-owner");
+        } else if (scan.inaccessible) {
+          await markFailureStage("parent-death-model-owner-fd-inaccessible");
+        } else if (scan.processRace) {
+          await markFailureStage("parent-death-model-owner-process-race");
         } else {
           await markFailureStage("parent-death-model-owner-no-visible-process");
         }

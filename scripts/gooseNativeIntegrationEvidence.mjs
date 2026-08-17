@@ -76,6 +76,14 @@ const FAILURE_STAGE_CODES = Object.freeze({
   "parent-death-capability-owner-scan-failed":
     "integration-parent-death-capability-owner-scan-failed",
   "parent-death-model-owner-scan-failed": "integration-parent-death-model-owner-scan-failed",
+  "parent-death-capability-owner-fd-inaccessible":
+    "integration-parent-death-capability-owner-fd-inaccessible-failed",
+  "parent-death-model-owner-fd-inaccessible":
+    "integration-parent-death-model-owner-fd-inaccessible-failed",
+  "parent-death-capability-owner-process-race":
+    "integration-parent-death-capability-owner-process-race-failed",
+  "parent-death-model-owner-process-race":
+    "integration-parent-death-model-owner-process-race-failed",
   "parent-death-runner-not-exited": "integration-parent-death-runner-not-exited-failed",
   "parent-death-capability-socket": "integration-parent-death-capability-socket-failed",
   "parent-death-model-socket": "integration-parent-death-model-socket-failed",
