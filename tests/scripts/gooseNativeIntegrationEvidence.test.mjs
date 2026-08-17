@@ -121,6 +121,10 @@ describe("Goose native integration evidence", () => {
       ["crash", "integration-crash-failed"],
       ["restart", "integration-restart-failed"],
       ["parent-death", "integration-parent-death-failed"],
+      ["parent-death-runner-not-exited", "integration-parent-death-runner-not-exited-failed"],
+      ["parent-death-capability-socket", "integration-parent-death-capability-socket-failed"],
+      ["parent-death-model-socket", "integration-parent-death-model-socket-failed"],
+      ["parent-death-private-root", "integration-parent-death-private-root-failed"],
       ["cleanup", "integration-cleanup-failed"],
     ]) {
       expect(classify({ contractVersion: 1, stage })).toBe(code);

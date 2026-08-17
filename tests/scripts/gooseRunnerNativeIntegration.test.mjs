@@ -127,6 +127,10 @@ describe("P8.2b Linux authenticated Goose integration gate", () => {
       "integration-runner-panic-failed",
       "integration-runner-relay-failed",
       "integration-runner-runtime-failed",
+      "integration-parent-death-runner-not-exited-failed",
+      "integration-parent-death-capability-socket-failed",
+      "integration-parent-death-model-socket-failed",
+      "integration-parent-death-private-root-failed",
     ]) {
       expect(launcher).toContain(`"${code}"`);
     }
@@ -140,6 +144,10 @@ describe("P8.2b Linux authenticated Goose integration gate", () => {
     expect(integration).toContain('markFailureStage("crash")');
     expect(integration).toContain('markFailureStage("restart")');
     expect(integration).toContain('markFailureStage("parent-death")');
+    expect(integration).toContain('markFailureStage("parent-death-runner-not-exited")');
+    expect(integration).toContain('markFailureStage("parent-death-capability-socket")');
+    expect(integration).toContain('markFailureStage("parent-death-model-socket")');
+    expect(integration).toContain('markFailureStage("parent-death-private-root")');
     expect(integration).toContain('markFailureStage("cleanup")');
   });
 

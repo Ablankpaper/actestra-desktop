@@ -93,6 +93,10 @@ type NativeIntegrationFailureStage =
   | "initialize"
   | "launch-contract"
   | "parent-death"
+  | "parent-death-runner-not-exited"
+  | "parent-death-capability-socket"
+  | "parent-death-model-socket"
+  | "parent-death-private-root"
   | "prompt"
   | "restart"
   | "runner-open"
@@ -823,10 +827,16 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
         return Number.isSafeInteger(state?.runnerPid);
       }, 30_000);
       process.kill(-supervisor.pid!, "SIGKILL");
-      await waitFor(async () => !(await linuxProcessIsExecuting(state!.runnerPid)), 5_000);
+      try {
+        await waitFor(async () => !(await linuxProcessIsExecuting(state!.runnerPid)), 5_000);
+      } catch (error) {
+        await markFailureStage("parent-death-runner-not-exited");
+        throw error;
+      }
+      await markFailureStage("parent-death-capability-socket");
       expect(await unixSocketAcceptsConnections(state!.capabilitySocketPath)).toBe(false);
+      await markFailureStage("parent-death-model-socket");
       expect(await unixSocketAcceptsConnections(state!.modelSocketPath)).toBe(false);
-      evidence.parentDeath = true;
     } finally {
       if (supervisor.pid !== undefined && processIsAlive(supervisor.pid)) {
         process.kill(-supervisor.pid, "SIGKILL");
@@ -838,7 +848,9 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
         await rm(state.privateRoot, { recursive: true, force: true });
       }
     }
+    await markFailureStage("parent-death-private-root");
     expect(await readdir(fixture.attempts)).toEqual([]);
+    evidence.parentDeath = true;
   }, 60_000);
 
   it("leaves no private-root residue after all Main-owned cleanup paths", async () => {
