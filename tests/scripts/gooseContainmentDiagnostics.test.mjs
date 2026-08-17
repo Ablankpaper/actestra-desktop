@@ -60,14 +60,14 @@ describe("Goose containment probe diagnostics", () => {
     }
   });
 
-  it("classifies bounded partial stages without declaring containment verified", () => {
+  it("classifies bounded process and resource stages without declaring containment verified", () => {
     const evidence = {
-      cleanup: false,
+      cleanup: true,
       contractVersion: 1,
       executableSha256: "c".repeat(64),
-      filesystem: false,
-      network: false,
-      parentDeath: false,
+      filesystem: true,
+      network: true,
+      parentDeath: true,
       probeSha256: "b".repeat(64),
       processTree: true,
       resources: true,
@@ -84,5 +84,32 @@ describe("Goose containment probe diagnostics", () => {
     expect(classifyGooseContainmentIncompleteEvidence({ ...evidence, resources: false })).toBe(
       "resource-evidence-incomplete",
     );
+  });
+
+  it.each([
+    ["filesystem", "filesystem-evidence-incomplete"],
+    ["network", "network-evidence-incomplete"],
+    ["parentDeath", "parent-death-evidence-incomplete"],
+    ["cleanup", "cleanup-evidence-incomplete"],
+  ])("classifies the bounded %s stage without exposing probe values", (capability, code) => {
+    const evidence = {
+      cleanup: true,
+      contractVersion: 1,
+      executableSha256: "c".repeat(64),
+      filesystem: true,
+      network: true,
+      parentDeath: true,
+      probeSha256: "b".repeat(64),
+      processTree: true,
+      resources: true,
+      sourceCommit: "a".repeat(40),
+      status: "evidence-incomplete",
+      targetTriple: "x86_64-unknown-linux-gnu",
+      [capability]: false,
+    };
+
+    expect(classifyGooseContainmentIncompleteEvidence(evidence)).toBe(code);
+    expect(code).not.toContain("/");
+    expect(code).not.toContain(" ");
   });
 });

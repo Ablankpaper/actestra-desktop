@@ -27,6 +27,10 @@ const CAPABILITY_KEYS = Object.freeze([
 const CONTAINMENT_RECORD_KEYS = Object.freeze(EVIDENCE_KEYS.filter((key) => key !== "status"));
 const MAX_PROBE_DIAGNOSTIC_BYTES = 64 * 1024;
 export const GOOSE_CONTAINMENT_PROBE_DIAGNOSTIC_CODES = Object.freeze([
+  "cleanup-evidence-incomplete",
+  "filesystem-evidence-incomplete",
+  "network-evidence-incomplete",
+  "parent-death-evidence-incomplete",
   "process-creation-not-denied",
   "process-evidence-incomplete",
   "process-exec-not-denied",
@@ -94,6 +98,10 @@ export function classifyGooseContainmentIncompleteEvidence(value) {
   }
   if (value.processTree !== true) return "process-evidence-incomplete";
   if (value.resources !== true) return "resource-evidence-incomplete";
+  if (value.filesystem !== true) return "filesystem-evidence-incomplete";
+  if (value.network !== true) return "network-evidence-incomplete";
+  if (value.parentDeath !== true) return "parent-death-evidence-incomplete";
+  if (value.cleanup !== true) return "cleanup-evidence-incomplete";
   return "remaining-evidence-incomplete";
 }
 

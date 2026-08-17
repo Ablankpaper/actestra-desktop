@@ -288,11 +288,15 @@ describe("Goose containment evidence binding", () => {
     }
   });
 
-  it("reports bounded remaining evidence when process and resources pass without binding", async () => {
+  it.each([
+    ["filesystem", "filesystem-evidence-incomplete"],
+    ["network", "network-evidence-incomplete"],
+    ["parentDeath", "parent-death-evidence-incomplete"],
+    ["cleanup", "cleanup-evidence-incomplete"],
+  ])("reports the bounded %s blocker without binding", async (capability, code) => {
     const fixture = await createFixture({
-      ...INCOMPLETE_CAPABILITIES,
-      processTree: true,
-      resources: true,
+      ...VERIFIED_CAPABILITIES,
+      [capability]: false,
     });
     try {
       const manifestPath = path.join(fixture.directory, "actestra-goose-runner.manifest.json");
@@ -300,7 +304,7 @@ describe("Goose containment evidence binding", () => {
       const result = runBinder(fixture);
       expect(result.status).toBe(2);
       expect(result.stdout).toBe("");
-      expect(result.stderr).toBe("Goose containment remaining-evidence-incomplete\n");
+      expect(result.stderr).toBe(`Goose containment ${code}\n`);
       expect(await readFile(manifestPath, "utf8")).toBe(before);
     } finally {
       await rm(fixture.directory, { recursive: true, force: true });
