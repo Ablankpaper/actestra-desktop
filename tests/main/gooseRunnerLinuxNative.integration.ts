@@ -503,6 +503,42 @@ function processIsAlive(processId: number): boolean {
   }
 }
 
+function linuxProcessStatIsExecuting(value: string): boolean {
+  const commandEnd = value.lastIndexOf(")");
+  if (commandEnd < 1 || value[commandEnd + 1] !== " " || value[commandEnd + 3] !== " ") {
+    return true;
+  }
+  const state = value[commandEnd + 2];
+  return state !== "Z" && state !== "X" && state !== "x";
+}
+
+async function linuxProcessIsExecuting(processId: number): Promise<boolean> {
+  try {
+    const stat = await readFile(path.join("/proc", String(processId), "stat"), "utf8");
+    return linuxProcessStatIsExecuting(stat);
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== "ENOENT";
+  }
+}
+
+describe("native Linux process execution state", () => {
+  it.each([
+    ["R", true],
+    ["S", true],
+    ["Z", false],
+    ["X", false],
+    ["x", false],
+  ])("treats /proc state %s as executing=%s", (state, executing) => {
+    expect(linuxProcessStatIsExecuting(`123 (actestra-goose-runner) ${state} 1 2 3`)).toBe(
+      executing,
+    );
+  });
+
+  it("fails closed when the bounded /proc stat shape is malformed", () => {
+    expect(linuxProcessStatIsExecuting("malformed process state")).toBe(true);
+  });
+});
+
 async function unixSocketAcceptsConnections(socketPath: string): Promise<boolean> {
   return new Promise((resolve) => {
     const socket = net.createConnection(socketPath);
@@ -787,7 +823,7 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
         return Number.isSafeInteger(state?.runnerPid);
       }, 30_000);
       process.kill(-supervisor.pid!, "SIGKILL");
-      await waitFor(() => !processIsAlive(state!.runnerPid), 5_000);
+      await waitFor(async () => !(await linuxProcessIsExecuting(state!.runnerPid)), 5_000);
       expect(await unixSocketAcceptsConnections(state!.capabilitySocketPath)).toBe(false);
       expect(await unixSocketAcceptsConnections(state!.modelSocketPath)).toBe(false);
       evidence.parentDeath = true;
