@@ -252,11 +252,26 @@ jobs:
       - name: Admit exact Ubuntu Goose runner artifact
         run: bun run goose:runner:admit-build
 
+      - name: Run authenticated Linux Goose integration
+        id: linux-integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          integration_root="$(mktemp -d "${RUNNER_TEMP}/actestra-goose-integration-XXXXXX")"
+          echo "root=${integration_root}" >> "$GITHUB_OUTPUT"
+          bun run goose:runner:integration:linux > "${integration_root}/integration-evidence.json"
+
       - name: Run exact Ubuntu containment acceptance
         shell: bash
         run: |
           set -o pipefail
-          bun run goose:runner:containment:accept | tee containment-evidence.json
+          bun run goose:runner:containment:accept -- \
+            "${{ steps.linux-integration.outputs.root }}/integration-evidence.json" \
+            "${{ steps.linux-integration.outputs.root }}" \
+            | tee containment-evidence.json
+
+      - name: Re-admit bound Ubuntu Goose runner artifact
+        run: bun run goose:runner:admit-build
 
       - name: Preserve bounded Ubuntu containment evidence
         if: success()

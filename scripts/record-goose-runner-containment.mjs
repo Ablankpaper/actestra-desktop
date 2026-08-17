@@ -9,11 +9,14 @@ import {
   classifyGooseContainmentProbeStderr,
   GOOSE_CONTAINMENT_PROBE_DIAGNOSTIC_CODES,
   validateGooseContainmentEvidence,
+  validateGooseContainmentPrimitiveEvidence,
   validateGooseContainmentRecord,
 } from "./gooseContainmentEvidence.mjs";
+import { validateGooseNativeIntegrationEvidence } from "./gooseNativeIntegrationEvidence.mjs";
 
 const MAX_MANIFEST_BYTES = 1024 * 1024;
 const MAX_PROBE_OUTPUT_BYTES = 64 * 1024;
+const MAX_INTEGRATION_EVIDENCE_BYTES = 64 * 1024;
 const PROBE_TIMEOUT_MS = 30_000;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
 const COMMIT_PATTERN = /^[a-f0-9]{40}$/u;
@@ -49,6 +52,13 @@ const FAILURE_CODES = new Set([
   "executable-invalid",
   "executable-metadata-invalid",
   "invalid-evidence",
+  "integration-artifact-mismatch",
+  "integration-evidence-incomplete",
+  "integration-evidence-invalid",
+  "integration-evidence-missing",
+  "integration-evidence-outside-root",
+  "integration-evidence-root-invalid",
+  "integration-evidence-too-large",
   "manifest-bind-failed",
   "manifest-invalid",
   "manifest-too-large",
@@ -65,8 +75,12 @@ function digest(value) {
 }
 
 function fixedFailure(code) {
+  const normalized =
+    code === "invalid-integration-evidence" ? "integration-evidence-invalid" : code;
   const safeCode =
-    typeof code === "string" && FAILURE_CODES.has(code) ? code : "containment-bind-failed";
+    typeof normalized === "string" && FAILURE_CODES.has(normalized)
+      ? normalized
+      : "containment-bind-failed";
   process.stderr.write(`Goose containment ${safeCode}\n`);
   process.exitCode = 2;
 }
@@ -123,6 +137,50 @@ async function readArtifact(artifactDirectory) {
     throw new Error("manifest-invalid");
   }
   return { manifestPath, manifest };
+}
+
+async function validateLinuxIntegrationEvidence(evidencePath, evidenceRoot, binding) {
+  if (
+    typeof evidencePath !== "string" ||
+    typeof evidenceRoot !== "string" ||
+    !path.isAbsolute(evidencePath) ||
+    !path.isAbsolute(evidenceRoot)
+  ) {
+    throw new Error("integration-evidence-missing");
+  }
+  const rootStat = await lstat(evidenceRoot).catch(() => undefined);
+  if (rootStat === undefined || !rootStat.isDirectory() || rootStat.isSymbolicLink()) {
+    throw new Error("integration-evidence-root-invalid");
+  }
+  const canonicalRoot = await realpath(evidenceRoot).catch(() => {
+    throw new Error("integration-evidence-root-invalid");
+  });
+  const evidenceStat = await lstat(evidencePath).catch(() => undefined);
+  if (evidenceStat === undefined || !evidenceStat.isFile() || evidenceStat.isSymbolicLink()) {
+    throw new Error("integration-evidence-missing");
+  }
+  if (evidenceStat.size > MAX_INTEGRATION_EVIDENCE_BYTES) {
+    throw new Error("integration-evidence-too-large");
+  }
+  const canonicalEvidencePath = await realpath(evidencePath).catch(() => {
+    throw new Error("integration-evidence-missing");
+  });
+  const relativeEvidencePath = path.relative(canonicalRoot, canonicalEvidencePath);
+  if (
+    relativeEvidencePath.length === 0 ||
+    relativeEvidencePath.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relativeEvidencePath)
+  ) {
+    throw new Error("integration-evidence-outside-root");
+  }
+  let evidence;
+  try {
+    evidence = JSON.parse((await readFile(canonicalEvidencePath)).toString("utf8"));
+  } catch {
+    throw new Error("integration-evidence-invalid");
+  }
+  const validation = validateGooseNativeIntegrationEvidence(evidence, binding);
+  if (!validation.ok) throw new Error(validation.code);
 }
 
 async function bindContainment() {
@@ -185,6 +243,14 @@ async function bindContainment() {
   const probeSource = await readFile(path.join(repositoryRoot, sourceRelativePath));
   const probeSha256 = digest(probeSource);
 
+  if (targetTriple === "x86_64-unknown-linux-gnu") {
+    await validateLinuxIntegrationEvidence(process.argv[4], process.argv[5], {
+      targetTriple,
+      sourceCommit,
+      executableSha256,
+    });
+  }
+
   const existing = manifest.containment;
   if (existing !== undefined) {
     const validation = validateGooseContainmentRecord(existing, {
@@ -233,12 +299,20 @@ async function bindContainment() {
     fixedFailure("invalid-evidence");
     return;
   }
-  const validation = validateGooseContainmentEvidence(evidence, {
-    targetTriple,
-    sourceCommit,
-    executableSha256,
-    probeSha256,
-  });
+  const validation =
+    targetTriple === "x86_64-unknown-linux-gnu"
+      ? validateGooseContainmentPrimitiveEvidence(evidence, {
+          targetTriple,
+          sourceCommit,
+          executableSha256,
+          probeSha256,
+        })
+      : validateGooseContainmentEvidence(evidence, {
+          targetTriple,
+          sourceCommit,
+          executableSha256,
+          probeSha256,
+        });
   if (!validation.ok) {
     const diagnostic =
       classifyGooseContainmentProbeStderr(result.stderr) ??

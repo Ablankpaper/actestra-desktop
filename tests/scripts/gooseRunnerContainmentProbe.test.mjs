@@ -3,7 +3,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { validateGooseContainmentEvidence } from "../../scripts/gooseContainmentEvidence.mjs";
+import {
+  validateGooseContainmentEvidence,
+  validateGooseContainmentPrimitiveEvidence,
+} from "../../scripts/gooseContainmentEvidence.mjs";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "../..");
 const linuxContainmentPath = path.join(
@@ -59,6 +62,13 @@ describe("Goose native containment probe contract", () => {
     expect(runner).toContain('createHash("sha256")');
     expect(runner).toContain("MAX_PROBE_OUTPUT_BYTES");
     expect(runner).toContain("Buffer.byteLength(result.stdout");
+  });
+
+  it("rechecks Linux primitives without promoting the raw probe to verified", () => {
+    const runner = fs.readFileSync(probeRunnerPath, "utf8");
+    expect(runner).toContain("validateGooseContainmentPrimitiveEvidence");
+    expect(runner).toContain('targetTriple === "x86_64-unknown-linux-gnu"');
+    expect(runner).toContain("validateGooseContainmentEvidence");
   });
 
   it("binds only a verified native probe to the exact manifest atomically", () => {
@@ -198,6 +208,43 @@ describe("Goose native containment probe contract", () => {
         probeSha256: evidence.probeSha256,
       }),
     ).toEqual({ ok: true });
+  });
+
+  it("accepts all-true primitive evidence only while the raw probe stays incomplete", () => {
+    const evidence = {
+      contractVersion: 1,
+      targetTriple: "x86_64-unknown-linux-gnu",
+      sourceCommit: "a".repeat(40),
+      probeSha256: "b".repeat(64),
+      executableSha256: "c".repeat(64),
+      filesystem: true,
+      network: true,
+      processTree: true,
+      resources: true,
+      parentDeath: true,
+      cleanup: true,
+      status: "evidence-incomplete",
+    };
+    const binding = {
+      targetTriple: evidence.targetTriple,
+      sourceCommit: evidence.sourceCommit,
+      executableSha256: evidence.executableSha256,
+      probeSha256: evidence.probeSha256,
+    };
+
+    expect(validateGooseContainmentPrimitiveEvidence(evidence, binding)).toEqual({ ok: true });
+    expect(
+      validateGooseContainmentPrimitiveEvidence({ ...evidence, status: "verified" }, binding),
+    ).toEqual({ ok: false, code: "evidence-incomplete" });
+    expect(
+      validateGooseContainmentPrimitiveEvidence({ ...evidence, cleanup: false }, binding),
+    ).toEqual({ ok: false, code: "evidence-incomplete" });
+    expect(
+      validateGooseContainmentPrimitiveEvidence(evidence, {
+        ...binding,
+        executableSha256: "d".repeat(64),
+      }),
+    ).toEqual({ ok: false, code: "artifact-mismatch" });
   });
 
   it("rejects evidence whose probe digest differs from the bound implementation", () => {

@@ -8,6 +8,7 @@ import {
   classifyGooseContainmentIncompleteEvidence,
   classifyGooseContainmentProbeStderr,
   validateGooseContainmentEvidence,
+  validateGooseContainmentPrimitiveEvidence,
 } from "./gooseContainmentEvidence.mjs";
 
 const MAX_PROBE_OUTPUT_BYTES = 64 * 1024;
@@ -93,12 +94,20 @@ if (probeSourceRelativePath === undefined) {
   } catch {
     throw new Error("containment probe did not emit bounded JSON");
   }
-  const validation = validateGooseContainmentEvidence(evidence, {
-    targetTriple,
-    sourceCommit,
-    executableSha256,
-    probeSha256,
-  });
+  const validation =
+    targetTriple === "x86_64-unknown-linux-gnu"
+      ? validateGooseContainmentPrimitiveEvidence(evidence, {
+          targetTriple,
+          sourceCommit,
+          executableSha256,
+          probeSha256,
+        })
+      : validateGooseContainmentEvidence(evidence, {
+          targetTriple,
+          sourceCommit,
+          executableSha256,
+          probeSha256,
+        });
   if (!validation.ok) {
     const diagnostic =
       classifyGooseContainmentProbeStderr(result.stderr) ??

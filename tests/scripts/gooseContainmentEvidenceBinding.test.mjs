@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "../..");
 const binderPath = path.join(repositoryRoot, "scripts/record-goose-runner-containment.mjs");
@@ -26,6 +26,18 @@ const INCOMPLETE_CAPABILITIES = Object.freeze({
   processTree: false,
   resources: false,
 });
+const INTEGRATION_OUTCOMES = Object.freeze({
+  initialize: true,
+  openSession: true,
+  toolDiscovery: true,
+  prompt: true,
+  toolDenial: true,
+  cancellation: true,
+  crashRestart: true,
+  parentDeath: true,
+  cleanup: true,
+});
+const integrationRoots = [];
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -52,9 +64,7 @@ async function createFixture(
   const probeDigestExpression = probeSha256 ?? "$ACTESTRA_GOOSE_PROBE_SHA256";
   const diagnostic =
     probeStderr === undefined ? "" : `printf '%b' ${JSON.stringify(probeStderr)} >&2\n`;
-  const status = Object.values(capabilities).every((value) => value === true)
-    ? "verified"
-    : "evidence-incomplete";
+  const status = "evidence-incomplete";
   const executable = `#!/bin/sh\n${diagnostic}printf '{"contractVersion":1,"targetTriple":"%s","sourceCommit":"%s","probeSha256":"%s","executableSha256":"%s","filesystem":${String(capabilities.filesystem)},"network":${String(capabilities.network)},"processTree":${String(capabilities.processTree)},"resources":${String(capabilities.resources)},"parentDeath":${String(capabilities.parentDeath)},"cleanup":${String(capabilities.cleanup)},"status":"${status}"}' "$ACTESTRA_GOOSE_TARGET_TRIPLE" "$ACTESTRA_GOOSE_SOURCE_COMMIT" "${probeDigestExpression}" "$ACTESTRA_GOOSE_EXECUTABLE_SHA256"\n`;
   const executableBytes = Buffer.from(executable, "utf8");
   await writeFile(path.join(directory, "probe"), executableBytes, { mode: 0o700 });
@@ -74,17 +84,49 @@ async function createFixture(
     `${JSON.stringify(manifest)}\n`,
     { mode: 0o600 },
   );
-  return { directory, manifest };
+  const integrationRoot = await mkdtemp(path.join(os.tmpdir(), "actestra-integration-evidence-"));
+  integrationRoots.push(integrationRoot);
+  const integrationEvidencePath = path.join(integrationRoot, "integration-evidence.json");
+  await writeFile(
+    integrationEvidencePath,
+    `${JSON.stringify({
+      contractVersion: 1,
+      targetTriple,
+      sourceCommit: manifest.provenance.actestraCommit,
+      executableSha256: manifest.runner.executable.sha256,
+      ...INTEGRATION_OUTCOMES,
+      status: "verified",
+    })}\n`,
+    { mode: 0o600 },
+  );
+  return { directory, manifest, integrationEvidencePath, integrationRoot };
 }
+
+function runBinder(fixture, options = {}) {
+  const args = [binderPath, options.targetTriple ?? targetTriple, fixture.directory];
+  if (options.includeIntegration !== false) {
+    args.push(
+      options.integrationEvidencePath ?? fixture.integrationEvidencePath,
+      options.integrationRoot ?? fixture.integrationRoot,
+    );
+  }
+  return spawnSync("node", args, {
+    cwd: repositoryRoot,
+    encoding: "utf8",
+  });
+}
+
+afterAll(async () => {
+  await Promise.all(
+    integrationRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
+  );
+});
 
 describe("Goose containment evidence binding", () => {
   it("atomically binds verified evidence and is idempotent", async () => {
     const fixture = await createFixture();
     try {
-      const first = spawnSync("node", [binderPath, targetTriple, fixture.directory], {
-        cwd: repositoryRoot,
-        encoding: "utf8",
-      });
+      const first = runBinder(fixture);
       expect(first.status).toBe(0);
       expect(first.stdout).toBe("Goose containment manifest bound\n");
       expect(first.stderr).toBe("");
@@ -106,10 +148,7 @@ describe("Goose containment evidence binding", () => {
       });
       expect(bound.containment).not.toHaveProperty("status");
 
-      const second = spawnSync("node", [binderPath, targetTriple, fixture.directory], {
-        cwd: repositoryRoot,
-        encoding: "utf8",
-      });
+      const second = runBinder(fixture);
       expect(second.status).toBe(0);
       expect(second.stdout).toBe("Goose containment manifest already bound\n");
       expect(second.stderr).toBe("");
@@ -119,13 +158,88 @@ describe("Goose containment evidence binding", () => {
     }
   });
 
+  it("leaves the manifest untouched without authenticated integration evidence", async () => {
+    const fixture = await createFixture();
+    try {
+      const manifestPath = path.join(fixture.directory, "actestra-goose-runner.manifest.json");
+      const before = await readFile(manifestPath, "utf8");
+      const result = runBinder(fixture, { includeIntegration: false });
+
+      expect(result.status).toBe(2);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toBe("Goose containment integration-evidence-missing\n");
+      expect(await readFile(manifestPath, "utf8")).toBe(before);
+    } finally {
+      await rm(fixture.directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects integration evidence outside its caller-owned root", async () => {
+    const fixture = await createFixture();
+    const outsideRoot = await mkdtemp(path.join(os.tmpdir(), "actestra-outside-evidence-"));
+    integrationRoots.push(outsideRoot);
+    const outsidePath = path.join(outsideRoot, "integration-evidence.json");
+    await writeFile(outsidePath, await readFile(fixture.integrationEvidencePath));
+    try {
+      const manifestPath = path.join(fixture.directory, "actestra-goose-runner.manifest.json");
+      const before = await readFile(manifestPath, "utf8");
+      const result = runBinder(fixture, { integrationEvidencePath: outsidePath });
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toBe("Goose containment integration-evidence-outside-root\n");
+      expect(await readFile(manifestPath, "utf8")).toBe(before);
+    } finally {
+      await rm(fixture.directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ["mismatched Artifact", "integration-artifact-mismatch", { sourceCommit: "d".repeat(40) }],
+    ["incomplete outcome", "integration-evidence-incomplete", { cleanup: false }],
+    ["unknown key", "integration-evidence-invalid", { unexpected: true }],
+  ])("rejects %s integration evidence before manifest mutation", async (_label, code, mutation) => {
+    const fixture = await createFixture();
+    try {
+      const candidate = JSON.parse(await readFile(fixture.integrationEvidencePath, "utf8"));
+      await writeFile(
+        fixture.integrationEvidencePath,
+        `${JSON.stringify({ ...candidate, ...mutation })}\n`,
+      );
+      const manifestPath = path.join(fixture.directory, "actestra-goose-runner.manifest.json");
+      const before = await readFile(manifestPath, "utf8");
+      const result = runBinder(fixture);
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toBe(`Goose containment ${code}\n`);
+      expect(await readFile(manifestPath, "utf8")).toBe(before);
+    } finally {
+      await rm(fixture.directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ["malformed", "integration-evidence-invalid", "{not-json"],
+    ["oversized", "integration-evidence-too-large", "x".repeat(65 * 1024)],
+  ])("rejects %s integration evidence with a closed code", async (_label, code, contents) => {
+    const fixture = await createFixture();
+    try {
+      await writeFile(fixture.integrationEvidencePath, contents);
+      const manifestPath = path.join(fixture.directory, "actestra-goose-runner.manifest.json");
+      const before = await readFile(manifestPath, "utf8");
+      const result = runBinder(fixture);
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toBe(`Goose containment ${code}\n`);
+      expect(await readFile(manifestPath, "utf8")).toBe(before);
+    } finally {
+      await rm(fixture.directory, { recursive: true, force: true });
+    }
+  });
+
   it("rejects an already-bound manifest when its probe implementation digest drifts", async () => {
     const fixture = await createFixture();
     try {
-      const first = spawnSync("node", [binderPath, targetTriple, fixture.directory], {
-        cwd: repositoryRoot,
-        encoding: "utf8",
-      });
+      const first = runBinder(fixture);
       expect(first.status).toBe(0);
 
       const manifestPath = path.join(fixture.directory, "actestra-goose-runner.manifest.json");
@@ -134,10 +248,7 @@ describe("Goose containment evidence binding", () => {
       const driftedBytes = `${JSON.stringify(drifted, null, 2)}\n`;
       await writeFile(manifestPath, driftedBytes, { mode: 0o600 });
 
-      const second = spawnSync("node", [binderPath, targetTriple, fixture.directory], {
-        cwd: repositoryRoot,
-        encoding: "utf8",
-      });
+      const second = runBinder(fixture);
       expect(second.status).toBe(2);
       expect(second.stdout).toBe("");
       expect(second.stderr).toBe("Goose containment artifact-mismatch\n");
@@ -152,12 +263,24 @@ describe("Goose containment evidence binding", () => {
     try {
       const manifestPath = path.join(fixture.directory, "actestra-goose-runner.manifest.json");
       const before = await readFile(manifestPath, "utf8");
-      const result = spawnSync("node", [binderPath, targetTriple, fixture.directory], {
-        cwd: repositoryRoot,
-        encoding: "utf8",
-      });
+      const result = runBinder(fixture);
       expect(result.status).toBe(2);
       expect(result.stdout).toBe("");
+      expect(result.stderr).toBe("Goose containment process-evidence-incomplete\n");
+      expect(await readFile(manifestPath, "utf8")).toBe(before);
+    } finally {
+      await rm(fixture.directory, { recursive: true, force: true });
+    }
+  });
+
+  it("does not reuse Linux integration evidence for an incomplete Windows probe", async () => {
+    const fixture = await createFixture(INCOMPLETE_CAPABILITIES);
+    try {
+      const manifestPath = path.join(fixture.directory, "actestra-goose-runner.manifest.json");
+      const before = await readFile(manifestPath, "utf8");
+      const result = runBinder(fixture, { targetTriple: "x86_64-pc-windows-msvc" });
+
+      expect(result.status).toBe(2);
       expect(result.stderr).toBe("Goose containment process-evidence-incomplete\n");
       expect(await readFile(manifestPath, "utf8")).toBe(before);
     } finally {
@@ -174,10 +297,7 @@ describe("Goose containment evidence binding", () => {
     try {
       const manifestPath = path.join(fixture.directory, "actestra-goose-runner.manifest.json");
       const before = await readFile(manifestPath, "utf8");
-      const result = spawnSync("node", [binderPath, targetTriple, fixture.directory], {
-        cwd: repositoryRoot,
-        encoding: "utf8",
-      });
+      const result = runBinder(fixture);
       expect(result.status).toBe(2);
       expect(result.stdout).toBe("");
       expect(result.stderr).toBe("Goose containment remaining-evidence-incomplete\n");
@@ -198,10 +318,7 @@ describe("Goose containment evidence binding", () => {
     try {
       const manifestPath = path.join(fixture.directory, "actestra-goose-runner.manifest.json");
       const before = await readFile(manifestPath, "utf8");
-      const result = spawnSync("node", [binderPath, targetTriple, fixture.directory], {
-        cwd: repositoryRoot,
-        encoding: "utf8",
-      });
+      const result = runBinder(fixture);
       expect(result.status).toBe(2);
       expect(result.stdout).toBe("");
       expect(result.stderr).toBe("Goose containment resource-rlimit-mismatch\n");
@@ -217,10 +334,7 @@ describe("Goose containment evidence binding", () => {
     try {
       const manifestPath = path.join(fixture.directory, "actestra-goose-runner.manifest.json");
       const before = await readFile(manifestPath, "utf8");
-      const result = spawnSync("node", [binderPath, targetTriple, fixture.directory], {
-        cwd: repositoryRoot,
-        encoding: "utf8",
-      });
+      const result = runBinder(fixture);
       expect(result.status).toBe(2);
       expect(result.stdout).toBe("");
       expect(result.stderr).toBe("Goose containment artifact-mismatch\n");
@@ -235,10 +349,7 @@ describe("Goose containment evidence binding", () => {
     try {
       const manifestPath = path.join(fixture.directory, "actestra-goose-runner.manifest.json");
       const before = await readFile(manifestPath, "utf8");
-      const result = spawnSync("node", [binderPath, targetTriple, fixture.directory], {
-        cwd: repositoryRoot,
-        encoding: "utf8",
-      });
+      const result = runBinder(fixture);
       expect(result.status).toBe(2);
       expect(result.stdout).toBe("");
       expect(result.stderr).toBe("Goose containment artifact-directory-outside-trust-root\n");
@@ -253,10 +364,7 @@ describe("Goose containment evidence binding", () => {
     const manifestPath = path.join(fixture.directory, "actestra-goose-runner.manifest.json");
     try {
       await chmod(manifestPath, 0o000);
-      const result = spawnSync("node", [binderPath, targetTriple, fixture.directory], {
-        cwd: repositoryRoot,
-        encoding: "utf8",
-      });
+      const result = runBinder(fixture);
       expect(result.status).toBe(2);
       expect(result.stdout).toBe("");
       expect(result.stderr).toBe("Goose containment containment-bind-failed\n");

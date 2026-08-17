@@ -58,6 +58,7 @@
     "goose:runner:test": "node scripts/test-goose-runner.mjs",
     "goose:runner:containment": "node scripts/record-goose-runner-containment.mjs",
     "goose:runner:containment:accept": "node scripts/run-goose-runner-containment.mjs",
+    "goose:runner:integration:linux": "node scripts/run-goose-runner-native-integration.mjs",
     "goose:runner:check": "bun run goose:runner:format:check && bun run goose:runner:tools && bun run goose:runner:build && bun run goose:runner:test",
     "check": "bun run format:check && bun run lint && bun run typecheck && bun run p8:contract:check && bun run test:electron-sqlite && bun run test && bun run test:security && bun run test:smoke-harness && bun run boundary:check && bun run foundation:aionui:check && bun run downstream:aionui:check && bun run package"
   },

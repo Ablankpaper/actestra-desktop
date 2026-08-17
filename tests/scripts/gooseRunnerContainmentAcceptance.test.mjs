@@ -10,6 +10,23 @@ function read(relativePath) {
   return fs.readFileSync(path.join(repositoryRoot, relativePath), "utf8");
 }
 
+function readWorkflowJob(workflow, jobId) {
+  const start = workflow.indexOf(`\n  ${jobId}:`);
+  if (start === -1) return "";
+  const end = workflow.slice(start + 1).search(/\n  [A-Za-z0-9_-]+:\n/u);
+  return workflow.slice(start, end === -1 ? workflow.length : start + 1 + end);
+}
+
+function expectOrderedFragments(contents, fragments) {
+  const normalized = contents.replace(/\s+/gu, " ");
+  let cursor = -1;
+  for (const fragment of fragments) {
+    const next = normalized.indexOf(fragment.replace(/\s+/gu, " "), cursor + 1);
+    expect(next, `missing or out-of-order fragment: ${fragment}`).toBeGreaterThan(cursor);
+    cursor = next;
+  }
+}
+
 describe("P8 native Goose containment acceptance gate", () => {
   it("registers a target-native acceptance command separate from build admission", () => {
     const scripts = JSON.parse(read("package.json")).scripts;
@@ -46,16 +63,44 @@ describe("P8 native Goose containment acceptance gate", () => {
     expect(linuxProbe).toContain('if complete { "verified" } else { "evidence-incomplete" }');
     expect(validator).toContain('value.status !== "verified"');
     expect(validator).toContain("CAPABILITY_KEYS.some((key) => value[key] !== true)");
+    expect(validator).toContain("validateGooseContainmentPrimitiveEvidence");
+    expect(binder).toContain("validateGooseNativeIntegrationEvidence");
 
-    const validationIndex = binder.indexOf(
-      "const validation = validateGooseContainmentEvidence(evidence",
-    );
+    const validationIndex = binder.indexOf("validateGooseContainmentPrimitiveEvidence(evidence");
     const manifestWriteIndex = binder.indexOf("const nextManifest =", validationIndex);
     expect(validationIndex).toBeGreaterThan(-1);
     expect(manifestWriteIndex).toBeGreaterThan(validationIndex);
     expect(binder.slice(validationIndex, manifestWriteIndex)).toContain("if (!validation.ok)");
-    expect(acceptance).not.toContain("writeFile");
+    expect(acceptance).toContain("integration-evidence.json");
     expect(acceptance).not.toContain("rename");
+  });
+
+  it("runs authenticated integration before primitive binding and always deletes temporary evidence", () => {
+    const source = read("scripts/run-goose-runner-containment.mjs");
+    const integrationIndex = source.indexOf("runNativeIntegration(");
+    const evidenceWriteIndex = source.indexOf("writeFile(", integrationIndex);
+    const bindingIndex = source.indexOf('"record-goose-runner-containment.mjs"');
+    const restartValidationIndex = source.indexOf("readVerifiedArtifact(", bindingIndex);
+
+    expect(integrationIndex).toBeGreaterThan(-1);
+    expect(evidenceWriteIndex).toBeGreaterThan(integrationIndex);
+    expect(bindingIndex).toBeGreaterThan(evidenceWriteIndex);
+    expect(restartValidationIndex).toBeGreaterThan(bindingIndex);
+    expect(source).toContain('mkdtemp(path.join(os.tmpdir(), "actestra-goose-composite-")');
+    expect(source).toContain("await rm(evidenceRoot, { recursive: true, force: true })");
+    expect(source).not.toContain("OPENAI_API_KEY");
+    expect(source).not.toContain("ACTESTRA_API_KEY");
+  });
+
+  it("accepts one caller-owned integration file without passing JSON on the command line", () => {
+    const source = read("scripts/run-goose-runner-containment.mjs");
+    expect(source).toContain("readProvidedIntegrationEvidence");
+    expect(source).toContain("process.argv[2]");
+    expect(source).toContain("process.argv[3]");
+    expect(source).toContain("validateGooseNativeIntegrationEvidence");
+    expect(source).toContain("onOwnedRoot(canonicalRoot)");
+    expect(source).toContain("evidenceRoot = ownedRoot");
+    expect(source).not.toContain("JSON.parse(process.argv");
   });
 
   it("binds source and executable identity to the production runner's exact native probe", () => {
@@ -104,6 +149,8 @@ describe("P8 native Goose containment acceptance gate", () => {
 
   it("keeps build admission separate from exact-artifact Ubuntu and Windows containment jobs", () => {
     const workflow = read(".github/workflows/ci.yml");
+    const linuxJob = readWorkflowJob(workflow, "goose-containment-linux");
+    const windowsJob = readWorkflowJob(workflow, "goose-containment-windows");
     expect(workflow).toContain("pull_request:");
     expect(workflow).toContain("P8.2 Ubuntu x64 Goose build probe");
     expect(workflow).toContain("P8.2 Windows x64 Goose build probe");
@@ -115,6 +162,7 @@ describe("P8 native Goose containment acceptance gate", () => {
     expect(workflow).toContain("if-no-files-found: error");
     expect(workflow).not.toContain("actions/download-artifact@");
     expect(workflow.match(/bun run goose:runner:containment:accept/gu) ?? []).toHaveLength(2);
+    expect(workflow.match(/bun run goose:runner:integration:linux/gu) ?? []).toHaveLength(1);
     expect(workflow).toMatch(
       /goose-runner-windows:[\s\S]*Admit emitted Goose runner artifact[\s\S]*goose-runner-linux:/u,
     );
@@ -127,6 +175,17 @@ describe("P8 native Goose containment acceptance gate", () => {
     expect(workflow).toMatch(
       /goose-containment-linux:[\s\S]*Build exact Ubuntu Goose runner artifact[\s\S]*Admit exact Ubuntu Goose runner artifact[\s\S]*Run exact Ubuntu containment acceptance/u,
     );
+    expectOrderedFragments(linuxJob, [
+      "Build exact Ubuntu Goose runner artifact",
+      "Admit exact Ubuntu Goose runner artifact",
+      "Run authenticated Linux Goose integration",
+      "Run exact Ubuntu containment acceptance",
+      "Re-admit bound Ubuntu Goose runner artifact",
+      "Preserve bounded Ubuntu containment evidence",
+    ]);
+    expect(linuxJob.match(/bun run goose:runner:admit-build/gu) ?? []).toHaveLength(2);
+    expect(linuxJob).toContain("${RUNNER_TEMP}");
+    expect(windowsJob).not.toContain("goose:runner:integration:linux");
     expect(workflow).not.toContain("continue-on-error");
     expect(workflow).not.toContain("OPENAI_API_KEY");
     expect(workflow).not.toContain("ACTESTRA_API_KEY");
