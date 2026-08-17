@@ -50,4 +50,14 @@ describe("Goose runner native source portability", () => {
     expect(policy).toBeGreaterThan(-1);
     expect(runtime).toBeGreaterThan(policy);
   });
+
+  it("exports the resource-limit test seam only in Rust test builds", () => {
+    const containment = fs.readFileSync(containmentModulePath, "utf8");
+    expect(containment).toContain(
+      "#[cfg(all(unix, test))]\npub(crate) use unix::apply_resource_limits_with;",
+    );
+    expect(containment).not.toContain(
+      "pub(crate) use unix::{apply_resource_limits, apply_resource_limits_with, watch_parent_liveness};",
+    );
+  });
 });

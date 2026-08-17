@@ -70,8 +70,10 @@ where
 
 #[cfg(target_os = "linux")]
 pub(crate) use linux::install_process_creation_filter;
+#[cfg(all(unix, test))]
+pub(crate) use unix::apply_resource_limits_with;
 #[cfg(unix)]
-pub(crate) use unix::{apply_resource_limits, apply_resource_limits_with, watch_parent_liveness};
+pub(crate) use unix::{apply_resource_limits, watch_parent_liveness};
 #[cfg(windows)]
 pub(crate) use windows::{apply_resource_limits, watch_parent_liveness};
 

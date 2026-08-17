@@ -102,6 +102,12 @@ describe("Goose native containment probe contract", () => {
     expect(source).not.toContain("can_install_seccomp_filter");
   });
 
+  it("checks the hostile thread result without requiring panic payload equality", () => {
+    const source = fs.readFileSync(linuxContainmentPath, "utf8");
+    expect(source).toMatch(/matches!\(std::thread::spawn\(\|\| 7_u8\)\.join\(\),\s*Ok\(7_u8\)\)/u);
+    expect(source).not.toContain(".join() != Ok(7_u8)");
+  });
+
   it("requires hostile network, resource, parent-death, and cleanup probes", () => {
     const source = fs.readFileSync(linuxContainmentPath, "utf8");
     for (const stage of [

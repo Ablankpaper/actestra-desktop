@@ -501,7 +501,7 @@ fn run_process_tree_probe() -> bool {
         if install_process_creation_filter().is_err() {
             unsafe { libc::_exit(20) };
         }
-        if std::thread::spawn(|| 7_u8).join() != Ok(7_u8) {
+        if !matches!(std::thread::spawn(|| 7_u8).join(), Ok(7_u8)) {
             unsafe { libc::_exit(21) };
         }
 
