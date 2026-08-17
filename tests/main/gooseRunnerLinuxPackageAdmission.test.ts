@@ -205,25 +205,65 @@ describe("Main-owned Ubuntu Goose package admission", () => {
   });
 
   it.each([
-    ["missing-profile", "linux-package-path-metadata-invalid"],
+    [
+      "missing-profile",
+      {
+        ok: false,
+        code: "linux-package-path-metadata-invalid",
+        pathId: "profile",
+        reason: "unreadable",
+      },
+    ],
     ["profile-digest-drift", "linux-package-profile-digest-mismatch"],
     ["manifest-digest-drift", "linux-package-artifact-binding-mismatch"],
     ["executable-digest-drift", "linux-package-artifact-binding-mismatch"],
-    ["symlink-component", "linux-package-path-metadata-invalid"],
-    ["non-root-owner", "linux-package-path-metadata-invalid"],
-    ["group-writable", "linux-package-path-metadata-invalid"],
-    ["other-writable", "linux-package-path-metadata-invalid"],
+    [
+      "symlink-component",
+      {
+        ok: false,
+        code: "linux-package-path-metadata-invalid",
+        pathId: "install-root",
+        reason: "canonical-mismatch",
+      },
+    ],
+    [
+      "non-root-owner",
+      {
+        ok: false,
+        code: "linux-package-path-metadata-invalid",
+        pathId: "runner-directory",
+        reason: "owner-mismatch",
+      },
+    ],
+    [
+      "group-writable",
+      {
+        ok: false,
+        code: "linux-package-path-metadata-invalid",
+        pathId: "runner-directory",
+        reason: "mode-invalid",
+      },
+    ],
+    [
+      "other-writable",
+      {
+        ok: false,
+        code: "linux-package-path-metadata-invalid",
+        pathId: "profile",
+        reason: "mode-invalid",
+      },
+    ],
     ["wrong-resources-path", "linux-package-resources-path-invalid"],
     ["bootstrap-failure", "linux-package-bootstrap-failed"],
     ["artifact-admission-failure", "linux-package-artifact-admission-failed"],
-  ] as const)("reports only the closed %s rejection reason", async (fault, code) => {
+  ] as const)("reports only the closed %s rejection reason", async (fault, expected) => {
     const value = fixture(fault === "wrong-resources-path" ? "none" : fault);
     const result = await inspectInstalledGooseRunnerLinuxPackageAdmission(
       fault === "wrong-resources-path" ? "/opt/Actestra/resources-link" : value.resourcesPath,
       value,
     );
 
-    expect(result).toEqual({ ok: false, code });
+    expect(result).toEqual(typeof expected === "string" ? { ok: false, code: expected } : expected);
     expect(JSON.stringify(result)).not.toContain("injected artifact rejection");
   });
 });

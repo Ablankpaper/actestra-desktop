@@ -40,16 +40,20 @@ describe("installed Ubuntu Goose package verifier", () => {
     });
   });
 
-  it("returns the closed rejection code without retaining diagnostics", async () => {
+  it("returns only the closed path slot and reason without retaining diagnostics", async () => {
     const value = await verifyAionuiLinuxGooseInstall(async () => ({
       ok: false,
       code: "linux-package-path-metadata-invalid",
+      pathId: "install-root",
+      reason: "mode-invalid",
       diagnostic: "/private/path must not cross this boundary",
     }));
 
     expect(value).toEqual({
       status: "failed",
       code: "linux-package-path-metadata-invalid",
+      pathId: "install-root",
+      reason: "mode-invalid",
     });
     expect(JSON.stringify(value)).not.toContain("/private/path");
   });

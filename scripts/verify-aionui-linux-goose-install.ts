@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url";
 import {
   inspectInstalledGooseRunnerLinuxPackageAdmission,
   type GooseRunnerLinuxPackageAdmissionFailureCode,
+  type GooseRunnerLinuxPackagePathFailureReason,
+  type GooseRunnerLinuxPackagePathId,
 } from "../apps/desktop/src/main/workers/gooseRunnerLinuxPackage";
 import { GOOSE_LINUX_RESOURCES_PATH } from "../apps/desktop/src/shared/gooseRunnerLinuxPackage";
 
@@ -18,10 +20,21 @@ type InstalledPackageInspection = () => Promise<
         readonly record: Readonly<{ readonly profileSha256: string }>;
       }>;
     }>
-  | Readonly<{
-      readonly ok: false;
-      readonly code: GooseRunnerLinuxPackageAdmissionFailureCode;
-    }>
+  | Readonly<
+      | {
+          readonly ok: false;
+          readonly code: "linux-package-path-metadata-invalid";
+          readonly pathId: GooseRunnerLinuxPackagePathId;
+          readonly reason: GooseRunnerLinuxPackagePathFailureReason;
+        }
+      | {
+          readonly ok: false;
+          readonly code: Exclude<
+            GooseRunnerLinuxPackageAdmissionFailureCode,
+            "linux-package-path-metadata-invalid"
+          >;
+        }
+    >
 >;
 
 export type AionuiLinuxGooseInstallVerification =
@@ -32,17 +45,38 @@ export type AionuiLinuxGooseInstallVerification =
       readonly executableSha256: string;
       readonly profileSha256: string;
     }>
-  | Readonly<{
-      readonly status: "failed";
-      readonly code: GooseRunnerLinuxPackageAdmissionFailureCode;
-    }>;
+  | Readonly<
+      | {
+          readonly status: "failed";
+          readonly code: "linux-package-path-metadata-invalid";
+          readonly pathId: GooseRunnerLinuxPackagePathId;
+          readonly reason: GooseRunnerLinuxPackagePathFailureReason;
+        }
+      | {
+          readonly status: "failed";
+          readonly code: Exclude<
+            GooseRunnerLinuxPackageAdmissionFailureCode,
+            "linux-package-path-metadata-invalid"
+          >;
+        }
+    >;
 
 export async function verifyAionuiLinuxGooseInstall(
   inspect: InstalledPackageInspection = () =>
     inspectInstalledGooseRunnerLinuxPackageAdmission(GOOSE_LINUX_RESOURCES_PATH),
 ): Promise<AionuiLinuxGooseInstallVerification> {
   const result = await inspect();
-  if (!result.ok) return Object.freeze({ status: "failed", code: result.code });
+  if (!result.ok) {
+    if (result.code === "linux-package-path-metadata-invalid") {
+      return Object.freeze({
+        status: "failed",
+        code: result.code,
+        pathId: result.pathId,
+        reason: result.reason,
+      });
+    }
+    return Object.freeze({ status: "failed", code: result.code });
+  }
   return Object.freeze({
     status: "verified",
     targetTriple: result.value.artifact.targetTriple,

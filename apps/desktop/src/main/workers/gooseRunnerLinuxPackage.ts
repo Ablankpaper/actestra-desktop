@@ -27,12 +27,12 @@ const MAX_ADMISSION_RECORD_BYTES = 64 * 1024;
 const MAX_BOOTSTRAP_OUTPUT_BYTES = 256;
 const BOOTSTRAP_TIMEOUT_MS = 5_000;
 const ARTIFACT_FILES = Object.freeze([
-  GOOSE_RUNNER_MANIFEST_FILE,
-  "actestra-goose-runner",
-  "actestra-goose-runner.cdx.json",
-  "actestra-goose-runner.audit.json",
-  "Cargo.lock",
-  "GOOSE-APACHE-2.0.txt",
+  Object.freeze({ id: "runner-manifest" as const, file: GOOSE_RUNNER_MANIFEST_FILE }),
+  Object.freeze({ id: "runner-executable" as const, file: "actestra-goose-runner" }),
+  Object.freeze({ id: "runner-sbom" as const, file: "actestra-goose-runner.cdx.json" }),
+  Object.freeze({ id: "runner-audit" as const, file: "actestra-goose-runner.audit.json" }),
+  Object.freeze({ id: "runner-lockfile" as const, file: "Cargo.lock" }),
+  Object.freeze({ id: "runner-license" as const, file: "GOOSE-APACHE-2.0.txt" }),
 ] as const);
 
 export interface LinuxPackagePathMetadata {
@@ -79,9 +79,38 @@ export type GooseRunnerLinuxPackageAdmissionFailureCode =
   | "linux-package-record-invalid"
   | "linux-package-resources-path-invalid";
 
+export type GooseRunnerLinuxPackagePathId =
+  | "opt-root"
+  | "install-root"
+  | "resources"
+  | "runner-directory"
+  | "profile"
+  | "admission-record"
+  | (typeof ARTIFACT_FILES)[number]["id"];
+
+export type GooseRunnerLinuxPackagePathFailureReason =
+  | "unreadable"
+  | "canonical-mismatch"
+  | "kind-mismatch"
+  | "owner-mismatch"
+  | "mode-invalid"
+  | "size-invalid"
+  | "executable-invalid";
+
+type GooseRunnerLinuxPackageNonPathFailureCode = Exclude<
+  GooseRunnerLinuxPackageAdmissionFailureCode,
+  "linux-package-path-metadata-invalid"
+>;
+
 export type GooseRunnerLinuxPackageAdmissionResult =
   | Readonly<{ readonly ok: true; readonly value: Readonly<AdmittedGooseRunnerLinuxPackage> }>
-  | Readonly<{ readonly ok: false; readonly code: GooseRunnerLinuxPackageAdmissionFailureCode }>;
+  | Readonly<{
+      readonly ok: false;
+      readonly code: "linux-package-path-metadata-invalid";
+      readonly pathId: GooseRunnerLinuxPackagePathId;
+      readonly reason: GooseRunnerLinuxPackagePathFailureReason;
+    }>
+  | Readonly<{ readonly ok: false; readonly code: GooseRunnerLinuxPackageNonPathFailureCode }>;
 
 function sha256(value: Uint8Array): string {
   return createHash("sha256").update(value).digest("hex");
@@ -207,43 +236,84 @@ const DEFAULT_DEPENDENCIES: GooseRunnerLinuxPackageAdmissionDependencies = Objec
   runBootstrapCheck: defaultRunBootstrapCheck,
 });
 
-function requiredPackagePaths(resourcesPath: string): readonly string[] {
+interface RequiredPackagePath {
+  readonly id: GooseRunnerLinuxPackagePathId;
+  readonly filePath: string;
+  readonly kind: LinuxPackagePathMetadata["kind"];
+  readonly requireExecutable: boolean;
+}
+
+function requiredPackagePaths(resourcesPath: string): readonly RequiredPackagePath[] {
   const runnerDirectory = path.join(resourcesPath, "actestra-goose-runner");
   return Object.freeze([
-    "/opt",
-    GOOSE_LINUX_INSTALL_ROOT,
-    resourcesPath,
-    runnerDirectory,
-    path.join(resourcesPath, GOOSE_LINUX_PROFILE_FILE),
-    path.join(resourcesPath, GOOSE_LINUX_ADMISSION_RECORD_FILE),
-    ...ARTIFACT_FILES.map((file) => path.join(runnerDirectory, file)),
+    Object.freeze({
+      id: "opt-root",
+      filePath: "/opt",
+      kind: "directory",
+      requireExecutable: false,
+    }),
+    Object.freeze({
+      id: "install-root",
+      filePath: GOOSE_LINUX_INSTALL_ROOT,
+      kind: "directory",
+      requireExecutable: false,
+    }),
+    Object.freeze({
+      id: "resources",
+      filePath: resourcesPath,
+      kind: "directory",
+      requireExecutable: false,
+    }),
+    Object.freeze({
+      id: "runner-directory",
+      filePath: runnerDirectory,
+      kind: "directory",
+      requireExecutable: false,
+    }),
+    Object.freeze({
+      id: "profile",
+      filePath: path.join(resourcesPath, GOOSE_LINUX_PROFILE_FILE),
+      kind: "file",
+      requireExecutable: false,
+    }),
+    Object.freeze({
+      id: "admission-record",
+      filePath: path.join(resourcesPath, GOOSE_LINUX_ADMISSION_RECORD_FILE),
+      kind: "file",
+      requireExecutable: false,
+    }),
+    ...ARTIFACT_FILES.map(({ id, file }) =>
+      Object.freeze({
+        id,
+        filePath: path.join(runnerDirectory, file),
+        kind: "file" as const,
+        requireExecutable: file === "actestra-goose-runner",
+      }),
+    ),
   ]);
 }
 
-async function assertRootOwnedCanonicalPath(
+async function inspectRootOwnedCanonicalPath(
   dependencies: GooseRunnerLinuxPackageAdmissionDependencies,
   filePath: string,
   kind: LinuxPackagePathMetadata["kind"],
   requireExecutable: boolean,
-): Promise<boolean> {
+): Promise<GooseRunnerLinuxPackagePathFailureReason | null> {
   let metadata: LinuxPackagePathMetadata;
   try {
     metadata = await dependencies.lstat(filePath);
   } catch {
-    return false;
+    return "unreadable";
   }
-  if (
-    metadata.canonicalPath !== filePath ||
-    metadata.kind !== kind ||
-    metadata.uid !== 0 ||
-    !Number.isSafeInteger(metadata.mode) ||
-    (metadata.mode & 0o7022) !== 0 ||
-    !Number.isSafeInteger(metadata.size) ||
-    metadata.size < 0
-  ) {
-    return false;
+  if (metadata.canonicalPath !== filePath) return "canonical-mismatch";
+  if (metadata.kind !== kind) return "kind-mismatch";
+  if (metadata.uid !== 0) return "owner-mismatch";
+  if (!Number.isSafeInteger(metadata.mode) || (metadata.mode & 0o7022) !== 0) {
+    return "mode-invalid";
   }
-  return !requireExecutable || (metadata.mode & 0o100) !== 0;
+  if (!Number.isSafeInteger(metadata.size) || metadata.size < 0) return "size-invalid";
+  if (requireExecutable && (metadata.mode & 0o100) === 0) return "executable-invalid";
+  return null;
 }
 
 async function readAdmissionRecord(
@@ -267,9 +337,21 @@ async function readAdmissionRecord(
 }
 
 function rejectedPackageAdmission(
-  code: GooseRunnerLinuxPackageAdmissionFailureCode,
+  code: GooseRunnerLinuxPackageNonPathFailureCode,
 ): GooseRunnerLinuxPackageAdmissionResult {
   return Object.freeze({ ok: false, code });
+}
+
+function rejectedPackagePathMetadata(
+  pathId: GooseRunnerLinuxPackagePathId,
+  reason: GooseRunnerLinuxPackagePathFailureReason,
+): GooseRunnerLinuxPackageAdmissionResult {
+  return Object.freeze({
+    ok: false,
+    code: "linux-package-path-metadata-invalid",
+    pathId,
+    reason,
+  });
 }
 
 export async function inspectInstalledGooseRunnerLinuxPackageAdmission(
@@ -284,18 +366,15 @@ export async function inspectInstalledGooseRunnerLinuxPackageAdmission(
     const profilePath = path.join(resourcesPath, GOOSE_LINUX_PROFILE_FILE);
     const recordPath = path.join(resourcesPath, GOOSE_LINUX_ADMISSION_RECORD_FILE);
     const paths = requiredPackagePaths(resourcesPath);
-    for (const [index, filePath] of paths.entries()) {
-      const isDirectory = index < 4;
-      const executable = filePath === GOOSE_LINUX_EXECUTABLE_PATH;
-      if (
-        !(await assertRootOwnedCanonicalPath(
-          dependencies,
-          filePath,
-          isDirectory ? "directory" : "file",
-          executable,
-        ))
-      ) {
-        return rejectedPackageAdmission("linux-package-path-metadata-invalid");
+    for (const requiredPath of paths) {
+      const pathFailure = await inspectRootOwnedCanonicalPath(
+        dependencies,
+        requiredPath.filePath,
+        requiredPath.kind,
+        requiredPath.requireExecutable,
+      );
+      if (pathFailure !== null) {
+        return rejectedPackagePathMetadata(requiredPath.id, pathFailure);
       }
     }
     const record = await readAdmissionRecord(dependencies, recordPath);
