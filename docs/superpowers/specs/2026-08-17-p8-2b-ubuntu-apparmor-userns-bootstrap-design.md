@@ -1,6 +1,6 @@
 # P8.2b Ubuntu AppArmor User-Namespace Bootstrap Design
 
-**Status:** Proposed successor amendment; pending user review
+**Status:** Approved for implementation; P8.2b acceptance remains open
 
 **Date:** 2026-08-17
 
@@ -55,10 +55,11 @@ time system policy. On Ubuntu 24.04, loading a vendor AppArmor profile is a
 normal DEB installation responsibility and is required before an ordinary user
 can exercise the already-selected rootless namespace composition.
 
-Until this written amendment is approved and reflected in the relevant
-accepted architecture record, the earlier no-bootstrap language remains the
-formal source of truth and Linux runtime admission stays disabled. Approval of
-this design authorizes an implementation plan, not a P8.2b completion claim.
+This approved amendment supersedes the earlier no-bootstrap assumption only for
+the Ubuntu DEB installation-time AppArmor profile described here. Linux runtime
+admission remains disabled until the implementation and its exact native
+evidence satisfy the acceptance conditions below. Approval authorizes this
+implementation plan; it is not a P8.2b completion claim.
 
 ## Goals
 
