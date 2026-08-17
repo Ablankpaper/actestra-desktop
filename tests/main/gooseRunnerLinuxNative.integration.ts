@@ -796,21 +796,21 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
     await markFailureStage("parent-death");
     const fixture = await createFixture();
     const statePath = path.join(fixture.root, "supervisor-state.json");
-    const supervisor = spawn(
-      "bun",
-      ["run", "test", "--", "tests/fixtures/gooseLinuxNativeSupervisorExit.test.ts"],
-      {
-        cwd: repositoryRoot,
-        detached: true,
-        env: {
-          ...process.env,
-          ACTESTRA_GOOSE_NATIVE_SUPERVISOR: "1",
-          ACTESTRA_GOOSE_NATIVE_SUPERVISOR_ROOT: fixture.root,
-          ACTESTRA_GOOSE_NATIVE_SUPERVISOR_STATE: statePath,
-        },
-        stdio: ["ignore", "pipe", "pipe"],
-      },
+    const supervisorFixture = path.join(
+      repositoryRoot,
+      "tests/fixtures/gooseLinuxNativeSupervisorExit.ts",
     );
+    const supervisor = spawn("bun", [supervisorFixture], {
+      cwd: repositoryRoot,
+      detached: true,
+      env: {
+        ...process.env,
+        ACTESTRA_GOOSE_NATIVE_SUPERVISOR: "1",
+        ACTESTRA_GOOSE_NATIVE_SUPERVISOR_ROOT: fixture.root,
+        ACTESTRA_GOOSE_NATIVE_SUPERVISOR_STATE: statePath,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
     let state:
       | {
           readonly privateRoot: string;

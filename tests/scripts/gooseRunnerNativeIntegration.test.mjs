@@ -64,7 +64,7 @@ describe("P8.2b Linux authenticated Goose integration gate", () => {
 
   it("gives every native composition non-empty production-shaped registries", () => {
     const integration = read("tests/main/gooseRunnerLinuxNative.integration.ts");
-    const supervisor = read("tests/fixtures/gooseLinuxNativeSupervisorExit.test.ts");
+    const supervisor = read("tests/fixtures/gooseLinuxNativeSupervisorExit.ts");
 
     for (const source of [integration, supervisor]) {
       expect(source).not.toContain("commandIds: Object.freeze([])");
@@ -72,6 +72,25 @@ describe("P8.2b Linux authenticated Goose integration gate", () => {
       expect(source).toContain('Object.freeze(["git.status"])');
       expect(source).toContain('Object.freeze(["git.diff-check"])');
     }
+  });
+
+  it("kills the direct Main-style socket owner instead of a nested Vitest wrapper", () => {
+    const fixturePath = path.join(
+      repositoryRoot,
+      "tests/fixtures/gooseLinuxNativeSupervisorExit.ts",
+    );
+    expect(fs.existsSync(fixturePath)).toBe(true);
+    if (!fs.existsSync(fixturePath)) return;
+
+    const integration = read("tests/main/gooseRunnerLinuxNative.integration.ts");
+    const supervisor = fs.readFileSync(fixturePath, "utf8");
+    expect(integration).toContain('spawn("bun", [supervisorFixture], {');
+    expect(integration).not.toContain(
+      '["run", "test", "--", "tests/fixtures/gooseLinuxNativeSupervisorExit.test.ts"]',
+    );
+    expect(supervisor).not.toContain('from "vitest"');
+    expect(supervisor).not.toContain("vi.mock");
+    expect(supervisor).toContain("await openGooseMcpSessionComposition");
   });
 
   it("places the runtime-target override only in the opt-in native test", () => {
