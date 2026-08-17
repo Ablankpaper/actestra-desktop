@@ -19,6 +19,10 @@ const windowsContainmentPath = path.join(
   "workers/goose-runner/src/containment/windows.rs",
 );
 const linuxRuntimePath = path.join(repositoryRoot, "workers/goose-runner/src/linux_runtime.rs");
+const mainProcessPath = path.join(
+  repositoryRoot,
+  "apps/desktop/src/main/workers/gooseRunnerProcess.ts",
+);
 
 describe("Goose runner native source portability", () => {
   it("gates Unix process authority and keeps Windows resource admission fail closed", () => {
@@ -93,5 +97,29 @@ describe("Goose runner native source portability", () => {
       source.indexOf("tokio::runtime::Builder::new_multi_thread()"),
     );
     expect(runtime).toContain("TcpListener");
+  });
+
+  it("keeps the Linux direct launcher behind the unchanged runtime ceiling", () => {
+    const source = fs.readFileSync(mainProcessPath, "utf8");
+    const runtimeResolution = source.indexOf(
+      "resolveGooseRunnerRuntimeTarget(process.platform, process.arch)",
+    );
+    const privateRootPreparation = source.indexOf(
+      "prepared = await preparePrivateRoot(options.privateRootParent, options.artifact)",
+    );
+
+    expect(runtimeResolution).toBeGreaterThan(-1);
+    expect(runtimeResolution).toBeLessThan(privateRootPreparation);
+    expect(source).toContain('process.platform === "linux"');
+    expect(source).toContain('process.arch === "x64"');
+    expect(source).toContain("const policy = options.networkPolicy");
+    expect(source).toContain('policy === "deny-all"');
+    expect(source).toContain("ACTESTRA_GOOSE_LINUX_CAPABILITY_SOCKET");
+    expect(source).toContain("ACTESTRA_GOOSE_LINUX_MODEL_SOCKET");
+    expect(source).toContain("command = options.executablePath");
+    expect(source).toContain("arguments_ = []");
+    expect(source).toContain('ACTESTRA_PARENT_LIVENESS_FD: "3"');
+    expect(source).toContain('stdio: ["pipe", "pipe", "pipe", "pipe"]');
+    expect(source).not.toContain("shell: true");
   });
 });

@@ -794,12 +794,7 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
 
 function createNodeGooseAcpTransport(options: GooseAcpSpawnOptions): GooseAcpTransport {
   assertGooseAcpSpawnOptions(options);
-  const networkProfile = macosNetworkProfile(options);
-  if (
-    networkProfile === undefined ||
-    !path.isAbsolute(options.executablePath) ||
-    !path.isAbsolute(options.workingDirectory)
-  ) {
+  if (!path.isAbsolute(options.executablePath) || !path.isAbsolute(options.workingDirectory)) {
     throw new GooseRunnerProcessError("invalid-options", "Goose spawn options are invalid");
   }
   const privateRoot = path.dirname(options.workingDirectory);
@@ -809,16 +804,58 @@ function createNodeGooseAcpTransport(options: GooseAcpSpawnOptions): GooseAcpTra
       "Goose executable and working directory must share one private root",
     );
   }
-  if (process.platform !== "darwin" || !process.arch.includes("64")) {
+  let command: string;
+  let arguments_: readonly string[];
+  if (process.platform === "darwin" && process.arch.includes("64")) {
+    const networkProfile = macosNetworkProfile(options);
+    if (networkProfile === undefined) {
+      throw new GooseRunnerProcessError("invalid-options", "Goose spawn options are invalid");
+    }
+    command = "/usr/bin/sandbox-exec";
+    arguments_ = ["-p", networkProfile, options.executablePath];
+  } else if (process.platform === "linux" && process.arch === "x64") {
+    const policy = options.networkPolicy;
+    const workspaceDirectory = options.workspaceDirectory;
+    const capabilitySocket = options.environment.ACTESTRA_GOOSE_LINUX_CAPABILITY_SOCKET;
+    const modelSocket = options.environment.ACTESTRA_GOOSE_LINUX_MODEL_SOCKET;
+    const bridgeDirectory = path.join(privateRoot, "bridge");
+    const validBridgeSocket = (socketPath: string | undefined): socketPath is string =>
+      socketPath !== undefined &&
+      path.isAbsolute(socketPath) &&
+      path.resolve(socketPath) === socketPath &&
+      path.dirname(socketPath) === bridgeDirectory;
+    if (
+      policy === "deny-all" ||
+      policy.kind !== "loopback-session" ||
+      policy.host !== "127.0.0.1" ||
+      policy.capabilityProxyPort === policy.modelProxyPort ||
+      workspaceDirectory === undefined ||
+      !path.isAbsolute(workspaceDirectory) ||
+      !validBridgeSocket(capabilitySocket) ||
+      !validBridgeSocket(modelSocket) ||
+      capabilitySocket === modelSocket ||
+      options.environment.ACTESTRA_GOOSE_LINUX_CAPABILITY_PORT !==
+        String(policy.capabilityProxyPort) ||
+      options.environment.ACTESTRA_GOOSE_LINUX_MODEL_PORT !== String(policy.modelProxyPort) ||
+      options.environment.ACTESTRA_GOOSE_LINUX_WORKSPACE_ROOT !== workspaceDirectory
+    ) {
+      throw new GooseRunnerProcessError(
+        "network-policy-unavailable",
+        "Linux Goose launch requires the exact admitted bridge contract",
+      );
+    }
+    command = options.executablePath;
+    arguments_ = [];
+  } else {
     throw new GooseRunnerProcessError(
       "network-policy-unavailable",
-      "P5.1 admits the deny-all Goose handshake launcher only on macOS",
+      "The current host lacks an admitted Goose process launcher",
     );
   }
 
   let child: GooseChildProcess;
   try {
-    child = spawn("/usr/bin/sandbox-exec", ["-p", networkProfile, options.executablePath], {
+    child = spawn(command, arguments_, {
       cwd: options.workingDirectory,
       env: { ...options.environment, ACTESTRA_PARENT_LIVENESS_FD: "3" },
       detached: true,
