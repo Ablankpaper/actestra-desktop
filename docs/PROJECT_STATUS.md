@@ -322,6 +322,37 @@ cleanup, Electron packaging, Windows containment, P8.2b, P8.2, P8.3, and P8.4
 remain open. No foundation, Renderer, preload, provider, persistence, or UI
 authority changed.
 
+### 2026-08-17 P8.2b first native build diagnostic and Linux compile correction
+
+Draft pull request 68 pushed exact head
+`86e8e13c0ff7f3c9050ff1fe2b858cdb904f000e` to pull-request CI run
+[`31980531759`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/31980531759).
+Both Ubuntu jobs failed during Rust compilation, before Artifact admission or
+the containment probe could run: containment job `95246399987` and build-only
+job `95246400003` reported Rust `E0369` at
+`src/containment/linux.rs:504` because `JoinHandle::join()` returns a
+`Result<u8, Box<dyn Any + Send>>` whose panic payload cannot be compared with
+`Ok(7_u8)`. Both logs also reported the test-only
+`apply_resource_limits_with` re-export as unused in the production build.
+Consequently this run establishes no native Linux process, resource, Artifact,
+or runtime result; the containment gate remains open.
+
+Correction commit
+`53c2c18d7aaca9a0d0f87ba9d0847339eb2b591b` uses a pattern match for the
+thread result and exports the resource-limit seam only for Unix test builds.
+Two source-contract regressions lock those exact boundaries. Fresh local
+evidence for the corrected bytes is 9 focused files / 71 tests passed, macOS
+Goose Rust release tests 8/8 passed, and Rust formatting passed. A temporary,
+dependency-minimal wrapper compiled the real `containment/mod.rs`, `linux.rs`,
+and `unix.rs` with
+`cargo check --offline --target x86_64-unknown-linux-gnu` at exit 0; that is
+Linux type-check evidence only, not native Ubuntu execution. The unchanged
+broader corrected source had already passed one complete `bun run check` at
+exit 0 with 150 test files passed / 2 skipped and 1,591 tests passed / 9
+skipped. The next and only advancing key is a new exact-head pull-request run;
+Linux admission remains disabled, `complete` remains false, and no incomplete
+containment record may be bound.
+
 ### 2026-08-16 P8.1 acceptance contract accepted on main
 
 P8.1 is accepted on formal `main` through pull request
