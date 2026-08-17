@@ -210,6 +210,19 @@ describe("Goose runner native resource boundary", () => {
     expect(Object.keys(matcher)).toEqual(["push"]);
   });
 
+  it.each([
+    ["ACTESTRA_GOOSE_ASYNC_RUNTIME_SETUP_FAILED", "runner-runtime"],
+    ["ACTESTRA_GOOSE_ACP_SERVER_FAILED", "runner-acp"],
+    ["ACTESTRA_GOOSE_LINUX_RELAY_STOPPED", "runner-relay"],
+  ])("maps the fixed %s marker without retaining stderr", (marker, expected) => {
+    const matcher = createGooseRunnerSetupFailureMatcher();
+    const split = Math.floor(marker.length / 2);
+
+    expect(matcher.push(Buffer.from(`ignored:${marker.slice(0, split)}`))).toBeUndefined();
+    expect(matcher.push(Buffer.from(`${marker.slice(split)}:ignored`))).toBe(expected);
+    expect(Object.keys(matcher)).toEqual(["push"]);
+  });
+
   it("preserves native limit setup failure as the closed resource incident code", async () => {
     const fixture = await createRunnerFixture();
 

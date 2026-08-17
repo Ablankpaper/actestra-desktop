@@ -39,6 +39,10 @@ export const GOOSE_NATIVE_RESOURCE_LIMIT_FAILURE_MARKER =
   "ACTESTRA_GOOSE_RESOURCE_LIMIT_SETUP_FAILED";
 export const GOOSE_NATIVE_NETWORK_POLICY_FAILURE_MARKER =
   "ACTESTRA_GOOSE_NETWORK_POLICY_SETUP_FAILED";
+export const GOOSE_NATIVE_ASYNC_RUNTIME_FAILURE_MARKER =
+  "ACTESTRA_GOOSE_ASYNC_RUNTIME_SETUP_FAILED";
+export const GOOSE_NATIVE_ACP_SERVER_FAILURE_MARKER = "ACTESTRA_GOOSE_ACP_SERVER_FAILED";
+export const GOOSE_NATIVE_RELAY_FAILURE_MARKER = "ACTESTRA_GOOSE_LINUX_RELAY_STOPPED";
 export type GooseRunnerProcessErrorCode =
   | "invalid-options"
   | "artifact-mismatch"
@@ -81,10 +85,15 @@ export interface GooseRunnerResourceFailureMatcher {
 }
 
 export interface GooseRunnerSetupFailureMatcher {
-  push(
-    chunk: Uint8Array,
-  ): "network-policy-unavailable" | "worker-resource-enforcement-unavailable" | undefined;
+  push(chunk: Uint8Array): GooseRunnerSetupFailure | undefined;
 }
+
+export type GooseRunnerSetupFailure =
+  | "network-policy-unavailable"
+  | "worker-resource-enforcement-unavailable"
+  | "runner-runtime"
+  | "runner-acp"
+  | "runner-relay";
 
 type GooseChildProcess = ChildProcessByStdio<Writable, Readable, Readable>;
 
@@ -310,10 +319,10 @@ export function createGooseRunnerResourceFailureMatcher(): GooseRunnerResourceFa
 export function createGooseRunnerSetupFailureMatcher(): GooseRunnerSetupFailureMatcher {
   const network = createGooseRunnerFixedMarkerMatcher(GOOSE_NATIVE_NETWORK_POLICY_FAILURE_MARKER);
   const resources = createGooseRunnerResourceFailureMatcher();
-  let detected:
-    | "network-policy-unavailable"
-    | "worker-resource-enforcement-unavailable"
-    | undefined;
+  const runtime = createGooseRunnerFixedMarkerMatcher(GOOSE_NATIVE_ASYNC_RUNTIME_FAILURE_MARKER);
+  const acp = createGooseRunnerFixedMarkerMatcher(GOOSE_NATIVE_ACP_SERVER_FAILURE_MARKER);
+  const relay = createGooseRunnerFixedMarkerMatcher(GOOSE_NATIVE_RELAY_FAILURE_MARKER);
+  let detected: GooseRunnerSetupFailure | undefined;
   return Object.freeze({
     push(chunk: Uint8Array) {
       if (detected !== undefined) return detected;
@@ -321,10 +330,32 @@ export function createGooseRunnerSetupFailureMatcher(): GooseRunnerSetupFailureM
         detected = "network-policy-unavailable";
       } else if (resources.push(chunk)) {
         detected = "worker-resource-enforcement-unavailable";
+      } else if (runtime.push(chunk)) {
+        detected = "runner-runtime";
+      } else if (acp.push(chunk)) {
+        detected = "runner-acp";
+      } else if (relay.push(chunk)) {
+        detected = "runner-relay";
       }
       return detected;
     },
   });
+}
+
+function setupFailureError(failure: GooseRunnerSetupFailure): GooseRunnerProcessError {
+  if (failure === "network-policy-unavailable") {
+    return new GooseRunnerProcessError(failure, "Goose native network policy is unavailable");
+  }
+  if (failure === "worker-resource-enforcement-unavailable") {
+    return new GooseRunnerProcessError(failure, "Goose native resource enforcement is unavailable");
+  }
+  const message =
+    failure === "runner-runtime"
+      ? "Goose async runtime failed"
+      : failure === "runner-acp"
+        ? "Goose ACP server failed"
+        : "Goose Linux relay stopped";
+  return new GooseRunnerProcessError("spawn-failed", message);
 }
 
 function wait(milliseconds: number): Promise<void> {
@@ -680,14 +711,7 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
     child.stderr.on("data", (chunk: Buffer) => {
       const setupFailure = this.nativeSetupFailureMatcher.push(chunk);
       if (setupFailure !== undefined) {
-        this.failTransport(
-          new GooseRunnerProcessError(
-            setupFailure,
-            setupFailure === "network-policy-unavailable"
-              ? "Goose native network policy is unavailable"
-              : "Goose native resource enforcement is unavailable",
-          ),
-        );
+        this.failTransport(setupFailureError(setupFailure));
         return;
       }
       this.stderrBytes += chunk.byteLength;
@@ -695,13 +719,17 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
         this.failTransport(new Error("Goose stderr exceeded the bounded diagnostic size"));
       }
     });
-    for (const stream of [child.stdin, child.stdout, child.stderr]) {
+    for (const [stream, message] of [
+      [child.stdin, "Goose stdin stream failed"],
+      [child.stdout, "Goose stdout stream failed"],
+      [child.stderr, "Goose stderr stream failed"],
+    ] as const) {
       stream.on("error", (error) => {
-        this.failTransport(error);
+        this.failTransport(new Error(message, { cause: error }));
       });
     }
     child.once("error", (error) => {
-      this.failTransport(error);
+      this.failTransport(new Error("Goose child process emitted an error", { cause: error }));
     });
     this.exitPromise = new Promise((resolve) => {
       child.once("close", (code, signal) => {

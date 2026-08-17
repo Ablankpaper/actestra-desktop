@@ -22,6 +22,12 @@ use containment::{ADDRESS_SPACE_LIMIT_BYTES, CPU_LIMIT_SECONDS};
 #[cfg(target_os = "linux")]
 const LINUX_NETWORK_POLICY_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_NETWORK_POLICY_SETUP_FAILED";
 #[cfg(target_os = "linux")]
+const LINUX_ASYNC_RUNTIME_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_ASYNC_RUNTIME_SETUP_FAILED";
+#[cfg(target_os = "linux")]
+const LINUX_ACP_SERVER_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_ACP_SERVER_FAILED";
+#[cfg(target_os = "linux")]
+const LINUX_RELAY_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_LINUX_RELAY_STOPPED";
+#[cfg(target_os = "linux")]
 const LINUX_RUNTIME_ENVIRONMENT_KEYS: [&str; 5] = [
     "ACTESTRA_GOOSE_LINUX_CAPABILITY_SOCKET",
     "ACTESTRA_GOOSE_LINUX_MODEL_SOCKET",
@@ -84,6 +90,9 @@ fn main() {
     {
         Ok(runtime) => runtime,
         Err(_) => {
+            #[cfg(target_os = "linux")]
+            eprintln!("{LINUX_ASYNC_RUNTIME_FAILURE_MARKER}");
+            #[cfg(not(target_os = "linux"))]
             eprintln!("ACTESTRA_GOOSE_RUNNER_FAILED: could not create async runtime");
             std::process::exit(1);
         }
@@ -106,6 +115,8 @@ fn main() {
                 relay_result = relay.wait() => {
                     if relay_result.is_err() {
                         eprintln!("{LINUX_NETWORK_POLICY_FAILURE_MARKER}");
+                    } else {
+                        eprintln!("{LINUX_RELAY_FAILURE_MARKER}");
                     }
                     None
                 },
@@ -114,6 +125,7 @@ fn main() {
             match result {
                 Some(Ok(())) => return,
                 Some(Err(error)) => {
+                    eprintln!("{LINUX_ACP_SERVER_FAILURE_MARKER}");
                     eprintln!("ACTESTRA_GOOSE_RUNNER_FAILED: {error:#}");
                     std::process::exit(1);
                 }

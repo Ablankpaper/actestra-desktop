@@ -77,15 +77,23 @@ type NativeIntegrationFailureStage =
   | "crash"
   | "handshake"
   | "handshake-process-exit"
+  | "handshake-cleanup"
   | "handshake-response"
   | "handshake-timeout"
   | "handshake-transport"
+  | "handshake-transport-process"
+  | "handshake-transport-stderr"
+  | "handshake-transport-stdin"
+  | "handshake-transport-stdout"
   | "initialize"
   | "launch-contract"
   | "parent-death"
   | "prompt"
   | "restart"
   | "runner-open"
+  | "runner-acp"
+  | "runner-relay"
+  | "runner-runtime"
   | "runner-process-spawn"
   | "runner-stdin"
   | "runner-spawn"
@@ -151,6 +159,9 @@ function classifyOpeningFailureStage(error: unknown): NativeIntegrationFailureSt
           return "runner-process-spawn";
         }
         if (current.message === "Goose stdin is not writable") return "runner-stdin";
+        if (current.message === "Goose async runtime failed") return "runner-runtime";
+        if (current.message === "Goose ACP server failed") return "runner-acp";
+        if (current.message === "Goose Linux relay stopped") return "runner-relay";
         if (current.message === "Goose handshake launch failed") {
           fallback = "runner-open";
         } else {
@@ -196,6 +207,22 @@ function classifyOpeningFailureStage(error: unknown): NativeIntegrationFailureSt
     } else if (current instanceof GooseMcpSessionCompositionError) {
       if (current.code === "cleanup-failed") return "composition-cleanup";
       if (current.code === "tool-discovery-mismatch") return "tool-discovery";
+    } else if (current instanceof AggregateError) {
+      return "handshake-cleanup";
+    } else if (current.message === "Goose stdin stream failed") {
+      return "handshake-transport-stdin";
+    } else if (
+      current.message === "Goose stdout stream failed" ||
+      current.message === "Goose ACP stdout line exceeded the bounded frame size"
+    ) {
+      return "handshake-transport-stdout";
+    } else if (
+      current.message === "Goose stderr stream failed" ||
+      current.message === "Goose stderr exceeded the bounded diagnostic size"
+    ) {
+      return "handshake-transport-stderr";
+    } else if (current.message === "Goose child process emitted an error") {
+      return "handshake-transport-process";
     }
     current = current.cause;
   }
@@ -297,6 +324,41 @@ describe("native Linux integration opening failure staging", () => {
     });
 
     expect(classifyOpeningFailureStage(error)).toBe(stage);
+  });
+
+  it.each([
+    ["Goose async runtime failed", "runner-runtime"],
+    ["Goose ACP server failed", "runner-acp"],
+    ["Goose Linux relay stopped", "runner-relay"],
+  ])("classifies the fixed runner marker %s", (message, stage) => {
+    const error = new GooseAcpHandshakeError("transport-error", "fixed internal diagnostic", {
+      cause: new GooseRunnerProcessError("spawn-failed", message),
+    });
+
+    expect(classifyOpeningFailureStage(error)).toBe(stage);
+  });
+
+  it.each([
+    ["Goose stdin stream failed", "handshake-transport-stdin"],
+    ["Goose stdout stream failed", "handshake-transport-stdout"],
+    ["Goose ACP stdout line exceeded the bounded frame size", "handshake-transport-stdout"],
+    ["Goose stderr stream failed", "handshake-transport-stderr"],
+    ["Goose stderr exceeded the bounded diagnostic size", "handshake-transport-stderr"],
+    ["Goose child process emitted an error", "handshake-transport-process"],
+  ])("classifies the fixed transport source %s", (message, stage) => {
+    const error = new GooseAcpHandshakeError("transport-error", "fixed internal diagnostic", {
+      cause: new Error(message),
+    });
+
+    expect(classifyOpeningFailureStage(error)).toBe(stage);
+  });
+
+  it("separates handshake cleanup from its original transport failure", () => {
+    const error = new GooseAcpHandshakeError("transport-error", "fixed internal diagnostic", {
+      cause: new AggregateError([new Error("fixed internal diagnostic")]),
+    });
+
+    expect(classifyOpeningFailureStage(error)).toBe("handshake-cleanup");
   });
 });
 
