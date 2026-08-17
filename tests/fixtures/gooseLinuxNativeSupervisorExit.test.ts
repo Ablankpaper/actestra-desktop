@@ -24,6 +24,8 @@ const enabled =
   process.arch === "x64" &&
   process.env.ACTESTRA_GOOSE_NATIVE_INTEGRATION === "1" &&
   process.env.ACTESTRA_GOOSE_NATIVE_SUPERVISOR === "1";
+const nativeCommandIds = Object.freeze(["git.status"]);
+const nativeTestIds = Object.freeze(["git.diff-check"]);
 
 async function waitForRunner(privateRoot: string): Promise<number> {
   const deadline = Date.now() + 5_000;
@@ -89,8 +91,8 @@ describe.skipIf(!enabled)("native Linux Goose supervisor-death fixture", () => {
         toolInvoker: async () => {
           throw new Error("supervisor fixture does not invoke tools");
         },
-        commandIds: Object.freeze([]),
-        testIds: Object.freeze([]),
+        commandIds: nativeCommandIds,
+        testIds: nativeTestIds,
         handshakeTimeoutMs: 20_000,
         sessionTimeoutMs: 30_000,
       });

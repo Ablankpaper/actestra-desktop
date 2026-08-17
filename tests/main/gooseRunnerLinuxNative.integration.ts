@@ -57,6 +57,8 @@ const nativeEnabled =
   evidencePath !== undefined &&
   failureEvidencePath !== undefined;
 const fixtureRoots: string[] = [];
+const nativeCommandIds = Object.freeze(["git.status"]);
+const nativeTestIds = Object.freeze(["git.diff-check"]);
 
 type NativeIntegrationFailureStage =
   | "artifact-admission"
@@ -455,8 +457,8 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
       modelId: "actestra-linux-native-integration",
       modelInvoker,
       toolInvoker: deniedToolInvoker(toolCalls),
-      commandIds: Object.freeze([]),
-      testIds: Object.freeze([]),
+      commandIds: nativeCommandIds,
+      testIds: nativeTestIds,
       handshakeTimeoutMs: 20_000,
       sessionTimeoutMs: 30_000,
     }).catch(async (error: unknown) => {
@@ -523,8 +525,8 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
       modelId: "actestra-linux-native-cancellation",
       modelInvoker,
       toolInvoker: unusedToolInvoker(),
-      commandIds: Object.freeze([]),
-      testIds: Object.freeze([]),
+      commandIds: nativeCommandIds,
+      testIds: nativeTestIds,
       handshakeTimeoutMs: 20_000,
       sessionTimeoutMs: 30_000,
     });
@@ -563,8 +565,8 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
       modelId: "actestra-linux-native-crash",
       modelInvoker: blockingModel,
       toolInvoker: unusedToolInvoker(),
-      commandIds: Object.freeze([]),
-      testIds: Object.freeze([]),
+      commandIds: nativeCommandIds,
+      testIds: nativeTestIds,
       handshakeTimeoutMs: 20_000,
       sessionTimeoutMs: 30_000,
     });
@@ -587,8 +589,8 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
       modelId: "actestra-linux-native-restart",
       modelInvoker: messageModel("restart succeeded"),
       toolInvoker: unusedToolInvoker(),
-      commandIds: Object.freeze([]),
-      testIds: Object.freeze([]),
+      commandIds: nativeCommandIds,
+      testIds: nativeTestIds,
       handshakeTimeoutMs: 20_000,
       sessionTimeoutMs: 30_000,
     });

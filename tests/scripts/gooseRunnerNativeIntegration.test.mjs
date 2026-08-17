@@ -50,6 +50,18 @@ describe("P8.2b Linux authenticated Goose integration gate", () => {
     expect(processSource).not.toContain("ACTESTRA_GOOSE_NATIVE_INTEGRATION");
   });
 
+  it("gives every native composition non-empty production-shaped registries", () => {
+    const integration = read("tests/main/gooseRunnerLinuxNative.integration.ts");
+    const supervisor = read("tests/fixtures/gooseLinuxNativeSupervisorExit.test.ts");
+
+    for (const source of [integration, supervisor]) {
+      expect(source).not.toContain("commandIds: Object.freeze([])");
+      expect(source).not.toContain("testIds: Object.freeze([])");
+      expect(source).toContain('Object.freeze(["git.status"])');
+      expect(source).toContain('Object.freeze(["git.diff-check"])');
+    }
+  });
+
   it("places the runtime-target override only in the opt-in native test", () => {
     const integrationPath = path.join(
       repositoryRoot,
