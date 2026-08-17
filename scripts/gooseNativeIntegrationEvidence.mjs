@@ -57,6 +57,20 @@ const FAILURE_STAGE_CODES = Object.freeze({
   initialize: "integration-initialize-failed",
   "launch-contract": "integration-launch-contract-failed",
   "parent-death": "integration-parent-death-failed",
+  "parent-death-supervisor-group-missing":
+    "integration-parent-death-supervisor-group-missing-failed",
+  "parent-death-supervisor-group-inaccessible":
+    "integration-parent-death-supervisor-group-inaccessible-failed",
+  "parent-death-supervisor-group-malformed":
+    "integration-parent-death-supervisor-group-malformed-failed",
+  "parent-death-supervisor-group-unavailable":
+    "integration-parent-death-supervisor-group-unavailable-failed",
+  "parent-death-runner-group-missing": "integration-parent-death-runner-group-missing-failed",
+  "parent-death-runner-group-inaccessible":
+    "integration-parent-death-runner-group-inaccessible-failed",
+  "parent-death-runner-group-malformed": "integration-parent-death-runner-group-malformed-failed",
+  "parent-death-runner-group-unavailable":
+    "integration-parent-death-runner-group-unavailable-failed",
   "parent-death-supervisor-not-exited": "integration-parent-death-supervisor-not-exited-failed",
   "parent-death-capability-owner-mismatch":
     "integration-parent-death-capability-owner-mismatch-failed",

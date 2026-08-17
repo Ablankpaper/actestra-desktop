@@ -147,6 +147,14 @@ describe("P8.2b Linux authenticated Goose integration gate", () => {
       "integration-runner-relay-failed",
       "integration-runner-runtime-failed",
       "integration-parent-death-supervisor-not-exited-failed",
+      "integration-parent-death-supervisor-group-missing-failed",
+      "integration-parent-death-supervisor-group-inaccessible-failed",
+      "integration-parent-death-supervisor-group-malformed-failed",
+      "integration-parent-death-supervisor-group-unavailable-failed",
+      "integration-parent-death-runner-group-missing-failed",
+      "integration-parent-death-runner-group-inaccessible-failed",
+      "integration-parent-death-runner-group-malformed-failed",
+      "integration-parent-death-runner-group-unavailable-failed",
       "integration-parent-death-capability-owner-mismatch-failed",
       "integration-parent-death-model-owner-mismatch-failed",
       "integration-parent-death-capability-orphan-owner-failed",
@@ -180,6 +188,8 @@ describe("P8.2b Linux authenticated Goose integration gate", () => {
     expect(integration).toContain('markFailureStage("crash")');
     expect(integration).toContain('markFailureStage("restart")');
     expect(integration).toContain('markFailureStage("parent-death")');
+    expect(integration).toContain("processGroupCaptureFailureStage");
+    expect(integration).toContain("readLinuxProcessGroupIdResult");
     expect(integration).toContain('markFailureStage("parent-death-supervisor-not-exited")');
     expect(integration).toContain('markFailureStage("parent-death-capability-owner-mismatch")');
     expect(integration).toContain('markFailureStage("parent-death-model-owner-mismatch")');

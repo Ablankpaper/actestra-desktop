@@ -35,7 +35,10 @@ import {
   openGooseMcpSessionComposition,
 } from "../../apps/desktop/src/main/workers/gooseMcpSessionComposition";
 import { GooseRunnerProcessError } from "../../apps/desktop/src/main/workers/gooseRunnerProcess";
-import { readLinuxProcessGroupId } from "./gooseLinuxProcessDiagnostics";
+import {
+  type LinuxProcessGroupReadFailure,
+  readLinuxProcessGroupIdResult,
+} from "./gooseLinuxProcessDiagnostics";
 
 vi.mock("../../apps/desktop/src/main/workers/gooseRunnerTarget", async (importOriginal) => {
   const actual =
@@ -94,6 +97,14 @@ type NativeIntegrationFailureStage =
   | "initialize"
   | "launch-contract"
   | "parent-death"
+  | "parent-death-supervisor-group-missing"
+  | "parent-death-supervisor-group-inaccessible"
+  | "parent-death-supervisor-group-malformed"
+  | "parent-death-supervisor-group-unavailable"
+  | "parent-death-runner-group-missing"
+  | "parent-death-runner-group-inaccessible"
+  | "parent-death-runner-group-malformed"
+  | "parent-death-runner-group-unavailable"
   | "parent-death-supervisor-not-exited"
   | "parent-death-capability-owner-mismatch"
   | "parent-death-model-owner-mismatch"
@@ -169,6 +180,13 @@ async function markFailureStage(stage: NativeIntegrationFailureStage): Promise<v
     encoding: "utf8",
     mode: 0o600,
   });
+}
+
+function processGroupCaptureFailureStage(
+  role: "supervisor" | "runner",
+  reason: LinuxProcessGroupReadFailure,
+): NativeIntegrationFailureStage {
+  return `parent-death-${role}-group-${reason}` as NativeIntegrationFailureStage;
 }
 
 function classifyOpeningFailureStage(error: unknown): NativeIntegrationFailureStage {
@@ -585,6 +603,7 @@ async function readLinuxUnixSocketOwnerProcessIds(
   socketPath: string,
   relevantProcessGroups: ReadonlySet<number>,
   relevantProcessIds: ReadonlySet<number>,
+  phase: "pre-kill" | "post-kill",
 ): Promise<LinuxUnixSocketOwnerScan> {
   if (relevantProcessGroups.size === 0 || relevantProcessIds.size === 0) {
     throw new Error("native integration relevant process groups were unavailable");
@@ -623,15 +642,18 @@ async function readLinuxUnixSocketOwnerProcessIds(
   for (const processEntry of processes) {
     if (!processEntry.isDirectory() || !/^[1-9][0-9]*$/u.test(processEntry.name)) continue;
     const processId = Number(processEntry.name);
-    let processGroup: number;
-    try {
-      processGroup = await readLinuxProcessGroupId(processId);
-    } catch {
+    const processGroupResult = await readLinuxProcessGroupIdResult(processId);
+    if (processGroupResult.kind === "failure") {
       if (relevantProcessIds.has(processId)) {
+        if (processGroupResult.reason === "missing" && phase === "post-kill") {
+          processRace = true;
+          continue;
+        }
         throw new Error("native integration relevant process group could not be read");
       }
       continue;
     }
+    const processGroup = processGroupResult.processGroupId;
     if (!relevantProcessGroups.has(processGroup)) continue;
     const descriptors = await readdir(path.join("/proc", processEntry.name, "fd")).catch(
       (error: unknown): undefined => {
@@ -940,22 +962,32 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
         throw new Error("native integration supervisor PID was unavailable");
       }
       const relevantProcessIds = new Set([supervisorPid, state!.runnerPid]);
-      let relevantProcessGroups: ReadonlySet<number>;
-      try {
-        relevantProcessGroups = new Set(
-          await Promise.all([
-            readLinuxProcessGroupId(supervisorPid),
-            readLinuxProcessGroupId(state!.runnerPid),
-          ]),
-        );
-      } catch {
-        await markFailureStage("parent-death-capability-owner-scan-failed");
-        throw new Error("native integration relevant process groups were unavailable");
+      const processGroupResults = await Promise.all([
+        readLinuxProcessGroupIdResult(supervisorPid),
+        readLinuxProcessGroupIdResult(state!.runnerPid),
+      ]);
+      const processGroupRoles = ["supervisor", "runner"] as const;
+      for (const [index, result] of processGroupResults.entries()) {
+        if (result.kind === "failure") {
+          await markFailureStage(
+            processGroupCaptureFailureStage(processGroupRoles[index], result.reason),
+          );
+          throw new Error("native integration relevant process groups were unavailable");
+        }
       }
+      const relevantProcessGroups = new Set(
+        processGroupResults.map((result) => {
+          if (result.kind !== "ok") {
+            throw new Error("native integration relevant process groups were unavailable");
+          }
+          return result.processGroupId;
+        }),
+      );
       const capabilityOwners = await readLinuxUnixSocketOwnerProcessIds(
         state!.capabilitySocketPath,
         relevantProcessGroups,
         relevantProcessIds,
+        "pre-kill",
       ).catch((): undefined => undefined);
       if (
         capabilityOwners === undefined ||
@@ -970,6 +1002,7 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
         state!.modelSocketPath,
         relevantProcessGroups,
         relevantProcessIds,
+        "pre-kill",
       ).catch((): undefined => undefined);
       if (
         modelOwners === undefined ||
@@ -999,6 +1032,7 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
           state!.capabilitySocketPath,
           relevantProcessGroups,
           relevantProcessIds,
+          "post-kill",
         ).catch((): undefined => undefined);
         if (scan === undefined) {
           await markFailureStage("parent-death-capability-owner-scan-failed");
@@ -1021,6 +1055,7 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
           state!.modelSocketPath,
           relevantProcessGroups,
           relevantProcessIds,
+          "post-kill",
         ).catch((): undefined => undefined);
         if (scan === undefined) {
           await markFailureStage("parent-death-model-owner-scan-failed");

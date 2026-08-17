@@ -1,7 +1,11 @@
 // @vitest-environment node
 
 import { describe, expect, it } from "vitest";
-import { linuxProcessGroupIdFromStat } from "./gooseLinuxProcessDiagnostics";
+import {
+  classifyLinuxProcessGroupReadError,
+  linuxProcessGroupIdFromStat,
+  readLinuxProcessGroupIdResultFromStat,
+} from "./gooseLinuxProcessDiagnostics";
 
 describe("Linux process-group diagnostics", () => {
   it("reads the process-group field after a command name with ordinary characters", () => {
@@ -20,4 +24,24 @@ describe("Linux process-group diagnostics", () => {
   ])("returns no group for a malformed or unsafe stat record: %s", (stat) => {
     expect(linuxProcessGroupIdFromStat(stat)).toBeUndefined();
   });
+
+  it.each([
+    ["123 (runner) S 1 12 34 0", { kind: "ok", processGroupId: 12 }],
+    ["malformed process stat", { kind: "failure", reason: "malformed" }],
+  ] as const)("returns a closed result for stat content: %s", (stat, expected) => {
+    expect(readLinuxProcessGroupIdResultFromStat(stat)).toEqual(expected);
+  });
+
+  it.each([
+    [{ code: "ENOENT" }, "missing"],
+    [{ code: "EACCES" }, "inaccessible"],
+    [{ code: "EPERM" }, "inaccessible"],
+    [{ code: "EIO" }, "unavailable"],
+    [new Error("raw path must not escape"), "unavailable"],
+  ] as const)(
+    "classifies process-stat read failures without raw details: %j",
+    (error, expected) => {
+      expect(classifyLinuxProcessGroupReadError(error)).toBe(expected);
+    },
+  );
 });
