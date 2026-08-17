@@ -35,6 +35,7 @@ import {
   openGooseMcpSessionComposition,
 } from "../../apps/desktop/src/main/workers/gooseMcpSessionComposition";
 import { GooseRunnerProcessError } from "../../apps/desktop/src/main/workers/gooseRunnerProcess";
+import { readLinuxProcessGroupId } from "./gooseLinuxProcessDiagnostics";
 
 vi.mock("../../apps/desktop/src/main/workers/gooseRunnerTarget", async (importOriginal) => {
   const actual =
@@ -582,7 +583,12 @@ interface LinuxUnixSocketOwnerScan {
 
 async function readLinuxUnixSocketOwnerProcessIds(
   socketPath: string,
+  relevantProcessGroups: ReadonlySet<number>,
+  relevantProcessIds: ReadonlySet<number>,
 ): Promise<LinuxUnixSocketOwnerScan> {
+  if (relevantProcessGroups.size === 0 || relevantProcessIds.size === 0) {
+    throw new Error("native integration relevant process groups were unavailable");
+  }
   const table = await readFile("/proc/net/unix", "utf8");
   if (Buffer.byteLength(table, "utf8") > 1024 * 1024) {
     throw new Error("native integration Unix socket table exceeded its bound");
@@ -616,6 +622,17 @@ async function readLinuxUnixSocketOwnerProcessIds(
   const socketDescriptor = `socket:[${inode}]`;
   for (const processEntry of processes) {
     if (!processEntry.isDirectory() || !/^[1-9][0-9]*$/u.test(processEntry.name)) continue;
+    const processId = Number(processEntry.name);
+    let processGroup: number;
+    try {
+      processGroup = await readLinuxProcessGroupId(processId);
+    } catch {
+      if (relevantProcessIds.has(processId)) {
+        throw new Error("native integration relevant process group could not be read");
+      }
+      continue;
+    }
+    if (!relevantProcessGroups.has(processGroup)) continue;
     const descriptors = await readdir(path.join("/proc", processEntry.name, "fd")).catch(
       (error: unknown): undefined => {
         const code = (error as NodeJS.ErrnoException).code;
@@ -640,7 +657,7 @@ async function readLinuxUnixSocketOwnerProcessIds(
         },
       );
       if (target === socketDescriptor) {
-        owners.add(Number(processEntry.name));
+        owners.add(processId);
         break;
       }
     }
@@ -922,8 +939,23 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
       if (supervisorPid === undefined) {
         throw new Error("native integration supervisor PID was unavailable");
       }
+      const relevantProcessIds = new Set([supervisorPid, state!.runnerPid]);
+      let relevantProcessGroups: ReadonlySet<number>;
+      try {
+        relevantProcessGroups = new Set(
+          await Promise.all([
+            readLinuxProcessGroupId(supervisorPid),
+            readLinuxProcessGroupId(state!.runnerPid),
+          ]),
+        );
+      } catch {
+        await markFailureStage("parent-death-capability-owner-scan-failed");
+        throw new Error("native integration relevant process groups were unavailable");
+      }
       const capabilityOwners = await readLinuxUnixSocketOwnerProcessIds(
         state!.capabilitySocketPath,
+        relevantProcessGroups,
+        relevantProcessIds,
       ).catch((): undefined => undefined);
       if (
         capabilityOwners === undefined ||
@@ -934,9 +966,11 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
         await markFailureStage("parent-death-capability-owner-mismatch");
         throw new Error("native integration capability listener ownership was invalid");
       }
-      const modelOwners = await readLinuxUnixSocketOwnerProcessIds(state!.modelSocketPath).catch(
-        (): undefined => undefined,
-      );
+      const modelOwners = await readLinuxUnixSocketOwnerProcessIds(
+        state!.modelSocketPath,
+        relevantProcessGroups,
+        relevantProcessIds,
+      ).catch((): undefined => undefined);
       if (
         modelOwners === undefined ||
         !modelOwners.listed ||
@@ -961,9 +995,11 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
       }
       await markFailureStage("parent-death-capability-socket");
       if (await unixSocketAcceptsConnections(state!.capabilitySocketPath)) {
-        const scan = await readLinuxUnixSocketOwnerProcessIds(state!.capabilitySocketPath).catch(
-          (): undefined => undefined,
-        );
+        const scan = await readLinuxUnixSocketOwnerProcessIds(
+          state!.capabilitySocketPath,
+          relevantProcessGroups,
+          relevantProcessIds,
+        ).catch((): undefined => undefined);
         if (scan === undefined) {
           await markFailureStage("parent-death-capability-owner-scan-failed");
         } else if (!scan.listed) {
@@ -981,9 +1017,11 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
       }
       await markFailureStage("parent-death-model-socket");
       if (await unixSocketAcceptsConnections(state!.modelSocketPath)) {
-        const scan = await readLinuxUnixSocketOwnerProcessIds(state!.modelSocketPath).catch(
-          (): undefined => undefined,
-        );
+        const scan = await readLinuxUnixSocketOwnerProcessIds(
+          state!.modelSocketPath,
+          relevantProcessGroups,
+          relevantProcessIds,
+        ).catch((): undefined => undefined);
         if (scan === undefined) {
           await markFailureStage("parent-death-model-owner-scan-failed");
         } else if (!scan.listed) {

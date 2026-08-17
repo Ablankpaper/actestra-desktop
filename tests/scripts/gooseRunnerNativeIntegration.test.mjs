@@ -201,6 +201,8 @@ describe("P8.2b Linux authenticated Goose integration gate", () => {
     expect(integration).toContain('markFailureStage("parent-death-model-owner-fd-inaccessible")');
     expect(integration).toContain('markFailureStage("parent-death-capability-owner-process-race")');
     expect(integration).toContain('markFailureStage("parent-death-model-owner-process-race")');
+    expect(integration).toContain("relevantProcessGroups");
+    expect(integration).toContain("readLinuxProcessGroupId");
     expect(integration).toContain('markFailureStage("parent-death-runner-not-exited")');
     expect(integration).toContain('markFailureStage("parent-death-capability-socket")');
     expect(integration).toContain('markFailureStage("parent-death-model-socket")');
