@@ -39,6 +39,7 @@ describe("Goose runner native build script", () => {
       "workers/goose-runner/src/containment/linux.rs",
       "workers/goose-runner/src/containment/unix.rs",
       "workers/goose-runner/src/containment/windows.rs",
+      "workers/goose-runner/src/linux_bootstrap.rs",
     ]) {
       expect(source).toContain(`"${relativePath}"`);
     }

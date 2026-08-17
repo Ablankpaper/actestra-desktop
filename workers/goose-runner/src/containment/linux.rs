@@ -176,6 +176,7 @@ pub(crate) fn set_parent_death_signal() -> Result<(), &'static str> {
 fn setup_user_and_mount_namespace() -> Result<(), &'static str> {
     let uid = unsafe { libc::getuid() };
     let gid = unsafe { libc::getgid() };
+    crate::linux_bootstrap::verify_current_linux_bootstrap().map_err(|_| "linux-bootstrap")?;
     if unsafe { libc::unshare(libc::CLONE_NEWUSER) } != 0 {
         return Err("user-namespace");
     }

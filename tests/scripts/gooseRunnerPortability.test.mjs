@@ -56,6 +56,35 @@ describe("Goose runner native source portability", () => {
     expect(runtime).toBeGreaterThan(policy);
   });
 
+  it("checks the fixed Linux bootstrap before probe or Tokio and repeats it before unshare", () => {
+    const source = fs.readFileSync(runnerSourcePath, "utf8");
+    const linux = fs.readFileSync(
+      path.join(repositoryRoot, "workers/goose-runner/src/containment/linux.rs"),
+      "utf8",
+    );
+    const bootstrap = fs.readFileSync(
+      path.join(repositoryRoot, "workers/goose-runner/src/linux_bootstrap.rs"),
+      "utf8",
+    );
+    const argument = source.indexOf("BOOTSTRAP_ARGUMENT");
+    const probe = source.indexOf("ACTESTRA_GOOSE_CONTAINMENT_PROBE");
+    const runtime = source.indexOf("tokio::runtime::Builder::new_multi_thread()");
+    const unshare = linux.indexOf("libc::unshare(libc::CLONE_NEWUSER)");
+    const repeatedCheck = linux.indexOf("verify_current_linux_bootstrap()");
+
+    expect(bootstrap).toContain(
+      '"/opt/Actestra/resources/actestra-goose-runner/actestra-goose-runner"',
+    );
+    expect(bootstrap).toContain("BOOTSTRAP_OK");
+    expect(bootstrap).toContain("BOOTSTRAP_FAILED");
+    expect(source).toContain("verify_current_linux_bootstrap()");
+    expect(argument).toBeGreaterThan(-1);
+    expect(argument).toBeLessThan(probe);
+    expect(probe).toBeLessThan(runtime);
+    expect(repeatedCheck).toBeGreaterThan(-1);
+    expect(repeatedCheck).toBeLessThan(unshare);
+  });
+
   it("exports the resource-limit test seam only in Rust test builds", () => {
     const containment = fs.readFileSync(containmentModulePath, "utf8");
     expect(containment).toContain(
@@ -102,11 +131,9 @@ describe("Goose runner native source portability", () => {
   it("keeps the Linux direct launcher behind the unchanged runtime ceiling", () => {
     const source = fs.readFileSync(mainProcessPath, "utf8");
     const runtimeResolution = source.indexOf(
-      "resolveGooseRunnerRuntimeTarget(process.platform, process.arch)",
+      "resolveGooseRunnerRuntimeTarget(platform, architecture)",
     );
-    const privateRootPreparation = source.indexOf(
-      "prepared = await preparePrivateRoot(options.privateRootParent, options.artifact)",
-    );
+    const privateRootPreparation = source.indexOf("prepared = await preparePrivateRoot(");
 
     expect(runtimeResolution).toBeGreaterThan(-1);
     expect(runtimeResolution).toBeLessThan(privateRootPreparation);

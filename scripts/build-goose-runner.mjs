@@ -57,6 +57,7 @@ const sourceTreeFiles = [
   "workers/goose-runner/src/containment/mod.rs",
   "workers/goose-runner/src/containment/unix.rs",
   "workers/goose-runner/src/containment/windows.rs",
+  "workers/goose-runner/src/linux_bootstrap.rs",
   "workers/goose-runner/src/main.rs",
 ];
 

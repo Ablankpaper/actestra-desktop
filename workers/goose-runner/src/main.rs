@@ -1,5 +1,7 @@
 use std::env;
 mod containment;
+#[cfg(any(target_os = "linux", test))]
+mod linux_bootstrap;
 #[cfg(any(target_os = "linux", all(unix, test)))]
 mod linux_runtime;
 #[cfg(all(unix, test))]
@@ -46,6 +48,8 @@ fn prepare_linux_runtime() -> Result<
     ),
     &'static str,
 > {
+    linux_bootstrap::verify_current_linux_bootstrap()
+        .map_err(|_| LINUX_NETWORK_POLICY_FAILURE_MARKER)?;
     if LINUX_RUNTIME_ENVIRONMENT_KEYS != linux_runtime::LINUX_RUNTIME_ENVIRONMENT_KEYS {
         return Err(LINUX_NETWORK_POLICY_FAILURE_MARKER);
     }
@@ -68,6 +72,22 @@ fn prepare_linux_runtime() -> Result<
 }
 
 fn main() {
+    #[cfg(target_os = "linux")]
+    {
+        let mut arguments = env::args();
+        let _program = arguments.next();
+        if arguments.next().as_deref() == Some(linux_bootstrap::BOOTSTRAP_ARGUMENT) {
+            let success = arguments.next().is_none()
+                && linux_bootstrap::verify_current_linux_bootstrap().is_ok();
+            if success {
+                println!("{}", linux_bootstrap::BOOTSTRAP_OK);
+            } else {
+                eprintln!("{}", linux_bootstrap::BOOTSTRAP_FAILED);
+                std::process::exit(1);
+            }
+            return;
+        }
+    }
     if env::var("ACTESTRA_GOOSE_CONTAINMENT_PROBE").as_deref() == Ok("1") {
         println!("{}", containment::run_containment_probe());
         return;
@@ -164,6 +184,51 @@ mod tests {
                 "1073741824".to_string(),
             ),
         ])
+    }
+
+    #[test]
+    fn accepts_only_the_exact_packaged_linux_bootstrap_identity() {
+        assert!(linux_bootstrap::verify_bootstrap_inputs(
+            "/opt/Actestra/resources/actestra-goose-runner/actestra-goose-runner",
+            "Actestra-Goose-Runner (unconfined)\n",
+            "Y\n",
+            "1\n",
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn rejects_changed_linux_bootstrap_path_profile_or_host_state() {
+        let executable = "/opt/Actestra/resources/actestra-goose-runner/actestra-goose-runner";
+        for candidate in [
+            (
+                "/tmp/runner",
+                "Actestra-Goose-Runner (unconfined)\n",
+                "Y\n",
+                "1\n",
+            ),
+            (executable, "unconfined\n", "Y\n", "1\n"),
+            (
+                executable,
+                "Actestra-Goose-Runner (unconfined)\n",
+                "N\n",
+                "1\n",
+            ),
+            (
+                executable,
+                "Actestra-Goose-Runner (unconfined)\n",
+                "Y\n",
+                "0\n",
+            ),
+        ] {
+            assert!(linux_bootstrap::verify_bootstrap_inputs(
+                candidate.0,
+                candidate.1,
+                candidate.2,
+                candidate.3,
+            )
+            .is_err());
+        }
     }
 
     #[test]
