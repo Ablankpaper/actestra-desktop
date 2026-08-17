@@ -597,4 +597,3 @@ Do not create this commit for incomplete or failed evidence.
 - The runner repeats identity validation immediately before `unshare`.
 - CI uses root only for temporary installation and teardown; Goose runs as ordinary user.
 - Darwin behavior remains unchanged; Windows, P8.3, P8.4, signing, release, and real-provider acceptance are outside this plan.
-
