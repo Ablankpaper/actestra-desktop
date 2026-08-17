@@ -6,22 +6,33 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import {
+  classifyGooseNativeIntegrationFailureEvidence,
   validateGooseNativeIntegrationEvidence,
   GOOSE_NATIVE_INTEGRATION_TARGET_TRIPLE,
 } from "./gooseNativeIntegrationEvidence.mjs";
 
 const MAX_OUTPUT_BYTES = 64 * 1024;
 const MAX_MANIFEST_BYTES = 1024 * 1024;
+const MAX_FAILURE_EVIDENCE_BYTES = 1024;
 const FAILURE_CODES = new Set([
   "integration-artifact-mismatch",
   "integration-artifact-invalid",
+  "integration-cancellation-failed",
+  "integration-cleanup-failed",
+  "integration-crash-failed",
   "integration-evidence-incomplete",
   "integration-evidence-invalid",
   "integration-evidence-missing",
   "integration-evidence-too-large",
   "integration-failed",
+  "integration-initialize-failed",
+  "integration-parent-death-failed",
+  "integration-prompt-failed",
+  "integration-restart-failed",
   "integration-target-unsupported",
   "integration-test-failed",
+  "integration-tool-denial-failed",
+  "integration-tool-discovery-failed",
 ]);
 const FAILURE_ALIASES = new Map([
   ["artifact-directory-invalid", "integration-artifact-invalid"],
@@ -47,7 +58,7 @@ function digest(value) {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function boundedEnv(evidencePath, artifactDirectory, manifestSha256) {
+function boundedEnv(evidencePath, failureEvidencePath, artifactDirectory, manifestSha256) {
   const source = process.env;
   return {
     PATH: source.PATH ?? "",
@@ -59,9 +70,24 @@ function boundedEnv(evidencePath, artifactDirectory, manifestSha256) {
     NODE_OPTIONS: source.NODE_OPTIONS ?? "",
     ACTESTRA_GOOSE_NATIVE_INTEGRATION: "1",
     ACTESTRA_GOOSE_NATIVE_INTEGRATION_EVIDENCE_PATH: evidencePath,
+    ACTESTRA_GOOSE_NATIVE_INTEGRATION_FAILURE_EVIDENCE_PATH: failureEvidencePath,
     ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIR: artifactDirectory,
     ACTESTRA_GOOSE_RUNNER_MANIFEST_SHA256: manifestSha256,
   };
+}
+
+async function readFailureCode(failureEvidencePath) {
+  const bytes = await readFile(failureEvidencePath).catch(() => undefined);
+  if (bytes === undefined || bytes.byteLength > MAX_FAILURE_EVIDENCE_BYTES) {
+    return "integration-test-failed";
+  }
+  let evidence;
+  try {
+    evidence = JSON.parse(bytes.toString("utf8"));
+  } catch {
+    return "integration-test-failed";
+  }
+  return classifyGooseNativeIntegrationFailureEvidence(evidence) ?? "integration-test-failed";
 }
 
 async function readArtifactBinding(targetTriple) {
@@ -117,10 +143,16 @@ async function main() {
     },
   );
   const evidencePath = path.join(evidenceDirectory, "integration-evidence.json");
+  const failureEvidencePath = path.join(evidenceDirectory, "integration-failure.json");
   try {
-    const child = spawnSync("bun", ["run", "test", "--", integrationTest], {
+    const child = spawnSync("bun", ["run", "test", "--", "--bail=1", integrationTest], {
       cwd: repositoryRoot,
-      env: boundedEnv(evidencePath, binding.artifactDirectory, binding.manifestSha256),
+      env: boundedEnv(
+        evidencePath,
+        failureEvidencePath,
+        binding.artifactDirectory,
+        binding.manifestSha256,
+      ),
       encoding: "utf8",
       timeout: 120_000,
       maxBuffer: MAX_OUTPUT_BYTES,
@@ -133,7 +165,7 @@ async function main() {
       Buffer.byteLength(child.stdout ?? "", "utf8") > MAX_OUTPUT_BYTES ||
       Buffer.byteLength(child.stderr ?? "", "utf8") > MAX_OUTPUT_BYTES
     ) {
-      throw new Error("integration-test-failed");
+      throw new Error(await readFailureCode(failureEvidencePath));
     }
     const evidenceBytes = await readFile(evidencePath).catch(() => {
       throw new Error("integration-evidence-missing");

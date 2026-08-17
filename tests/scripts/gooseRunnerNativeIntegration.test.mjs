@@ -81,6 +81,24 @@ describe("P8.2b Linux authenticated Goose integration gate", () => {
     expect(fs.existsSync(validatorTestsPath)).toBe(true);
   });
 
+  it("reports only a closed stage when the native test fails", () => {
+    const launcher = read("scripts/run-goose-runner-native-integration.mjs");
+    const integration = read("tests/main/gooseRunnerLinuxNative.integration.ts");
+
+    expect(launcher).toContain("ACTESTRA_GOOSE_NATIVE_INTEGRATION_FAILURE_EVIDENCE_PATH");
+    expect(launcher).toContain("classifyGooseNativeIntegrationFailureEvidence");
+    expect(launcher).toContain('"--bail=1"');
+    expect(launcher).not.toContain("process.stderr.write(child.stderr");
+    expect(launcher).not.toContain("process.stdout.write(child.stdout");
+    expect(integration).toContain('markFailureStage("initialize")');
+    expect(integration).toContain('markFailureStage("prompt")');
+    expect(integration).toContain('markFailureStage("cancellation")');
+    expect(integration).toContain('markFailureStage("crash")');
+    expect(integration).toContain('markFailureStage("restart")');
+    expect(integration).toContain('markFailureStage("parent-death")');
+    expect(integration).toContain('markFailureStage("cleanup")');
+  });
+
   it("keeps supervisor-death cleanup caller-owned and checks attempt directories directly", () => {
     const source = read("tests/main/gooseRunnerLinuxNative.integration.ts");
 

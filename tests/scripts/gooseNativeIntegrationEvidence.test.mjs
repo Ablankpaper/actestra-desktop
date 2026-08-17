@@ -1,10 +1,10 @@
 // @vitest-environment node
 
 import { describe, expect, it } from "vitest";
-import {
-  validateGooseNativeIntegrationEvidence,
-  GOOSE_NATIVE_INTEGRATION_EVIDENCE_KEYS,
-} from "../../scripts/gooseNativeIntegrationEvidence.mjs";
+import * as nativeIntegrationEvidence from "../../scripts/gooseNativeIntegrationEvidence.mjs";
+
+const { validateGooseNativeIntegrationEvidence, GOOSE_NATIVE_INTEGRATION_EVIDENCE_KEYS } =
+  nativeIntegrationEvidence;
 
 const binding = Object.freeze({
   targetTriple: "x86_64-unknown-linux-gnu",
@@ -71,5 +71,34 @@ describe("Goose native integration evidence", () => {
         executableSha256: "e".repeat(64),
       }),
     ).toEqual({ ok: false, code: "integration-artifact-mismatch" });
+  });
+
+  it("classifies only exact closed failure-stage evidence", () => {
+    const classify = nativeIntegrationEvidence.classifyGooseNativeIntegrationFailureEvidence;
+    expect(typeof classify).toBe("function");
+    if (typeof classify !== "function") return;
+
+    for (const [stage, code] of [
+      ["initialize", "integration-initialize-failed"],
+      ["tool-discovery", "integration-tool-discovery-failed"],
+      ["prompt", "integration-prompt-failed"],
+      ["tool-denial", "integration-tool-denial-failed"],
+      ["cancellation", "integration-cancellation-failed"],
+      ["crash", "integration-crash-failed"],
+      ["restart", "integration-restart-failed"],
+      ["parent-death", "integration-parent-death-failed"],
+      ["cleanup", "integration-cleanup-failed"],
+    ]) {
+      expect(classify({ contractVersion: 1, stage })).toBe(code);
+    }
+    for (const candidate of [
+      { contractVersion: 1, stage: "invented" },
+      { contractVersion: 1, stage: "/tmp/private" },
+      { contractVersion: 1, stage: "prompt", detail: "/tmp/private" },
+      { contractVersion: 2, stage: "prompt" },
+      null,
+    ]) {
+      expect(classify(candidate)).toBeUndefined();
+    }
   });
 });

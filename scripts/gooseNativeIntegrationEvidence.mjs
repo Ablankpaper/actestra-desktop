@@ -28,6 +28,18 @@ const EVIDENCE_KEYS = Object.freeze([
   "toolDenial",
   "toolDiscovery",
 ]);
+const FAILURE_STAGE_CODES = Object.freeze({
+  cancellation: "integration-cancellation-failed",
+  cleanup: "integration-cleanup-failed",
+  crash: "integration-crash-failed",
+  initialize: "integration-initialize-failed",
+  "parent-death": "integration-parent-death-failed",
+  prompt: "integration-prompt-failed",
+  restart: "integration-restart-failed",
+  "tool-denial": "integration-tool-denial-failed",
+  "tool-discovery": "integration-tool-discovery-failed",
+});
+const FAILURE_EVIDENCE_KEYS = Object.freeze(["contractVersion", "stage"]);
 
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -66,6 +78,20 @@ export function validateGooseNativeIntegrationEvidence(value, binding) {
     return invalid("integration-artifact-mismatch");
   }
   return Object.freeze({ ok: true });
+}
+
+export function classifyGooseNativeIntegrationFailureEvidence(value) {
+  if (!isRecord(value)) return undefined;
+  const keys = Object.keys(value).sort();
+  if (
+    keys.length !== FAILURE_EVIDENCE_KEYS.length ||
+    keys.some((key, index) => key !== FAILURE_EVIDENCE_KEYS[index]) ||
+    value.contractVersion !== 1 ||
+    typeof value.stage !== "string"
+  ) {
+    return undefined;
+  }
+  return FAILURE_STAGE_CODES[value.stage];
 }
 
 export const GOOSE_NATIVE_INTEGRATION_EVIDENCE_KEYS = EVIDENCE_KEYS;

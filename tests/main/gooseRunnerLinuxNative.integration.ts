@@ -35,14 +35,27 @@ const repositoryRoot = path.resolve(import.meta.dirname, "../..");
 const artifactDirectory = process.env.ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIR;
 const trustedManifestSha256 = process.env.ACTESTRA_GOOSE_RUNNER_MANIFEST_SHA256;
 const evidencePath = process.env.ACTESTRA_GOOSE_NATIVE_INTEGRATION_EVIDENCE_PATH;
+const failureEvidencePath = process.env.ACTESTRA_GOOSE_NATIVE_INTEGRATION_FAILURE_EVIDENCE_PATH;
 const nativeEnabled =
   process.platform === "linux" &&
   process.arch === "x64" &&
   process.env.ACTESTRA_GOOSE_NATIVE_INTEGRATION === "1" &&
   artifactDirectory !== undefined &&
   trustedManifestSha256 !== undefined &&
-  evidencePath !== undefined;
+  evidencePath !== undefined &&
+  failureEvidencePath !== undefined;
 const fixtureRoots: string[] = [];
+
+type NativeIntegrationFailureStage =
+  | "cancellation"
+  | "cleanup"
+  | "crash"
+  | "initialize"
+  | "parent-death"
+  | "prompt"
+  | "restart"
+  | "tool-denial"
+  | "tool-discovery";
 
 interface NativeIntegrationEvidence {
   contractVersion: 1;
@@ -75,6 +88,13 @@ function deferred<T>(): Deferred<T> {
     reject = rejectPromise;
   });
   return { promise, resolve, reject };
+}
+
+async function markFailureStage(stage: NativeIntegrationFailureStage): Promise<void> {
+  await writeFile(failureEvidencePath!, `${JSON.stringify({ contractVersion: 1, stage })}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
 }
 
 async function waitFor(
@@ -220,6 +240,7 @@ let artifact: AdmittedGooseRunnerArtifact;
 
 describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", () => {
   beforeAll(async () => {
+    await markFailureStage("initialize");
     artifact = await nativeArtifact();
     evidence.sourceCommit = artifact.sourceCommit!;
     evidence.executableSha256 = artifact.executableSha256;
@@ -281,6 +302,7 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
       sessionTimeoutMs: 30_000,
     });
     try {
+      await markFailureStage("tool-discovery");
       expect(opened.info).toMatchObject({
         protocolVersion: 1,
         agentName: "goose",
@@ -288,10 +310,12 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
       });
       expect(opened.session.sessionId).toEqual(expect.any(String));
       expect(opened.toolNames).toContain(`actestra-capability-proxy__${CODING_FILE_READ_TOOL_ID}`);
+      await markFailureStage("prompt");
       const result = await opened.prompt({
         text: "Attempt one bounded read and report the denied outcome.",
         timeoutMs: 30_000,
       });
+      await markFailureStage("tool-denial");
       expect(result.stopReason).toBe("end_turn");
       expect(toolCalls).toHaveLength(1);
       expect(toolCalls[0]).toMatchObject({ toolId: CODING_FILE_READ_TOOL_ID });
@@ -317,6 +341,7 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
   }, 60_000);
 
   it("cancels an active prompt and removes its bridge and private root", async () => {
+    await markFailureStage("cancellation");
     const fixture = await createFixture();
     const invocationStarted = deferred<void>();
     const modelInvoker: GooseLoopbackModelInvoker = async (_invocation, signal) => {
@@ -353,6 +378,7 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
   }, 60_000);
 
   it("recovers from a runner crash with a clean second composition", async () => {
+    await markFailureStage("crash");
     const fixture = await createFixture();
     const invocationStarted = deferred<void>();
     const blockingModel: GooseLoopbackModelInvoker = async (_invocation, signal) => {
@@ -383,6 +409,7 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
     await first.close();
     expect(await readdir(fixture.attempts)).toEqual([]);
 
+    await markFailureStage("restart");
     const second = await openGooseMcpSessionComposition({
       artifact,
       privateRootParent: fixture.attempts,
@@ -407,6 +434,7 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
   }, 90_000);
 
   it("terminates the runner and relay when the Main-style supervisor dies", async () => {
+    await markFailureStage("parent-death");
     const fixture = await createFixture();
     const statePath = path.join(fixture.root, "supervisor-state.json");
     const supervisor = spawn(
@@ -459,6 +487,7 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
   }, 60_000);
 
   it("leaves no private-root residue after all Main-owned cleanup paths", async () => {
+    await markFailureStage("cleanup");
     for (const root of fixtureRoots) {
       const attempts = path.join(root, "attempts");
       const entries = await readdir(attempts);
