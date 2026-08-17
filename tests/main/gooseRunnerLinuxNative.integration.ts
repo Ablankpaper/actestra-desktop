@@ -592,6 +592,42 @@ async function unixSocketAcceptsConnections(socketPath: string): Promise<boolean
   });
 }
 
+async function waitForLinuxUnixSocketClosure(
+  socketPath: string,
+  probe: (socketPath: string) => Promise<boolean> = unixSocketAcceptsConnections,
+  timeoutMs = 5_000,
+): Promise<boolean> {
+  try {
+    await waitFor(async () => !(await probe(socketPath)), timeoutMs);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+describe("native Linux socket closure diagnostics", () => {
+  it("waits through a bounded transient close race", async () => {
+    let attempts = 0;
+    await expect(
+      waitForLinuxUnixSocketClosure(
+        "internal-socket",
+        async () => {
+          attempts += 1;
+          return attempts < 3;
+        },
+        100,
+      ),
+    ).resolves.toBe(true);
+    expect(attempts).toBeGreaterThanOrEqual(3);
+  });
+
+  it("does not turn a persistent listener into success", async () => {
+    await expect(
+      waitForLinuxUnixSocketClosure("internal-socket", async () => true, 50),
+    ).resolves.toBe(false);
+  });
+});
+
 interface LinuxUnixSocketOwnerScan {
   readonly listed: boolean;
   readonly owners: ReadonlySet<number>;
@@ -1027,7 +1063,7 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
         throw error;
       }
       await markFailureStage("parent-death-capability-socket");
-      if (await unixSocketAcceptsConnections(state!.capabilitySocketPath)) {
+      if (!(await waitForLinuxUnixSocketClosure(state!.capabilitySocketPath))) {
         const scan = await readLinuxUnixSocketOwnerProcessIds(
           state!.capabilitySocketPath,
           relevantProcessGroups,
@@ -1050,7 +1086,7 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
         throw new Error("native integration capability listener survived supervisor death");
       }
       await markFailureStage("parent-death-model-socket");
-      if (await unixSocketAcceptsConnections(state!.modelSocketPath)) {
+      if (!(await waitForLinuxUnixSocketClosure(state!.modelSocketPath))) {
         const scan = await readLinuxUnixSocketOwnerProcessIds(
           state!.modelSocketPath,
           relevantProcessGroups,
