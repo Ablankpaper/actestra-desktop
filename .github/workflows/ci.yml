@@ -328,6 +328,9 @@ jobs:
           bootstrap_output="$(/opt/Actestra/resources/actestra-goose-runner/actestra-goose-runner --actestra-linux-bootstrap-check)"
           test "$bootstrap_output" = "ACTESTRA_GOOSE_LINUX_BOOTSTRAP_OK"
 
+      - name: Re-admit installed Ubuntu Goose package
+        run: bun run goose:runner:admit-package:linux
+
       - name: Run authenticated Linux Goose integration
         id: linux-integration
         shell: bash

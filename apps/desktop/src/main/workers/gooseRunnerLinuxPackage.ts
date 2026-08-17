@@ -69,6 +69,20 @@ export interface AdmittedGooseRunnerLinuxPackage {
   readonly bootstrapMarker: typeof GOOSE_LINUX_BOOTSTRAP_OK_MARKER;
 }
 
+export type GooseRunnerLinuxPackageAdmissionFailureCode =
+  | "linux-package-admission-failed"
+  | "linux-package-artifact-admission-failed"
+  | "linux-package-artifact-binding-mismatch"
+  | "linux-package-bootstrap-failed"
+  | "linux-package-path-metadata-invalid"
+  | "linux-package-profile-digest-mismatch"
+  | "linux-package-record-invalid"
+  | "linux-package-resources-path-invalid";
+
+export type GooseRunnerLinuxPackageAdmissionResult =
+  | Readonly<{ readonly ok: true; readonly value: Readonly<AdmittedGooseRunnerLinuxPackage> }>
+  | Readonly<{ readonly ok: false; readonly code: GooseRunnerLinuxPackageAdmissionFailureCode }>;
+
 function sha256(value: Uint8Array): string {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -252,11 +266,19 @@ async function readAdmissionRecord(
   }
 }
 
-export async function admitInstalledGooseRunnerLinuxPackage(
+function rejectedPackageAdmission(
+  code: GooseRunnerLinuxPackageAdmissionFailureCode,
+): GooseRunnerLinuxPackageAdmissionResult {
+  return Object.freeze({ ok: false, code });
+}
+
+export async function inspectInstalledGooseRunnerLinuxPackageAdmission(
   resourcesPath: string,
   dependencies: GooseRunnerLinuxPackageAdmissionDependencies = DEFAULT_DEPENDENCIES,
-): Promise<Readonly<AdmittedGooseRunnerLinuxPackage> | null> {
-  if (resourcesPath !== GOOSE_LINUX_RESOURCES_PATH) return null;
+): Promise<GooseRunnerLinuxPackageAdmissionResult> {
+  if (resourcesPath !== GOOSE_LINUX_RESOURCES_PATH) {
+    return rejectedPackageAdmission("linux-package-resources-path-invalid");
+  }
   try {
     const runnerDirectory = GOOSE_LINUX_ARTIFACT_DIRECTORY;
     const profilePath = path.join(resourcesPath, GOOSE_LINUX_PROFILE_FILE);
@@ -273,22 +295,29 @@ export async function admitInstalledGooseRunnerLinuxPackage(
           executable,
         ))
       ) {
-        return null;
+        return rejectedPackageAdmission("linux-package-path-metadata-invalid");
       }
     }
     const record = await readAdmissionRecord(dependencies, recordPath);
-    if (record === null) return null;
+    if (record === null) return rejectedPackageAdmission("linux-package-record-invalid");
     if (
       record.executablePath !== GOOSE_LINUX_EXECUTABLE_PATH ||
-      record.targetTriple !== GOOSE_LINUX_TARGET_TRIPLE ||
-      (await dependencies.sha256File(profilePath)) !== record.profileSha256
+      record.targetTriple !== GOOSE_LINUX_TARGET_TRIPLE
     ) {
-      return null;
+      return rejectedPackageAdmission("linux-package-record-invalid");
     }
-    const admittedArtifact = await dependencies.admitRunnerArtifact(runnerDirectory, {
-      trustedManifestSha256: record.runnerManifestSha256,
-      expectedTargetTriple: record.targetTriple,
-    });
+    if ((await dependencies.sha256File(profilePath)) !== record.profileSha256) {
+      return rejectedPackageAdmission("linux-package-profile-digest-mismatch");
+    }
+    let admittedArtifact: AdmittedGooseRunnerArtifact;
+    try {
+      admittedArtifact = await dependencies.admitRunnerArtifact(runnerDirectory, {
+        trustedManifestSha256: record.runnerManifestSha256,
+        expectedTargetTriple: record.targetTriple,
+      });
+    } catch {
+      return rejectedPackageAdmission("linux-package-artifact-admission-failed");
+    }
     const manifestPath = path.join(runnerDirectory, GOOSE_RUNNER_MANIFEST_FILE);
     const executablePath = GOOSE_LINUX_EXECUTABLE_PATH;
     if (
@@ -300,9 +329,17 @@ export async function admitInstalledGooseRunnerLinuxPackage(
       (await dependencies.sha256File(manifestPath)) !== record.runnerManifestSha256 ||
       (await dependencies.sha256File(executablePath)) !== record.executableSha256
     ) {
-      return null;
+      return rejectedPackageAdmission("linux-package-artifact-binding-mismatch");
     }
-    if (!(await dependencies.runBootstrapCheck(executablePath))) return null;
+    let bootstrapAccepted: boolean;
+    try {
+      bootstrapAccepted = await dependencies.runBootstrapCheck(executablePath);
+    } catch {
+      bootstrapAccepted = false;
+    }
+    if (!bootstrapAccepted) {
+      return rejectedPackageAdmission("linux-package-bootstrap-failed");
+    }
     const linuxInstall: Readonly<GooseRunnerLinuxInstallAttestation> = Object.freeze({
       contractVersion: 1,
       resourcesPath: GOOSE_LINUX_RESOURCES_PATH,
@@ -313,20 +350,34 @@ export async function admitInstalledGooseRunnerLinuxPackage(
     });
     const artifact = Object.freeze({ ...admittedArtifact, linuxInstall });
     return Object.freeze({
-      resourcesPath: GOOSE_LINUX_RESOURCES_PATH,
-      profilePath,
-      recordPath,
-      runnerAdmission: Object.freeze({
-        directory: runnerDirectory,
-        trustedManifestSha256: record.runnerManifestSha256,
-        expectedTargetTriple: record.targetTriple,
+      ok: true,
+      value: Object.freeze({
+        resourcesPath: GOOSE_LINUX_RESOURCES_PATH,
+        profilePath,
+        recordPath,
+        runnerAdmission: Object.freeze({
+          directory: runnerDirectory,
+          trustedManifestSha256: record.runnerManifestSha256,
+          expectedTargetTriple: record.targetTriple,
+        }),
+        artifact,
+        record,
+        executablePath,
+        bootstrapMarker: GOOSE_LINUX_BOOTSTRAP_OK_MARKER,
       }),
-      artifact,
-      record,
-      executablePath,
-      bootstrapMarker: GOOSE_LINUX_BOOTSTRAP_OK_MARKER,
     });
   } catch {
-    return null;
+    return rejectedPackageAdmission("linux-package-admission-failed");
   }
+}
+
+export async function admitInstalledGooseRunnerLinuxPackage(
+  resourcesPath: string,
+  dependencies: GooseRunnerLinuxPackageAdmissionDependencies = DEFAULT_DEPENDENCIES,
+): Promise<Readonly<AdmittedGooseRunnerLinuxPackage> | null> {
+  const result = await inspectInstalledGooseRunnerLinuxPackageAdmission(
+    resourcesPath,
+    dependencies,
+  );
+  return result.ok ? result.value : null;
 }

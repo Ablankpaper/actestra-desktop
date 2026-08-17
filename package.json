@@ -57,6 +57,7 @@
     "goose:runner:format:check": "cargo fmt --manifest-path workers/goose-runner/Cargo.toml -- --check",
     "goose:runner:build": "node scripts/build-goose-runner.mjs",
     "goose:runner:admit-build": "bun scripts/admit-goose-runner-build.ts",
+    "goose:runner:admit-package:linux": "bun scripts/verify-aionui-linux-goose-install.ts",
     "goose:runner:test": "node scripts/test-goose-runner.mjs",
     "goose:runner:containment": "node scripts/record-goose-runner-containment.mjs",
     "goose:runner:containment:accept": "node scripts/run-goose-runner-containment.mjs",

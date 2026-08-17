@@ -5,6 +5,7 @@ import type { AdmittedGooseRunnerArtifact } from "../../apps/desktop/src/main/wo
 import {
   admitInstalledGooseRunnerLinuxPackage,
   GOOSE_LINUX_BOOTSTRAP_OK_MARKER,
+  inspectInstalledGooseRunnerLinuxPackageAdmission,
   type GooseRunnerLinuxPackageAdmissionDependencies,
   type LinuxPackagePathMetadata,
 } from "../../apps/desktop/src/main/workers/gooseRunnerLinuxPackage";
@@ -79,6 +80,7 @@ function fixture(
     | "other-writable"
     | "wrong-resources-path"
     | "bootstrap-failure"
+    | "artifact-admission-failure"
     | "none" = "none",
 ): GooseRunnerLinuxPackageAdmissionDependencies & { resourcesPath: string } {
   const resourcesPath = GOOSE_LINUX_RESOURCES_PATH;
@@ -152,7 +154,10 @@ function fixture(
     },
     readFile: async () => Buffer.from(`${JSON.stringify(record)}\n`),
     sha256File: async (filePath) => hashes.get(filePath) ?? "0".repeat(64),
-    admitRunnerArtifact: async () => artifact,
+    admitRunnerArtifact: async () => {
+      if (fault === "artifact-admission-failure") throw new Error("injected artifact rejection");
+      return artifact;
+    },
     runBootstrapCheck: async () => fault !== "bootstrap-failure",
   };
 }
@@ -197,5 +202,28 @@ describe("Main-owned Ubuntu Goose package admission", () => {
       value,
     );
     expect(result).toBeNull();
+  });
+
+  it.each([
+    ["missing-profile", "linux-package-path-metadata-invalid"],
+    ["profile-digest-drift", "linux-package-profile-digest-mismatch"],
+    ["manifest-digest-drift", "linux-package-artifact-binding-mismatch"],
+    ["executable-digest-drift", "linux-package-artifact-binding-mismatch"],
+    ["symlink-component", "linux-package-path-metadata-invalid"],
+    ["non-root-owner", "linux-package-path-metadata-invalid"],
+    ["group-writable", "linux-package-path-metadata-invalid"],
+    ["other-writable", "linux-package-path-metadata-invalid"],
+    ["wrong-resources-path", "linux-package-resources-path-invalid"],
+    ["bootstrap-failure", "linux-package-bootstrap-failed"],
+    ["artifact-admission-failure", "linux-package-artifact-admission-failed"],
+  ] as const)("reports only the closed %s rejection reason", async (fault, code) => {
+    const value = fixture(fault === "wrong-resources-path" ? "none" : fault);
+    const result = await inspectInstalledGooseRunnerLinuxPackageAdmission(
+      fault === "wrong-resources-path" ? "/opt/Actestra/resources-link" : value.resourcesPath,
+      value,
+    );
+
+    expect(result).toEqual({ ok: false, code });
+    expect(JSON.stringify(result)).not.toContain("injected artifact rejection");
   });
 });

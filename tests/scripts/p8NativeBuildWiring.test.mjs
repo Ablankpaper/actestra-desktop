@@ -118,6 +118,7 @@ describe("P8 native Goose build wiring", () => {
     expectOrderedFragments(job, [
       "Build exact Ubuntu Goose runner artifact",
       "Install temporary Ubuntu Goose package layout",
+      "Re-admit installed Ubuntu Goose package",
       "Run authenticated Linux Goose integration",
       "Run exact Ubuntu containment acceptance",
       "Remove temporary Ubuntu Goose package layout",
@@ -127,6 +128,7 @@ describe("P8 native Goose build wiring", () => {
     expect(job).toContain("dist:linux");
     expect(job).toContain("dpkg-deb --extract");
     expect(job).toContain("ACTESTRA_GOOSE_LINUX_BOOTSTRAP_OK");
+    expect(job).toContain("goose:runner:admit-package:linux");
     expect(job).not.toContain("sysctl -w");
     expect(job).toContain("sudo install");
     expect(job).toContain("id -u");
