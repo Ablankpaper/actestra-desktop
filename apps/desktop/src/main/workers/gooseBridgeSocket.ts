@@ -170,7 +170,7 @@ async function listenUnix(
     });
   } catch (error) {
     await new Promise<void>((resolve) => server.close(() => resolve()));
-    await unlink(socketPath).catch(() => undefined);
+    await unlink(socketPath).catch((): undefined => undefined);
     throw new GooseBridgeSocketError(
       "listen-failed",
       "Goose bridge Unix socket permissions could not be established",
