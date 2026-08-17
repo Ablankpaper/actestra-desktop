@@ -111,7 +111,11 @@ async function copyExactArtifactFiles(
       await chmod(target, 0o644);
     }),
   );
-  await chmod(path.join(destination, "actestra-goose-runner"), 0o500);
+  // The DEB owns this file as root, but Goose must execute it as the ordinary
+  // desktop user. Keep every write bit clear while granting execute/read to
+  // non-root users; the Main admission check still requires UID 0 and a
+  // canonical, non-writable package tree.
+  await chmod(path.join(destination, "actestra-goose-runner"), 0o555);
 }
 
 export async function stageAionuiLinuxGoosePackage(

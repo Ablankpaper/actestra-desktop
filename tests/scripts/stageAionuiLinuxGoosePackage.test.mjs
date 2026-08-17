@@ -2,7 +2,17 @@
 
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { chmod, mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  lstat,
+  mkdtemp,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -109,6 +119,11 @@ describe("Ubuntu Goose package staging", () => {
       "actestra-goose-runner",
       "actestra-goose-runner-admission.json",
     ]);
+    const stagedExecutable = await lstat(
+      path.join(result.runnerDirectory, "actestra-goose-runner"),
+    );
+    expect(stagedExecutable.mode & 0o111).toBe(0o111);
+    expect(stagedExecutable.mode & 0o022).toBe(0);
   });
 
   it("rejects a symlinked or unexpected Artifact entry before staging", async () => {

@@ -58,6 +58,14 @@ describe("P8 native Goose build wiring", () => {
     expect(runtimeProcess).toContain('from "./gooseRunnerTarget"');
   });
 
+  it("passes only Electron-owned Linux package resources into coding runtime admission", () => {
+    const patch = read("downstream/aionui-v2.1.41/patches/0014-actestra-team-work.mjs");
+    expect(patch).toContain(
+      "linuxPackageResourcesPath: process.platform === 'linux' ? process.resourcesPath : undefined",
+    );
+    expect(patch).not.toContain("ACTESTRA_GOOSE_LINUX_PACKAGE");
+  });
+
   it("probes Windows and Linux native build admission without claiming runtime support", () => {
     const workflow = read(".github/workflows/ci.yml");
     expect(workflow).toContain("name: Goose runner admission");
@@ -102,5 +110,36 @@ describe("P8 native Goose build wiring", () => {
         expect(job, `${jobId} must not claim or run ${forbidden}`).not.toContain(forbidden);
       }
     }
+  });
+
+  it("installs the exact Ubuntu package layout with sudo only around setup and teardown", () => {
+    const workflow = read(".github/workflows/ci.yml");
+    const job = readWorkflowJob(workflow, "goose-containment-linux");
+    expectOrderedFragments(job, [
+      "Build exact Ubuntu Goose runner artifact",
+      "Install temporary Ubuntu Goose package layout",
+      "Run authenticated Linux Goose integration",
+      "Run exact Ubuntu containment acceptance",
+      "Remove temporary Ubuntu Goose package layout",
+    ]);
+    expect(job).toContain("kernel.apparmor_restrict_unprivileged_userns");
+    expect(job).toContain("downstream:aionui:inspect:deb");
+    expect(job).toContain("dist:linux");
+    expect(job).toContain("dpkg-deb --extract");
+    expect(job).toContain("ACTESTRA_GOOSE_LINUX_BOOTSTRAP_OK");
+    expect(job).not.toContain("sysctl -w");
+    expect(job).toContain("sudo install");
+    expect(job).toContain("id -u");
+
+    const integrationStep = job.slice(
+      job.indexOf("- name: Run authenticated Linux Goose integration"),
+      job.indexOf("- name: Run exact Ubuntu containment acceptance"),
+    );
+    const containmentStep = job.slice(
+      job.indexOf("- name: Run exact Ubuntu containment acceptance"),
+      job.indexOf("- name: Re-admit bound Ubuntu Goose runner artifact"),
+    );
+    expect(integrationStep).not.toContain("sudo");
+    expect(containmentStep).not.toContain("sudo");
   });
 });

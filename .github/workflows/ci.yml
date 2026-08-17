@@ -252,11 +252,88 @@ jobs:
       - name: Admit exact Ubuntu Goose runner artifact
         run: bun run goose:runner:admit-build
 
+      - name: Build and inspect exact Ubuntu DEB package
+        id: linux-package
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Build the real downstream DEB so the inspector sees the same
+          # electron-builder maintainer scripts and resource destinations that
+          # Ubuntu would install. This is package-wiring evidence only.
+          bun run downstream:aionui:install
+          bun run downstream:aionui:stage:linux-goose
+          bun run --cwd .actestra/aionui-v2.1.41 dist:linux -- --x64
+          deb_path="$(find .actestra/aionui-v2.1.41/out -maxdepth 1 -type f -name '*.deb' -print -quit)"
+          test -n "$deb_path"
+          copied_deb="$RUNNER_TEMP/actestra-aionui-goose.deb"
+          install -D -m 0644 "$deb_path" "$copied_deb"
+          echo "path=$copied_deb" >> "$GITHUB_OUTPUT"
+          bun run downstream:aionui:inspect:deb -- "$copied_deb"
+
+      - name: Install temporary Ubuntu Goose package layout
+        shell: bash
+        env:
+          ACTESTRA_LINUX_DEB_PATH: ${{ steps.linux-package.outputs.path }}
+        run: |
+          set -euo pipefail
+          cleanup_on_error() {
+            set +e
+            sudo apparmor_parser --remove /etc/apparmor.d/Actestra >/dev/null 2>&1 || true
+            sudo rm -f -- /etc/apparmor.d/Actestra
+            sudo rm -rf -- /opt/Actestra
+          }
+          trap cleanup_on_error ERR
+
+          test "$(id -u)" -ne 0
+          test "$(cat /sys/module/apparmor/parameters/enabled)" = "Y"
+          test "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns)" = "1"
+          command -v apparmor_parser >/dev/null
+          test -f "$ACTESTRA_LINUX_DEB_PATH"
+
+          extract_root="$RUNNER_TEMP/actestra-aionui-goose-deb-extract"
+          rm -rf -- "$extract_root"
+          mkdir -p "$extract_root"
+          dpkg-deb --extract "$ACTESTRA_LINUX_DEB_PATH" "$extract_root"
+          package_resources="$extract_root/opt/Actestra/resources"
+          test -d "$package_resources/actestra-goose-runner"
+          test -f "$package_resources/apparmor-profile"
+          test -f "$package_resources/actestra-goose-runner-admission.json"
+
+          sudo install -d -o root -g root -m 0755 \
+            /opt/Actestra/resources/actestra-goose-runner
+          sudo install -o root -g root -m 0755 /usr/bin/true /opt/Actestra/Actestra
+          sudo install -o root -g root -m 0644 \
+            "$package_resources/apparmor-profile" /opt/Actestra/resources/apparmor-profile
+          sudo install -o root -g root -m 0644 \
+            "$package_resources/actestra-goose-runner-admission.json" \
+            /opt/Actestra/resources/actestra-goose-runner-admission.json
+          for runner_file in \
+            GOOSE-APACHE-2.0.txt \
+            Cargo.lock \
+            actestra-goose-runner \
+            actestra-goose-runner.audit.json \
+            actestra-goose-runner.cdx.json \
+            actestra-goose-runner.manifest.json; do
+            mode=0644
+            if [ "$runner_file" = "actestra-goose-runner" ]; then mode=0555; fi
+            sudo install -o root -g root -m "$mode" \
+              "$package_resources/actestra-goose-runner/$runner_file" \
+              "/opt/Actestra/resources/actestra-goose-runner/$runner_file"
+          done
+          sudo install -o root -g root -m 0644 \
+            "$package_resources/apparmor-profile" /etc/apparmor.d/Actestra
+          sudo apparmor_parser --replace --write-cache --skip-read-cache /etc/apparmor.d/Actestra
+          test "$(sudo cat /sys/module/apparmor/parameters/enabled)" = "Y"
+          test "$(sudo sysctl -n kernel.apparmor_restrict_unprivileged_userns)" = "1"
+          bootstrap_output="$(/opt/Actestra/resources/actestra-goose-runner/actestra-goose-runner --actestra-linux-bootstrap-check)"
+          test "$bootstrap_output" = "ACTESTRA_GOOSE_LINUX_BOOTSTRAP_OK"
+
       - name: Run authenticated Linux Goose integration
         id: linux-integration
         shell: bash
         run: |
           set -euo pipefail
+          test "$(id -u)" -ne 0
           integration_root="$(mktemp -d "${RUNNER_TEMP}/actestra-goose-integration-XXXXXX")"
           echo "root=${integration_root}" >> "$GITHUB_OUTPUT"
           bun run goose:runner:integration:linux > "${integration_root}/integration-evidence.json"
@@ -264,7 +341,8 @@ jobs:
       - name: Run exact Ubuntu containment acceptance
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
+          test "$(id -u)" -ne 0
           bun run goose:runner:containment:accept -- \
             "${{ steps.linux-integration.outputs.root }}/integration-evidence.json" \
             "${{ steps.linux-integration.outputs.root }}" \
@@ -282,6 +360,23 @@ jobs:
           if-no-files-found: error
           retention-days: 3
           compression-level: 0
+
+      - name: Remove temporary Ubuntu Goose package layout
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          sudo apparmor_parser --remove /etc/apparmor.d/Actestra >/dev/null 2>&1 || true
+          sudo rm -f -- /etc/apparmor.d/Actestra
+          sudo rm -rf -- /opt/Actestra
+          if sudo grep -Fq "Actestra-Goose-Runner" /sys/kernel/security/apparmor/profiles 2>/dev/null; then
+            exit 1
+          fi
+          if pgrep -f '^/opt/Actestra/resources/actestra-goose-runner/actestra-goose-runner( |$)' >/dev/null 2>&1; then
+            exit 1
+          fi
+          test ! -e /etc/apparmor.d/Actestra
+          test ! -e /opt/Actestra
 
   macos:
     name: macOS arm64 foundation
