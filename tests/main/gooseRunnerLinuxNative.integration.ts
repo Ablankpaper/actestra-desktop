@@ -76,6 +76,10 @@ type NativeIntegrationFailureStage =
   | "composition-open"
   | "crash"
   | "handshake"
+  | "handshake-process-exit"
+  | "handshake-response"
+  | "handshake-timeout"
+  | "handshake-transport"
   | "initialize"
   | "launch-contract"
   | "parent-death"
@@ -180,7 +184,13 @@ function classifyOpeningFailureStage(error: unknown): NativeIntegrationFailureSt
     } else if (current instanceof GooseLoopbackModelServerError) {
       fallback = current.code === "invalid-config" ? "bridge-config" : "bridge-model-open";
     } else if (current instanceof GooseAcpHandshakeError) {
-      fallback = "handshake";
+      if (current.code === "process-exit") return "handshake-process-exit";
+      if (current.code === "startup-timeout") return "handshake-timeout";
+      if (current.code === "transport-error") {
+        fallback = "handshake-transport";
+      } else {
+        return "handshake-response";
+      }
     } else if (current instanceof GooseAcpSessionError) {
       return current.code.startsWith("tool-discovery") ? "tool-discovery" : "session-open";
     } else if (current instanceof GooseMcpSessionCompositionError) {
@@ -251,6 +261,42 @@ describe("native Linux integration opening failure staging", () => {
     expect(classifyOpeningFailureStage(new GooseRunnerProcessError("spawn-failed", message))).toBe(
       stage,
     );
+  });
+
+  it.each([
+    [
+      new GooseAcpHandshakeError("process-exit", "fixed internal diagnostic"),
+      "handshake-process-exit",
+    ],
+    [
+      new GooseAcpHandshakeError("transport-error", "fixed internal diagnostic"),
+      "handshake-transport",
+    ],
+    [
+      new GooseAcpHandshakeError("startup-timeout", "fixed internal diagnostic"),
+      "handshake-timeout",
+    ],
+    [
+      new GooseAcpHandshakeError("invalid-message", "fixed internal diagnostic"),
+      "handshake-response",
+    ],
+    [
+      new GooseAcpHandshakeError("unexpected-capabilities", "fixed internal diagnostic"),
+      "handshake-response",
+    ],
+  ])("classifies the closed ACP handshake sub-boundary", (error, stage) => {
+    expect(classifyOpeningFailureStage(error)).toBe(stage);
+  });
+
+  it.each([
+    ["network-policy-unavailable", "runtime-network"],
+    ["worker-resource-enforcement-unavailable", "runtime-resource"],
+  ] as const)("keeps %s ahead of the transport fallback", (code, stage) => {
+    const error = new GooseAcpHandshakeError("transport-error", "fixed internal diagnostic", {
+      cause: new GooseRunnerProcessError(code, "fixed internal diagnostic"),
+    });
+
+    expect(classifyOpeningFailureStage(error)).toBe(stage);
   });
 });
 

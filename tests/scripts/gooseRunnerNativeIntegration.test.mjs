@@ -100,6 +100,14 @@ describe("P8.2b Linux authenticated Goose integration gate", () => {
     expect(launcher).toContain("ACTESTRA_GOOSE_NATIVE_INTEGRATION_FAILURE_EVIDENCE_PATH");
     expect(launcher).toContain("classifyGooseNativeIntegrationFailureEvidence");
     expect(launcher).toContain('"--bail=1"');
+    for (const code of [
+      "integration-handshake-process-exit-failed",
+      "integration-handshake-response-failed",
+      "integration-handshake-timeout-failed",
+      "integration-handshake-transport-failed",
+    ]) {
+      expect(launcher).toContain(`"${code}"`);
+    }
     expect(launcher).not.toContain("process.stderr.write(child.stderr");
     expect(launcher).not.toContain("process.stdout.write(child.stdout");
     expect(integration).toContain('markFailureStage("artifact-admission")');
