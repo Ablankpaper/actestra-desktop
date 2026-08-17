@@ -360,6 +360,7 @@ function main() {
     "packages/desktop/src/actestra/main/workers/gooseMcpCapabilityServer.ts",
     "packages/desktop/src/actestra/main/workers/gooseMcpSessionComposition.ts",
     "packages/desktop/src/actestra/main/workers/gooseRunnerArtifact.ts",
+    "packages/desktop/src/actestra/main/workers/gooseRunnerLinuxPackage.ts",
     "packages/desktop/src/actestra/main/workers/actestraCodingJourneyRuntime.ts",
     "packages/desktop/src/actestra/main/workers/gooseRunnerProcess.ts",
     "packages/desktop/src/actestra/main/workers/gooseRunnerTarget.ts",
@@ -1689,6 +1690,8 @@ function main() {
     "resolveTrustedActestraCodingRunnerAdmission",
     "startTrustedActestraCodingJourneyRuntime",
     "admitGooseRunnerArtifact",
+    "admitInstalledGooseRunnerLinuxPackage",
+    "linuxPackageResourcesPath",
     "goose-private",
     '"git.status"',
     '"git.diff-check"',
@@ -1704,6 +1707,7 @@ function main() {
     "../compatibility/aionuiCodingAgentService",
     "../privileged/isolatedCodingToolPlatform",
     "./gooseRunnerArtifact",
+    "./gooseRunnerLinuxPackage",
   ];
   const codingJourneyRuntimeImports = extractStaticModuleSpecifiers(
     fs.readFileSync(codingJourneyRuntimePath, "utf8"),
@@ -1716,6 +1720,46 @@ function main() {
   ) {
     throw new Error(
       `Actestra coding runtime import closure is invalid: ${codingJourneyRuntimeImports.join(", ")}`,
+    );
+  }
+  const linuxPackageAdmissionPath = path.join(
+    outputRoot,
+    "packages/desktop/src/actestra/main/workers/gooseRunnerLinuxPackage.ts",
+  );
+  requireText(linuxPackageAdmissionPath, [
+    "GOOSE_LINUX_BOOTSTRAP_OK_MARKER",
+    "admitInstalledGooseRunnerLinuxPackage",
+    "parseGooseRunnerLinuxPackageAdmission",
+    "GOOSE_LINUX_RESOURCES_PATH",
+    "runBootstrapCheck",
+  ]);
+  rejectText(linuxPackageAdmissionPath, [
+    "sudo",
+    "setuid",
+    "sysctl -w",
+    "ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIRECTORY",
+    "process.env",
+    "Renderer",
+  ]);
+  const allowedLinuxPackageAdmissionImports = [
+    "node:child_process",
+    "node:crypto",
+    "node:fs/promises",
+    "node:path",
+    "../../shared/gooseRunnerLinuxPackage",
+    "./gooseRunnerArtifact",
+  ];
+  const linuxPackageAdmissionImports = extractStaticModuleSpecifiers(
+    fs.readFileSync(linuxPackageAdmissionPath, "utf8"),
+  );
+  if (
+    linuxPackageAdmissionImports.length !== allowedLinuxPackageAdmissionImports.length ||
+    linuxPackageAdmissionImports.some(
+      (specifier, index) => specifier !== allowedLinuxPackageAdmissionImports[index],
+    )
+  ) {
+    throw new Error(
+      `Ubuntu Goose package admission import closure is invalid: ${linuxPackageAdmissionImports.join(", ")}`,
     );
   }
   requireText(path.join(outputRoot, "tests/unit/actestra/codingAgentClient.dom.test.ts"), [

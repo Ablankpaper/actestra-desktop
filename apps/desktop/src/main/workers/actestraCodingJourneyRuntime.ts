@@ -5,6 +5,10 @@ import type { ActestraMainModelInvoker } from "../model/actestraMainModelBroker"
 import type { AionUiCodingRunnerAdmission } from "../compatibility/aionuiCodingAgentService";
 import type { IsolatedCodingProcessDefinition } from "../privileged/isolatedCodingToolPlatform";
 import { admitGooseRunnerArtifact, type AdmittedGooseRunnerArtifact } from "./gooseRunnerArtifact";
+import {
+  admitInstalledGooseRunnerLinuxPackage,
+  type AdmittedGooseRunnerLinuxPackage,
+} from "./gooseRunnerLinuxPackage";
 
 const GIT_EXECUTABLE = "/usr/bin/git";
 const MODEL_ID_PATTERN = /^[A-Za-z0-9]+(?:[._:/-][A-Za-z0-9]+)*$/;
@@ -33,6 +37,7 @@ export interface ActestraCodingModelBinding {
 export interface TrustedActestraCodingJourneyRuntime {
   readonly runnerAdmission: AionUiCodingRunnerAdmission;
   readonly admittedArtifact: AdmittedGooseRunnerArtifact;
+  readonly linuxPackage?: AdmittedGooseRunnerLinuxPackage;
   readonly privateRootParent: string;
   readonly modelId: string;
   readonly modelInvoker: ActestraMainModelInvoker;
@@ -43,15 +48,20 @@ export interface TrustedActestraCodingJourneyRuntime {
 export interface StartTrustedActestraCodingJourneyRuntimeOptions {
   readonly userDataPath: string;
   readonly runnerAdmission: AionUiCodingRunnerAdmission | null;
+  readonly linuxPackageResourcesPath?: string;
   readonly modelBinding: ActestraCodingModelBinding | null;
 }
 
 export interface ActestraCodingJourneyRuntimeDependencies {
   readonly admitRunnerArtifact: typeof admitGooseRunnerArtifact;
+  readonly admitLinuxPackage?: typeof admitInstalledGooseRunnerLinuxPackage;
+  readonly platform?: NodeJS.Platform;
 }
 
 const DEFAULT_DEPENDENCIES: ActestraCodingJourneyRuntimeDependencies = Object.freeze({
   admitRunnerArtifact: admitGooseRunnerArtifact,
+  admitLinuxPackage: admitInstalledGooseRunnerLinuxPackage,
+  platform: process.platform,
 });
 
 function nodeErrorCode(error: unknown): string | undefined {
@@ -218,20 +228,39 @@ export async function startTrustedActestraCodingJourneyRuntime(
 ): Promise<TrustedActestraCodingJourneyRuntime | null> {
   try {
     const modelBinding = snapshotModelBinding(options.modelBinding);
-    const runnerAdmission = snapshotRunnerAdmission(options.runnerAdmission);
-    if (modelBinding === null || runnerAdmission === null) return null;
+    if (modelBinding === null) return null;
     const userDataPath = await canonicalUserDataPath(options.userDataPath);
-    if (userDataPath === null || !(await hasCanonicalGitExecutable())) return null;
-    const admittedArtifact = await dependencies.admitRunnerArtifact(runnerAdmission.directory, {
-      trustedManifestSha256: runnerAdmission.trustedManifestSha256,
-      expectedTargetTriple: runnerAdmission.expectedTargetTriple,
-    });
-    if (!artifactMatchesAdmission(admittedArtifact, runnerAdmission)) return null;
+    if (userDataPath === null) return null;
+    let runnerAdmission: Readonly<AionUiCodingRunnerAdmission> | null;
+    let admittedArtifact: AdmittedGooseRunnerArtifact;
+    let linuxPackage: Readonly<AdmittedGooseRunnerLinuxPackage> | undefined;
+    if ((dependencies.platform ?? process.platform) === "linux") {
+      if (typeof options.linuxPackageResourcesPath !== "string") return null;
+      const admittedLinuxPackage = await (
+        dependencies.admitLinuxPackage ?? admitInstalledGooseRunnerLinuxPackage
+      )(options.linuxPackageResourcesPath);
+      if (admittedLinuxPackage === null) return null;
+      linuxPackage = admittedLinuxPackage;
+      runnerAdmission = snapshotRunnerAdmission(linuxPackage.runnerAdmission);
+      if (runnerAdmission === null) return null;
+      admittedArtifact = linuxPackage.artifact;
+    } else {
+      runnerAdmission = snapshotRunnerAdmission(options.runnerAdmission);
+      if (runnerAdmission === null) return null;
+      admittedArtifact = await dependencies.admitRunnerArtifact(runnerAdmission.directory, {
+        trustedManifestSha256: runnerAdmission.trustedManifestSha256,
+        expectedTargetTriple: runnerAdmission.expectedTargetTriple,
+      });
+      if (!artifactMatchesAdmission(admittedArtifact, runnerAdmission)) return null;
+    }
+    if (runnerAdmission === null) return null;
+    if (!(await hasCanonicalGitExecutable())) return null;
     const privateRootParent = await ensurePrivateRoot(userDataPath);
     if (privateRootParent === null) return null;
     return Object.freeze({
       runnerAdmission,
       admittedArtifact,
+      ...(linuxPackage === undefined ? {} : { linuxPackage }),
       privateRootParent,
       modelId: modelBinding.modelId,
       modelInvoker: modelBinding.invokeModel,

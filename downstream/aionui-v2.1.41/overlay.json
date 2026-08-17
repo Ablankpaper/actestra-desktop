@@ -651,6 +651,10 @@
       "destination": "packages/desktop/src/actestra/main/workers/gooseRunnerArtifact.ts"
     },
     {
+      "source": "apps/desktop/src/main/workers/gooseRunnerLinuxPackage.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/gooseRunnerLinuxPackage.ts"
+    },
+    {
       "source": "apps/desktop/src/main/workers/gooseRunnerContainment.ts",
       "destination": "packages/desktop/src/actestra/main/workers/gooseRunnerContainment.ts"
     },
@@ -943,6 +947,7 @@
     "packages/desktop/src/actestra/main/workers/gooseMcpCapabilityServer.ts",
     "packages/desktop/src/actestra/main/workers/gooseMcpSessionComposition.ts",
     "packages/desktop/src/actestra/main/workers/gooseRunnerArtifact.ts",
+    "packages/desktop/src/actestra/main/workers/gooseRunnerLinuxPackage.ts",
     "packages/desktop/src/actestra/main/workers/gooseRunnerContainment.ts",
     "packages/desktop/src/actestra/main/workers/actestraCodingJourneyRuntime.ts",
     "packages/desktop/src/actestra/main/workers/actestraGeneralWorkRuntime.ts",

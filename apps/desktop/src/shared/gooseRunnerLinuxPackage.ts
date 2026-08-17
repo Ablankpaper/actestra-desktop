@@ -5,6 +5,8 @@ export const GOOSE_LINUX_ARTIFACT_DIRECTORY =
 export const GOOSE_LINUX_EXECUTABLE_PATH =
   "/opt/Actestra/resources/actestra-goose-runner/actestra-goose-runner" as const;
 export const GOOSE_LINUX_ADMISSION_RECORD_FILE = "actestra-goose-runner-admission.json" as const;
+/** The name electron-builder gives the installed DEB AppArmor resource. */
+export const GOOSE_LINUX_PROFILE_FILE = "apparmor-profile" as const;
 export const GOOSE_LINUX_PROFILE_NAME = "Actestra-Goose-Runner" as const;
 export const GOOSE_LINUX_TARGET_TRIPLE = "x86_64-unknown-linux-gnu" as const;
 
