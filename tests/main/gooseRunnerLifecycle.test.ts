@@ -13,6 +13,7 @@ import { EXPECTED_GOOSE_INITIALIZE_RESULT, LoopbackGooseAcpTransport } from "../
 
 const fixtureDirectories: string[] = [];
 const fixtureTargetTriple = process.arch === "x64" ? "x86_64-apple-darwin" : "aarch64-apple-darwin";
+const fixtureTemporaryRoot = process.platform === "win32" ? os.tmpdir() : "/tmp";
 
 class FailingCloseGooseAcpTransport extends LoopbackGooseAcpTransport {
   override async close(): Promise<void> {
@@ -22,7 +23,7 @@ class FailingCloseGooseAcpTransport extends LoopbackGooseAcpTransport {
 }
 
 async function createLifecycleFixture() {
-  const directory = await mkdtemp(path.join("/tmp", "actestra-goose-lifecycle-"));
+  const directory = await mkdtemp(path.join(fixtureTemporaryRoot, "actestra-goose-lifecycle-"));
   fixtureDirectories.push(directory);
   const artifactDirectory = path.join(directory, "artifact");
   const privateRootParent = path.join(directory, "attempts");
@@ -56,7 +57,7 @@ afterEach(async () => {
 
 describe("Goose runner private lifecycle", () => {
   it("uses a closed environment without inheriting credentials or user configuration", () => {
-    const root = path.resolve(os.tmpdir(), "actestra-goose-environment-fixture");
+    const root = path.resolve(fixtureTemporaryRoot, "actestra-goose-environment-fixture");
     expect(createGooseRunnerEnvironment(root)).toEqual({
       GOOSE_PATH_ROOT: root,
       GOOSE_TELEMETRY_OFF: "1",
@@ -77,8 +78,9 @@ describe("Goose runner private lifecycle", () => {
   });
 
   it("adds only the five fixed Linux bridge fields to the closed runner environment", () => {
-    const root = "/tmp/actestra-goose-environment-fixture";
+    const root = path.resolve(fixtureTemporaryRoot, "actestra-goose-environment-fixture");
     const bridgeDirectory = path.join(root, "bridge");
+    const workspaceRoot = path.join(root, "workspace");
     const environment = createGooseRunnerEnvironment(
       root,
       {
@@ -91,7 +93,7 @@ describe("Goose runner private lifecycle", () => {
         modelSocketPath: path.join(bridgeDirectory, "model.sock"),
         capabilityPort: 43_123,
         modelPort: 43_124,
-        workspaceRoot: "/tmp/actestra-workspace",
+        workspaceRoot,
       },
     );
 
@@ -100,7 +102,7 @@ describe("Goose runner private lifecycle", () => {
       ACTESTRA_GOOSE_LINUX_MODEL_SOCKET: path.join(bridgeDirectory, "model.sock"),
       ACTESTRA_GOOSE_LINUX_CAPABILITY_PORT: "43123",
       ACTESTRA_GOOSE_LINUX_MODEL_PORT: "43124",
-      ACTESTRA_GOOSE_LINUX_WORKSPACE_ROOT: "/tmp/actestra-workspace",
+      ACTESTRA_GOOSE_LINUX_WORKSPACE_ROOT: workspaceRoot,
     });
     expect(
       Object.keys(environment).filter((key) => key.startsWith("ACTESTRA_GOOSE_LINUX_")),
