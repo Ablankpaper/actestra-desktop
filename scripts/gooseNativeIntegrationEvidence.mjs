@@ -30,7 +30,14 @@ const EVIDENCE_KEYS = Object.freeze([
 ]);
 const FAILURE_STAGE_CODES = Object.freeze({
   "artifact-admission": "integration-artifact-admission-failed",
+  "bridge-capability-open": "integration-bridge-capability-open-failed",
+  "bridge-config": "integration-bridge-config-failed",
+  "bridge-model-open": "integration-bridge-model-open-failed",
   "bridge-open": "integration-bridge-open-failed",
+  "bridge-port-reservation": "integration-bridge-port-reservation-failed",
+  "bridge-socket-listen": "integration-bridge-socket-listen-failed",
+  "bridge-socket-permission": "integration-bridge-socket-permission-failed",
+  "bridge-socket-state": "integration-bridge-socket-state-failed",
   cancellation: "integration-cancellation-failed",
   cleanup: "integration-cleanup-failed",
   "composition-cleanup": "integration-composition-cleanup-failed",

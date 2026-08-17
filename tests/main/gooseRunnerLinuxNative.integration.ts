@@ -60,7 +60,14 @@ const fixtureRoots: string[] = [];
 
 type NativeIntegrationFailureStage =
   | "artifact-admission"
+  | "bridge-capability-open"
+  | "bridge-config"
+  | "bridge-model-open"
   | "bridge-open"
+  | "bridge-port-reservation"
+  | "bridge-socket-listen"
+  | "bridge-socket-permission"
+  | "bridge-socket-state"
   | "cancellation"
   | "cleanup"
   | "composition-cleanup"
@@ -147,12 +154,29 @@ function classifyOpeningFailureStage(error: unknown): NativeIntegrationFailureSt
       if (current.code === "cleanup-failed") return "composition-cleanup";
     } else if (current instanceof GooseContainmentError) {
       return current.code === "network-policy-unavailable" ? "runtime-network" : "launch-contract";
-    } else if (
-      current instanceof GooseBridgeSocketError ||
-      current instanceof GooseMcpCapabilityServerError ||
-      current instanceof GooseLoopbackModelServerError
-    ) {
-      return "bridge-open";
+    } else if (current instanceof GooseBridgeSocketError) {
+      if (current.code === "invalid-config") return "bridge-config";
+      if (current.message === "Goose bridge loopback port could not be reserved") {
+        return "bridge-port-reservation";
+      }
+      if (
+        current.message === "Goose bridge socket path could not be inspected" ||
+        current.message === "Goose bridge socket path is occupied by a non-socket entry" ||
+        current.message === "Goose bridge socket path is already owned by another listener"
+      ) {
+        return "bridge-socket-state";
+      }
+      if (current.message === "Goose bridge Unix socket permissions could not be established") {
+        return "bridge-socket-permission";
+      }
+      if (current.message === "Goose bridge server could not start") {
+        return "bridge-socket-listen";
+      }
+      fallback = "bridge-open";
+    } else if (current instanceof GooseMcpCapabilityServerError) {
+      fallback = current.code === "invalid-config" ? "bridge-config" : "bridge-capability-open";
+    } else if (current instanceof GooseLoopbackModelServerError) {
+      fallback = current.code === "invalid-config" ? "bridge-config" : "bridge-model-open";
     } else if (current instanceof GooseAcpHandshakeError) {
       fallback = "handshake";
     } else if (current instanceof GooseAcpSessionError) {
@@ -176,15 +200,46 @@ describe("native Linux integration opening failure staging", () => {
   });
 
   it.each([
-    new GooseBridgeSocketError("listen-failed", "fixed internal diagnostic"),
-    new GooseMcpCapabilityServerError("listen-failed", "fixed internal diagnostic"),
-    new GooseLoopbackModelServerError("listen-failed", "fixed internal diagnostic"),
-  ])("classifies a typed bridge listener failure without retaining its message", (cause) => {
+    [new GooseBridgeSocketError("invalid-config", "fixed internal diagnostic"), "bridge-config"],
+    [
+      new GooseMcpCapabilityServerError("listen-failed", "fixed internal diagnostic"),
+      "bridge-capability-open",
+    ],
+    [
+      new GooseLoopbackModelServerError("listen-failed", "fixed internal diagnostic"),
+      "bridge-model-open",
+    ],
+    [
+      new GooseBridgeSocketError(
+        "listen-failed",
+        "Goose bridge loopback port could not be reserved",
+      ),
+      "bridge-port-reservation",
+    ],
+    [
+      new GooseBridgeSocketError(
+        "listen-failed",
+        "Goose bridge socket path is already owned by another listener",
+      ),
+      "bridge-socket-state",
+    ],
+    [
+      new GooseBridgeSocketError(
+        "listen-failed",
+        "Goose bridge Unix socket permissions could not be established",
+      ),
+      "bridge-socket-permission",
+    ],
+    [
+      new GooseBridgeSocketError("listen-failed", "Goose bridge server could not start"),
+      "bridge-socket-listen",
+    ],
+  ])("classifies the typed bridge sub-boundary without retaining its message", (cause, stage) => {
     const error = new GooseRunnerProcessError("spawn-failed", "Goose handshake launch failed", {
       cause,
     });
 
-    expect(classifyOpeningFailureStage(error)).toBe("bridge-open");
+    expect(classifyOpeningFailureStage(error)).toBe(stage);
   });
 
   it.each([
