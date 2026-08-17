@@ -33,6 +33,7 @@ import { resolveGooseRunnerRuntimeTarget } from "./gooseRunnerTarget";
 
 const MAX_STDOUT_LINE_BYTES = 64 * 1024;
 const MAX_STDERR_BYTES = 256 * 1024;
+const STDIN_EXIT_OBSERVATION_MS = 100;
 const CLOSE_GRACE_MS = 1_000;
 const TERMINATE_GRACE_MS = 1_000;
 export const GOOSE_NATIVE_RESOURCE_LIMIT_FAILURE_MARKER =
@@ -43,6 +44,7 @@ export const GOOSE_NATIVE_ASYNC_RUNTIME_FAILURE_MARKER =
   "ACTESTRA_GOOSE_ASYNC_RUNTIME_SETUP_FAILED";
 export const GOOSE_NATIVE_ACP_SERVER_FAILURE_MARKER = "ACTESTRA_GOOSE_ACP_SERVER_FAILED";
 export const GOOSE_NATIVE_RELAY_FAILURE_MARKER = "ACTESTRA_GOOSE_LINUX_RELAY_STOPPED";
+export const GOOSE_NATIVE_PANIC_FAILURE_MARKER = "ACTESTRA_GOOSE_RUNNER_PANICKED";
 export type GooseRunnerProcessErrorCode =
   | "invalid-options"
   | "artifact-mismatch"
@@ -93,7 +95,8 @@ export type GooseRunnerSetupFailure =
   | "worker-resource-enforcement-unavailable"
   | "runner-runtime"
   | "runner-acp"
-  | "runner-relay";
+  | "runner-relay"
+  | "runner-panic";
 
 type GooseChildProcess = ChildProcessByStdio<Writable, Readable, Readable>;
 
@@ -322,6 +325,7 @@ export function createGooseRunnerSetupFailureMatcher(): GooseRunnerSetupFailureM
   const runtime = createGooseRunnerFixedMarkerMatcher(GOOSE_NATIVE_ASYNC_RUNTIME_FAILURE_MARKER);
   const acp = createGooseRunnerFixedMarkerMatcher(GOOSE_NATIVE_ACP_SERVER_FAILURE_MARKER);
   const relay = createGooseRunnerFixedMarkerMatcher(GOOSE_NATIVE_RELAY_FAILURE_MARKER);
+  const panic = createGooseRunnerFixedMarkerMatcher(GOOSE_NATIVE_PANIC_FAILURE_MARKER);
   let detected: GooseRunnerSetupFailure | undefined;
   return Object.freeze({
     push(chunk: Uint8Array) {
@@ -336,6 +340,8 @@ export function createGooseRunnerSetupFailureMatcher(): GooseRunnerSetupFailureM
         detected = "runner-acp";
       } else if (relay.push(chunk)) {
         detected = "runner-relay";
+      } else if (panic.push(chunk)) {
+        detected = "runner-panic";
       }
       return detected;
     },
@@ -354,7 +360,9 @@ function setupFailureError(failure: GooseRunnerSetupFailure): GooseRunnerProcess
       ? "Goose async runtime failed"
       : failure === "runner-acp"
         ? "Goose ACP server failed"
-        : "Goose Linux relay stopped";
+        : failure === "runner-relay"
+          ? "Goose Linux relay stopped"
+          : "Goose runner panicked";
   return new GooseRunnerProcessError("spawn-failed", message);
 }
 
@@ -719,8 +727,14 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
         this.failTransport(new Error("Goose stderr exceeded the bounded diagnostic size"));
       }
     });
+    child.stdin.on("error", (error) => {
+      const failure = new Error("Goose stdin stream failed", { cause: error });
+      const observation = setTimeout(() => {
+        if (!this.exited) this.failTransport(failure);
+      }, STDIN_EXIT_OBSERVATION_MS);
+      observation.unref();
+    });
     for (const [stream, message] of [
-      [child.stdin, "Goose stdin stream failed"],
       [child.stdout, "Goose stdout stream failed"],
       [child.stderr, "Goose stderr stream failed"],
     ] as const) {

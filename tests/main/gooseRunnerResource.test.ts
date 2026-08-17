@@ -214,6 +214,7 @@ describe("Goose runner native resource boundary", () => {
     ["ACTESTRA_GOOSE_ASYNC_RUNTIME_SETUP_FAILED", "runner-runtime"],
     ["ACTESTRA_GOOSE_ACP_SERVER_FAILED", "runner-acp"],
     ["ACTESTRA_GOOSE_LINUX_RELAY_STOPPED", "runner-relay"],
+    ["ACTESTRA_GOOSE_RUNNER_PANICKED", "runner-panic"],
   ])("maps the fixed %s marker without retaining stderr", (marker, expected) => {
     const matcher = createGooseRunnerSetupFailureMatcher();
     const split = Math.floor(marker.length / 2);

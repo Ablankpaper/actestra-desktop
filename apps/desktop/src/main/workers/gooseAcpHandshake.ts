@@ -26,6 +26,7 @@ export type GooseAcpHandshakeErrorCode =
   | "startup-timeout"
   | "transport-error"
   | "process-exit"
+  | "process-signal"
   | "unsupported-protocol"
   | "unsupported-agent"
   | "unsupported-version"
@@ -1701,7 +1702,7 @@ export async function connectGooseAcp(
           settle(() => {
             reject(
               new GooseAcpHandshakeError(
-                "process-exit",
+                signal === null ? "process-exit" : "process-signal",
                 `Goose exited before initialize completed (code=${String(code)}, signal=${String(signal)})`,
               ),
             );

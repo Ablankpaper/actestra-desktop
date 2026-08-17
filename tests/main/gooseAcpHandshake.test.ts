@@ -118,6 +118,25 @@ describe("Goose ACP handshake", () => {
     expect(transport.closeCount).toBe(1);
   });
 
+  it.each([
+    [17, null, "process-exit"],
+    [null, "SIGSYS", "process-signal"],
+  ] as const)(
+    "separates an initialize exit code=%s signal=%s without retaining either value",
+    async (code, signal, expectedCode) => {
+      const transport = new LoopbackGooseAcpTransport({ silent: true });
+      const connecting = connectGooseAcp(transport);
+
+      transport.emitExit(code, signal);
+
+      await expect(connecting).rejects.toMatchObject({
+        name: "GooseAcpHandshakeError",
+        code: expectedCode,
+      });
+      expect(transport.closeCount).toBe(1);
+    },
+  );
+
   it("opens one session through the exact isolated loopback MCP declaration", async () => {
     const transport = new LoopbackGooseAcpTransport();
     const connection = await connectGooseAcp(transport);

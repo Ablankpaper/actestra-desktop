@@ -28,6 +28,8 @@ const LINUX_ACP_SERVER_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_ACP_SERVER_FAILED"
 #[cfg(target_os = "linux")]
 const LINUX_RELAY_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_LINUX_RELAY_STOPPED";
 #[cfg(target_os = "linux")]
+const LINUX_PANIC_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_RUNNER_PANICKED";
+#[cfg(target_os = "linux")]
 const LINUX_RUNTIME_ENVIRONMENT_KEYS: [&str; 5] = [
     "ACTESTRA_GOOSE_LINUX_CAPABILITY_SOCKET",
     "ACTESTRA_GOOSE_LINUX_MODEL_SOCKET",
@@ -70,6 +72,8 @@ fn main() {
         println!("{}", containment::run_containment_probe());
         return;
     }
+    #[cfg(target_os = "linux")]
+    std::panic::set_hook(Box::new(|_| eprintln!("{LINUX_PANIC_FAILURE_MARKER}")));
     #[cfg(target_os = "linux")]
     let prepared_linux_runtime = match prepare_linux_runtime() {
         Ok(prepared) => prepared,

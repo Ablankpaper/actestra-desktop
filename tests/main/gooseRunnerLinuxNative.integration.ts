@@ -77,6 +77,7 @@ type NativeIntegrationFailureStage =
   | "crash"
   | "handshake"
   | "handshake-process-exit"
+  | "handshake-process-signal"
   | "handshake-cleanup"
   | "handshake-response"
   | "handshake-timeout"
@@ -92,6 +93,7 @@ type NativeIntegrationFailureStage =
   | "restart"
   | "runner-open"
   | "runner-acp"
+  | "runner-panic"
   | "runner-relay"
   | "runner-runtime"
   | "runner-process-spawn"
@@ -162,6 +164,7 @@ function classifyOpeningFailureStage(error: unknown): NativeIntegrationFailureSt
         if (current.message === "Goose async runtime failed") return "runner-runtime";
         if (current.message === "Goose ACP server failed") return "runner-acp";
         if (current.message === "Goose Linux relay stopped") return "runner-relay";
+        if (current.message === "Goose runner panicked") return "runner-panic";
         if (current.message === "Goose handshake launch failed") {
           fallback = "runner-open";
         } else {
@@ -196,6 +199,7 @@ function classifyOpeningFailureStage(error: unknown): NativeIntegrationFailureSt
       fallback = current.code === "invalid-config" ? "bridge-config" : "bridge-model-open";
     } else if (current instanceof GooseAcpHandshakeError) {
       if (current.code === "process-exit") return "handshake-process-exit";
+      if (current.code === "process-signal") return "handshake-process-signal";
       if (current.code === "startup-timeout") return "handshake-timeout";
       if (current.code === "transport-error") {
         fallback = "handshake-transport";
@@ -330,6 +334,7 @@ describe("native Linux integration opening failure staging", () => {
     ["Goose async runtime failed", "runner-runtime"],
     ["Goose ACP server failed", "runner-acp"],
     ["Goose Linux relay stopped", "runner-relay"],
+    ["Goose runner panicked", "runner-panic"],
   ])("classifies the fixed runner marker %s", (message, stage) => {
     const error = new GooseAcpHandshakeError("transport-error", "fixed internal diagnostic", {
       cause: new GooseRunnerProcessError("spawn-failed", message),
@@ -359,6 +364,14 @@ describe("native Linux integration opening failure staging", () => {
     });
 
     expect(classifyOpeningFailureStage(error)).toBe("handshake-cleanup");
+  });
+
+  it("separates a signal-terminated initialize from an ordinary process exit", () => {
+    expect(
+      classifyOpeningFailureStage(
+        new GooseAcpHandshakeError("process-signal", "fixed internal diagnostic"),
+      ),
+    ).toBe("handshake-process-signal");
   });
 });
 

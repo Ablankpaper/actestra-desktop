@@ -103,6 +103,7 @@ describe("P8.2b Linux authenticated Goose integration gate", () => {
     for (const code of [
       "integration-handshake-cleanup-failed",
       "integration-handshake-process-exit-failed",
+      "integration-handshake-process-signal-failed",
       "integration-handshake-response-failed",
       "integration-handshake-timeout-failed",
       "integration-handshake-transport-failed",
@@ -111,6 +112,7 @@ describe("P8.2b Linux authenticated Goose integration gate", () => {
       "integration-handshake-transport-stdin-failed",
       "integration-handshake-transport-stdout-failed",
       "integration-runner-acp-failed",
+      "integration-runner-panic-failed",
       "integration-runner-relay-failed",
       "integration-runner-runtime-failed",
     ]) {
