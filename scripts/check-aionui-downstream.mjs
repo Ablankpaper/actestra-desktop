@@ -149,6 +149,9 @@ function main() {
     !overlay.patches.some(
       (patch) => patch.path === "patches/0020-actestra-p7-diagnostic-export.mjs",
     ) ||
+    !overlay.patches.some(
+      (patch) => patch.path === "patches/0021-actestra-ubuntu-apparmor-bootstrap.mjs",
+    ) ||
     overlay.uiContract.layoutChangesAllowed !== true ||
     overlay.uiContract.featureEntryRemovalAllowed !== false
   ) {
@@ -185,6 +188,27 @@ function main() {
     !diagnosticExportPatch.rollback.includes("Regenerate without patch 0020")
   ) {
     throw new Error("Invalid P7.4 diagnostic-export downstream authority metadata");
+  }
+
+  const linuxAppArmorPatch = overlay.patches.find(
+    (patch) => patch.path === "patches/0021-actestra-ubuntu-apparmor-bootstrap.mjs",
+  );
+  if (
+    linuxAppArmorPatch.classification.length !== 1 ||
+    linuxAppArmorPatch.classification[0] !== "R1" ||
+    !linuxAppArmorPatch.authorityOwner.includes("electron-builder") ||
+    !linuxAppArmorPatch.rollback.includes("Regenerate without patch 0021")
+  ) {
+    throw new Error("Invalid Ubuntu AppArmor downstream authority metadata");
+  }
+  for (const domain of [
+    "Ubuntu DEB AppArmor profile",
+    "root-owned Goose package resources",
+    "Linux runner admission",
+  ]) {
+    if (!linuxAppArmorPatch.domains.includes(domain)) {
+      throw new Error(`Ubuntu AppArmor patch is missing reviewed domain: ${domain}`);
+    }
   }
   for (const domain of [
     "explicit-consent local diagnostic export",
@@ -344,6 +368,7 @@ function main() {
     "packages/desktop/src/actestra/main/privileged/isolatedCodingToolExecutor.ts",
     "packages/desktop/src/actestra/main/privileged/isolatedCodingToolPlatform.ts",
     "packages/desktop/src/actestra/shared/gooseRunnerSource.json",
+    "packages/desktop/src/actestra/shared/gooseRunnerLinuxPackage.ts",
   ]) {
     if (!sourceCopyDestinations.has(requiredCodingSourceCopy)) {
       throw new Error(`Missing isolated-coding source copy: ${requiredCodingSourceCopy}`);
@@ -468,6 +493,15 @@ function main() {
     }
   }
 
+  const linuxProfileAsset = overlay.assetCopies.find(
+    (asset) =>
+      asset.source === "apps/desktop/resources/linux/actestra-apparmor-profile" &&
+      asset.destination === "resources/actestra-apparmor-profile",
+  );
+  if (linuxProfileAsset === undefined) {
+    throw new Error("Missing Ubuntu AppArmor profile asset-copy contract");
+  }
+
   const packageJson = readJson(path.join(outputRoot, "package.json"));
   if (
     packageJson.name !== "actestra-desktop" ||
@@ -477,7 +511,8 @@ function main() {
     throw new Error("Materialized package does not have the Actestra F1 identity");
   }
 
-  requireText(path.join(outputRoot, "packages/desktop/electron-builder.yml"), [
+  const builderConfigPath = path.join(outputRoot, "packages/desktop/electron-builder.yml");
+  requireText(builderConfigPath, [
     "appId: com.bignormal.actestra",
     "productName: Actestra",
     "executableName: Actestra",
@@ -489,6 +524,13 @@ function main() {
     "to: LICENSE.electron.txt",
     "from: node_modules/electron/dist/LICENSES.chromium.html",
     "to: LICENSES.chromium.html",
+  ]);
+  requireOrderedFragments(builderConfigPath, [
+    "extraResources:",
+    "- from: resources/actestra-goose-runner\n    to: actestra-goose-runner",
+    "- from: resources/actestra-goose-runner-admission.json\n    to: actestra-goose-runner-admission.json",
+    "deb:\n  appArmorProfile: resources/actestra-apparmor-profile",
+    "linux:\n",
   ]);
   requireText(path.join(outputRoot, "packages/desktop/src/common/config/actestraProduct.ts"), [
     "name: 'Actestra'",
