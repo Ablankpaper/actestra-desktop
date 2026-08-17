@@ -12,15 +12,19 @@ import {
   GooseAcpHandshakeError,
   GooseAcpSessionError,
 } from "../../apps/desktop/src/main/workers/gooseAcpHandshake";
+import { GooseBridgeSocketError } from "../../apps/desktop/src/main/workers/gooseBridgeSocket";
+import { GooseContainmentError } from "../../apps/desktop/src/main/workers/gooseRunnerContainment";
 import type { AdmittedGooseRunnerArtifact } from "../../apps/desktop/src/main/workers/gooseRunnerArtifact";
 import { admitGooseRunnerArtifact } from "../../apps/desktop/src/main/workers/gooseRunnerArtifact";
-import type {
-  GooseLoopbackModelInvocation,
-  GooseLoopbackModelInvoker,
+import {
+  GooseLoopbackModelServerError,
+  type GooseLoopbackModelInvocation,
+  type GooseLoopbackModelInvoker,
 } from "../../apps/desktop/src/main/workers/gooseLoopbackModelServer";
-import type {
-  GooseMcpToolCall,
-  GooseMcpToolInvoker,
+import {
+  GooseMcpCapabilityServerError,
+  type GooseMcpToolCall,
+  type GooseMcpToolInvoker,
 } from "../../apps/desktop/src/main/workers/gooseMcpCapabilityServer";
 import {
   GooseMcpSessionCompositionError,
@@ -56,6 +60,7 @@ const fixtureRoots: string[] = [];
 
 type NativeIntegrationFailureStage =
   | "artifact-admission"
+  | "bridge-open"
   | "cancellation"
   | "cleanup"
   | "composition-cleanup"
@@ -63,9 +68,13 @@ type NativeIntegrationFailureStage =
   | "crash"
   | "handshake"
   | "initialize"
+  | "launch-contract"
   | "parent-death"
   | "prompt"
   | "restart"
+  | "runner-open"
+  | "runner-process-spawn"
+  | "runner-stdin"
   | "runner-spawn"
   | "runtime-network"
   | "runtime-resource"
@@ -116,15 +125,34 @@ async function markFailureStage(stage: NativeIntegrationFailureStage): Promise<v
 function classifyOpeningFailureStage(error: unknown): NativeIntegrationFailureStage {
   let current = error;
   let fallback: NativeIntegrationFailureStage = "composition-open";
-  for (let depth = 0; depth < 4 && current instanceof Error; depth += 1) {
+  for (let depth = 0; depth < 6 && current instanceof Error; depth += 1) {
     if (current instanceof GooseRunnerProcessError) {
       if (current.code === "artifact-mismatch") return "artifact-admission";
       if (current.code === "network-policy-unavailable") return "runtime-network";
       if (current.code === "worker-resource-enforcement-unavailable") {
         return "runtime-resource";
       }
-      if (current.code === "spawn-failed") return "runner-spawn";
+      if (current.code === "invalid-options") return "launch-contract";
+      if (current.code === "spawn-failed") {
+        if (current.message === "Failed to launch Goose ACP process") {
+          return "runner-process-spawn";
+        }
+        if (current.message === "Goose stdin is not writable") return "runner-stdin";
+        if (current.message === "Goose handshake launch failed") {
+          fallback = "runner-open";
+        } else {
+          return "runner-spawn";
+        }
+      }
       if (current.code === "cleanup-failed") return "composition-cleanup";
+    } else if (current instanceof GooseContainmentError) {
+      return current.code === "network-policy-unavailable" ? "runtime-network" : "launch-contract";
+    } else if (
+      current instanceof GooseBridgeSocketError ||
+      current instanceof GooseMcpCapabilityServerError ||
+      current instanceof GooseLoopbackModelServerError
+    ) {
+      return "bridge-open";
     } else if (current instanceof GooseAcpHandshakeError) {
       fallback = "handshake";
     } else if (current instanceof GooseAcpSessionError) {
@@ -137,6 +165,37 @@ function classifyOpeningFailureStage(error: unknown): NativeIntegrationFailureSt
   }
   return fallback;
 }
+
+describe("native Linux integration opening failure staging", () => {
+  it("does not let the generic handshake-launch wrapper hide a launch-contract failure", () => {
+    const error = new GooseRunnerProcessError("spawn-failed", "Goose handshake launch failed", {
+      cause: new GooseContainmentError("invalid-options", "fixed internal diagnostic"),
+    });
+
+    expect(classifyOpeningFailureStage(error)).toBe("launch-contract");
+  });
+
+  it.each([
+    new GooseBridgeSocketError("listen-failed", "fixed internal diagnostic"),
+    new GooseMcpCapabilityServerError("listen-failed", "fixed internal diagnostic"),
+    new GooseLoopbackModelServerError("listen-failed", "fixed internal diagnostic"),
+  ])("classifies a typed bridge listener failure without retaining its message", (cause) => {
+    const error = new GooseRunnerProcessError("spawn-failed", "Goose handshake launch failed", {
+      cause,
+    });
+
+    expect(classifyOpeningFailureStage(error)).toBe("bridge-open");
+  });
+
+  it.each([
+    ["Failed to launch Goose ACP process", "runner-process-spawn"],
+    ["Goose stdin is not writable", "runner-stdin"],
+  ])("separates the fixed %s failure from the generic spawn bucket", (message, stage) => {
+    expect(classifyOpeningFailureStage(new GooseRunnerProcessError("spawn-failed", message))).toBe(
+      stage,
+    );
+  });
+});
 
 async function waitFor(
   predicate: () => boolean | Promise<boolean>,
@@ -321,7 +380,10 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
           type: "tool-call" as const,
           callId: "call-linux-native-denied-1",
           name: `actestra-capability-proxy__${CODING_FILE_READ_TOOL_ID}`,
-          arguments: Object.freeze({ contractVersion: 1, relativePath: "README.md" }),
+          arguments: Object.freeze({
+            contractVersion: 1,
+            relativePath: "README.md",
+          }),
           usage: Object.freeze({ promptTokens: 13, completionTokens: 7 }),
         });
       }
@@ -363,7 +425,9 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
       await markFailureStage("tool-denial");
       expect(result.stopReason).toBe("end_turn");
       expect(toolCalls).toHaveLength(1);
-      expect(toolCalls[0]).toMatchObject({ toolId: CODING_FILE_READ_TOOL_ID });
+      expect(toolCalls[0]).toMatchObject({
+        toolId: CODING_FILE_READ_TOOL_ID,
+      });
       expect(modelInvocations[1]?.messages).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -409,7 +473,10 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
       handshakeTimeoutMs: 20_000,
       sessionTimeoutMs: 30_000,
     });
-    const prompting = opened.prompt({ text: "Wait for cancellation.", timeoutMs: 30_000 });
+    const prompting = opened.prompt({
+      text: "Wait for cancellation.",
+      timeoutMs: 30_000,
+    });
     await invocationStarted.promise;
     const close = opened.close();
     const rejection = await prompting.then(
@@ -446,7 +513,10 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
       handshakeTimeoutMs: 20_000,
       sessionTimeoutMs: 30_000,
     });
-    const prompting = first.prompt({ text: "Wait for an injected crash.", timeoutMs: 30_000 });
+    const prompting = first.prompt({
+      text: "Wait for an injected crash.",
+      timeoutMs: 30_000,
+    });
     await invocationStarted.promise;
     const runnerPid = await findRunnerPid(first.privateRoot);
     process.kill(-runnerPid, "SIGKILL");
@@ -469,7 +539,10 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
     });
     try {
       await expect(
-        second.prompt({ text: "Return the restart result.", timeoutMs: 30_000 }),
+        second.prompt({
+          text: "Return the restart result.",
+          timeoutMs: 30_000,
+        }),
       ).resolves.toMatchObject({ stopReason: "end_turn" });
     } finally {
       await second.close();

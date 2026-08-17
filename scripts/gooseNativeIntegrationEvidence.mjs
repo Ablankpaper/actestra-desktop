@@ -30,6 +30,7 @@ const EVIDENCE_KEYS = Object.freeze([
 ]);
 const FAILURE_STAGE_CODES = Object.freeze({
   "artifact-admission": "integration-artifact-admission-failed",
+  "bridge-open": "integration-bridge-open-failed",
   cancellation: "integration-cancellation-failed",
   cleanup: "integration-cleanup-failed",
   "composition-cleanup": "integration-composition-cleanup-failed",
@@ -37,9 +38,13 @@ const FAILURE_STAGE_CODES = Object.freeze({
   crash: "integration-crash-failed",
   handshake: "integration-handshake-failed",
   initialize: "integration-initialize-failed",
+  "launch-contract": "integration-launch-contract-failed",
   "parent-death": "integration-parent-death-failed",
   prompt: "integration-prompt-failed",
   restart: "integration-restart-failed",
+  "runner-open": "integration-runner-open-failed",
+  "runner-process-spawn": "integration-runner-process-spawn-failed",
+  "runner-stdin": "integration-runner-stdin-failed",
   "runner-spawn": "integration-runner-spawn-failed",
   "runtime-network": "integration-runtime-network-failed",
   "runtime-resource": "integration-runtime-resource-failed",

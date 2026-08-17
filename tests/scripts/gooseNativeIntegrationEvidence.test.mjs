@@ -80,10 +80,15 @@ describe("Goose native integration evidence", () => {
 
     for (const [stage, code] of [
       ["artifact-admission", "integration-artifact-admission-failed"],
+      ["bridge-open", "integration-bridge-open-failed"],
       ["composition-cleanup", "integration-composition-cleanup-failed"],
       ["composition-open", "integration-composition-open-failed"],
       ["handshake", "integration-handshake-failed"],
       ["initialize", "integration-initialize-failed"],
+      ["launch-contract", "integration-launch-contract-failed"],
+      ["runner-open", "integration-runner-open-failed"],
+      ["runner-process-spawn", "integration-runner-process-spawn-failed"],
+      ["runner-stdin", "integration-runner-stdin-failed"],
       ["runner-spawn", "integration-runner-spawn-failed"],
       ["runtime-network", "integration-runtime-network-failed"],
       ["runtime-resource", "integration-runtime-resource-failed"],
