@@ -79,7 +79,15 @@ describe("Goose native integration evidence", () => {
     if (typeof classify !== "function") return;
 
     for (const [stage, code] of [
+      ["artifact-admission", "integration-artifact-admission-failed"],
+      ["composition-cleanup", "integration-composition-cleanup-failed"],
+      ["composition-open", "integration-composition-open-failed"],
+      ["handshake", "integration-handshake-failed"],
       ["initialize", "integration-initialize-failed"],
+      ["runner-spawn", "integration-runner-spawn-failed"],
+      ["runtime-network", "integration-runtime-network-failed"],
+      ["runtime-resource", "integration-runtime-resource-failed"],
+      ["session-open", "integration-session-open-failed"],
       ["tool-discovery", "integration-tool-discovery-failed"],
       ["prompt", "integration-prompt-failed"],
       ["tool-denial", "integration-tool-denial-failed"],
@@ -93,6 +101,8 @@ describe("Goose native integration evidence", () => {
     }
     for (const candidate of [
       { contractVersion: 1, stage: "invented" },
+      { contractVersion: 1, stage: "toString" },
+      { contractVersion: 1, stage: "__proto__" },
       { contractVersion: 1, stage: "/tmp/private" },
       { contractVersion: 1, stage: "prompt", detail: "/tmp/private" },
       { contractVersion: 2, stage: "prompt" },

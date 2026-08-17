@@ -29,13 +29,21 @@ const EVIDENCE_KEYS = Object.freeze([
   "toolDiscovery",
 ]);
 const FAILURE_STAGE_CODES = Object.freeze({
+  "artifact-admission": "integration-artifact-admission-failed",
   cancellation: "integration-cancellation-failed",
   cleanup: "integration-cleanup-failed",
+  "composition-cleanup": "integration-composition-cleanup-failed",
+  "composition-open": "integration-composition-open-failed",
   crash: "integration-crash-failed",
+  handshake: "integration-handshake-failed",
   initialize: "integration-initialize-failed",
   "parent-death": "integration-parent-death-failed",
   prompt: "integration-prompt-failed",
   restart: "integration-restart-failed",
+  "runner-spawn": "integration-runner-spawn-failed",
+  "runtime-network": "integration-runtime-network-failed",
+  "runtime-resource": "integration-runtime-resource-failed",
+  "session-open": "integration-session-open-failed",
   "tool-denial": "integration-tool-denial-failed",
   "tool-discovery": "integration-tool-discovery-failed",
 });
@@ -91,7 +99,9 @@ export function classifyGooseNativeIntegrationFailureEvidence(value) {
   ) {
     return undefined;
   }
-  return FAILURE_STAGE_CODES[value.stage];
+  return Object.hasOwn(FAILURE_STAGE_CODES, value.stage)
+    ? FAILURE_STAGE_CODES[value.stage]
+    : undefined;
 }
 
 export const GOOSE_NATIVE_INTEGRATION_EVIDENCE_KEYS = EVIDENCE_KEYS;

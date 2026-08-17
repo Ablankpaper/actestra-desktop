@@ -90,7 +90,9 @@ describe("P8.2b Linux authenticated Goose integration gate", () => {
     expect(launcher).toContain('"--bail=1"');
     expect(launcher).not.toContain("process.stderr.write(child.stderr");
     expect(launcher).not.toContain("process.stdout.write(child.stdout");
-    expect(integration).toContain('markFailureStage("initialize")');
+    expect(integration).toContain('markFailureStage("artifact-admission")');
+    expect(integration).toContain('markFailureStage("composition-open")');
+    expect(integration).toContain("classifyOpeningFailureStage");
     expect(integration).toContain('markFailureStage("prompt")');
     expect(integration).toContain('markFailureStage("cancellation")');
     expect(integration).toContain('markFailureStage("crash")');

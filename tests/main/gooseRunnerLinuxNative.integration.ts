@@ -8,6 +8,10 @@ import path from "node:path";
 import process from "node:process";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { CODING_FILE_READ_TOOL_ID } from "../../apps/desktop/src/core";
+import {
+  GooseAcpHandshakeError,
+  GooseAcpSessionError,
+} from "../../apps/desktop/src/main/workers/gooseAcpHandshake";
 import type { AdmittedGooseRunnerArtifact } from "../../apps/desktop/src/main/workers/gooseRunnerArtifact";
 import { admitGooseRunnerArtifact } from "../../apps/desktop/src/main/workers/gooseRunnerArtifact";
 import type {
@@ -18,7 +22,11 @@ import type {
   GooseMcpToolCall,
   GooseMcpToolInvoker,
 } from "../../apps/desktop/src/main/workers/gooseMcpCapabilityServer";
-import { openGooseMcpSessionComposition } from "../../apps/desktop/src/main/workers/gooseMcpSessionComposition";
+import {
+  GooseMcpSessionCompositionError,
+  openGooseMcpSessionComposition,
+} from "../../apps/desktop/src/main/workers/gooseMcpSessionComposition";
+import { GooseRunnerProcessError } from "../../apps/desktop/src/main/workers/gooseRunnerProcess";
 
 vi.mock("../../apps/desktop/src/main/workers/gooseRunnerTarget", async (importOriginal) => {
   const actual =
@@ -47,13 +55,21 @@ const nativeEnabled =
 const fixtureRoots: string[] = [];
 
 type NativeIntegrationFailureStage =
+  | "artifact-admission"
   | "cancellation"
   | "cleanup"
+  | "composition-cleanup"
+  | "composition-open"
   | "crash"
+  | "handshake"
   | "initialize"
   | "parent-death"
   | "prompt"
   | "restart"
+  | "runner-spawn"
+  | "runtime-network"
+  | "runtime-resource"
+  | "session-open"
   | "tool-denial"
   | "tool-discovery";
 
@@ -95,6 +111,31 @@ async function markFailureStage(stage: NativeIntegrationFailureStage): Promise<v
     encoding: "utf8",
     mode: 0o600,
   });
+}
+
+function classifyOpeningFailureStage(error: unknown): NativeIntegrationFailureStage {
+  let current = error;
+  let fallback: NativeIntegrationFailureStage = "composition-open";
+  for (let depth = 0; depth < 4 && current instanceof Error; depth += 1) {
+    if (current instanceof GooseRunnerProcessError) {
+      if (current.code === "artifact-mismatch") return "artifact-admission";
+      if (current.code === "network-policy-unavailable") return "runtime-network";
+      if (current.code === "worker-resource-enforcement-unavailable") {
+        return "runtime-resource";
+      }
+      if (current.code === "spawn-failed") return "runner-spawn";
+      if (current.code === "cleanup-failed") return "composition-cleanup";
+    } else if (current instanceof GooseAcpHandshakeError) {
+      fallback = "handshake";
+    } else if (current instanceof GooseAcpSessionError) {
+      return current.code.startsWith("tool-discovery") ? "tool-discovery" : "session-open";
+    } else if (current instanceof GooseMcpSessionCompositionError) {
+      if (current.code === "cleanup-failed") return "composition-cleanup";
+      if (current.code === "tool-discovery-mismatch") return "tool-discovery";
+    }
+    current = current.cause;
+  }
+  return fallback;
 }
 
 async function waitFor(
@@ -240,7 +281,7 @@ let artifact: AdmittedGooseRunnerArtifact;
 
 describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", () => {
   beforeAll(async () => {
-    await markFailureStage("initialize");
+    await markFailureStage("artifact-admission");
     artifact = await nativeArtifact();
     evidence.sourceCommit = artifact.sourceCommit!;
     evidence.executableSha256 = artifact.executableSha256;
@@ -269,6 +310,7 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
   });
 
   it("initializes, discovers authenticated tools, and returns a denied tool result", async () => {
+    await markFailureStage("composition-open");
     const fixture = await createFixture();
     const toolCalls: GooseMcpToolCall[] = [];
     const modelInvocations: GooseLoopbackModelInvocation[] = [];
@@ -300,6 +342,9 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
       testIds: Object.freeze([]),
       handshakeTimeoutMs: 20_000,
       sessionTimeoutMs: 30_000,
+    }).catch(async (error: unknown) => {
+      await markFailureStage(classifyOpeningFailureStage(error));
+      throw error;
     });
     try {
       await markFailureStage("tool-discovery");
