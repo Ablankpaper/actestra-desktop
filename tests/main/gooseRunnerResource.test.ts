@@ -6,10 +6,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { GOOSE_WORKER_RESOURCE_PROFILE } from "../../apps/desktop/src/core/workerResourceBudget";
 import type { AdmittedGooseRunnerArtifact } from "../../apps/desktop/src/main/workers/gooseRunnerArtifact";
 import {
+  GOOSE_NATIVE_NETWORK_POLICY_FAILURE_MARKER,
   GOOSE_NATIVE_RESOURCE_LIMIT_FAILURE_MARKER,
   GooseRunnerProcessError,
   assertGooseAcpSpawnOptions,
   createGooseRunnerEnvironment,
+  createGooseRunnerSetupFailureMatcher,
   createGooseRunnerResourceFailureMatcher,
   openGooseRunnerHandshake,
   type GooseAcpSpawnOptions,
@@ -66,6 +68,19 @@ class NativeLimitFailureTransport extends LoopbackGooseAcpTransport {
         new GooseRunnerProcessError(
           "worker-resource-enforcement-unavailable",
           "Goose native resource enforcement is unavailable",
+        ),
+      );
+    });
+  }
+}
+
+class NativeNetworkFailureTransport extends LoopbackGooseAcpTransport {
+  override sendLine(): void {
+    queueMicrotask(() => {
+      this.emitError(
+        new GooseRunnerProcessError(
+          "network-policy-unavailable",
+          "Goose native network policy is unavailable",
         ),
       );
     });
@@ -178,6 +193,23 @@ describe("Goose runner native resource boundary", () => {
     expect(Object.keys(matcher)).toEqual(["push"]);
   });
 
+  it("maps the Linux bridge setup marker to network-policy-unavailable, never spawn-failed", () => {
+    const matcher = createGooseRunnerSetupFailureMatcher();
+    const split = Math.floor(GOOSE_NATIVE_NETWORK_POLICY_FAILURE_MARKER.length / 2);
+
+    expect(
+      matcher.push(
+        Buffer.from(`ignored:${GOOSE_NATIVE_NETWORK_POLICY_FAILURE_MARKER.slice(0, split)}`),
+      ),
+    ).toBeUndefined();
+    const code = matcher.push(
+      Buffer.from(`${GOOSE_NATIVE_NETWORK_POLICY_FAILURE_MARKER.slice(split)}:ignored`),
+    );
+    expect(code).toBe("network-policy-unavailable");
+    expect(code).not.toBe("spawn-failed");
+    expect(Object.keys(matcher)).toEqual(["push"]);
+  });
+
   it("preserves native limit setup failure as the closed resource incident code", async () => {
     const fixture = await createRunnerFixture();
 
@@ -190,6 +222,22 @@ describe("Goose runner native resource boundary", () => {
     ).rejects.toMatchObject({
       name: "GooseRunnerProcessError",
       code: "worker-resource-enforcement-unavailable",
+    });
+    expect(await readdir(fixture.privateRootParent)).toEqual([]);
+  });
+
+  it("preserves native bridge setup failure as the closed network incident code", async () => {
+    const fixture = await createRunnerFixture();
+
+    await expect(
+      openGooseRunnerHandshake({
+        artifact: fixture.artifact,
+        privateRootParent: fixture.privateRootParent,
+        transportFactory: () => new NativeNetworkFailureTransport(),
+      }),
+    ).rejects.toMatchObject({
+      name: "GooseRunnerProcessError",
+      code: "network-policy-unavailable",
     });
     expect(await readdir(fixture.privateRootParent)).toEqual([]);
   });

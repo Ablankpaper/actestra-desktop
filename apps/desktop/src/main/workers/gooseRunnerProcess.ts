@@ -37,6 +37,8 @@ const CLOSE_GRACE_MS = 1_000;
 const TERMINATE_GRACE_MS = 1_000;
 export const GOOSE_NATIVE_RESOURCE_LIMIT_FAILURE_MARKER =
   "ACTESTRA_GOOSE_RESOURCE_LIMIT_SETUP_FAILED";
+export const GOOSE_NATIVE_NETWORK_POLICY_FAILURE_MARKER =
+  "ACTESTRA_GOOSE_NETWORK_POLICY_SETUP_FAILED";
 export type GooseRunnerProcessErrorCode =
   | "invalid-options"
   | "artifact-mismatch"
@@ -76,6 +78,12 @@ export type GooseAcpTransportFactory = (options: GooseAcpSpawnOptions) => GooseA
 
 export interface GooseRunnerResourceFailureMatcher {
   push(chunk: Uint8Array): boolean;
+}
+
+export interface GooseRunnerSetupFailureMatcher {
+  push(
+    chunk: Uint8Array,
+  ): "network-policy-unavailable" | "worker-resource-enforcement-unavailable" | undefined;
 }
 
 type GooseChildProcess = ChildProcessByStdio<Writable, Readable, Readable>;
@@ -257,8 +265,10 @@ export function assertGooseAcpSpawnOptions(
  * Recognizes only the runner's fixed setup marker. Its state retains no stderr
  * content, so native diagnostic text never crosses the process boundary.
  */
-export function createGooseRunnerResourceFailureMatcher(): GooseRunnerResourceFailureMatcher {
-  const marker = Buffer.from(GOOSE_NATIVE_RESOURCE_LIMIT_FAILURE_MARKER, "utf8");
+function createGooseRunnerFixedMarkerMatcher(
+  markerText: string,
+): GooseRunnerResourceFailureMatcher {
+  const marker = Buffer.from(markerText, "utf8");
   const fallback = new Uint8Array(marker.length);
   for (let index = 1, prefixLength = 0; index < marker.length; ) {
     if (marker[index] === marker[prefixLength]) {
@@ -289,6 +299,30 @@ export function createGooseRunnerResourceFailureMatcher(): GooseRunnerResourceFa
         }
       }
       return false;
+    },
+  });
+}
+
+export function createGooseRunnerResourceFailureMatcher(): GooseRunnerResourceFailureMatcher {
+  return createGooseRunnerFixedMarkerMatcher(GOOSE_NATIVE_RESOURCE_LIMIT_FAILURE_MARKER);
+}
+
+export function createGooseRunnerSetupFailureMatcher(): GooseRunnerSetupFailureMatcher {
+  const network = createGooseRunnerFixedMarkerMatcher(GOOSE_NATIVE_NETWORK_POLICY_FAILURE_MARKER);
+  const resources = createGooseRunnerResourceFailureMatcher();
+  let detected:
+    | "network-policy-unavailable"
+    | "worker-resource-enforcement-unavailable"
+    | undefined;
+  return Object.freeze({
+    push(chunk: Uint8Array) {
+      if (detected !== undefined) return detected;
+      if (network.push(chunk)) {
+        detected = "network-policy-unavailable";
+      } else if (resources.push(chunk)) {
+        detected = "worker-resource-enforcement-unavailable";
+      }
+      return detected;
     },
   });
 }
@@ -616,7 +650,7 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
   private readonly errorListeners = new Set<(error: Error) => void>();
   private readonly exitListeners = new Set<(code: number | null, signal: string | null) => void>();
   private readonly exitPromise: Promise<void>;
-  private readonly nativeResourceFailureMatcher = createGooseRunnerResourceFailureMatcher();
+  private readonly nativeSetupFailureMatcher = createGooseRunnerSetupFailureMatcher();
   private stdoutBuffer = "";
   private stderrBytes = 0;
   private exited = false;
@@ -644,11 +678,14 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
       }
     });
     child.stderr.on("data", (chunk: Buffer) => {
-      if (this.nativeResourceFailureMatcher.push(chunk)) {
+      const setupFailure = this.nativeSetupFailureMatcher.push(chunk);
+      if (setupFailure !== undefined) {
         this.failTransport(
           new GooseRunnerProcessError(
-            "worker-resource-enforcement-unavailable",
-            "Goose native resource enforcement is unavailable",
+            setupFailure,
+            setupFailure === "network-policy-unavailable"
+              ? "Goose native network policy is unavailable"
+              : "Goose native resource enforcement is unavailable",
           ),
         );
         return;
@@ -1194,7 +1231,8 @@ export async function openGooseRunnerHandshake(
       error instanceof GooseAcpHandshakeError &&
       error.code === "transport-error" &&
       error.cause instanceof GooseRunnerProcessError &&
-      error.cause.code === "worker-resource-enforcement-unavailable"
+      (error.cause.code === "network-policy-unavailable" ||
+        error.cause.code === "worker-resource-enforcement-unavailable")
     ) {
       throw error.cause;
     }

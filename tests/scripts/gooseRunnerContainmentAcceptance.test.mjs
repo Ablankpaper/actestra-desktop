@@ -36,6 +36,53 @@ describe("P8 native Goose containment acceptance gate", () => {
     expect(source).not.toContain("continue-on-error");
   });
 
+  it("keeps partial Linux evidence incomplete and outside the admitted manifest", () => {
+    const linuxProbe = read("workers/goose-runner/src/containment/linux.rs");
+    const binder = read("scripts/record-goose-runner-containment.mjs");
+    const validator = read("scripts/gooseContainmentEvidence.mjs");
+    const acceptance = read("scripts/run-goose-runner-containment.mjs");
+
+    expect(linuxProbe).toContain("let complete = false");
+    expect(linuxProbe).toContain('if complete { "verified" } else { "evidence-incomplete" }');
+    expect(validator).toContain('value.status !== "verified"');
+    expect(validator).toContain("CAPABILITY_KEYS.some((key) => value[key] !== true)");
+
+    const validationIndex = binder.indexOf(
+      "const validation = validateGooseContainmentEvidence(evidence",
+    );
+    const manifestWriteIndex = binder.indexOf("const nextManifest =", validationIndex);
+    expect(validationIndex).toBeGreaterThan(-1);
+    expect(manifestWriteIndex).toBeGreaterThan(validationIndex);
+    expect(binder.slice(validationIndex, manifestWriteIndex)).toContain("if (!validation.ok)");
+    expect(acceptance).not.toContain("writeFile");
+    expect(acceptance).not.toContain("rename");
+  });
+
+  it("binds source and executable identity to the production runner's exact native probe", () => {
+    const binder = read("scripts/record-goose-runner-containment.mjs");
+    const probeRunner = read("scripts/test-goose-runner-containment.mjs");
+    const acceptance = read("scripts/run-goose-runner-containment.mjs");
+    const runner = read("workers/goose-runner/src/main.rs");
+    const containment = read("workers/goose-runner/src/containment/mod.rs");
+    const linuxProbe = read("workers/goose-runner/src/containment/linux.rs");
+
+    for (const key of [
+      "ACTESTRA_GOOSE_SOURCE_COMMIT",
+      "ACTESTRA_GOOSE_PROBE_SHA256",
+      "ACTESTRA_GOOSE_EXECUTABLE_SHA256",
+    ]) {
+      expect(binder).toContain(key);
+      expect(probeRunner).toContain(key);
+      expect(linuxProbe).toContain(key);
+    }
+    expect(runner).toContain("mod containment;");
+    expect(runner).toContain("containment::prepare_linux_filesystem_containment");
+    expect(containment).toContain("linux::run_linux_containment_probe()");
+    expect(acceptance).toContain("sourceCommit: manifest?.provenance?.actestraCommit");
+    expect(acceptance).toContain("executableSha256,");
+    expect(acceptance).toContain("probeSha256: currentProbeSha256");
+  });
+
   it("surfaces only closed native resource diagnostics across the acceptance boundary", () => {
     const probe = read("scripts/test-goose-runner-containment.mjs");
     const acceptance = read("scripts/run-goose-runner-containment.mjs");
@@ -83,6 +130,7 @@ describe("P8 native Goose containment acceptance gate", () => {
     expect(workflow).not.toContain("continue-on-error");
     expect(workflow).not.toContain("OPENAI_API_KEY");
     expect(workflow).not.toContain("ACTESTRA_API_KEY");
+    expect(workflow.match(/^\s+if: success\(\)$/gmu) ?? []).toHaveLength(2);
     expect(fs.existsSync(path.join(repositoryRoot, ".github/workflows/p8-containment.yml"))).toBe(
       false,
     );
