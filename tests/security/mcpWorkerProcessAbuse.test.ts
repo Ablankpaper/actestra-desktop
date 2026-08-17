@@ -1295,7 +1295,7 @@ describe("P7 MCP, Worker, network, and process abuse baseline", () => {
         artifact: fixture.artifact,
         privateRootParent: fixture.privateRootParent,
       }),
-    ).rejects.toMatchObject({ code: "process-exit" });
+    ).rejects.toMatchObject({ code: "process-signal" });
     expect(await readdir(fixture.privateRootParent)).toEqual([]);
   });
 
