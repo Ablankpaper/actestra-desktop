@@ -144,4 +144,38 @@ describe("P8 native Goose build wiring", () => {
     expect(integrationStep).not.toContain("sudo");
     expect(containmentStep).not.toContain("sudo");
   });
+
+  it("normalizes the GitHub Ubuntu opt root only for admission and restores its exact mode", () => {
+    const workflow = read(".github/workflows/ci.yml");
+    const job = readWorkflowJob(workflow, "goose-containment-linux");
+    const installStep = job.slice(
+      job.indexOf("- name: Install temporary Ubuntu Goose package layout"),
+      job.indexOf("- name: Re-admit installed Ubuntu Goose package"),
+    );
+    const cleanupStep = job.slice(
+      job.indexOf("- name: Remove temporary Ubuntu Goose package layout"),
+    );
+
+    expect(installStep).toContain("id: linux-package-install");
+    expectOrderedFragments(installStep, [
+      'test "$(stat -c \'%u\' /opt)" = "0"',
+      "original_opt_mode=\"$(stat -c '%a' /opt)\"",
+      'echo "opt_mode=$original_opt_mode" >> "$GITHUB_OUTPUT"',
+      "sudo chmod 0755 /opt",
+      'test "$(stat -c \'%a:%u\' /opt)" = "755:0"',
+      "sudo install -d -o root -g root -m 0755 /opt/Actestra/resources/actestra-goose-runner",
+    ]);
+    expect(installStep).toContain("755 | 777) ;;");
+    expect(cleanupStep).toContain(
+      "ACTESTRA_ORIGINAL_OPT_MODE: ${{ steps.linux-package-install.outputs.opt_mode }}",
+    );
+    expectOrderedFragments(cleanupStep, [
+      "sudo rm -rf -- /opt/Actestra",
+      "test ! -e /opt/Actestra",
+      'sudo chmod "$ACTESTRA_ORIGINAL_OPT_MODE" /opt',
+      'exit "$cleanup_status"',
+    ]);
+    expect(job).not.toContain("chmod -R");
+    expect(job).not.toContain("chmod 0777 /opt");
+  });
 });

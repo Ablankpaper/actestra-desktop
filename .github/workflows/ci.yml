@@ -271,6 +271,7 @@ jobs:
           bun run downstream:aionui:inspect:deb -- "$copied_deb"
 
       - name: Install temporary Ubuntu Goose package layout
+        id: linux-package-install
         shell: bash
         env:
           ACTESTRA_LINUX_DEB_PATH: ${{ steps.linux-package.outputs.path }}
@@ -299,8 +300,20 @@ jobs:
           test -f "$package_resources/apparmor-profile"
           test -f "$package_resources/actestra-goose-runner-admission.json"
 
-          sudo install -d -o root -g root -m 0755 \
-            /opt/Actestra/resources/actestra-goose-runner
+          # GitHub's Ubuntu builder deliberately makes /opt world-writable for
+          # hosted tools. Normalize only the fixed package parent for the
+          # admission run, then restore the builder's exact mode in teardown.
+          test "$(stat -c '%u' /opt)" = "0"
+          original_opt_mode="$(stat -c '%a' /opt)"
+          case "$original_opt_mode" in
+            755 | 777) ;;
+            *) exit 1 ;;
+          esac
+          echo "opt_mode=$original_opt_mode" >> "$GITHUB_OUTPUT"
+          sudo chmod 0755 /opt
+          test "$(stat -c '%a:%u' /opt)" = "755:0"
+
+          sudo install -d -o root -g root -m 0755 /opt/Actestra/resources/actestra-goose-runner
           sudo install -o root -g root -m 0755 /usr/bin/true /opt/Actestra/Actestra
           sudo install -o root -g root -m 0644 \
             "$package_resources/apparmor-profile" /opt/Actestra/resources/apparmor-profile
@@ -367,19 +380,29 @@ jobs:
       - name: Remove temporary Ubuntu Goose package layout
         if: always()
         shell: bash
+        env:
+          ACTESTRA_ORIGINAL_OPT_MODE: ${{ steps.linux-package-install.outputs.opt_mode }}
         run: |
           set +e
+          cleanup_status=0
           sudo apparmor_parser --remove /etc/apparmor.d/Actestra >/dev/null 2>&1 || true
-          sudo rm -f -- /etc/apparmor.d/Actestra
-          sudo rm -rf -- /opt/Actestra
+          sudo rm -f -- /etc/apparmor.d/Actestra || cleanup_status=1
+          sudo rm -rf -- /opt/Actestra || cleanup_status=1
           if sudo grep -Fq "Actestra-Goose-Runner" /sys/kernel/security/apparmor/profiles 2>/dev/null; then
-            exit 1
+            cleanup_status=1
           fi
           if pgrep -f '^/opt/Actestra/resources/actestra-goose-runner/actestra-goose-runner( |$)' >/dev/null 2>&1; then
-            exit 1
+            cleanup_status=1
           fi
-          test ! -e /etc/apparmor.d/Actestra
-          test ! -e /opt/Actestra
+          test ! -e /etc/apparmor.d/Actestra || cleanup_status=1
+          test ! -e /opt/Actestra || cleanup_status=1
+          case "$ACTESTRA_ORIGINAL_OPT_MODE" in
+            755 | 777)
+              sudo chmod "$ACTESTRA_ORIGINAL_OPT_MODE" /opt || cleanup_status=1
+              ;;
+            *) cleanup_status=1 ;;
+          esac
+          exit "$cleanup_status"
 
   macos:
     name: macOS arm64 foundation
