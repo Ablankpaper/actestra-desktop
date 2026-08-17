@@ -1,6 +1,6 @@
 # P8.2b Linux Runtime Composition Design
 
-**Status:** Proposed; pending user review
+**Status:** Accepted by user on 2026-08-17
 
 **Date:** 2026-08-17
 
