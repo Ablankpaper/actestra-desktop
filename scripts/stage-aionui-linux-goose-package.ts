@@ -134,7 +134,7 @@ export async function stageAionuiLinuxGoosePackage(
     throw new Error("Linux Goose Artifact target does not match Ubuntu x64");
   }
 
-  const resourcesDirectory = path.join(options.materializedRoot, "packages/desktop/resources");
+  const resourcesDirectory = path.join(options.materializedRoot, "resources");
   const runnerDirectory = path.join(resourcesDirectory, "actestra-goose-runner");
   const recordPath = path.join(resourcesDirectory, GOOSE_LINUX_ADMISSION_RECORD_FILE);
   const materializedProfilePath = path.join(resourcesDirectory, "actestra-apparmor-profile");

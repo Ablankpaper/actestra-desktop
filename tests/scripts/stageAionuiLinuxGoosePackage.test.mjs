@@ -96,10 +96,7 @@ describe("Ubuntu Goose package staging", () => {
     ]);
     const record = JSON.parse(
       await readFile(
-        path.join(
-          fixtureValue.materializedRoot,
-          "packages/desktop/resources/actestra-goose-runner-admission.json",
-        ),
+        path.join(fixtureValue.materializedRoot, "resources/actestra-goose-runner-admission.json"),
         "utf8",
       ),
     );
@@ -112,9 +109,10 @@ describe("Ubuntu Goose package staging", () => {
       profileName: "Actestra-Goose-Runner",
       executablePath: "/opt/Actestra/resources/actestra-goose-runner/actestra-goose-runner",
     });
-    expect(
-      await readdir(path.join(fixtureValue.materializedRoot, "packages/desktop/resources")),
-    ).toEqual([
+    expect(result.runnerDirectory).toBe(
+      path.join(fixtureValue.materializedRoot, "resources/actestra-goose-runner"),
+    );
+    expect(await readdir(path.join(fixtureValue.materializedRoot, "resources"))).toEqual([
       "actestra-apparmor-profile",
       "actestra-goose-runner",
       "actestra-goose-runner-admission.json",
