@@ -86,12 +86,40 @@ export interface GooseRunnerModelBinding {
   readonly attemptLease: string;
 }
 
+export interface GooseRunnerPreparedRoot {
+  readonly root: string;
+  readonly bridgeDirectory: string;
+  readonly executablePath: string;
+  readonly workingDirectory: string;
+}
+
+export interface GooseRunnerPreparedBridge {
+  readonly capabilityProxyUrl: string;
+  readonly modelBinding: GooseRunnerModelBinding;
+  readonly capabilitySocketPath: string;
+  readonly modelSocketPath: string;
+  close(): Promise<void>;
+}
+
+export interface GooseRunnerLinuxBridgeEnvironment {
+  readonly capabilitySocketPath: string;
+  readonly modelSocketPath: string;
+  readonly capabilityPort: number;
+  readonly modelPort: number;
+  readonly workspaceRoot: string;
+}
+
+export type GooseRunnerBridgeFactory = (
+  root: GooseRunnerPreparedRoot,
+) => Promise<GooseRunnerPreparedBridge>;
+
 export interface OpenGooseRunnerHandshakeOptions {
   readonly artifact: AdmittedGooseRunnerArtifact;
   readonly privateRootParent: string;
   readonly workspaceDirectory?: string;
   readonly capabilityProxyUrl?: string;
   readonly modelBinding?: GooseRunnerModelBinding;
+  readonly prepareBridge?: GooseRunnerBridgeFactory;
   readonly handshakeTimeoutMs?: number;
   readonly transportFactory?: GooseAcpTransportFactory;
 }
@@ -123,6 +151,7 @@ async function sha256File(filePath: string): Promise<string> {
 export function createGooseRunnerEnvironment(
   privateRoot: string,
   modelBinding?: GooseRunnerModelBinding,
+  linuxBridge?: GooseRunnerLinuxBridgeEnvironment,
 ): Readonly<Record<string, string>> {
   if (!isAbsoluteDirectory(privateRoot)) {
     throw new GooseRunnerProcessError(
@@ -132,6 +161,10 @@ export function createGooseRunnerEnvironment(
   }
   const stableModelBinding =
     modelBinding === undefined ? undefined : validateModelBinding(modelBinding).binding;
+  const stableLinuxBridge =
+    linuxBridge === undefined
+      ? undefined
+      : validateLinuxBridgeEnvironment(privateRoot, linuxBridge);
   const temporaryDirectory = path.join(privateRoot, "tmp");
   return Object.freeze({
     GOOSE_PATH_ROOT: privateRoot,
@@ -157,6 +190,15 @@ export function createGooseRunnerEnvironment(
           OPENAI_BASE_URL: stableModelBinding.baseUrl,
           OPENAI_API_KEY: stableModelBinding.attemptLease,
           NO_PROXY: "127.0.0.1,localhost",
+        }),
+    ...(stableLinuxBridge === undefined
+      ? {}
+      : {
+          ACTESTRA_GOOSE_LINUX_CAPABILITY_SOCKET: stableLinuxBridge.capabilitySocketPath,
+          ACTESTRA_GOOSE_LINUX_MODEL_SOCKET: stableLinuxBridge.modelSocketPath,
+          ACTESTRA_GOOSE_LINUX_CAPABILITY_PORT: String(stableLinuxBridge.capabilityPort),
+          ACTESTRA_GOOSE_LINUX_MODEL_PORT: String(stableLinuxBridge.modelPort),
+          ACTESTRA_GOOSE_LINUX_WORKSPACE_ROOT: stableLinuxBridge.workspaceRoot,
         }),
   });
 }
@@ -318,6 +360,10 @@ function exactLoopbackMcpPort(url: string): number | undefined {
   return port <= 65_535 ? port : undefined;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function validateModelBinding(modelBinding: GooseRunnerModelBinding): {
   readonly binding: GooseRunnerModelBinding;
   readonly port: number;
@@ -348,6 +394,166 @@ function validateModelBinding(modelBinding: GooseRunnerModelBinding): {
       attemptLease: modelBinding.attemptLease,
     }),
     port,
+  });
+}
+
+function validatePreparedBridge(
+  root: GooseRunnerPreparedRoot,
+  value: unknown,
+): GooseRunnerPreparedBridge {
+  if (!isRecord(value)) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose bridge factory must return an object",
+    );
+  }
+  const keys = Reflect.ownKeys(value);
+  if (
+    keys.length !== 5 ||
+    keys.some(
+      (key) =>
+        typeof key !== "string" ||
+        ![
+          "capabilityProxyUrl",
+          "modelBinding",
+          "capabilitySocketPath",
+          "modelSocketPath",
+          "close",
+        ].includes(key),
+    )
+  ) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose bridge factory returned unsupported fields",
+    );
+  }
+  const capabilityProxyUrl = value.capabilityProxyUrl;
+  const capabilitySocketPath = value.capabilitySocketPath;
+  const modelSocketPath = value.modelSocketPath;
+  const close = value.close;
+  if (
+    typeof capabilityProxyUrl !== "string" ||
+    typeof capabilitySocketPath !== "string" ||
+    typeof modelSocketPath !== "string" ||
+    typeof close !== "function"
+  ) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose bridge factory returned an invalid endpoint contract",
+    );
+  }
+  const bridgeDirectory = path.join(root.root, "bridge");
+  const validSocketPath = (socketPath: string): boolean =>
+    path.isAbsolute(socketPath) &&
+    path.resolve(socketPath) === socketPath &&
+    !socketPath.includes("\0") &&
+    Buffer.byteLength(socketPath, "utf8") <= 103 &&
+    path.dirname(socketPath) === bridgeDirectory;
+  if (
+    !validSocketPath(capabilitySocketPath) ||
+    !validSocketPath(modelSocketPath) ||
+    capabilitySocketPath === modelSocketPath
+  ) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose bridge factory returned sockets outside the prepared bridge",
+    );
+  }
+  const capabilityPort = exactLoopbackMcpPort(capabilityProxyUrl);
+  let modelBinding: { readonly binding: GooseRunnerModelBinding; readonly port: number };
+  try {
+    modelBinding = validateModelBinding(value.modelBinding as GooseRunnerModelBinding);
+  } catch (error) {
+    if (error instanceof GooseRunnerProcessError) {
+      throw error;
+    }
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose bridge factory returned an invalid model binding",
+      { cause: error },
+    );
+  }
+  if (capabilityPort === undefined || capabilityPort === modelBinding.port) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose bridge factory returned ambiguous loopback endpoints",
+    );
+  }
+  return Object.freeze({
+    capabilityProxyUrl,
+    modelBinding: modelBinding.binding,
+    capabilitySocketPath,
+    modelSocketPath,
+    close: close as () => Promise<void>,
+  });
+}
+
+function validateLinuxBridgeEnvironment(
+  privateRoot: string,
+  value: GooseRunnerLinuxBridgeEnvironment,
+): GooseRunnerLinuxBridgeEnvironment {
+  if (!isRecord(value)) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose Linux bridge environment must be an object",
+    );
+  }
+  const keys = Reflect.ownKeys(value);
+  if (
+    keys.length !== 5 ||
+    keys.some(
+      (key) =>
+        typeof key !== "string" ||
+        ![
+          "capabilitySocketPath",
+          "modelSocketPath",
+          "capabilityPort",
+          "modelPort",
+          "workspaceRoot",
+        ].includes(key),
+    )
+  ) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose Linux bridge environment contains unsupported fields",
+    );
+  }
+  const { capabilitySocketPath, modelSocketPath, capabilityPort, modelPort, workspaceRoot } = value;
+  const bridgeDirectory = path.join(privateRoot, "bridge");
+  const validSocketPath = (socketPath: unknown): socketPath is string =>
+    typeof socketPath === "string" &&
+    path.isAbsolute(socketPath) &&
+    path.resolve(socketPath) === socketPath &&
+    !socketPath.includes("\0") &&
+    Buffer.byteLength(socketPath, "utf8") <= 103 &&
+    path.dirname(socketPath) === bridgeDirectory;
+  const validPort = (port: unknown): port is number =>
+    Number.isSafeInteger(port) && (port as number) >= 1 && (port as number) <= 65_535;
+  if (
+    !validSocketPath(capabilitySocketPath) ||
+    !validSocketPath(modelSocketPath) ||
+    capabilitySocketPath === modelSocketPath ||
+    !validPort(capabilityPort) ||
+    !validPort(modelPort) ||
+    capabilityPort === modelPort ||
+    typeof workspaceRoot !== "string" ||
+    !path.isAbsolute(workspaceRoot) ||
+    path.resolve(workspaceRoot) !== workspaceRoot ||
+    path.parse(workspaceRoot).root === workspaceRoot ||
+    workspaceRoot.includes("\0") ||
+    Buffer.byteLength(workspaceRoot, "utf8") > 4 * 1024
+  ) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose Linux bridge environment is invalid",
+    );
+  }
+  return Object.freeze({
+    capabilitySocketPath,
+    modelSocketPath,
+    capabilityPort,
+    modelPort,
+    workspaceRoot,
   });
 }
 
@@ -595,11 +801,7 @@ function createNodeGooseAcpTransport(options: GooseAcpSpawnOptions): GooseAcpTra
 async function preparePrivateRoot(
   parent: string,
   artifact: AdmittedGooseRunnerArtifact,
-): Promise<{
-  readonly root: string;
-  readonly executablePath: string;
-  readonly workingDirectory: string;
-}> {
+): Promise<GooseRunnerPreparedRoot> {
   if (!isAbsoluteDirectory(parent)) {
     throw new GooseRunnerProcessError(
       "invalid-options",
@@ -626,7 +828,7 @@ async function preparePrivateRoot(
     const binaryDirectory = path.join(root, "bin");
     const workingDirectory = path.join(root, "work");
     await Promise.all(
-      ["config", "data", "state", "home", "tmp", "bin", "work"].map((name) =>
+      ["config", "data", "state", "home", "tmp", "bin", "work", "bridge"].map((name) =>
         mkdir(path.join(root, name), { mode: 0o700 }),
       ),
     );
@@ -649,7 +851,12 @@ async function preparePrivateRoot(
         "Staged Goose executable does not match the admitted artifact",
       );
     }
-    return { root, executablePath, workingDirectory };
+    return Object.freeze({
+      root,
+      bridgeDirectory: path.join(root, "bridge"),
+      executablePath,
+      workingDirectory,
+    });
   } catch (error) {
     try {
       await rm(root, { recursive: true });
@@ -674,12 +881,23 @@ async function removePrivateRoot(root: string): Promise<void> {
   }
 }
 
-async function closeAndRemove(connection: GooseAcpConnection, privateRoot: string): Promise<void> {
+async function closeAndRemove(
+  connection: GooseAcpConnection,
+  privateRoot: string,
+  bridge: GooseRunnerPreparedBridge | undefined,
+): Promise<void> {
   const errors: unknown[] = [];
   try {
     await connection.close();
   } catch (error) {
     errors.push(error);
+  }
+  if (bridge !== undefined) {
+    try {
+      await bridge.close();
+    } catch (error) {
+      errors.push(error);
+    }
   }
   try {
     await removePrivateRoot(privateRoot);
@@ -716,24 +934,6 @@ export async function openGooseRunnerHandshake(
       "The admitted Goose artifact lacks exact native containment evidence",
     );
   }
-  const capabilityProxyPort =
-    options.capabilityProxyUrl === undefined
-      ? undefined
-      : exactLoopbackMcpPort(options.capabilityProxyUrl);
-  if (options.capabilityProxyUrl !== undefined && capabilityProxyPort === undefined) {
-    throw new GooseRunnerProcessError(
-      "invalid-options",
-      "Goose runner capability proxy must use the exact admitted loopback MCP endpoint",
-    );
-  }
-  if ((capabilityProxyPort === undefined) !== (options.modelBinding === undefined)) {
-    throw new GooseRunnerProcessError(
-      "invalid-options",
-      "Goose runner loopback session requires both MCP and model bindings",
-    );
-  }
-  const stableModelBinding =
-    options.modelBinding === undefined ? undefined : validateModelBinding(options.modelBinding);
   const admittedWorkspaceDirectory =
     options.workspaceDirectory === undefined
       ? undefined
@@ -744,20 +944,108 @@ export async function openGooseRunnerHandshake(
             { cause: error },
           );
         });
-  let prepared:
-    | { readonly root: string; readonly executablePath: string; readonly workingDirectory: string }
-    | undefined;
+  if (options.prepareBridge !== undefined && typeof options.prepareBridge !== "function") {
+    throw new GooseRunnerProcessError("invalid-options", "Goose bridge factory must be a function");
+  }
+  if (
+    options.prepareBridge !== undefined &&
+    (options.capabilityProxyUrl !== undefined || options.modelBinding !== undefined)
+  ) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose bridge factory cannot be combined with direct loopback bindings",
+    );
+  }
+  if (options.prepareBridge === undefined) {
+    const capabilityProxyPort =
+      options.capabilityProxyUrl === undefined
+        ? undefined
+        : exactLoopbackMcpPort(options.capabilityProxyUrl);
+    if (options.capabilityProxyUrl !== undefined && capabilityProxyPort === undefined) {
+      throw new GooseRunnerProcessError(
+        "invalid-options",
+        "Goose runner capability proxy must use the exact admitted loopback MCP endpoint",
+      );
+    }
+    if ((capabilityProxyPort === undefined) !== (options.modelBinding === undefined)) {
+      throw new GooseRunnerProcessError(
+        "invalid-options",
+        "Goose runner loopback session requires both MCP and model bindings",
+      );
+    }
+    if (options.modelBinding !== undefined) {
+      validateModelBinding(options.modelBinding);
+    }
+  }
+  if (
+    runtimeTarget.platform === "linux" &&
+    (options.prepareBridge === undefined || admittedWorkspaceDirectory === undefined)
+  ) {
+    throw new GooseRunnerProcessError(
+      "network-policy-unavailable",
+      "Linux Goose runtime requires one prepared bridge and admitted workspace",
+    );
+  }
+  let prepared: GooseRunnerPreparedRoot | undefined;
+  let bridge: GooseRunnerPreparedBridge | undefined;
   let transport: GooseAcpTransport | undefined;
   try {
     prepared = await preparePrivateRoot(options.privateRootParent, options.artifact);
+    if (options.prepareBridge !== undefined) {
+      const candidate = await options.prepareBridge(prepared);
+      try {
+        bridge = validatePreparedBridge(prepared, candidate);
+      } catch (error) {
+        try {
+          await candidate.close();
+        } catch (cleanupError) {
+          throw new GooseRunnerProcessError(
+            "cleanup-failed",
+            "Goose bridge contract was invalid and bridge cleanup failed",
+            { cause: new AggregateError([error, cleanupError]) },
+          );
+        }
+        throw error;
+      }
+    }
     const resourceBudget = freezeWorkerResourceBudget(GOOSE_WORKER_RESOURCE_PROFILE);
+    const capabilityProxyUrl = bridge?.capabilityProxyUrl ?? options.capabilityProxyUrl;
+    const modelBinding = bridge?.modelBinding ?? options.modelBinding;
+    const capabilityProxyPort =
+      capabilityProxyUrl === undefined ? undefined : exactLoopbackMcpPort(capabilityProxyUrl);
+    if (capabilityProxyUrl !== undefined && capabilityProxyPort === undefined) {
+      throw new GooseRunnerProcessError(
+        "invalid-options",
+        "Goose runner capability proxy must use the exact admitted loopback MCP endpoint",
+      );
+    }
+    const stableModelBinding =
+      modelBinding === undefined ? undefined : validateModelBinding(modelBinding);
+    const linuxBridgeEnvironment =
+      runtimeTarget.platform === "linux" &&
+      bridge !== undefined &&
+      capabilityProxyPort !== undefined &&
+      stableModelBinding !== undefined &&
+      admittedWorkspaceDirectory !== undefined
+        ? Object.freeze({
+            capabilitySocketPath: bridge.capabilitySocketPath,
+            modelSocketPath: bridge.modelSocketPath,
+            capabilityPort: capabilityProxyPort,
+            modelPort: stableModelBinding.port,
+            workspaceRoot: admittedWorkspaceDirectory,
+          })
+        : undefined;
     const spawnOptions: GooseAcpSpawnOptions = Object.freeze({
       executablePath: prepared.executablePath,
       workingDirectory: prepared.workingDirectory,
       ...(admittedWorkspaceDirectory === undefined
         ? {}
         : { workspaceDirectory: admittedWorkspaceDirectory }),
-      environment: createGooseRunnerEnvironment(prepared.root, stableModelBinding?.binding),
+      environment: createGooseRunnerEnvironment(
+        prepared.root,
+        stableModelBinding?.binding,
+        linuxBridgeEnvironment,
+      ),
       resourceBudget,
       networkPolicy:
         capabilityProxyPort === undefined || stableModelBinding === undefined
@@ -818,7 +1106,7 @@ export async function openGooseRunnerHandshake(
           }
           return await connection.openSession(sessionOptions);
         } catch (error) {
-          closePromise ??= closeAndRemove(connection, prepared!.root);
+          closePromise ??= closeAndRemove(connection, prepared!.root, bridge);
           try {
             await closePromise;
           } catch (cleanupError) {
@@ -837,7 +1125,7 @@ export async function openGooseRunnerHandshake(
         try {
           return await connection.discoverTools(discoveryOptions);
         } catch (error) {
-          closePromise ??= closeAndRemove(connection, prepared!.root);
+          closePromise ??= closeAndRemove(connection, prepared!.root, bridge);
           try {
             await closePromise;
           } catch (cleanupError) {
@@ -854,7 +1142,7 @@ export async function openGooseRunnerHandshake(
         try {
           return await connection.prompt(promptOptions);
         } catch (error) {
-          closePromise ??= closeAndRemove(connection, prepared!.root);
+          closePromise ??= closeAndRemove(connection, prepared!.root, bridge);
           try {
             await closePromise;
           } catch (cleanupError) {
@@ -868,7 +1156,7 @@ export async function openGooseRunnerHandshake(
         }
       },
       close(): Promise<void> {
-        closePromise ??= closeAndRemove(connection, prepared!.root);
+        closePromise ??= closeAndRemove(connection, prepared!.root, bridge);
         return closePromise;
       },
     });
@@ -877,6 +1165,13 @@ export async function openGooseRunnerHandshake(
     if (transport !== undefined) {
       try {
         await transport.close();
+      } catch (cleanupError) {
+        cleanupErrors.push(cleanupError);
+      }
+    }
+    if (bridge !== undefined) {
+      try {
+        await bridge.close();
       } catch (cleanupError) {
         cleanupErrors.push(cleanupError);
       }

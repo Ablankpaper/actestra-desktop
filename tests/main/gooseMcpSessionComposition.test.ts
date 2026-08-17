@@ -1,5 +1,5 @@
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { CODING_TOOL_IDS } from "../../apps/desktop/src/core";
 import type { AdmittedGooseRunnerArtifact } from "../../apps/desktop/src/main/workers/gooseRunnerArtifact";
 import {
@@ -184,6 +184,160 @@ describe("Goose MCP session composition", () => {
       text: "Return the bounded result.",
     });
     await opened.close();
+  });
+
+  it("starts both Linux bridge servers inside the prepared root before transport creation", async () => {
+    const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { ...originalPlatform, value: "linux" });
+    const events: string[] = [];
+    let capabilitySocketPath: string | undefined;
+    let modelSocketPath: string | undefined;
+    const capabilityClose = vi.fn(async () => {
+      events.push("mcp:close");
+    });
+    const modelClose = vi.fn(async () => {
+      events.push("model:close");
+    });
+    const dependencies: GooseMcpSessionCompositionDependencies = {
+      async startCapabilityServer(options) {
+        events.push("mcp:start");
+        capabilitySocketPath = options.socketPath;
+        return Object.freeze({
+          url: `http://127.0.0.1:${String(options.loopbackPort)}/mcp`,
+          async waitForToolsList() {},
+          close: capabilityClose,
+        });
+      },
+      async startModelServer(options) {
+        events.push("model:start");
+        modelSocketPath = options.socketPath;
+        return modelServerDouble({
+          baseUrl: `http://127.0.0.1:${String(options.loopbackPort)}/v1`,
+          close: modelClose,
+        });
+      },
+      async openRunnerHandshake(options) {
+        events.push("runner:open");
+        expect(options).not.toHaveProperty("capabilityProxyUrl");
+        expect(options).not.toHaveProperty("modelBinding");
+        expect(options.prepareBridge).toBeTypeOf("function");
+        const privateRoot = "/tmp/actestra-goose-attempt";
+        const bridge = await options.prepareBridge!(
+          Object.freeze({
+            root: privateRoot,
+            bridgeDirectory: path.join(privateRoot, "bridge"),
+            executablePath: path.join(privateRoot, "bin", "actestra-goose-runner"),
+            workingDirectory: path.join(privateRoot, "work"),
+          }),
+        );
+        events.push("transport:create");
+        expect(bridge.capabilitySocketPath).toBe(capabilitySocketPath);
+        expect(bridge.modelSocketPath).toBe(modelSocketPath);
+        let closePromise: Promise<void> | undefined;
+        return Object.freeze({
+          info: runnerInfo,
+          privateRoot,
+          async openSession() {
+            return runnerSession;
+          },
+          async discoverTools() {
+            return runnerDiscovery;
+          },
+          async prompt() {
+            return runnerPromptResult;
+          },
+          close(): Promise<void> {
+            closePromise ??= bridge.close();
+            return closePromise;
+          },
+        });
+      },
+    };
+
+    try {
+      const opened = await openGooseMcpSessionComposition(
+        {
+          artifact,
+          privateRootParent: path.resolve("/tmp/actestra-goose-attempts"),
+          workspaceDirectory: path.resolve("/tmp/actestra-worktree"),
+          modelId: "actestra-caller-model",
+          modelInvoker,
+          toolInvoker,
+          commandIds: Object.freeze(["git.status"]),
+          testIds: Object.freeze(["test.unit"]),
+        },
+        dependencies,
+      );
+
+      expect(events).toEqual(["runner:open", "mcp:start", "model:start", "transport:create"]);
+      expect(path.dirname(capabilitySocketPath!)).toBe("/tmp/actestra-goose-attempt/bridge");
+      expect(path.dirname(modelSocketPath!)).toBe("/tmp/actestra-goose-attempt/bridge");
+      expect(capabilitySocketPath).not.toBe(modelSocketPath);
+      await opened.close();
+      expect(capabilityClose).toHaveBeenCalledTimes(1);
+      expect(modelClose).toHaveBeenCalledTimes(1);
+    } finally {
+      Object.defineProperty(process, "platform", originalPlatform);
+    }
+  });
+
+  it("rejects and closes Linux bridge servers whose synthetic ports do not match", async () => {
+    const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { ...originalPlatform, value: "linux" });
+    const capabilityClose = vi.fn(async () => undefined);
+    const modelClose = vi.fn(async () => undefined);
+    const dependencies: GooseMcpSessionCompositionDependencies = {
+      async startCapabilityServer(options) {
+        const mismatchedPort = options.loopbackPort === 65_535 ? 65_534 : options.loopbackPort! + 1;
+        return Object.freeze({
+          url: `http://127.0.0.1:${String(mismatchedPort)}/mcp`,
+          async waitForToolsList() {},
+          close: capabilityClose,
+        });
+      },
+      async startModelServer(options) {
+        return modelServerDouble({
+          baseUrl: `http://127.0.0.1:${String(options.loopbackPort)}/v1`,
+          close: modelClose,
+        });
+      },
+      async openRunnerHandshake(options) {
+        await options.prepareBridge!(
+          Object.freeze({
+            root: "/tmp/actestra-goose-attempt",
+            bridgeDirectory: "/tmp/actestra-goose-attempt/bridge",
+            executablePath: "/tmp/actestra-goose-attempt/bin/actestra-goose-runner",
+            workingDirectory: "/tmp/actestra-goose-attempt/work",
+          }),
+        );
+        throw new Error("mismatched bridge must fail before transport creation");
+      },
+    };
+
+    try {
+      await expect(
+        openGooseMcpSessionComposition(
+          {
+            artifact,
+            privateRootParent: path.resolve("/tmp/actestra-goose-attempts"),
+            workspaceDirectory: path.resolve("/tmp/actestra-worktree"),
+            modelId: "actestra-caller-model",
+            modelInvoker,
+            toolInvoker,
+            commandIds: Object.freeze(["git.status"]),
+            testIds: Object.freeze(["test.unit"]),
+          },
+          dependencies,
+        ),
+      ).rejects.toMatchObject({
+        name: "GooseRunnerProcessError",
+        code: "invalid-options",
+      });
+      expect(capabilityClose).toHaveBeenCalledTimes(1);
+      expect(modelClose).toHaveBeenCalledTimes(1);
+    } finally {
+      Object.defineProperty(process, "platform", originalPlatform);
+    }
   });
 
   it("aggregates cleanup failures after attempting Worker, MCP, then model exactly once", async () => {

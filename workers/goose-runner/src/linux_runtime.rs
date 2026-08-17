@@ -36,6 +36,7 @@ mod implementation {
     pub(crate) const MAX_RELAY_CONNECTIONS: usize = 8;
     pub(crate) const MAX_RELAY_BYTES: usize = 256 * 1024;
     const MAX_UNIX_SOCKET_PATH_BYTES: usize = 103;
+    const MAX_WORKSPACE_PATH_BYTES: usize = 4 * 1024;
     const RELAY_BUFFER_BYTES: usize = 8 * 1024;
     const RELAY_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -112,7 +113,7 @@ mod implementation {
 
     fn validate_socket_path(value: &str) -> Result<PathBuf, LinuxRuntimeConfigError> {
         let path = Path::new(value);
-        if !is_bounded_absolute_path(path)
+        if !is_bounded_absolute_path(path, MAX_UNIX_SOCKET_PATH_BYTES)
             || path.parent().is_none()
             || path.parent() == Some(Path::new("/"))
         {
@@ -123,15 +124,15 @@ mod implementation {
 
     fn validate_directory_path(value: &str) -> Result<PathBuf, LinuxRuntimeConfigError> {
         let path = Path::new(value);
-        if !is_bounded_absolute_path(path) || path == Path::new("/") {
+        if !is_bounded_absolute_path(path, MAX_WORKSPACE_PATH_BYTES) || path == Path::new("/") {
             return Err(LinuxRuntimeConfigError::Invalid);
         }
         Ok(path.to_path_buf())
     }
 
-    fn is_bounded_absolute_path(path: &Path) -> bool {
+    fn is_bounded_absolute_path(path: &Path, maximum_bytes: usize) -> bool {
         path.is_absolute()
-            && path.as_os_str().len() <= MAX_UNIX_SOCKET_PATH_BYTES
+            && path.as_os_str().len() <= maximum_bytes
             && !path
                 .components()
                 .any(|component| matches!(component, std::path::Component::ParentDir))
@@ -442,6 +443,17 @@ mod implementation {
             assert_eq!(widened.as_bytes().len(), 104);
             assert!(validate_socket_path(&exact).is_ok());
             assert!(validate_socket_path(&widened).is_err());
+        }
+
+        #[test]
+        fn keeps_workspace_paths_independent_from_the_unix_socket_ceiling() {
+            let mut values = environment();
+            let workspace = format!("/tmp/{}", "w".repeat(200));
+            assert!(workspace.as_bytes().len() > MAX_UNIX_SOCKET_PATH_BYTES);
+            values.insert(WORKSPACE_ROOT_ENVIRONMENT_KEY, workspace.clone());
+
+            let parsed = parse_linux_environment_with(|name| values.get(name).cloned()).unwrap();
+            assert_eq!(parsed.workspace_root, PathBuf::from(workspace));
         }
 
         #[test]

@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import path from "node:path";
 import { CODING_TOOL_IDS } from "../../core";
 import type { AdmittedGooseRunnerArtifact } from "./gooseRunnerArtifact";
 import {
@@ -20,8 +21,12 @@ import {
   type GooseLoopbackModelInvoker,
   type StartGooseLoopbackModelServerOptions,
 } from "./gooseLoopbackModelServer";
+import { reserveGooseLoopbackPort } from "./gooseBridgeSocket";
 import {
+  GooseRunnerProcessError,
   openGooseRunnerHandshake,
+  type GooseRunnerPreparedRoot,
+  type GooseRunnerPreparedBridge,
   type OpenGooseRunnerHandshakeOptions,
   type OpenGooseRunnerHandshakeResult,
 } from "./gooseRunnerProcess";
@@ -98,6 +103,41 @@ function createAttemptLease(): string {
   return randomBytes(32).toString("base64url");
 }
 
+async function closePreparedBridgeServers(
+  capabilityServer: GooseMcpCapabilityServer | undefined,
+  modelServer: GooseLoopbackModelServer | undefined,
+): Promise<void> {
+  const failures: unknown[] = [];
+  if (modelServer !== undefined) {
+    try {
+      await modelServer.close();
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (capabilityServer !== undefined) {
+    try {
+      await capabilityServer.close();
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (failures.length > 0) {
+    throw new AggregateError(failures, "Prepared Goose bridge cleanup failed");
+  }
+}
+
+async function reserveDistinctBridgePorts(): Promise<readonly [number, number]> {
+  const capabilityPort = await reserveGooseLoopbackPort();
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const modelPort = await reserveGooseLoopbackPort();
+    if (modelPort !== capabilityPort) {
+      return [capabilityPort, modelPort];
+    }
+  }
+  throw new Error("Goose bridge loopback ports could not be made distinct");
+}
+
 function normalizeDiscoveredToolNames(value: unknown): readonly string[] {
   if (!Array.isArray(value) || value.length !== EXPECTED_GOOSE_TOOL_NAMES.length) {
     throw new GooseMcpSessionCompositionError(
@@ -120,8 +160,9 @@ function normalizeDiscoveredToolNames(value: unknown): readonly string[] {
 
 async function collectCleanupFailures(
   runner: OpenGooseRunnerHandshakeResult | undefined,
-  capabilityServer: GooseMcpCapabilityServer,
+  capabilityServer: GooseMcpCapabilityServer | undefined,
   modelServer: GooseLoopbackModelServer | undefined,
+  runnerOwnsBridgeServers = false,
 ): Promise<unknown[]> {
   const failures: unknown[] = [];
   if (runner !== undefined) {
@@ -131,12 +172,14 @@ async function collectCleanupFailures(
       failures.push(error);
     }
   }
-  try {
-    await capabilityServer.close();
-  } catch (error) {
-    failures.push(error);
+  if (capabilityServer !== undefined && (!runnerOwnsBridgeServers || runner === undefined)) {
+    try {
+      await capabilityServer.close();
+    } catch (error) {
+      failures.push(error);
+    }
   }
-  if (modelServer !== undefined) {
+  if (modelServer !== undefined && (!runnerOwnsBridgeServers || runner === undefined)) {
     try {
       await modelServer.close();
     } catch (error) {
@@ -150,8 +193,14 @@ async function closeComposition(
   runner: OpenGooseRunnerHandshakeResult,
   capabilityServer: GooseMcpCapabilityServer,
   modelServer: GooseLoopbackModelServer,
+  runnerOwnsBridgeServers: boolean,
 ): Promise<void> {
-  const failures = await collectCleanupFailures(runner, capabilityServer, modelServer);
+  const failures = await collectCleanupFailures(
+    runner,
+    capabilityServer,
+    modelServer,
+    runnerOwnsBridgeServers,
+  );
   if (failures.length > 0) {
     throw new GooseMcpSessionCompositionError(
       "cleanup-failed",
@@ -170,37 +219,121 @@ export async function openGooseMcpSessionComposition(
   while (modelAttemptLease === attemptLease) {
     modelAttemptLease = createAttemptLease();
   }
-  const capabilityServer = await dependencies.startCapabilityServer({
-    attemptLease,
-    commandIds: options.commandIds,
-    testIds: options.testIds,
-    workspaceDirectory: options.workspaceDirectory,
-    invokeTool: options.toolInvoker,
-  });
+  let capabilityServer: GooseMcpCapabilityServer | undefined;
   let modelServer: GooseLoopbackModelServer | undefined;
   let runner: OpenGooseRunnerHandshakeResult | undefined;
+  const runnerOwnsBridgeServers = process.platform === "linux";
   let session: GooseAcpSession;
   let toolNames: readonly string[];
   try {
-    modelServer = await dependencies.startModelServer({
-      modelId: options.modelId,
-      attemptLease: modelAttemptLease,
-      invokeModel: options.modelInvoker,
-    });
-    runner = await dependencies.openRunnerHandshake({
-      artifact: options.artifact,
-      privateRootParent: options.privateRootParent,
-      workspaceDirectory: options.workspaceDirectory,
-      capabilityProxyUrl: capabilityServer.url,
-      modelBinding: {
-        baseUrl: modelServer.baseUrl,
+    if (runnerOwnsBridgeServers) {
+      let bridgeClosePromise: Promise<void> | undefined;
+      const prepareBridge = async (
+        root: GooseRunnerPreparedRoot,
+      ): Promise<GooseRunnerPreparedBridge> => {
+        const [capabilityPort, modelPort] = await reserveDistinctBridgePorts();
+        const capabilitySocketPath = path.join(root.bridgeDirectory, "capability.sock");
+        const modelSocketPath = path.join(root.bridgeDirectory, "model.sock");
+        try {
+          capabilityServer = await dependencies.startCapabilityServer({
+            attemptLease,
+            commandIds: options.commandIds,
+            testIds: options.testIds,
+            workspaceDirectory: options.workspaceDirectory,
+            invokeTool: options.toolInvoker,
+            socketPath: capabilitySocketPath,
+            loopbackPort: capabilityPort,
+          });
+          modelServer = await dependencies.startModelServer({
+            modelId: options.modelId,
+            attemptLease: modelAttemptLease,
+            invokeModel: options.modelInvoker,
+            socketPath: modelSocketPath,
+            loopbackPort: modelPort,
+          });
+          if (
+            capabilityServer.url !== `http://127.0.0.1:${String(capabilityPort)}/mcp` ||
+            modelServer.baseUrl !== `http://127.0.0.1:${String(modelPort)}/v1`
+          ) {
+            throw new GooseRunnerProcessError(
+              "invalid-options",
+              "Goose bridge servers returned endpoints that do not match their reserved ports",
+            );
+          }
+        } catch (error) {
+          try {
+            await closePreparedBridgeServers(capabilityServer, modelServer);
+          } catch (cleanupError) {
+            throw new GooseMcpSessionCompositionError(
+              "cleanup-failed",
+              "Goose bridge startup failed and bridge cleanup did not complete",
+              { cause: new AggregateError([error, cleanupError]) },
+            );
+          } finally {
+            capabilityServer = undefined;
+            modelServer = undefined;
+          }
+          throw error;
+        }
+        const close = (): Promise<void> => {
+          bridgeClosePromise ??= closePreparedBridgeServers(capabilityServer, modelServer);
+          return bridgeClosePromise;
+        };
+        return Object.freeze({
+          capabilityProxyUrl: capabilityServer.url,
+          modelBinding: Object.freeze({
+            baseUrl: modelServer.baseUrl,
+            modelId: options.modelId,
+            attemptLease: modelAttemptLease,
+          }),
+          capabilitySocketPath,
+          modelSocketPath,
+          close,
+        });
+      };
+      runner = await dependencies.openRunnerHandshake({
+        artifact: options.artifact,
+        privateRootParent: options.privateRootParent,
+        workspaceDirectory: options.workspaceDirectory,
+        prepareBridge,
+        ...(options.handshakeTimeoutMs === undefined
+          ? {}
+          : { handshakeTimeoutMs: options.handshakeTimeoutMs }),
+      });
+    } else {
+      capabilityServer = await dependencies.startCapabilityServer({
+        attemptLease,
+        commandIds: options.commandIds,
+        testIds: options.testIds,
+        workspaceDirectory: options.workspaceDirectory,
+        invokeTool: options.toolInvoker,
+      });
+      modelServer = await dependencies.startModelServer({
         modelId: options.modelId,
         attemptLease: modelAttemptLease,
-      },
-      ...(options.handshakeTimeoutMs === undefined
-        ? {}
-        : { handshakeTimeoutMs: options.handshakeTimeoutMs }),
-    });
+        invokeModel: options.modelInvoker,
+      });
+      runner = await dependencies.openRunnerHandshake({
+        artifact: options.artifact,
+        privateRootParent: options.privateRootParent,
+        workspaceDirectory: options.workspaceDirectory,
+        capabilityProxyUrl: capabilityServer.url,
+        modelBinding: {
+          baseUrl: modelServer.baseUrl,
+          modelId: options.modelId,
+          attemptLease: modelAttemptLease,
+        },
+        ...(options.handshakeTimeoutMs === undefined
+          ? {}
+          : { handshakeTimeoutMs: options.handshakeTimeoutMs }),
+      });
+    }
+    if (capabilityServer === undefined || modelServer === undefined || runner === undefined) {
+      throw new GooseMcpSessionCompositionError(
+        "cleanup-failed",
+        "Goose bridge composition did not produce all required runtime resources",
+      );
+    }
     session = await runner.openSession({
       workspaceDirectory: options.workspaceDirectory,
       capabilityProxyUrl: capabilityServer.url,
@@ -221,7 +354,12 @@ export async function openGooseMcpSessionComposition(
     ]);
     toolNames = normalizeDiscoveredToolNames(discovery.toolNames);
   } catch (error) {
-    const cleanupFailures = await collectCleanupFailures(runner, capabilityServer, modelServer);
+    const cleanupFailures = await collectCleanupFailures(
+      runner,
+      capabilityServer,
+      modelServer,
+      runnerOwnsBridgeServers,
+    );
     if (cleanupFailures.length > 0) {
       throw new GooseMcpSessionCompositionError(
         "cleanup-failed",
@@ -238,8 +376,9 @@ export async function openGooseMcpSessionComposition(
   }
 
   let closePromise: Promise<void> | undefined;
-  const stableRunner = runner;
-  const stableModelServer = modelServer;
+  const stableRunner = runner!;
+  const stableModelServer = modelServer!;
+  const stableCapabilityServer = capabilityServer!;
   return Object.freeze({
     info: stableRunner.info,
     privateRoot: stableRunner.privateRoot,
@@ -285,7 +424,12 @@ export async function openGooseMcpSessionComposition(
       return result;
     },
     close(): Promise<void> {
-      closePromise ??= closeComposition(stableRunner, capabilityServer, stableModelServer);
+      closePromise ??= closeComposition(
+        stableRunner,
+        stableCapabilityServer,
+        stableModelServer,
+        runnerOwnsBridgeServers,
+      );
       return closePromise;
     },
   });
