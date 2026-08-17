@@ -2,7 +2,7 @@
 
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, readlink, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
 import process from "node:process";
@@ -93,6 +93,11 @@ type NativeIntegrationFailureStage =
   | "initialize"
   | "launch-contract"
   | "parent-death"
+  | "parent-death-supervisor-not-exited"
+  | "parent-death-capability-owner-mismatch"
+  | "parent-death-model-owner-mismatch"
+  | "parent-death-capability-orphan-owner"
+  | "parent-death-model-orphan-owner"
   | "parent-death-runner-not-exited"
   | "parent-death-capability-socket"
   | "parent-death-model-socket"
@@ -556,6 +561,53 @@ async function unixSocketAcceptsConnections(socketPath: string): Promise<boolean
   });
 }
 
+async function readLinuxUnixSocketOwnerProcessIds(socketPath: string): Promise<Set<number>> {
+  const table = await readFile("/proc/net/unix", "utf8");
+  if (Buffer.byteLength(table, "utf8") > 1024 * 1024) {
+    throw new Error("native integration Unix socket table exceeded its bound");
+  }
+  const lines = table.split("\n");
+  if (lines.length > 65_536) {
+    throw new Error("native integration Unix socket table contained too many entries");
+  }
+  const entry = lines
+    .map((line) => line.trim().split(/\s+/u))
+    .find(
+      (fields) =>
+        fields.length >= 8 && fields[5] === "01" && fields.slice(7).join(" ") === socketPath,
+    );
+  const inode = entry?.[6];
+  if (inode === undefined || !/^[1-9][0-9]*$/u.test(inode)) {
+    return new Set();
+  }
+  const processes = await readdir("/proc", { withFileTypes: true });
+  if (processes.length > 4_096) {
+    throw new Error("native integration process table exceeded its bound");
+  }
+  const owners = new Set<number>();
+  const socketDescriptor = `socket:[${inode}]`;
+  for (const processEntry of processes) {
+    if (!processEntry.isDirectory() || !/^[1-9][0-9]*$/u.test(processEntry.name)) continue;
+    const descriptors = await readdir(path.join("/proc", processEntry.name, "fd")).catch(
+      (): undefined => undefined,
+    );
+    if (descriptors === undefined) continue;
+    if (descriptors.length > 4_096) {
+      throw new Error("native integration descriptor table exceeded its bound");
+    }
+    for (const descriptor of descriptors) {
+      const target = await readlink(path.join("/proc", processEntry.name, "fd", descriptor)).catch(
+        (): undefined => undefined,
+      );
+      if (target === socketDescriptor) {
+        owners.add(Number(processEntry.name));
+        break;
+      }
+    }
+  }
+  return owners;
+}
+
 const evidence: NativeIntegrationEvidence = {
   contractVersion: 1,
   targetTriple: "x86_64-unknown-linux-gnu",
@@ -826,7 +878,35 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
         state = JSON.parse(bytes.toString("utf8"));
         return Number.isSafeInteger(state?.runnerPid);
       }, 30_000);
-      process.kill(-supervisor.pid!, "SIGKILL");
+      const supervisorPid = supervisor.pid;
+      if (supervisorPid === undefined) {
+        throw new Error("native integration supervisor PID was unavailable");
+      }
+      const capabilityOwners = await readLinuxUnixSocketOwnerProcessIds(
+        state!.capabilitySocketPath,
+      ).catch((): undefined => undefined);
+      if (
+        capabilityOwners === undefined ||
+        capabilityOwners.size !== 1 ||
+        !capabilityOwners.has(supervisorPid)
+      ) {
+        await markFailureStage("parent-death-capability-owner-mismatch");
+        throw new Error("native integration capability listener ownership was invalid");
+      }
+      const modelOwners = await readLinuxUnixSocketOwnerProcessIds(state!.modelSocketPath).catch(
+        (): undefined => undefined,
+      );
+      if (modelOwners === undefined || modelOwners.size !== 1 || !modelOwners.has(supervisorPid)) {
+        await markFailureStage("parent-death-model-owner-mismatch");
+        throw new Error("native integration model listener ownership was invalid");
+      }
+      process.kill(-supervisorPid, "SIGKILL");
+      try {
+        await waitFor(async () => !(await linuxProcessIsExecuting(supervisorPid)), 5_000);
+      } catch (error) {
+        await markFailureStage("parent-death-supervisor-not-exited");
+        throw error;
+      }
       try {
         await waitFor(async () => !(await linuxProcessIsExecuting(state!.runnerPid)), 5_000);
       } catch (error) {
@@ -834,9 +914,25 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
         throw error;
       }
       await markFailureStage("parent-death-capability-socket");
-      expect(await unixSocketAcceptsConnections(state!.capabilitySocketPath)).toBe(false);
+      if (await unixSocketAcceptsConnections(state!.capabilitySocketPath)) {
+        const owners = await readLinuxUnixSocketOwnerProcessIds(state!.capabilitySocketPath).catch(
+          (): undefined => undefined,
+        );
+        if (owners !== undefined && owners.size > 0) {
+          await markFailureStage("parent-death-capability-orphan-owner");
+        }
+        throw new Error("native integration capability listener survived supervisor death");
+      }
       await markFailureStage("parent-death-model-socket");
-      expect(await unixSocketAcceptsConnections(state!.modelSocketPath)).toBe(false);
+      if (await unixSocketAcceptsConnections(state!.modelSocketPath)) {
+        const owners = await readLinuxUnixSocketOwnerProcessIds(state!.modelSocketPath).catch(
+          (): undefined => undefined,
+        );
+        if (owners !== undefined && owners.size > 0) {
+          await markFailureStage("parent-death-model-orphan-owner");
+        }
+        throw new Error("native integration model listener survived supervisor death");
+      }
     } finally {
       if (supervisor.pid !== undefined && processIsAlive(supervisor.pid)) {
         process.kill(-supervisor.pid, "SIGKILL");
