@@ -82,6 +82,13 @@ describe("Goose native containment probe contract", () => {
     expect(source).toContain("MS_PRIVATE");
   });
 
+  it("reuses the production Linux filesystem setup entry point", () => {
+    const source = fs.readFileSync(linuxContainmentPath, "utf8");
+    expect(source).toContain("pub(crate) fn prepare_linux_filesystem_containment");
+    expect(source).toContain("setup_user_and_mount_namespace");
+    expect(source).toContain("CLONE_NEWNET");
+  });
+
   it("requires an x86-64 thread-aware seccomp policy", () => {
     const source = fs.readFileSync(linuxContainmentPath, "utf8");
     for (const token of [
@@ -122,6 +129,21 @@ describe("Goose native containment probe contract", () => {
     expect(source).toContain("ACTESTRA_PARENT_LIVENESS_FD");
     expect(source).toContain("WNOHANG");
     expect(source).toContain("ErrorKind::NotFound");
+  });
+
+  it("drives namespace and parent-death probes through production primitives", () => {
+    const source = fs.readFileSync(linuxContainmentPath, "utf8");
+    const networkProbe = source.slice(
+      source.indexOf("fn run_network_isolation_probe"),
+      source.indexOf("fn hard_limit_cannot_be_raised"),
+    );
+    const parentDeathProbe = source.slice(
+      source.indexOf("fn run_parent_death_probe"),
+      source.indexOf("fn run_cleanup_probe"),
+    );
+    expect(networkProbe).toContain("setup_user_and_mount_namespace()");
+    expect(parentDeathProbe).toContain("set_parent_death_signal()");
+    expect(parentDeathProbe).toContain("SIGTERM");
   });
 
   it("requires exact non-widenable RLIMIT evidence without mandatory cgroup authority", () => {

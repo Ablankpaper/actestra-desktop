@@ -1,5 +1,5 @@
 use std::env;
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 use std::fs::{remove_dir_all, write};
 use std::net::TcpListener;
 use std::os::fd::AsRawFd;
@@ -31,6 +31,8 @@ const LANDLOCK_ACCESS_FS_MAKE_BLOCK: u64 = 1 << 11;
 const LANDLOCK_ACCESS_FS_MAKE_SYM: u64 = 1 << 12;
 const LANDLOCK_ACCESS_FS_REFER: u64 = 1 << 13;
 const LANDLOCK_ACCESS_FS_TRUNCATE: u64 = 1 << 14;
+pub(crate) const PR_SET_PDEATHSIG: libc::c_int = 1;
+const PR_GET_PDEATHSIG: libc::c_int = 2;
 const PR_SET_NO_NEW_PRIVS: libc::c_int = 38;
 const PR_SET_SECCOMP: libc::c_int = 22;
 const SECCOMP_MODE_FILTER: libc::c_ulong = 2;
@@ -54,6 +56,13 @@ const SECCOMP_DATA_ARCH_OFFSET: u32 = 4;
 const SECCOMP_DATA_ARG0_OFFSET: u32 = 16;
 const REQUIRED_THREAD_CLONE_FLAGS: u32 =
     (libc::CLONE_THREAD | libc::CLONE_SIGHAND | libc::CLONE_VM) as u32;
+const IFREQ_DATA_BYTES: usize = 24;
+
+#[repr(C)]
+struct IfReq {
+    name: [libc::c_char; libc::IFNAMSIZ],
+    data: [u8; IFREQ_DATA_BYTES],
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ProcessProbeFailure {
     SeccompUnavailable,
@@ -146,6 +155,24 @@ fn landlock_abi() -> Result<u32, &'static str> {
     u32::try_from(result).map_err(|_| "landlock-abi-overflow")
 }
 
+pub(crate) fn set_parent_death_signal() -> Result<(), &'static str> {
+    let expected_parent = unsafe { libc::getppid() };
+    if expected_parent <= 1 {
+        return Err("linux-parent-death-unavailable");
+    }
+    if unsafe { libc::prctl(PR_SET_PDEATHSIG, libc::SIGTERM, 0, 0, 0) } != 0 {
+        return Err("linux-parent-death-unavailable");
+    }
+    let mut installed_signal = 0_i32;
+    if unsafe { libc::prctl(PR_GET_PDEATHSIG, &mut installed_signal as *mut i32, 0, 0, 0) } != 0
+        || installed_signal != libc::SIGTERM
+        || unsafe { libc::getppid() } != expected_parent
+    {
+        return Err("linux-parent-death-unavailable");
+    }
+    Ok(())
+}
+
 fn setup_user_and_mount_namespace() -> Result<(), &'static str> {
     let uid = unsafe { libc::getuid() };
     let gid = unsafe { libc::getgid() };
@@ -157,7 +184,7 @@ fn setup_user_and_mount_namespace() -> Result<(), &'static str> {
     }
     write("/proc/self/uid_map", format!("0 {uid} 1")).map_err(|_| "uid-map")?;
     write("/proc/self/gid_map", format!("0 {gid} 1")).map_err(|_| "gid-map")?;
-    if unsafe { libc::unshare(libc::CLONE_NEWNS) } != 0 {
+    if unsafe { libc::unshare(libc::CLONE_NEWNS | super::CLONE_NEWNET) } != 0 {
         return Err("mount-namespace");
     }
     let root = CString::new("/").map_err(|_| "mount-path")?;
@@ -173,7 +200,74 @@ fn setup_user_and_mount_namespace() -> Result<(), &'static str> {
     {
         return Err("mount-private");
     }
+    bring_up_loopback()?;
+    verify_only_loopback_interface()?;
     Ok(())
+}
+
+fn bring_up_loopback() -> Result<(), &'static str> {
+    let socket = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
+    if socket < 0 {
+        return Err("loopback-socket");
+    }
+    let mut request = IfReq {
+        name: [0; libc::IFNAMSIZ],
+        data: [0; IFREQ_DATA_BYTES],
+    };
+    request.name[0] = b'l' as libc::c_char;
+    request.name[1] = b'o' as libc::c_char;
+    let result = (|| {
+        if unsafe { libc::ioctl(socket, libc::SIOCGIFFLAGS as _, &mut request) } != 0 {
+            return Err("loopback-read");
+        }
+        let mut flags = i16::from_ne_bytes([request.data[0], request.data[1]]);
+        flags |= libc::IFF_UP as i16;
+        request.data[..2].copy_from_slice(&flags.to_ne_bytes());
+        if unsafe { libc::ioctl(socket, libc::SIOCSIFFLAGS as _, &request) } != 0 {
+            return Err("loopback-write");
+        }
+        request.data.fill(0);
+        if unsafe { libc::ioctl(socket, libc::SIOCGIFFLAGS as _, &mut request) } != 0 {
+            return Err("loopback-verify");
+        }
+        let verified = i16::from_ne_bytes([request.data[0], request.data[1]]);
+        if verified & libc::IFF_UP as i16 == 0 || verified & libc::IFF_LOOPBACK as i16 == 0 {
+            return Err("loopback-verify");
+        }
+        Ok(())
+    })();
+    unsafe { libc::close(socket) };
+    result
+}
+
+fn verify_only_loopback_interface() -> Result<(), &'static str> {
+    let interfaces = unsafe { libc::if_nameindex() };
+    if interfaces.is_null() {
+        return Err("network-interface-list");
+    }
+    let result = (|| {
+        let mut cursor = interfaces;
+        let mut count = 0_usize;
+        loop {
+            let entry = unsafe { &*cursor };
+            if entry.if_index == 0 {
+                break;
+            }
+            if entry.if_name.is_null()
+                || unsafe { CStr::from_ptr(entry.if_name) }.to_bytes() != b"lo"
+            {
+                return Err("network-interface-unexpected");
+            }
+            count += 1;
+            cursor = unsafe { cursor.add(1) };
+        }
+        if count != 1 {
+            return Err("network-interface-unexpected");
+        }
+        Ok(())
+    })();
+    unsafe { libc::if_freenameindex(interfaces) };
+    result
 }
 
 fn open_directory(path: &Path) -> Result<RawFd, &'static str> {
@@ -303,6 +397,13 @@ fn prepare_linux_filesystem_containment_with_failure(
     result
 }
 
+pub(crate) fn prepare_linux_filesystem_containment(
+    private_root: &Path,
+    workspace_root: &Path,
+) -> Result<(), &'static str> {
+    prepare_linux_filesystem_containment_with_failure(private_root, workspace_root)
+}
+
 fn run_filesystem_probe() -> bool {
     let root = env::temp_dir().join(format!("actestra-goose-containment-{}", unsafe {
         libc::getpid()
@@ -322,9 +423,7 @@ fn run_filesystem_probe() -> bool {
         return false;
     }
     if child == 0 {
-        if let Err(reason) =
-            prepare_linux_filesystem_containment_with_failure(&private_root, &workspace_root)
-        {
+        if let Err(reason) = prepare_linux_filesystem_containment(&private_root, &workspace_root) {
             unsafe { libc::_exit(10 + filesystem_failure_code(reason)) };
         }
         let success = std::fs::write(private_root.join("inside.txt"), b"private").is_ok()
@@ -365,6 +464,12 @@ fn filesystem_failure_code(reason: &str) -> i32 {
         "mount-namespace" => 5,
         "mount-path" => 6,
         "mount-private" => 7,
+        "loopback-socket" => 21,
+        "loopback-read" => 22,
+        "loopback-write" => 23,
+        "loopback-verify" => 24,
+        "network-interface-list" => 25,
+        "network-interface-unexpected" => 26,
         "landlock-abi" => 8,
         "landlock-abi-overflow" => 9,
         "landlock-abi-too-old" => 10,
@@ -624,8 +729,7 @@ fn run_network_isolation_probe() -> bool {
         // The inherited listener belongs to the parent namespace. It is closed
         // before entering the isolated namespace so it cannot become a bridge.
         unsafe { libc::close(listener.as_raw_fd()) };
-        let flags = (libc::CLONE_NEWUSER | libc::CLONE_NEWNET) as libc::c_int;
-        if unsafe { libc::unshare(flags) } != 0 {
+        if setup_user_and_mount_namespace().is_err() {
             unsafe { libc::_exit(10) };
         }
         let unrelated_localhost = connect_ipv4([127, 0, 0, 1], local_port);
@@ -743,45 +847,204 @@ fn run_resource_probe() -> bool {
 }
 
 fn run_parent_death_probe() -> bool {
-    let mut pipe_fds = [0; 2];
-    if unsafe { libc::pipe(pipe_fds.as_mut_ptr()) } != 0 {
+    let mut death_pipe = [0; 2];
+    let mut watch_pipe = [0; 2];
+    if unsafe { libc::pipe(death_pipe.as_mut_ptr()) } != 0 {
+        return false;
+    }
+    if unsafe { libc::pipe(watch_pipe.as_mut_ptr()) } != 0 {
+        unsafe {
+            libc::close(death_pipe[0]);
+            libc::close(death_pipe[1]);
+        }
         return false;
     }
     let child = unsafe { libc::fork() };
     if child < 0 {
         unsafe {
-            libc::close(pipe_fds[0]);
-            libc::close(pipe_fds[1]);
+            libc::close(death_pipe[0]);
+            libc::close(death_pipe[1]);
+            libc::close(watch_pipe[0]);
+            libc::close(watch_pipe[1]);
         }
         return false;
     }
     if child == 0 {
-        unsafe { libc::close(pipe_fds[1]) };
-        env::set_var("ACTESTRA_PARENT_LIVENESS_FD", pipe_fds[0].to_string());
-        super::unix::watch_parent_liveness();
-        thread::sleep(Duration::from_secs(2));
-        unsafe { libc::_exit(30) };
+        unsafe {
+            libc::close(death_pipe[0]);
+            libc::close(watch_pipe[1]);
+        }
+        let mut ready_pipe = [0; 2];
+        if unsafe { libc::pipe(ready_pipe.as_mut_ptr()) } != 0 {
+            unsafe { libc::_exit(40) };
+        }
+        let grandchild = unsafe { libc::fork() };
+        if grandchild < 0 {
+            unsafe { libc::_exit(40) };
+        }
+        if grandchild == 0 {
+            unsafe {
+                libc::close(ready_pipe[0]);
+                libc::close(death_pipe[0]);
+                libc::close(watch_pipe[1]);
+            }
+            let parent_death_signal = libc::SIGTERM;
+            if parent_death_signal <= 0 || set_parent_death_signal().is_err() {
+                unsafe { libc::_exit(41) };
+            }
+            env::set_var("ACTESTRA_PARENT_LIVENESS_FD", watch_pipe[0].to_string());
+            super::unix::watch_parent_liveness();
+            if write_fd_all(ready_pipe[1], &[1]).is_err() {
+                unsafe { libc::_exit(42) };
+            }
+            unsafe {
+                libc::close(ready_pipe[1]);
+                libc::close(watch_pipe[0]);
+            }
+            thread::sleep(Duration::from_secs(2));
+            unsafe { libc::_exit(43) };
+        }
+        unsafe {
+            libc::close(ready_pipe[1]);
+        }
+        if write_fd_all(death_pipe[1], &grandchild.to_ne_bytes()).is_err() {
+            unsafe { libc::_exit(44) };
+        }
+        let mut ready = [0_u8; 1];
+        let ready_ok = read_fd_exact(ready_pipe[0], &mut ready).is_ok() && ready == [1];
+        unsafe {
+            libc::close(ready_pipe[0]);
+            libc::close(death_pipe[1]);
+            libc::close(watch_pipe[0]);
+        }
+        unsafe { libc::_exit(if ready_ok { 0 } else { 45 }) };
     }
     unsafe {
-        libc::close(pipe_fds[0]);
-        libc::close(pipe_fds[1]);
+        libc::close(death_pipe[1]);
+        libc::close(watch_pipe[0]);
     }
+    let mut child_status = 0;
+    let mut child_exited = false;
     for _ in 0..200 {
-        let mut status = 0;
-        let waited = unsafe { libc::waitpid(child, &mut status, libc::WNOHANG) };
+        let waited = unsafe { libc::waitpid(child, &mut child_status, libc::WNOHANG) };
         if waited == child {
-            return libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0;
+            child_exited = true;
+            break;
         }
         if waited < 0 {
-            return false;
+            break;
         }
         thread::sleep(Duration::from_millis(10));
     }
+    if !child_exited {
+        unsafe {
+            libc::kill(child, libc::SIGKILL);
+            libc::waitpid(child, std::ptr::null_mut(), 0);
+            libc::close(death_pipe[0]);
+            libc::close(watch_pipe[1]);
+        }
+        return false;
+    }
+    if !libc::WIFEXITED(child_status) || libc::WEXITSTATUS(child_status) != 0 {
+        unsafe {
+            libc::close(death_pipe[0]);
+            libc::close(watch_pipe[1]);
+        }
+        return false;
+    }
+    let mut grandchild_bytes = [0_u8; std::mem::size_of::<libc::pid_t>()];
+    if read_fd_exact(death_pipe[0], &mut grandchild_bytes).is_err() {
+        unsafe {
+            libc::close(death_pipe[0]);
+            libc::close(watch_pipe[1]);
+        }
+        return false;
+    }
+    let grandchild = libc::pid_t::from_ne_bytes(grandchild_bytes);
+    let flags = unsafe { libc::fcntl(death_pipe[0], libc::F_GETFL) };
+    if flags < 0
+        || unsafe { libc::fcntl(death_pipe[0], libc::F_SETFL, flags | libc::O_NONBLOCK) } != 0
+    {
+        unsafe {
+            libc::kill(grandchild, libc::SIGKILL);
+            libc::close(death_pipe[0]);
+            libc::close(watch_pipe[1]);
+        }
+        return false;
+    }
+    let mut terminated = false;
+    for _ in 0..200 {
+        let mut byte = [0_u8; 1];
+        let read = unsafe { libc::read(death_pipe[0], byte.as_mut_ptr().cast(), byte.len()) };
+        if read == 0 {
+            terminated = true;
+            break;
+        }
+        if read < 0 {
+            let error = std::io::Error::last_os_error();
+            if !matches!(
+                error.raw_os_error(),
+                Some(code) if code == libc::EAGAIN || code == libc::EWOULDBLOCK
+            ) {
+                break;
+            }
+        } else {
+            break;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    if terminated {
+        unsafe {
+            libc::close(watch_pipe[1]);
+            libc::close(death_pipe[0]);
+        }
+        return true;
+    }
     unsafe {
-        libc::kill(child, libc::SIGKILL);
-        libc::waitpid(child, std::ptr::null_mut(), 0);
+        libc::kill(grandchild, libc::SIGKILL);
+        libc::close(death_pipe[0]);
+        libc::close(watch_pipe[1]);
     }
     false
+}
+
+fn write_fd_all(fd: libc::c_int, bytes: &[u8]) -> Result<(), ()> {
+    let mut offset = 0_usize;
+    while offset < bytes.len() {
+        let written =
+            unsafe { libc::write(fd, bytes[offset..].as_ptr().cast(), bytes.len() - offset) };
+        if written > 0 {
+            offset += written as usize;
+            continue;
+        }
+        if written < 0 && std::io::Error::last_os_error().raw_os_error() == Some(libc::EINTR) {
+            continue;
+        }
+        return Err(());
+    }
+    Ok(())
+}
+
+fn read_fd_exact(fd: libc::c_int, bytes: &mut [u8]) -> Result<(), ()> {
+    let mut offset = 0_usize;
+    while offset < bytes.len() {
+        let read = unsafe {
+            libc::read(
+                fd,
+                bytes[offset..].as_mut_ptr().cast(),
+                bytes.len() - offset,
+            )
+        };
+        if read > 0 {
+            offset += read as usize;
+            continue;
+        }
+        if read < 0 && std::io::Error::last_os_error().raw_os_error() == Some(libc::EINTR) {
+            continue;
+        }
+        return Err(());
+    }
+    Ok(())
 }
 
 fn run_cleanup_probe() -> bool {

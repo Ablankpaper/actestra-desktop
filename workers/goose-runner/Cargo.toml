@@ -8,7 +8,7 @@ publish = false
 [dependencies]
 goose = { git = "https://github.com/aaif-goose/goose", rev = "4dc0420f5704a92806c6628c8f0a3497d7a88759", default-features = false }
 libc = "0.2"
-tokio = { version = "1.48", default-features = false, features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.48", default-features = false, features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
 
 [profile.release]
 codegen-units = 1

@@ -1,5 +1,7 @@
 use std::env;
 mod containment;
+#[cfg(any(target_os = "linux", all(unix, test)))]
+mod linux_runtime;
 #[cfg(all(unix, test))]
 use containment::apply_resource_limits_with;
 #[cfg(target_os = "linux")]
@@ -17,17 +19,61 @@ use containment::{
 #[cfg(all(test, target_os = "macos"))]
 use containment::{ADDRESS_SPACE_LIMIT_BYTES, CPU_LIMIT_SECONDS};
 
+#[cfg(target_os = "linux")]
+const LINUX_NETWORK_POLICY_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_NETWORK_POLICY_SETUP_FAILED";
+#[cfg(target_os = "linux")]
+const LINUX_RUNTIME_ENVIRONMENT_KEYS: [&str; 5] = [
+    "ACTESTRA_GOOSE_LINUX_CAPABILITY_SOCKET",
+    "ACTESTRA_GOOSE_LINUX_MODEL_SOCKET",
+    "ACTESTRA_GOOSE_LINUX_CAPABILITY_PORT",
+    "ACTESTRA_GOOSE_LINUX_MODEL_PORT",
+    "ACTESTRA_GOOSE_LINUX_WORKSPACE_ROOT",
+];
+
+#[cfg(target_os = "linux")]
+fn prepare_linux_runtime() -> Result<
+    (
+        linux_runtime::LinuxBridgeEnvironment,
+        linux_runtime::LinuxRelayListeners,
+    ),
+    &'static str,
+> {
+    if LINUX_RUNTIME_ENVIRONMENT_KEYS != linux_runtime::LINUX_RUNTIME_ENVIRONMENT_KEYS {
+        return Err(LINUX_NETWORK_POLICY_FAILURE_MARKER);
+    }
+    if containment::PR_SET_PDEATHSIG != 1 {
+        return Err(LINUX_NETWORK_POLICY_FAILURE_MARKER);
+    }
+    let environment = linux_runtime::LinuxBridgeEnvironment::from_environment()
+        .map_err(|_| LINUX_NETWORK_POLICY_FAILURE_MARKER)?;
+    containment::set_parent_death_signal().map_err(|_| LINUX_NETWORK_POLICY_FAILURE_MARKER)?;
+    apply_resource_limits().map_err(|_| RESOURCE_LIMIT_FAILURE_MARKER)?;
+    let private_root = environment
+        .private_root()
+        .map_err(|_| LINUX_NETWORK_POLICY_FAILURE_MARKER)?;
+    containment::prepare_linux_filesystem_containment(&private_root, &environment.workspace_root)
+        .map_err(|_| LINUX_NETWORK_POLICY_FAILURE_MARKER)?;
+    install_process_creation_filter().map_err(|_| LINUX_NETWORK_POLICY_FAILURE_MARKER)?;
+    let listeners = linux_runtime::bind_loopback_listeners(&environment)
+        .map_err(|_| LINUX_NETWORK_POLICY_FAILURE_MARKER)?;
+    Ok((environment, listeners))
+}
+
 fn main() {
     if env::var("ACTESTRA_GOOSE_CONTAINMENT_PROBE").as_deref() == Ok("1") {
         println!("{}", containment::run_containment_probe());
         return;
     }
-    if apply_resource_limits().is_err() {
-        eprintln!("{RESOURCE_LIMIT_FAILURE_MARKER}");
-        std::process::exit(1);
-    }
     #[cfg(target_os = "linux")]
-    if install_process_creation_filter().is_err() {
+    let prepared_linux_runtime = match prepare_linux_runtime() {
+        Ok(prepared) => prepared,
+        Err(marker) => {
+            eprintln!("{marker}");
+            std::process::exit(1);
+        }
+    };
+    #[cfg(not(target_os = "linux"))]
+    if apply_resource_limits().is_err() {
         eprintln!("{RESOURCE_LIMIT_FAILURE_MARKER}");
         std::process::exit(1);
     }
@@ -43,10 +89,44 @@ fn main() {
         }
     };
     runtime.block_on(async {
-        watch_parent_liveness();
-        if let Err(error) = goose::acp::server::run(Vec::new(), false).await {
-            eprintln!("ACTESTRA_GOOSE_RUNNER_FAILED: {error:#}");
-            std::process::exit(1);
+        #[cfg(target_os = "linux")]
+        {
+            let (environment, listeners) = prepared_linux_runtime;
+            let mut relay = match linux_runtime::LinuxRelay::start(listeners, environment) {
+                Ok(relay) => relay,
+                Err(_) => {
+                    eprintln!("{LINUX_NETWORK_POLICY_FAILURE_MARKER}");
+                    std::process::exit(1);
+                }
+            };
+            watch_parent_liveness();
+            let mut goose = std::pin::pin!(goose::acp::server::run(Vec::new(), false));
+            let result = tokio::select! {
+                result = &mut goose => Some(result),
+                relay_result = relay.wait() => {
+                    if relay_result.is_err() {
+                        eprintln!("{LINUX_NETWORK_POLICY_FAILURE_MARKER}");
+                    }
+                    None
+                },
+            };
+            relay.shutdown().await;
+            match result {
+                Some(Ok(())) => return,
+                Some(Err(error)) => {
+                    eprintln!("ACTESTRA_GOOSE_RUNNER_FAILED: {error:#}");
+                    std::process::exit(1);
+                }
+                None => std::process::exit(1),
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            watch_parent_liveness();
+            if let Err(error) = goose::acp::server::run(Vec::new(), false).await {
+                eprintln!("ACTESTRA_GOOSE_RUNNER_FAILED: {error:#}");
+                std::process::exit(1);
+            }
         }
     });
 }

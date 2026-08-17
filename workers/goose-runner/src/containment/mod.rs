@@ -12,6 +12,8 @@ pub(crate) const ADDRESS_SPACE_LIMIT_ENVIRONMENT_KEY: &str = "ACTESTRA_GOOSE_ADD
 pub(crate) const CPU_LIMIT_SECONDS: u64 = 120;
 pub(crate) const ADDRESS_SPACE_LIMIT_BYTES: u64 = 1_073_741_824;
 pub(crate) const RESOURCE_LIMIT_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_RESOURCE_LIMIT_SETUP_FAILED";
+#[cfg(target_os = "linux")]
+pub(crate) const CLONE_NEWNET: libc::c_int = libc::CLONE_NEWNET;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ContainmentNetwork {
@@ -70,6 +72,10 @@ where
 
 #[cfg(target_os = "linux")]
 pub(crate) use linux::install_process_creation_filter;
+#[cfg(target_os = "linux")]
+pub(crate) use linux::{
+    prepare_linux_filesystem_containment, set_parent_death_signal, PR_SET_PDEATHSIG,
+};
 #[cfg(all(unix, test))]
 pub(crate) use unix::apply_resource_limits_with;
 #[cfg(unix)]

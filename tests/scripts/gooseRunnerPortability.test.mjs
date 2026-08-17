@@ -18,6 +18,7 @@ const windowsContainmentPath = path.join(
   repositoryRoot,
   "workers/goose-runner/src/containment/windows.rs",
 );
+const linuxRuntimePath = path.join(repositoryRoot, "workers/goose-runner/src/linux_runtime.rs");
 
 describe("Goose runner native source portability", () => {
   it("gates Unix process authority and keeps Windows resource admission fail closed", () => {
@@ -59,5 +60,38 @@ describe("Goose runner native source portability", () => {
     expect(containment).not.toContain(
       "pub(crate) use unix::{apply_resource_limits, apply_resource_limits_with, watch_parent_liveness};",
     );
+  });
+
+  it("declares the closed Linux bridge environment and transport-only relay", () => {
+    const source = fs.readFileSync(runnerSourcePath, "utf8");
+    const runtime = fs.readFileSync(linuxRuntimePath, "utf8");
+    for (const key of [
+      "ACTESTRA_GOOSE_LINUX_CAPABILITY_SOCKET",
+      "ACTESTRA_GOOSE_LINUX_MODEL_SOCKET",
+      "ACTESTRA_GOOSE_LINUX_CAPABILITY_PORT",
+      "ACTESTRA_GOOSE_LINUX_MODEL_PORT",
+      "ACTESTRA_GOOSE_LINUX_WORKSPACE_ROOT",
+    ]) {
+      expect(source).toContain(key);
+    }
+    expect(runtime).toContain("UnixStream");
+    expect(runtime).toContain("127.0.0.1");
+    expect(runtime).toContain("MAX_RELAY_CONNECTIONS");
+    expect(runtime).toContain("MAX_RELAY_BYTES");
+    expect(runtime).toContain("timeout");
+    expect(runtime).not.toContain("Command::new");
+  });
+
+  it("requires parent-death and namespace setup before the Linux relay", () => {
+    const source = fs.readFileSync(runnerSourcePath, "utf8");
+    const containment = fs.readFileSync(containmentModulePath, "utf8");
+    const runtime = fs.readFileSync(linuxRuntimePath, "utf8");
+    expect(containment).toContain("PR_SET_PDEATHSIG");
+    expect(containment).toContain("CLONE_NEWNET");
+    expect(source.indexOf("prepare_linux_runtime")).toBeGreaterThan(-1);
+    expect(source.indexOf("prepare_linux_runtime")).toBeLessThan(
+      source.indexOf("tokio::runtime::Builder::new_multi_thread()"),
+    );
+    expect(runtime).toContain("TcpListener");
   });
 });
