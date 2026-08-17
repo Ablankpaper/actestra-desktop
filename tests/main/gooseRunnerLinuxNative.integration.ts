@@ -15,7 +15,11 @@ import {
 import { GooseBridgeSocketError } from "../../apps/desktop/src/main/workers/gooseBridgeSocket";
 import { GooseContainmentError } from "../../apps/desktop/src/main/workers/gooseRunnerContainment";
 import type { AdmittedGooseRunnerArtifact } from "../../apps/desktop/src/main/workers/gooseRunnerArtifact";
-import { admitGooseRunnerArtifact } from "../../apps/desktop/src/main/workers/gooseRunnerArtifact";
+import { admitInstalledGooseRunnerLinuxPackage } from "../../apps/desktop/src/main/workers/gooseRunnerLinuxPackage";
+import {
+  GOOSE_LINUX_EXECUTABLE_PATH,
+  GOOSE_LINUX_RESOURCES_PATH,
+} from "../../apps/desktop/src/shared/gooseRunnerLinuxPackage";
 import {
   GooseLoopbackModelServerError,
   type GooseLoopbackModelInvocation,
@@ -387,10 +391,14 @@ async function waitFor(
 }
 
 async function nativeArtifact(): Promise<AdmittedGooseRunnerArtifact> {
-  const admitted = await admitGooseRunnerArtifact(artifactDirectory!, {
-    expectedTargetTriple: "x86_64-unknown-linux-gnu",
-    trustedManifestSha256: trustedManifestSha256!,
-  });
+  const installed = await admitInstalledGooseRunnerLinuxPackage(GOOSE_LINUX_RESOURCES_PATH);
+  if (installed === null) {
+    throw new Error("native integration Linux Goose package admission failed");
+  }
+  const admitted = installed.artifact;
+  if (admitted.manifestSha256 !== trustedManifestSha256) {
+    throw new Error("native integration package manifest differs from the admitted build");
+  }
   if (admitted.sourceCommit === undefined) {
     throw new Error("native integration artifact lacks its source commit");
   }
@@ -454,6 +462,10 @@ function unusedToolInvoker(): GooseMcpToolInvoker {
 }
 
 async function findRunnerPid(privateRoot: string): Promise<number> {
+  const executableNeedle =
+    process.platform === "linux"
+      ? GOOSE_LINUX_EXECUTABLE_PATH
+      : `${privateRoot}/bin/actestra-goose-runner`;
   let found: number | undefined;
   await waitFor(async () => {
     const entries = await readdir("/proc", { withFileTypes: true });
@@ -462,7 +474,7 @@ async function findRunnerPid(privateRoot: string): Promise<number> {
       const commandLine = await readFile(path.join("/proc", entry.name, "cmdline")).catch(
         (): undefined => undefined,
       );
-      if (commandLine?.includes(Buffer.from(`${privateRoot}/bin/actestra-goose-runner`))) {
+      if (commandLine?.includes(Buffer.from(executableNeedle))) {
         found = Number(entry.name);
         return true;
       }
@@ -473,6 +485,13 @@ async function findRunnerPid(privateRoot: string): Promise<number> {
     throw new Error("native integration runner PID was unavailable");
   }
   return found;
+}
+
+async function readProcessUid(processId: number): Promise<number> {
+  const status = await readFile(path.join("/proc", String(processId), "status"), "utf8");
+  const uid = status.match(/^Uid:\s+(\d+)/mu)?.[1];
+  if (uid === undefined) throw new Error("native integration runner UID was unavailable");
+  return Number(uid);
 }
 
 function processIsAlive(processId: number): boolean {
@@ -595,6 +614,10 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
       });
       expect(opened.session.sessionId).toEqual(expect.any(String));
       expect(opened.toolNames).toContain(`actestra-capability-proxy__${CODING_FILE_READ_TOOL_ID}`);
+      const currentUid = process.getuid?.();
+      expect(currentUid).toBeDefined();
+      expect(currentUid).not.toBe(0);
+      expect(await readProcessUid(await findRunnerPid(opened.privateRoot))).toBe(currentUid);
       await markFailureStage("prompt");
       const result = await opened.prompt({
         text: "Attempt one bounded read and report the denied outcome.",

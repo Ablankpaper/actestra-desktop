@@ -18,6 +18,7 @@ import {
   admitGooseRunnerArtifact,
   type AdmitGooseRunnerArtifactOptions,
   type AdmittedGooseRunnerArtifact,
+  type GooseRunnerLinuxInstallAttestation,
 } from "./gooseRunnerArtifact";
 
 export const GOOSE_LINUX_BOOTSTRAP_OK_MARKER = "ACTESTRA_GOOSE_LINUX_BOOTSTRAP_OK" as const;
@@ -284,24 +285,33 @@ export async function admitInstalledGooseRunnerLinuxPackage(
     ) {
       return null;
     }
-    const artifact = await dependencies.admitRunnerArtifact(runnerDirectory, {
+    const admittedArtifact = await dependencies.admitRunnerArtifact(runnerDirectory, {
       trustedManifestSha256: record.runnerManifestSha256,
       expectedTargetTriple: record.targetTriple,
     });
     const manifestPath = path.join(runnerDirectory, GOOSE_RUNNER_MANIFEST_FILE);
     const executablePath = GOOSE_LINUX_EXECUTABLE_PATH;
     if (
-      artifact.directory !== runnerDirectory ||
-      artifact.executablePath !== executablePath ||
-      artifact.targetTriple !== record.targetTriple ||
-      artifact.manifestSha256 !== record.runnerManifestSha256 ||
-      artifact.executableSha256 !== record.executableSha256 ||
+      admittedArtifact.directory !== runnerDirectory ||
+      admittedArtifact.executablePath !== executablePath ||
+      admittedArtifact.targetTriple !== record.targetTriple ||
+      admittedArtifact.manifestSha256 !== record.runnerManifestSha256 ||
+      admittedArtifact.executableSha256 !== record.executableSha256 ||
       (await dependencies.sha256File(manifestPath)) !== record.runnerManifestSha256 ||
       (await dependencies.sha256File(executablePath)) !== record.executableSha256
     ) {
       return null;
     }
     if (!(await dependencies.runBootstrapCheck(executablePath))) return null;
+    const linuxInstall: Readonly<GooseRunnerLinuxInstallAttestation> = Object.freeze({
+      contractVersion: 1,
+      resourcesPath: GOOSE_LINUX_RESOURCES_PATH,
+      executablePath: GOOSE_LINUX_EXECUTABLE_PATH,
+      runnerManifestSha256: record.runnerManifestSha256,
+      executableSha256: record.executableSha256,
+      profileSha256: record.profileSha256,
+    });
+    const artifact = Object.freeze({ ...admittedArtifact, linuxInstall });
     return Object.freeze({
       resourcesPath: GOOSE_LINUX_RESOURCES_PATH,
       profilePath,

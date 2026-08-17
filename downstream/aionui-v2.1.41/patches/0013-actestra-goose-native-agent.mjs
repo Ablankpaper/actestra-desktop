@@ -336,6 +336,7 @@ replaceOnce(
       : {
           runnerAdmission: activeCodingRuntime.runnerAdmission,
           admittedArtifact: activeCodingRuntime.admittedArtifact,
+          revalidateArtifact: activeCodingRuntime.revalidateArtifact,
       }),
   });
   codingArtifactService = new AionUiCodingArtifactService({

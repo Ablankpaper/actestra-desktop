@@ -53,6 +53,7 @@ async function createRunnerFixture(): Promise<{
 
 function exactSpawnOptions(root: string): GooseAcpSpawnOptions {
   return Object.freeze({
+    executableAuthority: "attempt-private",
     executablePath: path.join(root, "bin", "actestra-goose-runner"),
     workingDirectory: path.join(root, "work"),
     environment: createGooseRunnerEnvironment(root),

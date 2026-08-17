@@ -6,6 +6,7 @@ import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
 import { admitGooseRunnerArtifact } from "../../apps/desktop/src/main/workers/gooseRunnerArtifact";
+import { GOOSE_LINUX_EXECUTABLE_PATH } from "../../apps/desktop/src/shared/gooseRunnerLinuxPackage";
 
 const SUPERVISOR_FIXTURE = path.resolve("tests/fixtures/gooseRunnerSupervisorExit.ts");
 const fixtureDirectories: string[] = [];
@@ -122,11 +123,11 @@ describe("P7 admitted Goose process abuse", () => {
     const state = JSON.parse(await readFile(statePath, "utf8")) as {
       readonly privateRoot: string;
     };
-    const leader = spawnSync(
-      "pgrep",
-      ["-f", path.join(state.privateRoot, "bin", "actestra-goose-runner")],
-      { encoding: "utf8" },
-    );
+    const executableNeedle =
+      process.platform === "linux"
+        ? GOOSE_LINUX_EXECUTABLE_PATH
+        : path.join(state.privateRoot, "bin", "actestra-goose-runner");
+    const leader = spawnSync("pgrep", ["-f", executableNeedle], { encoding: "utf8" });
     const leaderPid = Number(leader.stdout.trim().split("\n")[0]);
     expect(Number.isSafeInteger(leaderPid)).toBe(true);
     fixtureProcessGroups.add(leaderPid);

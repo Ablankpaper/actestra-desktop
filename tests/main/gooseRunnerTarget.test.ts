@@ -130,7 +130,18 @@ describe("Goose runner native build targets", () => {
       'target.resolveGooseRunnerRuntimeTarget("darwin", "arm64")?.targetTriple,',
       'target.resolveGooseRunnerRuntimeTarget("darwin", "x64")?.targetTriple,',
       'target.resolveGooseRunnerRuntimeTarget("win32", "x64"),',
-      'target.resolveGooseRunnerRuntimeTarget("linux", "x64"),',
+      'target.resolveGooseRunnerRuntimeTarget("linux", "x64")?.targetTriple,',
+      "],",
+      "authorities: [",
+      'target.resolveGooseRunnerExecutableAuthority("darwin"),',
+      'target.resolveGooseRunnerExecutableAuthority("linux"),',
+      'target.resolveGooseRunnerExecutableAuthority("win32"),',
+      "],",
+      "authorityAdmission: [",
+      'target.isGooseRunnerExecutableAuthorityAdmitted("darwin", "arm64", "attempt-private"),',
+      'target.isGooseRunnerExecutableAuthorityAdmitted("linux", "x64", "linux-package"),',
+      'target.isGooseRunnerExecutableAuthorityAdmitted("linux", "x64", "attempt-private"),',
+      'target.isGooseRunnerExecutableAuthorityAdmitted("linux", "arm64", "linux-package"),',
       "],",
       "validationRejections: [",
       "null,",
@@ -157,7 +168,9 @@ describe("Goose runner native build targets", () => {
       byHost: expectedBuildTargets,
       byTriple: expectedBuildTargets,
       unsupported: [true, true, true, true],
-      runtime: ["aarch64-apple-darwin", "x86_64-apple-darwin", null, null],
+      runtime: ["aarch64-apple-darwin", "x86_64-apple-darwin", null, "x86_64-unknown-linux-gnu"],
+      authorities: ["attempt-private", "linux-package", null],
+      authorityAdmission: [true, true, false, false],
       validationRejections: [
         "Goose runner build targets are invalid",
         "Goose runner build target contract is invalid",
@@ -169,12 +182,10 @@ describe("Goose runner native build targets", () => {
   it("uses the shared runtime ceiling before any private-root or transport side effect", () => {
     const source = readFileSync(processModulePath, "utf8");
     const runtimeResolution = source.indexOf(
-      "resolveGooseRunnerRuntimeTarget(process.platform, process.arch)",
+      "resolveGooseRunnerRuntimeTarget(platform, architecture)",
     );
     const containmentResolution = source.indexOf("hasVerifiedGooseContainment(");
-    const privateRootPreparation = source.indexOf(
-      "prepared = await preparePrivateRoot(options.privateRootParent, options.artifact)",
-    );
+    const privateRootPreparation = source.indexOf("prepared = await preparePrivateRoot(");
 
     expect(source).toContain('from "./gooseRunnerTarget"');
     expect(source).not.toContain("function currentTargetTriple()");

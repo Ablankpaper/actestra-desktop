@@ -163,7 +163,16 @@ describe("Main-owned Ubuntu Goose package admission", () => {
     const admitted = await admitInstalledGooseRunnerLinuxPackage(value.resourcesPath, value);
 
     expect(admitted).not.toBeNull();
-    expect(admitted!.artifact).toBe(artifact);
+    expect(admitted!.artifact).toMatchObject(artifact);
+    expect(admitted!.artifact.linuxInstall).toEqual({
+      contractVersion: 1,
+      resourcesPath: GOOSE_LINUX_RESOURCES_PATH,
+      executablePath: GOOSE_LINUX_EXECUTABLE_PATH,
+      runnerManifestSha256: artifact.manifestSha256,
+      executableSha256: artifact.executableSha256,
+      profileSha256: record.profileSha256,
+    });
+    expect(Object.isFrozen(admitted!.artifact.linuxInstall)).toBe(true);
     expect(admitted!.record).toEqual(record);
     expect(admitted!.executablePath).toBe(GOOSE_LINUX_EXECUTABLE_PATH);
     expect(admitted!.bootstrapMarker).toBe(GOOSE_LINUX_BOOTSTRAP_OK_MARKER);

@@ -29,7 +29,13 @@ import {
   hasVerifiedGooseContainment,
 } from "./gooseRunnerContainment";
 import { createGooseRunnerSandboxLaunch } from "./gooseRunnerSandbox";
-import { resolveGooseRunnerRuntimeTarget } from "./gooseRunnerTarget";
+import { GOOSE_LINUX_EXECUTABLE_PATH } from "../../shared/gooseRunnerLinuxPackage";
+import {
+  isGooseRunnerExecutableAuthorityAdmitted,
+  resolveGooseRunnerExecutableAuthority,
+  resolveGooseRunnerRuntimeTarget,
+  type GooseExecutableAuthority,
+} from "./gooseRunnerTarget";
 
 const MAX_STDOUT_LINE_BYTES = 64 * 1024;
 const MAX_STDERR_BYTES = 256 * 1024;
@@ -66,6 +72,7 @@ export class GooseRunnerProcessError extends Error {
 
 export interface GooseAcpSpawnOptions {
   readonly executablePath: string;
+  readonly executableAuthority?: GooseExecutableAuthority;
   readonly workingDirectory: string;
   readonly workspaceDirectory?: string;
   readonly environment: Readonly<Record<string, string>>;
@@ -109,6 +116,7 @@ export interface GooseRunnerModelBinding {
 export interface GooseRunnerPreparedRoot {
   readonly root: string;
   readonly bridgeDirectory: string;
+  readonly executableAuthority?: GooseExecutableAuthority;
   readonly executablePath: string;
   readonly workingDirectory: string;
 }
@@ -152,6 +160,16 @@ export interface OpenGooseRunnerHandshakeResult {
   prompt(options: GooseAcpPromptOptions): Promise<GooseAcpPromptResult>;
   close(): Promise<void>;
 }
+
+export interface GooseRunnerProcessDependencies {
+  readonly platform?: NodeJS.Platform;
+  readonly architecture?: string;
+}
+
+const DEFAULT_PROCESS_DEPENDENCIES: GooseRunnerProcessDependencies = Object.freeze({
+  platform: process.platform,
+  architecture: process.arch,
+});
 
 function isAbsoluteDirectory(value: string): boolean {
   return typeof value === "string" && path.isAbsolute(value);
@@ -270,6 +288,13 @@ export function assertGooseAcpSpawnOptions(
       "worker-resource-enforcement-unavailable",
       "Goose native resource limits are unavailable before launch",
     );
+  }
+  if (
+    options.executableAuthority !== undefined &&
+    options.executableAuthority !== "attempt-private" &&
+    options.executableAuthority !== "linux-package"
+  ) {
+    throw new GooseRunnerProcessError("invalid-options", "Goose executable authority is invalid");
   }
 }
 
@@ -840,10 +865,33 @@ function createNodeGooseAcpTransport(options: GooseAcpSpawnOptions): GooseAcpTra
     throw new GooseRunnerProcessError("invalid-options", "Goose spawn options are invalid");
   }
   const privateRoot = path.dirname(options.workingDirectory);
-  if (path.dirname(path.dirname(options.executablePath)) !== privateRoot) {
+  const executableAuthority =
+    options.executableAuthority ??
+    (process.platform === "darwin" ? ("attempt-private" as const) : undefined);
+  if (
+    !isGooseRunnerExecutableAuthorityAdmitted(process.platform, process.arch, executableAuthority)
+  ) {
+    throw new GooseRunnerProcessError(
+      "network-policy-unavailable",
+      "Goose launch requires the exact executable authority for this host",
+    );
+  }
+  if (
+    executableAuthority === "attempt-private" &&
+    path.dirname(path.dirname(options.executablePath)) !== privateRoot
+  ) {
     throw new GooseRunnerProcessError(
       "invalid-options",
       "Goose executable and working directory must share one private root",
+    );
+  }
+  if (
+    executableAuthority === "linux-package" &&
+    (process.platform !== "linux" || options.executablePath !== GOOSE_LINUX_EXECUTABLE_PATH)
+  ) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Linux Goose must launch from the fixed packaged executable",
     );
   }
   let command: string;
@@ -917,6 +965,7 @@ function createNodeGooseAcpTransport(options: GooseAcpSpawnOptions): GooseAcpTra
 async function preparePrivateRoot(
   parent: string,
   artifact: AdmittedGooseRunnerArtifact,
+  executableAuthority: GooseExecutableAuthority,
 ): Promise<GooseRunnerPreparedRoot> {
   if (!isAbsoluteDirectory(parent)) {
     throw new GooseRunnerProcessError(
@@ -939,37 +988,58 @@ async function preparePrivateRoot(
   }
   await realpath(parent);
 
-  const root = await mkdtemp(path.join(parent, "goose-attempt-"));
-  try {
-    const binaryDirectory = path.join(root, "bin");
-    const workingDirectory = path.join(root, "work");
-    await Promise.all(
-      ["config", "data", "state", "home", "tmp", "bin", "work", "bridge"].map((name) =>
-        mkdir(path.join(root, name), { mode: 0o700 }),
-      ),
-    );
-    const executableName =
-      process.platform === "win32" ? "actestra-goose-runner.exe" : "actestra-goose-runner";
-    const executablePath = path.join(binaryDirectory, executableName);
-    await copyFile(artifact.executablePath, executablePath, fsConstants.COPYFILE_EXCL);
-    if (process.platform !== "win32") {
-      await chmod(executablePath, 0o500);
-    }
-    const stagedStat = await lstat(executablePath);
+  if (executableAuthority === "linux-package") {
+    const linuxInstall = artifact.linuxInstall;
     if (
-      !stagedStat.isFile() ||
-      stagedStat.isSymbolicLink() ||
-      stagedStat.size !== artifact.executableSize ||
-      (await sha256File(executablePath)) !== artifact.executableSha256
+      linuxInstall === undefined ||
+      !Object.isFrozen(linuxInstall) ||
+      linuxInstall.contractVersion !== 1 ||
+      linuxInstall.resourcesPath !== "/opt/Actestra/resources" ||
+      linuxInstall.executablePath !== GOOSE_LINUX_EXECUTABLE_PATH ||
+      linuxInstall.runnerManifestSha256 !== artifact.manifestSha256 ||
+      linuxInstall.executableSha256 !== artifact.executableSha256
     ) {
       throw new GooseRunnerProcessError(
         "artifact-mismatch",
-        "Staged Goose executable does not match the admitted artifact",
+        "Linux Goose launch lacks the fixed package attestation",
       );
+    }
+  }
+
+  const root = await mkdtemp(path.join(parent, "goose-attempt-"));
+  try {
+    const workingDirectory = path.join(root, "work");
+    const directories = ["config", "data", "state", "home", "tmp", "work", "bridge"];
+    if (executableAuthority === "attempt-private") directories.push("bin");
+    await Promise.all(directories.map((name) => mkdir(path.join(root, name), { mode: 0o700 })));
+    let executablePath: string;
+    if (executableAuthority === "linux-package") {
+      executablePath = GOOSE_LINUX_EXECUTABLE_PATH;
+    } else {
+      const binaryDirectory = path.join(root, "bin");
+      const executableName = path.basename(artifact.executablePath);
+      executablePath = path.join(binaryDirectory, executableName);
+      await copyFile(artifact.executablePath, executablePath, fsConstants.COPYFILE_EXCL);
+      if (process.platform !== "win32") {
+        await chmod(executablePath, 0o500);
+      }
+      const stagedStat = await lstat(executablePath);
+      if (
+        !stagedStat.isFile() ||
+        stagedStat.isSymbolicLink() ||
+        stagedStat.size !== artifact.executableSize ||
+        (await sha256File(executablePath)) !== artifact.executableSha256
+      ) {
+        throw new GooseRunnerProcessError(
+          "artifact-mismatch",
+          "Staged Goose executable does not match the admitted artifact",
+        );
+      }
     }
     return Object.freeze({
       root,
       bridgeDirectory: path.join(root, "bridge"),
+      executableAuthority,
       executablePath,
       workingDirectory,
     });
@@ -1031,12 +1101,22 @@ async function closeAndRemove(
 
 export async function openGooseRunnerHandshake(
   options: OpenGooseRunnerHandshakeOptions,
+  dependencies: GooseRunnerProcessDependencies = DEFAULT_PROCESS_DEPENDENCIES,
 ): Promise<OpenGooseRunnerHandshakeResult> {
-  const runtimeTarget = resolveGooseRunnerRuntimeTarget(process.platform, process.arch);
+  const platform = dependencies.platform ?? process.platform;
+  const architecture = dependencies.architecture ?? process.arch;
+  const runtimeTarget = resolveGooseRunnerRuntimeTarget(platform, architecture);
   if (runtimeTarget === undefined || options.artifact.targetTriple !== runtimeTarget.targetTriple) {
     throw new GooseRunnerProcessError(
       "network-policy-unavailable",
       "The current host lacks admitted Goose runtime containment",
+    );
+  }
+  const executableAuthority = resolveGooseRunnerExecutableAuthority(runtimeTarget.platform);
+  if (executableAuthority === undefined) {
+    throw new GooseRunnerProcessError(
+      "network-policy-unavailable",
+      "The current host lacks admitted Goose executable authority",
     );
   }
   const containmentVerified = hasVerifiedGooseContainment(options.artifact.containment, {
@@ -1106,7 +1186,11 @@ export async function openGooseRunnerHandshake(
   let bridge: GooseRunnerPreparedBridge | undefined;
   let transport: GooseAcpTransport | undefined;
   try {
-    prepared = await preparePrivateRoot(options.privateRootParent, options.artifact);
+    prepared = await preparePrivateRoot(
+      options.privateRootParent,
+      options.artifact,
+      executableAuthority,
+    );
     if (options.prepareBridge !== undefined) {
       const candidate = await options.prepareBridge(prepared);
       try {
@@ -1153,6 +1237,7 @@ export async function openGooseRunnerHandshake(
         : undefined;
     const spawnOptions: GooseAcpSpawnOptions = Object.freeze({
       executablePath: prepared.executablePath,
+      executableAuthority,
       workingDirectory: prepared.workingDirectory,
       ...(admittedWorkspaceDirectory === undefined
         ? {}
@@ -1178,6 +1263,7 @@ export async function openGooseRunnerHandshake(
         platform: runtimeTarget.platform,
         architecture: runtimeTarget.architecture,
         targetTriple: runtimeTarget.targetTriple,
+        executableAuthority,
         executablePath: prepared.executablePath,
         privateRoot: prepared.root,
         ...(admittedWorkspaceDirectory === undefined

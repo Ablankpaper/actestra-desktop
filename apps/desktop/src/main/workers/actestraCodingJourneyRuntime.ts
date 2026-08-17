@@ -38,6 +38,7 @@ export interface TrustedActestraCodingJourneyRuntime {
   readonly runnerAdmission: AionUiCodingRunnerAdmission;
   readonly admittedArtifact: AdmittedGooseRunnerArtifact;
   readonly linuxPackage?: AdmittedGooseRunnerLinuxPackage;
+  readonly revalidateArtifact?: () => Promise<AdmittedGooseRunnerArtifact>;
   readonly privateRootParent: string;
   readonly modelId: string;
   readonly modelInvoker: ActestraMainModelInvoker;
@@ -234,16 +235,25 @@ export async function startTrustedActestraCodingJourneyRuntime(
     let runnerAdmission: Readonly<AionUiCodingRunnerAdmission> | null;
     let admittedArtifact: AdmittedGooseRunnerArtifact;
     let linuxPackage: Readonly<AdmittedGooseRunnerLinuxPackage> | undefined;
+    let revalidateArtifact: (() => Promise<AdmittedGooseRunnerArtifact>) | undefined;
     if ((dependencies.platform ?? process.platform) === "linux") {
       if (typeof options.linuxPackageResourcesPath !== "string") return null;
-      const admittedLinuxPackage = await (
-        dependencies.admitLinuxPackage ?? admitInstalledGooseRunnerLinuxPackage
-      )(options.linuxPackageResourcesPath);
+      const admitLinuxPackage =
+        dependencies.admitLinuxPackage ?? admitInstalledGooseRunnerLinuxPackage;
+      const linuxPackageResourcesPath = options.linuxPackageResourcesPath;
+      const admittedLinuxPackage = await admitLinuxPackage(linuxPackageResourcesPath);
       if (admittedLinuxPackage === null) return null;
       linuxPackage = admittedLinuxPackage;
       runnerAdmission = snapshotRunnerAdmission(linuxPackage.runnerAdmission);
       if (runnerAdmission === null) return null;
       admittedArtifact = linuxPackage.artifact;
+      revalidateArtifact = async (): Promise<AdmittedGooseRunnerArtifact> => {
+        const refreshed = await admitLinuxPackage(linuxPackageResourcesPath);
+        if (refreshed === null) {
+          throw new Error("The packaged Linux Goose runner is no longer admitted");
+        }
+        return refreshed.artifact;
+      };
     } else {
       runnerAdmission = snapshotRunnerAdmission(options.runnerAdmission);
       if (runnerAdmission === null) return null;
@@ -261,6 +271,7 @@ export async function startTrustedActestraCodingJourneyRuntime(
       runnerAdmission,
       admittedArtifact,
       ...(linuxPackage === undefined ? {} : { linuxPackage }),
+      ...(revalidateArtifact === undefined ? {} : { revalidateArtifact }),
       privateRootParent,
       modelId: modelBinding.modelId,
       modelInvoker: modelBinding.invokeModel,

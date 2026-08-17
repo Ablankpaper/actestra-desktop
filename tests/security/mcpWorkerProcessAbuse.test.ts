@@ -36,6 +36,7 @@ import {
   type GooseAcpSpawnOptions,
 } from "../../apps/desktop/src/main/workers/gooseRunnerProcess";
 import { EXPECTED_GOOSE_INITIALIZE_RESULT, LoopbackGooseAcpTransport } from "../fixtures/gooseAcp";
+import { GOOSE_LINUX_EXECUTABLE_PATH } from "../../apps/desktop/src/shared/gooseRunnerLinuxPackage";
 
 const ATTEMPT_LEASE = "attempt-lease-0123456789abcdef0123456789abcdef";
 const MODEL_LEASE = "model-lease-0123456789abcdef0123456789abcdef";
@@ -1373,11 +1374,11 @@ describe("P7 MCP, Worker, network, and process abuse baseline", () => {
       const state = JSON.parse(await readFile(statePath, "utf8")) as {
         readonly privateRoot: string;
       };
-      const matched = spawnSync(
-        "pgrep",
-        ["-f", path.join(state.privateRoot, "bin", "actestra-goose-runner")],
-        { encoding: "utf8" },
-      );
+      const executableNeedle =
+        process.platform === "linux"
+          ? GOOSE_LINUX_EXECUTABLE_PATH
+          : path.join(state.privateRoot, "bin", "actestra-goose-runner");
+      const matched = spawnSync("pgrep", ["-f", executableNeedle], { encoding: "utf8" });
       processIds = matched.stdout.trim().split("\n").map(Number).filter(Number.isSafeInteger);
       expect(processIds.length).toBeGreaterThanOrEqual(1);
       fixtureProcessGroups.add(processIds[0]!);

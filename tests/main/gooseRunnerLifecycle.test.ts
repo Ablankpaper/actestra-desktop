@@ -5,6 +5,12 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AdmittedGooseRunnerArtifact } from "../../apps/desktop/src/main/workers/gooseRunnerArtifact";
 import {
+  GOOSE_LINUX_ARTIFACT_DIRECTORY,
+  GOOSE_LINUX_EXECUTABLE_PATH,
+  GOOSE_LINUX_RESOURCES_PATH,
+  GOOSE_LINUX_TARGET_TRIPLE,
+} from "../../apps/desktop/src/shared/gooseRunnerLinuxPackage";
+import {
   createGooseRunnerEnvironment,
   openGooseRunnerHandshake,
   type GooseAcpSpawnOptions,
@@ -321,6 +327,116 @@ describe("Goose runner private lifecycle", () => {
       expect(await readdir(fixture.privateRootParent)).toEqual([]);
     },
   );
+
+  it("uses the fixed Linux package executable without creating an attempt bin", async () => {
+    const fixture = await createLifecycleFixture();
+    const transport = new LoopbackGooseAcpTransport();
+    const executableSha256 = fixture.artifact.executableSha256;
+    const linuxArtifact = Object.freeze({
+      ...fixture.artifact,
+      directory: GOOSE_LINUX_ARTIFACT_DIRECTORY,
+      executablePath: GOOSE_LINUX_EXECUTABLE_PATH,
+      targetTriple: GOOSE_LINUX_TARGET_TRIPLE,
+      sourceCommit: "a".repeat(40),
+      containment: Object.freeze({
+        contractVersion: 1 as const,
+        targetTriple: GOOSE_LINUX_TARGET_TRIPLE,
+        sourceCommit: "a".repeat(40),
+        probeSha256: "b".repeat(64),
+        executableSha256,
+        filesystem: true as const,
+        network: true as const,
+        processTree: true as const,
+        resources: true as const,
+        parentDeath: true as const,
+        cleanup: true as const,
+      }),
+      linuxInstall: Object.freeze({
+        contractVersion: 1 as const,
+        resourcesPath: GOOSE_LINUX_RESOURCES_PATH,
+        executablePath: GOOSE_LINUX_EXECUTABLE_PATH,
+        runnerManifestSha256: fixture.artifact.manifestSha256,
+        executableSha256,
+        profileSha256: "c".repeat(64),
+      }),
+    });
+    let spawnOptions: GooseAcpSpawnOptions | undefined;
+    const opened = await openGooseRunnerHandshake(
+      {
+        artifact: linuxArtifact,
+        privateRootParent: fixture.privateRootParent,
+        workspaceDirectory: fixture.repository,
+        prepareBridge: async (root) =>
+          Object.freeze({
+            capabilityProxyUrl: "http://127.0.0.1:43123/mcp",
+            modelBinding: Object.freeze({
+              baseUrl: "http://127.0.0.1:43124/v1",
+              modelId: "actestra-loopback-model",
+              attemptLease: "model-lease-0123456789abcdef0123456789abcdef",
+            }),
+            capabilitySocketPath: path.join(root.bridgeDirectory, "capability.sock"),
+            modelSocketPath: path.join(root.bridgeDirectory, "model.sock"),
+            close: async () => undefined,
+          }),
+        transportFactory: (options) => {
+          spawnOptions = options;
+          return transport;
+        },
+      },
+      { platform: "linux", architecture: "x64" },
+    );
+
+    expect(spawnOptions?.executableAuthority).toBe("linux-package");
+    expect(spawnOptions?.executablePath).toBe(GOOSE_LINUX_EXECUTABLE_PATH);
+    expect(await readdir(opened.privateRoot)).toEqual(
+      expect.arrayContaining(["config", "data", "state", "home", "tmp", "work", "bridge"]),
+    );
+    expect(await readdir(opened.privateRoot)).not.toContain("bin");
+    await opened.close();
+    expect(await readdir(fixture.privateRootParent)).toEqual([]);
+  });
+
+  it("rejects a generic Linux Artifact and removes the partial root before bridge startup", async () => {
+    const fixture = await createLifecycleFixture();
+    const prepareBridge = vi.fn(async () => {
+      throw new Error("bridge must not start without the package attestation");
+    });
+    const executableSha256 = fixture.artifact.executableSha256;
+
+    await expect(
+      openGooseRunnerHandshake(
+        {
+          artifact: {
+            ...fixture.artifact,
+            directory: GOOSE_LINUX_ARTIFACT_DIRECTORY,
+            executablePath: GOOSE_LINUX_EXECUTABLE_PATH,
+            targetTriple: GOOSE_LINUX_TARGET_TRIPLE,
+            sourceCommit: "a".repeat(40),
+            containment: Object.freeze({
+              contractVersion: 1,
+              targetTriple: GOOSE_LINUX_TARGET_TRIPLE,
+              sourceCommit: "a".repeat(40),
+              probeSha256: "b".repeat(64),
+              executableSha256,
+              filesystem: true,
+              network: true,
+              processTree: true,
+              resources: true,
+              parentDeath: true,
+              cleanup: true,
+            }),
+          },
+          privateRootParent: fixture.privateRootParent,
+          workspaceDirectory: fixture.repository,
+          prepareBridge,
+        },
+        { platform: "linux", architecture: "x64" },
+      ),
+    ).rejects.toMatchObject({ code: "artifact-mismatch" });
+
+    expect(prepareBridge).not.toHaveBeenCalled();
+    expect(await readdir(fixture.privateRootParent)).toEqual([]);
+  });
 
   it.skipIf(process.platform !== "darwin")(
     "removes the private root after a version rejection without touching a repository",

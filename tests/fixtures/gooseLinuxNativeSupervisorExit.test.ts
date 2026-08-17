@@ -5,8 +5,12 @@ import { readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { describe, it, vi } from "vitest";
-import { admitGooseRunnerArtifact } from "../../apps/desktop/src/main/workers/gooseRunnerArtifact";
+import { admitInstalledGooseRunnerLinuxPackage } from "../../apps/desktop/src/main/workers/gooseRunnerLinuxPackage";
 import { openGooseMcpSessionComposition } from "../../apps/desktop/src/main/workers/gooseMcpSessionComposition";
+import {
+  GOOSE_LINUX_EXECUTABLE_PATH,
+  GOOSE_LINUX_RESOURCES_PATH,
+} from "../../apps/desktop/src/shared/gooseRunnerLinuxPackage";
 
 vi.mock("../../apps/desktop/src/main/workers/gooseRunnerTarget", async (importOriginal) => {
   const actual =
@@ -28,6 +32,10 @@ const nativeCommandIds = Object.freeze(["git.status"]);
 const nativeTestIds = Object.freeze(["git.diff-check"]);
 
 async function waitForRunner(privateRoot: string): Promise<number> {
+  const executableNeedle =
+    process.platform === "linux"
+      ? GOOSE_LINUX_EXECUTABLE_PATH
+      : `${privateRoot}/bin/actestra-goose-runner`;
   const deadline = Date.now() + 5_000;
   while (Date.now() < deadline) {
     const entries = await readdir("/proc", { withFileTypes: true });
@@ -36,7 +44,7 @@ async function waitForRunner(privateRoot: string): Promise<number> {
       const commandLine = await readFile(path.join("/proc", entry.name, "cmdline")).catch(
         (): undefined => undefined,
       );
-      if (commandLine?.includes(Buffer.from(`${privateRoot}/bin/actestra-goose-runner`))) {
+      if (commandLine?.includes(Buffer.from(executableNeedle))) {
         return Number(entry.name);
       }
     }
@@ -49,14 +57,14 @@ describe.skipIf(!enabled)("native Linux Goose supervisor-death fixture", () => {
   it(
     "holds one authenticated composition until its process is killed",
     async () => {
-      const artifactDirectory = process.env.ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIR!;
       const manifestSha256 = process.env.ACTESTRA_GOOSE_RUNNER_MANIFEST_SHA256!;
       const fixtureRoot = process.env.ACTESTRA_GOOSE_NATIVE_SUPERVISOR_ROOT!;
       const statePath = process.env.ACTESTRA_GOOSE_NATIVE_SUPERVISOR_STATE!;
-      const admitted = await admitGooseRunnerArtifact(artifactDirectory, {
-        expectedTargetTriple: "x86_64-unknown-linux-gnu",
-        trustedManifestSha256: manifestSha256,
-      });
+      const installed = await admitInstalledGooseRunnerLinuxPackage(GOOSE_LINUX_RESOURCES_PATH);
+      if (installed === null || installed.artifact.manifestSha256 !== manifestSha256) {
+        throw new Error("supervisor fixture Linux Goose package admission failed");
+      }
+      const admitted = installed.artifact;
       if (admitted.sourceCommit === undefined) {
         throw new Error("supervisor fixture artifact lacks its source commit");
       }

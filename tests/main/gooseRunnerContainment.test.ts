@@ -11,7 +11,8 @@ function validLaunch(): Record<string, unknown> {
     platform: "linux",
     architecture: "x64",
     targetTriple: "x86_64-unknown-linux-gnu",
-    executablePath: "/owned/attempt/bin/actestra-goose-runner",
+    executableAuthority: "linux-package",
+    executablePath: "/opt/Actestra/resources/actestra-goose-runner/actestra-goose-runner",
     privateRoot: "/owned/attempt",
     workspaceDirectory: "/owned/worktree",
     networkPolicy: "deny-all",
@@ -90,6 +91,28 @@ describe("Goose containment launch contract", () => {
       modelProxyPort: 43_124,
     };
     expect(() => assertGooseContainmentLaunch(Object.freeze(nestedMutable))).toThrow();
+  });
+
+  it.each([
+    [
+      "attempt-private on Linux",
+      {
+        ...validLaunch(),
+        executableAuthority: "attempt-private",
+        executablePath: "/owned/attempt/bin/actestra-goose-runner",
+      },
+    ],
+    [
+      "linux-package on Darwin",
+      {
+        ...validLaunch(),
+        platform: "darwin",
+        architecture: "arm64",
+        targetTriple: "aarch64-apple-darwin",
+      },
+    ],
+  ])("rejects %s executable authority", (_label, value) => {
+    expect(() => assertGooseContainmentLaunch(Object.freeze(value))).toThrow();
   });
 
   it("accepts evidence only when it matches the admitted artifact exactly", () => {

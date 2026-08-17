@@ -39,14 +39,26 @@ describe("P8.2b Linux authenticated Goose integration gate", () => {
     expect(result.stderr).toBe("Goose native integration integration-target-unsupported\n");
   });
 
-  it("keeps the production runtime resolver Darwin-only", () => {
+  it("admits only attempt-private Darwin and package-owned Linux runtimes", () => {
     const target = read("apps/desktop/src/main/workers/gooseRunnerTarget.ts");
     const processSource = read("apps/desktop/src/main/workers/gooseRunnerProcess.ts");
 
-    expect(target).toContain('return target?.platform === "darwin" ? target : undefined');
-    expect(processSource).toContain(
-      "resolveGooseRunnerRuntimeTarget(process.platform, process.arch)",
+    expect(target).toContain(
+      'target?.platform === "darwin" || target?.platform === "linux" ? target : undefined',
     );
+    expect(target).toContain('if (platform === "darwin") return "attempt-private"');
+    expect(target).toContain('if (platform === "linux") return "linux-package"');
+    expect(target).not.toContain('if (platform === "win32")');
+    expect(processSource).toContain("const platform = dependencies.platform ?? process.platform");
+    expect(processSource).toContain(
+      "const architecture = dependencies.architecture ?? process.arch",
+    );
+    expect(processSource).toContain("resolveGooseRunnerRuntimeTarget(platform, architecture)");
+    expect(processSource).toContain(
+      "resolveGooseRunnerExecutableAuthority(runtimeTarget.platform)",
+    );
+    expect(processSource).toContain('executableAuthority === "linux-package"');
+    expect(processSource).toContain("const linuxInstall = artifact.linuxInstall");
     expect(processSource).not.toContain("ACTESTRA_GOOSE_NATIVE_INTEGRATION");
   });
 

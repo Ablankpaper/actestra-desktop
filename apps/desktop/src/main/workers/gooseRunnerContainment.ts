@@ -4,10 +4,16 @@ import {
   freezeWorkerResourceBudget,
   type WorkerResourceBudget,
 } from "../../core";
-import { resolveGooseRunnerBuildTarget } from "./gooseRunnerTarget";
+import { GOOSE_LINUX_EXECUTABLE_PATH } from "../../shared/gooseRunnerLinuxPackage";
+import {
+  resolveGooseRunnerBuildTarget,
+  resolveGooseRunnerExecutableAuthority,
+  type GooseExecutableAuthority,
+} from "./gooseRunnerTarget";
 
 const LAUNCH_REQUIRED_KEYS = Object.freeze([
   "architecture",
+  "executableAuthority",
   "executablePath",
   "networkPolicy",
   "parentLiveness",
@@ -53,6 +59,7 @@ export interface GooseContainmentLaunch {
   readonly platform: "darwin" | "win32" | "linux";
   readonly architecture: "arm64" | "x64";
   readonly targetTriple: string;
+  readonly executableAuthority: GooseExecutableAuthority;
   readonly executablePath: string;
   readonly privateRoot: string;
   readonly workspaceDirectory?: string;
@@ -211,8 +218,33 @@ export function assertGooseContainmentLaunch(
       "Goose target does not match the host contract",
     );
   }
+  const expectedAuthority = resolveGooseRunnerExecutableAuthority(value.platform);
+  if (expectedAuthority === undefined || value.executableAuthority !== expectedAuthority) {
+    throw new GooseContainmentError(
+      "invalid-options",
+      "Goose executable authority does not match the host contract",
+    );
+  }
   assertCanonicalAbsolutePath(value.executablePath, "Goose executable path");
   assertCanonicalAbsolutePath(value.privateRoot, "Goose private root");
+  if (
+    value.executableAuthority === "linux-package" &&
+    value.executablePath !== GOOSE_LINUX_EXECUTABLE_PATH
+  ) {
+    throw new GooseContainmentError(
+      "invalid-options",
+      "Linux Goose must use the fixed packaged executable",
+    );
+  }
+  if (
+    value.executableAuthority === "attempt-private" &&
+    path.dirname(path.dirname(value.executablePath as string)) !== value.privateRoot
+  ) {
+    throw new GooseContainmentError(
+      "invalid-options",
+      "Attempt-private Goose executable must remain inside its private root",
+    );
+  }
   if (Object.hasOwn(value, "workspaceDirectory")) {
     assertCanonicalAbsolutePath(value.workspaceDirectory, "Goose workspace directory");
   }

@@ -92,6 +92,33 @@ describe("AionUI coding-agent readiness service", () => {
     expect(admitRunnerArtifact).toHaveBeenCalledTimes(2);
   });
 
+  it("revalidates a packaged Linux attestation before an actual coding submission", async () => {
+    const { AionUiCodingAgentService } = await loadServiceModule();
+    const linuxInstall = Object.freeze({
+      contractVersion: 1 as const,
+      resourcesPath: "/opt/Actestra/resources" as const,
+      executablePath:
+        "/opt/Actestra/resources/actestra-goose-runner/actestra-goose-runner" as const,
+      runnerManifestSha256: artifact.manifestSha256,
+      executableSha256: artifact.executableSha256,
+      profileSha256: "c".repeat(64),
+    });
+    const packagedArtifact = Object.freeze({ ...artifact, linuxInstall });
+    const revalidateArtifact = vi.fn(async () => packagedArtifact);
+    const service = new AionUiCodingAgentService({
+      getMainService: () => mainService,
+      runnerAdmission: admission,
+      admittedArtifact: packagedArtifact,
+      revalidateArtifact,
+    });
+
+    await expect(service.status()).resolves.toEqual(expect.objectContaining({ status: "ready" }));
+    await expect(service.probe()).resolves.toEqual(expect.objectContaining({ status: "ready" }));
+    expect(revalidateArtifact).toHaveBeenCalledOnce();
+    await expect(service.requireAdmittedArtifact()).resolves.toBe(packagedArtifact);
+    expect(revalidateArtifact).toHaveBeenCalledTimes(2);
+  });
+
   it("reports main and runner availability without exposing private paths or digests", async () => {
     const { AionUiCodingAgentService } = await loadServiceModule();
     const admitRunnerArtifact = vi.fn(async () => artifact);

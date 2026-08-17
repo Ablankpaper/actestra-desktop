@@ -69,6 +69,14 @@ const linuxArtifact = Object.freeze({
   executablePath: GOOSE_LINUX_EXECUTABLE_PATH,
   targetTriple: GOOSE_LINUX_TARGET_TRIPLE,
   manifestPath: `${GOOSE_LINUX_ARTIFACT_DIRECTORY}/actestra-goose-runner.manifest.json`,
+  linuxInstall: Object.freeze({
+    contractVersion: 1 as const,
+    resourcesPath: GOOSE_LINUX_RESOURCES_PATH,
+    executablePath: GOOSE_LINUX_EXECUTABLE_PATH,
+    runnerManifestSha256: artifact.manifestSha256,
+    executableSha256: artifact.executableSha256,
+    profileSha256: "c".repeat(64),
+  }),
 }) satisfies AdmittedGooseRunnerArtifact;
 
 const linuxPackage = Object.freeze({
@@ -232,6 +240,9 @@ describe("trusted Actestra coding journey runtime startup", () => {
     expect(admitRunnerArtifact).not.toHaveBeenCalled();
     expect(runtime!.linuxPackage).toBe(linuxPackage);
     expect(runtime!.runnerAdmission.directory).toBe(GOOSE_LINUX_ARTIFACT_DIRECTORY);
+    expect(runtime!.revalidateArtifact).toBeTypeOf("function");
+    await expect(runtime!.revalidateArtifact!()).resolves.toBe(linuxArtifact);
+    expect(admitLinuxPackage).toHaveBeenCalledTimes(2);
   });
 
   it("fails before creating goose-private when the fixed Linux package is unavailable", async () => {

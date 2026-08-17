@@ -128,6 +128,7 @@ describe("Actestra Team planner and Worker readiness boundary", () => {
     expect(patch).toContain("input.coding === null");
     expect(patch).toContain("resolveAionCoreMainModelBinding");
     expect(patch).toContain("configureActestraTeamWorkerRuntimeAdmission");
+    expect(patch).toContain("revalidateArtifact: trustedRuntime.coding.revalidateArtifact");
     expect(patch).toContain("model_selection");
     expect(patch).toContain("provider_id");
     expect(patch).toContain("model_id");

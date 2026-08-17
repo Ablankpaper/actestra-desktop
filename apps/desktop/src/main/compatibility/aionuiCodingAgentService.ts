@@ -23,6 +23,8 @@ export interface AionUiCodingAgentServiceOptions {
   readonly getMainService: () => IsolatedCodingMainService | null;
   readonly runnerAdmission?: AionUiCodingRunnerAdmission;
   readonly admittedArtifact?: AdmittedGooseRunnerArtifact;
+  /** Revalidates a platform-owned package without dropping its attestation. */
+  readonly revalidateArtifact?: () => Promise<AdmittedGooseRunnerArtifact>;
 }
 
 export interface AionUiCodingAgentServiceDependencies {
@@ -110,7 +112,8 @@ export class AionUiCodingAgentService {
       return this.admittedArtifact;
     }
     const admission = this.options.runnerAdmission;
-    if (admission === undefined) {
+    const revalidateArtifact = this.options.revalidateArtifact;
+    if (admission === undefined && revalidateArtifact === undefined) {
       throw new AionUiCodingAgentServiceError(
         "not-ready",
         "The admitted Goose runner is not configured",
@@ -122,11 +125,14 @@ export class AionUiCodingAgentService {
         "The admitted Goose runner is not ready",
       );
     }
-    this.admissionPromise ??= this.dependencies
-      .admitRunnerArtifact(admission.directory, {
-        trustedManifestSha256: admission.trustedManifestSha256,
-        expectedTargetTriple: admission.expectedTargetTriple,
-      })
+    this.admissionPromise ??= (
+      revalidateArtifact === undefined
+        ? this.dependencies.admitRunnerArtifact(admission!.directory, {
+            trustedManifestSha256: admission!.trustedManifestSha256,
+            expectedTargetTriple: admission!.expectedTargetTriple,
+          })
+        : revalidateArtifact()
+    )
       .then((artifact) => {
         this.admittedArtifact = artifact;
         this.admissionFailure = undefined;
@@ -147,7 +153,10 @@ export class AionUiCodingAgentService {
     if (!refresh && this.admittedArtifact !== undefined) {
       return readyProjection();
     }
-    if (this.options.runnerAdmission === undefined) {
+    if (
+      this.options.runnerAdmission === undefined &&
+      this.options.revalidateArtifact === undefined
+    ) {
       return unavailableProjection("missing", "runner-not-configured");
     }
     if (!refresh && this.admissionFailure !== undefined) {
@@ -181,17 +190,21 @@ export class AionUiCodingAgentService {
         "The Actestra coding runtime is not ready",
       );
     }
-    if (this.admittedArtifact !== undefined) {
+    const requiresPackageRevalidation = this.options.revalidateArtifact !== undefined;
+    if (!requiresPackageRevalidation && this.admittedArtifact !== undefined) {
       return this.admittedArtifact;
     }
-    if (this.options.runnerAdmission === undefined) {
+    if (
+      this.options.runnerAdmission === undefined &&
+      this.options.revalidateArtifact === undefined
+    ) {
       throw new AionUiCodingAgentServiceError(
         "not-ready",
         "The Actestra coding runtime is not ready",
       );
     }
     try {
-      return await this.admit(false);
+      return await this.admit(requiresPackageRevalidation);
     } catch (error) {
       if (error instanceof AionUiCodingAgentServiceError) {
         throw error;

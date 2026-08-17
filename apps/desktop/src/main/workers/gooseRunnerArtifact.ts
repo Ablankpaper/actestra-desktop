@@ -57,8 +57,19 @@ export interface AdmittedGooseRunnerArtifact {
   readonly gooseVersion: typeof sourceContract.goose.version;
   readonly manifestPath: string;
   readonly manifestSha256: string;
+  /** Present only after Main has admitted the fixed Ubuntu package layout. */
+  readonly linuxInstall?: Readonly<GooseRunnerLinuxInstallAttestation>;
   /** Present only when the artifact carries a validated native probe record. */
   readonly containment?: GooseContainmentEvidence;
+}
+
+export interface GooseRunnerLinuxInstallAttestation {
+  readonly contractVersion: 1;
+  readonly resourcesPath: "/opt/Actestra/resources";
+  readonly executablePath: "/opt/Actestra/resources/actestra-goose-runner/actestra-goose-runner";
+  readonly runnerManifestSha256: string;
+  readonly executableSha256: string;
+  readonly profileSha256: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
