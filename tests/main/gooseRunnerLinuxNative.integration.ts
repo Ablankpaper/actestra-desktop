@@ -98,6 +98,8 @@ type NativeIntegrationFailureStage =
   | "parent-death-model-owner-mismatch"
   | "parent-death-capability-orphan-owner"
   | "parent-death-model-orphan-owner"
+  | "parent-death-capability-owner-unresolved"
+  | "parent-death-model-owner-unresolved"
   | "parent-death-runner-not-exited"
   | "parent-death-capability-socket"
   | "parent-death-model-socket"
@@ -920,6 +922,8 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
         );
         if (owners !== undefined && owners.size > 0) {
           await markFailureStage("parent-death-capability-orphan-owner");
+        } else {
+          await markFailureStage("parent-death-capability-owner-unresolved");
         }
         throw new Error("native integration capability listener survived supervisor death");
       }
@@ -930,6 +934,8 @@ describe.skipIf(!nativeEnabled)("native Linux Goose authenticated composition", 
         );
         if (owners !== undefined && owners.size > 0) {
           await markFailureStage("parent-death-model-orphan-owner");
+        } else {
+          await markFailureStage("parent-death-model-owner-unresolved");
         }
         throw new Error("native integration model listener survived supervisor death");
       }

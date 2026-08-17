@@ -55,6 +55,8 @@ const FAILURE_CODES = new Set([
   "integration-parent-death-model-owner-mismatch-failed",
   "integration-parent-death-capability-orphan-owner-failed",
   "integration-parent-death-model-orphan-owner-failed",
+  "integration-parent-death-capability-owner-unresolved-failed",
+  "integration-parent-death-model-owner-unresolved-failed",
   "integration-parent-death-runner-not-exited-failed",
   "integration-parent-death-capability-socket-failed",
   "integration-parent-death-model-socket-failed",

@@ -135,6 +135,14 @@ describe("Goose native integration evidence", () => {
         "integration-parent-death-capability-orphan-owner-failed",
       ],
       ["parent-death-model-orphan-owner", "integration-parent-death-model-orphan-owner-failed"],
+      [
+        "parent-death-capability-owner-unresolved",
+        "integration-parent-death-capability-owner-unresolved-failed",
+      ],
+      [
+        "parent-death-model-owner-unresolved",
+        "integration-parent-death-model-owner-unresolved-failed",
+      ],
       ["parent-death-runner-not-exited", "integration-parent-death-runner-not-exited-failed"],
       ["parent-death-capability-socket", "integration-parent-death-capability-socket-failed"],
       ["parent-death-model-socket", "integration-parent-death-model-socket-failed"],
