@@ -1919,11 +1919,14 @@ mod windows_native_tests {
                 &[event.0],
                 WorkerLaunchVariant::Production,
             );
-            if let Ok(worker) = result {
-                assert!(worker.was_assigned_before_resume());
-                assert!(worker.was_resumed_from_one_suspend());
+            match result {
+                Ok(worker) => {
+                    assert!(worker.was_assigned_before_resume());
+                    assert!(worker.was_resumed_from_one_suspend());
+                    Ok(())
+                }
+                Err(failure) => Err(failure),
             }
-            result.map(|_| ())
         };
 
         // Keep the test's environment mutation scoped to this single native probe. The parent
