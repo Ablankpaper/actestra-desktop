@@ -1,8 +1,73 @@
 # Project Status
 
-Last updated: 2026-08-17
+Last updated: 2026-08-18
 
 ## Current phase
+
+### 2026-08-18 P8.2b Ubuntu containment accepted on the exact PR implementation head
+
+Draft pull request
+[#68](https://github.com/Ablankpaper/actestra-desktop/pull/68) now has exact
+Ubuntu runtime-containment evidence for implementation head
+`e597d85abef885c2b6a78a61a4860d1180614bac`. Pull-request run
+[`32087808605`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32087808605)
+completed Ubuntu containment job
+[`95563851187`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32087808605/job/95563851187)
+successfully. The job independently built and admitted the exact
+`x86_64-unknown-linux-gnu` Goose Artifact, built and inspected the DEB,
+installed the root-owned package layout and AppArmor profile, re-admitted that
+installed package, ran the authenticated Linux Goose integration, passed the
+native containment acceptance, re-admitted the bound manifest, uploaded the
+bounded evidence, and removed the temporary package layout. Steps 9 through 19
+all completed successfully; in particular the containment, bound-manifest, and
+evidence-preservation steps 16, 17, and 18 are green.
+
+This run followed a fail-closed diagnostic run rather than concealing the
+earlier failure. Exact head
+`5bd6bd4ac1068d67366dc2c56c5b02b7be51ef0c`, run
+[`32086110390`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32086110390),
+and Ubuntu job `95558874746` reached the native acceptance and emitted the
+single closed stage `parent-death-readiness-failed`. Root-cause tracing showed
+that the intermediate child closed `death_pipe[0]` and `watch_pipe[1]` before
+creating `ready_pipe`; Linux then reused those available descriptor slots for
+the new pipe. The grandchild repeated the stale closes and could therefore
+close the new ready writer before reporting readiness. A TDD regression failed
+on those two stale closes, then passed after the minimal repair removed only
+the redundant grandchild closes. The focused probe file passed 22/22 and the
+four related containment files passed 60/60.
+
+Fresh local evidence for the corrected bytes is `bun run check` at exit 0:
+160 test files passed / 2 skipped, 1,730 tests passed / 9 skipped, followed by
+the P7 abuse, smoke-harness, product-boundary, frozen-foundation, downstream,
+and package gates. Formatting, lint (0 warnings/errors), typecheck, P8 contract,
+Electron SQLite, Rust formatting, and `git diff --check` also passed. The
+artifact-dependent local `goose:runner:test` command was not counted because
+this isolated worktree had no generated macOS runner manifest, and the local
+Linux cross-check stopped at the known missing `x86_64-linux-gnu-gcc` tool.
+Those local environment gaps are not substituted for native evidence; the
+successful Ubuntu job compiled and ran the exact Linux bytes.
+
+The success-only Artifact
+`p8-goose-containment-ubuntu-8122a771196596556b04e3e7e1d8003957dd2205`
+(GitHub Artifact `9307692493`) is present and unexpired. Its downloaded
+`containment-evidence.json` is `verified` for
+`x86_64-unknown-linux-gnu` and binds manifest SHA-256
+`a3d85832a17ef92947adedcc376b2a290ad0b7902bcec1d3b1692f537c339e07`,
+executable SHA-256
+`abdf2cb7cb75784a7824bb5e1dc512563cfc029e3d31a155c4594624c8b0aee3`,
+and probe SHA-256
+`ce317cf9673d860118975cc78f8c202e815756e31b24dc229cc902046ff6d6f1`.
+No `foundation/`, Renderer, preload, provider, persistence, or UI authority was
+changed by the repair.
+
+This accepts the Ubuntu native containment and authenticated runner-integration
+slice on the exact pull-request implementation head only. Pull request 68 is
+not merged, and this is not merged-main or clean-machine evidence. Windows
+runtime containment remains a separate open target; full Electron package
+journeys and the remaining P8.2 matrix obligations are also not established by
+this runner-only Artifact. Therefore cross-platform P8.2b, overall P8.2, P8.3,
+P8.4, candidate, signing/notarization, release, deployment, distribution,
+real-provider, clean-machine, and final user acceptance remain open.
 
 ### 2026-08-17 P8.2a native Goose build admission accepted on main
 
