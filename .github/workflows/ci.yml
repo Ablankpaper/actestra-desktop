@@ -63,7 +63,7 @@ jobs:
   goose-runner-windows:
     name: P8.2 Windows x64 Goose build probe
     runs-on: windows-2025
-    timeout-minutes: 35
+    timeout-minutes: 50
 
     steps:
       - name: Checkout

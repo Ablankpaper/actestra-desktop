@@ -79,7 +79,9 @@ describe("P8 native Goose build wiring", () => {
       expect(job, `missing CI job ${jobId}`).not.toBe("");
       expect(job).toContain(`name: ${jobName}`);
       expect(job).toContain(`runs-on: ${runner}`);
-      expect(job).toContain("timeout-minutes: 35");
+      expect(job).toContain(
+        `timeout-minutes: ${jobId === "goose-runner-windows" ? "50" : "35"}`,
+      );
       expect(job).toContain("actions/checkout@11d5960a326750d5838078e36cf38b85af677262");
       expect(job).toContain("actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020");
       expect(job).toContain("node-version: 24.13.0");
