@@ -156,6 +156,23 @@ describe("Goose native containment probe contract", () => {
     expect(parentDeathProbe).toContain("SIGTERM");
   });
 
+  it("does not close ready-pipe descriptors through stale inherited fd slots", () => {
+    const source = fs.readFileSync(linuxContainmentPath, "utf8");
+    const grandchildStart = source.indexOf("if grandchild == 0 {");
+    const grandchildEnd = source.indexOf(
+      "unsafe {\n            libc::close(ready_pipe[1]);",
+      grandchildStart,
+    );
+    expect(grandchildStart).toBeGreaterThanOrEqual(0);
+    expect(grandchildEnd).toBeGreaterThan(grandchildStart);
+    const grandchild = source.slice(grandchildStart, grandchildEnd);
+
+    // The parent closes these inherited descriptors before creating
+    // ready_pipe; closing the stale array slots here can alias ready_pipe.
+    expect(grandchild).not.toContain("libc::close(death_pipe[0])");
+    expect(grandchild).not.toContain("libc::close(watch_pipe[1])");
+  });
+
   it("classifies every parent-death probe branch with bounded diagnostics", () => {
     const source = fs.readFileSync(linuxContainmentPath, "utf8");
     const parentDeathProbe = source.slice(

@@ -923,8 +923,6 @@ fn run_parent_death_probe_with_failure() -> Result<(), ParentDeathProbeFailure> 
         if grandchild == 0 {
             unsafe {
                 libc::close(ready_pipe[0]);
-                libc::close(death_pipe[0]);
-                libc::close(watch_pipe[1]);
             }
             if libc::SIGTERM <= 0 || set_parent_death_signal().is_err() {
                 let _ = write_fd_all(ready_pipe[1], &[2]);
