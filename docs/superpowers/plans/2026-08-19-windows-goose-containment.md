@@ -32,7 +32,11 @@
 
 - [ ] **Step 1: Write the failing portable contract tests**
 
-Add tests for exact mode parsing, exact frame length/version/magic, rejection of unknown bits or trailing bytes, and safe metadata normalization. Start with this public shape:
+Create the new module with tests first. The tests must call the not-yet-defined
+`parse_role`, `encode_result`, `decode_result`, and `bounded_probe_metadata`
+functions so the first compile is genuinely red. Add tests for exact mode
+parsing, exact frame length/version/magic, rejection of unknown bits or
+trailing bytes, and safe metadata normalization. Start with this public shape:
 
 ```rust
 pub(crate) const WINDOWS_PROBE_CHILD_ARGUMENT: &str =
@@ -62,16 +66,16 @@ pub(crate) struct WindowsProbeResult {
 The encoded result must be a fixed byte array, not JSON. Reserve all unused
 bits as zero and reject them during decode.
 
-- [ ] **Step 2: Run the Rust tests and verify RED**
+- [ ] **Step 2: Run the Rust compile and verify RED**
 
 Run:
 
 ```bash
-cargo test --manifest-path workers/goose-runner/Cargo.toml --locked windows_contract
+cargo test --manifest-path workers/goose-runner/Cargo.toml --locked windows_contract --no-run
 ```
 
-Expected: compilation fails because `windows_contract` and its types do not
-exist.
+Expected: compilation fails on the undefined contract functions, proving the
+tests—not an empty filter—are the red phase.
 
 - [ ] **Step 3: Implement the minimal pure contract**
 
@@ -156,6 +160,11 @@ pub(crate) struct WindowsContainmentLaunch {
     pipes: WorkerPipeSet,
 }
 
+pub(crate) struct ProbeHandle {
+    // The HANDLE is private to windows_supervisor.rs. No raw handle crosses the
+    // containment module boundary.
+}
+
 pub(crate) struct WindowsContainmentObservation {
     pub(crate) app_container: bool,
     pub(crate) assigned_before_resume: bool,
@@ -168,11 +177,13 @@ pub(crate) fn launch_windows_containment_worker(
     executable: &Path,
     current_directory: &Path,
     child_argument: &str,
-    excluded_inheritable_handle: HANDLE,
+    excluded_handle: &ProbeHandle,
 ) -> Result<WindowsContainmentLaunch, WindowsContainmentFailure>;
 ```
 
-`WindowsContainmentLaunch` must provide bounded methods to write the fixed
+`ProbeHandle` is created and closed by `windows_supervisor.rs`; the
+containment orchestrator can only request that it be omitted from the exact
+handle list. `WindowsContainmentLaunch` must provide bounded methods to write the fixed
 request, read the fixed result, query the observation, wait for termination,
 and perform explicit cleanup. It must not expose the Job, token, SID, pipes, or
 raw handles to `containment/windows.rs`.
