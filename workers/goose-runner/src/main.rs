@@ -46,6 +46,18 @@ const LINUX_RUNTIME_ENVIRONMENT_KEYS: [&str; 5] = [
     "ACTESTRA_GOOSE_LINUX_WORKSPACE_ROOT",
 ];
 
+#[cfg(any(windows, test))]
+fn should_dispatch_windows_probe(arguments: &[String], probe_marker: Option<&str>) -> bool {
+    probe_marker == Some("1")
+        && !matches!(windows_control::WindowsMode::parse(arguments), Ok(Some(_)))
+}
+
+#[cfg(any(windows, test))]
+fn should_run_windows_containment_probe(arguments: &[String], probe_marker: Option<&str>) -> bool {
+    should_dispatch_windows_probe(arguments, probe_marker)
+        && matches!(windows_control::WindowsMode::parse(arguments), Ok(None))
+}
+
 #[cfg(target_os = "linux")]
 fn prepare_linux_runtime() -> Result<
     (
@@ -97,12 +109,24 @@ fn main() {
     #[cfg(windows)]
     let windows_arguments: Vec<String> = env::args().collect();
     #[cfg(windows)]
-    if env::var("ACTESTRA_GOOSE_CONTAINMENT_PROBE").as_deref() == Ok("1") {
+    if should_dispatch_windows_probe(
+        &windows_arguments,
+        env::var("ACTESTRA_GOOSE_CONTAINMENT_PROBE").ok().as_deref(),
+    ) {
         if let Some(exit_code) = containment::dispatch_windows_containment_role(&windows_arguments)
         {
             std::process::exit(exit_code);
         }
     }
+    #[cfg(windows)]
+    if should_run_windows_containment_probe(
+        &windows_arguments,
+        env::var("ACTESTRA_GOOSE_CONTAINMENT_PROBE").ok().as_deref(),
+    ) {
+        println!("{}", containment::run_containment_probe());
+        return;
+    }
+    #[cfg(not(windows))]
     if env::var("ACTESTRA_GOOSE_CONTAINMENT_PROBE").as_deref() == Ok("1") {
         println!("{}", containment::run_containment_probe());
         return;
@@ -198,6 +222,38 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(test)]
+    #[test]
+    fn probe_marker_does_not_intercept_production_windows_modes() {
+        let worker = vec![
+            "actestra-goose-runner.exe".to_string(),
+            "--actestra-windows-worker-v1".to_string(),
+        ];
+        let supervisor = vec![
+            "actestra-goose-runner.exe".to_string(),
+            "--actestra-windows-supervisor-v1".to_string(),
+        ];
+        let probe_child = vec![
+            "actestra-goose-runner.exe".to_string(),
+            "--actestra-windows-containment-child-v1".to_string(),
+        ];
+        let no_argument = vec!["actestra-goose-runner.exe".to_string()];
+
+        assert!(!should_dispatch_windows_probe(&worker, Some("1")));
+        assert!(!should_dispatch_windows_probe(&supervisor, Some("1")));
+        assert!(should_dispatch_windows_probe(&probe_child, Some("1")));
+        assert!(should_dispatch_windows_probe(&no_argument, Some("1")));
+        assert!(!should_dispatch_windows_probe(&probe_child, None));
+        assert!(!should_run_windows_containment_probe(
+            &probe_child,
+            Some("1")
+        ));
+        assert!(should_run_windows_containment_probe(
+            &no_argument,
+            Some("1")
+        ));
+    }
+
     #[cfg(target_os = "linux")]
     use super::containment::unix::current_virtual_size_bytes;
     #[cfg(target_os = "linux")]
