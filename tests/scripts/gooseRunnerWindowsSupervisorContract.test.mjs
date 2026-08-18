@@ -87,5 +87,8 @@ describe("Windows Goose supervisor source contract", () => {
     }
     expect(supervisor).toContain("GetLastError()");
     expect(supervisor).toContain("reason={reason}");
+    expect(supervisor).toContain("Other(u32)");
+    expect(supervisor).toContain("unclassified_win32_code");
+    expect(supervisor).toContain("win32_code={win32_code}");
   });
 });

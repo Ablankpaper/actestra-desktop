@@ -74,7 +74,7 @@ enum CreateProcessFailureReason {
     InvalidParameter,
     ElevationRequired,
     PrivilegeNotHeld,
-    Other,
+    Other(u32),
 }
 
 #[cfg(any(windows, test))]
@@ -90,7 +90,7 @@ impl CreateProcessFailureReason {
             87 => Self::InvalidParameter,
             740 => Self::ElevationRequired,
             1314 => Self::PrivilegeNotHeld,
-            _ => Self::Other,
+            _ => Self::Other(win32_code),
         }
     }
 
@@ -105,7 +105,7 @@ impl CreateProcessFailureReason {
             Self::InvalidParameter => "invalid-parameter",
             Self::ElevationRequired => "elevation-required",
             Self::PrivilegeNotHeld => "privilege-not-held",
-            Self::Other => "other",
+            Self::Other(_) => "other",
         }
     }
 }
@@ -142,6 +142,13 @@ impl WorkerLaunchFailureStage {
         match self {
             Self::CreateProcess(reason) => reason.code(),
             _ => "none",
+        }
+    }
+
+    fn unclassified_win32_code(self) -> Option<u32> {
+        match self {
+            Self::CreateProcess(CreateProcessFailureReason::Other(win32_code)) => Some(win32_code),
+            _ => None,
         }
     }
 }
@@ -690,7 +697,7 @@ mod tests {
             WorkerLaunchFailureStage::AttributeListInit,
             WorkerLaunchFailureStage::SecurityCapabilitiesAttribute,
             WorkerLaunchFailureStage::HandleListAttribute,
-            WorkerLaunchFailureStage::CreateProcess(CreateProcessFailureReason::Other),
+            WorkerLaunchFailureStage::CreateProcess(CreateProcessFailureReason::Other(u32::MAX)),
             WorkerLaunchFailureStage::AssignJob,
             WorkerLaunchFailureStage::QueryJobMembership,
             WorkerLaunchFailureStage::ResumeThread,
@@ -712,6 +719,10 @@ mod tests {
             stages.map(WorkerLaunchFailureStage::reason_code),
             ["none", "none", "none", "none", "other", "none", "none", "none"]
         );
+        assert_eq!(
+            stages.map(WorkerLaunchFailureStage::unclassified_win32_code),
+            [None, None, None, None, Some(u32::MAX), None, None, None]
+        );
         for code in stages.map(WorkerLaunchFailureStage::code) {
             assert!(code
                 .bytes()
@@ -731,7 +742,7 @@ mod tests {
             (87, CreateProcessFailureReason::InvalidParameter),
             (740, CreateProcessFailureReason::ElevationRequired),
             (1314, CreateProcessFailureReason::PrivilegeNotHeld),
-            (u32::MAX, CreateProcessFailureReason::Other),
+            (u32::MAX, CreateProcessFailureReason::Other(u32::MAX)),
         ];
         for (win32_code, expected) in classifications {
             let reason = CreateProcessFailureReason::classify(win32_code);
@@ -869,6 +880,11 @@ mod windows_native_tests {
             .unwrap_or_else(|failure| {
                 let stage = failure.code();
                 let reason = failure.reason_code();
+                if let Some(win32_code) = failure.unclassified_win32_code() {
+                    panic!(
+                        "worker launch failed at stage={stage} reason={reason} win32_code={win32_code}"
+                    );
+                }
                 panic!("worker launch failed at stage={stage} reason={reason}");
             });
 
