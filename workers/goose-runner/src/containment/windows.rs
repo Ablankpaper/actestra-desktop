@@ -92,6 +92,7 @@ enum WindowsProbeFailure {
     Job,
     Network,
     ParentDeath,
+    ParentDeathFrame,
     Process,
     ProfileCleanup,
     Resource,
@@ -108,6 +109,7 @@ impl WindowsProbeFailure {
             Self::Job => "windows-job-evidence-incomplete",
             Self::Network => "windows-network-evidence-incomplete",
             Self::ParentDeath => "windows-parent-death-evidence-incomplete",
+            Self::ParentDeathFrame => "windows-parent-death-frame-invalid",
             Self::Process => "windows-process-evidence-incomplete",
             Self::ProfileCleanup => "windows-profile-cleanup-failed",
             Self::Resource => "windows-resource-evidence-incomplete",
@@ -490,7 +492,7 @@ fn run_windows_parent_death_probe() -> WindowsParentDeathOutcome {
             return stop_intermediate_before_worker_launch(
                 &mut intermediate,
                 &mut private_root_cleanup,
-                WindowsProbeFailure::ChildFrame,
+                WindowsProbeFailure::ParentDeathFrame,
             );
         }
     };
@@ -503,7 +505,7 @@ fn run_windows_parent_death_probe() -> WindowsParentDeathOutcome {
         return stop_intermediate_before_worker_launch(
             &mut intermediate,
             &mut private_root_cleanup,
-            WindowsProbeFailure::ChildFrame,
+            WindowsProbeFailure::ParentDeathFrame,
         );
     }
     let Some(mut output) = output else {
@@ -511,7 +513,7 @@ fn run_windows_parent_death_probe() -> WindowsParentDeathOutcome {
         let _ = intermediate.wait();
         let profile_removed = remove_windows_probe_profile(&attempt_id).is_ok();
         return WindowsParentDeathOutcome {
-            result: Err(WindowsProbeFailure::ChildFrame),
+            result: Err(WindowsProbeFailure::ParentDeathFrame),
             cleanup: WindowsCleanupReceipt {
                 worker_terminal: false,
                 profile_removed,
@@ -552,7 +554,7 @@ fn run_windows_parent_death_probe() -> WindowsParentDeathOutcome {
         private_root_removed: private_root_cleanup.remove_now(),
     };
     let result = if ready.is_none() || !ready_reader_complete {
-        Err(WindowsProbeFailure::ChildFrame)
+        Err(WindowsProbeFailure::ParentDeathFrame)
     } else if worker_was_running && intermediate_killed && intermediate_terminal && worker_terminal
     {
         Ok(())
@@ -794,6 +796,10 @@ mod tests {
             (
                 WindowsProbeFailure::ParentDeath,
                 "windows-parent-death-evidence-incomplete",
+            ),
+            (
+                WindowsProbeFailure::ParentDeathFrame,
+                "windows-parent-death-frame-invalid",
             ),
             (
                 WindowsProbeFailure::Process,

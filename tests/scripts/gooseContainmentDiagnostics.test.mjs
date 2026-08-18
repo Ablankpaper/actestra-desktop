@@ -15,6 +15,7 @@ describe("Goose containment probe diagnostics", () => {
       "windows-job-evidence-incomplete",
       "windows-network-evidence-incomplete",
       "windows-parent-death-evidence-incomplete",
+      "windows-parent-death-frame-invalid",
       "windows-process-evidence-incomplete",
       "windows-profile-cleanup-failed",
       "windows-resource-evidence-incomplete",

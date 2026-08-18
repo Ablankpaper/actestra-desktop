@@ -62,6 +62,7 @@ export const GOOSE_CONTAINMENT_PROBE_DIAGNOSTIC_CODES = Object.freeze([
   "windows-job-evidence-incomplete",
   "windows-network-evidence-incomplete",
   "windows-parent-death-evidence-incomplete",
+  "windows-parent-death-frame-invalid",
   "windows-process-evidence-incomplete",
   "windows-profile-cleanup-failed",
   "windows-resource-evidence-incomplete",

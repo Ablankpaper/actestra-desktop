@@ -59,4 +59,19 @@ describe("Windows Goose containment source contract", () => {
     expect(probe).toContain("wait_for_exit");
     expect(probe).not.toContain("TerminateJobObject");
   });
+
+  it("separates hostile-result framing from parent-death framing", async () => {
+    const probe = await readFile(probePath, "utf8");
+    const parentDeathStart = probe.indexOf("fn run_windows_parent_death_probe()");
+    const hostileStart = probe.indexOf("fn collect_windows_hostile_evidence()");
+    const parentDeath = probe.slice(parentDeathStart, hostileStart);
+    const hostile = probe.slice(hostileStart);
+
+    expect(parentDeathStart).toBeGreaterThan(-1);
+    expect(hostileStart).toBeGreaterThan(parentDeathStart);
+    expect(parentDeath).toContain("WindowsProbeFailure::ParentDeathFrame");
+    expect(parentDeath).not.toContain("WindowsProbeFailure::ChildFrame");
+    expect(hostile).toContain("WindowsProbeFailure::ChildFrame");
+    expect(probe).toContain('"windows-parent-death-frame-invalid"');
+  });
 });
