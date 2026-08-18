@@ -9,6 +9,7 @@ import {
   GOOSE_CONTAINMENT_PROBE_DIAGNOSTIC_CODES,
   validateGooseContainmentRecord,
 } from "./gooseContainmentEvidence.mjs";
+import { LINUX_INSTALLED_GOOSE_EXECUTABLE_PATH } from "./gooseContainmentProbeExecutable.mjs";
 import { validateGooseNativeIntegrationEvidence } from "./gooseNativeIntegrationEvidence.mjs";
 
 const MAX_OUTPUT_BYTES = 64 * 1024;
@@ -37,6 +38,10 @@ const FAILURE_CODES = new Set([
   "manifest-invalid",
   "manifest-too-large",
   "probe-failed",
+  "probe-executable-path-invalid",
+  "probe-executable-invalid",
+  "probe-executable-metadata-invalid",
+  "probe-executable-digest-mismatch",
   "rustc-unavailable",
   "target-unavailable",
   "target-unsupported",
@@ -323,6 +328,8 @@ async function main() {
   let evidenceRoot;
   try {
     const binderArguments = [];
+    const probeArguments =
+      targetTriple === "x86_64-unknown-linux-gnu" ? [LINUX_INSTALLED_GOOSE_EXECUTABLE_PATH] : [];
     if (targetTriple === "x86_64-unknown-linux-gnu") {
       let integrationEvidencePath;
       if (providedEvidencePath !== undefined && providedEvidenceRoot !== undefined) {
@@ -351,12 +358,13 @@ async function main() {
       "record-goose-runner-containment.mjs",
       targetTriple,
       binding.artifactDirectory,
-      binderArguments,
+      [...binderArguments, ...probeArguments],
     );
     runBoundedNodeScript(
       "test-goose-runner-containment.mjs",
       targetTriple,
       binding.artifactDirectory,
+      probeArguments,
     );
     const evidence = await readVerifiedArtifact(targetTriple);
     process.stdout.write(`${JSON.stringify({ status: "verified", ...evidence })}\n`);

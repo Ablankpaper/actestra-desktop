@@ -12,6 +12,7 @@ import {
   validateGooseContainmentPrimitiveEvidence,
   validateGooseContainmentRecord,
 } from "./gooseContainmentEvidence.mjs";
+import { resolveGooseContainmentProbeExecutable } from "./gooseContainmentProbeExecutable.mjs";
 import { validateGooseNativeIntegrationEvidence } from "./gooseNativeIntegrationEvidence.mjs";
 
 const MAX_MANIFEST_BYTES = 1024 * 1024;
@@ -63,6 +64,10 @@ const FAILURE_CODES = new Set([
   "manifest-invalid",
   "manifest-too-large",
   "probe-failed",
+  "probe-executable-path-invalid",
+  "probe-executable-invalid",
+  "probe-executable-metadata-invalid",
+  "probe-executable-digest-mismatch",
   "rustc-unavailable",
   "source-commit-invalid",
   "target-unavailable",
@@ -240,6 +245,14 @@ async function bindContainment() {
   const actualExecutableSha256 = digest(await readFile(executablePath));
   if (actualExecutableSha256 !== executableSha256) throw new Error("executable-digest-mismatch");
 
+  const probeExecutablePath = await resolveGooseContainmentProbeExecutable({
+    targetTriple,
+    artifactExecutablePath: executablePath,
+    artifactExecutableSha256: executableSha256,
+    artifactExecutableSize: executableSize,
+    requestedExecutablePath: process.argv[6],
+  });
+
   const probeSource = await readFile(path.join(repositoryRoot, sourceRelativePath));
   const probeSha256 = digest(probeSource);
 
@@ -267,7 +280,7 @@ async function bindContainment() {
     return;
   }
 
-  const result = spawnSync(executablePath, [], {
+  const result = spawnSync(probeExecutablePath, [], {
     cwd: artifactDirectory,
     encoding: "utf8",
     env: {

@@ -10,6 +10,7 @@ import {
   validateGooseContainmentEvidence,
   validateGooseContainmentPrimitiveEvidence,
 } from "./gooseContainmentEvidence.mjs";
+import { resolveGooseContainmentProbeExecutable } from "./gooseContainmentProbeExecutable.mjs";
 
 const MAX_PROBE_OUTPUT_BYTES = 64 * 1024;
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -65,7 +66,14 @@ if (probeSourceRelativePath === undefined) {
   if (actualExecutableSha256 !== executableSha256) {
     throw new Error("containment probe executable digest differs");
   }
-  const result = spawnSync(executablePath, [], {
+  const probeExecutablePath = await resolveGooseContainmentProbeExecutable({
+    targetTriple,
+    artifactExecutablePath: executablePath,
+    artifactExecutableSha256: executableSha256,
+    artifactExecutableSize: executableStat.size,
+    requestedExecutablePath: process.argv[4],
+  });
+  const result = spawnSync(probeExecutablePath, [], {
     cwd: artifactDirectory,
     encoding: "utf8",
     env: {

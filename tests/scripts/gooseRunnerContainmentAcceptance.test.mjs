@@ -126,6 +126,10 @@ describe("P8 native Goose containment acceptance gate", () => {
     expect(acceptance).toContain("sourceCommit: manifest?.provenance?.actestraCommit");
     expect(acceptance).toContain("executableSha256,");
     expect(acceptance).toContain("probeSha256: currentProbeSha256");
+    expect(acceptance).toContain("LINUX_INSTALLED_GOOSE_EXECUTABLE_PATH");
+    expect(acceptance).toContain("[...binderArguments, ...probeArguments]");
+    expect(binder).toContain("requestedExecutablePath: process.argv[6]");
+    expect(probeRunner).toContain("requestedExecutablePath: process.argv[4]");
   });
 
   it("surfaces only closed native resource diagnostics across the acceptance boundary", () => {
