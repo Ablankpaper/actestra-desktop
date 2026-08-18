@@ -1881,4 +1881,120 @@ mod windows_native_tests {
             "Windows production launch remains unavailable; inspect sanitized matrix output"
         );
     }
+
+    #[test]
+    fn diagnoses_the_local_appdata_requirement_for_inherited_appcontainer_environment() {
+        let original_local_app_data = std::env::var_os("LOCALAPPDATA");
+        assert!(
+            original_local_app_data.is_some(),
+            "the native Windows probe requires the host LOCALAPPDATA value"
+        );
+
+        let mut attributes = SECURITY_ATTRIBUTES {
+            nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
+            lpSecurityDescriptor: std::ptr::null_mut(),
+            bInheritHandle: 1,
+        };
+        // SAFETY: attributes is valid for the call and the returned event is wrapped immediately.
+        let event = TestHandle(unsafe { CreateEventW(&raw mut attributes, 1, 0, null()) });
+        assert!(!event.0.is_null());
+        let windows_directory = trusted_windows_directory()
+            .expect("the trusted Windows directory must be available to the native probe");
+        let mut command = PathBuf::from(OsString::from_wide(&windows_directory));
+        command.push("System32");
+        command.push("cmd.exe");
+        let current_directory = command
+            .parent()
+            .expect("the command executable must have an explicit parent directory");
+
+        let launch = || {
+            let attempt_id = unique_attempt_id();
+            let profile = AppContainerProfile::create(&attempt_id)
+                .expect("diagnostic AppContainer profile setup must succeed");
+            let job = JobObject::create().expect("diagnostic Job Object setup must succeed");
+            let result = job.launch_suspended_worker_with_variant(
+                &profile,
+                &command,
+                current_directory,
+                &[event.0],
+                WorkerLaunchVariant::Production,
+            );
+            if let Ok(worker) = result {
+                assert!(worker.was_assigned_before_resume());
+                assert!(worker.was_resumed_from_one_suspend());
+            }
+            result.map(|_| ())
+        };
+
+        // Keep the test's environment mutation scoped to this single native probe. The parent
+        // process normally supplies LOCALAPPDATA; removing it isolates the variable that the
+        // AppContainer environment-rewrite path resolves during CreateProcessW.
+        std::env::remove_var("LOCALAPPDATA");
+        let missing = launch();
+        println!(
+            "WINDOWS_ENVIRONMENT_DIAGNOSTIC variant=missing-localappdata status={} reason={} win32_code={}",
+            if missing.is_ok() { "success" } else { "failure" },
+            missing
+                .as_ref()
+                .map_or("none", |failure| failure.reason_code()),
+            missing
+                .as_ref()
+                .and_then(|failure| failure.win32_code())
+                .unwrap_or(0)
+        );
+        let missing_is_expected = matches!(
+            missing,
+            Err(WorkerLaunchFailureStage::CreateProcess(
+                CreateProcessFailureReason::EnvironmentVariableNotFound
+            ))
+        );
+
+        let private_local_app_data = std::env::temp_dir().join(format!(
+            "actestra-goose-localappdata-{}",
+            unique_attempt_id()
+        ));
+        std::fs::create_dir_all(&private_local_app_data)
+            .expect("the diagnostic private LOCALAPPDATA directory must be creatable");
+        std::env::set_var("LOCALAPPDATA", &private_local_app_data);
+        let private = launch();
+        println!(
+            "WINDOWS_ENVIRONMENT_DIAGNOSTIC variant=private-localappdata status={} reason={} win32_code={}",
+            if private.is_ok() { "success" } else { "failure" },
+            private
+                .as_ref()
+                .map_or("none", |failure| failure.reason_code()),
+            private
+                .as_ref()
+                .and_then(|failure| failure.win32_code())
+                .unwrap_or(0)
+        );
+        let private_succeeded = private.is_ok();
+
+        if let Some(value) = original_local_app_data {
+            std::env::set_var("LOCALAPPDATA", value);
+        } else {
+            std::env::remove_var("LOCALAPPDATA");
+        }
+        let restored = launch();
+        println!(
+            "WINDOWS_ENVIRONMENT_DIAGNOSTIC variant=restored-localappdata status={} reason={} win32_code={}",
+            if restored.is_ok() { "success" } else { "failure" },
+            restored
+                .as_ref()
+                .map_or("none", |failure| failure.reason_code()),
+            restored
+                .as_ref()
+                .and_then(|failure| failure.win32_code())
+                .unwrap_or(0)
+        );
+        assert!(restored.is_ok());
+
+        let _ = std::fs::remove_dir_all(private_local_app_data);
+        assert!(missing_is_expected);
+        assert!(
+            private_succeeded,
+            "a private LOCALAPPDATA value must satisfy AppContainer environment creation"
+        );
+        assert!(restored.is_ok());
+    }
 }
