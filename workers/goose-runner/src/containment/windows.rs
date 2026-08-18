@@ -1,6 +1,9 @@
 use super::parse_resource_limits_with;
 use std::env;
 
+#[cfg(windows)]
+use crate::windows_supervisor::{launch_windows_containment_worker, ProbeHandle};
+
 pub(crate) fn apply_resource_limits() -> Result<(), ()> {
     parse_resource_limits_with(|key| env::var(key).ok())?;
     Err(())

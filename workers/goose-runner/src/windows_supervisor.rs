@@ -1,6 +1,10 @@
 pub(crate) const WINDOWS_SETUP_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_NETWORK_POLICY_SETUP_FAILED";
 pub(crate) const WINDOWS_RESOURCE_FAILURE_MARKER: &str =
     "ACTESTRA_GOOSE_RESOURCE_LIMIT_SETUP_FAILED";
+#[cfg(any(windows, test))]
+use crate::containment::windows_contract::{
+    WINDOWS_PROBE_CHILD_ARGUMENT, WINDOWS_PROBE_PARENT_ARGUMENT,
+};
 #[cfg(windows)]
 const WINDOWS_WORKER_READY_MARKER: &[u8] = b"ACTESTRA_GOOSE_WINDOWS_WORKER_READY\n";
 
@@ -51,7 +55,7 @@ use windows_sys::Win32::System::Pipes::CreatePipe;
 use windows_sys::Win32::System::SystemInformation::GetWindowsDirectoryW;
 #[cfg(windows)]
 use windows_sys::Win32::System::Threading::{
-    CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcess,
+    CreateEventW, CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcess,
     InitializeProcThreadAttributeList, OpenProcessToken, ResumeThread, TerminateProcess,
     UpdateProcThreadAttribute, WaitForSingleObject, CREATE_NO_WINDOW, CREATE_SUSPENDED,
     CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT, PROCESS_INFORMATION,
@@ -116,10 +120,22 @@ fn build_minimal_windows_environment_block(windows_directory: &[u16]) -> Result<
 }
 
 #[cfg(any(windows, test))]
-fn build_worker_command_line() -> Vec<u16> {
-    format!("{WINDOWS_WORKER_PROGRAM_NAME} {WINDOWS_WORKER_MODE_ARGUMENT}\0")
+fn build_command_line_for_argument(argument: &str) -> Result<Vec<u16>, ()> {
+    if !matches!(
+        argument,
+        WINDOWS_WORKER_MODE_ARGUMENT | WINDOWS_PROBE_CHILD_ARGUMENT | WINDOWS_PROBE_PARENT_ARGUMENT
+    ) {
+        return Err(());
+    }
+    Ok(format!("{WINDOWS_WORKER_PROGRAM_NAME} {argument}\0")
         .encode_utf16()
-        .collect()
+        .collect())
+}
+
+#[cfg(any(windows, test))]
+fn build_worker_command_line() -> Vec<u16> {
+    build_command_line_for_argument(WINDOWS_WORKER_MODE_ARGUMENT)
+        .expect("the production Windows worker argument must be accepted")
 }
 
 #[cfg(test)]
@@ -680,6 +696,116 @@ impl Drop for WorkerProcess {
 }
 
 #[cfg(windows)]
+pub(crate) struct ProbeHandle {
+    handle: HANDLE,
+}
+
+#[cfg(windows)]
+impl ProbeHandle {
+    pub(crate) fn create() -> Result<Self, ()> {
+        let mut attributes = SECURITY_ATTRIBUTES {
+            nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
+            lpSecurityDescriptor: null_mut(),
+            bInheritHandle: 1,
+        };
+        // SAFETY: attributes is initialized, the event has no name, and the returned handle is
+        // immediately owned by ProbeHandle.
+        let handle = unsafe { CreateEventW(&raw mut attributes, 1, 0, null()) };
+        if handle.is_null() || handle == INVALID_HANDLE_VALUE {
+            return Err(());
+        }
+        Ok(Self { handle })
+    }
+}
+
+#[cfg(windows)]
+impl Drop for ProbeHandle {
+    fn drop(&mut self) {
+        // SAFETY: this wrapper owns the event handle created by ProbeHandle::create.
+        unsafe { CloseHandle(self.handle) };
+    }
+}
+
+#[cfg(windows)]
+pub(crate) struct WindowsContainmentLaunch {
+    profile: AppContainerProfile,
+    job: JobObject,
+    worker: WorkerProcess,
+    pipes: WorkerPipeSet,
+}
+
+#[cfg(windows)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct WindowsContainmentObservation {
+    pub(crate) app_container: bool,
+    pub(crate) assigned_before_resume: bool,
+    pub(crate) resumed_once: bool,
+    pub(crate) exact_job_limits: bool,
+}
+
+#[cfg(windows)]
+impl WindowsContainmentLaunch {
+    pub(crate) fn observation(&self) -> Result<WindowsContainmentObservation, ()> {
+        let mut token: HANDLE = null_mut();
+        // SAFETY: the Worker process handle is live while this owner exists and token is an out
+        // pointer closed before the function returns.
+        if unsafe { OpenProcessToken(self.worker.process_handle(), TOKEN_QUERY, &mut token) } == 0
+            || token.is_null()
+        {
+            return Err(());
+        }
+        let mut is_app_container = 0_u32;
+        let mut return_length = 0_u32;
+        // SAFETY: token is live and the output buffer exactly matches TokenIsAppContainer.
+        let queried = unsafe {
+            GetTokenInformation(
+                token,
+                TokenIsAppContainer,
+                (&raw mut is_app_container).cast::<c_void>(),
+                size_of::<u32>() as u32,
+                &mut return_length,
+            )
+        } != 0;
+        // SAFETY: token was opened above and is not retained.
+        unsafe { CloseHandle(token) };
+        if !queried {
+            return Err(());
+        }
+        Ok(WindowsContainmentObservation {
+            app_container: is_app_container == 1,
+            assigned_before_resume: self.worker.was_assigned_before_resume()
+                && self.job.contains_process(self.worker.process_handle())?,
+            resumed_once: self.worker.was_resumed_from_one_suspend(),
+            exact_job_limits: self.job.query_back()?.is_exact(),
+        })
+    }
+
+    pub(crate) fn retained_profile_name(&self) -> &str {
+        self.profile.name()
+    }
+
+    pub(crate) fn retained_parent_pipe_count(&self) -> usize {
+        [
+            self.pipes.supervisor_stdin,
+            self.pipes.supervisor_stdout,
+            self.pipes.supervisor_stderr,
+        ]
+        .iter()
+        .filter(|handle| !handle.is_null() && **handle != INVALID_HANDLE_VALUE)
+        .count()
+    }
+}
+
+#[cfg(windows)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum WindowsContainmentFailure {
+    Profile,
+    Job,
+    Pipes,
+    WorkerLaunch,
+}
+
+#[cfg(windows)]
 impl JobObject {
     fn create() -> Result<Self, ()> {
         // SAFETY: a null security descriptor and name create a private, non-inheritable Job
@@ -845,6 +971,28 @@ impl JobObject {
         stdio: Option<[HANDLE; 3]>,
         variant: WorkerLaunchVariant,
     ) -> Result<WorkerProcess, WorkerLaunchFailureStage> {
+        self.launch_suspended_worker_with_variant_and_stdio_and_argument(
+            profile,
+            executable,
+            current_directory,
+            inherited_handles,
+            stdio,
+            variant,
+            WINDOWS_WORKER_MODE_ARGUMENT,
+        )
+    }
+
+    #[cfg(windows)]
+    fn launch_suspended_worker_with_variant_and_stdio_and_argument(
+        &self,
+        profile: &AppContainerProfile,
+        executable: &Path,
+        current_directory: &Path,
+        inherited_handles: &[HANDLE],
+        stdio: Option<[HANDLE; 3]>,
+        variant: WorkerLaunchVariant,
+        command_argument: &str,
+    ) -> Result<WorkerProcess, WorkerLaunchFailureStage> {
         if inherited_handles.is_empty()
             || inherited_handles.iter().any(|handle| {
                 handle.is_null()
@@ -888,7 +1036,8 @@ impl JobObject {
             .collect();
         // lpApplicationName keeps image resolution bound to the admitted absolute executable.
         // argv[0] is a fixed non-secret basename so WindowsMode still receives the mode at argv[1].
-        let mut command_line_wide = build_worker_command_line();
+        let mut command_line_wide = build_command_line_for_argument(command_argument)
+            .map_err(|()| WorkerLaunchFailureStage::InputValidation)?;
 
         let security_capabilities = profile.security_capabilities();
         let attribute_count =
@@ -1147,6 +1296,48 @@ impl Drop for WorkerPipeSet {
             }
         }
     }
+}
+
+#[cfg(windows)]
+pub(crate) fn launch_windows_containment_worker(
+    attempt_id: &str,
+    executable: &Path,
+    current_directory: &Path,
+    child_argument: &str,
+    excluded_handle: &ProbeHandle,
+) -> Result<WindowsContainmentLaunch, WindowsContainmentFailure> {
+    if child_argument != WINDOWS_PROBE_CHILD_ARGUMENT || excluded_handle.handle.is_null() {
+        return Err(WindowsContainmentFailure::WorkerLaunch);
+    }
+    let profile =
+        AppContainerProfile::create(attempt_id).map_err(|()| WindowsContainmentFailure::Profile)?;
+    let job = JobObject::create().map_err(|()| WindowsContainmentFailure::Job)?;
+    let mut pipes = WorkerPipeSet::create().map_err(|()| WindowsContainmentFailure::Pipes)?;
+    let inherited_handles = pipes.inherited_handles();
+    if inherited_handles
+        .iter()
+        .any(|handle| *handle == excluded_handle.handle)
+    {
+        return Err(WindowsContainmentFailure::WorkerLaunch);
+    }
+    let worker = job
+        .launch_suspended_worker_with_variant_and_stdio_and_argument(
+            &profile,
+            executable,
+            current_directory,
+            &inherited_handles,
+            Some(pipes.stdio()),
+            WorkerLaunchVariant::Production,
+            child_argument,
+        )
+        .map_err(|_| WindowsContainmentFailure::WorkerLaunch)?;
+    pipes.close_worker_endpoints();
+    Ok(WindowsContainmentLaunch {
+        profile,
+        job,
+        worker,
+        pipes,
+    })
 }
 
 #[cfg(windows)]
@@ -1765,6 +1956,42 @@ mod windows_native_tests {
             | JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS
             | JOB_OBJECT_UILIMIT_EXITWINDOWS;
         assert_eq!(configured.ui.UIRestrictionsClass, required_ui_restrictions);
+    }
+
+    #[test]
+    fn containment_launch_reuses_the_production_worker_boundary() {
+        let excluded_handle =
+            ProbeHandle::create().expect("the excluded probe handle must be created");
+        let windows_directory = trusted_windows_directory()
+            .expect("the trusted Windows directory must be available to the native probe");
+        let mut executable = PathBuf::from(OsString::from_wide(&windows_directory));
+        executable.push("System32");
+        executable.push("cmd.exe");
+        let current_directory = executable
+            .parent()
+            .expect("the probe executable must have an absolute parent");
+        let attempt_id = unique_attempt_id();
+        let launch = launch_windows_containment_worker(
+            &attempt_id,
+            &executable,
+            current_directory,
+            WINDOWS_PROBE_CHILD_ARGUMENT,
+            &excluded_handle,
+        )
+        .expect("the containment seam must launch through the production boundary");
+        let observation = launch
+            .observation()
+            .expect("the containment boundary must be observable without raw handles");
+
+        assert!(observation.app_container);
+        assert!(observation.assigned_before_resume);
+        assert!(observation.resumed_once);
+        assert!(observation.exact_job_limits);
+        assert_eq!(
+            launch.retained_profile_name(),
+            format!("Actestra.Goose.{attempt_id}")
+        );
+        assert_eq!(launch.retained_parent_pipe_count(), 3);
     }
 
     #[test]
