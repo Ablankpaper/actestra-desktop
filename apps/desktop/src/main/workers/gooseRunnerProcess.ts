@@ -126,6 +126,7 @@ export interface GooseRunnerPreparedBridge {
   readonly modelBinding: GooseRunnerModelBinding;
   readonly capabilitySocketPath: string;
   readonly modelSocketPath: string;
+  readonly windows?: GooseRunnerWindowsBridgeEnvironment;
   close(): Promise<void>;
 }
 
@@ -135,6 +136,12 @@ export interface GooseRunnerLinuxBridgeEnvironment {
   readonly capabilityPort: number;
   readonly modelPort: number;
   readonly workspaceRoot: string;
+}
+
+export interface GooseRunnerWindowsBridgeEnvironment {
+  readonly capabilityPipeName: string;
+  readonly modelPipeName: string;
+  readonly attemptLease: string;
 }
 
 export type GooseRunnerBridgeFactory = (
@@ -292,7 +299,8 @@ export function assertGooseAcpSpawnOptions(
   if (
     options.executableAuthority !== undefined &&
     options.executableAuthority !== "attempt-private" &&
-    options.executableAuthority !== "linux-package"
+    options.executableAuthority !== "linux-package" &&
+    options.executableAuthority !== "windows-supervisor"
   ) {
     throw new GooseRunnerProcessError("invalid-options", "Goose executable authority is invalid");
   }
@@ -507,7 +515,8 @@ function validatePreparedBridge(
   }
   const keys = Reflect.ownKeys(value);
   if (
-    keys.length !== 5 ||
+    keys.length < 5 ||
+    keys.length > 6 ||
     keys.some(
       (key) =>
         typeof key !== "string" ||
@@ -516,6 +525,7 @@ function validatePreparedBridge(
           "modelBinding",
           "capabilitySocketPath",
           "modelSocketPath",
+          "windows",
           "close",
         ].includes(key),
     )
@@ -528,6 +538,7 @@ function validatePreparedBridge(
   const capabilityProxyUrl = value.capabilityProxyUrl;
   const capabilitySocketPath = value.capabilitySocketPath;
   const modelSocketPath = value.modelSocketPath;
+  const windows = value.windows;
   const close = value.close;
   if (
     typeof capabilityProxyUrl !== "string" ||
@@ -582,8 +593,52 @@ function validatePreparedBridge(
     modelBinding: modelBinding.binding,
     capabilitySocketPath,
     modelSocketPath,
+    ...(windows === undefined ? {} : { windows: validateWindowsBridgeEnvironment(windows) }),
     close: close as () => Promise<void>,
   });
+}
+
+function validateWindowsBridgeEnvironment(value: unknown): GooseRunnerWindowsBridgeEnvironment {
+  if (!isRecord(value)) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose Windows bridge environment must be an object",
+    );
+  }
+  const keys = Reflect.ownKeys(value);
+  if (
+    keys.length !== 3 ||
+    keys.some(
+      (key) =>
+        typeof key !== "string" ||
+        !["attemptLease", "capabilityPipeName", "modelPipeName"].includes(key),
+    )
+  ) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose Windows bridge environment contains unsupported fields",
+    );
+  }
+  const { capabilityPipeName, modelPipeName, attemptLease } = value;
+  const validPipeName = (pipeName: unknown): pipeName is string =>
+    typeof pipeName === "string" &&
+    /^\\\\\.\\pipe\\LOCAL\\Actestra\.Goose\.[A-Za-z0-9._-]{16,128}$/.test(pipeName) &&
+    Buffer.byteLength(pipeName, "utf8") <= 180;
+  if (
+    !validPipeName(capabilityPipeName) ||
+    !validPipeName(modelPipeName) ||
+    capabilityPipeName === modelPipeName ||
+    typeof attemptLease !== "string" ||
+    attemptLease.length < 32 ||
+    attemptLease.length > 256 ||
+    !/^[A-Za-z0-9._~-]+$/.test(attemptLease)
+  ) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose Windows bridge environment is invalid",
+    );
+  }
+  return Object.freeze({ capabilityPipeName, modelPipeName, attemptLease });
 }
 
 function validateLinuxBridgeEnvironment(
@@ -1010,7 +1065,7 @@ async function preparePrivateRoot(
   try {
     const workingDirectory = path.join(root, "work");
     const directories = ["config", "data", "state", "home", "tmp", "work", "bridge"];
-    if (executableAuthority === "attempt-private") directories.push("bin");
+    if (executableAuthority !== "linux-package") directories.push("bin");
     await Promise.all(directories.map((name) => mkdir(path.join(root, name), { mode: 0o700 })));
     let executablePath: string;
     if (executableAuthority === "linux-package") {
@@ -1182,6 +1237,12 @@ export async function openGooseRunnerHandshake(
       "Linux Goose runtime requires one prepared bridge and admitted workspace",
     );
   }
+  if (runtimeTarget.platform === "win32" && options.prepareBridge === undefined) {
+    throw new GooseRunnerProcessError(
+      "network-policy-unavailable",
+      "Windows Goose runtime requires the exact admitted named-pipe bridge contract",
+    );
+  }
   let prepared: GooseRunnerPreparedRoot | undefined;
   let bridge: GooseRunnerPreparedBridge | undefined;
   let transport: GooseAcpTransport | undefined;
@@ -1206,6 +1267,12 @@ export async function openGooseRunnerHandshake(
           );
         }
         throw error;
+      }
+      if (runtimeTarget.platform === "win32" && bridge.windows === undefined) {
+        throw new GooseRunnerProcessError(
+          "network-policy-unavailable",
+          "Windows Goose runtime requires the exact admitted named-pipe bridge contract",
+        );
       }
     }
     const resourceBudget = freezeWorkerResourceBudget(GOOSE_WORKER_RESOURCE_PROFILE);

@@ -39,16 +39,14 @@ describe("P8.2b Linux authenticated Goose integration gate", () => {
     expect(result.stderr).toBe("Goose native integration integration-target-unsupported\n");
   });
 
-  it("admits only attempt-private Darwin and package-owned Linux runtimes", () => {
+  it("admits only attempt-private Darwin, package-owned Linux, and supervisor-owned Windows runtimes", () => {
     const target = read("apps/desktop/src/main/workers/gooseRunnerTarget.ts");
     const processSource = read("apps/desktop/src/main/workers/gooseRunnerProcess.ts");
 
-    expect(target).toContain(
-      'target?.platform === "darwin" || target?.platform === "linux" ? target : undefined',
-    );
+    expect(target).toContain('target?.platform === "win32"');
     expect(target).toContain('if (platform === "darwin") return "attempt-private"');
     expect(target).toContain('if (platform === "linux") return "linux-package"');
-    expect(target).not.toContain('if (platform === "win32")');
+    expect(target).toContain('if (platform === "win32") return "windows-supervisor"');
     expect(processSource).toContain("const platform = dependencies.platform ?? process.platform");
     expect(processSource).toContain(
       "const architecture = dependencies.architecture ?? process.arch",
@@ -58,6 +56,7 @@ describe("P8.2b Linux authenticated Goose integration gate", () => {
       "resolveGooseRunnerExecutableAuthority(runtimeTarget.platform)",
     );
     expect(processSource).toContain('executableAuthority === "linux-package"');
+    expect(processSource).toContain('options.executableAuthority !== "windows-supervisor"');
     expect(processSource).toContain("const linuxInstall = artifact.linuxInstall");
     expect(processSource).not.toContain("ACTESTRA_GOOSE_NATIVE_INTEGRATION");
   });

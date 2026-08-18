@@ -8,7 +8,7 @@ export interface GooseRunnerBuildTarget {
   readonly executableFile: string;
 }
 
-export type GooseExecutableAuthority = "attempt-private" | "linux-package";
+export type GooseExecutableAuthority = "attempt-private" | "linux-package" | "windows-supervisor";
 
 const TARGET_KEYS = [
   "architecture",
@@ -81,7 +81,11 @@ export function resolveGooseRunnerRuntimeTarget(
   architecture: string,
 ): GooseRunnerBuildTarget | undefined {
   const target = resolveGooseRunnerBuildTarget(platform, architecture);
-  return target?.platform === "darwin" || target?.platform === "linux" ? target : undefined;
+  return target?.platform === "darwin" ||
+    target?.platform === "linux" ||
+    target?.platform === "win32"
+    ? target
+    : undefined;
 }
 
 export function resolveGooseRunnerExecutableAuthority(
@@ -89,6 +93,7 @@ export function resolveGooseRunnerExecutableAuthority(
 ): GooseExecutableAuthority | undefined {
   if (platform === "darwin") return "attempt-private";
   if (platform === "linux") return "linux-package";
+  if (platform === "win32") return "windows-supervisor";
   return undefined;
 }
 
