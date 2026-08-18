@@ -160,6 +160,52 @@ describe("Goose runner native resource boundary", () => {
     );
   });
 
+  it("requires the exact immutable Windows supervisor contract before spawn", () => {
+    const root = path.resolve(os.tmpdir(), "actestra-goose-windows-options");
+    const attemptLease = "lease_0123456789abcdef0123456789abcdef";
+    const windows = Object.freeze({
+      supervisorMode: "--actestra-windows-supervisor-v1" as const,
+      capabilityPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.capability`,
+      modelPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.model`,
+      attemptLease,
+      attemptId: "0123456789abcdef0123456789abcdef",
+      executableSha256: "a".repeat(64),
+      modelId: "test-model",
+      targetTriple: "x86_64-pc-windows-msvc" as const,
+    });
+    const exact = Object.freeze({
+      ...exactSpawnOptions(root),
+      executableAuthority: "windows-supervisor" as const,
+      windows,
+    });
+
+    expect(() => assertGooseAcpSpawnOptions(exact)).not.toThrow();
+    for (const invalid of [
+      Object.freeze({ ...exact, windows: undefined }),
+      Object.freeze({
+        ...exact,
+        networkPolicy: Object.freeze({
+          kind: "loopback-session" as const,
+          host: "127.0.0.1" as const,
+          capabilityProxyPort: 41_001,
+          modelProxyPort: 41_002,
+        }),
+      }),
+      Object.freeze({ ...exact, windows: { ...windows } }),
+      Object.freeze({
+        ...exact,
+        environment: Object.freeze({ ...exact.environment, OPENAI_API_KEY: attemptLease }),
+      }),
+    ]) {
+      expect(() => assertGooseAcpSpawnOptions(invalid)).toThrowError(
+        expect.objectContaining({
+          name: "GooseRunnerProcessError",
+          code: "network-policy-unavailable",
+        }),
+      );
+    }
+  });
+
   it("denies process fork and arbitrary exec while retaining only admitted launch and ports", () => {
     const root = path.resolve(os.tmpdir(), "actestra-goose-resource-sandbox");
     const executablePath = path.join(root, "bin", "actestra-goose-runner");

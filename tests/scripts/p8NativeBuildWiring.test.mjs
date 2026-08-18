@@ -88,13 +88,17 @@ describe("P8 native Goose build wiring", () => {
       expect(job).toContain(
         "rustup toolchain install 1.96.1 --profile minimal --component rustfmt",
       );
+      const nativeAdmissionTests =
+        jobId === "goose-runner-windows"
+          ? "bun run test tests/main/gooseRunnerTarget.test.ts tests/main/gooseRunnerArtifact.test.ts tests/main/gooseRunnerLifecycle.test.ts tests/main/gooseRunnerWindowsBridge.test.ts tests/scripts/p8NativeBuildWiring.test.mjs"
+          : "bun run test tests/main/gooseRunnerTarget.test.ts tests/main/gooseRunnerArtifact.test.ts tests/main/gooseRunnerLifecycle.test.ts tests/scripts/p8NativeBuildWiring.test.mjs";
       expectOrderedFragments(job, [
         "bun install --frozen-lockfile",
         "bun run goose:runner:format:check",
         "bun run goose:runner:tools",
         "bun run goose:runner:build",
         "git diff --exit-code -- workers/goose-runner/Cargo.lock",
-        "bun run test tests/main/gooseRunnerTarget.test.ts tests/main/gooseRunnerArtifact.test.ts tests/main/gooseRunnerLifecycle.test.ts tests/scripts/p8NativeBuildWiring.test.mjs",
+        nativeAdmissionTests,
         "bun run goose:runner:admit-build",
       ]);
       for (const forbidden of [

@@ -85,6 +85,16 @@ export interface GooseAcpSpawnOptions {
         readonly capabilityProxyPort: number;
         readonly modelProxyPort: number;
       };
+  readonly windows?: Readonly<{
+    readonly supervisorMode: "--actestra-windows-supervisor-v1";
+    readonly capabilityPipeName: string;
+    readonly modelPipeName: string;
+    readonly attemptLease: string;
+    readonly attemptId: string;
+    readonly executableSha256: string;
+    readonly modelId: string;
+    readonly targetTriple: "x86_64-pc-windows-msvc";
+  }>;
 }
 
 export type GooseAcpTransportFactory = (options: GooseAcpSpawnOptions) => GooseAcpTransport;
@@ -106,6 +116,13 @@ export type GooseRunnerSetupFailure =
   | "runner-panic";
 
 type GooseChildProcess = ChildProcessByStdio<Writable, Readable, Readable>;
+
+export interface GooseAcpLaunchCommand {
+  readonly command: string;
+  readonly arguments: readonly string[];
+}
+
+const WINDOWS_CONTROL_MAX_BYTES = 32 * 1024;
 
 export interface GooseRunnerModelBinding {
   readonly baseUrl: string;
@@ -264,6 +281,73 @@ function hasExactGooseResourceBudget(value: WorkerResourceBudget): boolean {
   );
 }
 
+function hasExactWindowsSupervisorSpawnContract(options: GooseAcpSpawnOptions): boolean {
+  const windows = options.windows;
+  if (
+    windows === undefined ||
+    !Object.isFrozen(windows) ||
+    Reflect.ownKeys(windows).length !== 8 ||
+    Reflect.ownKeys(windows).some(
+      (key) =>
+        typeof key !== "string" ||
+        ![
+          "attemptLease",
+          "attemptId",
+          "capabilityPipeName",
+          "executableSha256",
+          "modelId",
+          "modelPipeName",
+          "supervisorMode",
+          "targetTriple",
+        ].includes(key),
+    ) ||
+    windows.supervisorMode !== "--actestra-windows-supervisor-v1" ||
+    options.networkPolicy !== "deny-all"
+  ) {
+    return false;
+  }
+  const validPipeName = (pipeName: string): boolean =>
+    /^\\\\\.\\pipe\\LOCAL\\Actestra\.Goose\.[A-Za-z0-9._-]{16,128}$/.test(pipeName) &&
+    Buffer.byteLength(pipeName, "utf8") <= 180;
+  if (
+    !validPipeName(windows.capabilityPipeName) ||
+    !validPipeName(windows.modelPipeName) ||
+    windows.capabilityPipeName === windows.modelPipeName ||
+    !/^[a-f0-9]{32}$/.test(windows.attemptId) ||
+    !/^[a-f0-9]{64}$/.test(windows.executableSha256) ||
+    windows.modelId.length < 1 ||
+    windows.modelId.length > 256 ||
+    Array.from(windows.modelId).some((character) => /\p{Cc}/u.test(character)) ||
+    windows.targetTriple !== "x86_64-pc-windows-msvc" ||
+    windows.attemptLease.length < 32 ||
+    windows.attemptLease.length > 256 ||
+    !/^[A-Za-z0-9._~-]+$/.test(windows.attemptLease)
+  ) {
+    return false;
+  }
+  const forbiddenEnvironmentKeys = [
+    "GOOSE_PROVIDER",
+    "GOOSE_MODEL",
+    "OPENAI_BASE_URL",
+    "OPENAI_API_KEY",
+    "NO_PROXY",
+    "ACTESTRA_GOOSE_LINUX_CAPABILITY_SOCKET",
+    "ACTESTRA_GOOSE_LINUX_MODEL_SOCKET",
+    "ACTESTRA_GOOSE_LINUX_CAPABILITY_PORT",
+    "ACTESTRA_GOOSE_LINUX_MODEL_PORT",
+    "ACTESTRA_GOOSE_LINUX_WORKSPACE_ROOT",
+  ];
+  if (forbiddenEnvironmentKeys.some((key) => Object.hasOwn(options.environment, key))) {
+    return false;
+  }
+  const environmentValues = new Set(Object.values(options.environment));
+  return (
+    !environmentValues.has(windows.attemptLease) &&
+    !environmentValues.has(windows.capabilityPipeName) &&
+    !environmentValues.has(windows.modelPipeName)
+  );
+}
+
 /** Validates Main-created native limit inputs immediately before process launch. */
 export function assertGooseAcpSpawnOptions(
   options: GooseAcpSpawnOptions | undefined,
@@ -308,6 +392,21 @@ export function assertGooseAcpSpawnOptions(
     options.executableAuthority !== "windows-supervisor"
   ) {
     throw new GooseRunnerProcessError("invalid-options", "Goose executable authority is invalid");
+  }
+  if (
+    options.executableAuthority === "windows-supervisor" &&
+    !hasExactWindowsSupervisorSpawnContract(options)
+  ) {
+    throw new GooseRunnerProcessError(
+      "network-policy-unavailable",
+      "Windows Goose launch requires the exact admitted supervisor contract",
+    );
+  }
+  if (options.executableAuthority !== "windows-supervisor" && options.windows !== undefined) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Windows Goose supervisor metadata is unavailable for this executable authority",
+    );
   }
 }
 
@@ -627,12 +726,15 @@ function validateWindowsBridgeEnvironment(value: unknown): GooseRunnerWindowsBri
   const { capabilityPipeName, modelPipeName, attemptLease } = value;
   const validPipeName = (pipeName: unknown): pipeName is string =>
     typeof pipeName === "string" &&
-    /^\\\\\.\\pipe\\LOCAL\\Actestra\.Goose\.[A-Za-z0-9._-]{16,128}$/.test(pipeName) &&
+    /^\\\\\.\\pipe\\LOCAL\\Actestra\.Goose\.[a-f0-9]{32}\.(?:capability|model)$/.test(pipeName) &&
     Buffer.byteLength(pipeName, "utf8") <= 180;
   if (
     !validPipeName(capabilityPipeName) ||
     !validPipeName(modelPipeName) ||
     capabilityPipeName === modelPipeName ||
+    !capabilityPipeName.endsWith(".capability") ||
+    !modelPipeName.endsWith(".model") ||
+    capabilityPipeName.slice(0, -"capability".length) !== modelPipeName.slice(0, -"model".length) ||
     typeof attemptLease !== "string" ||
     attemptLease.length < 32 ||
     attemptLease.length > 256 ||
@@ -644,6 +746,19 @@ function validateWindowsBridgeEnvironment(value: unknown): GooseRunnerWindowsBri
     );
   }
   return Object.freeze({ capabilityPipeName, modelPipeName, attemptLease });
+}
+
+function windowsBridgeAttemptId(value: GooseRunnerWindowsBridgeEnvironment): string {
+  const match = value.capabilityPipeName.match(
+    /^\\\\\.\\pipe\\LOCAL\\Actestra\.Goose\.([a-f0-9]{32})\.capability$/,
+  );
+  if (match?.[1] === undefined) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose Windows bridge attempt identity is invalid",
+    );
+  }
+  return match[1];
 }
 
 function validateLinuxBridgeEnvironment(
@@ -781,7 +896,10 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
   private transportFailed = false;
   private closePromise: Promise<void> | undefined;
 
-  constructor(private readonly child: GooseChildProcess) {
+  constructor(
+    private readonly child: GooseChildProcess,
+    private readonly parentLiveness?: Writable,
+  ) {
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => {
       this.stdoutBuffer += chunk;
@@ -901,6 +1019,7 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
   }
 
   private async closeProcess(): Promise<void> {
+    this.parentLiveness?.end();
     this.child.stdin.end();
     if (await this.waitForProcessTreeExit(CLOSE_GRACE_MS)) {
       return;
@@ -919,18 +1038,63 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
   }
 }
 
-function createNodeGooseAcpTransport(options: GooseAcpSpawnOptions): GooseAcpTransport {
+export function encodeWindowsSupervisorControlFrame(options: GooseAcpSpawnOptions): Uint8Array {
+  assertGooseAcpSpawnOptions(options);
+  const windows = options.windows;
+  const workspaceDirectory = options.workspaceDirectory;
+  if (
+    options.executableAuthority !== "windows-supervisor" ||
+    windows === undefined ||
+    workspaceDirectory === undefined ||
+    !path.isAbsolute(workspaceDirectory) ||
+    path.parse(workspaceDirectory).root === workspaceDirectory
+  ) {
+    throw new GooseRunnerProcessError(
+      "network-policy-unavailable",
+      "Windows Goose control requires the exact admitted supervisor contract",
+    );
+  }
+  const payload = Buffer.from(
+    JSON.stringify({
+      attemptId: windows.attemptId,
+      attemptLease: windows.attemptLease,
+      contractVersion: 1,
+      executableSha256: windows.executableSha256,
+      modelId: windows.modelId,
+      privateRoot: path.dirname(options.workingDirectory),
+      resourceBudget: options.resourceBudget,
+      targetTriple: windows.targetTriple,
+      worktreeRoot: workspaceDirectory,
+    }),
+    "utf8",
+  );
+  if (payload.byteLength === 0 || payload.byteLength > WINDOWS_CONTROL_MAX_BYTES) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Windows Goose control exceeded the bounded contract",
+    );
+  }
+  const frame = Buffer.alloc(payload.byteLength + 4);
+  frame.writeUInt32LE(payload.byteLength, 0);
+  payload.copy(frame, 4);
+  return frame;
+}
+
+export function resolveGooseAcpLaunchCommand(
+  options: GooseAcpSpawnOptions,
+  dependencies: GooseRunnerProcessDependencies = DEFAULT_PROCESS_DEPENDENCIES,
+): GooseAcpLaunchCommand {
   assertGooseAcpSpawnOptions(options);
   if (!path.isAbsolute(options.executablePath) || !path.isAbsolute(options.workingDirectory)) {
     throw new GooseRunnerProcessError("invalid-options", "Goose spawn options are invalid");
   }
+  const platform = dependencies.platform ?? process.platform;
+  const architecture = dependencies.architecture ?? process.arch;
   const privateRoot = path.dirname(options.workingDirectory);
   const executableAuthority =
     options.executableAuthority ??
-    (process.platform === "darwin" ? ("attempt-private" as const) : undefined);
-  if (
-    !isGooseRunnerExecutableAuthorityAdmitted(process.platform, process.arch, executableAuthority)
-  ) {
+    (platform === "darwin" ? ("attempt-private" as const) : undefined);
+  if (!isGooseRunnerExecutableAuthorityAdmitted(platform, architecture, executableAuthority)) {
     throw new GooseRunnerProcessError(
       "network-policy-unavailable",
       "Goose launch requires the exact executable authority for this host",
@@ -947,7 +1111,7 @@ function createNodeGooseAcpTransport(options: GooseAcpSpawnOptions): GooseAcpTra
   }
   if (
     executableAuthority === "linux-package" &&
-    (process.platform !== "linux" || options.executablePath !== GOOSE_LINUX_EXECUTABLE_PATH)
+    (platform !== "linux" || options.executablePath !== GOOSE_LINUX_EXECUTABLE_PATH)
   ) {
     throw new GooseRunnerProcessError(
       "invalid-options",
@@ -956,14 +1120,14 @@ function createNodeGooseAcpTransport(options: GooseAcpSpawnOptions): GooseAcpTra
   }
   let command: string;
   let arguments_: readonly string[];
-  if (process.platform === "darwin" && process.arch.includes("64")) {
+  if (platform === "darwin" && architecture.includes("64")) {
     const networkProfile = macosNetworkProfile(options);
     if (networkProfile === undefined) {
       throw new GooseRunnerProcessError("invalid-options", "Goose spawn options are invalid");
     }
     command = "/usr/bin/sandbox-exec";
     arguments_ = ["-p", networkProfile, options.executablePath];
-  } else if (process.platform === "linux" && process.arch === "x64") {
+  } else if (platform === "linux" && architecture === "x64") {
     const policy = options.networkPolicy;
     const workspaceDirectory = options.workspaceDirectory;
     const capabilitySocket = options.environment.ACTESTRA_GOOSE_LINUX_CAPABILITY_SOCKET;
@@ -996,22 +1160,51 @@ function createNodeGooseAcpTransport(options: GooseAcpSpawnOptions): GooseAcpTra
     }
     command = options.executablePath;
     arguments_ = [];
+  } else if (platform === "win32" && architecture === "x64") {
+    const windows = options.windows;
+    if (
+      executableAuthority !== "windows-supervisor" ||
+      windows === undefined ||
+      options.networkPolicy !== "deny-all" ||
+      path.dirname(path.dirname(options.executablePath)) !== privateRoot
+    ) {
+      throw new GooseRunnerProcessError(
+        "network-policy-unavailable",
+        "Windows Goose launch requires the exact admitted supervisor contract",
+      );
+    }
+    command = options.executablePath;
+    arguments_ = [windows.supervisorMode];
   } else {
     throw new GooseRunnerProcessError(
       "network-policy-unavailable",
       "The current host lacks an admitted Goose process launcher",
     );
   }
+  return Object.freeze({ command, arguments: Object.freeze([...arguments_]) });
+}
+
+export function createNodeGooseAcpTransport(
+  options: GooseAcpSpawnOptions,
+  dependencies: GooseRunnerProcessDependencies = DEFAULT_PROCESS_DEPENDENCIES,
+): GooseAcpTransport {
+  const launch = resolveGooseAcpLaunchCommand(options, dependencies);
+  const platform = dependencies.platform ?? process.platform;
+  const windowsSupervisor = platform === "win32";
 
   let child: GooseChildProcess;
   try {
-    child = spawn(command, arguments_, {
+    child = spawn(launch.command, launch.arguments, {
       cwd: options.workingDirectory,
-      env: { ...options.environment, ACTESTRA_PARENT_LIVENESS_FD: "3" },
+      env: windowsSupervisor
+        ? { ...options.environment }
+        : { ...options.environment, ACTESTRA_PARENT_LIVENESS_FD: "3" },
       detached: true,
-      // fd 3 is a parent-liveness pipe. The admitted runner watches its read
-      // end and terminates its process group when Main disappears.
-      stdio: ["pipe", "pipe", "pipe", "pipe"],
+      // Windows reserves fd 3 for the one-shot control frame and fd 4 for
+      // parent liveness. Other hosts retain the existing fd 3 liveness pipe.
+      stdio: windowsSupervisor
+        ? ["pipe", "pipe", "pipe", "pipe", "pipe"]
+        : ["pipe", "pipe", "pipe", "pipe"],
       windowsHide: true,
     });
   } catch (error) {
@@ -1019,7 +1212,27 @@ function createNodeGooseAcpTransport(options: GooseAcpSpawnOptions): GooseAcpTra
       cause: error,
     });
   }
-  return new NodeGooseAcpTransport(child);
+  if (!windowsSupervisor) {
+    return new NodeGooseAcpTransport(child);
+  }
+  const control = child.stdio[3];
+  const parentLiveness = child.stdio[4];
+  if (
+    control === null ||
+    parentLiveness === null ||
+    typeof (control as Writable).write !== "function" ||
+    typeof (parentLiveness as Writable).write !== "function"
+  ) {
+    child.kill();
+    throw new GooseRunnerProcessError(
+      "spawn-failed",
+      "Windows Goose inherited control channels are unavailable",
+    );
+  }
+  const controlWriter = control as Writable;
+  controlWriter.once("error", () => child.kill());
+  controlWriter.end(Buffer.from(encodeWindowsSupervisorControlFrame(options)));
+  return new NodeGooseAcpTransport(child, parentLiveness as Writable);
 }
 
 async function preparePrivateRoot(
@@ -1307,6 +1520,8 @@ export async function openGooseRunnerHandshake(
             workspaceRoot: admittedWorkspaceDirectory,
           })
         : undefined;
+    const windowsBridgeEnvironment =
+      runtimeTarget.platform === "win32" ? bridge?.windows : undefined;
     const spawnOptions: GooseAcpSpawnOptions = Object.freeze({
       executablePath: prepared.executablePath,
       executableAuthority,
@@ -1316,12 +1531,14 @@ export async function openGooseRunnerHandshake(
         : { workspaceDirectory: admittedWorkspaceDirectory }),
       environment: createGooseRunnerEnvironment(
         prepared.root,
-        stableModelBinding?.binding,
+        runtimeTarget.platform === "win32" ? undefined : stableModelBinding?.binding,
         linuxBridgeEnvironment,
       ),
       resourceBudget,
       networkPolicy:
-        capabilityProxyPort === undefined || stableModelBinding === undefined
+        runtimeTarget.platform === "win32" ||
+        capabilityProxyPort === undefined ||
+        stableModelBinding === undefined
           ? "deny-all"
           : Object.freeze({
               kind: "loopback-session",
@@ -1329,6 +1546,20 @@ export async function openGooseRunnerHandshake(
               capabilityProxyPort,
               modelProxyPort: stableModelBinding.port,
             }),
+      ...(windowsBridgeEnvironment === undefined
+        ? {}
+        : {
+            windows: Object.freeze({
+              supervisorMode: "--actestra-windows-supervisor-v1" as const,
+              capabilityPipeName: windowsBridgeEnvironment.capabilityPipeName,
+              modelPipeName: windowsBridgeEnvironment.modelPipeName,
+              attemptLease: windowsBridgeEnvironment.attemptLease,
+              attemptId: windowsBridgeAttemptId(windowsBridgeEnvironment),
+              executableSha256: options.artifact.executableSha256,
+              modelId: stableModelBinding!.binding.modelId,
+              targetTriple: "x86_64-pc-windows-msvc" as const,
+            }),
+          }),
     });
     assertGooseContainmentLaunch(
       Object.freeze({

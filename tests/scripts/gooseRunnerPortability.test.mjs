@@ -161,8 +161,10 @@ describe("Goose runner native source portability", () => {
 
     expect(runtimeResolution).toBeGreaterThan(-1);
     expect(runtimeResolution).toBeLessThan(privateRootPreparation);
-    expect(source).toContain('process.platform === "linux"');
-    expect(source).toContain('process.arch === "x64"');
+    expect(source).toContain("const platform = dependencies.platform ?? process.platform");
+    expect(source).toContain("const architecture = dependencies.architecture ?? process.arch");
+    expect(source).toContain('platform === "linux"');
+    expect(source).toContain('architecture === "x64"');
     expect(source).toContain("const policy = options.networkPolicy");
     expect(source).toContain('policy === "deny-all"');
     expect(source).toContain("ACTESTRA_GOOSE_LINUX_CAPABILITY_SOCKET");
@@ -170,7 +172,8 @@ describe("Goose runner native source portability", () => {
     expect(source).toContain("command = options.executablePath");
     expect(source).toContain("arguments_ = []");
     expect(source).toContain('ACTESTRA_PARENT_LIVENESS_FD: "3"');
-    expect(source).toContain('stdio: ["pipe", "pipe", "pipe", "pipe"]');
+    expect(source).toContain('const windowsSupervisor = platform === "win32"');
+    expect(source).toContain(': ["pipe", "pipe", "pipe", "pipe"]');
     expect(source).not.toContain("shell: true");
   });
 });

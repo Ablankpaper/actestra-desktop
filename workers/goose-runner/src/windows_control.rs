@@ -294,6 +294,18 @@ pub(crate) fn parse_control_message(input: &[u8]) -> Result<WindowsControlMessag
     })
 }
 
+pub(crate) fn parse_control_frame(input: &[u8]) -> Result<WindowsControlMessage, ()> {
+    let length_bytes: [u8; 4] = input.get(..4).ok_or(())?.try_into().map_err(|_| ())?;
+    let payload_length = u32::from_le_bytes(length_bytes) as usize;
+    if payload_length == 0
+        || payload_length > WINDOWS_CONTROL_MAX_BYTES
+        || input.len() != payload_length + 4
+    {
+        return Err(());
+    }
+    parse_control_message(&input[4..])
+}
+
 pub(crate) fn serialize_control_message(message: &WindowsControlMessage) -> Result<Vec<u8>, ()> {
     let value = json!({
         "attemptId": message.attempt_id,
@@ -450,5 +462,22 @@ mod tests {
         let mut parsed = parse_control_message(&exact_control_message()).unwrap();
         parsed.model_id = "invalid\0model".to_string();
         assert!(serialize_control_message(&parsed).is_err());
+    }
+
+    #[test]
+    fn accepts_only_one_exact_length_prefixed_control_frame() {
+        let payload = exact_control_message();
+        let mut frame = (payload.len() as u32).to_le_bytes().to_vec();
+        frame.extend_from_slice(&payload);
+        assert!(parse_control_frame(&frame).unwrap() == parse_control_message(&payload).unwrap());
+
+        let mut trailing = frame.clone();
+        trailing.push(0);
+        assert!(parse_control_frame(&trailing).is_err());
+        assert!(parse_control_frame(&frame[..frame.len() - 1]).is_err());
+        assert!(parse_control_frame(&0_u32.to_le_bytes()).is_err());
+        assert!(
+            parse_control_frame(&((WINDOWS_CONTROL_MAX_BYTES + 1) as u32).to_le_bytes()).is_err()
+        );
     }
 }

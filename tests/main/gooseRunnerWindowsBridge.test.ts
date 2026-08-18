@@ -1,15 +1,44 @@
 import { createHash } from "node:crypto";
-import { chmod, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
+import process from "node:process";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { GOOSE_WORKER_RESOURCE_PROFILE } from "../../apps/desktop/src/core/workerResourceBudget";
 import type { AdmittedGooseRunnerArtifact } from "../../apps/desktop/src/main/workers/gooseRunnerArtifact";
-import { openGooseRunnerHandshake } from "../../apps/desktop/src/main/workers/gooseRunnerProcess";
+import * as gooseRunnerProcess from "../../apps/desktop/src/main/workers/gooseRunnerProcess";
+import {
+  createGooseRunnerEnvironment,
+  createNodeGooseAcpTransport,
+  encodeWindowsSupervisorControlFrame,
+  openGooseRunnerHandshake,
+  resolveGooseAcpLaunchCommand,
+  type GooseAcpSpawnOptions,
+} from "../../apps/desktop/src/main/workers/gooseRunnerProcess";
 import { LoopbackGooseAcpTransport } from "../fixtures/gooseAcp";
 
 const fixtureDirectories: string[] = [];
 const WINDOWS_TARGET_TRIPLE = "x86_64-pc-windows-msvc";
 const SOURCE_COMMIT = "a".repeat(40);
 const PROBE_SHA256 = "b".repeat(64);
+
+async function waitForFile(filePath: string, timeoutMs = 5_000): Promise<Buffer> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const value = await readFile(filePath).catch((): undefined => undefined);
+    if (value !== undefined) return value;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error("fixture process did not write its launch evidence");
+}
 
 async function createWindowsArtifact(options: { readonly containment?: boolean } = {}): Promise<{
   readonly artifact: AdmittedGooseRunnerArtifact;
@@ -72,6 +101,251 @@ afterEach(async () => {
 });
 
 describe("Windows Goose runner bridge contract", () => {
+  it("encodes the one-shot Windows control contract only in a bounded length-prefixed frame", () => {
+    const encode = (
+      gooseRunnerProcess as unknown as {
+        readonly encodeWindowsSupervisorControlFrame?: (
+          options: GooseAcpSpawnOptions,
+        ) => Uint8Array;
+      }
+    ).encodeWindowsSupervisorControlFrame;
+    expect(typeof encode).toBe("function");
+    if (encode === undefined) return;
+
+    const privateRoot = path.resolve("/tmp/actestra-goose-windows-control");
+    const options: GooseAcpSpawnOptions = Object.freeze({
+      executablePath: path.join(privateRoot, "bin", "actestra-goose-runner.exe"),
+      executableAuthority: "windows-supervisor",
+      workingDirectory: path.join(privateRoot, "work"),
+      workspaceDirectory: path.resolve("/tmp/actestra-goose-windows-workspace"),
+      environment: createGooseRunnerEnvironment(privateRoot),
+      resourceBudget: GOOSE_WORKER_RESOURCE_PROFILE,
+      networkPolicy: "deny-all",
+      windows: Object.freeze({
+        supervisorMode: "--actestra-windows-supervisor-v1",
+        capabilityPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.capability`,
+        modelPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.model`,
+        attemptLease: "lease_0123456789abcdef0123456789abcdef",
+        attemptId: "0123456789abcdef0123456789abcdef",
+        executableSha256: "a".repeat(64),
+        modelId: "test-model",
+        targetTriple: WINDOWS_TARGET_TRIPLE,
+      }),
+    });
+
+    const frame = Buffer.from(encode(options));
+    const payloadLength = frame.readUInt32LE(0);
+    expect(payloadLength).toBe(frame.byteLength - 4);
+    expect(payloadLength).toBeLessThanOrEqual(32 * 1024);
+    const payload = JSON.parse(frame.subarray(4).toString("utf8"));
+    expect(Object.keys(payload).sort()).toEqual([
+      "attemptId",
+      "attemptLease",
+      "contractVersion",
+      "executableSha256",
+      "modelId",
+      "privateRoot",
+      "resourceBudget",
+      "targetTriple",
+      "worktreeRoot",
+    ]);
+    expect(payload).toMatchObject({
+      attemptId: options.windows?.attemptId,
+      attemptLease: options.windows?.attemptLease,
+      contractVersion: 1,
+      executableSha256: options.windows?.executableSha256,
+      modelId: options.windows?.modelId,
+      privateRoot,
+      resourceBudget: GOOSE_WORKER_RESOURCE_PROFILE,
+      targetTriple: WINDOWS_TARGET_TRIPLE,
+      worktreeRoot: options.workspaceDirectory,
+    });
+    expect(frame.toString("utf8")).not.toContain(options.windows?.capabilityPipeName);
+    expect(frame.toString("utf8")).not.toContain(options.windows?.modelPipeName);
+  });
+
+  it("resolves only the admitted executable with the fixed Windows supervisor argument", () => {
+    const privateRoot = path.resolve("/tmp/actestra-goose-windows-launch");
+    const options: GooseAcpSpawnOptions = Object.freeze({
+      executablePath: path.join(privateRoot, "bin", "actestra-goose-runner.exe"),
+      executableAuthority: "windows-supervisor",
+      workingDirectory: path.join(privateRoot, "work"),
+      workspaceDirectory: path.resolve("/tmp/actestra-goose-windows-workspace"),
+      environment: createGooseRunnerEnvironment(privateRoot),
+      resourceBudget: GOOSE_WORKER_RESOURCE_PROFILE,
+      networkPolicy: "deny-all",
+      windows: Object.freeze({
+        supervisorMode: "--actestra-windows-supervisor-v1",
+        capabilityPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.capability`,
+        modelPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.model`,
+        attemptLease: "lease_0123456789abcdef0123456789abcdef",
+        attemptId: "0123456789abcdef0123456789abcdef",
+        executableSha256: "a".repeat(64),
+        modelId: "test-model",
+        targetTriple: WINDOWS_TARGET_TRIPLE,
+      }),
+    });
+
+    expect(
+      resolveGooseAcpLaunchCommand(options, { platform: "win32", architecture: "x64" }),
+    ).toEqual({
+      command: options.executablePath,
+      arguments: ["--actestra-windows-supervisor-v1"],
+    });
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "writes the bounded control frame to a dedicated inherited channel and keeps parent liveness separate",
+    async () => {
+      const privateRoot = await mkdtemp(path.join("/tmp", "actestra-goose-windows-spawn-"));
+      fixtureDirectories.push(privateRoot);
+      const binDirectory = path.join(privateRoot, "bin");
+      const workingDirectory = path.join(privateRoot, "work");
+      const workspaceDirectory = path.join(privateRoot, "workspace");
+      await Promise.all([mkdir(binDirectory), mkdir(workingDirectory), mkdir(workspaceDirectory)]);
+      const executablePath = path.join(binDirectory, "actestra-goose-runner.exe");
+      const controlPath = path.join(workingDirectory, "control-frame.bin");
+      const launchEvidencePath = path.join(workingDirectory, "launch-evidence.txt");
+      await writeFile(
+        executablePath,
+        [
+          "#!/bin/sh",
+          "set -eu",
+          'cat <&3 > "control-frame.bin"',
+          'if [ "${ACTESTRA_ENVIRONMENT_CANARY+x}" = x ]; then canary=present; else canary=absent; fi',
+          "if [ -e /dev/fd/4 ]; then liveness=present; else liveness=missing; fi",
+          'printf "%s|%s|%s|%s\\n" "$1" "${ACTESTRA_WINDOWS_CONTROL_FD:-missing}" "$canary" "$liveness" > "launch-evidence.txt"',
+          "cat >/dev/null",
+        ].join("\n"),
+      );
+      await chmod(executablePath, 0o700);
+      const options: GooseAcpSpawnOptions = Object.freeze({
+        executablePath,
+        executableAuthority: "windows-supervisor",
+        workingDirectory,
+        workspaceDirectory,
+        environment: createGooseRunnerEnvironment(privateRoot),
+        resourceBudget: GOOSE_WORKER_RESOURCE_PROFILE,
+        networkPolicy: "deny-all",
+        windows: Object.freeze({
+          supervisorMode: "--actestra-windows-supervisor-v1",
+          capabilityPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.capability`,
+          modelPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.model`,
+          attemptLease: "lease_0123456789abcdef0123456789abcdef",
+          attemptId: "0123456789abcdef0123456789abcdef",
+          executableSha256: "a".repeat(64),
+          modelId: "test-model",
+          targetTriple: WINDOWS_TARGET_TRIPLE,
+        }),
+      });
+      const previousCanary = process.env.ACTESTRA_ENVIRONMENT_CANARY;
+      process.env.ACTESTRA_ENVIRONMENT_CANARY = "parent-canary-must-not-cross";
+      const transport = createNodeGooseAcpTransport(options, {
+        platform: "win32",
+        architecture: "x64",
+      });
+      try {
+        const [controlFrame, launchEvidence] = await Promise.all([
+          waitForFile(controlPath),
+          waitForFile(launchEvidencePath),
+        ]);
+        expect(controlFrame).toEqual(Buffer.from(encodeWindowsSupervisorControlFrame(options)));
+        expect(launchEvidence.toString("utf8").trim()).toBe(
+          "--actestra-windows-supervisor-v1|missing|absent|present",
+        );
+      } finally {
+        if (previousCanary === undefined) {
+          delete process.env.ACTESTRA_ENVIRONMENT_CANARY;
+        } else {
+          process.env.ACTESTRA_ENVIRONMENT_CANARY = previousCanary;
+        }
+        await transport.close().catch(() => undefined);
+      }
+    },
+  );
+
+  it.runIf(process.platform === "win32")(
+    "reaches the fail-closed post-spawn marker through the real emitted Windows artifact",
+    async () => {
+      const sourceExecutable = path.resolve(
+        ".actestra",
+        "goose-runner",
+        WINDOWS_TARGET_TRIPLE,
+        "actestra-goose-runner.exe",
+      );
+      const privateRoot = await mkdtemp(
+        path.join(process.env.RUNNER_TEMP ?? process.cwd(), "actestra-goose-windows-native-"),
+      );
+      fixtureDirectories.push(privateRoot);
+      const binDirectory = path.join(privateRoot, "bin");
+      const workingDirectory = path.join(privateRoot, "work");
+      const workspaceDirectory = path.join(privateRoot, "workspace");
+      await Promise.all([mkdir(binDirectory), mkdir(workingDirectory), mkdir(workspaceDirectory)]);
+      const executablePath = path.join(binDirectory, "actestra-goose-runner.exe");
+      await copyFile(sourceExecutable, executablePath);
+      const executableSha256 = createHash("sha256")
+        .update(await readFile(executablePath))
+        .digest("hex");
+      const options: GooseAcpSpawnOptions = Object.freeze({
+        executablePath,
+        executableAuthority: "windows-supervisor",
+        workingDirectory,
+        workspaceDirectory,
+        environment: createGooseRunnerEnvironment(privateRoot),
+        resourceBudget: GOOSE_WORKER_RESOURCE_PROFILE,
+        networkPolicy: "deny-all",
+        windows: Object.freeze({
+          supervisorMode: "--actestra-windows-supervisor-v1",
+          capabilityPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.capability`,
+          modelPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.model`,
+          attemptLease: "lease_0123456789abcdef0123456789abcdef",
+          attemptId: "0123456789abcdef0123456789abcdef",
+          executableSha256,
+          modelId: "test-model",
+          targetTriple: WINDOWS_TARGET_TRIPLE,
+        }),
+      });
+
+      const previousCanary = process.env.ACTESTRA_ENVIRONMENT_CANARY;
+      process.env.ACTESTRA_ENVIRONMENT_CANARY = "parent-canary-must-not-cross";
+      const transport = createNodeGooseAcpTransport(options, {
+        platform: "win32",
+        architecture: "x64",
+      });
+      try {
+        const outcome = await new Promise<Error>((resolve, reject) => {
+          const timeout = setTimeout(
+            () => reject(new Error("Windows supervisor spawn probe timed out")),
+            15_000,
+          );
+          timeout.unref();
+          transport.onError((error) => {
+            clearTimeout(timeout);
+            resolve(error);
+          });
+          transport.onExit(() => {
+            setTimeout(() => {
+              clearTimeout(timeout);
+              reject(new Error("Windows supervisor exited without a classified marker"));
+            }, 50).unref();
+          });
+        });
+        expect(outcome).toMatchObject({
+          name: "GooseRunnerProcessError",
+          code: "worker-resource-enforcement-unavailable",
+        });
+      } finally {
+        if (previousCanary === undefined) {
+          delete process.env.ACTESTRA_ENVIRONMENT_CANARY;
+        } else {
+          process.env.ACTESTRA_ENVIRONMENT_CANARY = previousCanary;
+        }
+        await transport.close().catch(() => undefined);
+      }
+    },
+    30_000,
+  );
+
   it("rejects a Windows artifact without exact containment evidence before transport creation", async () => {
     const fixture = await createWindowsArtifact();
     const transportFactory = vi.fn(() => new LoopbackGooseAcpTransport());
@@ -159,6 +433,69 @@ describe("Windows Goose runner bridge contract", () => {
       message: "Windows Goose runtime requires the exact admitted named-pipe bridge contract",
     });
     expect(transportFactory).not.toHaveBeenCalled();
+    expect(await readdir(fixture.privateRootParent)).toEqual([]);
+  });
+
+  it("hands the Windows supervisor only named-pipe metadata and a deny-all runner environment", async () => {
+    const fixture = await createWindowsArtifact({ containment: true });
+    const attemptLease = "lease_0123456789abcdef0123456789abcdef";
+    const capabilityPipeName = String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.capability`;
+    const modelPipeName = String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.model`;
+    let spawnOptions: GooseAcpSpawnOptions | undefined;
+    const transport = new LoopbackGooseAcpTransport();
+
+    const opened = await openGooseRunnerHandshake(
+      {
+        artifact: fixture.artifact,
+        privateRootParent: fixture.privateRootParent,
+        workspaceDirectory: fixture.workspaceDirectory,
+        prepareBridge: async (root) =>
+          Object.freeze({
+            capabilityProxyUrl: "http://127.0.0.1:41001/mcp",
+            modelBinding: Object.freeze({
+              baseUrl: "http://127.0.0.1:41002/v1",
+              modelId: "test-model",
+              attemptLease,
+            }),
+            capabilitySocketPath: path.join(root.bridgeDirectory, "capability.sock"),
+            modelSocketPath: path.join(root.bridgeDirectory, "model.sock"),
+            windows: Object.freeze({ capabilityPipeName, modelPipeName, attemptLease }),
+            async close() {},
+          }),
+        transportFactory: (options) => {
+          spawnOptions = options;
+          return transport;
+        },
+      },
+      { platform: "win32", architecture: "x64" },
+    );
+
+    expect(spawnOptions?.executableAuthority).toBe("windows-supervisor");
+    expect(spawnOptions?.networkPolicy).toBe("deny-all");
+    expect(spawnOptions?.windows).toEqual({
+      supervisorMode: "--actestra-windows-supervisor-v1",
+      capabilityPipeName,
+      modelPipeName,
+      attemptLease,
+      attemptId: "0123456789abcdef0123456789abcdef",
+      executableSha256: fixture.artifact.executableSha256,
+      modelId: "test-model",
+      targetTriple: WINDOWS_TARGET_TRIPLE,
+    });
+    for (const forbiddenKey of [
+      "OPENAI_API_KEY",
+      "OPENAI_BASE_URL",
+      "GOOSE_MODEL",
+      "GOOSE_PROVIDER",
+      "NO_PROXY",
+    ]) {
+      expect(spawnOptions?.environment).not.toHaveProperty(forbiddenKey);
+    }
+    expect(Object.values(spawnOptions?.environment ?? {})).not.toContain(attemptLease);
+    expect(Object.values(spawnOptions?.environment ?? {})).not.toContain(capabilityPipeName);
+    expect(Object.values(spawnOptions?.environment ?? {})).not.toContain(modelPipeName);
+
+    await opened.close();
     expect(await readdir(fixture.privateRootParent)).toEqual([]);
   });
 });

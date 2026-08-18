@@ -108,6 +108,7 @@ jobs:
           tests/main/gooseRunnerTarget.test.ts
           tests/main/gooseRunnerArtifact.test.ts
           tests/main/gooseRunnerLifecycle.test.ts
+          tests/main/gooseRunnerWindowsBridge.test.ts
           tests/scripts/p8NativeBuildWiring.test.mjs
 
       - name: Admit emitted Goose runner artifact

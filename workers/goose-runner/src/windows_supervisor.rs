@@ -1,6 +1,8 @@
 pub(crate) const WINDOWS_SETUP_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_NETWORK_POLICY_SETUP_FAILED";
 pub(crate) const WINDOWS_RESOURCE_FAILURE_MARKER: &str =
     "ACTESTRA_GOOSE_RESOURCE_LIMIT_SETUP_FAILED";
+#[cfg(windows)]
+const WINDOWS_WORKER_READY_MARKER: &[u8] = b"ACTESTRA_GOOSE_WINDOWS_WORKER_READY\n";
 
 #[cfg(windows)]
 use std::ffi::c_void;
@@ -11,13 +13,27 @@ use std::path::Path;
 #[cfg(windows)]
 use std::ptr::{null, null_mut};
 #[cfg(windows)]
-use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, HANDLE, INVALID_HANDLE_VALUE};
+use windows_sys::Win32::Foundation::{
+    CloseHandle, GetLastError, SetHandleInformation, HANDLE, HANDLE_FLAG_INHERIT,
+    INVALID_HANDLE_VALUE,
+};
 #[cfg(windows)]
 use windows_sys::Win32::Security::Isolation::{
     CreateAppContainerProfile, DeleteAppContainerProfile, DeriveAppContainerSidFromAppContainerName,
 };
 #[cfg(windows)]
-use windows_sys::Win32::Security::{EqualSid, FreeSid, PSID, SECURITY_CAPABILITIES};
+use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
+#[cfg(windows)]
+use windows_sys::Win32::Security::{
+    EqualSid, FreeSid, GetTokenInformation, TokenIsAppContainer, PSID, SECURITY_CAPABILITIES,
+    TOKEN_QUERY,
+};
+#[cfg(windows)]
+use windows_sys::Win32::Storage::FileSystem::{ReadFile, WriteFile};
+#[cfg(windows)]
+use windows_sys::Win32::System::Console::{
+    GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
+};
 #[cfg(windows)]
 use windows_sys::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, IsProcessInJob, JobObjectBasicUIRestrictions,
@@ -30,14 +46,17 @@ use windows_sys::Win32::System::JobObjects::{
     JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS, JOB_OBJECT_UILIMIT_WRITECLIPBOARD,
 };
 #[cfg(windows)]
+use windows_sys::Win32::System::Pipes::CreatePipe;
+#[cfg(windows)]
 use windows_sys::Win32::System::SystemInformation::GetWindowsDirectoryW;
 #[cfg(windows)]
 use windows_sys::Win32::System::Threading::{
-    CreateProcessW, DeleteProcThreadAttributeList, InitializeProcThreadAttributeList, ResumeThread,
-    TerminateProcess, UpdateProcThreadAttribute, WaitForSingleObject, CREATE_NO_WINDOW,
-    CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT,
-    PROCESS_INFORMATION, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
-    PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES, STARTUPINFOEXW,
+    CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcess,
+    InitializeProcThreadAttributeList, OpenProcessToken, ResumeThread, TerminateProcess,
+    UpdateProcThreadAttribute, WaitForSingleObject, CREATE_NO_WINDOW, CREATE_SUSPENDED,
+    CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT, PROCESS_INFORMATION,
+    PROC_THREAD_ATTRIBUTE_HANDLE_LIST, PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES,
+    STARTF_USESTDHANDLES, STARTUPINFOEXW,
 };
 
 #[cfg(windows)]
@@ -61,8 +80,10 @@ const WINDOWS_JOB_ACTIVE_PROCESS_LIMIT: u32 = 1;
 const WINDOWS_JOB_MEMORY_LIMIT_BYTES: usize = 1_073_741_824;
 #[cfg(windows)]
 const WINDOWS_JOB_USER_TIME_100NS: i64 = 120 * 10_000_000;
-#[cfg(windows)]
+#[cfg(any(windows, test))]
 const WINDOWS_WORKER_MODE_ARGUMENT: &str = "--actestra-windows-worker-v1";
+#[cfg(any(windows, test))]
+const WINDOWS_WORKER_PROGRAM_NAME: &str = "actestra-goose-runner.exe";
 #[cfg(any(windows, test))]
 const WINDOWS_DIRECTORY_MAX_U16: usize = 32_767;
 
@@ -92,6 +113,13 @@ fn build_minimal_windows_environment_block(windows_directory: &[u16]) -> Result<
     environment.extend_from_slice(windows_directory);
     environment.extend([0, 0]);
     Ok(environment)
+}
+
+#[cfg(any(windows, test))]
+fn build_worker_command_line() -> Vec<u16> {
+    format!("{WINDOWS_WORKER_PROGRAM_NAME} {WINDOWS_WORKER_MODE_ARGUMENT}\0")
+        .encode_utf16()
+        .collect()
 }
 
 #[cfg(test)]
@@ -719,6 +747,44 @@ impl JobObject {
         inherited_handles: &[HANDLE],
         variant: WorkerLaunchVariant,
     ) -> Result<WorkerProcess, WorkerLaunchFailureStage> {
+        self.launch_suspended_worker_with_variant_and_stdio(
+            profile,
+            executable,
+            current_directory,
+            inherited_handles,
+            None,
+            variant,
+        )
+    }
+
+    #[cfg(windows)]
+    fn launch_suspended_worker_with_stdio(
+        &self,
+        profile: &AppContainerProfile,
+        executable: &Path,
+        current_directory: &Path,
+        inherited_handles: &[HANDLE],
+        stdio: [HANDLE; 3],
+    ) -> Result<WorkerProcess, WorkerLaunchFailureStage> {
+        self.launch_suspended_worker_with_variant_and_stdio(
+            profile,
+            executable,
+            current_directory,
+            inherited_handles,
+            Some(stdio),
+            WorkerLaunchVariant::Production,
+        )
+    }
+
+    fn launch_suspended_worker_with_variant_and_stdio(
+        &self,
+        profile: &AppContainerProfile,
+        executable: &Path,
+        current_directory: &Path,
+        inherited_handles: &[HANDLE],
+        stdio: Option<[HANDLE; 3]>,
+        variant: WorkerLaunchVariant,
+    ) -> Result<WorkerProcess, WorkerLaunchFailureStage> {
         if inherited_handles.is_empty()
             || inherited_handles.iter().any(|handle| {
                 handle.is_null()
@@ -760,11 +826,9 @@ impl JobObject {
             .encode_utf16()
             .chain(std::iter::once(0))
             .collect();
-        let command_line = format!("\"{executable_text}\" {WINDOWS_WORKER_MODE_ARGUMENT}");
-        let mut command_line_wide: Vec<u16> = command_line
-            .encode_utf16()
-            .chain(std::iter::once(0))
-            .collect();
+        // lpApplicationName keeps image resolution bound to the admitted absolute executable.
+        // argv[0] is a fixed non-secret basename so WindowsMode still receives the mode at argv[1].
+        let mut command_line_wide = build_worker_command_line();
 
         let security_capabilities = profile.security_capabilities();
         let attribute_count =
@@ -810,6 +874,18 @@ impl JobObject {
         startup.lpAttributeList = attribute_list
             .as_ref()
             .map_or(null_mut(), |list| list.pointer);
+        if let Some([stdin, stdout, stderr]) = stdio {
+            if [stdin, stdout, stderr]
+                .iter()
+                .any(|handle| handle.is_null() || *handle == INVALID_HANDLE_VALUE)
+            {
+                return Err(WorkerLaunchFailureStage::InputValidation);
+            }
+            startup.StartupInfo.dwFlags |= STARTF_USESTDHANDLES;
+            startup.StartupInfo.hStdInput = stdin;
+            startup.StartupInfo.hStdOutput = stdout;
+            startup.StartupInfo.hStdError = stderr;
+        }
         // SAFETY: zero is the documented initialization and CreateProcessW fills every handle.
         let mut process_information: PROCESS_INFORMATION = unsafe { zeroed() };
         let environment = variant
@@ -884,14 +960,430 @@ impl Drop for JobObject {
     }
 }
 
+#[cfg(windows)]
+struct WorkerPipeSet {
+    supervisor_stdin: HANDLE,
+    supervisor_stdout: HANDLE,
+    supervisor_stderr: HANDLE,
+    worker_stdin: HANDLE,
+    worker_stdout: HANDLE,
+    worker_stderr: HANDLE,
+}
+
+#[cfg(windows)]
+impl WorkerPipeSet {
+    fn create() -> Result<Self, ()> {
+        let mut attributes = SECURITY_ATTRIBUTES {
+            nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
+            lpSecurityDescriptor: null_mut(),
+            bInheritHandle: 1,
+        };
+        let mut worker_stdin = null_mut();
+        let mut supervisor_stdin = null_mut();
+        let mut supervisor_stdout = null_mut();
+        let mut worker_stdout = null_mut();
+        let mut supervisor_stderr = null_mut();
+        let mut worker_stderr = null_mut();
+        let created = unsafe {
+            CreatePipe(
+                &mut worker_stdin,
+                &mut supervisor_stdin,
+                &raw mut attributes,
+                0,
+            ) != 0
+                && CreatePipe(
+                    &mut supervisor_stdout,
+                    &mut worker_stdout,
+                    &raw mut attributes,
+                    0,
+                ) != 0
+                && CreatePipe(
+                    &mut supervisor_stderr,
+                    &mut worker_stderr,
+                    &raw mut attributes,
+                    0,
+                ) != 0
+        };
+        if !created {
+            for handle in [
+                worker_stdin,
+                supervisor_stdin,
+                supervisor_stdout,
+                worker_stdout,
+                supervisor_stderr,
+                worker_stderr,
+            ] {
+                if !handle.is_null() {
+                    unsafe { CloseHandle(handle) };
+                }
+            }
+            return Err(());
+        }
+        for handle in [supervisor_stdin, supervisor_stdout, supervisor_stderr] {
+            // SAFETY: each handle is a live parent-side pipe endpoint. Clearing only the inherit
+            // bit keeps it private while the child-side endpoints remain explicitly allowlisted.
+            if unsafe { SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0) } == 0 {
+                for owned in [
+                    worker_stdin,
+                    supervisor_stdin,
+                    supervisor_stdout,
+                    worker_stdout,
+                    supervisor_stderr,
+                    worker_stderr,
+                ] {
+                    if !owned.is_null() {
+                        unsafe { CloseHandle(owned) };
+                    }
+                }
+                return Err(());
+            }
+        }
+        Ok(Self {
+            supervisor_stdin,
+            supervisor_stdout,
+            supervisor_stderr,
+            worker_stdin,
+            worker_stdout,
+            worker_stderr,
+        })
+    }
+
+    fn inherited_handles(&self) -> [HANDLE; 3] {
+        [self.worker_stdin, self.worker_stdout, self.worker_stderr]
+    }
+
+    fn stdio(&self) -> [HANDLE; 3] {
+        self.inherited_handles()
+    }
+
+    fn close_worker_endpoints(&mut self) {
+        for handle in [
+            &mut self.worker_stdin,
+            &mut self.worker_stdout,
+            &mut self.worker_stderr,
+        ] {
+            if !handle.is_null() {
+                unsafe { CloseHandle(*handle) };
+                *handle = null_mut();
+            }
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for WorkerPipeSet {
+    fn drop(&mut self) {
+        for handle in [
+            &mut self.supervisor_stdin,
+            &mut self.supervisor_stdout,
+            &mut self.supervisor_stderr,
+            &mut self.worker_stdin,
+            &mut self.worker_stdout,
+            &mut self.worker_stderr,
+        ] {
+            if !handle.is_null() {
+                unsafe { CloseHandle(*handle) };
+                *handle = null_mut();
+            }
+        }
+    }
+}
+
+#[cfg(windows)]
+fn write_all_handle(handle: HANDLE, bytes: &[u8]) -> Result<(), ()> {
+    let mut offset = 0;
+    while offset < bytes.len() {
+        let remaining = bytes.len() - offset;
+        let write_length = u32::try_from(remaining).map_err(|_| ())?;
+        let mut written = 0_u32;
+        // SAFETY: handle is owned by the caller and bytes remain alive for the synchronous call.
+        if unsafe {
+            WriteFile(
+                handle,
+                bytes[offset..].as_ptr().cast(),
+                write_length,
+                &mut written,
+                null_mut(),
+            )
+        } == 0
+            || written == 0
+        {
+            return Err(());
+        }
+        offset += written as usize;
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn read_exact_handle(handle: HANDLE, bytes: &mut [u8]) -> Result<(), ()> {
+    let mut offset = 0;
+    while offset < bytes.len() {
+        let remaining = u32::try_from(bytes.len() - offset).map_err(|_| ())?;
+        let mut read = 0_u32;
+        // SAFETY: handle is owned by the caller and the target is writable for the bounded call.
+        if unsafe {
+            ReadFile(
+                handle,
+                bytes[offset..].as_mut_ptr().cast(),
+                remaining,
+                &mut read,
+                null_mut(),
+            )
+        } == 0
+            || read == 0
+        {
+            return Err(());
+        }
+        offset += read as usize;
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn read_control_frame_from_handle(
+    handle: HANDLE,
+) -> Result<crate::windows_control::WindowsControlMessage, ()> {
+    use crate::windows_control::{parse_control_frame, WINDOWS_CONTROL_MAX_BYTES};
+    let mut header = [0_u8; 4];
+    read_exact_handle(handle, &mut header)?;
+    let payload_length = u32::from_le_bytes(header) as usize;
+    if payload_length == 0 || payload_length > WINDOWS_CONTROL_MAX_BYTES {
+        return Err(());
+    }
+    let mut frame = Vec::with_capacity(payload_length + 4);
+    frame.extend_from_slice(&header);
+    frame.resize(payload_length + 4, 0);
+    read_exact_handle(handle, &mut frame[4..])?;
+    parse_control_frame(&frame)
+}
+
 pub(crate) fn run_supervisor() -> i32 {
-    eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-    1
+    #[cfg(windows)]
+    {
+        let control = match read_control_frame_from_fd(3) {
+            Ok(control) => control,
+            Err(()) => {
+                eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+                return 1;
+            }
+        };
+        return launch_controlled_worker(control);
+    }
+    #[cfg(not(windows))]
+    {
+        eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+        1
+    }
 }
 
 pub(crate) fn run_worker() -> i32 {
+    #[cfg(windows)]
+    {
+        let input = unsafe { GetStdHandle(STD_INPUT_HANDLE) };
+        let output = unsafe { GetStdHandle(STD_OUTPUT_HANDLE) };
+        let control = match read_control_frame_from_handle(input) {
+            Ok(control) => control,
+            Err(()) => {
+                eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+                return 1;
+            }
+        };
+        if !verify_worker_boundary() {
+            eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+            return 1;
+        }
+        if write_all_handle(output, WINDOWS_WORKER_READY_MARKER).is_err() {
+            eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+            return 1;
+        }
+        let _ = control;
+        0
+    }
+    #[cfg(not(windows))]
+    {
+        eprintln!("{WINDOWS_RESOURCE_FAILURE_MARKER}");
+        1
+    }
+}
+
+#[cfg(windows)]
+fn verify_worker_boundary() -> bool {
+    if std::env::var_os("ACTESTRA_ENVIRONMENT_CANARY").is_some() {
+        return false;
+    }
+    for forbidden in [
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "AWS_SECRET_ACCESS_KEY",
+        "GOOSE_PROVIDER",
+        "GOOSE_MODEL",
+        "OPENAI_BASE_URL",
+        "NO_PROXY",
+    ] {
+        if std::env::var_os(forbidden).is_some() {
+            return false;
+        }
+    }
+    let input = unsafe { GetStdHandle(STD_INPUT_HANDLE) };
+    let output = unsafe { GetStdHandle(STD_OUTPUT_HANDLE) };
+    let error = unsafe { GetStdHandle(STD_ERROR_HANDLE) };
+    if [input, output, error]
+        .iter()
+        .any(|handle| handle.is_null() || *handle == INVALID_HANDLE_VALUE)
+    {
+        return false;
+    }
+    let mut is_in_job = 0;
+    // SAFETY: the current-process pseudo handle is valid and a null Job handle asks whether the
+    // process belongs to any Job Object.
+    if unsafe { IsProcessInJob(GetCurrentProcess(), null_mut(), &mut is_in_job) } == 0 {
+        return false;
+    }
+    if is_in_job == 0 {
+        return false;
+    }
+    let mut token: HANDLE = null_mut();
+    // SAFETY: the current-process pseudo handle is valid and token is an out pointer.
+    if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) } == 0
+        || token.is_null()
+    {
+        return false;
+    }
+    let mut is_app_container = 0_u32;
+    let mut return_length = 0_u32;
+    // SAFETY: token is live, output storage and information class are exact.
+    let queried = unsafe {
+        GetTokenInformation(
+            token,
+            TokenIsAppContainer,
+            (&raw mut is_app_container).cast(),
+            size_of::<u32>() as u32,
+            &mut return_length,
+        )
+    } != 0;
+    // SAFETY: token was opened above and is no longer needed.
+    unsafe { CloseHandle(token) };
+    queried && is_app_container == 1
+}
+
+#[cfg(windows)]
+fn launch_controlled_worker(control: crate::windows_control::WindowsControlMessage) -> i32 {
+    let profile = match AppContainerProfile::create(&control.attempt_id) {
+        Ok(profile) => profile,
+        Err(()) => {
+            eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+            return 1;
+        }
+    };
+    let job = match JobObject::create() {
+        Ok(job) => job,
+        Err(()) => {
+            eprintln!("{WINDOWS_RESOURCE_FAILURE_MARKER}");
+            return 1;
+        }
+    };
+    let mut pipes = match WorkerPipeSet::create() {
+        Ok(pipes) => pipes,
+        Err(()) => {
+            eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+            return 1;
+        }
+    };
+    let executable = match std::env::current_exe() {
+        Ok(executable) => executable,
+        Err(_) => {
+            eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+            return 1;
+        }
+    };
+    let current_directory = std::path::PathBuf::from(&control.private_root).join("work");
+    let inherited_handles = pipes.inherited_handles();
+    let worker = match job.launch_suspended_worker_with_stdio(
+        &profile,
+        &executable,
+        &current_directory,
+        &inherited_handles,
+        pipes.stdio(),
+    ) {
+        Ok(worker) => worker,
+        Err(_) => {
+            eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+            return 1;
+        }
+    };
+    pipes.close_worker_endpoints();
+    let payload = match crate::windows_control::serialize_control_message(&control) {
+        Ok(payload) => payload,
+        Err(()) => {
+            eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+            return 1;
+        }
+    };
+    let mut frame = Vec::with_capacity(payload.len() + 4);
+    frame.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+    frame.extend_from_slice(&payload);
+    if write_all_handle(pipes.supervisor_stdin, &frame).is_err() {
+        eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+        return 1;
+    }
+    unsafe { CloseHandle(pipes.supervisor_stdin) };
+    pipes.supervisor_stdin = null_mut();
+    let mut marker = vec![0_u8; WINDOWS_WORKER_READY_MARKER.len()];
+    let worker_ready = read_exact_handle(pipes.supervisor_stdout, &mut marker).is_ok()
+        && marker == WINDOWS_WORKER_READY_MARKER;
+    if !worker_ready {
+        eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+        return 1;
+    }
     eprintln!("{WINDOWS_RESOURCE_FAILURE_MARKER}");
+    let _ = worker;
     1
+}
+
+#[cfg(windows)]
+fn read_control_frame_from_fd(
+    fd: i32,
+) -> Result<crate::windows_control::WindowsControlMessage, ()> {
+    use crate::windows_control::{parse_control_frame, WINDOWS_CONTROL_MAX_BYTES};
+
+    fn read_exact_fd(fd: i32, target: &mut [u8]) -> Result<(), ()> {
+        let mut offset = 0;
+        while offset < target.len() {
+            // SAFETY: target points to writable memory for the requested bounded byte count.
+            let result = unsafe {
+                libc::read(
+                    fd,
+                    target[offset..].as_mut_ptr().cast(),
+                    (target.len() - offset) as u32,
+                )
+            };
+            if result <= 0 {
+                return Err(());
+            }
+            offset += result as usize;
+        }
+        Ok(())
+    }
+
+    let mut header = [0_u8; 4];
+    read_exact_fd(fd, &mut header)?;
+    let payload_length = u32::from_le_bytes(header) as usize;
+    if payload_length == 0 || payload_length > WINDOWS_CONTROL_MAX_BYTES {
+        return Err(());
+    }
+    let mut frame = Vec::with_capacity(payload_length + 4);
+    frame.extend_from_slice(&header);
+    frame.resize(payload_length + 4, 0);
+    read_exact_fd(fd, &mut frame[4..])?;
+    let mut trailing = [0_u8; 1];
+    // A one-shot contract must be closed by Main; accepting a second frame would permit replay.
+    // SAFETY: trailing points to writable memory for one byte.
+    let result = unsafe { libc::read(fd, trailing.as_mut_ptr().cast(), 1) };
+    if result != 0 {
+        return Err(());
+    }
+    parse_control_frame(&frame)
 }
 
 #[cfg(test)]
@@ -935,6 +1427,16 @@ mod tests {
         ] {
             assert!(derive_pipe_names(value).is_err());
         }
+    }
+
+    #[test]
+    fn builds_a_fixed_worker_command_line_with_a_real_program_slot() {
+        let command_line = build_worker_command_line();
+        let expected: Vec<u16> = "actestra-goose-runner.exe --actestra-windows-worker-v1\0"
+            .encode_utf16()
+            .collect();
+
+        assert_eq!(command_line, expected);
     }
 
     #[test]

@@ -108,7 +108,10 @@ describe("Windows Goose supervisor source contract", () => {
     );
     expect(supervisor).toContain("Self::Production => Ok(None)");
     expect(supervisor).not.toContain("let empty_environment = [0_u16, 0_u16]");
-    expect(supervisor).not.toMatch(/std::env::(?:var|var_os|vars|vars_os)\s*\(/u);
+    expect(supervisor).not.toMatch(/std::env::vars(?:_os)?\s*\(/u);
+    expect(supervisor).toContain('std::env::var_os("ACTESTRA_ENVIRONMENT_CANARY")');
+    expect(supervisor).toContain("std::env::var_os(forbidden)");
+    expect(supervisor).not.toContain('std::env::var("ACTESTRA_GOOSE_CONTAINMENT_PROBE")');
   });
 
   it("runs one test-only sanitized launch matrix without weakening the production variant", () => {
@@ -131,7 +134,21 @@ describe("Windows Goose supervisor source contract", () => {
     expect(supervisor).toContain("diagnoses_create_process_attribute_and_environment_boundary");
     expect(workflow).toContain("--nocapture");
     expect(workflow).toContain("--test-threads=1");
-    expect(supervisor).not.toMatch(/std::env::(?:var|var_os|vars|vars_os)\s*\(/u);
+    expect(supervisor).not.toMatch(/std::env::vars(?:_os)?\s*\(/u);
+    expect(supervisor).not.toContain('std::env::var("ACTESTRA_GOOSE_CONTAINMENT_PROBE")');
+  });
+
+  it("runs the real supervisor spawn boundary after the Windows artifact is built", () => {
+    const workflow = read(".github/workflows/ci.yml");
+
+    const buildJob = workflow.slice(
+      workflow.indexOf("goose-runner-windows:"),
+      workflow.indexOf("goose-runner-linux:"),
+    );
+    expect(buildJob).toContain("tests/main/gooseRunnerWindowsBridge.test.ts");
+    expect(buildJob.indexOf("Build Goose runner artifact")).toBeLessThan(
+      buildJob.indexOf("tests/main/gooseRunnerWindowsBridge.test.ts"),
+    );
   });
 
   it("proves the production worker token is an AppContainer rather than an ordinary token", () => {
