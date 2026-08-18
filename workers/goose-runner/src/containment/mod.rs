@@ -88,7 +88,11 @@ pub(crate) fn run_containment_probe() -> String {
     {
         return linux::run_linux_containment_probe();
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(windows)]
+    {
+        return windows::run_windows_containment_probe();
+    }
+    #[cfg(not(any(target_os = "linux", windows)))]
     {
         String::from(
             r#"{"contractVersion":1,"targetTriple":"","sourceCommit":"","probeSha256":"","executableSha256":"","filesystem":false,"network":false,"processTree":false,"resources":false,"parentDeath":false,"cleanup":false,"status":"unsupported-platform"}"#,

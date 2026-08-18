@@ -8,6 +8,8 @@ mod linux_runtime;
 mod windows_bridge;
 #[cfg(any(windows, test))]
 mod windows_control;
+#[cfg(any(windows, test))]
+mod windows_supervisor;
 #[cfg(all(unix, test))]
 use containment::apply_resource_limits_with;
 #[cfg(target_os = "linux")]
@@ -35,8 +37,6 @@ const LINUX_ACP_SERVER_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_ACP_SERVER_FAILED"
 const LINUX_RELAY_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_LINUX_RELAY_STOPPED";
 #[cfg(target_os = "linux")]
 const LINUX_PANIC_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_RUNNER_PANICKED";
-#[cfg(windows)]
-const WINDOWS_NETWORK_POLICY_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_NETWORK_POLICY_SETUP_FAILED";
 #[cfg(target_os = "linux")]
 const LINUX_RUNTIME_ENVIRONMENT_KEYS: [&str; 5] = [
     "ACTESTRA_GOOSE_LINUX_CAPABILITY_SOCKET",
@@ -101,15 +101,17 @@ fn main() {
     #[cfg(windows)]
     {
         let arguments: Vec<String> = env::args().collect();
-        let _mode = match windows_control::WindowsMode::parse(&arguments) {
-            Ok(Some(mode)) => mode,
+        let exit_code = match windows_control::WindowsMode::parse(&arguments) {
+            Ok(Some(windows_control::WindowsMode::Supervisor)) => {
+                windows_supervisor::run_supervisor()
+            }
+            Ok(Some(windows_control::WindowsMode::Worker)) => windows_supervisor::run_worker(),
             Ok(None) | Err(()) => {
-                eprintln!("{WINDOWS_NETWORK_POLICY_FAILURE_MARKER}");
-                std::process::exit(1);
+                eprintln!("{}", windows_supervisor::WINDOWS_SETUP_FAILURE_MARKER);
+                1
             }
         };
-        eprintln!("{WINDOWS_NETWORK_POLICY_FAILURE_MARKER}");
-        std::process::exit(1);
+        std::process::exit(exit_code);
     }
     #[cfg(target_os = "linux")]
     std::panic::set_hook(Box::new(|_| eprintln!("{LINUX_PANIC_FAILURE_MARKER}")));

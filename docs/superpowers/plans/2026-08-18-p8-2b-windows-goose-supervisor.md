@@ -317,7 +317,7 @@ windows-sys = { version = "0.61.2", features = [
   "Win32_Foundation",
   "Win32_Networking_WinSock",
   "Win32_Security",
-  "Win32_Security_AppLocker",
+  "Win32_Security_Isolation",
   "Win32_Storage_FileSystem",
   "Win32_System_JobObjects",
   "Win32_System_Pipes",
