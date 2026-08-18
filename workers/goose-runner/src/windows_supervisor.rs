@@ -62,6 +62,35 @@ const WINDOWS_JOB_USER_TIME_100NS: i64 = 120 * 10_000_000;
 #[cfg(windows)]
 const WINDOWS_WORKER_MODE_ARGUMENT: &str = "--actestra-windows-worker-v1";
 
+#[cfg(any(windows, test))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WorkerLaunchFailureStage {
+    InputValidation,
+    AttributeListInit,
+    SecurityCapabilitiesAttribute,
+    HandleListAttribute,
+    CreateProcess,
+    AssignJob,
+    QueryJobMembership,
+    ResumeThread,
+}
+
+#[cfg(any(windows, test))]
+impl WorkerLaunchFailureStage {
+    fn code(self) -> &'static str {
+        match self {
+            Self::InputValidation => "input-validation",
+            Self::AttributeListInit => "attribute-list-init",
+            Self::SecurityCapabilitiesAttribute => "security-capabilities-attribute",
+            Self::HandleListAttribute => "handle-list-attribute",
+            Self::CreateProcess => "create-process",
+            Self::AssignJob => "assign-job",
+            Self::QueryJobMembership => "query-job-membership",
+            Self::ResumeThread => "resume-thread",
+        }
+    }
+}
+
 pub(crate) struct WindowsPipeNames {
     pub(crate) capability: String,
     pub(crate) model: String,
@@ -410,7 +439,7 @@ impl JobObject {
         profile: &AppContainerProfile,
         executable: &Path,
         inherited_handles: &[HANDLE],
-    ) -> Result<WorkerProcess, ()> {
+    ) -> Result<WorkerProcess, WorkerLaunchFailureStage> {
         if inherited_handles.is_empty()
             || inherited_handles.iter().any(|handle| {
                 handle.is_null()
@@ -422,15 +451,17 @@ impl JobObject {
                         != 1
             })
         {
-            return Err(());
+            return Err(WorkerLaunchFailureStage::InputValidation);
         }
 
-        let executable_text = executable.to_str().ok_or(())?;
+        let executable_text = executable
+            .to_str()
+            .ok_or(WorkerLaunchFailureStage::InputValidation)?;
         if !executable.is_absolute()
             || executable_text.is_empty()
             || executable_text.contains(['\0', '"'])
         {
-            return Err(());
+            return Err(WorkerLaunchFailureStage::InputValidation);
         }
         let executable_wide: Vec<u16> = executable_text
             .encode_utf16()
@@ -443,17 +474,22 @@ impl JobObject {
             .collect();
 
         let security_capabilities = profile.security_capabilities();
-        let mut attribute_list = ProcThreadAttributeList::create(2)?;
-        attribute_list.update(
-            PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES,
-            (&raw const security_capabilities).cast::<c_void>(),
-            size_of::<SECURITY_CAPABILITIES>(),
-        )?;
-        attribute_list.update(
-            PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
-            inherited_handles.as_ptr().cast::<c_void>(),
-            std::mem::size_of_val(inherited_handles),
-        )?;
+        let mut attribute_list = ProcThreadAttributeList::create(2)
+            .map_err(|()| WorkerLaunchFailureStage::AttributeListInit)?;
+        attribute_list
+            .update(
+                PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES,
+                (&raw const security_capabilities).cast::<c_void>(),
+                size_of::<SECURITY_CAPABILITIES>(),
+            )
+            .map_err(|()| WorkerLaunchFailureStage::SecurityCapabilitiesAttribute)?;
+        attribute_list
+            .update(
+                PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+                inherited_handles.as_ptr().cast::<c_void>(),
+                std::mem::size_of_val(inherited_handles),
+            )
+            .map_err(|()| WorkerLaunchFailureStage::HandleListAttribute)?;
 
         // SAFETY: zero is the documented initialization for both Win32 structures.
         let mut startup: STARTUPINFOEXW = unsafe { zeroed() };
@@ -484,7 +520,7 @@ impl JobObject {
             )
         } == 0
         {
-            return Err(());
+            return Err(WorkerLaunchFailureStage::CreateProcess);
         }
 
         let mut worker = WorkerProcess {
@@ -494,16 +530,20 @@ impl JobObject {
             resumed_from_one_suspend: false,
         };
         // SAFETY: both handles are live; the process was created suspended and has not run.
-        if unsafe { AssignProcessToJobObject(self.handle, worker.process) } == 0
-            || !self.contains_process(worker.process)?
-        {
-            return Err(());
+        if unsafe { AssignProcessToJobObject(self.handle, worker.process) } == 0 {
+            return Err(WorkerLaunchFailureStage::AssignJob);
+        }
+        let assigned = self
+            .contains_process(worker.process)
+            .map_err(|()| WorkerLaunchFailureStage::QueryJobMembership)?;
+        if !assigned {
+            return Err(WorkerLaunchFailureStage::QueryJobMembership);
         }
         worker.assigned_before_resume = true;
         // SAFETY: thread is the suspended primary thread returned by CreateProcessW.
         let previous_suspend_count = unsafe { ResumeThread(worker.thread) };
         if previous_suspend_count != 1 {
-            return Err(());
+            return Err(WorkerLaunchFailureStage::ResumeThread);
         }
         worker.resumed_from_one_suspend = true;
         Ok(worker)
@@ -569,6 +609,38 @@ mod tests {
     fn keeps_both_windows_modes_fail_closed_until_native_setup_exists() {
         assert_eq!(run_supervisor(), 1);
         assert_eq!(run_worker(), 1);
+    }
+
+    #[test]
+    fn keeps_worker_launch_failure_stages_closed_and_sanitized() {
+        let stages = [
+            WorkerLaunchFailureStage::InputValidation,
+            WorkerLaunchFailureStage::AttributeListInit,
+            WorkerLaunchFailureStage::SecurityCapabilitiesAttribute,
+            WorkerLaunchFailureStage::HandleListAttribute,
+            WorkerLaunchFailureStage::CreateProcess,
+            WorkerLaunchFailureStage::AssignJob,
+            WorkerLaunchFailureStage::QueryJobMembership,
+            WorkerLaunchFailureStage::ResumeThread,
+        ];
+        assert_eq!(
+            stages.map(WorkerLaunchFailureStage::code),
+            [
+                "input-validation",
+                "attribute-list-init",
+                "security-capabilities-attribute",
+                "handle-list-attribute",
+                "create-process",
+                "assign-job",
+                "query-job-membership",
+                "resume-thread",
+            ]
+        );
+        for code in stages.map(WorkerLaunchFailureStage::code) {
+            assert!(code
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte == b'-'));
+        }
     }
 }
 
@@ -691,7 +763,10 @@ mod windows_native_tests {
 
         let worker = job
             .launch_suspended_worker(&profile, &command, &[event.0])
-            .expect("the AppContainer worker must be assigned before resume");
+            .unwrap_or_else(|failure| {
+                let stage = failure.code();
+                panic!("worker launch failed at stage={stage}");
+            });
 
         assert!(worker.was_assigned_before_resume());
         assert!(worker.was_resumed_from_one_suspend());

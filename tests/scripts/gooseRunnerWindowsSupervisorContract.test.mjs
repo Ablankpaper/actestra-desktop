@@ -48,4 +48,23 @@ describe("Windows Goose supervisor source contract", () => {
     expect(containment).toContain("parse_resource_limits_with");
     expect(containment).toContain("Err(())");
   });
+
+  it("keeps native worker launch diagnostics on one closed stage vocabulary", () => {
+    const supervisor = read("workers/goose-runner/src/windows_supervisor.rs");
+
+    for (const stage of [
+      "input-validation",
+      "attribute-list-init",
+      "security-capabilities-attribute",
+      "handle-list-attribute",
+      "create-process",
+      "assign-job",
+      "query-job-membership",
+      "resume-thread",
+    ]) {
+      expect(supervisor).toContain(`"${stage}"`);
+    }
+    expect(supervisor).toContain("WorkerLaunchFailureStage");
+    expect(supervisor).toContain("worker launch failed at stage={stage}");
+  });
 });
