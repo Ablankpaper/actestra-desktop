@@ -1939,9 +1939,11 @@ mod windows_native_tests {
             if missing.is_ok() { "success" } else { "failure" },
             missing
                 .as_ref()
+                .err()
                 .map_or("none", |failure| failure.reason_code()),
             missing
                 .as_ref()
+                .err()
                 .and_then(|failure| failure.win32_code())
                 .unwrap_or(0)
         );
@@ -1965,9 +1967,11 @@ mod windows_native_tests {
             if private.is_ok() { "success" } else { "failure" },
             private
                 .as_ref()
+                .err()
                 .map_or("none", |failure| failure.reason_code()),
             private
                 .as_ref()
+                .err()
                 .and_then(|failure| failure.win32_code())
                 .unwrap_or(0)
         );
@@ -1984,9 +1988,11 @@ mod windows_native_tests {
             if restored.is_ok() { "success" } else { "failure" },
             restored
                 .as_ref()
+                .err()
                 .map_or("none", |failure| failure.reason_code()),
             restored
                 .as_ref()
+                .err()
                 .and_then(|failure| failure.win32_code())
                 .unwrap_or(0)
         );
