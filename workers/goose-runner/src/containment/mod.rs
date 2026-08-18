@@ -6,6 +6,8 @@ pub(crate) mod linux;
 pub(crate) mod unix;
 #[cfg(windows)]
 mod windows;
+#[cfg(any(windows, test))]
+mod windows_contract;
 
 pub(crate) const CPU_LIMIT_ENVIRONMENT_KEY: &str = "ACTESTRA_GOOSE_CPU_SECONDS";
 pub(crate) const ADDRESS_SPACE_LIMIT_ENVIRONMENT_KEY: &str = "ACTESTRA_GOOSE_ADDRESS_SPACE_BYTES";
