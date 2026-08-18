@@ -30,6 +30,8 @@ use windows_sys::Win32::System::JobObjects::{
     JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS, JOB_OBJECT_UILIMIT_WRITECLIPBOARD,
 };
 #[cfg(windows)]
+use windows_sys::Win32::System::SystemInformation::GetWindowsDirectoryW;
+#[cfg(windows)]
 use windows_sys::Win32::System::Threading::{
     CreateProcessW, DeleteProcThreadAttributeList, InitializeProcThreadAttributeList, ResumeThread,
     TerminateProcess, UpdateProcThreadAttribute, WaitForSingleObject, CREATE_NO_WINDOW,
@@ -61,6 +63,60 @@ const WINDOWS_JOB_MEMORY_LIMIT_BYTES: usize = 1_073_741_824;
 const WINDOWS_JOB_USER_TIME_100NS: i64 = 120 * 10_000_000;
 #[cfg(windows)]
 const WINDOWS_WORKER_MODE_ARGUMENT: &str = "--actestra-windows-worker-v1";
+#[cfg(any(windows, test))]
+const WINDOWS_DIRECTORY_MAX_U16: usize = 32_767;
+
+#[cfg(any(windows, test))]
+fn build_minimal_windows_environment_block(windows_directory: &[u16]) -> Result<Vec<u16>, ()> {
+    const SYSTEM_ROOT_PREFIX: &str = "SystemRoot=";
+
+    if windows_directory.is_empty() || windows_directory.contains(&0) {
+        return Err(());
+    }
+    let prefix: Vec<u16> = SYSTEM_ROOT_PREFIX.encode_utf16().collect();
+    let environment_length = prefix
+        .len()
+        .checked_add(windows_directory.len())
+        .and_then(|length| length.checked_add(2))
+        .filter(|length| *length <= WINDOWS_DIRECTORY_MAX_U16)
+        .ok_or(())?;
+    let mut environment = Vec::with_capacity(environment_length);
+    environment.extend(prefix);
+    environment.extend_from_slice(windows_directory);
+    environment.extend([0, 0]);
+    Ok(environment)
+}
+
+#[cfg(windows)]
+fn trusted_windows_directory() -> Result<Vec<u16>, ()> {
+    const INITIAL_CAPACITY: usize = 260;
+
+    let mut buffer = vec![0_u16; INITIAL_CAPACITY];
+    loop {
+        let buffer_length = u32::try_from(buffer.len()).map_err(|_| ())?;
+        // SAFETY: buffer is writable for buffer_length UTF-16 code units. The function returns
+        // either the copied length without its terminator or the required capacity.
+        let copied = unsafe { GetWindowsDirectoryW(buffer.as_mut_ptr(), buffer_length) } as usize;
+        if copied == 0 {
+            return Err(());
+        }
+        if copied < buffer.len() {
+            buffer.truncate(copied);
+            return Ok(buffer);
+        }
+        let required_capacity = copied
+            .checked_add(1)
+            .filter(|capacity| *capacity <= WINDOWS_DIRECTORY_MAX_U16)
+            .ok_or(())?;
+        buffer.resize(required_capacity, 0);
+    }
+}
+
+#[cfg(windows)]
+fn trusted_windows_environment_block() -> Result<Vec<u16>, ()> {
+    let windows_directory = trusted_windows_directory()?;
+    build_minimal_windows_environment_block(&windows_directory)
+}
 
 #[cfg(any(windows, test))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -574,7 +630,8 @@ impl JobObject {
         startup.lpAttributeList = attribute_list.pointer;
         // SAFETY: zero is the documented initialization and CreateProcessW fills every handle.
         let mut process_information: PROCESS_INFORMATION = unsafe { zeroed() };
-        let empty_environment = [0_u16, 0_u16];
+        let environment = trusted_windows_environment_block()
+            .map_err(|()| WorkerLaunchFailureStage::InputValidation)?;
         let flags = CREATE_SUSPENDED
             | EXTENDED_STARTUPINFO_PRESENT
             | CREATE_UNICODE_ENVIRONMENT
@@ -590,7 +647,7 @@ impl JobObject {
                 null(),
                 1,
                 flags,
-                empty_environment.as_ptr().cast::<c_void>(),
+                environment.as_ptr().cast::<c_void>(),
                 current_directory_wide.as_ptr(),
                 &startup.StartupInfo,
                 &mut process_information,
@@ -682,6 +739,18 @@ mod tests {
         ] {
             assert!(derive_pipe_names(value).is_err());
         }
+    }
+
+    #[test]
+    fn builds_only_the_double_nul_terminated_system_root_environment_entry() {
+        let windows_directory: Vec<u16> = r"C:\Windows".encode_utf16().collect();
+        let environment = build_minimal_windows_environment_block(&windows_directory)
+            .expect("one trusted Windows directory must produce an environment block");
+        let expected: Vec<u16> = "SystemRoot=C:\\Windows\0\0".encode_utf16().collect();
+
+        assert_eq!(environment, expected);
+        assert!(build_minimal_windows_environment_block(&[]).is_err());
+        assert!(build_minimal_windows_environment_block(&[b'C' as u16, 0]).is_err());
     }
 
     #[test]

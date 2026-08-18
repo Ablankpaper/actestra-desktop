@@ -256,6 +256,12 @@ The supervisor creates the worker with `CREATE_SUSPENDED`,
 the assignment and limits back from the kernel, installs completion/exit
 observation, and only then resumes the primary thread.
 
+The custom Unicode environment block contains only one sorted entry,
+`SystemRoot=<trusted Windows directory>`, obtained by the supervisor through
+`GetWindowsDirectoryW` and terminated by the required second NUL. The
+supervisor neither inherits nor enumerates the parent environment, and no
+environment value is written to diagnostics.
+
 No breakaway flag is permitted. A descendant is allowed only when the existing
 Goose/tool contract creates it and the Job Object admits it within the fixed
 active-process ceiling; every descendant remains accounted to the same job.

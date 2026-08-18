@@ -21,6 +21,7 @@ describe("Windows Goose supervisor source contract", () => {
       "Win32_Storage_FileSystem",
       "Win32_System_JobObjects",
       "Win32_System_Pipes",
+      "Win32_System_SystemInformation",
       "Win32_System_SystemServices",
       "Win32_System_Threading",
     ]) {
@@ -90,5 +91,15 @@ describe("Windows Goose supervisor source contract", () => {
     expect(supervisor).toContain("Other(u32)");
     expect(supervisor).toContain("unclassified_win32_code");
     expect(supervisor).toContain("win32_code={win32_code}");
+  });
+
+  it("passes only a trusted SystemRoot in the custom Unicode environment block", () => {
+    const supervisor = read("workers/goose-runner/src/windows_supervisor.rs");
+
+    expect(supervisor).toContain("GetWindowsDirectoryW");
+    expect(supervisor).toContain("build_minimal_windows_environment_block");
+    expect(supervisor).toContain('"SystemRoot="');
+    expect(supervisor).not.toContain("let empty_environment = [0_u16, 0_u16]");
+    expect(supervisor).not.toMatch(/std::env::(?:vars|vars_os)\s*\(/u);
   });
 });

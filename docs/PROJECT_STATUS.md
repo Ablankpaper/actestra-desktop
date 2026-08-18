@@ -4,6 +4,52 @@ Last updated: 2026-08-18
 
 ## Current phase
 
+### 2026-08-18 P8.2b Windows worker environment correction (local only; gate remains open)
+
+Draft pull request
+[#68](https://github.com/Ablankpaper/actestra-desktop/pull/68) reached implementation
+head `84e9e2cf9eb9c80d3994b269c42e403c49a1233f`. Pull-request run
+[`32101652973`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32101652973)
+failed its Windows native supervisor probe
+[`95603175848`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32101652973/job/95603175848)
+at the exact closed boundary `stage=create-process reason=other win32_code=203`;
+the other two native supervisor tests passed. Win32 code 203 is
+`ERROR_ENVVAR_NOT_FOUND`. The failing call supplied a custom Unicode environment
+block containing only two NUL code units, so the next single hypothesis is that
+AppContainer process creation requires a trusted `SystemRoot` entry rather than
+an entirely empty environment.
+
+The local correction obtains the Windows directory through
+`GetWindowsDirectoryW` and supplies exactly the sorted, double-NUL-terminated
+`SystemRoot=<Windows directory>` entry. It does not enumerate or inherit the
+parent environment and does not log the directory or environment content. The
+AppContainer profile, security-capabilities attribute, inherited-handle
+allowlist, Job Object, creation flags, explicit current directory, and
+fail-closed `run_supervisor()` / `run_worker()` entries are unchanged.
+
+TDD evidence first failed the source contract 2/5 on the absent API/feature and
+failed Rust compilation on the absent environment-block constructor. After the
+minimal implementation, the source contract passed 5/5, the portable Windows
+supervisor unit slice passed 6/6, and the three related script files passed
+14/14. Rust formatting, focused JavaScript lint/format, `git diff --check`, and
+a direct `x86_64-pc-windows-msvc` metadata compile of the exact supervisor
+source also passed. A full macOS-hosted Windows Cargo cross-check is not usable
+as native evidence because transitive C builds require the absent MSVC SDK
+headers; it stopped in `zstd-sys`/`libsqlite3-sys`, before this source was the
+failure boundary.
+
+The complete local `bun run check` then exited 0: 162 test files passed / 2
+skipped, 1,740 tests passed / 9 skipped, followed by the P7 abuse,
+smoke-harness, product-boundary, frozen-foundation, downstream, and package
+gates. The existing frozen-foundation bundler notices remain warnings rather
+than failed gates.
+
+This is local implementation evidence only. Windows Task 4 remains open until
+the next `windows-2025` native run passes all three supervisor tests and the
+exact Windows build/admission job completes. No Windows containment Artifact,
+package journey, P8.2b acceptance, P8.2 completion, candidate, release, or user
+acceptance is claimed.
+
 ### 2026-08-18 P8.2b Ubuntu containment accepted on the exact PR implementation head
 
 Draft pull request
