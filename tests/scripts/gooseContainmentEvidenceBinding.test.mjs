@@ -58,13 +58,13 @@ async function createFixture(
   executableFile = "probe",
   probeSha256,
   probeStderr,
+  status = "evidence-incomplete",
 ) {
   await mkdir(parent, { recursive: true });
   const directory = await mkdtemp(path.join(parent, "containment-test-"));
   const probeDigestExpression = probeSha256 ?? "$ACTESTRA_GOOSE_PROBE_SHA256";
   const diagnostic =
     probeStderr === undefined ? "" : `printf '%b' ${JSON.stringify(probeStderr)} >&2\n`;
-  const status = "evidence-incomplete";
   const executable = `#!/bin/sh\n${diagnostic}printf '{"contractVersion":1,"targetTriple":"%s","sourceCommit":"%s","probeSha256":"%s","executableSha256":"%s","filesystem":${String(capabilities.filesystem)},"network":${String(capabilities.network)},"processTree":${String(capabilities.processTree)},"resources":${String(capabilities.resources)},"parentDeath":${String(capabilities.parentDeath)},"cleanup":${String(capabilities.cleanup)},"status":"${status}"}' "$ACTESTRA_GOOSE_TARGET_TRIPLE" "$ACTESTRA_GOOSE_SOURCE_COMMIT" "${probeDigestExpression}" "$ACTESTRA_GOOSE_EXECUTABLE_SHA256"\n`;
   const executableBytes = Buffer.from(executable, "utf8");
   await writeFile(path.join(directory, "probe"), executableBytes, { mode: 0o700 });
@@ -283,6 +283,40 @@ describe("Goose containment evidence binding", () => {
       expect(result.status).toBe(2);
       expect(result.stderr).toBe("Goose containment process-evidence-incomplete\n");
       expect(await readFile(manifestPath, "utf8")).toBe(before);
+    } finally {
+      await rm(fixture.directory, { recursive: true, force: true });
+    }
+  });
+
+  it("binds complete Windows evidence without borrowing Linux integration evidence", async () => {
+    const fixture = await createFixture(
+      VERIFIED_CAPABILITIES,
+      undefined,
+      "probe",
+      undefined,
+      undefined,
+      "verified",
+    );
+    try {
+      const result = runBinder(fixture, {
+        targetTriple: "x86_64-pc-windows-msvc",
+        includeIntegration: false,
+      });
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe("Goose containment manifest bound\n");
+      expect(result.stderr).toBe("");
+      const manifest = JSON.parse(
+        await readFile(path.join(fixture.directory, "actestra-goose-runner.manifest.json"), "utf8"),
+      );
+      expect(manifest.containment).toMatchObject({
+        cleanup: true,
+        filesystem: true,
+        network: true,
+        parentDeath: true,
+        processTree: true,
+        resources: true,
+        targetTriple: "x86_64-pc-windows-msvc",
+      });
     } finally {
       await rm(fixture.directory, { recursive: true, force: true });
     }

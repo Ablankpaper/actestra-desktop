@@ -56,6 +56,16 @@ export const GOOSE_CONTAINMENT_PROBE_DIAGNOSTIC_CODES = Object.freeze([
   "resource-rlimit-unavailable",
   "resource-rlimit-widening-not-denied",
   "remaining-evidence-incomplete",
+  "windows-child-frame-invalid",
+  "windows-cleanup-incomplete",
+  "windows-filesystem-evidence-incomplete",
+  "windows-job-evidence-incomplete",
+  "windows-network-evidence-incomplete",
+  "windows-parent-death-evidence-incomplete",
+  "windows-process-evidence-incomplete",
+  "windows-profile-cleanup-failed",
+  "windows-resource-evidence-incomplete",
+  "windows-worker-launch-failed",
 ]);
 const PROBE_DIAGNOSTIC_CODES = new Set(GOOSE_CONTAINMENT_PROBE_DIAGNOSTIC_CODES);
 
@@ -83,6 +93,12 @@ function invalid(code) {
 export function classifyGooseContainmentProbeStderr(value) {
   if (typeof value !== "string" || Buffer.byteLength(value, "utf8") > MAX_PROBE_DIAGNOSTIC_BYTES) {
     return undefined;
+  }
+  const windowsMatch = value.match(
+    /^Goose windows containment failed at bounded stage (windows-[a-z-]+)\r?\n?$/u,
+  );
+  if (windowsMatch !== null) {
+    return PROBE_DIAGNOSTIC_CODES.has(windowsMatch[1]) ? windowsMatch[1] : undefined;
   }
   const matches = [
     ...value.matchAll(

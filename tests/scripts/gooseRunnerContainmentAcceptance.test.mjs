@@ -75,6 +75,21 @@ describe("P8 native Goose containment acceptance gate", () => {
     expect(acceptance).not.toContain("rename");
   });
 
+  it("admits Windows evidence only when all six native capabilities are complete", () => {
+    const windowsProbe = read("workers/goose-runner/src/containment/windows.rs");
+
+    expect(windowsProbe).toContain("let complete = filesystem");
+    expect(windowsProbe).toContain("&& network");
+    expect(windowsProbe).toContain("&& process_tree");
+    expect(windowsProbe).toContain("&& resources");
+    expect(windowsProbe).toContain("&& parent_death");
+    expect(windowsProbe).toContain("&& cleanup");
+    expect(windowsProbe).toContain("let status = if complete {");
+    expect(windowsProbe).toContain('"verified"');
+    expect(windowsProbe).toContain('"evidence-incomplete"');
+    expect(windowsProbe).toContain("Goose windows containment failed at bounded stage");
+  });
+
   it("runs authenticated integration before primitive binding and always deletes temporary evidence", () => {
     const source = read("scripts/run-goose-runner-containment.mjs");
     const integrationIndex = source.indexOf("runNativeIntegration(");

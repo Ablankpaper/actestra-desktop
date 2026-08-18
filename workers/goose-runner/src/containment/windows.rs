@@ -4,13 +4,15 @@ use super::parse_resource_limits_with;
 use std::env;
 
 #[cfg(windows)]
+use std::ffi::OsString;
+#[cfg(windows)]
 use std::fs;
 #[cfg(windows)]
 use std::io::{Read, Write};
 #[cfg(windows)]
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, TcpStream};
 #[cfg(windows)]
-use std::path::Path;
+use std::path::{Path, PathBuf};
 #[cfg(windows)]
 use std::process::{Command, Stdio};
 #[cfg(windows)]
@@ -32,10 +34,13 @@ use super::windows_contract::{
     WINDOWS_PARENT_DEATH_READY_LENGTH, WINDOWS_PARENT_DEATH_REQUEST_LENGTH,
     WINDOWS_PROBE_CHILD_ARGUMENT,
 };
+#[cfg(any(windows, test))]
+use crate::windows_supervisor::WindowsCleanupReceipt;
 #[cfg(windows)]
 use crate::windows_supervisor::{
     launch_windows_containment_worker, open_windows_probe_process, read_windows_probe_request,
-    remove_windows_probe_profile, write_windows_probe_result, ProbeHandle, WindowsCleanupReceipt,
+    remove_windows_probe_profile, write_windows_probe_result, ProbeHandle,
+    WindowsContainmentFailure,
 };
 
 #[cfg(windows)]
@@ -76,6 +81,132 @@ fn hostile_result_complete(result: &WindowsProbeResult) -> bool {
         && result.process_denied
         && result.environment_canary_absent
         && result.excluded_handle_absent
+}
+
+#[cfg(any(windows, test))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WindowsProbeFailure {
+    ChildFrame,
+    Cleanup,
+    Filesystem,
+    Job,
+    Network,
+    ParentDeath,
+    Process,
+    ProfileCleanup,
+    Resource,
+    WorkerLaunch,
+}
+
+#[cfg(any(windows, test))]
+impl WindowsProbeFailure {
+    fn code(self) -> &'static str {
+        match self {
+            Self::ChildFrame => "windows-child-frame-invalid",
+            Self::Cleanup => "windows-cleanup-incomplete",
+            Self::Filesystem => "windows-filesystem-evidence-incomplete",
+            Self::Job => "windows-job-evidence-incomplete",
+            Self::Network => "windows-network-evidence-incomplete",
+            Self::ParentDeath => "windows-parent-death-evidence-incomplete",
+            Self::Process => "windows-process-evidence-incomplete",
+            Self::ProfileCleanup => "windows-profile-cleanup-failed",
+            Self::Resource => "windows-resource-evidence-incomplete",
+            Self::WorkerLaunch => "windows-worker-launch-failed",
+        }
+    }
+}
+
+#[cfg(any(windows, test))]
+fn classify_windows_cleanup_failure(receipt: WindowsCleanupReceipt) -> Option<WindowsProbeFailure> {
+    if !receipt.profile_removed {
+        return Some(WindowsProbeFailure::ProfileCleanup);
+    }
+    if !receipt.worker_terminal || !receipt.private_root_removed {
+        return Some(WindowsProbeFailure::Cleanup);
+    }
+    None
+}
+
+#[cfg(windows)]
+fn classify_windows_launch_failure(failure: WindowsContainmentFailure) -> WindowsProbeFailure {
+    match failure {
+        WindowsContainmentFailure::Profile | WindowsContainmentFailure::Job => {
+            WindowsProbeFailure::Job
+        }
+        WindowsContainmentFailure::Pipes | WindowsContainmentFailure::WorkerLaunch => {
+            WindowsProbeFailure::WorkerLaunch
+        }
+    }
+}
+
+#[cfg(windows)]
+fn remove_private_root(path: &Path) -> bool {
+    if !path.exists() {
+        return true;
+    }
+    fs::remove_dir_all(path).is_ok() && !path.exists()
+}
+
+#[cfg(windows)]
+struct PrivateRootCleanupGuard {
+    path: PathBuf,
+    removed: bool,
+}
+
+#[cfg(windows)]
+impl PrivateRootCleanupGuard {
+    fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            removed: false,
+        }
+    }
+
+    fn mark_removed(&mut self) {
+        self.removed = true;
+    }
+
+    fn remove_now(&mut self) -> bool {
+        let removed = remove_private_root(&self.path);
+        if removed {
+            self.mark_removed();
+        }
+        removed
+    }
+}
+
+#[cfg(windows)]
+impl Drop for PrivateRootCleanupGuard {
+    fn drop(&mut self) {
+        if !self.removed {
+            let _ = remove_private_root(&self.path);
+        }
+    }
+}
+
+#[cfg(windows)]
+struct LocalAppDataGuard {
+    previous: Option<OsString>,
+}
+
+#[cfg(windows)]
+impl LocalAppDataGuard {
+    fn replace(value: &Path) -> Self {
+        let previous = env::var_os("LOCALAPPDATA");
+        env::set_var("LOCALAPPDATA", value);
+        Self { previous }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for LocalAppDataGuard {
+    fn drop(&mut self) {
+        if let Some(previous) = self.previous.take() {
+            env::set_var("LOCALAPPDATA", previous);
+        } else {
+            env::remove_var("LOCALAPPDATA");
+        }
+    }
 }
 
 #[cfg(windows)]
@@ -277,24 +408,63 @@ fn unique_probe_attempt_id() -> String {
 }
 
 #[cfg(windows)]
-fn run_windows_parent_death_probe() -> (bool, WindowsCleanupReceipt) {
+struct WindowsParentDeathOutcome {
+    result: Result<(), WindowsProbeFailure>,
+    cleanup: WindowsCleanupReceipt,
+}
+
+#[cfg(windows)]
+fn parent_death_setup_failure(
+    failure: WindowsProbeFailure,
+    private_root: &mut PrivateRootCleanupGuard,
+) -> WindowsParentDeathOutcome {
+    WindowsParentDeathOutcome {
+        result: Err(failure),
+        cleanup: WindowsCleanupReceipt {
+            worker_terminal: true,
+            profile_removed: true,
+            private_root_removed: private_root.remove_now(),
+        },
+    }
+}
+
+#[cfg(windows)]
+fn stop_intermediate_before_worker_launch(
+    intermediate: &mut std::process::Child,
+    private_root: &mut PrivateRootCleanupGuard,
+    failure: WindowsProbeFailure,
+) -> WindowsParentDeathOutcome {
+    let _ = intermediate.kill();
+    let intermediate_terminal = intermediate.wait().is_ok();
+    WindowsParentDeathOutcome {
+        result: Err(failure),
+        cleanup: WindowsCleanupReceipt {
+            worker_terminal: intermediate_terminal,
+            profile_removed: true,
+            private_root_removed: private_root.remove_now(),
+        },
+    }
+}
+
+#[cfg(windows)]
+fn run_windows_parent_death_probe() -> WindowsParentDeathOutcome {
     let attempt_id = unique_probe_attempt_id();
     let private_root = env::temp_dir().join(format!("actestra-goose-parent-death-{attempt_id}"));
+    let mut private_root_cleanup = PrivateRootCleanupGuard::new(private_root.clone());
     let local_app_data = private_root.join("local-app-data");
     if fs::create_dir_all(&local_app_data).is_err() {
-        return (
-            false,
-            WindowsCleanupReceipt {
-                worker_terminal: false,
-                profile_removed: false,
-                private_root_removed: false,
-            },
+        return parent_death_setup_failure(
+            WindowsProbeFailure::WorkerLaunch,
+            &mut private_root_cleanup,
         );
     }
     let executable = match env::current_exe() {
         Ok(executable) => executable,
         Err(_) => {
-            return incomplete_parent_death_cleanup(&attempt_id, &private_root, false);
+            return parent_death_setup_failure(
+                WindowsProbeFailure::WorkerLaunch,
+                &mut private_root_cleanup,
+            );
         }
     };
     let mut intermediate = match Command::new(executable)
@@ -308,15 +478,20 @@ fn run_windows_parent_death_probe() -> (bool, WindowsCleanupReceipt) {
     {
         Ok(intermediate) => intermediate,
         Err(_) => {
-            return incomplete_parent_death_cleanup(&attempt_id, &private_root, false);
+            return parent_death_setup_failure(
+                WindowsProbeFailure::WorkerLaunch,
+                &mut private_root_cleanup,
+            );
         }
     };
     let request = match encode_parent_death_request(&attempt_id) {
         Ok(request) => request,
         Err(()) => {
-            let _ = intermediate.kill();
-            let _ = intermediate.wait();
-            return incomplete_parent_death_cleanup(&attempt_id, &private_root, false);
+            return stop_intermediate_before_worker_launch(
+                &mut intermediate,
+                &mut private_root_cleanup,
+                WindowsProbeFailure::ChildFrame,
+            );
         }
     };
     let request_written = intermediate
@@ -325,14 +500,24 @@ fn run_windows_parent_death_probe() -> (bool, WindowsCleanupReceipt) {
         .is_some_and(|mut input| input.write_all(&request).is_ok());
     let output = intermediate.stdout.take();
     if !request_written {
-        let _ = intermediate.kill();
-        let _ = intermediate.wait();
-        return incomplete_parent_death_cleanup(&attempt_id, &private_root, false);
+        return stop_intermediate_before_worker_launch(
+            &mut intermediate,
+            &mut private_root_cleanup,
+            WindowsProbeFailure::ChildFrame,
+        );
     }
     let Some(mut output) = output else {
         let _ = intermediate.kill();
         let _ = intermediate.wait();
-        return incomplete_parent_death_cleanup(&attempt_id, &private_root, false);
+        let profile_removed = remove_windows_probe_profile(&attempt_id).is_ok();
+        return WindowsParentDeathOutcome {
+            result: Err(WindowsProbeFailure::ChildFrame),
+            cleanup: WindowsCleanupReceipt {
+                worker_terminal: false,
+                profile_removed,
+                private_root_removed: private_root_cleanup.remove_now(),
+            },
+        };
     };
 
     let (ready_sender, ready_receiver) = mpsc::sync_channel(1);
@@ -359,129 +544,190 @@ fn run_windows_parent_death_probe() -> (bool, WindowsCleanupReceipt) {
     let worker_terminal = observer
         .as_ref()
         .is_some_and(|process| process.wait_for_exit(5_000));
-    let _ = ready_reader.join();
+    let ready_reader_complete = ready_reader.join().is_ok();
     let profile_removed = remove_windows_probe_profile(&attempt_id).is_ok();
-    let private_root_removed = fs::remove_dir_all(&private_root).is_ok() && !private_root.exists();
-    let receipt = WindowsCleanupReceipt {
-        worker_terminal,
+    let cleanup = WindowsCleanupReceipt {
+        worker_terminal: worker_terminal && intermediate_terminal,
         profile_removed,
-        private_root_removed,
+        private_root_removed: private_root_cleanup.remove_now(),
     };
-    (
-        worker_was_running && intermediate_killed && intermediate_terminal && worker_terminal,
-        receipt,
-    )
+    let result = if ready.is_none() || !ready_reader_complete {
+        Err(WindowsProbeFailure::ChildFrame)
+    } else if worker_was_running && intermediate_killed && intermediate_terminal && worker_terminal
+    {
+        Ok(())
+    } else {
+        Err(WindowsProbeFailure::ParentDeath)
+    };
+    WindowsParentDeathOutcome { result, cleanup }
 }
 
 #[cfg(windows)]
-fn incomplete_parent_death_cleanup(
-    attempt_id: &str,
-    private_root: &Path,
-    worker_terminal: bool,
-) -> (bool, WindowsCleanupReceipt) {
-    let profile_removed = remove_windows_probe_profile(attempt_id).is_ok();
-    let private_root_removed = fs::remove_dir_all(private_root).is_ok() && !private_root.exists();
-    (
-        false,
-        WindowsCleanupReceipt {
-            worker_terminal,
-            profile_removed,
-            private_root_removed,
-        },
-    )
-}
-
-#[cfg(windows)]
-fn collect_windows_hostile_evidence() -> Result<WindowsHostileEvidence, ()> {
+fn collect_windows_hostile_evidence() -> Result<WindowsHostileEvidence, WindowsProbeFailure> {
     if env::var_os("ACTESTRA_ENVIRONMENT_CANARY").is_some() {
-        return Err(());
+        return Err(WindowsProbeFailure::Job);
     }
     let attempt_id = unique_probe_attempt_id();
     let probe_root = env::temp_dir().join(format!("actestra-goose-containment-{attempt_id}"));
+    let mut private_root_cleanup = PrivateRootCleanupGuard::new(probe_root.clone());
     let local_app_data = probe_root.join("local-app-data");
     let outside_root = probe_root.join("outside");
-    fs::create_dir_all(&local_app_data).map_err(|_| ())?;
-    fs::create_dir_all(&outside_root).map_err(|_| ())?;
-    env::set_var("LOCALAPPDATA", &local_app_data);
+    fs::create_dir_all(&local_app_data).map_err(|_| WindowsProbeFailure::WorkerLaunch)?;
+    fs::create_dir_all(&outside_root).map_err(|_| WindowsProbeFailure::WorkerLaunch)?;
+    let _local_app_data = LocalAppDataGuard::replace(&local_app_data);
 
     let outside_input = outside_root.join("input.txt");
     let outside_output = outside_root.join("output.txt");
     let outside_bytes = b"outside-sentinel";
-    fs::write(&outside_input, outside_bytes).map_err(|_| ())?;
-    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).map_err(|_| ())?;
-    let port = listener.local_addr().map_err(|_| ())?.port();
-    listener.set_nonblocking(true).map_err(|_| ())?;
+    fs::write(&outside_input, outside_bytes).map_err(|_| WindowsProbeFailure::WorkerLaunch)?;
+    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+        .map_err(|_| WindowsProbeFailure::WorkerLaunch)?;
+    let port = listener
+        .local_addr()
+        .map_err(|_| WindowsProbeFailure::WorkerLaunch)?
+        .port();
+    listener
+        .set_nonblocking(true)
+        .map_err(|_| WindowsProbeFailure::WorkerLaunch)?;
 
-    let executable = env::current_exe().map_err(|_| ())?;
-    let current_directory = executable.parent().ok_or(())?;
+    let executable = env::current_exe().map_err(|_| WindowsProbeFailure::WorkerLaunch)?;
+    let current_directory = executable
+        .parent()
+        .ok_or(WindowsProbeFailure::WorkerLaunch)?;
     let request = WindowsProbeRequest::new(
-        outside_input.to_str().ok_or(())?.to_string(),
-        outside_output.to_str().ok_or(())?.to_string(),
+        outside_input
+            .to_str()
+            .ok_or(WindowsProbeFailure::ChildFrame)?
+            .to_string(),
+        outside_output
+            .to_str()
+            .ok_or(WindowsProbeFailure::ChildFrame)?
+            .to_string(),
         port,
-    )?;
-    let excluded_handle = ProbeHandle::create()?;
-    let mut launch = launch_windows_containment_worker(
+    )
+    .map_err(|()| WindowsProbeFailure::ChildFrame)?;
+    let excluded_handle = ProbeHandle::create().map_err(|()| WindowsProbeFailure::Job)?;
+    let mut launch = match launch_windows_containment_worker(
         &attempt_id,
         &executable,
         current_directory,
         WINDOWS_PROBE_CHILD_ARGUMENT,
         &excluded_handle,
-    )
-    .map_err(|_| ())?;
-    let observation = launch.observation()?;
-    let result = launch.exchange_probe_request(&request)?;
-
-    let outside_unchanged =
-        fs::read(&outside_input).map_err(|_| ())? == outside_bytes && !outside_output.exists();
-    let no_connection = match listener.accept() {
-        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => true,
-        Ok((stream, _)) => {
-            drop(stream);
-            false
+    ) {
+        Ok(launch) => launch,
+        Err(failure) => {
+            let _ = remove_windows_probe_profile(&attempt_id);
+            return Err(classify_windows_launch_failure(failure));
         }
-        Err(_) => false,
     };
-    let mut evidence = WindowsHostileEvidence {
-        filesystem: result.filesystem_attempted && result.filesystem_denied && outside_unchanged,
-        network: result.network_attempted && result.network_denied && no_connection,
-        process_tree: result.process_attempted
-            && result.process_denied
-            && observation.single_active_process,
-        resources: observation.app_container
-            && observation.assigned_before_resume
-            && observation.resumed_once
-            && observation.exact_job_limits,
-        parent_death: false,
-        cleanup: false,
-    };
+
+    let hostile_result = (|| {
+        let observation = launch
+            .observation()
+            .map_err(|()| WindowsProbeFailure::Job)?;
+        let result = launch
+            .exchange_probe_request(&request)
+            .map_err(|()| WindowsProbeFailure::ChildFrame)?;
+        let outside_unchanged =
+            fs::read(&outside_input).map_err(|_| WindowsProbeFailure::Filesystem)? == outside_bytes
+                && !outside_output.exists();
+        let no_connection = match listener.accept() {
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => true,
+            Ok((stream, _)) => {
+                drop(stream);
+                false
+            }
+            Err(_) => return Err(WindowsProbeFailure::Network),
+        };
+        Ok((observation, result, outside_unchanged, no_connection))
+    })();
+
     drop(excluded_handle);
     drop(listener);
     let hostile_cleanup = launch.cleanup(&probe_root);
-    if !hostile_result_complete(&result) {
-        return Err(());
+    if hostile_cleanup.private_root_removed {
+        private_root_cleanup.mark_removed();
     }
-    let (parent_death, parent_cleanup) = run_windows_parent_death_probe();
-    evidence.parent_death = parent_death;
-    evidence.cleanup = hostile_cleanup.complete() && parent_cleanup.complete();
-    Ok(evidence)
+    if let Some(failure) = classify_windows_cleanup_failure(hostile_cleanup) {
+        return Err(failure);
+    }
+    let (observation, result, outside_unchanged, no_connection) = hostile_result?;
+    if !result.environment_canary_absent
+        || !result.excluded_handle_absent
+        || !observation.app_container
+        || !observation.assigned_before_resume
+        || !observation.resumed_once
+    {
+        return Err(WindowsProbeFailure::Job);
+    }
+    if !observation.exact_job_limits {
+        return Err(WindowsProbeFailure::Resource);
+    }
+    if !result.filesystem_attempted || !result.filesystem_denied || !outside_unchanged {
+        return Err(WindowsProbeFailure::Filesystem);
+    }
+    if !result.network_attempted || !result.network_denied || !no_connection {
+        return Err(WindowsProbeFailure::Network);
+    }
+    if !result.process_attempted || !result.process_denied || !observation.single_active_process {
+        return Err(WindowsProbeFailure::Process);
+    }
+    if !hostile_result_complete(&result) {
+        return Err(WindowsProbeFailure::Job);
+    }
+
+    let parent_death = run_windows_parent_death_probe();
+    if let Some(failure) = classify_windows_cleanup_failure(parent_death.cleanup) {
+        return Err(failure);
+    }
+    parent_death.result?;
+    Ok(WindowsHostileEvidence {
+        filesystem: true,
+        network: true,
+        process_tree: true,
+        resources: true,
+        parent_death: true,
+        cleanup: true,
+    })
 }
 
 #[cfg(windows)]
 pub(crate) fn run_windows_containment_probe() -> String {
-    let evidence = collect_windows_hostile_evidence().ok();
+    let evidence = match collect_windows_hostile_evidence() {
+        Ok(evidence) => Some(evidence),
+        Err(failure) => {
+            eprintln!(
+                "Goose windows containment failed at bounded stage {}",
+                failure.code()
+            );
+            None
+        }
+    };
+    let filesystem = evidence.as_ref().is_some_and(|value| value.filesystem);
+    let network = evidence.as_ref().is_some_and(|value| value.network);
+    let process_tree = evidence.as_ref().is_some_and(|value| value.process_tree);
+    let resources = evidence.as_ref().is_some_and(|value| value.resources);
+    let parent_death = evidence.as_ref().is_some_and(|value| value.parent_death);
+    let cleanup = evidence.as_ref().is_some_and(|value| value.cleanup);
+    let complete = filesystem && network && process_tree && resources && parent_death && cleanup;
+    let status = if complete {
+        "verified"
+    } else {
+        "evidence-incomplete"
+    };
     serde_json::json!({
         "contractVersion": 1,
         "targetTriple": bounded_probe_metadata(env::var("ACTESTRA_GOOSE_TARGET_TRIPLE").ok(), 128),
         "sourceCommit": bounded_probe_metadata(env::var("ACTESTRA_GOOSE_SOURCE_COMMIT").ok(), 40),
         "probeSha256": bounded_probe_metadata(env::var("ACTESTRA_GOOSE_PROBE_SHA256").ok(), 64),
         "executableSha256": bounded_probe_metadata(env::var("ACTESTRA_GOOSE_EXECUTABLE_SHA256").ok(), 64),
-        "filesystem": evidence.as_ref().is_some_and(|value| value.filesystem),
-        "network": evidence.as_ref().is_some_and(|value| value.network),
-        "processTree": evidence.as_ref().is_some_and(|value| value.process_tree),
-        "resources": evidence.as_ref().is_some_and(|value| value.resources),
-        "parentDeath": evidence.as_ref().is_some_and(|value| value.parent_death),
-        "cleanup": evidence.as_ref().is_some_and(|value| value.cleanup),
-        "status": "evidence-incomplete",
+        "filesystem": filesystem,
+        "network": network,
+        "processTree": process_tree,
+        "resources": resources,
+        "parentDeath": parent_death,
+        "cleanup": cleanup,
+        "status": status,
     })
     .to_string()
 }
@@ -489,9 +735,11 @@ pub(crate) fn run_windows_containment_probe() -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        hostile_result_complete, is_closed_filesystem_denial, is_closed_network_denial,
-        is_closed_process_denial, WindowsProbeResult,
+        classify_windows_cleanup_failure, hostile_result_complete, is_closed_filesystem_denial,
+        is_closed_network_denial, is_closed_process_denial, WindowsProbeFailure,
+        WindowsProbeResult,
     };
+    use crate::windows_supervisor::WindowsCleanupReceipt;
     use std::io::ErrorKind;
 
     #[test]
@@ -524,5 +772,83 @@ mod tests {
         assert!(hostile_result_complete(&result));
         result.process_attempted = false;
         assert!(!hostile_result_complete(&result));
+    }
+
+    #[test]
+    fn maps_only_closed_windows_probe_failure_codes() {
+        for (failure, code) in [
+            (
+                WindowsProbeFailure::ChildFrame,
+                "windows-child-frame-invalid",
+            ),
+            (WindowsProbeFailure::Cleanup, "windows-cleanup-incomplete"),
+            (
+                WindowsProbeFailure::Filesystem,
+                "windows-filesystem-evidence-incomplete",
+            ),
+            (WindowsProbeFailure::Job, "windows-job-evidence-incomplete"),
+            (
+                WindowsProbeFailure::Network,
+                "windows-network-evidence-incomplete",
+            ),
+            (
+                WindowsProbeFailure::ParentDeath,
+                "windows-parent-death-evidence-incomplete",
+            ),
+            (
+                WindowsProbeFailure::Process,
+                "windows-process-evidence-incomplete",
+            ),
+            (
+                WindowsProbeFailure::ProfileCleanup,
+                "windows-profile-cleanup-failed",
+            ),
+            (
+                WindowsProbeFailure::Resource,
+                "windows-resource-evidence-incomplete",
+            ),
+            (
+                WindowsProbeFailure::WorkerLaunch,
+                "windows-worker-launch-failed",
+            ),
+        ] {
+            assert_eq!(failure.code(), code);
+        }
+    }
+
+    #[test]
+    fn classifies_profile_cleanup_separately_from_other_cleanup_failures() {
+        let complete = WindowsCleanupReceipt {
+            worker_terminal: true,
+            profile_removed: true,
+            private_root_removed: true,
+        };
+        assert_eq!(classify_windows_cleanup_failure(complete), None);
+
+        for (receipt, expected) in [
+            (
+                WindowsCleanupReceipt {
+                    profile_removed: false,
+                    ..complete
+                },
+                WindowsProbeFailure::ProfileCleanup,
+            ),
+            (
+                WindowsCleanupReceipt {
+                    worker_terminal: false,
+                    ..complete
+                },
+                WindowsProbeFailure::Cleanup,
+            ),
+            (
+                WindowsCleanupReceipt {
+                    private_root_removed: false,
+                    ..complete
+                },
+                WindowsProbeFailure::Cleanup,
+            ),
+        ] {
+            assert_eq!(classify_windows_cleanup_failure(receipt), Some(expected));
+        }
     }
 }

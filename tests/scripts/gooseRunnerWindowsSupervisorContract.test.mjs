@@ -30,7 +30,7 @@ describe("Windows Goose supervisor source contract", () => {
     expect(manifest).not.toContain("Win32_Security_AppLocker");
   });
 
-  it("dispatches exact Windows modes before ordinary Goose while the skeleton stays closed", () => {
+  it("dispatches exact Windows modes before ordinary Goose while containment stays fail closed", () => {
     const main = read("workers/goose-runner/src/main.rs");
     const supervisor = read("workers/goose-runner/src/windows_supervisor.rs");
     const containment = read("workers/goose-runner/src/containment/windows.rs");
@@ -45,7 +45,12 @@ describe("Windows Goose supervisor source contract", () => {
     expect(supervisor).toContain("pub(crate) fn derive_pipe_names");
     expect(supervisor).not.toContain("CheckNetIsolation");
     expect(supervisor).not.toContain("privateNetworkClientServer");
-    expect(containment).toContain('"status":"unsupported-platform"');
+    expect(containment).not.toContain('"status":"unsupported-platform"');
+    expect(containment).toContain("let complete =");
+    expect(containment).toContain("let status = if complete {");
+    expect(containment).toContain('"verified"');
+    expect(containment).toContain('"evidence-incomplete"');
+    expect(containment).toContain("Goose windows containment failed at bounded stage");
     expect(containment).toContain("parse_resource_limits_with");
     expect(containment).toContain("Err(())");
   });

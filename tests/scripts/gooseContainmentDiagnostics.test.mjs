@@ -7,6 +7,44 @@ import {
 } from "../../scripts/gooseContainmentEvidence.mjs";
 
 describe("Goose containment probe diagnostics", () => {
+  it("accepts only the closed Windows containment vocabulary", () => {
+    for (const code of [
+      "windows-child-frame-invalid",
+      "windows-cleanup-incomplete",
+      "windows-filesystem-evidence-incomplete",
+      "windows-job-evidence-incomplete",
+      "windows-network-evidence-incomplete",
+      "windows-parent-death-evidence-incomplete",
+      "windows-process-evidence-incomplete",
+      "windows-profile-cleanup-failed",
+      "windows-resource-evidence-incomplete",
+      "windows-worker-launch-failed",
+    ]) {
+      expect(
+        classifyGooseContainmentProbeStderr(
+          `Goose windows containment failed at bounded stage ${code}\n`,
+        ),
+      ).toBe(code);
+    }
+    expect(
+      classifyGooseContainmentProbeStderr(
+        "Goose windows containment failed at bounded stage windows-private-path\n",
+      ),
+    ).toBeUndefined();
+    expect(
+      classifyGooseContainmentProbeStderr(
+        "Goose windows containment failed at bounded stage windows-job-evidence-incomplete\n" +
+          "Goose windows containment failed at bounded stage windows-job-evidence-incomplete\n",
+      ),
+    ).toBeUndefined();
+    expect(
+      classifyGooseContainmentProbeStderr(
+        "CreateProcessW failed at C:\\private\\worker.exe with PID 4242\n" +
+          "Goose windows containment failed at bounded stage windows-worker-launch-failed\n",
+      ),
+    ).toBeUndefined();
+  });
+
   it("accepts only the closed process-stage vocabulary", () => {
     for (const code of [
       "process-seccomp-unavailable",
@@ -84,6 +122,7 @@ describe("Goose containment probe diagnostics", () => {
       "Goose resource probe failed at bounded stage /Users/private/secret\n",
       "Goose resource probe failed at bounded stage resource-invented-code\n",
       "Goose parent-death probe failed at bounded stage /Users/private/secret\n",
+      "Goose windows containment failed at bounded stage C:\\private\\secret\n",
       `Goose resource probe failed at bounded stage resource-rlimit-mismatch\n${"x".repeat(65 * 1024)}`,
     ]) {
       expect(classifyGooseContainmentProbeStderr(value)).toBeUndefined();
