@@ -256,11 +256,25 @@ The supervisor creates the worker with `CREATE_SUSPENDED`,
 the assignment and limits back from the kernel, installs completion/exit
 observation, and only then resumes the primary thread.
 
-The custom Unicode environment block contains only one sorted entry,
-`SystemRoot=<trusted Windows directory>`, obtained by the supervisor through
-`GetWindowsDirectoryW` and terminated by the required second NUL. The
-supervisor neither inherits nor enumerates the parent environment, and no
-environment value is written to diagnostics.
+The current fail-closed production prototype supplies one sorted custom Unicode
+environment entry, `SystemRoot=<trusted Windows directory>`, obtained by the
+supervisor through `GetWindowsDirectoryW` and terminated by the required second
+NUL. It does not enumerate the parent environment and writes no environment
+value to diagnostics. Exact `windows-2025` run `32103584563` still failed
+`CreateProcessW` with Win32 code 203, so this prototype is not admitted evidence
+and `SystemRoot` alone is not a verified final environment contract.
+
+Before the production contract changes again, a `cfg(test)`-only native matrix
+must distinguish environment requirements from process-attribute interaction.
+It compares the exact production structure with inherited environment,
+trusted `SystemRoot + WINDIR`, trusted `ComSpec + SystemRoot + WINDIR`,
+security-capabilities-only, handle-list-only, and plain `CreateProcessW`
+variants. The matrix may print only its closed variant label, failure stage,
+closed reason, and numeric Win32 code. It may not print paths, environment
+names or values beyond those closed labels, SIDs, handles, prompts, leases, or
+credentials. Non-test builds retain only the exact fail-closed production
+variant; no inherited-environment or reduced-attribute fallback is available
+to Main or the Worker.
 
 No breakaway flag is permitted. A descendant is allowed only when the existing
 Goose/tool contract creates it and the Job Object admits it within the fixed

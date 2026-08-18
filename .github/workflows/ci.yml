@@ -91,7 +91,7 @@ jobs:
       - name: Verify Windows supervisor native primitives
         run: >-
           cargo test --manifest-path workers/goose-runner/Cargo.toml
-          --locked windows_native_tests
+          --locked windows_native_tests -- --nocapture --test-threads=1
 
       - name: Install pinned Goose runner audit tools
         run: bun run goose:runner:tools

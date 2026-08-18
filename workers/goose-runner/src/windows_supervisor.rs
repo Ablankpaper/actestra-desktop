@@ -5,7 +5,7 @@ pub(crate) const WINDOWS_RESOURCE_FAILURE_MARKER: &str =
 #[cfg(windows)]
 use std::ffi::c_void;
 #[cfg(windows)]
-use std::mem::{size_of, zeroed};
+use std::mem::{size_of, size_of_val, zeroed};
 #[cfg(windows)]
 use std::path::Path;
 #[cfg(windows)]
@@ -66,6 +66,13 @@ const WINDOWS_WORKER_MODE_ARGUMENT: &str = "--actestra-windows-worker-v1";
 #[cfg(any(windows, test))]
 const WINDOWS_DIRECTORY_MAX_U16: usize = 32_767;
 
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DiagnosticEnvironmentKind {
+    SystemRootWindir,
+    SystemRootWindirComSpec,
+}
+
 #[cfg(any(windows, test))]
 fn build_minimal_windows_environment_block(windows_directory: &[u16]) -> Result<Vec<u16>, ()> {
     const SYSTEM_ROOT_PREFIX: &str = "SystemRoot=";
@@ -84,6 +91,40 @@ fn build_minimal_windows_environment_block(windows_directory: &[u16]) -> Result<
     environment.extend(prefix);
     environment.extend_from_slice(windows_directory);
     environment.extend([0, 0]);
+    Ok(environment)
+}
+
+#[cfg(test)]
+fn build_diagnostic_windows_environment_block(
+    windows_directory: &[u16],
+    kind: DiagnosticEnvironmentKind,
+) -> Result<Vec<u16>, ()> {
+    if windows_directory.is_empty() || windows_directory.contains(&0) {
+        return Err(());
+    }
+
+    let system_root_prefix: Vec<u16> = "SystemRoot=".encode_utf16().collect();
+    let windir_prefix: Vec<u16> = "WINDIR=".encode_utf16().collect();
+    let comspec_prefix: Vec<u16> = "ComSpec=".encode_utf16().collect();
+    let comspec_suffix: Vec<u16> = r"\System32\cmd.exe".encode_utf16().collect();
+    let mut environment = Vec::new();
+
+    if kind == DiagnosticEnvironmentKind::SystemRootWindirComSpec {
+        environment.extend(comspec_prefix);
+        environment.extend_from_slice(windows_directory);
+        environment.extend(comspec_suffix);
+        environment.push(0);
+    }
+    environment.extend(system_root_prefix);
+    environment.extend_from_slice(windows_directory);
+    environment.push(0);
+    environment.extend(windir_prefix);
+    environment.extend_from_slice(windows_directory);
+    environment.extend([0, 0]);
+
+    if environment.len() > WINDOWS_DIRECTORY_MAX_U16 {
+        return Err(());
+    }
     Ok(environment)
 }
 
@@ -116,6 +157,95 @@ fn trusted_windows_directory() -> Result<Vec<u16>, ()> {
 fn trusted_windows_environment_block() -> Result<Vec<u16>, ()> {
     let windows_directory = trusted_windows_directory()?;
     build_minimal_windows_environment_block(&windows_directory)
+}
+
+#[cfg(all(test, windows))]
+fn trusted_diagnostic_windows_environment_block(
+    kind: DiagnosticEnvironmentKind,
+) -> Result<Vec<u16>, ()> {
+    let windows_directory = trusted_windows_directory()?;
+    build_diagnostic_windows_environment_block(&windows_directory, kind)
+}
+
+#[cfg(windows)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WorkerLaunchVariant {
+    Production,
+    #[cfg(test)]
+    FullInherit,
+    #[cfg(test)]
+    FullSystemRootWindir,
+    #[cfg(test)]
+    FullSystemRootWindirComSpec,
+    #[cfg(test)]
+    SecurityOnlyInherit,
+    #[cfg(test)]
+    HandleListOnlyInherit,
+    #[cfg(test)]
+    PlainInherit,
+}
+
+#[cfg(windows)]
+impl WorkerLaunchVariant {
+    fn uses_security_capabilities(self) -> bool {
+        match self {
+            Self::Production => true,
+            #[cfg(test)]
+            Self::FullInherit
+            | Self::FullSystemRootWindir
+            | Self::FullSystemRootWindirComSpec
+            | Self::SecurityOnlyInherit => true,
+            #[cfg(test)]
+            Self::HandleListOnlyInherit | Self::PlainInherit => false,
+        }
+    }
+
+    fn uses_handle_list(self) -> bool {
+        match self {
+            Self::Production => true,
+            #[cfg(test)]
+            Self::FullInherit
+            | Self::FullSystemRootWindir
+            | Self::FullSystemRootWindirComSpec
+            | Self::HandleListOnlyInherit => true,
+            #[cfg(test)]
+            Self::SecurityOnlyInherit | Self::PlainInherit => false,
+        }
+    }
+
+    fn environment(self) -> Result<Option<Vec<u16>>, ()> {
+        match self {
+            Self::Production => trusted_windows_environment_block().map(Some),
+            #[cfg(test)]
+            Self::FullInherit
+            | Self::SecurityOnlyInherit
+            | Self::HandleListOnlyInherit
+            | Self::PlainInherit => Ok(None),
+            #[cfg(test)]
+            Self::FullSystemRootWindir => trusted_diagnostic_windows_environment_block(
+                DiagnosticEnvironmentKind::SystemRootWindir,
+            )
+            .map(Some),
+            #[cfg(test)]
+            Self::FullSystemRootWindirComSpec => trusted_diagnostic_windows_environment_block(
+                DiagnosticEnvironmentKind::SystemRootWindirComSpec,
+            )
+            .map(Some),
+        }
+    }
+
+    #[cfg(test)]
+    fn label(self) -> &'static str {
+        match self {
+            Self::Production => "full-system-root",
+            Self::FullInherit => "full-inherit",
+            Self::FullSystemRootWindir => "full-system-root-windir",
+            Self::FullSystemRootWindirComSpec => "full-system-root-windir-comspec",
+            Self::SecurityOnlyInherit => "security-only-inherit",
+            Self::HandleListOnlyInherit => "handle-list-only-inherit",
+            Self::PlainInherit => "plain-inherit",
+        }
+    }
 }
 
 #[cfg(any(windows, test))]
@@ -203,6 +333,23 @@ impl WorkerLaunchFailureStage {
 
     fn unclassified_win32_code(self) -> Option<u32> {
         match self {
+            Self::CreateProcess(CreateProcessFailureReason::Other(win32_code)) => Some(win32_code),
+            _ => None,
+        }
+    }
+
+    #[cfg(windows)]
+    fn win32_code(self) -> Option<u32> {
+        match self {
+            Self::CreateProcess(CreateProcessFailureReason::FileNotFound) => Some(2),
+            Self::CreateProcess(CreateProcessFailureReason::PathNotFound) => Some(3),
+            Self::CreateProcess(CreateProcessFailureReason::AccessDenied) => Some(5),
+            Self::CreateProcess(CreateProcessFailureReason::InvalidHandle) => Some(6),
+            Self::CreateProcess(CreateProcessFailureReason::BadEnvironment) => Some(10),
+            Self::CreateProcess(CreateProcessFailureReason::NotSupported) => Some(50),
+            Self::CreateProcess(CreateProcessFailureReason::InvalidParameter) => Some(87),
+            Self::CreateProcess(CreateProcessFailureReason::ElevationRequired) => Some(740),
+            Self::CreateProcess(CreateProcessFailureReason::PrivilegeNotHeld) => Some(1314),
             Self::CreateProcess(CreateProcessFailureReason::Other(win32_code)) => Some(win32_code),
             _ => None,
         }
@@ -559,6 +706,23 @@ impl JobObject {
         current_directory: &Path,
         inherited_handles: &[HANDLE],
     ) -> Result<WorkerProcess, WorkerLaunchFailureStage> {
+        self.launch_suspended_worker_with_variant(
+            profile,
+            executable,
+            current_directory,
+            inherited_handles,
+            WorkerLaunchVariant::Production,
+        )
+    }
+
+    fn launch_suspended_worker_with_variant(
+        &self,
+        profile: &AppContainerProfile,
+        executable: &Path,
+        current_directory: &Path,
+        inherited_handles: &[HANDLE],
+        variant: WorkerLaunchVariant,
+    ) -> Result<WorkerProcess, WorkerLaunchFailureStage> {
         if inherited_handles.is_empty()
             || inherited_handles.iter().any(|handle| {
                 handle.is_null()
@@ -607,47 +771,73 @@ impl JobObject {
             .collect();
 
         let security_capabilities = profile.security_capabilities();
-        let mut attribute_list = ProcThreadAttributeList::create(2)
-            .map_err(|()| WorkerLaunchFailureStage::AttributeListInit)?;
-        attribute_list
-            .update(
-                PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES,
-                (&raw const security_capabilities).cast::<c_void>(),
-                size_of::<SECURITY_CAPABILITIES>(),
+        let attribute_count =
+            u32::from(variant.uses_security_capabilities()) + u32::from(variant.uses_handle_list());
+        let mut attribute_list = if attribute_count == 0 {
+            None
+        } else {
+            Some(
+                ProcThreadAttributeList::create(attribute_count)
+                    .map_err(|()| WorkerLaunchFailureStage::AttributeListInit)?,
             )
-            .map_err(|()| WorkerLaunchFailureStage::SecurityCapabilitiesAttribute)?;
-        attribute_list
-            .update(
-                PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
-                inherited_handles.as_ptr().cast::<c_void>(),
-                std::mem::size_of_val(inherited_handles),
-            )
-            .map_err(|()| WorkerLaunchFailureStage::HandleListAttribute)?;
+        };
+        if variant.uses_security_capabilities() {
+            attribute_list
+                .as_mut()
+                .ok_or(WorkerLaunchFailureStage::AttributeListInit)?
+                .update(
+                    PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES,
+                    (&raw const security_capabilities).cast::<c_void>(),
+                    size_of::<SECURITY_CAPABILITIES>(),
+                )
+                .map_err(|()| WorkerLaunchFailureStage::SecurityCapabilitiesAttribute)?;
+        }
+        if variant.uses_handle_list() {
+            attribute_list
+                .as_mut()
+                .ok_or(WorkerLaunchFailureStage::AttributeListInit)?
+                .update(
+                    PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+                    inherited_handles.as_ptr().cast::<c_void>(),
+                    std::mem::size_of_val(inherited_handles),
+                )
+                .map_err(|()| WorkerLaunchFailureStage::HandleListAttribute)?;
+        }
 
         // SAFETY: zero is the documented initialization for both Win32 structures.
         let mut startup: STARTUPINFOEXW = unsafe { zeroed() };
-        startup.StartupInfo.cb = size_of::<STARTUPINFOEXW>() as u32;
-        startup.lpAttributeList = attribute_list.pointer;
+        startup.StartupInfo.cb = if attribute_list.is_some() {
+            size_of::<STARTUPINFOEXW>() as u32
+        } else {
+            size_of_val(&startup.StartupInfo) as u32
+        };
+        startup.lpAttributeList = attribute_list
+            .as_ref()
+            .map_or(null_mut(), |list| list.pointer);
         // SAFETY: zero is the documented initialization and CreateProcessW fills every handle.
         let mut process_information: PROCESS_INFORMATION = unsafe { zeroed() };
-        let environment = trusted_windows_environment_block()
+        let environment = variant
+            .environment()
             .map_err(|()| WorkerLaunchFailureStage::InputValidation)?;
-        let flags = CREATE_SUSPENDED
-            | EXTENDED_STARTUPINFO_PRESENT
-            | CREATE_UNICODE_ENVIRONMENT
-            | CREATE_NO_WINDOW;
+        let environment_pointer = environment
+            .as_ref()
+            .map_or(null(), |block| block.as_ptr().cast::<c_void>());
+        let mut flags = CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW;
+        if attribute_list.is_some() {
+            flags |= EXTENDED_STARTUPINFO_PRESENT;
+        }
         // SAFETY: all pointers remain valid through the call, the command line is writable,
-        // inherited handles are explicitly allowlisted, and the extended startup list has the
-        // exact AppContainer and handle attributes configured above.
+        // the production variant explicitly allowlists inherited handles, and test-only variants
+        // change one launch boundary at a time without entering a production mode.
         if unsafe {
             CreateProcessW(
                 executable_wide.as_ptr(),
                 command_line_wide.as_mut_ptr(),
                 null(),
                 null(),
-                1,
+                i32::from(variant.uses_handle_list()),
                 flags,
-                environment.as_ptr().cast::<c_void>(),
+                environment_pointer,
                 current_directory_wide.as_ptr(),
                 &startup.StartupInfo,
                 &mut process_information,
@@ -754,6 +944,35 @@ mod tests {
     }
 
     #[test]
+    fn builds_exact_diagnostic_environment_variants_from_one_trusted_directory() {
+        let windows_directory: Vec<u16> = r"C:\Windows".encode_utf16().collect();
+        let system_root_windir = build_diagnostic_windows_environment_block(
+            &windows_directory,
+            DiagnosticEnvironmentKind::SystemRootWindir,
+        )
+        .expect("the two-entry diagnostic environment must be bounded and valid");
+        let expected_system_root_windir: Vec<u16> =
+            "SystemRoot=C:\\Windows\0WINDIR=C:\\Windows\0\0"
+                .encode_utf16()
+                .collect();
+        assert_eq!(system_root_windir, expected_system_root_windir);
+
+        let with_comspec = build_diagnostic_windows_environment_block(
+            &windows_directory,
+            DiagnosticEnvironmentKind::SystemRootWindirComSpec,
+        )
+        .expect("the three-entry diagnostic environment must be bounded and valid");
+        let expected_with_comspec: Vec<u16> = concat!(
+            "ComSpec=C:\\Windows\\System32\\cmd.exe\0",
+            "SystemRoot=C:\\Windows\0",
+            "WINDIR=C:\\Windows\0\0"
+        )
+        .encode_utf16()
+        .collect();
+        assert_eq!(with_comspec, expected_with_comspec);
+    }
+
+    #[test]
     fn keeps_both_windows_modes_fail_closed_until_native_setup_exists() {
         assert_eq!(run_supervisor(), 1);
         assert_eq!(run_worker(), 1);
@@ -827,7 +1046,9 @@ mod tests {
 #[cfg(all(test, windows))]
 mod windows_native_tests {
     use super::*;
+    use std::ffi::OsString;
     use std::mem::size_of;
+    use std::os::windows::ffi::OsStringExt;
     use std::path::PathBuf;
     use std::ptr::null;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -924,11 +1145,7 @@ mod windows_native_tests {
     }
 
     #[test]
-    fn assigns_the_suspended_appcontainer_worker_before_resuming_it() {
-        let attempt_id = unique_attempt_id();
-        let profile = AppContainerProfile::create(&attempt_id)
-            .expect("a unique AppContainer profile must be created");
-        let job = JobObject::create().expect("the Windows Job Object must be configured");
+    fn diagnoses_create_process_attribute_and_environment_boundary() {
         let mut attributes = SECURITY_ATTRIBUTES {
             nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
             lpSecurityDescriptor: std::ptr::null_mut(),
@@ -937,28 +1154,71 @@ mod windows_native_tests {
         // SAFETY: attributes is valid for the call and the returned event is wrapped immediately.
         let event = TestHandle(unsafe { CreateEventW(&raw mut attributes, 1, 0, null()) });
         assert!(!event.0.is_null());
-        let command = std::env::var_os("ComSpec")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from(r"C:\Windows\System32\cmd.exe"));
+        let windows_directory = trusted_windows_directory()
+            .expect("the trusted Windows directory must be available to the native probe");
+        let mut command = PathBuf::from(OsString::from_wide(&windows_directory));
+        command.push("System32");
+        command.push("cmd.exe");
         let current_directory = command
             .parent()
             .expect("the command executable must have an explicit parent directory");
 
-        let worker = job
-            .launch_suspended_worker(&profile, &command, current_directory, &[event.0])
-            .unwrap_or_else(|failure| {
-                let stage = failure.code();
-                let reason = failure.reason_code();
-                if let Some(win32_code) = failure.unclassified_win32_code() {
-                    panic!(
-                        "worker launch failed at stage={stage} reason={reason} win32_code={win32_code}"
+        let variants = [
+            WorkerLaunchVariant::Production,
+            WorkerLaunchVariant::FullInherit,
+            WorkerLaunchVariant::FullSystemRootWindir,
+            WorkerLaunchVariant::FullSystemRootWindirComSpec,
+            WorkerLaunchVariant::SecurityOnlyInherit,
+            WorkerLaunchVariant::HandleListOnlyInherit,
+            WorkerLaunchVariant::PlainInherit,
+        ];
+        let mut production_succeeded = false;
+        let mut plain_succeeded = false;
+
+        for variant in variants {
+            let label = variant.label();
+            let attempt_id = unique_attempt_id();
+            let profile = AppContainerProfile::create(&attempt_id)
+                .unwrap_or_else(|()| panic!("diagnostic profile setup failed variant={label}"));
+            let job = JobObject::create()
+                .unwrap_or_else(|()| panic!("diagnostic job setup failed variant={label}"));
+            match job.launch_suspended_worker_with_variant(
+                &profile,
+                &command,
+                current_directory,
+                &[event.0],
+                variant,
+            ) {
+                Ok(worker) => {
+                    println!(
+                        "WINDOWS_LAUNCH_DIAGNOSTIC variant={label} status=success \
+                         stage=none reason=none win32_code=0"
+                    );
+                    assert!(worker.was_assigned_before_resume());
+                    assert!(worker.was_resumed_from_one_suspend());
+                    assert!(!worker.process_handle().is_null());
+                    production_succeeded |= variant == WorkerLaunchVariant::Production;
+                    plain_succeeded |= variant == WorkerLaunchVariant::PlainInherit;
+                }
+                Err(failure) => {
+                    let stage = failure.code();
+                    let reason = failure.reason_code();
+                    let win32_code = failure.win32_code().unwrap_or(0);
+                    println!(
+                        "WINDOWS_LAUNCH_DIAGNOSTIC variant={label} status=failure \
+                         stage={stage} reason={reason} win32_code={win32_code}"
                     );
                 }
-                panic!("worker launch failed at stage={stage} reason={reason}");
-            });
+            }
+        }
 
-        assert!(worker.was_assigned_before_resume());
-        assert!(worker.was_resumed_from_one_suspend());
-        assert!(!worker.process_handle().is_null());
+        assert!(
+            plain_succeeded,
+            "Windows launch diagnostic harness is invalid: plain-inherit did not succeed"
+        );
+        assert!(
+            production_succeeded,
+            "Windows production launch remains unavailable; inspect sanitized matrix output"
+        );
     }
 }

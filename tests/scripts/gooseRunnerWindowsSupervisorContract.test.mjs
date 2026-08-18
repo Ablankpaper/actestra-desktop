@@ -66,7 +66,8 @@ describe("Windows Goose supervisor source contract", () => {
       expect(supervisor).toContain(`"${stage}"`);
     }
     expect(supervisor).toContain("WorkerLaunchFailureStage");
-    expect(supervisor).toContain("worker launch failed at stage={stage}");
+    expect(supervisor).toContain("WINDOWS_LAUNCH_DIAGNOSTIC variant={label} status=failure");
+    expect(supervisor).toContain("stage={stage} reason={reason} win32_code={win32_code}");
   });
 
   it("classifies CreateProcess failures through one closed redacted reason vocabulary", () => {
@@ -100,6 +101,29 @@ describe("Windows Goose supervisor source contract", () => {
     expect(supervisor).toContain("build_minimal_windows_environment_block");
     expect(supervisor).toContain('"SystemRoot="');
     expect(supervisor).not.toContain("let empty_environment = [0_u16, 0_u16]");
-    expect(supervisor).not.toMatch(/std::env::(?:vars|vars_os)\s*\(/u);
+    expect(supervisor).not.toMatch(/std::env::(?:var|var_os|vars|vars_os)\s*\(/u);
+  });
+
+  it("runs one test-only sanitized launch matrix without weakening the production variant", () => {
+    const supervisor = read("workers/goose-runner/src/windows_supervisor.rs");
+    const workflow = read(".github/workflows/ci.yml");
+
+    for (const label of [
+      "full-system-root",
+      "full-inherit",
+      "full-system-root-windir",
+      "full-system-root-windir-comspec",
+      "security-only-inherit",
+      "handle-list-only-inherit",
+      "plain-inherit",
+    ]) {
+      expect(supervisor).toContain(`"${label}"`);
+    }
+    expect(supervisor).toContain("WINDOWS_LAUNCH_DIAGNOSTIC");
+    expect(supervisor).toContain("WorkerLaunchVariant::Production");
+    expect(supervisor).toContain("diagnoses_create_process_attribute_and_environment_boundary");
+    expect(workflow).toContain("--nocapture");
+    expect(workflow).toContain("--test-threads=1");
+    expect(supervisor).not.toMatch(/std::env::(?:var|var_os|vars|vars_os)\s*\(/u);
   });
 });

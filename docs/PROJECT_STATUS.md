@@ -4,6 +4,64 @@ Last updated: 2026-08-18
 
 ## Current phase
 
+### 2026-08-18 P8.2b Windows sixth native denial and discriminator (gate remains open)
+
+Draft pull request
+[#68](https://github.com/Ablankpaper/actestra-desktop/pull/68) reached exact
+implementation head `500d8115003e2a14638c79f26db38531eeb507cf`. Pull-request run
+[`32103584563`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32103584563)
+failed Windows build-probe job
+[`95608623187`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32103584563/job/95608623187):
+the AppContainer-profile and Job Object tests passed, while the suspended Worker
+launch again failed at `stage=create-process reason=other win32_code=203`. This
+is the sixth native Windows failure of the same Task 4 launch test. The workflow
+was then cancelled after preserving the failed job; that cancellation does not
+turn the Windows failure into a pass.
+
+The exact result disproves the preceding `SystemRoot`-only hypothesis. Two
+single-variable production hypotheses are now explicitly false on
+`windows-2025`: supplying an explicit current directory, and replacing the
+empty custom environment with exactly one trusted `SystemRoot` entry. The
+numeric name `ERROR_ENVVAR_NOT_FOUND` is therefore insufficient to conclude
+that adding more environment variables is the correct production repair. The
+remaining fault may be an environment requirement or the interaction between
+`PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES`, the inherited-handle list, and
+`CreateProcessW`.
+
+The next local change is evidence gathering, not a seventh repair guess. A
+`cfg(test)`-only launch matrix compares the exact production structure against
+parent-environment inheritance, trusted `SystemRoot + WINDIR`, trusted
+`ComSpec + SystemRoot + WINDIR`, security-capabilities-only, handle-list-only,
+and plain `CreateProcessW` variants. Every result uses only a closed variant
+label, stage, reason, and numeric Win32 code. No path, environment value,
+parent-environment entry, SID, handle value, prompt, lease, or credential is
+printed. CI uses `--nocapture --test-threads=1` so all variants complete and
+their sanitized outcomes are preserved before the production assertion keeps
+the job fail closed.
+
+The non-test build exposes only `WorkerLaunchVariant::Production`; it still
+uses the capability-free AppContainer, explicit handle allowlist, trusted
+`SystemRoot` block, explicit current directory, suspended launch, Job Object
+assignment-before-resume, and closed `run_supervisor()` / `run_worker()`
+entries. No diagnostic variant is available to a production caller and no
+Windows runtime admission is enabled.
+
+TDD first failed the source contract on the absent seven matrix labels and
+failed Rust compilation on the absent diagnostic environment constructor. The
+minimal implementation now passes the focused source contract 6/6, the
+portable Windows supervisor slice 7/7, and the three related script files
+21/21; Rust format, lint, format, and `git diff --check` are also green. The
+first full `bun run check` attempt exposed one parallel
+`p7PackagedTrust.test.mjs` fixture race (`packaged planner or main entry is
+missing`); its isolated rerun passed 10/10. A fresh complete rerun then exited
+0 with 162 files passed / 2 skipped and 1,741 tests passed / 9 skipped, followed
+by the P7 abuse, smoke-harness, product-boundary, frozen-foundation,
+downstream, and package gates.
+
+The discriminator has no Windows result yet. Task 4, Windows containment,
+cross-platform P8.2b, overall P8.2, candidate creation, release, and user
+acceptance all remain open.
+
 ### 2026-08-18 P8.2b Windows worker environment correction (local only; gate remains open)
 
 Draft pull request
