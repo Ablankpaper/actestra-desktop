@@ -68,10 +68,24 @@ describe("Windows Goose supervisor source contract", () => {
     expect(supervisor).toContain("worker launch failed at stage={stage}");
   });
 
-  it("requires an explicit AppContainer current directory instead of inheriting the checkout", () => {
+  it("classifies CreateProcess failures through one closed redacted reason vocabulary", () => {
     const supervisor = read("workers/goose-runner/src/windows_supervisor.rs");
 
-    expect(supervisor).toContain("current_directory: &Path");
-    expect(supervisor).toContain("current_directory_wide.as_ptr(),");
+    for (const reason of [
+      "file-not-found",
+      "path-not-found",
+      "access-denied",
+      "invalid-handle",
+      "bad-environment",
+      "not-supported",
+      "invalid-parameter",
+      "elevation-required",
+      "privilege-not-held",
+      "other",
+    ]) {
+      expect(supervisor).toContain(`"${reason}"`);
+    }
+    expect(supervisor).toContain("GetLastError()");
+    expect(supervisor).toContain("reason={reason}");
   });
 });

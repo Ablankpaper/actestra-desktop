@@ -11,7 +11,7 @@ use std::path::Path;
 #[cfg(windows)]
 use std::ptr::{null, null_mut};
 #[cfg(windows)]
-use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE};
+use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, HANDLE, INVALID_HANDLE_VALUE};
 #[cfg(windows)]
 use windows_sys::Win32::Security::Isolation::{
     CreateAppContainerProfile, DeleteAppContainerProfile, DeriveAppContainerSidFromAppContainerName,
@@ -64,12 +64,60 @@ const WINDOWS_WORKER_MODE_ARGUMENT: &str = "--actestra-windows-worker-v1";
 
 #[cfg(any(windows, test))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CreateProcessFailureReason {
+    FileNotFound,
+    PathNotFound,
+    AccessDenied,
+    InvalidHandle,
+    BadEnvironment,
+    NotSupported,
+    InvalidParameter,
+    ElevationRequired,
+    PrivilegeNotHeld,
+    Other,
+}
+
+#[cfg(any(windows, test))]
+impl CreateProcessFailureReason {
+    fn classify(win32_code: u32) -> Self {
+        match win32_code {
+            2 => Self::FileNotFound,
+            3 => Self::PathNotFound,
+            5 => Self::AccessDenied,
+            6 => Self::InvalidHandle,
+            10 => Self::BadEnvironment,
+            50 => Self::NotSupported,
+            87 => Self::InvalidParameter,
+            740 => Self::ElevationRequired,
+            1314 => Self::PrivilegeNotHeld,
+            _ => Self::Other,
+        }
+    }
+
+    fn code(self) -> &'static str {
+        match self {
+            Self::FileNotFound => "file-not-found",
+            Self::PathNotFound => "path-not-found",
+            Self::AccessDenied => "access-denied",
+            Self::InvalidHandle => "invalid-handle",
+            Self::BadEnvironment => "bad-environment",
+            Self::NotSupported => "not-supported",
+            Self::InvalidParameter => "invalid-parameter",
+            Self::ElevationRequired => "elevation-required",
+            Self::PrivilegeNotHeld => "privilege-not-held",
+            Self::Other => "other",
+        }
+    }
+}
+
+#[cfg(any(windows, test))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum WorkerLaunchFailureStage {
     InputValidation,
     AttributeListInit,
     SecurityCapabilitiesAttribute,
     HandleListAttribute,
-    CreateProcess,
+    CreateProcess(CreateProcessFailureReason),
     AssignJob,
     QueryJobMembership,
     ResumeThread,
@@ -83,10 +131,17 @@ impl WorkerLaunchFailureStage {
             Self::AttributeListInit => "attribute-list-init",
             Self::SecurityCapabilitiesAttribute => "security-capabilities-attribute",
             Self::HandleListAttribute => "handle-list-attribute",
-            Self::CreateProcess => "create-process",
+            Self::CreateProcess(_) => "create-process",
             Self::AssignJob => "assign-job",
             Self::QueryJobMembership => "query-job-membership",
             Self::ResumeThread => "resume-thread",
+        }
+    }
+
+    fn reason_code(self) -> &'static str {
+        match self {
+            Self::CreateProcess(reason) => reason.code(),
+            _ => "none",
         }
     }
 }
@@ -535,7 +590,9 @@ impl JobObject {
             )
         } == 0
         {
-            return Err(WorkerLaunchFailureStage::CreateProcess);
+            // SAFETY: this immediately captures the error from the failed CreateProcessW call.
+            let reason = CreateProcessFailureReason::classify(unsafe { GetLastError() });
+            return Err(WorkerLaunchFailureStage::CreateProcess(reason));
         }
 
         let mut worker = WorkerProcess {
@@ -633,7 +690,7 @@ mod tests {
             WorkerLaunchFailureStage::AttributeListInit,
             WorkerLaunchFailureStage::SecurityCapabilitiesAttribute,
             WorkerLaunchFailureStage::HandleListAttribute,
-            WorkerLaunchFailureStage::CreateProcess,
+            WorkerLaunchFailureStage::CreateProcess(CreateProcessFailureReason::Other),
             WorkerLaunchFailureStage::AssignJob,
             WorkerLaunchFailureStage::QueryJobMembership,
             WorkerLaunchFailureStage::ResumeThread,
@@ -651,8 +708,36 @@ mod tests {
                 "resume-thread",
             ]
         );
+        assert_eq!(
+            stages.map(WorkerLaunchFailureStage::reason_code),
+            ["none", "none", "none", "none", "other", "none", "none", "none"]
+        );
         for code in stages.map(WorkerLaunchFailureStage::code) {
             assert!(code
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte == b'-'));
+        }
+    }
+
+    #[test]
+    fn classifies_create_process_failures_without_raw_error_output() {
+        let classifications = [
+            (2, CreateProcessFailureReason::FileNotFound),
+            (3, CreateProcessFailureReason::PathNotFound),
+            (5, CreateProcessFailureReason::AccessDenied),
+            (6, CreateProcessFailureReason::InvalidHandle),
+            (10, CreateProcessFailureReason::BadEnvironment),
+            (50, CreateProcessFailureReason::NotSupported),
+            (87, CreateProcessFailureReason::InvalidParameter),
+            (740, CreateProcessFailureReason::ElevationRequired),
+            (1314, CreateProcessFailureReason::PrivilegeNotHeld),
+            (u32::MAX, CreateProcessFailureReason::Other),
+        ];
+        for (win32_code, expected) in classifications {
+            let reason = CreateProcessFailureReason::classify(win32_code);
+            assert_eq!(reason, expected);
+            assert!(reason
+                .code()
                 .bytes()
                 .all(|byte| byte.is_ascii_lowercase() || byte == b'-'));
         }
@@ -783,7 +868,8 @@ mod windows_native_tests {
             .launch_suspended_worker(&profile, &command, current_directory, &[event.0])
             .unwrap_or_else(|failure| {
                 let stage = failure.code();
-                panic!("worker launch failed at stage={stage}");
+                let reason = failure.reason_code();
+                panic!("worker launch failed at stage={stage} reason={reason}");
             });
 
         assert!(worker.was_assigned_before_resume());
