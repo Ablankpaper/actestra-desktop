@@ -438,6 +438,7 @@ impl JobObject {
         &self,
         profile: &AppContainerProfile,
         executable: &Path,
+        current_directory: &Path,
         inherited_handles: &[HANDLE],
     ) -> Result<WorkerProcess, WorkerLaunchFailureStage> {
         if inherited_handles.is_empty()
@@ -453,6 +454,20 @@ impl JobObject {
         {
             return Err(WorkerLaunchFailureStage::InputValidation);
         }
+
+        let current_directory_text = current_directory
+            .to_str()
+            .ok_or(WorkerLaunchFailureStage::InputValidation)?;
+        if !current_directory.is_absolute()
+            || current_directory_text.is_empty()
+            || current_directory_text.contains(['\0', '"'])
+        {
+            return Err(WorkerLaunchFailureStage::InputValidation);
+        }
+        let current_directory_wide: Vec<u16> = current_directory_text
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
 
         let executable_text = executable
             .to_str()
@@ -514,7 +529,7 @@ impl JobObject {
                 1,
                 flags,
                 empty_environment.as_ptr().cast::<c_void>(),
-                null(),
+                current_directory_wide.as_ptr(),
                 &startup.StartupInfo,
                 &mut process_information,
             )
@@ -760,9 +775,12 @@ mod windows_native_tests {
         let command = std::env::var_os("ComSpec")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(r"C:\Windows\System32\cmd.exe"));
+        let current_directory = command
+            .parent()
+            .expect("the command executable must have an explicit parent directory");
 
         let worker = job
-            .launch_suspended_worker(&profile, &command, &[event.0])
+            .launch_suspended_worker(&profile, &command, current_directory, &[event.0])
             .unwrap_or_else(|failure| {
                 let stage = failure.code();
                 panic!("worker launch failed at stage={stage}");

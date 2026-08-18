@@ -67,4 +67,11 @@ describe("Windows Goose supervisor source contract", () => {
     expect(supervisor).toContain("WorkerLaunchFailureStage");
     expect(supervisor).toContain("worker launch failed at stage={stage}");
   });
+
+  it("requires an explicit AppContainer current directory instead of inheriting the checkout", () => {
+    const supervisor = read("workers/goose-runner/src/windows_supervisor.rs");
+
+    expect(supervisor).toContain("current_directory: &Path");
+    expect(supervisor).toContain("current_directory_wide.as_ptr(),");
+  });
 });
