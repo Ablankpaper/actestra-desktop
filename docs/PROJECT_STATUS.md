@@ -1,8 +1,54 @@
 # Project Status
 
-Last updated: 2026-08-18
+Last updated: 2026-08-19
 
 ## Current phase
+
+### 2026-08-19 P8.2b Windows `LOCALAPPDATA` root cause proved and local repair (gate remains open)
+
+Draft pull request
+[#68](https://github.com/Ablankpaper/actestra-desktop/pull/68) reached exact
+diagnostic head `4ea0d9ddaa9883bf32619c91baf5872e80737073`. Pull-request run
+[`32158083962`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32158083962)
+completed the native-primitives step in Windows build-probe job
+[`95780046553`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32158083962/job/95780046553)
+successfully before the remaining run was deliberately cancelled. The four
+native tests passed in 0.15 seconds. The sanitized environment discriminator
+reported the exact results:
+
+- absent `LOCALAPPDATA`: `failure`, `environment-variable-not-found`, Win32
+  `203`;
+- attempt-private `LOCALAPPDATA`: `success`, Win32 `0`;
+- restored runner `LOCALAPPDATA`: `success`, Win32 `0`.
+
+The companion launch matrix also showed that production inheritance,
+security-capabilities-only inheritance, handle-list-only inheritance, and plain
+inheritance all created a process, while the two sparse custom blocks still
+failed with Win32 `203`. This is native evidence that the production failure is
+the cleaned supervisor environment omitting one Windows-required variable; it
+does not authorize inheriting the host environment or weakening AppContainer,
+the handle allowlist, Job Object, suspended launch, or fail-closed admission.
+
+The follow-up local correction was written test-first. Before implementation,
+four assertions failed because the strict environment lacked `LOCALAPPDATA` and
+the attempt-private directory did not exist. Main now binds `LOCALAPPDATA` to
+`<attempt-root>/local-app-data` and creates that directory with the other
+attempt-private directories before transport startup. It does not read or copy
+the host value. The parent-environment canary and credential sweep remain in
+the exact whitelist test.
+
+After the minimal correction, the three directly affected files passed 28
+tests with one platform skip. The expanded environment, credential, resource,
+Windows bridge, and lifecycle slice passed 76 tests with one platform skip;
+Rust formatting and all 35 portable runner tests passed. A complete
+`bun run check` then reached exit 0 with 163 test files passed / 2 skipped and
+1,752 tests passed / 10 skipped, followed by the P7 abuse, smoke-harness,
+product-boundary, frozen-foundation, downstream, and package gates. Existing
+frozen-foundation bundler notices remain warnings rather than failed gates.
+
+This local repair still requires exact-head Windows build-probe and containment
+evidence. Windows runtime admission remains fail closed. P8.2b, overall P8.2,
+candidate creation, release, deployment, and user acceptance remain open.
 
 ### 2026-08-18 P8.2b Windows sixth native denial and discriminator (gate remains open)
 

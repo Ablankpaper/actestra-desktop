@@ -228,6 +228,7 @@ export function createGooseRunnerEnvironment(
       ? undefined
       : validateLinuxBridgeEnvironment(privateRoot, linuxBridge);
   const temporaryDirectory = path.join(privateRoot, "tmp");
+  const localAppDataDirectory = path.join(privateRoot, "local-app-data");
   // Main constructs a strict whitelist environment for the supervisor process.
   // On Windows, the supervisor then inherits this cleaned environment to the Worker
   // (lpEnvironment=nullptr), because sparse hand-built environment blocks fail
@@ -242,6 +243,8 @@ export function createGooseRunnerEnvironment(
     TMPDIR: temporaryDirectory,
     TMP: temporaryDirectory,
     TEMP: temporaryDirectory,
+    // Windows AppContainer process creation requires this value; keep it attempt-private.
+    LOCALAPPDATA: localAppDataDirectory,
     TZ: "UTC",
     OTEL_SDK_DISABLED: "true",
     OTEL_TRACES_EXPORTER: "none",
@@ -1282,7 +1285,16 @@ async function preparePrivateRoot(
   const root = await mkdtemp(path.join(parent, "goose-attempt-"));
   try {
     const workingDirectory = path.join(root, "work");
-    const directories = ["config", "data", "state", "home", "tmp", "work", "bridge"];
+    const directories = [
+      "config",
+      "data",
+      "state",
+      "home",
+      "tmp",
+      "local-app-data",
+      "work",
+      "bridge",
+    ];
     if (executableAuthority !== "linux-package") directories.push("bin");
     await Promise.all(directories.map((name) => mkdir(path.join(root, name), { mode: 0o700 })));
     let executablePath: string;

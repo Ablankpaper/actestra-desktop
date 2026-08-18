@@ -17,6 +17,7 @@ const CLOSED_ENVIRONMENT_KEYS = Object.freeze([
   "TMPDIR",
   "TMP",
   "TEMP",
+  "LOCALAPPDATA",
   "TZ",
   "OTEL_SDK_DISABLED",
   "OTEL_TRACES_EXPORTER",
@@ -92,7 +93,8 @@ describe("Goose runner environment isolation", () => {
     expect(environment.TMPDIR).toBe(privateTemporary);
     expect(environment.TMP).toBe(privateTemporary);
     expect(environment.TEMP).toBe(privateTemporary);
-    for (const key of ["HOME", "TMPDIR", "TMP", "TEMP"] as const) {
+    expect(environment.LOCALAPPDATA).toBe(path.join(fixtureRoot, "local-app-data"));
+    for (const key of ["HOME", "TMPDIR", "TMP", "TEMP", "LOCALAPPDATA"] as const) {
       const parentValue = process.env[key];
       if (parentValue !== undefined) {
         expect(environment[key]).not.toBe(parentValue);

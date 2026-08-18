@@ -528,6 +528,10 @@ describe("Windows Goose runner bridge contract", () => {
     expect(Object.values(spawnOptions?.environment ?? {})).not.toContain(attemptLease);
     expect(Object.values(spawnOptions?.environment ?? {})).not.toContain(capabilityPipeName);
     expect(Object.values(spawnOptions?.environment ?? {})).not.toContain(modelPipeName);
+    expect(spawnOptions?.environment.LOCALAPPDATA).toBe(
+      path.join(opened.privateRoot, "local-app-data"),
+    );
+    expect(await readdir(opened.privateRoot)).toContain("local-app-data");
 
     await opened.close();
     expect(await readdir(fixture.privateRootParent)).toEqual([]);
