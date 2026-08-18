@@ -280,6 +280,7 @@ enum CreateProcessFailureReason {
     AccessDenied,
     InvalidHandle,
     BadEnvironment,
+    EnvironmentVariableNotFound,
     NotSupported,
     InvalidParameter,
     ElevationRequired,
@@ -296,6 +297,7 @@ impl CreateProcessFailureReason {
             5 => Self::AccessDenied,
             6 => Self::InvalidHandle,
             10 => Self::BadEnvironment,
+            203 => Self::EnvironmentVariableNotFound,
             50 => Self::NotSupported,
             87 => Self::InvalidParameter,
             740 => Self::ElevationRequired,
@@ -311,6 +313,7 @@ impl CreateProcessFailureReason {
             Self::AccessDenied => "access-denied",
             Self::InvalidHandle => "invalid-handle",
             Self::BadEnvironment => "bad-environment",
+            Self::EnvironmentVariableNotFound => "environment-variable-not-found",
             Self::NotSupported => "not-supported",
             Self::InvalidParameter => "invalid-parameter",
             Self::ElevationRequired => "elevation-required",
@@ -370,12 +373,69 @@ impl WorkerLaunchFailureStage {
             Self::CreateProcess(CreateProcessFailureReason::AccessDenied) => Some(5),
             Self::CreateProcess(CreateProcessFailureReason::InvalidHandle) => Some(6),
             Self::CreateProcess(CreateProcessFailureReason::BadEnvironment) => Some(10),
+            Self::CreateProcess(CreateProcessFailureReason::EnvironmentVariableNotFound) => {
+                Some(203)
+            }
             Self::CreateProcess(CreateProcessFailureReason::NotSupported) => Some(50),
             Self::CreateProcess(CreateProcessFailureReason::InvalidParameter) => Some(87),
             Self::CreateProcess(CreateProcessFailureReason::ElevationRequired) => Some(740),
             Self::CreateProcess(CreateProcessFailureReason::PrivilegeNotHeld) => Some(1314),
             Self::CreateProcess(CreateProcessFailureReason::Other(win32_code)) => Some(win32_code),
             _ => None,
+        }
+    }
+
+    fn diagnostic_exit_code(self) -> i32 {
+        match self {
+            Self::InputValidation => 20,
+            Self::AttributeListInit => 21,
+            Self::SecurityCapabilitiesAttribute => 22,
+            Self::HandleListAttribute => 23,
+            Self::CreateProcess(CreateProcessFailureReason::FileNotFound) => 30,
+            Self::CreateProcess(CreateProcessFailureReason::PathNotFound) => 31,
+            Self::CreateProcess(CreateProcessFailureReason::AccessDenied) => 32,
+            Self::CreateProcess(CreateProcessFailureReason::InvalidHandle) => 33,
+            Self::CreateProcess(CreateProcessFailureReason::BadEnvironment) => 34,
+            Self::CreateProcess(CreateProcessFailureReason::EnvironmentVariableNotFound) => 35,
+            Self::CreateProcess(CreateProcessFailureReason::NotSupported) => 36,
+            Self::CreateProcess(CreateProcessFailureReason::InvalidParameter) => 37,
+            Self::CreateProcess(CreateProcessFailureReason::ElevationRequired) => 38,
+            Self::CreateProcess(CreateProcessFailureReason::PrivilegeNotHeld) => 39,
+            Self::CreateProcess(CreateProcessFailureReason::Other(_)) => 40,
+            Self::AssignJob => 41,
+            Self::QueryJobMembership => 42,
+            Self::ResumeThread => 43,
+        }
+    }
+}
+
+#[cfg(any(windows, test))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SupervisorFailureStage {
+    ControlFrame,
+    Profile,
+    Job,
+    Pipes,
+    CurrentExecutable,
+    WorkerLaunch(WorkerLaunchFailureStage),
+    ControlSerialization,
+    ControlWrite,
+    WorkerReady,
+}
+
+#[cfg(any(windows, test))]
+impl SupervisorFailureStage {
+    fn diagnostic_exit_code(self) -> i32 {
+        match self {
+            Self::ControlFrame => 10,
+            Self::Profile => 11,
+            Self::Job => 12,
+            Self::Pipes => 13,
+            Self::CurrentExecutable => 14,
+            Self::WorkerLaunch(stage) => stage.diagnostic_exit_code(),
+            Self::ControlSerialization => 15,
+            Self::ControlWrite => 16,
+            Self::WorkerReady => 17,
         }
     }
 }
@@ -1165,7 +1225,7 @@ pub(crate) fn run_supervisor() -> i32 {
             Ok(control) => control,
             Err(()) => {
                 eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-                return 1;
+                return SupervisorFailureStage::ControlFrame.diagnostic_exit_code();
             }
         };
         return launch_controlled_worker(control);
@@ -1273,28 +1333,28 @@ fn launch_controlled_worker(control: crate::windows_control::WindowsControlMessa
         Ok(profile) => profile,
         Err(()) => {
             eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-            return 1;
+            return SupervisorFailureStage::Profile.diagnostic_exit_code();
         }
     };
     let job = match JobObject::create() {
         Ok(job) => job,
         Err(()) => {
             eprintln!("{WINDOWS_RESOURCE_FAILURE_MARKER}");
-            return 1;
+            return SupervisorFailureStage::Job.diagnostic_exit_code();
         }
     };
     let mut pipes = match WorkerPipeSet::create() {
         Ok(pipes) => pipes,
         Err(()) => {
             eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-            return 1;
+            return SupervisorFailureStage::Pipes.diagnostic_exit_code();
         }
     };
     let executable = match std::env::current_exe() {
         Ok(executable) => executable,
         Err(_) => {
             eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-            return 1;
+            return SupervisorFailureStage::CurrentExecutable.diagnostic_exit_code();
         }
     };
     let current_directory = std::path::PathBuf::from(&control.private_root).join("work");
@@ -1307,9 +1367,9 @@ fn launch_controlled_worker(control: crate::windows_control::WindowsControlMessa
         pipes.stdio(),
     ) {
         Ok(worker) => worker,
-        Err(_) => {
+        Err(failure) => {
             eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-            return 1;
+            return SupervisorFailureStage::WorkerLaunch(failure).diagnostic_exit_code();
         }
     };
     pipes.close_worker_endpoints();
@@ -1317,7 +1377,7 @@ fn launch_controlled_worker(control: crate::windows_control::WindowsControlMessa
         Ok(payload) => payload,
         Err(()) => {
             eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-            return 1;
+            return SupervisorFailureStage::ControlSerialization.diagnostic_exit_code();
         }
     };
     let mut frame = Vec::with_capacity(payload.len() + 4);
@@ -1325,7 +1385,7 @@ fn launch_controlled_worker(control: crate::windows_control::WindowsControlMessa
     frame.extend_from_slice(&payload);
     if write_all_handle(pipes.supervisor_stdin, &frame).is_err() {
         eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-        return 1;
+        return SupervisorFailureStage::ControlWrite.diagnostic_exit_code();
     }
     unsafe { CloseHandle(pipes.supervisor_stdin) };
     pipes.supervisor_stdin = null_mut();
@@ -1334,7 +1394,7 @@ fn launch_controlled_worker(control: crate::windows_control::WindowsControlMessa
         && marker == WINDOWS_WORKER_READY_MARKER;
     if !worker_ready {
         eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-        return 1;
+        return SupervisorFailureStage::WorkerReady.diagnostic_exit_code();
     }
     eprintln!("{WINDOWS_RESOURCE_FAILURE_MARKER}");
     let _ = worker;
@@ -1536,6 +1596,7 @@ mod tests {
             (10, CreateProcessFailureReason::BadEnvironment),
             (50, CreateProcessFailureReason::NotSupported),
             (87, CreateProcessFailureReason::InvalidParameter),
+            (203, CreateProcessFailureReason::EnvironmentVariableNotFound),
             (740, CreateProcessFailureReason::ElevationRequired),
             (1314, CreateProcessFailureReason::PrivilegeNotHeld),
             (u32::MAX, CreateProcessFailureReason::Other(u32::MAX)),
@@ -1548,6 +1609,58 @@ mod tests {
                 .bytes()
                 .all(|byte| byte.is_ascii_lowercase() || byte == b'-'));
         }
+    }
+
+    #[test]
+    fn maps_worker_launch_failures_to_closed_supervisor_exit_codes() {
+        let failures = [
+            WorkerLaunchFailureStage::InputValidation,
+            WorkerLaunchFailureStage::AttributeListInit,
+            WorkerLaunchFailureStage::SecurityCapabilitiesAttribute,
+            WorkerLaunchFailureStage::HandleListAttribute,
+            WorkerLaunchFailureStage::CreateProcess(CreateProcessFailureReason::FileNotFound),
+            WorkerLaunchFailureStage::CreateProcess(CreateProcessFailureReason::PathNotFound),
+            WorkerLaunchFailureStage::CreateProcess(CreateProcessFailureReason::AccessDenied),
+            WorkerLaunchFailureStage::CreateProcess(CreateProcessFailureReason::InvalidHandle),
+            WorkerLaunchFailureStage::CreateProcess(CreateProcessFailureReason::BadEnvironment),
+            WorkerLaunchFailureStage::CreateProcess(
+                CreateProcessFailureReason::EnvironmentVariableNotFound,
+            ),
+            WorkerLaunchFailureStage::CreateProcess(CreateProcessFailureReason::NotSupported),
+            WorkerLaunchFailureStage::CreateProcess(CreateProcessFailureReason::InvalidParameter),
+            WorkerLaunchFailureStage::CreateProcess(CreateProcessFailureReason::ElevationRequired),
+            WorkerLaunchFailureStage::CreateProcess(CreateProcessFailureReason::PrivilegeNotHeld),
+            WorkerLaunchFailureStage::CreateProcess(CreateProcessFailureReason::Other(u32::MAX)),
+            WorkerLaunchFailureStage::AssignJob,
+            WorkerLaunchFailureStage::QueryJobMembership,
+            WorkerLaunchFailureStage::ResumeThread,
+        ];
+
+        assert_eq!(
+            failures.map(WorkerLaunchFailureStage::diagnostic_exit_code),
+            [20, 21, 22, 23, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43,]
+        );
+    }
+
+    #[test]
+    fn maps_supervisor_setup_stages_to_closed_exit_codes() {
+        let stages = [
+            SupervisorFailureStage::ControlFrame,
+            SupervisorFailureStage::Profile,
+            SupervisorFailureStage::Job,
+            SupervisorFailureStage::Pipes,
+            SupervisorFailureStage::CurrentExecutable,
+            SupervisorFailureStage::WorkerLaunch(WorkerLaunchFailureStage::CreateProcess(
+                CreateProcessFailureReason::AccessDenied,
+            )),
+            SupervisorFailureStage::ControlSerialization,
+            SupervisorFailureStage::ControlWrite,
+            SupervisorFailureStage::WorkerReady,
+        ];
+        assert_eq!(
+            stages.map(SupervisorFailureStage::diagnostic_exit_code),
+            [10, 11, 12, 13, 14, 32, 15, 16, 17]
+        );
     }
 }
 

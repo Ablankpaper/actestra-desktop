@@ -10,6 +10,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
+import os from "node:os";
 import process from "node:process";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GOOSE_WORKER_RESOURCE_PROFILE } from "../../apps/desktop/src/core/workerResourceBudget";
@@ -30,6 +31,13 @@ const WINDOWS_TARGET_TRIPLE = "x86_64-pc-windows-msvc";
 const SOURCE_COMMIT = "a".repeat(40);
 const PROBE_SHA256 = "b".repeat(64);
 
+function fixtureTempDirectory(prefix: string): string {
+  // Unix-domain socket paths are bounded to 103 bytes by the production
+  // bridge validator. Keep macOS fixtures short while retaining the native
+  // Windows temp root (where /tmp is not a usable filesystem path).
+  return path.join(process.platform === "win32" ? os.tmpdir() : "/tmp", prefix);
+}
+
 async function waitForFile(filePath: string, timeoutMs = 5_000): Promise<Buffer> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -45,7 +53,7 @@ async function createWindowsArtifact(options: { readonly containment?: boolean }
   readonly privateRootParent: string;
   readonly workspaceDirectory: string;
 }> {
-  const directory = await mkdtemp(path.join("/tmp", "actestra-goose-windows-"));
+  const directory = await mkdtemp(fixtureTempDirectory("actestra-goose-windows-"));
   fixtureDirectories.push(directory);
   const artifactDirectory = path.join(directory, "artifact");
   const privateRootParent = path.join(directory, "attempts");
@@ -197,7 +205,7 @@ describe("Windows Goose runner bridge contract", () => {
   it.skipIf(process.platform === "win32")(
     "writes the bounded control frame to a dedicated inherited channel and keeps parent liveness separate",
     async () => {
-      const privateRoot = await mkdtemp(path.join("/tmp", "actestra-goose-windows-spawn-"));
+      const privateRoot = await mkdtemp(fixtureTempDirectory("actestra-goose-windows-spawn-"));
       fixtureDirectories.push(privateRoot);
       const binDirectory = path.join(privateRoot, "bin");
       const workingDirectory = path.join(privateRoot, "work");
@@ -313,24 +321,50 @@ describe("Windows Goose runner bridge contract", () => {
         architecture: "x64",
       });
       try {
-        const outcome = await new Promise<Error>((resolve, reject) => {
+        const outcome = await new Promise<{
+          readonly error: Error;
+          readonly exitCode: number | null;
+          readonly signal: string | null;
+        }>((resolve, reject) => {
+          let failure: Error | undefined;
+          let exitObserved = false;
+          let exitCode: number | null = null;
+          let signal: string | null = null;
           const timeout = setTimeout(
             () => reject(new Error("Windows supervisor spawn probe timed out")),
             15_000,
           );
           timeout.unref();
-          transport.onError((error) => {
+          const resolveWhenComplete = (): void => {
+            if (failure === undefined || !exitObserved) return;
             clearTimeout(timeout);
-            resolve(error);
+            resolve({ error: failure, exitCode, signal });
+          };
+          transport.onError((error) => {
+            failure ??= error;
+            resolveWhenComplete();
           });
-          transport.onExit(() => {
-            setTimeout(() => {
-              clearTimeout(timeout);
-              reject(new Error("Windows supervisor exited without a classified marker"));
-            }, 50).unref();
+          transport.onExit((code, exitSignal) => {
+            exitObserved = true;
+            exitCode = code;
+            signal = exitSignal;
+            resolveWhenComplete();
+            if (failure === undefined) {
+              setTimeout(() => {
+                clearTimeout(timeout);
+                reject(new Error("Windows supervisor exited without a classified marker"));
+              }, 50).unref();
+            }
           });
         });
-        expect(outcome).toMatchObject({
+        const classification =
+          outcome.error instanceof gooseRunnerProcess.GooseRunnerProcessError
+            ? outcome.error.code
+            : "unclassified";
+        console.info(
+          `WINDOWS_SUPERVISOR_ARTIFACT_DIAGNOSTIC classification=${classification} exit_code=${outcome.exitCode ?? "null"} signal=${outcome.signal === null ? "none" : "present"}`,
+        );
+        expect(outcome.error).toMatchObject({
           name: "GooseRunnerProcessError",
           code: "worker-resource-enforcement-unavailable",
         });
