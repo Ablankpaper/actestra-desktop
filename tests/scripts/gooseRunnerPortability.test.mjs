@@ -19,6 +19,8 @@ const windowsContainmentPath = path.join(
   "workers/goose-runner/src/containment/windows.rs",
 );
 const linuxRuntimePath = path.join(repositoryRoot, "workers/goose-runner/src/linux_runtime.rs");
+const windowsControlPath = path.join(repositoryRoot, "workers/goose-runner/src/windows_control.rs");
+const windowsBridgePath = path.join(repositoryRoot, "workers/goose-runner/src/windows_bridge.rs");
 const mainProcessPath = path.join(
   repositoryRoot,
   "apps/desktop/src/main/workers/gooseRunnerProcess.ts",
@@ -44,6 +46,28 @@ describe("Goose runner native source portability", () => {
     expect(windowsContainment).toContain("pub(crate) fn watch_parent_liveness()");
     expect(source).toContain("fn reads_a_real_linux_virtual_size_baseline()");
     expect(source).toContain("fn keeps_windows_native_resource_enforcement_unavailable()");
+  });
+
+  it("declares bounded Windows supervisor modes and bridge frames without loopback fallback", () => {
+    const source = fs.readFileSync(runnerSourcePath, "utf8");
+    const control = fs.readFileSync(windowsControlPath, "utf8");
+    const bridge = fs.readFileSync(windowsBridgePath, "utf8");
+
+    expect(source).toContain("mod windows_control");
+    expect(source).toContain("mod windows_bridge");
+    expect(source.indexOf("WindowsMode::parse")).toBeGreaterThan(-1);
+    expect(source.indexOf("WindowsMode::parse")).toBeLessThan(
+      source.indexOf("tokio::runtime::Builder::new_multi_thread()"),
+    );
+    expect(source).toContain("Ok(None) | Err(())");
+    expect(control).toContain("WINDOWS_CONTROL_MAX_BYTES");
+    expect(control).toContain("--actestra-windows-supervisor-v1");
+    expect(control).toContain("--actestra-windows-worker-v1");
+    expect(bridge).toContain("WINDOWS_BRIDGE_MAX_FRAME_BYTES");
+    expect(bridge).not.toContain("http://");
+    expect(bridge).not.toContain("127.0.0.1");
+    expect(bridge).not.toContain("CheckNetIsolation");
+    expect(bridge).not.toContain("privateNetworkClientServer");
   });
 
   it("installs the Linux process policy before constructing Tokio", () => {

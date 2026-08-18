@@ -4,6 +4,10 @@ mod containment;
 mod linux_bootstrap;
 #[cfg(any(target_os = "linux", all(unix, test)))]
 mod linux_runtime;
+#[cfg(any(windows, test))]
+mod windows_bridge;
+#[cfg(any(windows, test))]
+mod windows_control;
 #[cfg(all(unix, test))]
 use containment::apply_resource_limits_with;
 #[cfg(target_os = "linux")]
@@ -31,6 +35,8 @@ const LINUX_ACP_SERVER_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_ACP_SERVER_FAILED"
 const LINUX_RELAY_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_LINUX_RELAY_STOPPED";
 #[cfg(target_os = "linux")]
 const LINUX_PANIC_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_RUNNER_PANICKED";
+#[cfg(windows)]
+const WINDOWS_NETWORK_POLICY_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_NETWORK_POLICY_SETUP_FAILED";
 #[cfg(target_os = "linux")]
 const LINUX_RUNTIME_ENVIRONMENT_KEYS: [&str; 5] = [
     "ACTESTRA_GOOSE_LINUX_CAPABILITY_SOCKET",
@@ -91,6 +97,19 @@ fn main() {
     if env::var("ACTESTRA_GOOSE_CONTAINMENT_PROBE").as_deref() == Ok("1") {
         println!("{}", containment::run_containment_probe());
         return;
+    }
+    #[cfg(windows)]
+    {
+        let arguments: Vec<String> = env::args().collect();
+        let _mode = match windows_control::WindowsMode::parse(&arguments) {
+            Ok(Some(mode)) => mode,
+            Ok(None) | Err(()) => {
+                eprintln!("{WINDOWS_NETWORK_POLICY_FAILURE_MARKER}");
+                std::process::exit(1);
+            }
+        };
+        eprintln!("{WINDOWS_NETWORK_POLICY_FAILURE_MARKER}");
+        std::process::exit(1);
     }
     #[cfg(target_os = "linux")]
     std::panic::set_hook(Box::new(|_| eprintln!("{LINUX_PANIC_FAILURE_MARKER}")));

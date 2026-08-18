@@ -8,6 +8,8 @@ version = "0.1.0"
 dependencies = [
  "goose",
  "libc",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 
