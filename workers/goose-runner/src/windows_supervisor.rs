@@ -1907,7 +1907,7 @@ mod windows_native_tests {
             .parent()
             .expect("the command executable must have an explicit parent directory");
 
-        let launch = || {
+        let launch = || -> Result<(), WorkerLaunchFailureStage> {
             let attempt_id = unique_attempt_id();
             let profile = AppContainerProfile::create(&attempt_id)
                 .expect("diagnostic AppContainer profile setup must succeed");
