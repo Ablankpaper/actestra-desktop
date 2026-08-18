@@ -31,6 +31,19 @@ export const GOOSE_CONTAINMENT_PROBE_DIAGNOSTIC_CODES = Object.freeze([
   "filesystem-evidence-incomplete",
   "network-evidence-incomplete",
   "parent-death-evidence-incomplete",
+  "parent-death-descriptor-setup-failed",
+  "parent-death-first-fork-failed",
+  "parent-death-intermediate-exit-failed",
+  "parent-death-intermediate-exit-timeout",
+  "parent-death-observation-read-failed",
+  "parent-death-observation-timeout",
+  "parent-death-pid-read-failed",
+  "parent-death-pid-transfer-failed",
+  "parent-death-pipe-setup-failed",
+  "parent-death-readiness-failed",
+  "parent-death-readiness-pipe-failed",
+  "parent-death-second-fork-failed",
+  "parent-death-signal-setup-failed",
   "process-creation-not-denied",
   "process-evidence-incomplete",
   "process-exec-not-denied",
@@ -64,7 +77,7 @@ function invalid(code) {
 }
 
 /**
- * Reduce native probe stderr to one fixed process/resource-stage code. Raw stderr is
+ * Reduce native probe stderr to one fixed native-stage code. Raw stderr is
  * never returned because it may contain platform-owned paths or diagnostics.
  */
 export function classifyGooseContainmentProbeStderr(value) {
@@ -73,7 +86,7 @@ export function classifyGooseContainmentProbeStderr(value) {
   }
   const matches = [
     ...value.matchAll(
-      /^Goose (?:process-tree|resource) probe failed at bounded stage ((?:process|resource)-[a-z-]+)$/gmu,
+      /^Goose (?:parent-death|process-tree|resource) probe failed at bounded stage ((?:parent-death|process|resource)-[a-z-]+)$/gmu,
     ),
   ];
   if (matches.length !== 1 || !PROBE_DIAGNOSTIC_CODES.has(matches[0][1])) {

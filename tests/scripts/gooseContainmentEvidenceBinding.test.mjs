@@ -333,6 +333,28 @@ describe("Goose containment evidence binding", () => {
     }
   });
 
+  it("reports only a closed parent-death stage and drops raw probe stderr", async () => {
+    const fixture = await createFixture(
+      { ...VERIFIED_CAPABILITIES, parentDeath: false },
+      undefined,
+      "probe",
+      undefined,
+      "/Users/private/secret\nGoose parent-death probe failed at bounded stage parent-death-observation-timeout\n",
+    );
+    try {
+      const manifestPath = path.join(fixture.directory, "actestra-goose-runner.manifest.json");
+      const before = await readFile(manifestPath, "utf8");
+      const result = runBinder(fixture);
+      expect(result.status).toBe(2);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toBe("Goose containment parent-death-observation-timeout\n");
+      expect(result.stderr).not.toContain("/Users/private/secret");
+      expect(await readFile(manifestPath, "utf8")).toBe(before);
+    } finally {
+      await rm(fixture.directory, { recursive: true, force: true });
+    }
+  });
+
   it("leaves the manifest untouched when the probe implementation digest drifts", async () => {
     const fixture = await createFixture(VERIFIED_CAPABILITIES, undefined, "probe", "0".repeat(64));
     try {

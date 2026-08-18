@@ -48,12 +48,42 @@ describe("Goose containment probe diagnostics", () => {
     ).toBeUndefined();
   });
 
+  it("accepts only the closed parent-death-stage vocabulary", () => {
+    for (const code of [
+      "parent-death-pipe-setup-failed",
+      "parent-death-first-fork-failed",
+      "parent-death-readiness-pipe-failed",
+      "parent-death-second-fork-failed",
+      "parent-death-signal-setup-failed",
+      "parent-death-pid-transfer-failed",
+      "parent-death-readiness-failed",
+      "parent-death-intermediate-exit-timeout",
+      "parent-death-intermediate-exit-failed",
+      "parent-death-pid-read-failed",
+      "parent-death-descriptor-setup-failed",
+      "parent-death-observation-read-failed",
+      "parent-death-observation-timeout",
+    ]) {
+      expect(
+        classifyGooseContainmentProbeStderr(
+          `Goose parent-death probe failed at bounded stage ${code}\n`,
+        ),
+      ).toBe(code);
+    }
+    expect(
+      classifyGooseContainmentProbeStderr(
+        "Goose parent-death probe failed at bounded stage parent-death-private-path\n",
+      ),
+    ).toBeUndefined();
+  });
+
   it("drops raw, unknown, oversized, and path-bearing diagnostics", () => {
     for (const value of [
       undefined,
       "resource-rlimit-unavailable",
       "Goose resource probe failed at bounded stage /Users/private/secret\n",
       "Goose resource probe failed at bounded stage resource-invented-code\n",
+      "Goose parent-death probe failed at bounded stage /Users/private/secret\n",
       `Goose resource probe failed at bounded stage resource-rlimit-mismatch\n${"x".repeat(65 * 1024)}`,
     ]) {
       expect(classifyGooseContainmentProbeStderr(value)).toBeUndefined();

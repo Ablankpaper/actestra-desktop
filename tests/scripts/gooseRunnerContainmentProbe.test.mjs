@@ -156,6 +156,35 @@ describe("Goose native containment probe contract", () => {
     expect(parentDeathProbe).toContain("SIGTERM");
   });
 
+  it("classifies every parent-death probe branch with bounded diagnostics", () => {
+    const source = fs.readFileSync(linuxContainmentPath, "utf8");
+    const parentDeathProbe = source.slice(
+      source.indexOf("enum ParentDeathProbeFailure"),
+      source.indexOf("fn write_fd_all"),
+    );
+
+    expect(parentDeathProbe).toContain("run_parent_death_probe_with_failure");
+    expect(parentDeathProbe).toContain("parent_death_probe_failure_code");
+    expect(parentDeathProbe).toContain('"Goose parent-death probe failed at bounded stage {}"');
+    for (const code of [
+      "parent-death-pipe-setup-failed",
+      "parent-death-first-fork-failed",
+      "parent-death-readiness-pipe-failed",
+      "parent-death-second-fork-failed",
+      "parent-death-signal-setup-failed",
+      "parent-death-pid-transfer-failed",
+      "parent-death-readiness-failed",
+      "parent-death-intermediate-exit-timeout",
+      "parent-death-intermediate-exit-failed",
+      "parent-death-pid-read-failed",
+      "parent-death-descriptor-setup-failed",
+      "parent-death-observation-read-failed",
+      "parent-death-observation-timeout",
+    ]) {
+      expect(parentDeathProbe).toContain(`"${code}"`);
+    }
+  });
+
   it("requires exact non-widenable RLIMIT evidence without mandatory cgroup authority", () => {
     const source = fs.readFileSync(linuxContainmentPath, "utf8");
     for (const token of [

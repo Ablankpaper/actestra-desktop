@@ -90,6 +90,43 @@ enum ResourceProbeFailure {
     CleanupFailed,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ParentDeathProbeFailure {
+    PipeSetupFailed,
+    FirstForkFailed,
+    ReadinessPipeFailed,
+    SecondForkFailed,
+    SignalSetupFailed,
+    PidTransferFailed,
+    ReadinessFailed,
+    IntermediateExitTimeout,
+    IntermediateExitFailed,
+    PidReadFailed,
+    DescriptorSetupFailed,
+    ObservationReadFailed,
+    ObservationTimeout,
+}
+
+fn parent_death_probe_failure_code(failure: ParentDeathProbeFailure) -> &'static str {
+    match failure {
+        ParentDeathProbeFailure::PipeSetupFailed => "parent-death-pipe-setup-failed",
+        ParentDeathProbeFailure::FirstForkFailed => "parent-death-first-fork-failed",
+        ParentDeathProbeFailure::ReadinessPipeFailed => "parent-death-readiness-pipe-failed",
+        ParentDeathProbeFailure::SecondForkFailed => "parent-death-second-fork-failed",
+        ParentDeathProbeFailure::SignalSetupFailed => "parent-death-signal-setup-failed",
+        ParentDeathProbeFailure::PidTransferFailed => "parent-death-pid-transfer-failed",
+        ParentDeathProbeFailure::ReadinessFailed => "parent-death-readiness-failed",
+        ParentDeathProbeFailure::IntermediateExitTimeout => {
+            "parent-death-intermediate-exit-timeout"
+        }
+        ParentDeathProbeFailure::IntermediateExitFailed => "parent-death-intermediate-exit-failed",
+        ParentDeathProbeFailure::PidReadFailed => "parent-death-pid-read-failed",
+        ParentDeathProbeFailure::DescriptorSetupFailed => "parent-death-descriptor-setup-failed",
+        ParentDeathProbeFailure::ObservationReadFailed => "parent-death-observation-read-failed",
+        ParentDeathProbeFailure::ObservationTimeout => "parent-death-observation-timeout",
+    }
+}
+
 fn resource_probe_failure_code(failure: ResourceProbeFailure) -> &'static str {
     match failure {
         ResourceProbeFailure::RlimitUnavailable => "resource-rlimit-unavailable",
@@ -847,18 +884,18 @@ fn run_resource_probe() -> bool {
     true
 }
 
-fn run_parent_death_probe() -> bool {
+fn run_parent_death_probe_with_failure() -> Result<(), ParentDeathProbeFailure> {
     let mut death_pipe = [0; 2];
     let mut watch_pipe = [0; 2];
     if unsafe { libc::pipe(death_pipe.as_mut_ptr()) } != 0 {
-        return false;
+        return Err(ParentDeathProbeFailure::PipeSetupFailed);
     }
     if unsafe { libc::pipe(watch_pipe.as_mut_ptr()) } != 0 {
         unsafe {
             libc::close(death_pipe[0]);
             libc::close(death_pipe[1]);
         }
-        return false;
+        return Err(ParentDeathProbeFailure::PipeSetupFailed);
     }
     let child = unsafe { libc::fork() };
     if child < 0 {
@@ -868,7 +905,7 @@ fn run_parent_death_probe() -> bool {
             libc::close(watch_pipe[0]);
             libc::close(watch_pipe[1]);
         }
-        return false;
+        return Err(ParentDeathProbeFailure::FirstForkFailed);
     }
     if child == 0 {
         unsafe {
@@ -881,7 +918,7 @@ fn run_parent_death_probe() -> bool {
         }
         let grandchild = unsafe { libc::fork() };
         if grandchild < 0 {
-            unsafe { libc::_exit(40) };
+            unsafe { libc::_exit(41) };
         }
         if grandchild == 0 {
             unsafe {
@@ -889,36 +926,40 @@ fn run_parent_death_probe() -> bool {
                 libc::close(death_pipe[0]);
                 libc::close(watch_pipe[1]);
             }
-            let parent_death_signal = libc::SIGTERM;
-            if parent_death_signal <= 0 || set_parent_death_signal().is_err() {
-                unsafe { libc::_exit(41) };
+            if libc::SIGTERM <= 0 || set_parent_death_signal().is_err() {
+                let _ = write_fd_all(ready_pipe[1], &[2]);
+                unsafe { libc::_exit(42) };
             }
             env::set_var("ACTESTRA_PARENT_LIVENESS_FD", watch_pipe[0].to_string());
             super::unix::watch_parent_liveness();
             if write_fd_all(ready_pipe[1], &[1]).is_err() {
-                unsafe { libc::_exit(42) };
+                unsafe { libc::_exit(43) };
             }
             unsafe {
                 libc::close(ready_pipe[1]);
                 libc::close(watch_pipe[0]);
             }
             thread::sleep(Duration::from_secs(2));
-            unsafe { libc::_exit(43) };
+            unsafe { libc::_exit(44) };
         }
         unsafe {
             libc::close(ready_pipe[1]);
         }
         if write_fd_all(death_pipe[1], &grandchild.to_ne_bytes()).is_err() {
-            unsafe { libc::_exit(44) };
+            unsafe { libc::_exit(45) };
         }
         let mut ready = [0_u8; 1];
-        let ready_ok = read_fd_exact(ready_pipe[0], &mut ready).is_ok() && ready == [1];
+        let readiness_status = match read_fd_exact(ready_pipe[0], &mut ready) {
+            Ok(()) if ready == [1] => 0,
+            Ok(()) if ready == [2] => 47,
+            _ => 46,
+        };
         unsafe {
             libc::close(ready_pipe[0]);
             libc::close(death_pipe[1]);
             libc::close(watch_pipe[0]);
         }
-        unsafe { libc::_exit(if ready_ok { 0 } else { 45 }) };
+        unsafe { libc::_exit(readiness_status) };
     }
     unsafe {
         libc::close(death_pipe[1]);
@@ -944,14 +985,22 @@ fn run_parent_death_probe() -> bool {
             libc::close(death_pipe[0]);
             libc::close(watch_pipe[1]);
         }
-        return false;
+        return Err(ParentDeathProbeFailure::IntermediateExitTimeout);
     }
-    if !libc::WIFEXITED(child_status) || libc::WEXITSTATUS(child_status) != 0 {
+    let child_exit = libc::WIFEXITED(child_status).then(|| libc::WEXITSTATUS(child_status));
+    if child_exit != Some(0) {
         unsafe {
             libc::close(death_pipe[0]);
             libc::close(watch_pipe[1]);
         }
-        return false;
+        return Err(match child_exit {
+            Some(40) => ParentDeathProbeFailure::ReadinessPipeFailed,
+            Some(41) => ParentDeathProbeFailure::SecondForkFailed,
+            Some(45) => ParentDeathProbeFailure::PidTransferFailed,
+            Some(46) => ParentDeathProbeFailure::ReadinessFailed,
+            Some(47) => ParentDeathProbeFailure::SignalSetupFailed,
+            _ => ParentDeathProbeFailure::IntermediateExitFailed,
+        });
     }
     let mut grandchild_bytes = [0_u8; std::mem::size_of::<libc::pid_t>()];
     if read_fd_exact(death_pipe[0], &mut grandchild_bytes).is_err() {
@@ -959,7 +1008,7 @@ fn run_parent_death_probe() -> bool {
             libc::close(death_pipe[0]);
             libc::close(watch_pipe[1]);
         }
-        return false;
+        return Err(ParentDeathProbeFailure::PidReadFailed);
     }
     let grandchild = libc::pid_t::from_ne_bytes(grandchild_bytes);
     let flags = unsafe { libc::fcntl(death_pipe[0], libc::F_GETFL) };
@@ -971,7 +1020,7 @@ fn run_parent_death_probe() -> bool {
             libc::close(death_pipe[0]);
             libc::close(watch_pipe[1]);
         }
-        return false;
+        return Err(ParentDeathProbeFailure::DescriptorSetupFailed);
     }
     let mut terminated = false;
     for _ in 0..200 {
@@ -987,10 +1036,20 @@ fn run_parent_death_probe() -> bool {
                 error.raw_os_error(),
                 Some(code) if code == libc::EAGAIN || code == libc::EWOULDBLOCK
             ) {
-                break;
+                unsafe {
+                    libc::kill(grandchild, libc::SIGKILL);
+                    libc::close(death_pipe[0]);
+                    libc::close(watch_pipe[1]);
+                }
+                return Err(ParentDeathProbeFailure::ObservationReadFailed);
             }
         } else {
-            break;
+            unsafe {
+                libc::kill(grandchild, libc::SIGKILL);
+                libc::close(death_pipe[0]);
+                libc::close(watch_pipe[1]);
+            }
+            return Err(ParentDeathProbeFailure::ObservationReadFailed);
         }
         thread::sleep(Duration::from_millis(10));
     }
@@ -999,14 +1058,27 @@ fn run_parent_death_probe() -> bool {
             libc::close(watch_pipe[1]);
             libc::close(death_pipe[0]);
         }
-        return true;
+        return Ok(());
     }
     unsafe {
         libc::kill(grandchild, libc::SIGKILL);
         libc::close(death_pipe[0]);
         libc::close(watch_pipe[1]);
     }
-    false
+    Err(ParentDeathProbeFailure::ObservationTimeout)
+}
+
+fn run_parent_death_probe() -> bool {
+    if let Err(failure) = run_parent_death_probe_with_failure() {
+        if env::var("ACTESTRA_GOOSE_CONTAINMENT_DEBUG").as_deref() == Ok("1") {
+            eprintln!(
+                "Goose parent-death probe failed at bounded stage {}",
+                parent_death_probe_failure_code(failure)
+            );
+        }
+        return false;
+    }
+    true
 }
 
 fn write_fd_all(fd: libc::c_int, bytes: &[u8]) -> Result<(), ()> {
@@ -1122,12 +1194,12 @@ pub(crate) fn run_linux_containment_probe() -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        bounded_hex, bounded_target, landlock_available_from_result, process_creation_filter,
-        resource_probe_failure_code, run_cleanup_probe, run_parent_death_probe,
-        run_process_tree_probe, run_resource_probe, ResourceProbeFailure, AUDIT_ARCH_X86_64,
-        BPF_ALU, BPF_AND, BPF_JEQ, BPF_JMP, BPF_JSET, BPF_K, REQUIRED_THREAD_CLONE_FLAGS,
-        SECCOMP_DATA_ARCH_OFFSET, SECCOMP_RET_ALLOW, SECCOMP_RET_ERRNO, SECCOMP_RET_KILL_PROCESS,
-        X32_SYSCALL_BIT,
+        bounded_hex, bounded_target, landlock_available_from_result,
+        parent_death_probe_failure_code, process_creation_filter, resource_probe_failure_code,
+        run_cleanup_probe, run_parent_death_probe, run_process_tree_probe, run_resource_probe,
+        ParentDeathProbeFailure, ResourceProbeFailure, AUDIT_ARCH_X86_64, BPF_ALU, BPF_AND,
+        BPF_JEQ, BPF_JMP, BPF_JSET, BPF_K, REQUIRED_THREAD_CLONE_FLAGS, SECCOMP_DATA_ARCH_OFFSET,
+        SECCOMP_RET_ALLOW, SECCOMP_RET_ERRNO, SECCOMP_RET_KILL_PROCESS, X32_SYSCALL_BIT,
     };
 
     #[test]
@@ -1212,6 +1284,69 @@ mod tests {
         ];
         for (failure, code) in expected {
             assert_eq!(resource_probe_failure_code(failure), code);
+            assert!(!code.contains('/'));
+            assert!(!code.contains(' '));
+        }
+    }
+
+    #[test]
+    fn parent_death_failure_diagnostics_are_closed_and_redacted() {
+        let expected = [
+            (
+                ParentDeathProbeFailure::PipeSetupFailed,
+                "parent-death-pipe-setup-failed",
+            ),
+            (
+                ParentDeathProbeFailure::FirstForkFailed,
+                "parent-death-first-fork-failed",
+            ),
+            (
+                ParentDeathProbeFailure::ReadinessPipeFailed,
+                "parent-death-readiness-pipe-failed",
+            ),
+            (
+                ParentDeathProbeFailure::SecondForkFailed,
+                "parent-death-second-fork-failed",
+            ),
+            (
+                ParentDeathProbeFailure::SignalSetupFailed,
+                "parent-death-signal-setup-failed",
+            ),
+            (
+                ParentDeathProbeFailure::PidTransferFailed,
+                "parent-death-pid-transfer-failed",
+            ),
+            (
+                ParentDeathProbeFailure::ReadinessFailed,
+                "parent-death-readiness-failed",
+            ),
+            (
+                ParentDeathProbeFailure::IntermediateExitTimeout,
+                "parent-death-intermediate-exit-timeout",
+            ),
+            (
+                ParentDeathProbeFailure::IntermediateExitFailed,
+                "parent-death-intermediate-exit-failed",
+            ),
+            (
+                ParentDeathProbeFailure::PidReadFailed,
+                "parent-death-pid-read-failed",
+            ),
+            (
+                ParentDeathProbeFailure::DescriptorSetupFailed,
+                "parent-death-descriptor-setup-failed",
+            ),
+            (
+                ParentDeathProbeFailure::ObservationReadFailed,
+                "parent-death-observation-read-failed",
+            ),
+            (
+                ParentDeathProbeFailure::ObservationTimeout,
+                "parent-death-observation-timeout",
+            ),
+        ];
+        for (failure, code) in expected {
+            assert_eq!(parent_death_probe_failure_code(failure), code);
             assert!(!code.contains('/'));
             assert!(!code.contains(' '));
         }
