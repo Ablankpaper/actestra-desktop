@@ -94,12 +94,19 @@ describe("Windows Goose supervisor source contract", () => {
     expect(supervisor).toContain("win32_code={win32_code}");
   });
 
-  it("passes only a trusted SystemRoot in the custom Unicode environment block", () => {
+  it("inherits the supervisor environment cleaned by Main instead of building a sparse block", () => {
     const supervisor = read("workers/goose-runner/src/windows_supervisor.rs");
 
     expect(supervisor).toContain("GetWindowsDirectoryW");
     expect(supervisor).toContain("build_minimal_windows_environment_block");
     expect(supervisor).toContain('"SystemRoot="');
+    expect(supervisor).toContain(
+      "// Production inherits the supervisor environment, which Main has already cleaned.",
+    );
+    expect(supervisor).toContain(
+      "// Sparse hand-built environment blocks fail AppContainer process initialization.",
+    );
+    expect(supervisor).toContain("Self::Production => Ok(None)");
     expect(supervisor).not.toContain("let empty_environment = [0_u16, 0_u16]");
     expect(supervisor).not.toMatch(/std::env::(?:var|var_os|vars|vars_os)\s*\(/u);
   });
@@ -125,5 +132,19 @@ describe("Windows Goose supervisor source contract", () => {
     expect(workflow).toContain("--nocapture");
     expect(workflow).toContain("--test-threads=1");
     expect(supervisor).not.toMatch(/std::env::(?:var|var_os|vars|vars_os)\s*\(/u);
+  });
+
+  it("proves the production worker token is an AppContainer rather than an ordinary token", () => {
+    const supervisor = read("workers/goose-runner/src/windows_supervisor.rs");
+
+    expect(supervisor).toContain("OpenProcessToken");
+    expect(supervisor).toContain("GetTokenInformation");
+    expect(supervisor).toContain("TokenIsAppContainer");
+    expect(supervisor).toContain("TOKEN_QUERY");
+    expect(supervisor).toContain("was_assigned_before_resume()");
+    expect(supervisor).toContain("was_resumed_from_one_suspend()");
+    expect(supervisor).toContain(
+      "Worker process token must have AppContainer isolation, not a plain token",
+    );
   });
 });

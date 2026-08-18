@@ -211,6 +211,11 @@ export function createGooseRunnerEnvironment(
       ? undefined
       : validateLinuxBridgeEnvironment(privateRoot, linuxBridge);
   const temporaryDirectory = path.join(privateRoot, "tmp");
+  // Main constructs a strict whitelist environment for the supervisor process.
+  // On Windows, the supervisor then inherits this cleaned environment to the Worker
+  // (lpEnvironment=nullptr), because sparse hand-built environment blocks fail
+  // AppContainer process initialization with ERROR_ENVVAR_NOT_FOUND.
+  // On macOS/Linux, the Worker receives this exact environment through Node spawn.
   return Object.freeze({
     GOOSE_PATH_ROOT: privateRoot,
     GOOSE_TELEMETRY_OFF: "1",

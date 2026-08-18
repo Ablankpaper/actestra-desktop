@@ -153,12 +153,6 @@ fn trusted_windows_directory() -> Result<Vec<u16>, ()> {
     }
 }
 
-#[cfg(windows)]
-fn trusted_windows_environment_block() -> Result<Vec<u16>, ()> {
-    let windows_directory = trusted_windows_directory()?;
-    build_minimal_windows_environment_block(&windows_directory)
-}
-
 #[cfg(all(test, windows))]
 fn trusted_diagnostic_windows_environment_block(
     kind: DiagnosticEnvironmentKind,
@@ -215,7 +209,9 @@ impl WorkerLaunchVariant {
 
     fn environment(self) -> Result<Option<Vec<u16>>, ()> {
         match self {
-            Self::Production => trusted_windows_environment_block().map(Some),
+            // Production inherits the supervisor environment, which Main has already cleaned.
+            // Sparse hand-built environment blocks fail AppContainer process initialization.
+            Self::Production => Ok(None),
             #[cfg(test)]
             Self::FullInherit
             | Self::SecurityOnlyInherit
@@ -918,6 +914,16 @@ mod tests {
         }
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn production_variant_inherits_supervisor_environment() {
+        // A None environment makes CreateProcessW receive nullptr, so the Worker inherits
+        // the supervisor environment that Main already reduced to its closed whitelist.
+        // A hand-built sparse block fails AppContainer initialization with
+        // ERROR_ENVVAR_NOT_FOUND instead.
+        assert_eq!(WorkerLaunchVariant::Production.environment(), Ok(None));
+    }
+
     #[test]
     fn rejects_non_exact_attempt_identifiers() {
         for value in [
@@ -1050,11 +1056,13 @@ mod windows_native_tests {
     use std::mem::size_of;
     use std::os::windows::ffi::OsStringExt;
     use std::path::PathBuf;
-    use std::ptr::null;
+    use std::ptr::{null, null_mut};
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
     use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
-    use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
+    use windows_sys::Win32::Security::{
+        GetTokenInformation, TokenIsAppContainer, SECURITY_ATTRIBUTES, TOKEN_QUERY,
+    };
     use windows_sys::Win32::System::JobObjects::{
         JOB_OBJECT_LIMIT_ACTIVE_PROCESS, JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION,
         JOB_OBJECT_LIMIT_JOB_MEMORY, JOB_OBJECT_LIMIT_JOB_TIME, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
@@ -1063,7 +1071,7 @@ mod windows_native_tests {
         JOB_OBJECT_UILIMIT_READCLIPBOARD, JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS,
         JOB_OBJECT_UILIMIT_WRITECLIPBOARD,
     };
-    use windows_sys::Win32::System::Threading::CreateEventW;
+    use windows_sys::Win32::System::Threading::{CreateEventW, OpenProcessToken};
 
     static PROFILE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
@@ -1197,6 +1205,43 @@ mod windows_native_tests {
                     assert!(worker.was_assigned_before_resume());
                     assert!(worker.was_resumed_from_one_suspend());
                     assert!(!worker.process_handle().is_null());
+                    if variant == WorkerLaunchVariant::Production {
+                        // Verify the Production Worker token has AppContainer isolation; a plain
+                        // token would indicate the security-capabilities attribute was ignored.
+                        let mut token: HANDLE = null_mut();
+                        // SAFETY: process_handle() is a live process handle; token receives
+                        // the opened token on success and is closed below.
+                        let opened = unsafe {
+                            OpenProcessToken(worker.process_handle(), TOKEN_QUERY, &mut token)
+                        };
+                        assert!(
+                            opened != 0 && !token.is_null(),
+                            "must open the Worker process token for production launch"
+                        );
+                        let mut is_app_container: u32 = 0;
+                        let mut return_length: u32 = 0;
+                        // SAFETY: token is live, the output buffer holds one u32, and its size
+                        // exactly matches the documented TokenIsAppContainer information class.
+                        let queried = unsafe {
+                            GetTokenInformation(
+                                token,
+                                TokenIsAppContainer,
+                                (&raw mut is_app_container).cast::<c_void>(),
+                                size_of::<u32>() as u32,
+                                &mut return_length,
+                            )
+                        };
+                        // SAFETY: token was opened above and is no longer needed after the query.
+                        unsafe { CloseHandle(token) };
+                        assert!(
+                            queried != 0,
+                            "must query TokenIsAppContainer from the Worker process token"
+                        );
+                        assert_eq!(
+                            is_app_container, 1,
+                            "Worker process token must have AppContainer isolation, not a plain token"
+                        );
+                    }
                     production_succeeded |= variant == WorkerLaunchVariant::Production;
                     plain_succeeded |= variant == WorkerLaunchVariant::PlainInherit;
                 }
