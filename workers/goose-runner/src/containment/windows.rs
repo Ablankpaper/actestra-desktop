@@ -41,6 +41,7 @@ use crate::windows_supervisor::{
     launch_windows_containment_worker, open_windows_probe_process, read_windows_probe_request,
     remove_windows_probe_profile, write_windows_probe_result, ProbeHandle,
     WindowsContainmentFailure, WindowsProbeExchangeFailure,
+    WINDOWS_PROBE_CHILD_REQUEST_FAILURE_EXIT_CODE, WINDOWS_PROBE_CHILD_RESULT_FAILURE_EXIT_CODE,
 };
 
 #[cfg(windows)]
@@ -88,7 +89,10 @@ fn hostile_result_complete(result: &WindowsProbeResult) -> bool {
 enum WindowsProbeFailure {
     ChildFrame,
     ChildRequestFrame,
-    ChildWorkerExit,
+    ChildWorkerWait,
+    ChildRequestRead,
+    ChildResultWrite,
+    ChildUnexpectedExit,
     ChildResultFrame,
     Cleanup,
     Filesystem,
@@ -108,7 +112,10 @@ impl WindowsProbeFailure {
         match self {
             Self::ChildFrame => "windows-child-frame-invalid",
             Self::ChildRequestFrame => "windows-child-request-frame-invalid",
-            Self::ChildWorkerExit => "windows-child-worker-exit-invalid",
+            Self::ChildWorkerWait => "windows-child-worker-wait-invalid",
+            Self::ChildRequestRead => "windows-child-request-read-invalid",
+            Self::ChildResultWrite => "windows-child-result-write-invalid",
+            Self::ChildUnexpectedExit => "windows-child-unexpected-exit-invalid",
             Self::ChildResultFrame => "windows-child-result-frame-invalid",
             Self::Cleanup => "windows-cleanup-incomplete",
             Self::Filesystem => "windows-filesystem-evidence-incomplete",
@@ -307,13 +314,13 @@ fn run_probe_child() -> i32 {
         Ok(request) => request,
         Err(()) => {
             eprintln!("{WINDOWS_CONTAINMENT_ROLE_FAILURE_MARKER}");
-            return 1;
+            return WINDOWS_PROBE_CHILD_REQUEST_FAILURE_EXIT_CODE;
         }
     };
     let result = execute_windows_hostile_probe(&request, excluded_handle_absent);
     if write_windows_probe_result(result).is_err() {
         eprintln!("{WINDOWS_CONTAINMENT_ROLE_FAILURE_MARKER}");
-        return 1;
+        return WINDOWS_PROBE_CHILD_RESULT_FAILURE_EXIT_CODE;
     }
     0
 }
@@ -637,7 +644,12 @@ fn collect_windows_hostile_evidence() -> Result<WindowsHostileEvidence, WindowsP
             .exchange_probe_request(&request)
             .map_err(|failure| match failure {
                 WindowsProbeExchangeFailure::RequestFrame => WindowsProbeFailure::ChildRequestFrame,
-                WindowsProbeExchangeFailure::WorkerExit => WindowsProbeFailure::ChildWorkerExit,
+                WindowsProbeExchangeFailure::WorkerWait => WindowsProbeFailure::ChildWorkerWait,
+                WindowsProbeExchangeFailure::WorkerRequest => WindowsProbeFailure::ChildRequestRead,
+                WindowsProbeExchangeFailure::WorkerResult => WindowsProbeFailure::ChildResultWrite,
+                WindowsProbeExchangeFailure::WorkerUnexpectedExit => {
+                    WindowsProbeFailure::ChildUnexpectedExit
+                }
                 WindowsProbeExchangeFailure::ResultFrame => WindowsProbeFailure::ChildResultFrame,
             })?;
         let outside_unchanged =
@@ -798,8 +810,20 @@ mod tests {
                 "windows-child-request-frame-invalid",
             ),
             (
-                WindowsProbeFailure::ChildWorkerExit,
-                "windows-child-worker-exit-invalid",
+                WindowsProbeFailure::ChildWorkerWait,
+                "windows-child-worker-wait-invalid",
+            ),
+            (
+                WindowsProbeFailure::ChildRequestRead,
+                "windows-child-request-read-invalid",
+            ),
+            (
+                WindowsProbeFailure::ChildResultWrite,
+                "windows-child-result-write-invalid",
+            ),
+            (
+                WindowsProbeFailure::ChildUnexpectedExit,
+                "windows-child-unexpected-exit-invalid",
             ),
             (
                 WindowsProbeFailure::ChildResultFrame,

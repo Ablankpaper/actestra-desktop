@@ -11,7 +11,10 @@ describe("Goose containment probe diagnostics", () => {
     for (const code of [
       "windows-child-frame-invalid",
       "windows-child-request-frame-invalid",
-      "windows-child-worker-exit-invalid",
+      "windows-child-worker-wait-invalid",
+      "windows-child-request-read-invalid",
+      "windows-child-result-write-invalid",
+      "windows-child-unexpected-exit-invalid",
       "windows-child-result-frame-invalid",
       "windows-cleanup-incomplete",
       "windows-filesystem-evidence-incomplete",

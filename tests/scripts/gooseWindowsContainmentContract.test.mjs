@@ -83,13 +83,27 @@ describe("Windows Goose containment source contract", () => {
     expect(supervisor).toContain("WindowsProbeExchangeFailure");
     expect(supervisor).toContain("Result<WindowsProbeResult, WindowsProbeExchangeFailure>");
     expect(supervisor).toContain("RequestFrame");
-    expect(supervisor).toContain("WorkerExit");
+    expect(supervisor).toContain("WorkerWait");
     expect(supervisor).toContain("ResultFrame");
     expect(probe).toContain("ChildRequestFrame");
-    expect(probe).toContain("ChildWorkerExit");
+    expect(probe).toContain("ChildWorkerWait");
     expect(probe).toContain("ChildResultFrame");
-    expect(probe).toContain("ChildRequestFrame");
-    expect(probe).toContain("ChildWorkerExit");
-    expect(probe).toContain("ChildResultFrame");
+  });
+
+  it("separates probe request, result, wait, and unexpected child exits", async () => {
+    const [supervisor, probe] = await Promise.all([
+      readFile(supervisorPath, "utf8"),
+      readFile(probePath, "utf8"),
+    ]);
+    expect(supervisor).toContain("WINDOWS_PROBE_CHILD_REQUEST_FAILURE_EXIT_CODE");
+    expect(supervisor).toContain("WINDOWS_PROBE_CHILD_RESULT_FAILURE_EXIT_CODE");
+    expect(supervisor).toContain("WorkerWait");
+    expect(supervisor).toContain("WorkerRequest");
+    expect(supervisor).toContain("WorkerResult");
+    expect(supervisor).toContain("WorkerUnexpectedExit");
+    expect(probe).toContain("ChildWorkerWait");
+    expect(probe).toContain("ChildRequestRead");
+    expect(probe).toContain("ChildResultWrite");
+    expect(probe).toContain("ChildUnexpectedExit");
   });
 });

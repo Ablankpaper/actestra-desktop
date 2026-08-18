@@ -98,6 +98,10 @@ const WINDOWS_WORKER_MODE_ARGUMENT: &str = "--actestra-windows-worker-v1";
 const WINDOWS_WORKER_PROGRAM_NAME: &str = "actestra-goose-runner.exe";
 #[cfg(any(windows, test))]
 const WINDOWS_DIRECTORY_MAX_U16: usize = 32_767;
+#[cfg(any(windows, test))]
+pub(crate) const WINDOWS_PROBE_CHILD_REQUEST_FAILURE_EXIT_CODE: i32 = 81;
+#[cfg(any(windows, test))]
+pub(crate) const WINDOWS_PROBE_CHILD_RESULT_FAILURE_EXIT_CODE: i32 = 82;
 
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -805,12 +809,28 @@ pub(crate) struct WindowsContainmentLaunch {
     excluded_handle_value: u64,
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, test))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum WindowsProbeExchangeFailure {
     RequestFrame,
-    WorkerExit,
+    WorkerWait,
+    WorkerRequest,
+    WorkerResult,
+    WorkerUnexpectedExit,
     ResultFrame,
+}
+
+#[cfg(any(windows, test))]
+fn classify_windows_probe_child_exit(exit_code: u32) -> WindowsProbeExchangeFailure {
+    match i32::try_from(exit_code).ok() {
+        Some(WINDOWS_PROBE_CHILD_REQUEST_FAILURE_EXIT_CODE) => {
+            WindowsProbeExchangeFailure::WorkerRequest
+        }
+        Some(WINDOWS_PROBE_CHILD_RESULT_FAILURE_EXIT_CODE) => {
+            WindowsProbeExchangeFailure::WorkerResult
+        }
+        _ => WindowsProbeExchangeFailure::WorkerUnexpectedExit,
+    }
 }
 
 #[cfg(windows)]
@@ -935,13 +955,12 @@ impl WindowsContainmentLaunch {
         write_all_handle(self.pipes.supervisor_stdin, &frame)
             .map_err(|_| WindowsProbeExchangeFailure::RequestFrame)?;
         self.pipes.close_supervisor_stdin();
-        if self
+        let exit_code = self
             .worker
             .wait_for_exit(10_000)
-            .map_err(|_| WindowsProbeExchangeFailure::WorkerExit)?
-            != 0
-        {
-            return Err(WindowsProbeExchangeFailure::WorkerExit);
+            .map_err(|_| WindowsProbeExchangeFailure::WorkerWait)?;
+        if exit_code != 0 {
+            return Err(classify_windows_probe_child_exit(exit_code));
         }
         let mut result = [0_u8; WINDOWS_PROBE_RESULT_FRAME_LENGTH];
         read_exact_handle(self.pipes.supervisor_stdout, &mut result)
@@ -2130,6 +2149,27 @@ mod tests {
         assert_eq!(
             stages.map(SupervisorFailureStage::diagnostic_exit_code),
             [10, 11, 12, 13, 14, 32, 15, 16, 17]
+        );
+    }
+
+    #[test]
+    fn classifies_probe_child_exit_codes_without_exposing_raw_status() {
+        let _transport_failures = [
+            WindowsProbeExchangeFailure::RequestFrame,
+            WindowsProbeExchangeFailure::WorkerWait,
+            WindowsProbeExchangeFailure::ResultFrame,
+        ];
+        assert_eq!(
+            classify_windows_probe_child_exit(WINDOWS_PROBE_CHILD_REQUEST_FAILURE_EXIT_CODE as u32,),
+            WindowsProbeExchangeFailure::WorkerRequest
+        );
+        assert_eq!(
+            classify_windows_probe_child_exit(WINDOWS_PROBE_CHILD_RESULT_FAILURE_EXIT_CODE as u32),
+            WindowsProbeExchangeFailure::WorkerResult
+        );
+        assert_eq!(
+            classify_windows_probe_child_exit(u32::MAX),
+            WindowsProbeExchangeFailure::WorkerUnexpectedExit
         );
     }
 }
