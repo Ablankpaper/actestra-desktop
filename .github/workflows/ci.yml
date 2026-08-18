@@ -88,6 +88,11 @@ jobs:
       - name: Verify Goose runner Rust formatting
         run: bun run goose:runner:format:check
 
+      - name: Verify Windows supervisor native primitives
+        run: >-
+          cargo test --manifest-path workers/goose-runner/Cargo.toml
+          --locked windows_native_tests
+
       - name: Install pinned Goose runner audit tools
         run: bun run goose:runner:tools
 

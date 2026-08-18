@@ -112,6 +112,18 @@ describe("P8 native Goose build wiring", () => {
     }
   });
 
+  it("runs the Windows supervisor native tests before admitting the emitted artifact", () => {
+    const workflow = read(".github/workflows/ci.yml");
+    const job = readWorkflowJob(workflow, "goose-runner-windows");
+
+    expectOrderedFragments(job, [
+      "bun run goose:runner:format:check",
+      "cargo test --manifest-path workers/goose-runner/Cargo.toml --locked windows_native_tests",
+      "bun run goose:runner:build",
+      "bun run goose:runner:admit-build",
+    ]);
+  });
+
   it("installs the exact Ubuntu package layout with sudo only around setup and teardown", () => {
     const workflow = read(".github/workflows/ci.yml");
     const job = readWorkflowJob(workflow, "goose-containment-linux");

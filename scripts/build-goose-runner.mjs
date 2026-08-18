@@ -59,6 +59,9 @@ const sourceTreeFiles = [
   "workers/goose-runner/src/containment/windows.rs",
   "workers/goose-runner/src/linux_bootstrap.rs",
   "workers/goose-runner/src/main.rs",
+  "workers/goose-runner/src/windows_bridge.rs",
+  "workers/goose-runner/src/windows_control.rs",
+  "workers/goose-runner/src/windows_supervisor.rs",
 ];
 
 function fail(message) {
