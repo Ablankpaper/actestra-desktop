@@ -10,6 +10,9 @@ describe("Goose containment probe diagnostics", () => {
   it("accepts only the closed Windows containment vocabulary", () => {
     for (const code of [
       "windows-child-frame-invalid",
+      "windows-child-request-frame-invalid",
+      "windows-child-worker-exit-invalid",
+      "windows-child-result-frame-invalid",
       "windows-cleanup-incomplete",
       "windows-filesystem-evidence-incomplete",
       "windows-job-evidence-incomplete",

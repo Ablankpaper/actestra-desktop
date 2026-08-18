@@ -807,6 +807,14 @@ pub(crate) struct WindowsContainmentLaunch {
 
 #[cfg(windows)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum WindowsProbeExchangeFailure {
+    RequestFrame,
+    WorkerExit,
+    ResultFrame,
+}
+
+#[cfg(windows)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct WindowsContainmentObservation {
     pub(crate) app_container: bool,
     pub(crate) assigned_before_resume: bool,
@@ -917,18 +925,28 @@ impl WindowsContainmentLaunch {
     pub(crate) fn exchange_probe_request(
         &mut self,
         request: &WindowsProbeRequest,
-    ) -> Result<WindowsProbeResult, ()> {
-        let frame = encode_request_frame(request, self.excluded_handle_value)?;
-        let frame_length = u32::try_from(frame.len()).map_err(|_| ())?;
-        write_all_handle(self.pipes.supervisor_stdin, &frame_length.to_le_bytes())?;
-        write_all_handle(self.pipes.supervisor_stdin, &frame)?;
+    ) -> Result<WindowsProbeResult, WindowsProbeExchangeFailure> {
+        let frame = encode_request_frame(request, self.excluded_handle_value)
+            .map_err(|_| WindowsProbeExchangeFailure::RequestFrame)?;
+        let frame_length =
+            u32::try_from(frame.len()).map_err(|_| WindowsProbeExchangeFailure::RequestFrame)?;
+        write_all_handle(self.pipes.supervisor_stdin, &frame_length.to_le_bytes())
+            .map_err(|_| WindowsProbeExchangeFailure::RequestFrame)?;
+        write_all_handle(self.pipes.supervisor_stdin, &frame)
+            .map_err(|_| WindowsProbeExchangeFailure::RequestFrame)?;
         self.pipes.close_supervisor_stdin();
-        if self.worker.wait_for_exit(10_000)? != 0 {
-            return Err(());
+        if self
+            .worker
+            .wait_for_exit(10_000)
+            .map_err(|_| WindowsProbeExchangeFailure::WorkerExit)?
+            != 0
+        {
+            return Err(WindowsProbeExchangeFailure::WorkerExit);
         }
         let mut result = [0_u8; WINDOWS_PROBE_RESULT_FRAME_LENGTH];
-        read_exact_handle(self.pipes.supervisor_stdout, &mut result)?;
-        decode_result(&result)
+        read_exact_handle(self.pipes.supervisor_stdout, &mut result)
+            .map_err(|_| WindowsProbeExchangeFailure::ResultFrame)?;
+        decode_result(&result).map_err(|_| WindowsProbeExchangeFailure::ResultFrame)
     }
 
     pub(crate) fn worker_process_id(&self) -> Result<u32, ()> {

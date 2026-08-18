@@ -74,4 +74,22 @@ describe("Windows Goose containment source contract", () => {
     expect(hostile).toContain("WindowsProbeFailure::ChildFrame");
     expect(probe).toContain('"windows-parent-death-frame-invalid"');
   });
+
+  it("keeps the hostile exchange phases separately classified", async () => {
+    const [supervisor, probe] = await Promise.all([
+      readFile(supervisorPath, "utf8"),
+      readFile(probePath, "utf8"),
+    ]);
+    expect(supervisor).toContain("WindowsProbeExchangeFailure");
+    expect(supervisor).toContain("Result<WindowsProbeResult, WindowsProbeExchangeFailure>");
+    expect(supervisor).toContain("RequestFrame");
+    expect(supervisor).toContain("WorkerExit");
+    expect(supervisor).toContain("ResultFrame");
+    expect(probe).toContain("ChildRequestFrame");
+    expect(probe).toContain("ChildWorkerExit");
+    expect(probe).toContain("ChildResultFrame");
+    expect(probe).toContain("ChildRequestFrame");
+    expect(probe).toContain("ChildWorkerExit");
+    expect(probe).toContain("ChildResultFrame");
+  });
 });

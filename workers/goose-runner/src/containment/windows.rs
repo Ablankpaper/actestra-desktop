@@ -40,7 +40,7 @@ use crate::windows_supervisor::WindowsCleanupReceipt;
 use crate::windows_supervisor::{
     launch_windows_containment_worker, open_windows_probe_process, read_windows_probe_request,
     remove_windows_probe_profile, write_windows_probe_result, ProbeHandle,
-    WindowsContainmentFailure,
+    WindowsContainmentFailure, WindowsProbeExchangeFailure,
 };
 
 #[cfg(windows)]
@@ -87,6 +87,9 @@ fn hostile_result_complete(result: &WindowsProbeResult) -> bool {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum WindowsProbeFailure {
     ChildFrame,
+    ChildRequestFrame,
+    ChildWorkerExit,
+    ChildResultFrame,
     Cleanup,
     Filesystem,
     Job,
@@ -104,6 +107,9 @@ impl WindowsProbeFailure {
     fn code(self) -> &'static str {
         match self {
             Self::ChildFrame => "windows-child-frame-invalid",
+            Self::ChildRequestFrame => "windows-child-request-frame-invalid",
+            Self::ChildWorkerExit => "windows-child-worker-exit-invalid",
+            Self::ChildResultFrame => "windows-child-result-frame-invalid",
             Self::Cleanup => "windows-cleanup-incomplete",
             Self::Filesystem => "windows-filesystem-evidence-incomplete",
             Self::Job => "windows-job-evidence-incomplete",
@@ -629,7 +635,11 @@ fn collect_windows_hostile_evidence() -> Result<WindowsHostileEvidence, WindowsP
             .map_err(|()| WindowsProbeFailure::Job)?;
         let result = launch
             .exchange_probe_request(&request)
-            .map_err(|()| WindowsProbeFailure::ChildFrame)?;
+            .map_err(|failure| match failure {
+                WindowsProbeExchangeFailure::RequestFrame => WindowsProbeFailure::ChildRequestFrame,
+                WindowsProbeExchangeFailure::WorkerExit => WindowsProbeFailure::ChildWorkerExit,
+                WindowsProbeExchangeFailure::ResultFrame => WindowsProbeFailure::ChildResultFrame,
+            })?;
         let outside_unchanged =
             fs::read(&outside_input).map_err(|_| WindowsProbeFailure::Filesystem)? == outside_bytes
                 && !outside_output.exists();
@@ -782,6 +792,18 @@ mod tests {
             (
                 WindowsProbeFailure::ChildFrame,
                 "windows-child-frame-invalid",
+            ),
+            (
+                WindowsProbeFailure::ChildRequestFrame,
+                "windows-child-request-frame-invalid",
+            ),
+            (
+                WindowsProbeFailure::ChildWorkerExit,
+                "windows-child-worker-exit-invalid",
+            ),
+            (
+                WindowsProbeFailure::ChildResultFrame,
+                "windows-child-result-frame-invalid",
             ),
             (WindowsProbeFailure::Cleanup, "windows-cleanup-incomplete"),
             (
