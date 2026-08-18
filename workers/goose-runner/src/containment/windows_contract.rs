@@ -31,6 +31,12 @@ pub(crate) struct WindowsProbeRequest {
     loopback_port: u16,
 }
 
+#[cfg(any(windows, test))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct WindowsParentDeathReady {
+    pub(crate) worker_process_id: u32,
+}
+
 const WINDOWS_PROBE_REQUEST_MAGIC: [u8; 4] = *b"AGWQ";
 const WINDOWS_PROBE_REQUEST_VERSION: u8 = 1;
 const WINDOWS_PROBE_REQUEST_HEADER_LENGTH: usize = 20;
@@ -41,6 +47,68 @@ pub(crate) const WINDOWS_PROBE_REQUEST_MAX_FRAME_BYTES: usize =
 const WINDOWS_PROBE_FRAME_MAGIC: [u8; 4] = *b"AGWP";
 const WINDOWS_PROBE_FRAME_VERSION: u8 = 1;
 pub(crate) const WINDOWS_PROBE_RESULT_FRAME_LENGTH: usize = 8;
+const WINDOWS_PARENT_DEATH_REQUEST_MAGIC: [u8; 4] = *b"AGPD";
+const WINDOWS_PARENT_DEATH_READY_MAGIC: [u8; 4] = *b"AGPR";
+const WINDOWS_PARENT_DEATH_FRAME_VERSION: u8 = 1;
+pub(crate) const WINDOWS_PARENT_DEATH_REQUEST_LENGTH: usize = 38;
+pub(crate) const WINDOWS_PARENT_DEATH_READY_LENGTH: usize = 12;
+
+pub(crate) fn encode_parent_death_request(
+    attempt_id: &str,
+) -> Result<[u8; WINDOWS_PARENT_DEATH_REQUEST_LENGTH], ()> {
+    if attempt_id.len() != 32
+        || !attempt_id
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(());
+    }
+    let mut frame = [0_u8; WINDOWS_PARENT_DEATH_REQUEST_LENGTH];
+    frame[..4].copy_from_slice(&WINDOWS_PARENT_DEATH_REQUEST_MAGIC);
+    frame[4] = WINDOWS_PARENT_DEATH_FRAME_VERSION;
+    frame[6..].copy_from_slice(attempt_id.as_bytes());
+    Ok(frame)
+}
+
+pub(crate) fn decode_parent_death_request(bytes: &[u8]) -> Result<&str, ()> {
+    if bytes.len() != WINDOWS_PARENT_DEATH_REQUEST_LENGTH
+        || bytes[..4] != WINDOWS_PARENT_DEATH_REQUEST_MAGIC
+        || bytes[4] != WINDOWS_PARENT_DEATH_FRAME_VERSION
+        || bytes[5] != 0
+    {
+        return Err(());
+    }
+    let attempt_id = std::str::from_utf8(&bytes[6..]).map_err(|_| ())?;
+    encode_parent_death_request(attempt_id)?;
+    Ok(attempt_id)
+}
+
+pub(crate) fn encode_parent_death_ready(
+    ready: WindowsParentDeathReady,
+) -> [u8; WINDOWS_PARENT_DEATH_READY_LENGTH] {
+    let mut frame = [0_u8; WINDOWS_PARENT_DEATH_READY_LENGTH];
+    frame[..4].copy_from_slice(&WINDOWS_PARENT_DEATH_READY_MAGIC);
+    frame[4] = WINDOWS_PARENT_DEATH_FRAME_VERSION;
+    frame[5] = 1;
+    frame[8..].copy_from_slice(&ready.worker_process_id.to_le_bytes());
+    frame
+}
+
+pub(crate) fn decode_parent_death_ready(bytes: &[u8]) -> Result<WindowsParentDeathReady, ()> {
+    if bytes.len() != WINDOWS_PARENT_DEATH_READY_LENGTH
+        || bytes[..4] != WINDOWS_PARENT_DEATH_READY_MAGIC
+        || bytes[4] != WINDOWS_PARENT_DEATH_FRAME_VERSION
+        || bytes[5] != 1
+        || bytes[6..8] != [0, 0]
+    {
+        return Err(());
+    }
+    let worker_process_id = u32::from_le_bytes(bytes[8..].try_into().map_err(|_| ())?);
+    if worker_process_id == 0 {
+        return Err(());
+    }
+    Ok(WindowsParentDeathReady { worker_process_id })
+}
 
 impl WindowsProbeRequest {
     pub(crate) fn new(
@@ -229,8 +297,10 @@ pub(crate) fn bounded_probe_metadata(value: Option<String>, max_length: usize) -
 #[cfg(test)]
 mod tests {
     use super::{
-        admit_probe_role, bounded_probe_metadata, decode_request_frame, decode_result,
-        encode_request_frame, encode_result, parse_role, WindowsContainmentRole,
+        admit_probe_role, bounded_probe_metadata, decode_parent_death_ready,
+        decode_parent_death_request, decode_request_frame, decode_result,
+        encode_parent_death_ready, encode_parent_death_request, encode_request_frame,
+        encode_result, parse_role, WindowsContainmentRole, WindowsParentDeathReady,
         WindowsProbeRequest, WindowsProbeResult, WINDOWS_PROBE_CHILD_ARGUMENT,
         WINDOWS_PROBE_PARENT_ARGUMENT,
     };
@@ -335,6 +405,38 @@ mod tests {
         assert!(encode_request_frame(&request, 0).is_err());
         assert!(encode_request_frame(&request, u64::MAX).is_err());
         assert!(WindowsProbeRequest::new("C:\\in".to_string(), "C:\\out".to_string(), 0).is_err());
+    }
+
+    #[test]
+    fn round_trips_fixed_parent_death_request_and_ready_frames() {
+        let attempt_id = "0123456789abcdef0123456789abcdef";
+        let request = encode_parent_death_request(attempt_id).unwrap();
+        assert_eq!(decode_parent_death_request(&request).unwrap(), attempt_id);
+
+        let ready = WindowsParentDeathReady {
+            worker_process_id: 4_242,
+        };
+        assert_eq!(
+            decode_parent_death_ready(&encode_parent_death_ready(ready)).unwrap(),
+            ready
+        );
+    }
+
+    #[test]
+    fn rejects_ambiguous_parent_death_frames() {
+        assert!(encode_parent_death_request("short").is_err());
+        let mut request = encode_parent_death_request("0123456789abcdef0123456789abcdef")
+            .unwrap()
+            .to_vec();
+        request.push(0);
+        assert!(decode_parent_death_request(&request).is_err());
+        assert!(decode_parent_death_ready(&[0; 12]).is_err());
+        assert!(
+            decode_parent_death_ready(&encode_parent_death_ready(WindowsParentDeathReady {
+                worker_process_id: 0,
+            }))
+            .is_err()
+        );
     }
 
     #[test]

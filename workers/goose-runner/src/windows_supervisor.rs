@@ -24,7 +24,7 @@ use std::ptr::{null, null_mut};
 #[cfg(windows)]
 use windows_sys::Win32::Foundation::{
     CloseHandle, GetLastError, SetHandleInformation, ERROR_INVALID_HANDLE, HANDLE,
-    HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, WAIT_FAILED, WAIT_OBJECT_0,
+    HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 #[cfg(windows)]
 use windows_sys::Win32::Security::Isolation::{
@@ -63,10 +63,11 @@ use windows_sys::Win32::System::SystemInformation::GetWindowsDirectoryW;
 #[cfg(windows)]
 use windows_sys::Win32::System::Threading::{
     CreateEventW, CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcess,
-    GetExitCodeProcess, InitializeProcThreadAttributeList, OpenProcessToken, ResumeThread,
-    TerminateProcess, UpdateProcThreadAttribute, WaitForSingleObject, CREATE_NO_WINDOW,
-    CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT,
-    PROCESS_INFORMATION, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+    GetExitCodeProcess, GetProcessId, InitializeProcThreadAttributeList, OpenProcess,
+    OpenProcessToken, ResumeThread, TerminateProcess, UpdateProcThreadAttribute,
+    WaitForSingleObject, CREATE_NO_WINDOW, CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT,
+    EXTENDED_STARTUPINFO_PRESENT, PROCESS_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION,
+    PROCESS_SYNCHRONIZE, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
     PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES, STARTF_USESTDHANDLES, STARTUPINFOEXW,
 };
 
@@ -475,6 +476,21 @@ fn is_exact_attempt_id(attempt_id: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
+#[cfg(windows)]
+pub(crate) fn remove_windows_probe_profile(attempt_id: &str) -> Result<(), ()> {
+    if !is_exact_attempt_id(attempt_id) {
+        return Err(());
+    }
+    let name: Vec<u16> = format!("Actestra.Goose.{attempt_id}\0")
+        .encode_utf16()
+        .collect();
+    // SAFETY: name is an exact, locally derived, NUL-terminated profile identifier.
+    if unsafe { DeleteAppContainerProfile(name.as_ptr()) } < 0 {
+        return Err(());
+    }
+    Ok(())
+}
+
 pub(crate) fn derive_pipe_names(attempt_id: &str) -> Result<WindowsPipeNames, ()> {
     if !is_exact_attempt_id(attempt_id) {
         return Err(());
@@ -491,6 +507,7 @@ struct AppContainerProfile {
     name: String,
     wide_name: Vec<u16>,
     sid: PSID,
+    removed: bool,
 }
 
 #[cfg(windows)]
@@ -548,6 +565,7 @@ impl AppContainerProfile {
             name,
             wide_name,
             sid: derived_sid,
+            removed: false,
         })
     }
 
@@ -563,14 +581,29 @@ impl AppContainerProfile {
             Reserved: 0,
         }
     }
+
+    fn remove(&mut self) -> Result<(), ()> {
+        if self.removed {
+            return Ok(());
+        }
+        // SAFETY: wide_name is the exact NUL-terminated profile name created by this owner.
+        if unsafe { DeleteAppContainerProfile(self.wide_name.as_ptr()) } < 0 {
+            return Err(());
+        }
+        self.removed = true;
+        Ok(())
+    }
 }
 
 #[cfg(windows)]
 impl Drop for AppContainerProfile {
     fn drop(&mut self) {
-        // SAFETY: both resources are exact values created and retained by this instance.
+        // SAFETY: both resources are exact values created and retained by this instance. Drop is
+        // only a backstop; admitting cleanup uses the observable remove() result above.
         unsafe {
-            DeleteAppContainerProfile(self.wide_name.as_ptr());
+            if !self.removed {
+                DeleteAppContainerProfile(self.wide_name.as_ptr());
+            }
             FreeSid(self.sid);
         }
     }
@@ -679,6 +712,15 @@ impl WorkerProcess {
         self.process
     }
 
+    fn process_id(&self) -> Result<u32, ()> {
+        // SAFETY: process is a live process handle owned by this wrapper.
+        let process_id = unsafe { GetProcessId(self.process) };
+        if process_id == 0 {
+            return Err(());
+        }
+        Ok(process_id)
+    }
+
     fn was_assigned_before_resume(&self) -> bool {
         self.assigned_before_resume
     }
@@ -773,6 +815,67 @@ pub(crate) struct WindowsContainmentObservation {
     pub(crate) single_active_process: bool,
 }
 
+#[cfg(any(windows, test))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct WindowsCleanupReceipt {
+    pub(crate) worker_terminal: bool,
+    pub(crate) profile_removed: bool,
+    pub(crate) private_root_removed: bool,
+}
+
+#[cfg(any(windows, test))]
+impl WindowsCleanupReceipt {
+    pub(crate) fn complete(self) -> bool {
+        self.worker_terminal && self.profile_removed && self.private_root_removed
+    }
+}
+
+#[cfg(windows)]
+pub(crate) struct WindowsProbeProcess {
+    handle: HANDLE,
+}
+
+#[cfg(windows)]
+impl WindowsProbeProcess {
+    pub(crate) fn is_running(&self) -> bool {
+        // SAFETY: handle is a live synchronization handle owned by this wrapper.
+        (unsafe { WaitForSingleObject(self.handle, 0) }) == WAIT_TIMEOUT
+    }
+
+    pub(crate) fn wait_for_exit(&self, timeout_ms: u32) -> bool {
+        // SAFETY: handle is a live synchronization handle owned by this wrapper.
+        (unsafe { WaitForSingleObject(self.handle, timeout_ms) }) == WAIT_OBJECT_0
+    }
+}
+
+#[cfg(windows)]
+impl Drop for WindowsProbeProcess {
+    fn drop(&mut self) {
+        // SAFETY: this wrapper owns the process handle opened below.
+        unsafe { CloseHandle(self.handle) };
+    }
+}
+
+#[cfg(windows)]
+pub(crate) fn open_windows_probe_process(process_id: u32) -> Result<WindowsProbeProcess, ()> {
+    if process_id == 0 {
+        return Err(());
+    }
+    // SAFETY: the requested access is synchronization/query-only, inheritance is disabled, and
+    // the returned handle is immediately owned by WindowsProbeProcess.
+    let handle = unsafe {
+        OpenProcess(
+            PROCESS_SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION,
+            0,
+            process_id,
+        )
+    };
+    if handle.is_null() || handle == INVALID_HANDLE_VALUE {
+        return Err(());
+    }
+    Ok(WindowsProbeProcess { handle })
+}
+
 #[cfg(windows)]
 impl WindowsContainmentLaunch {
     pub(crate) fn observation(&self) -> Result<WindowsContainmentObservation, ()> {
@@ -826,6 +929,25 @@ impl WindowsContainmentLaunch {
         let mut result = [0_u8; WINDOWS_PROBE_RESULT_FRAME_LENGTH];
         read_exact_handle(self.pipes.supervisor_stdout, &mut result)?;
         decode_result(&result)
+    }
+
+    pub(crate) fn worker_process_id(&self) -> Result<u32, ()> {
+        self.worker.process_id()
+    }
+
+    pub(crate) fn cleanup(mut self, private_root: &Path) -> WindowsCleanupReceipt {
+        let terminated = self.job.terminate_for_cleanup().is_ok();
+        let worker_terminal = terminated && self.worker.wait_for_exit(5_000).is_ok();
+        let profile_removed = self.profile.remove().is_ok();
+        drop(self);
+        let private_root_removed = private_root.exists()
+            && std::fs::remove_dir_all(private_root).is_ok()
+            && !private_root.exists();
+        WindowsCleanupReceipt {
+            worker_terminal,
+            profile_removed,
+            private_root_removed,
+        }
     }
 
     pub(crate) fn retained_profile_name(&self) -> &str {
@@ -928,6 +1050,15 @@ impl JobObject {
             return Err(());
         }
         Ok(accounting.ActiveProcesses)
+    }
+
+    fn terminate_for_cleanup(&self) -> Result<(), ()> {
+        // SAFETY: self.handle is the exact owned Job Object. This operation is used only for
+        // explicit cleanup and is never counted as parent-death evidence.
+        if unsafe { TerminateJobObject(self.handle, 1) } == 0 {
+            return Err(());
+        }
+        Ok(())
     }
 
     fn query_back(&self) -> Result<JobObjectQuery, ()> {
@@ -1758,6 +1889,18 @@ fn read_control_frame_from_fd(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cleanup_receipt_requires_every_observable_cleanup_stage() {
+        let mut receipt = WindowsCleanupReceipt {
+            worker_terminal: true,
+            profile_removed: true,
+            private_root_removed: true,
+        };
+        assert!(receipt.complete());
+        receipt.profile_removed = false;
+        assert!(!receipt.complete());
+    }
 
     #[test]
     fn derives_exact_attempt_scoped_pipe_names_without_private_text() {

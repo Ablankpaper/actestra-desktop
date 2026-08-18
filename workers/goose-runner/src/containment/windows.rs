@@ -6,6 +6,8 @@ use std::env;
 #[cfg(windows)]
 use std::fs;
 #[cfg(windows)]
+use std::io::{Read, Write};
+#[cfg(windows)]
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, TcpStream};
 #[cfg(windows)]
 use std::path::Path;
@@ -14,19 +16,26 @@ use std::process::{Command, Stdio};
 #[cfg(windows)]
 use std::sync::atomic::{AtomicU64, Ordering};
 #[cfg(windows)]
+use std::sync::mpsc;
+#[cfg(windows)]
+use std::thread;
+#[cfg(windows)]
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[cfg(any(windows, test))]
 use super::windows_contract::WindowsProbeResult;
 #[cfg(windows)]
 use super::windows_contract::{
-    admit_probe_role, bounded_probe_metadata, WindowsContainmentRole, WindowsProbeRequest,
+    admit_probe_role, bounded_probe_metadata, decode_parent_death_ready,
+    decode_parent_death_request, encode_parent_death_ready, encode_parent_death_request,
+    WindowsContainmentRole, WindowsParentDeathReady, WindowsProbeRequest,
+    WINDOWS_PARENT_DEATH_READY_LENGTH, WINDOWS_PARENT_DEATH_REQUEST_LENGTH,
     WINDOWS_PROBE_CHILD_ARGUMENT,
 };
 #[cfg(windows)]
 use crate::windows_supervisor::{
-    launch_windows_containment_worker, read_windows_probe_request, write_windows_probe_result,
-    ProbeHandle,
+    launch_windows_containment_worker, open_windows_probe_process, read_windows_probe_request,
+    remove_windows_probe_profile, write_windows_probe_result, ProbeHandle, WindowsCleanupReceipt,
 };
 
 #[cfg(windows)]
@@ -74,14 +83,82 @@ pub(crate) fn dispatch_windows_containment_role(arguments: &[String]) -> Option<
     match admit_probe_role(arguments, Some("1")) {
         Ok(Some(WindowsContainmentRole::Child)) => Some(run_probe_child()),
         Ok(Some(WindowsContainmentRole::IntermediateParent)) => {
-            eprintln!("{WINDOWS_CONTAINMENT_ROLE_FAILURE_MARKER}");
-            Some(1)
+            Some(run_probe_intermediate_parent())
         }
         Ok(None) => None,
         Err(()) => {
             eprintln!("{WINDOWS_CONTAINMENT_ROLE_FAILURE_MARKER}");
             Some(1)
         }
+    }
+}
+
+#[cfg(windows)]
+fn run_probe_intermediate_parent() -> i32 {
+    let mut request = [0_u8; WINDOWS_PARENT_DEATH_REQUEST_LENGTH];
+    if std::io::stdin().read_exact(&mut request).is_err() {
+        eprintln!("{WINDOWS_CONTAINMENT_ROLE_FAILURE_MARKER}");
+        return 1;
+    }
+    let attempt_id = match decode_parent_death_request(&request) {
+        Ok(attempt_id) => attempt_id.to_string(),
+        Err(()) => {
+            eprintln!("{WINDOWS_CONTAINMENT_ROLE_FAILURE_MARKER}");
+            return 1;
+        }
+    };
+    let executable = match env::current_exe() {
+        Ok(executable) => executable,
+        Err(_) => {
+            eprintln!("{WINDOWS_CONTAINMENT_ROLE_FAILURE_MARKER}");
+            return 1;
+        }
+    };
+    let Some(current_directory) = executable.parent() else {
+        eprintln!("{WINDOWS_CONTAINMENT_ROLE_FAILURE_MARKER}");
+        return 1;
+    };
+    let excluded_handle = match ProbeHandle::create() {
+        Ok(handle) => handle,
+        Err(()) => {
+            eprintln!("{WINDOWS_CONTAINMENT_ROLE_FAILURE_MARKER}");
+            return 1;
+        }
+    };
+    let launch = match launch_windows_containment_worker(
+        &attempt_id,
+        &executable,
+        current_directory,
+        WINDOWS_PROBE_CHILD_ARGUMENT,
+        &excluded_handle,
+    ) {
+        Ok(launch) => launch,
+        Err(_) => {
+            eprintln!("{WINDOWS_CONTAINMENT_ROLE_FAILURE_MARKER}");
+            return 1;
+        }
+    };
+    let worker_process_id = match launch.worker_process_id() {
+        Ok(process_id) => process_id,
+        Err(()) => {
+            eprintln!("{WINDOWS_CONTAINMENT_ROLE_FAILURE_MARKER}");
+            return 1;
+        }
+    };
+    let ready = encode_parent_death_ready(WindowsParentDeathReady { worker_process_id });
+    {
+        let stdout = std::io::stdout();
+        let mut output = stdout.lock();
+        if output.write_all(&ready).is_err() || output.flush().is_err() {
+            eprintln!("{WINDOWS_CONTAINMENT_ROLE_FAILURE_MARKER}");
+            return 1;
+        }
+    }
+
+    let _launch = launch;
+    let _excluded_handle = excluded_handle;
+    loop {
+        thread::park();
     }
 }
 
@@ -182,6 +259,8 @@ struct WindowsHostileEvidence {
     network: bool,
     process_tree: bool,
     resources: bool,
+    parent_death: bool,
+    cleanup: bool,
 }
 
 #[cfg(windows)]
@@ -194,6 +273,121 @@ fn unique_probe_attempt_id() -> String {
     format!(
         "{:032x}",
         elapsed ^ sequence ^ u128::from(std::process::id())
+    )
+}
+
+#[cfg(windows)]
+fn run_windows_parent_death_probe() -> (bool, WindowsCleanupReceipt) {
+    let attempt_id = unique_probe_attempt_id();
+    let private_root = env::temp_dir().join(format!("actestra-goose-parent-death-{attempt_id}"));
+    let local_app_data = private_root.join("local-app-data");
+    if fs::create_dir_all(&local_app_data).is_err() {
+        return (
+            false,
+            WindowsCleanupReceipt {
+                worker_terminal: false,
+                profile_removed: false,
+                private_root_removed: false,
+            },
+        );
+    }
+    let executable = match env::current_exe() {
+        Ok(executable) => executable,
+        Err(_) => {
+            return incomplete_parent_death_cleanup(&attempt_id, &private_root, false);
+        }
+    };
+    let mut intermediate = match Command::new(executable)
+        .arg(super::windows_contract::WINDOWS_PROBE_PARENT_ARGUMENT)
+        .env("ACTESTRA_GOOSE_CONTAINMENT_PROBE", "1")
+        .env("LOCALAPPDATA", &local_app_data)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(intermediate) => intermediate,
+        Err(_) => {
+            return incomplete_parent_death_cleanup(&attempt_id, &private_root, false);
+        }
+    };
+    let request = match encode_parent_death_request(&attempt_id) {
+        Ok(request) => request,
+        Err(()) => {
+            let _ = intermediate.kill();
+            let _ = intermediate.wait();
+            return incomplete_parent_death_cleanup(&attempt_id, &private_root, false);
+        }
+    };
+    let request_written = intermediate
+        .stdin
+        .take()
+        .is_some_and(|mut input| input.write_all(&request).is_ok());
+    let output = intermediate.stdout.take();
+    if !request_written {
+        let _ = intermediate.kill();
+        let _ = intermediate.wait();
+        return incomplete_parent_death_cleanup(&attempt_id, &private_root, false);
+    }
+    let Some(mut output) = output else {
+        let _ = intermediate.kill();
+        let _ = intermediate.wait();
+        return incomplete_parent_death_cleanup(&attempt_id, &private_root, false);
+    };
+
+    let (ready_sender, ready_receiver) = mpsc::sync_channel(1);
+    let ready_reader = thread::spawn(move || {
+        let mut frame = [0_u8; WINDOWS_PARENT_DEATH_READY_LENGTH];
+        let result = output
+            .read_exact(&mut frame)
+            .map(|()| frame)
+            .map_err(|_| ());
+        let _ = ready_sender.send(result);
+    });
+    let ready = ready_receiver
+        .recv_timeout(Duration::from_secs(10))
+        .ok()
+        .and_then(Result::ok)
+        .and_then(|frame| decode_parent_death_ready(&frame).ok());
+    let observer = ready.and_then(|value| open_windows_probe_process(value.worker_process_id).ok());
+    let worker_was_running = observer
+        .as_ref()
+        .is_some_and(|process| process.is_running());
+
+    let intermediate_killed = intermediate.kill().is_ok();
+    let intermediate_terminal = intermediate.wait().is_ok();
+    let worker_terminal = observer
+        .as_ref()
+        .is_some_and(|process| process.wait_for_exit(5_000));
+    let _ = ready_reader.join();
+    let profile_removed = remove_windows_probe_profile(&attempt_id).is_ok();
+    let private_root_removed = fs::remove_dir_all(&private_root).is_ok() && !private_root.exists();
+    let receipt = WindowsCleanupReceipt {
+        worker_terminal,
+        profile_removed,
+        private_root_removed,
+    };
+    (
+        worker_was_running && intermediate_killed && intermediate_terminal && worker_terminal,
+        receipt,
+    )
+}
+
+#[cfg(windows)]
+fn incomplete_parent_death_cleanup(
+    attempt_id: &str,
+    private_root: &Path,
+    worker_terminal: bool,
+) -> (bool, WindowsCleanupReceipt) {
+    let profile_removed = remove_windows_probe_profile(attempt_id).is_ok();
+    let private_root_removed = fs::remove_dir_all(private_root).is_ok() && !private_root.exists();
+    (
+        false,
+        WindowsCleanupReceipt {
+            worker_terminal,
+            profile_removed,
+            private_root_removed,
+        },
     )
 }
 
@@ -247,7 +441,7 @@ fn collect_windows_hostile_evidence() -> Result<WindowsHostileEvidence, ()> {
         }
         Err(_) => false,
     };
-    let evidence = WindowsHostileEvidence {
+    let mut evidence = WindowsHostileEvidence {
         filesystem: result.filesystem_attempted && result.filesystem_denied && outside_unchanged,
         network: result.network_attempted && result.network_denied && no_connection,
         process_tree: result.process_attempted
@@ -257,14 +451,18 @@ fn collect_windows_hostile_evidence() -> Result<WindowsHostileEvidence, ()> {
             && observation.assigned_before_resume
             && observation.resumed_once
             && observation.exact_job_limits,
+        parent_death: false,
+        cleanup: false,
     };
-    drop(launch);
     drop(excluded_handle);
     drop(listener);
-    fs::remove_dir_all(&probe_root).map_err(|_| ())?;
+    let hostile_cleanup = launch.cleanup(&probe_root);
     if !hostile_result_complete(&result) {
         return Err(());
     }
+    let (parent_death, parent_cleanup) = run_windows_parent_death_probe();
+    evidence.parent_death = parent_death;
+    evidence.cleanup = hostile_cleanup.complete() && parent_cleanup.complete();
     Ok(evidence)
 }
 
@@ -281,8 +479,8 @@ pub(crate) fn run_windows_containment_probe() -> String {
         "network": evidence.as_ref().is_some_and(|value| value.network),
         "processTree": evidence.as_ref().is_some_and(|value| value.process_tree),
         "resources": evidence.as_ref().is_some_and(|value| value.resources),
-        "parentDeath": false,
-        "cleanup": false,
+        "parentDeath": evidence.as_ref().is_some_and(|value| value.parent_death),
+        "cleanup": evidence.as_ref().is_some_and(|value| value.cleanup),
         "status": "evidence-incomplete",
     })
     .to_string()

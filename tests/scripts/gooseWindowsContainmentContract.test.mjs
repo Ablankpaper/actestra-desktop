@@ -44,4 +44,19 @@ describe("Windows Goose containment source contract", () => {
     expect(control).not.toContain("--actestra-windows-containment-child-v1");
     expect(control).not.toContain("--actestra-windows-containment-parent-v1");
   });
+
+  it("separates parent-death evidence from explicit cleanup", async () => {
+    const [supervisor, probe] = await Promise.all([
+      readFile(supervisorPath, "utf8"),
+      readFile(probePath, "utf8"),
+    ]);
+
+    expect(supervisor).toContain("pub(crate) struct WindowsCleanupReceipt");
+    expect(supervisor).toContain("open_windows_probe_process");
+    expect(supervisor).toContain("remove_windows_probe_profile");
+    expect(probe).toContain("run_windows_parent_death_probe");
+    expect(probe).toContain("intermediate.kill()");
+    expect(probe).toContain("wait_for_exit");
+    expect(probe).not.toContain("TerminateJobObject");
+  });
 });
