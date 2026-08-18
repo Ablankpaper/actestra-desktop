@@ -33,9 +33,18 @@ const PROBE_SHA256 = "b".repeat(64);
 
 function fixtureTempDirectory(prefix: string): string {
   // Unix-domain socket paths are bounded to 103 bytes by the production
-  // bridge validator. Keep macOS fixtures short while retaining the native
-  // Windows temp root (where /tmp is not a usable filesystem path).
-  return path.join(process.platform === "win32" ? os.tmpdir() : "/tmp", prefix);
+  // bridge validator. Keep macOS fixtures short while retaining a native
+  // Windows temp root (where /tmp is not a usable filesystem path). GitHub's
+  // checkout path is long enough to invalidate the fixture socket, so prefer
+  // its dedicated short runner temp root when available.
+  const windowsRoot = process.env.RUNNER_TEMP;
+  const root =
+    process.platform === "win32"
+      ? windowsRoot !== undefined && path.isAbsolute(windowsRoot)
+        ? windowsRoot
+        : os.tmpdir()
+      : "/tmp";
+  return path.join(root, prefix);
 }
 
 async function waitForFile(filePath: string, timeoutMs = 5_000): Promise<Buffer> {
