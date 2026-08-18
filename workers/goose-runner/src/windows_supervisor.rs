@@ -1,6 +1,11 @@
 pub(crate) const WINDOWS_SETUP_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_NETWORK_POLICY_SETUP_FAILED";
 pub(crate) const WINDOWS_RESOURCE_FAILURE_MARKER: &str =
     "ACTESTRA_GOOSE_RESOURCE_LIMIT_SETUP_FAILED";
+#[cfg(windows)]
+use crate::containment::windows_contract::{
+    decode_request_frame, decode_result, encode_request_frame, encode_result, WindowsProbeRequest,
+    WindowsProbeResult, WINDOWS_PROBE_REQUEST_MAX_FRAME_BYTES, WINDOWS_PROBE_RESULT_FRAME_LENGTH,
+};
 #[cfg(any(windows, test))]
 use crate::containment::windows_contract::{
     WINDOWS_PROBE_CHILD_ARGUMENT, WINDOWS_PROBE_PARENT_ARGUMENT,
@@ -18,8 +23,8 @@ use std::path::Path;
 use std::ptr::{null, null_mut};
 #[cfg(windows)]
 use windows_sys::Win32::Foundation::{
-    CloseHandle, GetLastError, SetHandleInformation, HANDLE, HANDLE_FLAG_INHERIT,
-    INVALID_HANDLE_VALUE,
+    CloseHandle, GetLastError, SetHandleInformation, ERROR_INVALID_HANDLE, HANDLE,
+    HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, WAIT_FAILED, WAIT_OBJECT_0,
 };
 #[cfg(windows)]
 use windows_sys::Win32::Security::Isolation::{
@@ -40,12 +45,14 @@ use windows_sys::Win32::System::Console::{
 };
 #[cfg(windows)]
 use windows_sys::Win32::System::JobObjects::{
-    AssignProcessToJobObject, CreateJobObjectW, IsProcessInJob, JobObjectBasicUIRestrictions,
+    AssignProcessToJobObject, CreateJobObjectW, IsProcessInJob,
+    JobObjectBasicAccountingInformation, JobObjectBasicUIRestrictions,
     JobObjectExtendedLimitInformation, QueryInformationJobObject, SetInformationJobObject,
-    TerminateJobObject, JOBOBJECT_BASIC_UI_RESTRICTIONS, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-    JOB_OBJECT_LIMIT_ACTIVE_PROCESS, JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION,
-    JOB_OBJECT_LIMIT_JOB_MEMORY, JOB_OBJECT_LIMIT_JOB_TIME, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-    JOB_OBJECT_UILIMIT_DESKTOP, JOB_OBJECT_UILIMIT_DISPLAYSETTINGS, JOB_OBJECT_UILIMIT_EXITWINDOWS,
+    TerminateJobObject, JOBOBJECT_BASIC_ACCOUNTING_INFORMATION, JOBOBJECT_BASIC_UI_RESTRICTIONS,
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_ACTIVE_PROCESS,
+    JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION, JOB_OBJECT_LIMIT_JOB_MEMORY,
+    JOB_OBJECT_LIMIT_JOB_TIME, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOB_OBJECT_UILIMIT_DESKTOP,
+    JOB_OBJECT_UILIMIT_DISPLAYSETTINGS, JOB_OBJECT_UILIMIT_EXITWINDOWS,
     JOB_OBJECT_UILIMIT_GLOBALATOMS, JOB_OBJECT_UILIMIT_HANDLES, JOB_OBJECT_UILIMIT_READCLIPBOARD,
     JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS, JOB_OBJECT_UILIMIT_WRITECLIPBOARD,
 };
@@ -56,11 +63,11 @@ use windows_sys::Win32::System::SystemInformation::GetWindowsDirectoryW;
 #[cfg(windows)]
 use windows_sys::Win32::System::Threading::{
     CreateEventW, CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcess,
-    InitializeProcThreadAttributeList, OpenProcessToken, ResumeThread, TerminateProcess,
-    UpdateProcThreadAttribute, WaitForSingleObject, CREATE_NO_WINDOW, CREATE_SUSPENDED,
-    CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT, PROCESS_INFORMATION,
-    PROC_THREAD_ATTRIBUTE_HANDLE_LIST, PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES,
-    STARTF_USESTDHANDLES, STARTUPINFOEXW,
+    GetExitCodeProcess, InitializeProcThreadAttributeList, OpenProcessToken, ResumeThread,
+    TerminateProcess, UpdateProcThreadAttribute, WaitForSingleObject, CREATE_NO_WINDOW,
+    CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT,
+    PROCESS_INFORMATION, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+    PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES, STARTF_USESTDHANDLES, STARTUPINFOEXW,
 };
 
 #[cfg(windows)]
@@ -679,6 +686,19 @@ impl WorkerProcess {
     fn was_resumed_from_one_suspend(&self) -> bool {
         self.resumed_from_one_suspend
     }
+
+    fn wait_for_exit(&self, timeout_ms: u32) -> Result<u32, ()> {
+        // SAFETY: process is a live synchronization/query handle owned by this wrapper.
+        if unsafe { WaitForSingleObject(self.process, timeout_ms) } != WAIT_OBJECT_0 {
+            return Err(());
+        }
+        let mut exit_code = 0_u32;
+        // SAFETY: process is signaled and exit_code is a valid out pointer.
+        if unsafe { GetExitCodeProcess(self.process, &mut exit_code) } == 0 {
+            return Err(());
+        }
+        Ok(exit_code)
+    }
 }
 
 #[cfg(windows)]
@@ -716,6 +736,14 @@ impl ProbeHandle {
         }
         Ok(Self { handle })
     }
+
+    fn encoded_value(&self) -> Result<u64, ()> {
+        let value = self.handle as usize as u64;
+        if value == 0 || value == u64::MAX {
+            return Err(());
+        }
+        Ok(value)
+    }
 }
 
 #[cfg(windows)]
@@ -732,6 +760,7 @@ pub(crate) struct WindowsContainmentLaunch {
     job: JobObject,
     worker: WorkerProcess,
     pipes: WorkerPipeSet,
+    excluded_handle_value: u64,
 }
 
 #[cfg(windows)]
@@ -741,6 +770,7 @@ pub(crate) struct WindowsContainmentObservation {
     pub(crate) assigned_before_resume: bool,
     pub(crate) resumed_once: bool,
     pub(crate) exact_job_limits: bool,
+    pub(crate) single_active_process: bool,
 }
 
 #[cfg(windows)]
@@ -777,7 +807,25 @@ impl WindowsContainmentLaunch {
                 && self.job.contains_process(self.worker.process_handle())?,
             resumed_once: self.worker.was_resumed_from_one_suspend(),
             exact_job_limits: self.job.query_back()?.is_exact(),
+            single_active_process: self.job.active_process_count()? == 1,
         })
+    }
+
+    pub(crate) fn exchange_probe_request(
+        &mut self,
+        request: &WindowsProbeRequest,
+    ) -> Result<WindowsProbeResult, ()> {
+        let frame = encode_request_frame(request, self.excluded_handle_value)?;
+        let frame_length = u32::try_from(frame.len()).map_err(|_| ())?;
+        write_all_handle(self.pipes.supervisor_stdin, &frame_length.to_le_bytes())?;
+        write_all_handle(self.pipes.supervisor_stdin, &frame)?;
+        self.pipes.close_supervisor_stdin();
+        if self.worker.wait_for_exit(10_000)? != 0 {
+            return Err(());
+        }
+        let mut result = [0_u8; WINDOWS_PROBE_RESULT_FRAME_LENGTH];
+        read_exact_handle(self.pipes.supervisor_stdout, &mut result)?;
+        decode_result(&result)
     }
 
     pub(crate) fn retained_profile_name(&self) -> &str {
@@ -860,6 +908,26 @@ impl JobObject {
             return Err(());
         }
         Ok(())
+    }
+
+    fn active_process_count(&self) -> Result<u32, ()> {
+        // SAFETY: zero is the documented initialization for this plain Win32 structure.
+        let mut accounting: JOBOBJECT_BASIC_ACCOUNTING_INFORMATION = unsafe { zeroed() };
+        // SAFETY: self.handle is a live Job Object and the buffer exactly matches the requested
+        // information class.
+        if unsafe {
+            QueryInformationJobObject(
+                self.handle,
+                JobObjectBasicAccountingInformation,
+                (&raw mut accounting).cast::<c_void>(),
+                size_of::<JOBOBJECT_BASIC_ACCOUNTING_INFORMATION>() as u32,
+                null_mut(),
+            )
+        } == 0
+        {
+            return Err(());
+        }
+        Ok(accounting.ActiveProcesses)
     }
 
     fn query_back(&self) -> Result<JobObjectQuery, ()> {
@@ -1277,6 +1345,14 @@ impl WorkerPipeSet {
             }
         }
     }
+
+    fn close_supervisor_stdin(&mut self) {
+        if !self.supervisor_stdin.is_null() {
+            // SAFETY: this endpoint is owned by the pipe set and is closed only once here.
+            unsafe { CloseHandle(self.supervisor_stdin) };
+            self.supervisor_stdin = null_mut();
+        }
+    }
 }
 
 #[cfg(windows)]
@@ -1313,6 +1389,9 @@ pub(crate) fn launch_windows_containment_worker(
         AppContainerProfile::create(attempt_id).map_err(|()| WindowsContainmentFailure::Profile)?;
     let job = JobObject::create().map_err(|()| WindowsContainmentFailure::Job)?;
     let mut pipes = WorkerPipeSet::create().map_err(|()| WindowsContainmentFailure::Pipes)?;
+    let excluded_handle_value = excluded_handle
+        .encoded_value()
+        .map_err(|()| WindowsContainmentFailure::WorkerLaunch)?;
     let inherited_handles = pipes.inherited_handles();
     if inherited_handles
         .iter()
@@ -1337,6 +1416,7 @@ pub(crate) fn launch_windows_containment_worker(
         job,
         worker,
         pipes,
+        excluded_handle_value,
     })
 }
 
@@ -1389,6 +1469,44 @@ fn read_exact_handle(handle: HANDLE, bytes: &mut [u8]) -> Result<(), ()> {
         offset += read as usize;
     }
     Ok(())
+}
+
+#[cfg(windows)]
+fn excluded_probe_handle_is_absent(encoded_handle: u64) -> bool {
+    let Ok(value) = usize::try_from(encoded_handle) else {
+        return false;
+    };
+    let handle = value as HANDLE;
+    if handle.is_null() || handle == INVALID_HANDLE_VALUE {
+        return false;
+    }
+    // SAFETY: the numeric value is sent only by the parent that owns the deliberately excluded
+    // inheritable handle. A non-inherited value must fail as an invalid handle in this process.
+    let wait = unsafe { WaitForSingleObject(handle, 0) };
+    wait == WAIT_FAILED && unsafe { GetLastError() } == ERROR_INVALID_HANDLE
+}
+
+#[cfg(windows)]
+pub(crate) fn read_windows_probe_request() -> Result<(WindowsProbeRequest, bool), ()> {
+    // SAFETY: the probe role is launched with one exact inherited standard-input pipe.
+    let input = unsafe { GetStdHandle(STD_INPUT_HANDLE) };
+    let mut length_bytes = [0_u8; 4];
+    read_exact_handle(input, &mut length_bytes)?;
+    let length = u32::from_le_bytes(length_bytes) as usize;
+    if length == 0 || length > WINDOWS_PROBE_REQUEST_MAX_FRAME_BYTES {
+        return Err(());
+    }
+    let mut frame = vec![0_u8; length];
+    read_exact_handle(input, &mut frame)?;
+    let (request, encoded_handle) = decode_request_frame(&frame)?;
+    Ok((request, excluded_probe_handle_is_absent(encoded_handle)))
+}
+
+#[cfg(windows)]
+pub(crate) fn write_windows_probe_result(result: WindowsProbeResult) -> Result<(), ()> {
+    // SAFETY: the probe role is launched with one exact inherited standard-output pipe.
+    let output = unsafe { GetStdHandle(STD_OUTPUT_HANDLE) };
+    write_all_handle(output, &encode_result(result))
 }
 
 #[cfg(windows)]
@@ -1987,6 +2105,7 @@ mod windows_native_tests {
         assert!(observation.assigned_before_resume);
         assert!(observation.resumed_once);
         assert!(observation.exact_job_limits);
+        assert!(observation.single_active_process);
         assert_eq!(
             launch.retained_profile_name(),
             format!("Actestra.Goose.{attempt_id}")

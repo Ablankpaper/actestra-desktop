@@ -5,14 +5,10 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "../..");
-const supervisorPath = path.join(
-  repositoryRoot,
-  "workers/goose-runner/src/windows_supervisor.rs",
-);
-const probePath = path.join(
-  repositoryRoot,
-  "workers/goose-runner/src/containment/windows.rs",
-);
+const supervisorPath = path.join(repositoryRoot, "workers/goose-runner/src/windows_supervisor.rs");
+const probePath = path.join(repositoryRoot, "workers/goose-runner/src/containment/windows.rs");
+const mainPath = path.join(repositoryRoot, "workers/goose-runner/src/main.rs");
+const controlPath = path.join(repositoryRoot, "workers/goose-runner/src/windows_control.rs");
 
 describe("Windows Goose containment source contract", () => {
   it("reuses one opaque production launch seam", async () => {
@@ -30,7 +26,22 @@ describe("Windows Goose containment source contract", () => {
     expect(supervisor).toContain("AssignProcessToJobObject");
     expect(supervisor).toContain("ResumeThread");
     expect(supervisor).toContain("TokenIsAppContainer");
+    expect(supervisor).toContain("exchange_probe_request");
+    expect(supervisor).toContain("single_active_process");
     expect(probe).toContain("launch_windows_containment_worker");
+    expect(probe).toContain("execute_windows_hostile_probe");
     expect(probe).not.toContain("windows_sys::Win32");
+  });
+
+  it("keeps probe-only modes behind the exact containment marker", async () => {
+    const [main, control] = await Promise.all([
+      readFile(mainPath, "utf8"),
+      readFile(controlPath, "utf8"),
+    ]);
+
+    expect(main).toContain("dispatch_windows_containment_role");
+    expect(main).toContain('as_deref() == Ok("1")');
+    expect(control).not.toContain("--actestra-windows-containment-child-v1");
+    expect(control).not.toContain("--actestra-windows-containment-parent-v1");
   });
 });

@@ -94,14 +94,22 @@ fn main() {
             return;
         }
     }
+    #[cfg(windows)]
+    let windows_arguments: Vec<String> = env::args().collect();
+    #[cfg(windows)]
+    if env::var("ACTESTRA_GOOSE_CONTAINMENT_PROBE").as_deref() == Ok("1") {
+        if let Some(exit_code) = containment::dispatch_windows_containment_role(&windows_arguments)
+        {
+            std::process::exit(exit_code);
+        }
+    }
     if env::var("ACTESTRA_GOOSE_CONTAINMENT_PROBE").as_deref() == Ok("1") {
         println!("{}", containment::run_containment_probe());
         return;
     }
     #[cfg(windows)]
     {
-        let arguments: Vec<String> = env::args().collect();
-        let exit_code = match windows_control::WindowsMode::parse(&arguments) {
+        let exit_code = match windows_control::WindowsMode::parse(&windows_arguments) {
             Ok(Some(windows_control::WindowsMode::Supervisor)) => {
                 windows_supervisor::run_supervisor()
             }

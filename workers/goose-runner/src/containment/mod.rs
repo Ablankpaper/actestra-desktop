@@ -4,7 +4,7 @@ use std::path::Path;
 pub(crate) mod linux;
 #[cfg(unix)]
 pub(crate) mod unix;
-#[cfg(windows)]
+#[cfg(any(windows, test))]
 mod windows;
 #[cfg(any(windows, test))]
 pub(crate) mod windows_contract;
@@ -82,6 +82,8 @@ pub(crate) use linux::{
 pub(crate) use unix::apply_resource_limits_with;
 #[cfg(unix)]
 pub(crate) use unix::{apply_resource_limits, watch_parent_liveness};
+#[cfg(windows)]
+pub(crate) use windows::dispatch_windows_containment_role;
 #[cfg(windows)]
 pub(crate) use windows::{apply_resource_limits, watch_parent_liveness};
 
