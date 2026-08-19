@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { existsSync, realpathSync, statSync } from "node:fs";
 import { lstat, realpath } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -6,8 +7,35 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 
 /** Absolute interpreter path, so a mutated `PATH` can never select a different Git. */
-export const GIT_EXECUTABLE = "/usr/bin/git";
+function resolveWindowsGitExecutable(): string {
+  const programFiles = process.env.ProgramFiles ?? "C:\\Program Files";
+  const programFilesX86 = process.env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)";
+  const candidates = [
+    path.join(programFiles, "Git", "cmd", "git.exe"),
+    path.join(programFilesX86, "Git", "cmd", "git.exe"),
+  ];
+  for (const candidate of candidates) {
+    if (!existsSync(candidate)) continue;
+    try {
+      const metadata = statSync(candidate);
+      const canonical = realpathSync.native(candidate);
+      if (
+        metadata.isFile() &&
+        canonical.toLowerCase() === path.normalize(candidate).toLowerCase()
+      ) {
+        return canonical;
+      }
+    } catch {
+      // Try the next standard installation root.
+    }
+  }
+  throw new Error("Windows Git executable is unavailable in a standard installation root");
+}
+
+export const GIT_EXECUTABLE =
+  process.platform === "win32" ? resolveWindowsGitExecutable() : "/usr/bin/git";
 export const GIT_TIMEOUT_MS = 10_000;
+export const GIT_NULL_DEVICE = process.platform === "win32" ? "NUL" : "/dev/null";
 
 /**
  * Configuration that must not be inherited from the destination repository. Hooks and the filesystem
@@ -15,7 +43,7 @@ export const GIT_TIMEOUT_MS = 10_000;
  */
 export const CLOSED_GIT_CONFIG_ARGUMENTS = Object.freeze([
   "-c",
-  "core.hooksPath=/dev/null",
+  `core.hooksPath=${GIT_NULL_DEVICE}`,
   "-c",
   "core.fsmonitor=false",
 ] as const);
@@ -50,15 +78,28 @@ export interface WorkspaceGitBinding {
 }
 
 export function workspaceGitEnvironment(workspaceRoot: string): Readonly<Record<string, string>> {
+  const systemRoot = process.env.SystemRoot ?? process.env.WINDIR ?? "C:\\Windows";
+  const pathEntries =
+    process.platform === "win32"
+      ? [path.dirname(GIT_EXECUTABLE), path.join(systemRoot, "System32")]
+      : ["/usr/bin", "/bin"];
   return Object.freeze({
     GIT_ATTR_NOSYSTEM: "1",
-    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_CONFIG_GLOBAL: GIT_NULL_DEVICE,
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_OPTIONAL_LOCKS: "0",
     GIT_TERMINAL_PROMPT: "0",
     HOME: path.dirname(workspaceRoot),
     LC_ALL: "C",
-    PATH: "/usr/bin:/bin",
+    PATH: pathEntries.join(path.delimiter),
+    ...(process.platform === "win32"
+      ? {
+          SystemRoot: systemRoot,
+          WINDIR: process.env.WINDIR ?? systemRoot,
+          ...(process.env.TEMP === undefined ? {} : { TEMP: process.env.TEMP }),
+          ...(process.env.TMP === undefined ? {} : { TMP: process.env.TMP }),
+        }
+      : {}),
   });
 }
 

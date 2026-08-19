@@ -3,17 +3,15 @@ import { constants as fsConstants } from "node:fs";
 import { lstat, mkdtemp, open, realpath, rm, unlink } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
+import {
+  CLOSED_GIT_CONFIG_ARGUMENTS,
+  GIT_EXECUTABLE,
+  workspaceGitEnvironment,
+} from "./workspaceGitBinding";
 
 const execFileAsync = promisify(execFile);
-const GIT_EXECUTABLE = "/usr/bin/git";
 const GIT_TIMEOUT_MS = 10_000;
 const GIT_MAX_OUTPUT_BYTES = 64 * 1024;
-const CLOSED_GIT_CONFIG_ARGUMENTS = Object.freeze([
-  "-c",
-  "core.hooksPath=/dev/null",
-  "-c",
-  "core.fsmonitor=false",
-] as const);
 
 export type IsolatedCodingWorktreeErrorCode =
   | "invalid-options"
@@ -83,19 +81,6 @@ async function requireCanonicalDirectory(value: string, label: string): Promise<
     );
   }
   return canonical;
-}
-
-function gitEnvironment(managedRoot: string): Readonly<Record<string, string>> {
-  return Object.freeze({
-    GIT_ATTR_NOSYSTEM: "1",
-    GIT_CONFIG_GLOBAL: "/dev/null",
-    GIT_CONFIG_NOSYSTEM: "1",
-    GIT_OPTIONAL_LOCKS: "0",
-    GIT_TERMINAL_PROMPT: "0",
-    HOME: managedRoot,
-    LC_ALL: "C",
-    PATH: "/usr/bin:/bin",
-  });
 }
 
 async function runGit(
@@ -278,7 +263,7 @@ export async function createIsolatedCodingWorktree(
     );
   }
 
-  const environment = gitEnvironment(managedRoot);
+  const environment = workspaceGitEnvironment(managedRoot);
   let reportedRoot: string;
   let insideWorktree: string;
   let commit: string;
