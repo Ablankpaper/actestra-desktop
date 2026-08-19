@@ -4,7 +4,7 @@
 
 **Goal:** Run one real Goose ACP coding session inside the admitted Windows AppContainer Worker while Electron Main retains Provider, Tool Gateway, approval, credential, workspace, and durable-state authority.
 
-**Architecture:** Add one default-off runtime-adapter seam to an immutable Goose fork, then connect it to Main through two authenticated, attempt-scoped named-pipe bridges relayed by the existing Windows Supervisor. Preserve the accepted AppContainer, Job Object, handle, environment, network, parent-death, and cleanup boundary; macOS and Linux keep their current transports.
+**Architecture:** Add one default-off runtime-adapter seam to an immutable commit in a standalone private Goose runtime repository, then connect it to Main through two authenticated, attempt-scoped named-pipe bridges relayed by the existing Windows Supervisor. Preserve the accepted AppContainer, Job Object, handle, environment, network, parent-death, and cleanup boundary; macOS and Linux keep their current transports.
 
 **Tech Stack:** Rust 1.96.1, Goose v1.45.0 at upstream base `4dc0420f5704a92806c6628c8f0a3497d7a88759`, `windows-sys` 0.61.2, ACP 1.0.1/schema 1.1.0, MCP `rmcp` 2.2.0, TypeScript 5.9.3, Bun 1.3.9, Vitest 4.1.0, GitHub Actions `windows-2025`.
 
@@ -16,14 +16,14 @@
 - Never edit `foundation/`. Do not add Renderer or preload authority.
 - Never place a Provider credential, original-workspace path, broad parent environment, network capability, or generic shell fallback in the Supervisor or Worker.
 - The Supervisor validates framing and lifecycle only. It must not parse prompts, model messages, tool arguments, tool results, approval state, or workspace policy.
-- Use one fixed Goose fork based on the exact upstream commit. Do not import the Goose source tree into Actestra.
-- Do not invent a fork commit, diff digest, Windows result, CI run ID, or Artifact digest. Resolve each value from the real repository, build, or CI output at the step that records it.
+- Use one fixed commit from the standalone private `Ablankpaper/actestra-goose-runtime` repository based on the exact upstream commit. It is not a GitHub Fork and must have no automatic upstream synchronization. Do not import the Goose source tree into Actestra.
+- Do not invent a runtime commit, diff digest, Windows result, CI run ID, or Artifact digest. Resolve each value from the real repository, build, or CI output at the step that records it.
 - Reuse unchanged GREEN evidence only when its verification key is unchanged. A changed source pin, Cargo lock, bridge contract, runner binary, or CI head requires fresh evidence.
 - Deterministic Windows composition evidence does not prove Windows Electron packaging or a real external Provider. Those remain P8.2 and P8.4 gates respectively.
 
 ## File map
 
-### External Goose fork
+### External private Goose runtime repository
 
 - Modify `crates/goose/src/acp/server.rs`: define the optional runtime adapter, bind the fixed Provider, install one fixed MCP client before session activation, and reject more than one claimed session.
 - Modify `crates/goose/src/acp/server_factory.rs`: carry the optional adapter into each ACP agent and preserve the upstream default when absent.
@@ -32,11 +32,12 @@
 
 ### Batch 1: Actestra provenance and admission
 
-- Modify `apps/desktop/src/shared/gooseRunnerSource.json`: record canonical repository, base commit, fork repository, immutable fork commit, changed upstream paths, diff SHA-256, and unchanged empty Goose feature set.
-- Modify `workers/goose-runner/Cargo.toml` and `workers/goose-runner/Cargo.lock`: pin the exact fork commit.
-- Modify `scripts/build-goose-runner.mjs`: verify the fetched fork checkout, base ancestry, exact changed paths, exact diff digest, and Cargo feature set before building.
+- Modify `apps/desktop/src/shared/gooseRunnerSource.json`: record canonical repository, base commit, private runtime repository, immutable runtime commit, changed upstream paths, diff SHA-256, and unchanged empty Goose feature set.
+- Modify `workers/goose-runner/Cargo.toml` and `workers/goose-runner/Cargo.lock`: pin the exact private runtime commit.
+- Modify `scripts/build-goose-runner.mjs`: verify the fetched private runtime checkout, base ancestry, exact changed paths, exact diff digest, and Cargo feature set before building.
 - Modify `apps/desktop/src/main/workers/gooseRunnerArtifact.ts`: carry and admit the expanded source contract in the immutable manifest.
-- Modify `tests/main/gooseRunnerArtifact.test.ts`, `tests/main/gooseRunnerTarget.test.ts`, and `tests/security/persistenceArtifactRedactionAbuse.test.ts`: fail closed on source/fork/diff/feature drift.
+- Modify `tests/main/gooseRunnerArtifact.test.ts`, `tests/main/gooseRunnerTarget.test.ts`, and `tests/security/persistenceArtifactRedactionAbuse.test.ts`: fail closed on source/runtime/diff/feature drift.
+- Modify `.github/workflows/ci.yml` and its workflow-contract tests: load one repository-scoped read-only deploy key for same-repository CI before Cargo fetches the private runtime dependency; never expose it to external-fork pull requests.
 - Modify `workers/goose-runner/PATCHES.md`, `docs/governance/UPSTREAM_VERSIONS.md`, `docs/upstream/GOOSE_V1.45.0_EVALUATION.md`, and `THIRD_PARTY_NOTICES.md`: record provenance, Apache-2.0 modification notice, rollback, and exact upstream evidence.
 
 ### Batch 2: Worker and Supervisor runtime
@@ -47,7 +48,7 @@
 - Create `workers/goose-runner/src/windows_named_pipe.rs`: single-client AppContainer-scoped named-pipe creation and Worker connection.
 - Modify `workers/goose-runner/src/windows_control.rs`: carry only the versioned attempt/session/model/pipe metadata required by the Worker.
 - Modify `workers/goose-runner/src/windows_supervisor.rs`: dedicated Worker control/ready handles, exact inherited handle list, two ACL-bound named pipes, ACP/capability/model relays, bounded cancellation, and idempotent cleanup.
-- Modify `workers/goose-runner/src/main.rs`: construct the adapters and serve the forked Goose ACP agent in Worker mode.
+- Modify `workers/goose-runner/src/main.rs`: construct the adapters and serve the adapted Goose ACP agent in Worker mode.
 - Modify `workers/goose-runner/Cargo.toml`: add only the direct crates required to implement the already-selected Goose/MCP interfaces.
 - Modify `scripts/gooseContainmentEvidence.mjs` and `tests/scripts/gooseContainmentDiagnostics.test.mjs`: admit the new closed diagnostic vocabulary without raw Win32 data.
 
@@ -66,7 +67,7 @@
 ### Batch 4: exact Windows evidence and current truth
 
 - Create `tests/main/gooseRunnerWindowsNative.integration.ts`: deterministic full composition through the real admitted artifact and Tool Gateway.
-- Create `scripts/gooseWindowsRuntimeEvidence.mjs` and `scripts/run-goose-runner-windows-runtime.mjs`: bind evidence to exact source/fork/runner/manifest digests.
+- Create `scripts/gooseWindowsRuntimeEvidence.mjs` and `scripts/run-goose-runner-windows-runtime.mjs`: bind evidence to exact source/runtime/runner/manifest digests.
 - Create `tests/scripts/gooseWindowsRuntimeEvidence.test.mjs`: fail closed on incomplete, widened, sensitive, or mismatched evidence.
 - Modify `.github/workflows/ci.yml` and `package.json`: add the exact-head Windows authenticated-runtime job and success-only Artifact upload.
 - Modify `docs/architecture/decisions/0024-minimal-goose-acp-runner.md`, `docs/architecture/SYSTEM_OVERVIEW.md`, `docs/product/P8_CROSS_PLATFORM_INTERNAL_BETA.md`, `docs/roadmap/DEVELOPMENT_SEQUENCE.md`, and `docs/PROJECT_STATUS.md`: record the accepted seam, verified evidence, remaining gates, and non-claims.
@@ -76,32 +77,35 @@
 ### Task 1: Create and test the default-off Goose runtime-adapter seam
 
 **Files:**
-- External fork modify: `crates/goose/src/acp/server.rs`
-- External fork modify: `crates/goose/src/acp/server_factory.rs`
-- External fork modify: `crates/goose/src/acp/server/new_session.rs`
-- External fork test: tests colocated in those files
 
-- [ ] **Step 1: Create the fork from the exact accepted base**
+- External private runtime modify: `crates/goose/src/acp/server.rs`
+- External private runtime modify: `crates/goose/src/acp/server_factory.rs`
+- External private runtime modify: `crates/goose/src/acp/server/new_session.rs`
+- External private runtime test: tests colocated in those files
+
+- [ ] **Step 1: Initialize the standalone private repository from the exact accepted base**
 
 Run from outside the Actestra worktree:
 
 ```bash
-fork_root="$(mktemp -d)"
 test "$(gh api user --jq .login)" = "Ablankpaper"
-if ! gh repo view Ablankpaper/goose >/dev/null 2>&1; then
-  gh repo fork aaif-goose/goose --clone=false
-fi
-git clone git@github-ablankpaper:Ablankpaper/goose.git "$fork_root/goose"
-git -C "$fork_root/goose" remote add canonical https://github.com/aaif-goose/goose.git
-git -C "$fork_root/goose" fetch canonical 4dc0420f5704a92806c6628c8f0a3497d7a88759
-git -C "$fork_root/goose" switch --detach 4dc0420f5704a92806c6628c8f0a3497d7a88759
-git -C "$fork_root/goose" switch -c actestra/acp-runtime-adapter-v1
-test "$(git -C "$fork_root/goose" rev-parse HEAD)" = "4dc0420f5704a92806c6628c8f0a3497d7a88759"
+test "$(gh repo view Ablankpaper/actestra-goose-runtime --json visibility --jq .visibility)" = "PRIVATE"
+test "$(gh repo view Ablankpaper/actestra-goose-runtime --json isFork --jq .isFork)" = "false"
+runtime_root="${ACTESTRA_GOOSE_RUNTIME_CHECKOUT:?set the private runtime checkout path}"
+test "$(git -C "$runtime_root" remote get-url origin)" = \
+  "git@github-ablankpaper:Ablankpaper/actestra-goose-runtime.git"
+test "$(git -C "$runtime_root" remote get-url canonical)" = \
+  "https://github.com/aaif-goose/goose.git"
+test "$(git -C "$runtime_root" rev-parse origin/main)" = \
+  "4dc0420f5704a92806c6628c8f0a3497d7a88759"
+git -C "$runtime_root" switch -c actestra/acp-runtime-adapter-v1 \
+  4dc0420f5704a92806c6628c8f0a3497d7a88759
 ```
 
-Expected: `Ablankpaper/goose` exists under the authenticated account and the
-new branch starts at the exact accepted upstream base. If the named branch
-already exists, stop and inspect it instead of force-pushing or silently
+Expected: `Ablankpaper/actestra-goose-runtime` is private, is not a GitHub Fork,
+has no Actions or automatic synchronization, and `main` equals the exact
+accepted upstream base. The new branch starts at that same commit. If the named
+branch already exists, stop and inspect it instead of force-pushing or silently
 reusing it.
 
 - [ ] **Step 2: Write failing upstream tests for the seam**
@@ -139,10 +143,10 @@ Set global Goose Provider/model/mode/naming and path inputs to conflicting
 canaries and assert adapted mode still uses only the fixed adapter values and
 its temporary `data_dir`/`config_dir`.
 
-- [ ] **Step 3: Run the fork tests and verify RED**
+- [ ] **Step 3: Run the private runtime tests and verify RED**
 
 ```bash
-cargo test --manifest-path "$fork_root/goose/crates/goose/Cargo.toml" acp_runtime_adapter --no-run
+cargo test --manifest-path "$runtime_root/crates/goose/Cargo.toml" acp_runtime_adapter --no-run
 ```
 
 Expected: compilation fails because `AcpRuntimeAdapter` and the optional factory input do not exist.
@@ -186,38 +190,41 @@ In adapted mode, `handle_new_session()` must:
 
 The normal `runtime_adapter: None` path must retain the upstream provider factory, extension loading, and session behavior byte-for-byte except for the optional branch. The adapted path must not call `Paths::data_dir()`, `Paths::config_dir()`, or read Provider/model/extension defaults from environment or global Goose configuration.
 
-- [ ] **Step 5: Run upstream GREEN and inspect the fork diff**
+- [ ] **Step 5: Run upstream GREEN and inspect the private runtime diff**
 
 ```bash
-cargo fmt --manifest-path "$fork_root/goose/crates/goose/Cargo.toml" -- --check
-cargo test --manifest-path "$fork_root/goose/crates/goose/Cargo.toml" acp_runtime_adapter
-git -C "$fork_root/goose" diff --check
-git -C "$fork_root/goose" diff --name-only 4dc0420f5704a92806c6628c8f0a3497d7a88759 -- \
+cargo fmt --manifest-path "$runtime_root/crates/goose/Cargo.toml" -- --check
+cargo test --manifest-path "$runtime_root/crates/goose/Cargo.toml" acp_runtime_adapter
+git -C "$runtime_root" diff --check
+git -C "$runtime_root" diff --name-only 4dc0420f5704a92806c6628c8f0a3497d7a88759 -- \
   | sort
 ```
 
 Expected: tests pass and the changed-path output contains exactly the three declared Goose files.
 
-- [ ] **Step 6: Commit and push the immutable fork commit**
+- [ ] **Step 6: Commit and push the immutable private runtime commit**
 
 ```bash
-git -C "$fork_root/goose" add \
+git -C "$runtime_root" add \
   crates/goose/src/acp/server.rs \
   crates/goose/src/acp/server_factory.rs \
   crates/goose/src/acp/server/new_session.rs
-git -C "$fork_root/goose" commit -m "feat: add optional ACP runtime adapter"
-git -C "$fork_root/goose" push origin actestra/acp-runtime-adapter-v1
-fork_commit="$(git -C "$fork_root/goose" rev-parse HEAD)"
-test "$(printf '%s' "$fork_commit" | wc -c | tr -d ' ')" = "40"
-git -C "$fork_root/goose" merge-base --is-ancestor \
-  4dc0420f5704a92806c6628c8f0a3497d7a88759 "$fork_commit"
+git -C "$runtime_root" commit -m "feat: add optional ACP runtime adapter"
+git -C "$runtime_root" push origin actestra/acp-runtime-adapter-v1
+runtime_commit="$(git -C "$runtime_root" rev-parse HEAD)"
+test "$(printf '%s' "$runtime_commit" | wc -c | tr -d ' ')" = "40"
+git -C "$runtime_root" merge-base --is-ancestor \
+  4dc0420f5704a92806c6628c8f0a3497d7a88759 "$runtime_commit"
 ```
 
-Expected: the fork commit is reachable from `Ablankpaper/goose` and descends from the exact upstream base.
+Expected: the runtime commit is recorded in the private
+`Ablankpaper/actestra-goose-runtime` repository and descends from the exact
+upstream base.
 
-### Task 2: Pin and fail-closed admit the fork in Actestra
+### Task 2: Pin and fail-closed admit the private runtime in Actestra
 
 **Files:**
+
 - Modify: `apps/desktop/src/shared/gooseRunnerSource.json`
 - Modify: `workers/goose-runner/Cargo.toml`
 - Modify: `workers/goose-runner/Cargo.lock`
@@ -226,6 +233,8 @@ Expected: the fork commit is reachable from `Ablankpaper/goose` and descends fro
 - Modify: `tests/main/gooseRunnerArtifact.test.ts`
 - Modify: `tests/main/gooseRunnerTarget.test.ts`
 - Modify: `tests/security/persistenceArtifactRedactionAbuse.test.ts`
+- Modify: `.github/workflows/ci.yml`
+- Modify: `tests/scripts/p8NativeBuildWiring.test.mjs`
 - Modify: `workers/goose-runner/PATCHES.md`
 - Modify: `docs/governance/UPSTREAM_VERSIONS.md`
 - Modify: `docs/upstream/GOOSE_V1.45.0_EVALUATION.md`
@@ -240,8 +249,8 @@ type GooseSourceContract = Readonly<{
   repository: "https://github.com/aaif-goose/goose.git";
   version: "1.45.0";
   baseCommit: "4dc0420f5704a92806c6628c8f0a3497d7a88759";
-  forkRepository: "https://github.com/Ablankpaper/goose.git";
-  commit: string;
+  runtimeRepository: "ssh://git@github.com/Ablankpaper/actestra-goose-runtime.git";
+  runtimeCommit: string;
   changedPaths: readonly [
     "crates/goose/src/acp/server.rs",
     "crates/goose/src/acp/server_factory.rs",
@@ -252,7 +261,11 @@ type GooseSourceContract = Readonly<{
 }>;
 ```
 
-Tests must mutate one field at a time and expect admission rejection for: canonical repository, base commit, fork repository, fork commit, changed path, path order, diff digest, and non-empty feature set. Add a lockfile test that rejects any Goose source URL or revision not matching the contract.
+Tests must mutate one field at a time and expect admission rejection for:
+canonical repository, base commit, private runtime repository, runtime commit,
+changed path, path order, diff digest, and non-empty feature set. Add a
+lockfile test that rejects any Goose source URL or revision not matching the
+contract.
 
 - [ ] **Step 2: Run the focused tests and verify RED**
 
@@ -263,21 +276,21 @@ bun run test \
   tests/security/persistenceArtifactRedactionAbuse.test.ts
 ```
 
-Expected: failures identify absent fork/base/changed-path contract fields.
+Expected: failures identify absent runtime/base/changed-path contract fields.
 
-- [ ] **Step 3: Compute the real fork digest and update the exact pins**
+- [ ] **Step 3: Compute the real runtime digest and update the exact pins**
 
-From the fork checkout created in Task 1:
+From the private runtime checkout created in Task 1:
 
 ```bash
-fork_commit="$(git -C "$fork_root/goose" rev-parse HEAD)"
-fork_patch="$fork_root/goose-actestra-runtime-adapter.patch"
-git -C "$fork_root/goose" diff --binary --full-index --no-ext-diff \
-  4dc0420f5704a92806c6628c8f0a3497d7a88759 "$fork_commit" -- \
+runtime_commit="$(git -C "$runtime_root" rev-parse HEAD)"
+runtime_patch="$(mktemp)"
+git -C "$runtime_root" diff --binary --full-index --no-ext-diff \
+  4dc0420f5704a92806c6628c8f0a3497d7a88759 "$runtime_commit" -- \
   crates/goose/src/acp/server.rs \
   crates/goose/src/acp/server_factory.rs \
-  crates/goose/src/acp/server/new_session.rs > "$fork_patch"
-patch_sha256="$(shasum -a 256 "$fork_patch" | cut -d ' ' -f 1)"
+  crates/goose/src/acp/server/new_session.rs > "$runtime_patch"
+patch_sha256="$(shasum -a 256 "$runtime_patch" | cut -d ' ' -f 1)"
 test "$(printf '%s' "$patch_sha256" | wc -c | tr -d ' ')" = "64"
 ```
 
@@ -286,16 +299,16 @@ git dependencies without allowing a package manager command to choose a
 different source or revision:
 
 ```bash
-ACTESTRA_GOOSE_FORK_COMMIT="$fork_commit" node --input-type=module <<'NODE'
+ACTESTRA_GOOSE_RUNTIME_COMMIT="$runtime_commit" node --input-type=module <<'NODE'
 import { readFile, writeFile } from "node:fs/promises";
 
-const commit = process.env.ACTESTRA_GOOSE_FORK_COMMIT;
+const commit = process.env.ACTESTRA_GOOSE_RUNTIME_COMMIT;
 if (!/^[0-9a-f]{40}$/.test(commit ?? "")) {
-  throw new Error("ACTESTRA_GOOSE_FORK_COMMIT must be a 40-character SHA");
+  throw new Error("ACTESTRA_GOOSE_RUNTIME_COMMIT must be a 40-character SHA");
 }
 const file = "workers/goose-runner/Cargo.toml";
 const before = await readFile(file, "utf8");
-const goose = `goose = { git = "https://github.com/Ablankpaper/goose", rev = "${commit}", default-features = false }`;
+const goose = `goose = { git = "ssh://git@github.com/Ablankpaper/actestra-goose-runtime.git", rev = "${commit}", default-features = false }`;
 const replaced = before.replace(
   /^goose = \{ git = "https:\/\/github\.com\/aaif-goose\/goose", rev = "[0-9a-f]{40}", default-features = false \}$/m,
   goose,
@@ -303,7 +316,7 @@ const replaced = before.replace(
 if (replaced === before) {
   throw new Error("the expected canonical Goose dependency was not found");
 }
-const providers = `goose-providers = { git = "https://github.com/Ablankpaper/goose", rev = "${commit}", default-features = false }`;
+const providers = `goose-providers = { git = "ssh://git@github.com/Ablankpaper/actestra-goose-runtime.git", rev = "${commit}", default-features = false }`;
 const withProviders = replaced.includes("goose-providers =")
   ? replaced.replace(/^goose-providers = .*$/m, providers)
   : replaced.replace(/^goose = .*$/m, `${goose}\n${providers}`);
@@ -313,11 +326,11 @@ cargo check --manifest-path workers/goose-runner/Cargo.toml
 git diff -- workers/goose-runner/Cargo.toml workers/goose-runner/Cargo.lock
 ```
 
-Expected: both git dependencies use the same real fork SHA, Cargo resolves the
-fork without unrelated lockfile churn, and the diff is reviewed before any
-`--locked` command is run.
+Expected: both git dependencies use the same real private runtime SHA, Cargo
+resolves it without unrelated lockfile churn, and the diff is reviewed before
+any `--locked` command is run.
 
-- [ ] **Step 4: Implement build-time fork verification**
+- [ ] **Step 4: Implement build-time private runtime verification**
 
 In `scripts/build-goose-runner.mjs`, derive the fetched Goose package root from `cargo metadata --locked --format-version 1`, then require:
 
@@ -330,7 +343,9 @@ const actualChangedPaths = await gitLines(gooseRoot, [
   sourceContract.goose.commit,
 ]);
 if (!isDeepStrictEqual(actualChangedPaths.sort(), expectedChangedPaths)) {
-  fail("Goose fork changed-path set differs from the admitted source contract");
+  fail(
+    "Goose runtime changed-path set differs from the admitted source contract",
+  );
 }
 const patch = await gitBytes(gooseRoot, [
   "diff",
@@ -343,17 +358,73 @@ const patch = await gitBytes(gooseRoot, [
   ...expectedChangedPaths,
 ]);
 if (sha256(patch) !== sourceContract.goose.patchSetSha256) {
-  fail("Goose fork patch digest differs from the admitted source contract");
+  fail("Goose runtime patch digest differs from the admitted source contract");
 }
 ```
 
-Also require `cargo metadata` to report the fork URL and exact commit, and require the resolved Goose feature array to equal `[]`. Add the new source fields to the emitted manifest and `sourceTreeFiles`.
+Also require `cargo metadata` to report the private runtime URL and exact
+commit, and require the resolved Goose feature array to equal `[]`. Add the new
+source fields to the emitted manifest and `sourceTreeFiles`.
 
-- [ ] **Step 5: Update provenance, Apache-2.0 notice, and rollback truth**
+- [ ] **Step 5: Configure repository-scoped read-only CI access**
 
-Record the exact fork commit and diff digest from Step 3. State that the three modified upstream files add only the default-off ACP adapter seam, upstream has no root `NOTICE`, and rollback restores upstream `4dc0420f5704a92806c6628c8f0a3497d7a88759` while disabling Windows production runtime admission. Do not claim Windows execution or package acceptance in this batch.
+Generate a dedicated Ed25519 deploy key outside both repositories. Register
+only its public key on `Ablankpaper/actestra-goose-runtime` with
+`read_only=true`. Store the private key only as the
+`ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY` Actions secret on
+`Ablankpaper/actestra-desktop`; never commit either key or print the private
+value. Add this condition to every CI job that resolves or builds Goose so an
+external-fork pull request never reaches a private-source step:
 
-- [ ] **Step 6: Verify Batch 1 GREEN**
+```yaml
+if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+```
+
+Within each admitted job, add a setup step before any Cargo command that needs
+Goose. Pin GitHub's accepted ED25519 host key instead of trusting a live
+`ssh-keyscan` result:
+
+```yaml
+- name: Admit private Goose runtime source
+  shell: bash
+  env:
+    ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY: ${{ secrets.ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY }}
+  run: |
+    test -n "$ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY"
+    key_root="$RUNNER_TEMP/actestra-goose-runtime-ssh"
+    install -m 700 -d "$key_root"
+    printf '%s\n' "$ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY" > "$key_root/id_ed25519"
+    chmod 600 "$key_root/id_ed25519"
+    printf '%s\n' \
+      'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' \
+      > "$key_root/known_hosts"
+    echo 'CARGO_NET_GIT_FETCH_WITH_CLI=true' >> "$GITHUB_ENV"
+    {
+      echo 'GIT_SSH_COMMAND<<ACTESTRA_GOOSE_SSH'
+      echo "ssh -i $key_root/id_ed25519 -o IdentitiesOnly=yes -o UserKnownHostsFile=$key_root/known_hosts"
+      echo 'ACTESTRA_GOOSE_SSH'
+    } >> "$GITHUB_ENV"
+```
+
+Workflow-contract tests must prove that external-fork pull requests cannot
+reach a private-source build step and that the deploy key is never uploaded,
+echoed, or passed to the runner. They must also pin the expected GitHub ED25519
+host-key fingerprint
+`SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU`. The private runtime
+repository itself keeps GitHub Actions disabled and has no workflow, webhook,
+Dependabot, scheduled sync, or moving branch dependency.
+
+- [ ] **Step 6: Update provenance, Apache-2.0 notice, and rollback truth**
+
+Record the exact private runtime commit and diff digest from Step 3. State that
+the three modified upstream files add only the default-off ACP adapter seam,
+upstream has no root `NOTICE`, and rollback restores upstream
+`4dc0420f5704a92806c6628c8f0a3497d7a88759` while disabling Windows production
+runtime admission. Record that the private repository has no automatic
+upstream synchronization. Do not claim Windows execution or package acceptance
+in this batch.
+
+- [ ] **Step 7: Verify Batch 1 GREEN**
 
 ```bash
 cargo metadata --manifest-path workers/goose-runner/Cargo.toml --locked --format-version 1 >/dev/null
@@ -369,7 +440,7 @@ git diff --check
 
 Expected: all commands exit zero. Windows production runtime still fails closed because no Worker bridge is admitted yet.
 
-- [ ] **Step 7: Commit Batch 1**
+- [ ] **Step 8: Commit Batch 1**
 
 ```bash
 git add apps/desktop/src/shared/gooseRunnerSource.json \
@@ -380,7 +451,7 @@ git add apps/desktop/src/shared/gooseRunnerSource.json \
   tests/security/persistenceArtifactRedactionAbuse.test.ts \
   docs/governance/UPSTREAM_VERSIONS.md \
   docs/upstream/GOOSE_V1.45.0_EVALUATION.md THIRD_PARTY_NOTICES.md
-git commit -m "build: admit pinned Goose runtime adapter fork"
+git commit -m "build: admit pinned private Goose runtime"
 ```
 
 ## Batch 2 — Worker adapters and Supervisor relays
@@ -388,6 +459,7 @@ git commit -m "build: admit pinned Goose runtime adapter fork"
 ### Task 3: Define strict model and capability bridge frames
 
 **Files:**
+
 - Modify: `workers/goose-runner/src/windows_bridge.rs`
 - Create: `workers/goose-runner/src/windows_model_bridge.rs`
 - Create: `workers/goose-runner/src/windows_capability_bridge.rs`
@@ -471,10 +543,11 @@ rmcp = { version = "=2.2.0", default-features = false }
 tokio-util = { version = "=0.7.19", default-features = false, features = ["rt"] }
 ```
 
-Retain the exact `goose` and `goose-providers` fork lines written by Task 2.
+Retain the exact `goose` and `goose-providers` private runtime lines written by
+Task 2.
 Run `cargo update --manifest-path workers/goose-runner/Cargo.toml` and inspect
 every lock change. Reject unrelated resolver churn; retain only changes
-required by the direct declarations and fork pin.
+required by the direct declarations and runtime pin.
 
 - [ ] **Step 5: Run GREEN and commit**
 
@@ -493,6 +566,7 @@ git commit -m "feat: define Windows authenticated bridge frames"
 ### Task 4: Implement the Worker Provider and MCP adapters
 
 **Files:**
+
 - Modify: `workers/goose-runner/src/windows_model_bridge.rs`
 - Modify: `workers/goose-runner/src/windows_capability_bridge.rs`
 - Test: portable tests in both files
@@ -609,6 +683,7 @@ git commit -m "feat: add Windows Goose Provider and MCP adapters"
 ### Task 5: Add AppContainer-scoped named pipes
 
 **Files:**
+
 - Create: `workers/goose-runner/src/windows_named_pipe.rs`
 - Modify: `workers/goose-runner/src/main.rs`
 - Modify: `workers/goose-runner/Cargo.toml`
@@ -690,6 +765,7 @@ git commit -m "feat: add AppContainer-scoped Goose named pipes"
 ### Task 6: Refactor the Supervisor to seven channels and sustained relays
 
 **Files:**
+
 - Modify: `workers/goose-runner/src/windows_supervisor.rs`
 - Modify: `workers/goose-runner/src/windows_control.rs`
 - Modify: `workers/goose-runner/src/main.rs`
@@ -778,9 +854,10 @@ git add workers/goose-runner/src/windows_supervisor.rs \
 git commit -m "feat: relay Windows Goose runtime through supervisor"
 ```
 
-### Task 7: Start the forked Goose ACP runtime inside the Worker
+### Task 7: Start the adapted Goose ACP runtime inside the Worker
 
 **Files:**
+
 - Modify: `workers/goose-runner/src/main.rs`
 - Modify: `workers/goose-runner/src/windows_supervisor.rs`
 - Modify: `workers/goose-runner/src/windows_control.rs`
@@ -816,7 +893,9 @@ Expected: compile failure for the startup state machine and runtime entry.
 
 - [ ] **Step 3: Implement the production Worker entry**
 
-`run_worker()` must read control from the dedicated handle, verify its boundary, connect once to both pipes, create the shared session-ID cell, construct both adapters, and call the fork seam:
+`run_worker()` must read control from the dedicated handle, verify its boundary,
+connect once to both pipes, create the shared session-ID cell, construct both
+adapters, and call the private runtime seam:
 
 ```rust
 let adapter = goose::acp::server::AcpRuntimeAdapter {
@@ -835,7 +914,7 @@ goose::acp::server::run_with_runtime_adapter(adapter).await
 
 Create both directories inside the admitted private attempt root before Goose
 startup and reject symlinks or paths outside that root. Cover the exact fixed
-model ID and private state paths in the fork and Worker tests. Do not read
+model ID and private state paths in the private runtime and Worker tests. Do not read
 `GOOSE_PROVIDER`, `GOOSE_MODEL`, `OPENAI_BASE_URL`, global Goose data/config
 paths, or an API key.
 
@@ -862,6 +941,7 @@ Expected: portable and cross-target compile evidence is GREEN. Windows native ru
 ### Task 8: Define matching strict TypeScript bridge contracts
 
 **Files:**
+
 - Create: `apps/desktop/src/main/workers/gooseAuthenticatedBridgeProtocol.ts`
 - Create: `tests/main/gooseAuthenticatedBridgeProtocol.test.ts`
 
@@ -886,10 +966,32 @@ export const GOOSE_AUTHENTICATED_BRIDGE_VERSION = 1 as const;
 export const GOOSE_AUTHENTICATED_BRIDGE_MAX_FRAME_BYTES = 2 * 1024 * 1024;
 
 export type GooseWindowsModelFrame =
-  | Readonly<{ contractVersion: 1; kind: "completion-request"; requestId: string; lease: string; sessionId: string; invocation: ActestraMainModelInvocation }>
-  | Readonly<{ contractVersion: 1; kind: "completion-response"; requestId: string; completion: ActestraMainModelCompletion }>
-  | Readonly<{ contractVersion: 1; kind: "model-error"; requestId: string; code: GooseWindowsModelErrorCode }>
-  | Readonly<{ contractVersion: 1; kind: "cancel"; requestId: string; lease: string }>;
+  | Readonly<{
+      contractVersion: 1;
+      kind: "completion-request";
+      requestId: string;
+      lease: string;
+      sessionId: string;
+      invocation: ActestraMainModelInvocation;
+    }>
+  | Readonly<{
+      contractVersion: 1;
+      kind: "completion-response";
+      requestId: string;
+      completion: ActestraMainModelCompletion;
+    }>
+  | Readonly<{
+      contractVersion: 1;
+      kind: "model-error";
+      requestId: string;
+      code: GooseWindowsModelErrorCode;
+    }>
+  | Readonly<{
+      contractVersion: 1;
+      kind: "cancel";
+      requestId: string;
+      lease: string;
+    }>;
 
 export type GooseWindowsCapabilityFrame =
   | GooseWindowsCapabilityListRequest
@@ -917,6 +1019,7 @@ git commit -m "feat: define Main Windows bridge protocol"
 ### Task 9: Implement Main model and capability bridge hosts
 
 **Files:**
+
 - Create: `apps/desktop/src/main/workers/gooseWindowsModelBridgeHost.ts`
 - Create: `apps/desktop/src/main/workers/gooseWindowsCapabilityBridgeHost.ts`
 - Create: `tests/main/gooseWindowsModelBridgeHost.test.ts`
@@ -992,6 +1095,7 @@ git commit -m "feat: host Windows Goose bridges in Main"
 ### Task 10: Add explicit transport modes and seven process channels
 
 **Files:**
+
 - Create: `apps/desktop/src/main/workers/gooseSessionTransport.ts`
 - Modify: `apps/desktop/src/main/workers/gooseRunnerProcess.ts`
 - Modify: `tests/main/gooseRunnerLifecycle.test.ts`
@@ -1005,9 +1109,15 @@ git commit -m "feat: host Windows Goose bridges in Main"
 Lock exact target mapping:
 
 ```ts
-expect(resolveGooseSessionTransportMode("aarch64-apple-darwin")).toBe("macos-loopback");
-expect(resolveGooseSessionTransportMode("x86_64-unknown-linux-gnu")).toBe("linux-relay");
-expect(resolveGooseSessionTransportMode("x86_64-pc-windows-msvc")).toBe("windows-authenticated");
+expect(resolveGooseSessionTransportMode("aarch64-apple-darwin")).toBe(
+  "macos-loopback",
+);
+expect(resolveGooseSessionTransportMode("x86_64-unknown-linux-gnu")).toBe(
+  "linux-relay",
+);
+expect(resolveGooseSessionTransportMode("x86_64-pc-windows-msvc")).toBe(
+  "windows-authenticated",
+);
 ```
 
 For Windows assert seven channels in order: stdin, stdout, stderr, control, parent liveness, capability, model. Assert the last two are duplex, not represented in the environment, and attached only to the Main hosts. Re-run the full parent-environment and credential canary sweep.
@@ -1039,9 +1149,7 @@ Expected: failures on absent explicit mode and current five-channel spawn.
 
 ```ts
 export type GooseSessionTransportMode =
-  | "macos-loopback"
-  | "linux-relay"
-  | "windows-authenticated";
+  "macos-loopback" | "linux-relay" | "windows-authenticated";
 
 export interface GooseCapabilityBoundary {
   readonly sessionEndpoint?: Readonly<{ url: string; attemptLease: string }>;
@@ -1067,7 +1175,7 @@ macOS wraps existing loopback servers. Linux wraps existing socket-relayed loopb
 Use:
 
 ```ts
-stdio: ["pipe", "pipe", "pipe", "pipe", "pipe", "pipe", "pipe"]
+stdio: ["pipe", "pipe", "pipe", "pipe", "pipe", "pipe", "pipe"];
 ```
 
 Write the control frame to fd 3, retain fd 4 as parent liveness, attach fd 5 to the capability host, and attach fd 6 to the model host. `NodeGooseAcpTransport.close()` closes both hosts and all three extra channels, then waits for the Supervisor; failure aggregation must retain both original and cleanup errors.
@@ -1098,6 +1206,7 @@ git commit -m "feat: select authenticated Windows Goose transport"
 ### Task 11: Compose an MCP-free Windows ACP session
 
 **Files:**
+
 - Modify: `apps/desktop/src/main/workers/gooseAcpHandshake.ts`
 - Modify: `apps/desktop/src/main/workers/gooseMcpSessionComposition.ts`
 - Modify: `tests/main/gooseAcpHandshake.test.ts`
@@ -1144,12 +1253,21 @@ Expected: failures on the absent `injected` session path and Windows boundary ad
 Counter evaluation remains:
 
 ```ts
-if (model.servedInferenceCount === servedBefore && result.stopReason !== "cancelled") {
+if (
+  model.servedInferenceCount === servedBefore &&
+  result.stopReason !== "cancelled"
+) {
   if (model.refusedInferenceCount > refusedBefore) {
-    throw new GooseMcpSessionCompositionError("model-completion-refused", message);
+    throw new GooseMcpSessionCompositionError(
+      "model-completion-refused",
+      message,
+    );
   }
   if (model.rejectedRequestCount > rejectedBefore) {
-    throw new GooseMcpSessionCompositionError("model-request-rejected", message);
+    throw new GooseMcpSessionCompositionError(
+      "model-request-rejected",
+      message,
+    );
   }
 }
 ```
@@ -1187,6 +1305,7 @@ git commit -m "feat: compose MCP-free Windows Goose session"
 ### Task 12: Add exact-artifact Windows runtime evidence
 
 **Files:**
+
 - Create: `tests/main/gooseRunnerWindowsNative.integration.ts`
 - Create: `scripts/gooseWindowsRuntimeEvidence.mjs`
 - Create: `scripts/run-goose-runner-windows-runtime.mjs`
@@ -1204,7 +1323,7 @@ type GooseWindowsRuntimeEvidence = Readonly<{
   targetTriple: "x86_64-pc-windows-msvc";
   sourceCommit: string;
   gooseBaseCommit: string;
-  gooseForkCommit: string;
+  gooseRuntimeCommit: string;
   goosePatchSha256: string;
   manifestSha256: string;
   executableSha256: string;
@@ -1275,6 +1394,7 @@ git commit -m "test: bind Windows Goose runtime evidence"
 ### Task 13: Add the exact-head Windows CI gate
 
 **Files:**
+
 - Modify: `.github/workflows/ci.yml`
 - Modify: `tests/scripts/p8NativeBuildWiring.test.mjs`
 - Modify: `scripts/check-p8-platform-matrix.mjs`
@@ -1346,6 +1466,7 @@ git commit -m "ci: verify Windows Goose authenticated runtime"
 ### Task 14: Run all gates, update architecture truth, and close only this slice
 
 **Files:**
+
 - Modify: `docs/architecture/decisions/0024-minimal-goose-acp-runner.md`
 - Modify: `docs/architecture/SYSTEM_OVERVIEW.md`
 - Modify: `docs/product/P8_CROSS_PLATFORM_INTERNAL_BETA.md`
@@ -1355,7 +1476,11 @@ git commit -m "ci: verify Windows Goose authenticated runtime"
 
 - [ ] **Step 1: Update accepted architecture without claiming unrun evidence**
 
-Document the fixed fork, default-off seam, Main/Supervisor/Worker ownership, seven channels, two named pipes, MCP-free Windows session, exact six-tool boundary, failure vocabulary, rollback, and non-goals. Before Windows CI runs, `PROJECT_STATUS.md` must say implementation is locally validated but native runtime evidence is pending.
+Document the fixed private runtime repository, default-off seam,
+Main/Supervisor/Worker ownership, seven channels, two named pipes, MCP-free
+Windows session, exact six-tool boundary, failure vocabulary, rollback, and
+non-goals. Before Windows CI runs, `PROJECT_STATUS.md` must say implementation
+is locally validated but native runtime evidence is pending.
 
 - [ ] **Step 2: Run focused and full local gates**
 
@@ -1413,7 +1538,12 @@ Expected: all jobs, including Windows build, containment, and authenticated runt
 
 - [ ] **Step 5: Inspect and record real Windows evidence**
 
-Use `gh run list --branch codex/p8-2c-windows-runtime-composition` and `gh run view` to obtain the exact run/job IDs. Download the success-only runtime Artifact into a temporary directory, validate it with `gooseWindowsRuntimeEvidence.mjs`, and record the real run ID, job ID, Artifact name, manifest/executable/source/fork/diff digests, and observed deterministic journey in `PROJECT_STATUS.md`.
+Use `gh run list --branch codex/p8-2c-windows-runtime-composition` and `gh run
+view` to obtain the exact run/job IDs. Download the success-only runtime
+Artifact into a temporary directory, validate it with
+`gooseWindowsRuntimeEvidence.mjs`, and record the real run ID, job ID, Artifact
+name, manifest/executable/source/runtime/diff digests, and observed
+deterministic journey in `PROJECT_STATUS.md`.
 
 The allowed claim is exactly:
 
@@ -1449,7 +1579,10 @@ Wait for the independent `main` run and require every job to pass. Update `PROJE
 
 ## Self-review checklist
 
-- [x] **Spec coverage:** Every invariant, fork/provenance requirement, seven-channel topology item, model/capability bridge rule, authentication rule, lifecycle rule, portable test, Windows-native test, required gate, documentation update, exit claim, and non-goal maps to Tasks 1–14.
+- [x] **Spec coverage:** Every invariant, private-runtime/provenance requirement,
+      seven-channel topology item, model/capability bridge rule, authentication
+      rule, lifecycle rule, portable test, Windows-native test, required gate,
+      documentation update, exit claim, and non-goal maps to Tasks 1–14.
 - [x] **Placeholder scan:** Run the command below and remove any planning placeholder language from executable instructions or committed examples.
 
 ```bash
@@ -1459,6 +1592,9 @@ rg -n '\b(T[B]D|T[O]DO|F[I]XME|i[m]plement l[a]ter|f[i]ll in d[e]tails|s[i]milar
 
 Expected: no matches.
 
-- [x] **Type/signature consistency:** Confirm the fork's `AcpRuntimeAdapter`, Rust frame kinds, TypeScript frame kinds, transport union, boundary interfaces, evidence keys, tool IDs, and diagnostic codes use the same names in every task.
+- [x] **Type/signature consistency:** Confirm the private runtime's
+      `AcpRuntimeAdapter`, Rust frame kinds, TypeScript frame kinds, transport union,
+      boundary interfaces, evidence keys, tool IDs, and diagnostic codes use the
+      same names in every task.
 - [x] **No authority widening:** Confirm no planned file under Renderer/preload or `foundation/`, no HTTP fallback on Windows, no credential/environment propagation, no original-workspace path in the Worker/Supervisor, no generic shell substitution, and no second agent framework.
 - [x] **Document validation:** Run root formatting, Markdown links, P8 matrix, and `git diff --check` before committing this plan.

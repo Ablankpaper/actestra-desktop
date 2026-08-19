@@ -83,11 +83,14 @@ The implementation must preserve all of the following:
 
 ### Chosen: minimal pinned Goose runtime-adapter seam
 
-Maintain a narrowly reviewed Actestra Goose fork commit based exactly on
-upstream `v1.45.0` commit
-`4dc0420f5704a92806c6628c8f0a3497d7a88759`. The fork adds only optional,
-default-off ACP runtime-adapter inputs needed to install an Actestra Provider
-and one Actestra MCP client before a session becomes active.
+Maintain the narrowly reviewed, standalone private
+`Ablankpaper/actestra-goose-runtime` repository based exactly on upstream
+`v1.45.0` commit
+`4dc0420f5704a92806c6628c8f0a3497d7a88759`. The repository is not a GitHub
+Fork and has no automatic upstream synchronization. Its immutable runtime
+commit adds only optional, default-off ACP runtime-adapter inputs needed to
+install an Actestra Provider and one Actestra MCP client before a session
+becomes active.
 
 When the optional inputs are absent, upstream session resolution and extension
 behavior remain unchanged. The Actestra runner supplies them only on the
@@ -122,25 +125,33 @@ accepted Windows boundary. Giving the Supervisor model, MCP, credential,
 policy, or workspace semantics would create a second authority owner. Neither
 is permitted.
 
-## Upstream fork and provenance contract
+## Private runtime repository and provenance contract
 
-The implementation change must treat the Goose fork as an upstream update,
-not as an unrecorded compatibility shim.
+The implementation change must treat the private runtime repository as a
+recorded upstream-derived source boundary, not as an unrecorded compatibility
+shim or an update channel.
 
-- Pin both the upstream base commit and one immutable Actestra fork commit.
-- Keep the fork diff limited to the ACP runtime-adapter seam and its upstream
-  unit tests.
-- Record the canonical repository, fork repository, base commit, fork commit,
-  changed upstream paths, diff SHA-256, license, NOTICE state, rollback, and
-  test evidence in `UPSTREAM_VERSIONS.md` and the Goose evaluation.
+- Pin both the upstream base commit and one immutable Actestra runtime commit.
+- Keep the runtime diff limited to the ACP runtime-adapter seam and its
+  upstream unit tests.
+- Record the canonical repository, private runtime repository, base commit,
+  runtime commit, changed upstream paths, diff SHA-256, license, NOTICE state,
+  rollback, and test evidence in `UPSTREAM_VERSIONS.md` and the Goose
+  evaluation.
 - Update `THIRD_PARTY_NOTICES.md` and mark modified upstream files as required
   by Apache-2.0.
-- Extend the runner source contract and build admission so an unrecorded fork
-  commit, changed diff digest, expanded Cargo feature set, or unapproved
-  upstream file fails closed.
+- Extend the runner source contract and build admission so an unrecorded
+  runtime commit, changed diff digest, expanded Cargo feature set, or
+  unapproved upstream file fails closed.
 - Keep the upstream source outside this repository; Cargo fetches only the
-  exact immutable fork commit. Do not import the Goose repository into the
-  Actestra source tree.
+  exact immutable runtime commit from the private repository. Do not import
+  the Goose repository into the Actestra source tree.
+- Do not configure GitHub Fork ancestry, automatic synchronization, a moving
+  branch dependency, Dependabot updates, or any other upstream-update bot.
+- Give Actestra CI read-only access with a repository-scoped deploy key stored
+  only as an Actions secret. The private runtime repository must not receive
+  the Actestra repository's credentials, and pull requests from external forks
+  must never receive the private key.
 - Rollback restores the upstream commit and disables Windows production
   runtime admission. Rollback must not fall back to direct HTTP, direct
   Provider credentials, or an uncontained Worker.
@@ -297,7 +308,7 @@ This prevents Windows-specific branching from spreading into Team, coding
 journey, Tool Gateway, or durable incident code.
 
 `openGooseRunnerHandshake()` keeps target-native fail-closed admission. A
-Windows launch requires verified containment evidence, exact fork/source
+Windows launch requires verified containment evidence, exact runtime/source
 admission, Windows bridge metadata, deny-all network policy, and the
 Supervisor executable authority. Direct loopback options remain rejected.
 
@@ -348,8 +359,8 @@ error vocabulary without returning raw stderr.
 
 ### Batch 1: pinned Goose adapter seam
 
-- Create the minimal fork change and upstream tests.
-- Pin the immutable fork commit and diff digest.
+- Create the minimal private runtime change and upstream tests.
+- Pin the immutable runtime commit and diff digest.
 - Update source, license, provenance, audit, and rollback records.
 - Add admission tests proving all unrecorded revisions, changed files, and
   expanded feature sets fail closed.
@@ -382,7 +393,7 @@ The Worker remains non-admitting until all channels and lifecycle paths exist.
 - Run target-native Windows compilation and unit tests.
 - Run one exact-artifact Main-to-Supervisor-to-AppContainer integration using a
   deterministic Main model invoker and the real Tool Gateway boundary.
-- Bind successful evidence to the exact runner and source/fork digests.
+- Bind successful evidence to the exact runner and source/runtime digests.
 - Run the complete project gate and exact-head pull-request and merged-main CI.
 
 Real Provider credentials and manual Team UI actions are not part of this
@@ -400,12 +411,12 @@ deterministic batch; they remain P8.4 evidence.
   resources/prompts behavior;
 - Supervisor relay state-machine and idempotent cleanup tests;
 - Main transport-mode selection and refusal/rejection counter equivalence;
-- source pin, fork diff, feature, license, and admission contract tests;
+- source pin, runtime diff, feature, license, and admission contract tests;
 - regression proof that macOS and Linux composition behavior is unchanged.
 
 ### Windows native tests
 
-- forked Goose code compiles under the pinned Windows toolchain;
+- private runtime Goose code compiles under the pinned Windows toolchain;
 - the real Worker remains `TokenIsAppContainer == 1` and inside the configured
   Job for the full ACP session;
 - only the exact allowed handles are inherited;
@@ -458,7 +469,7 @@ The following claims remain forbidden until later gates pass:
 The implementation change must update the accepted architecture and current
 truth where the runtime adapter becomes real:
 
-- amend ADR-0024 or add one narrowly scoped superseding ADR for the forked ACP
+- amend ADR-0024 or add one narrowly scoped superseding ADR for the adapted ACP
   runtime-adapter seam;
 - update `SYSTEM_OVERVIEW.md` with the Main, Supervisor, and Worker data flow;
 - update `P8_CROSS_PLATFORM_INTERNAL_BETA.md` and
