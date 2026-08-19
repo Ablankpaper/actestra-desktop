@@ -38,8 +38,20 @@ the P8 contract reports `3` targets, `14` journeys, and `7` evidence classes;
 format, lint (zero warnings/errors), typecheck, documentation links (`96`
 Markdown files), and `git diff --check` pass.
 
+Exact-head CI run
+[`32281548144`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32281548144)
+then ran all seven jobs. Six passed, including Windows build probe, Windows
+containment, Ubuntu build/containment, Goose admission, and macOS foundation.
+The new authenticated-runtime job reached its real Windows native test, but
+failed with the generic `windows-runtime-test-failed` code before preserving
+runtime evidence. The failure is not yet classified because the Windows
+launcher did not read the integration test's bounded failure-stage record;
+that diagnostic gap is now fixed locally by mapping only closed stages for
+composition-open, read-tool, approved-write-tool, cancellation, and
+parent-death. No raw error, path, PID, or credential can cross the boundary.
+
 This does not close Task 13, Task 12, or P8.2c. A new exact-head CI run must
-compile and execute the added Windows job, publish
+compile and execute the corrected Windows job, publish
 `p8-goose-runtime-windows-<exact SHA>`, and the downloaded record must pass the
 independent Task 12 evidence validator before native runtime composition is
 recorded as verified. Windows Electron/package/provider acceptance, overall

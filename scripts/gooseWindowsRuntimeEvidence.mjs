@@ -1,6 +1,14 @@
 const TARGET_TRIPLE = "x86_64-pc-windows-msvc";
 const COMMIT_PATTERN = /^[a-f0-9]{40}$/u;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
+const FAILURE_STAGE_CODES = Object.freeze({
+  "artifact-admission": "windows-runtime-artifact-admission-failed",
+  "composition-open": "windows-runtime-composition-open-failed",
+  "read-tool": "windows-runtime-read-tool-failed",
+  "approved-write-tool": "windows-runtime-approved-write-tool-failed",
+  cancellation: "windows-runtime-cancellation-failed",
+  "parent-death": "windows-runtime-parent-death-failed",
+});
 const BOOLEAN_OUTCOMES = Object.freeze([
   "acpInitialized",
   "mcpFreeSessionCreated",
@@ -33,6 +41,7 @@ const EVIDENCE_KEYS = Object.freeze(
     "residualProcessCount",
   ].sort(),
 );
+const FAILURE_EVIDENCE_KEYS = Object.freeze(["contractVersion", "stage"]);
 
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -72,6 +81,22 @@ export function validateGooseWindowsRuntimeEvidence(value, binding) {
     return invalid("windows-runtime-artifact-mismatch");
   }
   return Object.freeze({ ok: true });
+}
+
+export function classifyGooseWindowsRuntimeFailureEvidence(value) {
+  if (!isRecord(value)) return undefined;
+  const keys = Object.keys(value).sort();
+  if (
+    keys.length !== FAILURE_EVIDENCE_KEYS.length ||
+    keys.some((key, index) => key !== FAILURE_EVIDENCE_KEYS[index]) ||
+    value.contractVersion !== 1 ||
+    typeof value.stage !== "string"
+  ) {
+    return undefined;
+  }
+  return Object.hasOwn(FAILURE_STAGE_CODES, value.stage)
+    ? FAILURE_STAGE_CODES[value.stage]
+    : undefined;
 }
 
 export const GOOSE_WINDOWS_RUNTIME_EVIDENCE_KEYS = EVIDENCE_KEYS;

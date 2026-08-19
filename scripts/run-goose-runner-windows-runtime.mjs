@@ -5,11 +5,15 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { validateGooseWindowsRuntimeEvidence } from "./gooseWindowsRuntimeEvidence.mjs";
+import {
+  classifyGooseWindowsRuntimeFailureEvidence,
+  validateGooseWindowsRuntimeEvidence,
+} from "./gooseWindowsRuntimeEvidence.mjs";
 
 const TARGET_TRIPLE = "x86_64-pc-windows-msvc";
 const MAX_OUTPUT_BYTES = 64 * 1024;
 const MAX_MANIFEST_BYTES = 1024 * 1024;
+const MAX_FAILURE_EVIDENCE_BYTES = 1024;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
 const COMMIT_PATTERN = /^[a-f0-9]{40}$/u;
 const CONTAINMENT_KEYS = Object.freeze(
@@ -19,6 +23,11 @@ const FAILURE_CODES = new Set([
   "windows-runtime-artifact-admission-failed",
   "windows-runtime-artifact-mismatch",
   "windows-runtime-containment-evidence-invalid",
+  "windows-runtime-composition-open-failed",
+  "windows-runtime-read-tool-failed",
+  "windows-runtime-approved-write-tool-failed",
+  "windows-runtime-cancellation-failed",
+  "windows-runtime-parent-death-failed",
   "windows-runtime-evidence-invalid",
   "windows-runtime-evidence-missing",
   "windows-runtime-evidence-too-large",
@@ -100,6 +109,20 @@ function parseSingleJsonLine(value, code) {
   } catch {
     throw new Error(code);
   }
+}
+
+async function readFailureCode(failureEvidencePath) {
+  const bytes = await readFile(failureEvidencePath).catch(() => undefined);
+  if (bytes === undefined || bytes.byteLength > MAX_FAILURE_EVIDENCE_BYTES) {
+    return "windows-runtime-test-failed";
+  }
+  let evidence;
+  try {
+    evidence = JSON.parse(bytes.toString("utf8"));
+  } catch {
+    return "windows-runtime-test-failed";
+  }
+  return classifyGooseWindowsRuntimeFailureEvidence(evidence) ?? "windows-runtime-test-failed";
 }
 
 function currentHead() {
@@ -276,7 +299,7 @@ async function main() {
       Buffer.byteLength(child.stdout ?? "", "utf8") > MAX_OUTPUT_BYTES ||
       Buffer.byteLength(child.stderr ?? "", "utf8") > MAX_OUTPUT_BYTES
     ) {
-      throw new Error("windows-runtime-test-failed");
+      throw new Error(await readFailureCode(failureEvidencePath));
     }
     const evidenceBytes = await readFile(evidencePath).catch(() => {
       throw new Error("windows-runtime-evidence-missing");

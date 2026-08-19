@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   GOOSE_WINDOWS_RUNTIME_EVIDENCE_KEYS,
+  classifyGooseWindowsRuntimeFailureEvidence,
   validateGooseWindowsRuntimeEvidence,
 } from "../../scripts/gooseWindowsRuntimeEvidence.mjs";
 
@@ -94,6 +95,25 @@ describe("Goose Windows runtime evidence", () => {
     ).toEqual({ ok: false, code: "windows-runtime-artifact-mismatch" });
   });
 
+  it("maps only closed Windows runtime failure stages", () => {
+    expect(
+      classifyGooseWindowsRuntimeFailureEvidence({ contractVersion: 1, stage: "composition-open" }),
+    ).toBe("windows-runtime-composition-open-failed");
+    expect(
+      classifyGooseWindowsRuntimeFailureEvidence({ contractVersion: 1, stage: "parent-death" }),
+    ).toBe("windows-runtime-parent-death-failed");
+    expect(
+      classifyGooseWindowsRuntimeFailureEvidence({ contractVersion: 1, stage: "private-path" }),
+    ).toBeUndefined();
+    expect(
+      classifyGooseWindowsRuntimeFailureEvidence({
+        contractVersion: 1,
+        stage: "composition-open",
+        path: "C:\\private",
+      }),
+    ).toBeUndefined();
+  });
+
   it("registers a bounded exact-artifact Windows runtime runner", () => {
     const packageJson = JSON.parse(
       fs.readFileSync(path.join(repositoryRoot, "package.json"), "utf8"),
@@ -110,6 +130,8 @@ describe("Goose Windows runtime evidence", () => {
     expect(runner).toContain("ACTESTRA_GOOSE_CONTAINMENT_EVIDENCE_PATH");
     expect(runner).toContain("gooseRunnerWindowsNative.integration.ts");
     expect(runner).toContain("validateGooseWindowsRuntimeEvidence");
+    expect(runner).toContain("classifyGooseWindowsRuntimeFailureEvidence");
+    expect(runner).toContain("readFailureCode");
     expect(runner).not.toContain('stdio: "inherit"');
   });
 });
