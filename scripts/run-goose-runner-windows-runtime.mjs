@@ -7,7 +7,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import {
   GOOSE_WINDOWS_ARTIFACT_ADMISSION_FAILURE_CODES,
-  classifyGooseWindowsArtifactAdmissionFailure,
+  classifyGooseWindowsArtifactAdmissionExecution,
   classifyGooseWindowsRuntimeFailureEvidence,
   validateGooseWindowsRuntimeEvidence,
 } from "./gooseWindowsRuntimeEvidence.mjs";
@@ -24,6 +24,12 @@ const CONTAINMENT_KEYS = Object.freeze(
 const FAILURE_CODES = new Set([
   ...GOOSE_WINDOWS_ARTIFACT_ADMISSION_FAILURE_CODES,
   "windows-runtime-artifact-admission-failed",
+  "windows-runtime-artifact-admission-output-invalid",
+  "windows-runtime-artifact-admission-output-too-large",
+  "windows-runtime-artifact-admission-process-failed",
+  "windows-runtime-artifact-admission-rejected",
+  "windows-runtime-artifact-admission-timeout",
+  "windows-runtime-artifact-binding-invalid",
   "windows-runtime-artifact-mismatch",
   "windows-runtime-containment-evidence-invalid",
   "windows-runtime-composition-open-failed",
@@ -140,19 +146,24 @@ function currentHead() {
 
 function admitExactArtifact(expectedManifestSha256) {
   const result = runBounded("bun", ["--silent", "run", "goose:runner:admit-build"]);
-  if (
-    result.error !== undefined ||
-    result.status !== 0 ||
-    result.signal !== null ||
-    Buffer.byteLength(result.stdout ?? "", "utf8") > MAX_OUTPUT_BYTES ||
-    Buffer.byteLength(result.stderr ?? "", "utf8") > MAX_OUTPUT_BYTES
-  ) {
-    throw new Error(
-      classifyGooseWindowsArtifactAdmissionFailure(result.stderr) ??
-        "windows-runtime-artifact-admission-failed",
-    );
-  }
-  const admitted = parseSingleJsonLine(result.stdout, "windows-runtime-artifact-admission-failed");
+  const executionFailure = classifyGooseWindowsArtifactAdmissionExecution({
+    errorCode:
+      result.error === undefined
+        ? undefined
+        : typeof result.error.code === "string"
+          ? result.error.code
+          : "spawn-error",
+    status: result.status,
+    signal: result.signal,
+    stdoutBytes: Buffer.byteLength(result.stdout ?? "", "utf8"),
+    stderrBytes: Buffer.byteLength(result.stderr ?? "", "utf8"),
+    stderr: result.stderr ?? "",
+  });
+  if (executionFailure !== undefined) throw new Error(executionFailure);
+  const admitted = parseSingleJsonLine(
+    result.stdout,
+    "windows-runtime-artifact-admission-output-invalid",
+  );
   if (
     admitted?.targetTriple !== TARGET_TRIPLE ||
     admitted?.manifestSha256 !== expectedManifestSha256 ||
@@ -167,7 +178,7 @@ function admitExactArtifact(expectedManifestSha256) {
 async function readBinding() {
   const requested = path.resolve(artifactDirectory);
   const canonical = await realpath(requested).catch(() => {
-    throw new Error("windows-runtime-artifact-admission-failed");
+    throw new Error("windows-runtime-artifact-binding-invalid");
   });
   if (canonical !== requested) throw new Error("windows-runtime-artifact-mismatch");
   const manifestStat = await lstat(manifestPath).catch(() => undefined);
@@ -178,19 +189,21 @@ async function readBinding() {
     manifestStat.size < 1 ||
     manifestStat.size > MAX_MANIFEST_BYTES
   ) {
-    throw new Error("windows-runtime-artifact-admission-failed");
+    throw new Error("windows-runtime-artifact-binding-invalid");
   }
   const [manifestBytes, sourceContractBytes] = await Promise.all([
     readFile(manifestPath),
     readFile(sourceContractPath),
-  ]);
+  ]).catch(() => {
+    throw new Error("windows-runtime-artifact-binding-invalid");
+  });
   let manifest;
   let sourceContract;
   try {
     manifest = JSON.parse(manifestBytes.toString("utf8"));
     sourceContract = JSON.parse(sourceContractBytes.toString("utf8"));
   } catch {
-    throw new Error("windows-runtime-artifact-admission-failed");
+    throw new Error("windows-runtime-artifact-binding-invalid");
   }
   const sourceCommit = manifest?.provenance?.actestraCommit;
   const executableSha256 = manifest?.runner?.executable?.sha256;
@@ -209,9 +222,11 @@ async function readBinding() {
     !COMMIT_PATTERN.test(binding.gooseRuntimeCommit ?? "") ||
     !SHA256_PATTERN.test(binding.goosePatchSha256 ?? "") ||
     !SHA256_PATTERN.test(binding.manifestSha256) ||
-    !SHA256_PATTERN.test(binding.executableSha256 ?? "") ||
-    binding.sourceCommit !== currentHead()
+    !SHA256_PATTERN.test(binding.executableSha256 ?? "")
   ) {
+    throw new Error("windows-runtime-artifact-binding-invalid");
+  }
+  if (binding.sourceCommit !== currentHead()) {
     throw new Error("windows-runtime-artifact-mismatch");
   }
   return binding;

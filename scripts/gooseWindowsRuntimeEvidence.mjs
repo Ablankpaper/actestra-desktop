@@ -1,6 +1,7 @@
 const TARGET_TRIPLE = "x86_64-pc-windows-msvc";
 const COMMIT_PATTERN = /^[a-f0-9]{40}$/u;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
+const MAX_ARTIFACT_ADMISSION_OUTPUT_BYTES = 64 * 1024;
 const FAILURE_STAGE_CODES = Object.freeze({
   "artifact-admission": "windows-runtime-artifact-admission-failed",
   "composition-open": "windows-runtime-composition-open-failed",
@@ -111,7 +112,10 @@ export function classifyGooseWindowsRuntimeFailureEvidence(value) {
 }
 
 export function classifyGooseWindowsArtifactAdmissionFailure(value) {
-  if (typeof value !== "string" || Buffer.byteLength(value, "utf8") > 64 * 1024) {
+  if (
+    typeof value !== "string" ||
+    Buffer.byteLength(value, "utf8") > MAX_ARTIFACT_ADMISSION_OUTPUT_BYTES
+  ) {
     return undefined;
   }
   const jsonLines = value
@@ -136,6 +140,37 @@ export function classifyGooseWindowsArtifactAdmissionFailure(value) {
   return Object.hasOwn(ARTIFACT_ADMISSION_FAILURE_CODES, failure.code)
     ? ARTIFACT_ADMISSION_FAILURE_CODES[failure.code]
     : undefined;
+}
+
+export function classifyGooseWindowsArtifactAdmissionExecution(value) {
+  if (!isRecord(value)) return "windows-runtime-artifact-admission-process-failed";
+  const { errorCode, status, signal, stdoutBytes, stderrBytes, stderr } = value;
+  if (errorCode === "ETIMEDOUT") return "windows-runtime-artifact-admission-timeout";
+  if (
+    !Number.isSafeInteger(stdoutBytes) ||
+    stdoutBytes < 0 ||
+    !Number.isSafeInteger(stderrBytes) ||
+    stderrBytes < 0
+  ) {
+    return "windows-runtime-artifact-admission-process-failed";
+  }
+  if (
+    stdoutBytes > MAX_ARTIFACT_ADMISSION_OUTPUT_BYTES ||
+    stderrBytes > MAX_ARTIFACT_ADMISSION_OUTPUT_BYTES
+  ) {
+    return "windows-runtime-artifact-admission-output-too-large";
+  }
+  if (errorCode !== undefined || signal !== null) {
+    return "windows-runtime-artifact-admission-process-failed";
+  }
+  if (status === 0) return undefined;
+  if (!Number.isSafeInteger(status)) {
+    return "windows-runtime-artifact-admission-process-failed";
+  }
+  return (
+    classifyGooseWindowsArtifactAdmissionFailure(stderr) ??
+    "windows-runtime-artifact-admission-rejected"
+  );
 }
 
 export const GOOSE_WINDOWS_RUNTIME_EVIDENCE_KEYS = EVIDENCE_KEYS;

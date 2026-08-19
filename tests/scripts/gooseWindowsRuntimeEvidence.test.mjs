@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   GOOSE_WINDOWS_RUNTIME_EVIDENCE_KEYS,
+  classifyGooseWindowsArtifactAdmissionExecution,
   classifyGooseWindowsArtifactAdmissionFailure,
   classifyGooseWindowsRuntimeFailureEvidence,
   validateGooseWindowsRuntimeEvidence,
@@ -139,6 +140,55 @@ describe("Goose Windows runtime evidence", () => {
     ).toBeUndefined();
   });
 
+  it("classifies Artifact admission process failures without returning subprocess data", () => {
+    const valid = {
+      errorCode: undefined,
+      status: 0,
+      signal: null,
+      stdoutBytes: 128,
+      stderrBytes: 0,
+      stderr: "",
+    };
+    expect(classifyGooseWindowsArtifactAdmissionExecution(valid)).toBeUndefined();
+    expect(
+      classifyGooseWindowsArtifactAdmissionExecution({ ...valid, errorCode: "ETIMEDOUT" }),
+    ).toBe("windows-runtime-artifact-admission-timeout");
+    expect(
+      classifyGooseWindowsArtifactAdmissionExecution({ ...valid, errorCode: "private-spawn" }),
+    ).toBe("windows-runtime-artifact-admission-process-failed");
+    expect(
+      classifyGooseWindowsArtifactAdmissionExecution({
+        ...valid,
+        status: 1,
+        stderr: '{"status":"failed","code":"digest-mismatch"}\n',
+        stderrBytes: 56,
+      }),
+    ).toBe("windows-runtime-artifact-admission-digest-mismatch");
+    expect(
+      classifyGooseWindowsArtifactAdmissionExecution({
+        ...valid,
+        status: 1,
+        stderr: "C:\\\\private\\raw-error",
+        stderrBytes: 20,
+      }),
+    ).toBe("windows-runtime-artifact-admission-rejected");
+    expect(
+      classifyGooseWindowsArtifactAdmissionExecution({
+        ...valid,
+        stdoutBytes: 65 * 1024,
+      }),
+    ).toBe("windows-runtime-artifact-admission-output-too-large");
+    expect(
+      classifyGooseWindowsArtifactAdmissionExecution({
+        ...valid,
+        stderrBytes: 65 * 1024,
+      }),
+    ).toBe("windows-runtime-artifact-admission-output-too-large");
+    expect(classifyGooseWindowsArtifactAdmissionExecution({ ...valid, signal: "SIGTERM" })).toBe(
+      "windows-runtime-artifact-admission-process-failed",
+    );
+  });
+
   it("registers a bounded exact-artifact Windows runtime runner", () => {
     const packageJson = JSON.parse(
       fs.readFileSync(path.join(repositoryRoot, "package.json"), "utf8"),
@@ -157,7 +207,9 @@ describe("Goose Windows runtime evidence", () => {
     expect(runner).toContain("ACTESTRA_GOOSE_CONTAINMENT_EVIDENCE_PATH");
     expect(runner).toContain("gooseRunnerWindowsNative.integration.ts");
     expect(runner).toContain("validateGooseWindowsRuntimeEvidence");
-    expect(runner).toContain("classifyGooseWindowsArtifactAdmissionFailure");
+    expect(runner).toContain("classifyGooseWindowsArtifactAdmissionExecution");
+    expect(runner).toContain("windows-runtime-artifact-binding-invalid");
+    expect(runner).toContain("windows-runtime-artifact-admission-output-invalid");
     expect(runner).toContain("classifyGooseWindowsRuntimeFailureEvidence");
     expect(runner).toContain("readFailureCode");
     expect(runner).not.toContain('stdio: "inherit"');
