@@ -39,9 +39,10 @@ use crate::windows_supervisor::WindowsCleanupReceipt;
 #[cfg(windows)]
 use crate::windows_supervisor::{
     launch_windows_containment_worker, open_windows_probe_process, read_windows_probe_request,
-    remove_windows_probe_profile, write_windows_probe_result, ProbeHandle,
-    WindowsContainmentFailure, WindowsProbeExchangeFailure,
+    remove_windows_probe_profile, write_windows_probe_child_stage, write_windows_probe_result,
+    ProbeHandle, WindowsContainmentFailure, WindowsProbeChildStage, WindowsProbeExchangeFailure,
     WINDOWS_PROBE_CHILD_REQUEST_FAILURE_EXIT_CODE, WINDOWS_PROBE_CHILD_RESULT_FAILURE_EXIT_CODE,
+    WINDOWS_PROBE_CHILD_STAGE_FAILURE_EXIT_CODE,
 };
 
 #[cfg(windows)]
@@ -96,6 +97,13 @@ enum WindowsProbeFailure {
     ChildPanic,
     ChildImageLoad,
     ChildRuntimeFault,
+    ChildBeforeEntry,
+    ChildRequestStage,
+    ChildFilesystemStage,
+    ChildNetworkStage,
+    ChildProcessStage,
+    ChildResultStage,
+    ChildStageWrite,
     ChildUnexpectedExit,
     ChildResultFrame,
     Cleanup,
@@ -123,6 +131,13 @@ impl WindowsProbeFailure {
             Self::ChildPanic => "windows-child-panic-invalid",
             Self::ChildImageLoad => "windows-child-image-load-invalid",
             Self::ChildRuntimeFault => "windows-child-runtime-fault-invalid",
+            Self::ChildBeforeEntry => "windows-child-before-entry-invalid",
+            Self::ChildRequestStage => "windows-child-request-stage-invalid",
+            Self::ChildFilesystemStage => "windows-child-filesystem-stage-invalid",
+            Self::ChildNetworkStage => "windows-child-network-stage-invalid",
+            Self::ChildProcessStage => "windows-child-process-stage-invalid",
+            Self::ChildResultStage => "windows-child-result-stage-invalid",
+            Self::ChildStageWrite => "windows-child-stage-write-invalid",
             Self::ChildUnexpectedExit => "windows-child-unexpected-exit-invalid",
             Self::ChildResultFrame => "windows-child-result-frame-invalid",
             Self::Cleanup => "windows-cleanup-incomplete",
@@ -318,6 +333,9 @@ fn run_probe_intermediate_parent() -> i32 {
 
 #[cfg(windows)]
 fn run_probe_child() -> i32 {
+    if write_windows_probe_child_stage(WindowsProbeChildStage::Entry).is_err() {
+        return WINDOWS_PROBE_CHILD_STAGE_FAILURE_EXIT_CODE;
+    }
     let (request, excluded_handle_absent) = match read_windows_probe_request() {
         Ok(request) => request,
         Err(()) => {
@@ -325,10 +343,21 @@ fn run_probe_child() -> i32 {
             return WINDOWS_PROBE_CHILD_REQUEST_FAILURE_EXIT_CODE;
         }
     };
-    let result = execute_windows_hostile_probe(&request, excluded_handle_absent);
+    if write_windows_probe_child_stage(WindowsProbeChildStage::RequestRead).is_err() {
+        return WINDOWS_PROBE_CHILD_STAGE_FAILURE_EXIT_CODE;
+    }
+    let mut mark_stage = |stage| write_windows_probe_child_stage(stage).is_ok();
+    let result =
+        match execute_windows_hostile_probe(&request, excluded_handle_absent, &mut mark_stage) {
+            Ok(result) => result,
+            Err(()) => return WINDOWS_PROBE_CHILD_STAGE_FAILURE_EXIT_CODE,
+        };
     if write_windows_probe_result(result).is_err() {
         eprintln!("{WINDOWS_CONTAINMENT_ROLE_FAILURE_MARKER}");
         return WINDOWS_PROBE_CHILD_RESULT_FAILURE_EXIT_CODE;
+    }
+    if write_windows_probe_child_stage(WindowsProbeChildStage::ResultWritten).is_err() {
+        return WINDOWS_PROBE_CHILD_STAGE_FAILURE_EXIT_CODE;
     }
     0
 }
@@ -337,11 +366,12 @@ fn run_probe_child() -> i32 {
 fn execute_windows_hostile_probe(
     request: &WindowsProbeRequest,
     excluded_handle_absent: bool,
-) -> WindowsProbeResult {
+    mark_stage: &mut impl FnMut(WindowsProbeChildStage) -> bool,
+) -> Result<WindowsProbeResult, ()> {
     let read_path = Path::new(request.outside_read_path());
     let write_path = Path::new(request.outside_write_path());
     if !read_path.is_absolute() || !write_path.is_absolute() {
-        return incomplete_hostile_result(excluded_handle_absent);
+        return Ok(incomplete_hostile_result(excluded_handle_absent));
     }
 
     let read_denied = match fs::read(read_path) {
@@ -352,6 +382,9 @@ fn execute_windows_hostile_probe(
         Ok(()) => false,
         Err(error) => is_closed_filesystem_denial(error.kind(), error.raw_os_error()),
     };
+    if !mark_stage(WindowsProbeChildStage::FilesystemComplete) {
+        return Err(());
+    }
 
     let address = SocketAddr::V4(SocketAddrV4::new(
         Ipv4Addr::LOCALHOST,
@@ -364,6 +397,9 @@ fn execute_windows_hostile_probe(
         }
         Err(error) => is_closed_network_denial(error.raw_os_error()),
     };
+    if !mark_stage(WindowsProbeChildStage::NetworkComplete) {
+        return Err(());
+    }
 
     let process_denied = match env::current_exe().and_then(|executable| {
         Command::new(executable)
@@ -380,8 +416,11 @@ fn execute_windows_hostile_probe(
         }
         Err(error) => is_closed_process_denial(error.raw_os_error()),
     };
+    if !mark_stage(WindowsProbeChildStage::ProcessComplete) {
+        return Err(());
+    }
 
-    WindowsProbeResult {
+    Ok(WindowsProbeResult {
         filesystem_attempted: true,
         filesystem_denied: read_denied && write_denied,
         network_attempted: true,
@@ -390,7 +429,7 @@ fn execute_windows_hostile_probe(
         process_denied,
         environment_canary_absent: env::var_os("ACTESTRA_ENVIRONMENT_CANARY").is_none(),
         excluded_handle_absent,
-    }
+    })
 }
 
 #[cfg(windows)]
@@ -661,6 +700,27 @@ fn collect_windows_hostile_evidence() -> Result<WindowsHostileEvidence, WindowsP
                 WindowsProbeExchangeFailure::WorkerRuntimeFault => {
                     WindowsProbeFailure::ChildRuntimeFault
                 }
+                WindowsProbeExchangeFailure::WorkerBeforeEntry => {
+                    WindowsProbeFailure::ChildBeforeEntry
+                }
+                WindowsProbeExchangeFailure::WorkerRequestStage => {
+                    WindowsProbeFailure::ChildRequestStage
+                }
+                WindowsProbeExchangeFailure::WorkerFilesystemStage => {
+                    WindowsProbeFailure::ChildFilesystemStage
+                }
+                WindowsProbeExchangeFailure::WorkerNetworkStage => {
+                    WindowsProbeFailure::ChildNetworkStage
+                }
+                WindowsProbeExchangeFailure::WorkerProcessStage => {
+                    WindowsProbeFailure::ChildProcessStage
+                }
+                WindowsProbeExchangeFailure::WorkerResultStage => {
+                    WindowsProbeFailure::ChildResultStage
+                }
+                WindowsProbeExchangeFailure::WorkerStageWrite => {
+                    WindowsProbeFailure::ChildStageWrite
+                }
                 WindowsProbeExchangeFailure::WorkerUnexpectedExit => {
                     WindowsProbeFailure::ChildUnexpectedExit
                 }
@@ -850,6 +910,34 @@ mod tests {
             (
                 WindowsProbeFailure::ChildRuntimeFault,
                 "windows-child-runtime-fault-invalid",
+            ),
+            (
+                WindowsProbeFailure::ChildBeforeEntry,
+                "windows-child-before-entry-invalid",
+            ),
+            (
+                WindowsProbeFailure::ChildRequestStage,
+                "windows-child-request-stage-invalid",
+            ),
+            (
+                WindowsProbeFailure::ChildFilesystemStage,
+                "windows-child-filesystem-stage-invalid",
+            ),
+            (
+                WindowsProbeFailure::ChildNetworkStage,
+                "windows-child-network-stage-invalid",
+            ),
+            (
+                WindowsProbeFailure::ChildProcessStage,
+                "windows-child-process-stage-invalid",
+            ),
+            (
+                WindowsProbeFailure::ChildResultStage,
+                "windows-child-result-stage-invalid",
+            ),
+            (
+                WindowsProbeFailure::ChildStageWrite,
+                "windows-child-stage-write-invalid",
             ),
             (
                 WindowsProbeFailure::ChildUnexpectedExit,

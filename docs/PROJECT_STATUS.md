@@ -4,6 +4,25 @@ Last updated: 2026-08-19
 
 ## Current phase
 
+### 2026-08-19 P8.2b Windows child-stage transcript instrumentation (exact-head verification pending)
+
+The follow-up diagnostic change at the current branch head adds a bounded,
+binary stage transcript to the Windows containment probe's inherited stderr
+pipe. It records only a fixed ordered sequence (entry, request read,
+filesystem complete, network complete, process complete, and result written);
+it never records raw exit statuses, paths, environment values, handles, SIDs,
+credentials, or Win32 text. The parent reduces an otherwise unknown child
+exit to a closed stage code only when the transcript is exactly valid; invalid
+or mixed output remains 'windows-child-unexpected-exit-invalid'. The probe
+still exits nonzero and cannot produce admitting evidence on every failure.
+
+The change is locally validated by Goose Rust tests 51/51, containment
+diagnostics 10/10, Rust formatting, and git diff --check. The Windows target
+is installed locally, but a host-side cross-check cannot compile the runner's C
+dependencies with the macOS toolchain; the Windows build and runtime CI job is
+the authoritative next check. P8.2b remains open until the exact-head Windows
+containment job reports a verified six-capability evidence Artifact.
+
 ### 2026-08-19 P8.2b exact-head probe-route correction disproved; exit discriminator added (gate remains open)
 
 Draft pull request

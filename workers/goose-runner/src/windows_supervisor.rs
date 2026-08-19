@@ -23,8 +23,8 @@ use std::path::Path;
 use std::ptr::{null, null_mut};
 #[cfg(windows)]
 use windows_sys::Win32::Foundation::{
-    CloseHandle, GetLastError, SetHandleInformation, ERROR_INVALID_HANDLE, HANDLE,
-    HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
+    CloseHandle, GetLastError, SetHandleInformation, ERROR_BROKEN_PIPE, ERROR_INVALID_HANDLE,
+    HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 #[cfg(windows)]
 use windows_sys::Win32::Security::Isolation::{
@@ -102,6 +102,43 @@ const WINDOWS_DIRECTORY_MAX_U16: usize = 32_767;
 pub(crate) const WINDOWS_PROBE_CHILD_REQUEST_FAILURE_EXIT_CODE: i32 = 81;
 #[cfg(any(windows, test))]
 pub(crate) const WINDOWS_PROBE_CHILD_RESULT_FAILURE_EXIT_CODE: i32 = 82;
+#[cfg(any(windows, test))]
+pub(crate) const WINDOWS_PROBE_CHILD_STAGE_FAILURE_EXIT_CODE: i32 = 83;
+
+#[cfg(any(windows, test))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum WindowsProbeChildStage {
+    Entry,
+    RequestRead,
+    FilesystemComplete,
+    NetworkComplete,
+    ProcessComplete,
+    ResultWritten,
+}
+
+#[cfg(any(windows, test))]
+impl WindowsProbeChildStage {
+    fn marker(self) -> u8 {
+        match self {
+            Self::Entry => 0xa1,
+            Self::RequestRead => 0xa2,
+            Self::FilesystemComplete => 0xa3,
+            Self::NetworkComplete => 0xa4,
+            Self::ProcessComplete => 0xa5,
+            Self::ResultWritten => 0xa6,
+        }
+    }
+}
+
+#[cfg(any(windows, test))]
+const WINDOWS_PROBE_CHILD_STAGES: [WindowsProbeChildStage; 6] = [
+    WindowsProbeChildStage::Entry,
+    WindowsProbeChildStage::RequestRead,
+    WindowsProbeChildStage::FilesystemComplete,
+    WindowsProbeChildStage::NetworkComplete,
+    WindowsProbeChildStage::ProcessComplete,
+    WindowsProbeChildStage::ResultWritten,
+];
 
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -820,6 +857,13 @@ pub(crate) enum WindowsProbeExchangeFailure {
     WorkerPanic,
     WorkerImageLoad,
     WorkerRuntimeFault,
+    WorkerBeforeEntry,
+    WorkerRequestStage,
+    WorkerFilesystemStage,
+    WorkerNetworkStage,
+    WorkerProcessStage,
+    WorkerResultStage,
+    WorkerStageWrite,
     WorkerUnexpectedExit,
     ResultFrame,
 }
@@ -833,6 +877,9 @@ fn classify_windows_probe_child_exit(exit_code: u32) -> WindowsProbeExchangeFail
         value if value == WINDOWS_PROBE_CHILD_RESULT_FAILURE_EXIT_CODE as u32 => {
             WindowsProbeExchangeFailure::WorkerResult
         }
+        value if value == WINDOWS_PROBE_CHILD_STAGE_FAILURE_EXIT_CODE as u32 => {
+            WindowsProbeExchangeFailure::WorkerStageWrite
+        }
         1 => WindowsProbeExchangeFailure::WorkerEntry,
         101 => WindowsProbeExchangeFailure::WorkerPanic,
         0xc000_0022 | 0xc000_007b | 0xc000_0135 | 0xc000_0142 => {
@@ -840,6 +887,44 @@ fn classify_windows_probe_child_exit(exit_code: u32) -> WindowsProbeExchangeFail
         }
         0xc000_0005 | 0xc000_0409 => WindowsProbeExchangeFailure::WorkerRuntimeFault,
         _ => WindowsProbeExchangeFailure::WorkerUnexpectedExit,
+    }
+}
+
+#[cfg(any(windows, test))]
+fn classify_windows_probe_child_exit_with_transcript(
+    exit_code: u32,
+    transcript: &[u8],
+) -> WindowsProbeExchangeFailure {
+    let direct = classify_windows_probe_child_exit(exit_code);
+    if direct != WindowsProbeExchangeFailure::WorkerUnexpectedExit {
+        return direct;
+    }
+    if transcript.len() > WINDOWS_PROBE_CHILD_STAGES.len()
+        || !transcript
+            .iter()
+            .enumerate()
+            .all(|(index, marker)| *marker == WINDOWS_PROBE_CHILD_STAGES[index].marker())
+    {
+        return WindowsProbeExchangeFailure::WorkerUnexpectedExit;
+    }
+    match transcript.last().copied() {
+        None => WindowsProbeExchangeFailure::WorkerBeforeEntry,
+        Some(marker) if marker == WindowsProbeChildStage::Entry.marker() => {
+            WindowsProbeExchangeFailure::WorkerRequestStage
+        }
+        Some(marker) if marker == WindowsProbeChildStage::RequestRead.marker() => {
+            WindowsProbeExchangeFailure::WorkerFilesystemStage
+        }
+        Some(marker) if marker == WindowsProbeChildStage::FilesystemComplete.marker() => {
+            WindowsProbeExchangeFailure::WorkerNetworkStage
+        }
+        Some(marker) if marker == WindowsProbeChildStage::NetworkComplete.marker() => {
+            WindowsProbeExchangeFailure::WorkerProcessStage
+        }
+        Some(marker) if marker == WindowsProbeChildStage::ProcessComplete.marker() => {
+            WindowsProbeExchangeFailure::WorkerResultStage
+        }
+        Some(_) => WindowsProbeExchangeFailure::WorkerUnexpectedExit,
     }
 }
 
@@ -970,7 +1055,13 @@ impl WindowsContainmentLaunch {
             .wait_for_exit(10_000)
             .map_err(|_| WindowsProbeExchangeFailure::WorkerWait)?;
         if exit_code != 0 {
-            return Err(classify_windows_probe_child_exit(exit_code));
+            let transcript =
+                read_windows_probe_child_stage_transcript(self.pipes.supervisor_stderr)
+                    .unwrap_or_default();
+            return Err(classify_windows_probe_child_exit_with_transcript(
+                exit_code,
+                &transcript,
+            ));
         }
         let mut result = [0_u8; WINDOWS_PROBE_RESULT_FRAME_LENGTH];
         read_exact_handle(self.pipes.supervisor_stdout, &mut result)
@@ -1650,6 +1741,33 @@ fn read_exact_handle(handle: HANDLE, bytes: &mut [u8]) -> Result<(), ()> {
 }
 
 #[cfg(windows)]
+fn read_windows_probe_child_stage_transcript(handle: HANDLE) -> Result<Vec<u8>, ()> {
+    if handle.is_null() || handle == INVALID_HANDLE_VALUE {
+        return Err(());
+    }
+    let mut transcript = Vec::with_capacity(WINDOWS_PROBE_CHILD_STAGES.len());
+    loop {
+        let mut marker = 0_u8;
+        let mut read = 0_u32;
+        // SAFETY: handle is the retained parent-side stderr pipe and marker is writable for one
+        // byte. The child has already terminated, so the read either drains one marker or reaches
+        // the closed pipe without waiting on an active writer.
+        if unsafe { ReadFile(handle, (&raw mut marker).cast(), 1, &mut read, null_mut()) } == 0 {
+            // SAFETY: this immediately captures the error from the failed ReadFile call.
+            return if unsafe { GetLastError() } == ERROR_BROKEN_PIPE {
+                Ok(transcript)
+            } else {
+                Err(())
+            };
+        }
+        if read != 1 || transcript.len() == WINDOWS_PROBE_CHILD_STAGES.len() {
+            return Err(());
+        }
+        transcript.push(marker);
+    }
+}
+
+#[cfg(windows)]
 fn excluded_probe_handle_is_absent(encoded_handle: u64) -> bool {
     let Ok(value) = usize::try_from(encoded_handle) else {
         return false;
@@ -1685,6 +1803,13 @@ pub(crate) fn write_windows_probe_result(result: WindowsProbeResult) -> Result<(
     // SAFETY: the probe role is launched with one exact inherited standard-output pipe.
     let output = unsafe { GetStdHandle(STD_OUTPUT_HANDLE) };
     write_all_handle(output, &encode_result(result))
+}
+
+#[cfg(windows)]
+pub(crate) fn write_windows_probe_child_stage(stage: WindowsProbeChildStage) -> Result<(), ()> {
+    // SAFETY: the probe role is launched with one exact inherited standard-error pipe.
+    let error = unsafe { GetStdHandle(STD_ERROR_HANDLE) };
+    write_all_handle(error, &[stage.marker()])
 }
 
 #[cfg(windows)]
@@ -2201,6 +2326,53 @@ mod tests {
             classify_windows_probe_child_exit(u32::MAX),
             WindowsProbeExchangeFailure::WorkerUnexpectedExit
         );
+    }
+
+    #[test]
+    fn classifies_unexpected_probe_child_exits_by_the_last_closed_stage() {
+        let stages = [
+            WindowsProbeChildStage::Entry,
+            WindowsProbeChildStage::RequestRead,
+            WindowsProbeChildStage::FilesystemComplete,
+            WindowsProbeChildStage::NetworkComplete,
+            WindowsProbeChildStage::ProcessComplete,
+            WindowsProbeChildStage::ResultWritten,
+        ];
+        assert_eq!(
+            stages.map(WindowsProbeChildStage::marker),
+            [0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6]
+        );
+
+        for (length, expected) in [
+            (0, WindowsProbeExchangeFailure::WorkerBeforeEntry),
+            (1, WindowsProbeExchangeFailure::WorkerRequestStage),
+            (2, WindowsProbeExchangeFailure::WorkerFilesystemStage),
+            (3, WindowsProbeExchangeFailure::WorkerNetworkStage),
+            (4, WindowsProbeExchangeFailure::WorkerProcessStage),
+            (5, WindowsProbeExchangeFailure::WorkerResultStage),
+            (6, WindowsProbeExchangeFailure::WorkerUnexpectedExit),
+        ] {
+            let transcript: Vec<u8> = stages[..length]
+                .iter()
+                .map(|stage| stage.marker())
+                .collect();
+            assert_eq!(
+                classify_windows_probe_child_exit_with_transcript(u32::MAX, &transcript),
+                expected
+            );
+        }
+
+        for invalid in [
+            vec![0xa2],
+            vec![0xa1, 0xa3],
+            vec![0xa1, 0xa2, 0xa2],
+            vec![0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7],
+        ] {
+            assert_eq!(
+                classify_windows_probe_child_exit_with_transcript(u32::MAX, &invalid),
+                WindowsProbeExchangeFailure::WorkerUnexpectedExit
+            );
+        }
     }
 }
 
