@@ -11,6 +11,10 @@ use crate::containment::windows_contract::{
     WINDOWS_PROBE_CHILD_ARGUMENT, WINDOWS_PROBE_PARENT_ARGUMENT,
 };
 #[cfg(windows)]
+use crate::windows_capability_bridge::WindowsCapabilityClient;
+#[cfg(windows)]
+use crate::windows_model_bridge::WindowsModelProvider;
+#[cfg(windows)]
 use crate::windows_named_pipe::{WindowsNamedPipeClient, WindowsNamedPipeServer};
 #[cfg(windows)]
 const WINDOWS_WORKER_READY_MARKER: &[u8] = b"ACTESTRA_GOOSE_WINDOWS_WORKER_READY\n";
