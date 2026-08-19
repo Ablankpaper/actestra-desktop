@@ -4,6 +4,46 @@ Last updated: 2026-08-19
 
 ## Current phase
 
+### 2026-08-19 P8.2b Windows containment verified; P8.2b gate closed
+
+Draft pull request
+[#68](https://github.com/Ablankpaper/actestra-desktop/pull/68) reached exact
+head `c9871dac252ec9c1d6092b0704b14dbdc85e31fe`. Pull-request run
+[`32220641275`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32220641275)
+completed all six jobs successfully: Windows build probe, Windows containment,
+Ubuntu build probe, Ubuntu containment, Goose runner admission, and macOS
+foundation. The Windows containment job completed both exact acceptance and
+success-only evidence preservation.
+
+The preserved evidence Artifact
+`p8-goose-containment-windows-6878da53ff453a982ac58803a3f9d4ded8559798`
+contains a verified record for `x86_64-pc-windows-msvc`:
+
+- manifest SHA-256: `cd9562bb73395849cb53c44e56ce80c01bc54865ea913506cc0abd4c3665993d`
+- executable SHA-256: `3b144602c317884977a0131973be129ac41dabe10d299f37c6658cdfc39b74bf`
+- probe SHA-256: `dd3d0e3c32ae0686297540cb2b69cefaecf4a99868c86ebabe7d68808dd7fd22`
+- evidence status: `verified`
+
+This closes the Windows P8.2b containment gate. The verified run crossed the
+AppContainer, inherited-environment, Job/resource, parent-side excluded-handle
+identity, filesystem, network, process-tree, parent-death, and cleanup checks.
+For the network check, the supervisor first reached and drained the positive
+host control connection; the Worker then timed out without a server-side
+Worker connection. The final aggregate now consumes that already-verified
+network result, so a valid timeout is not rejected by the old `denied()`-only
+completion check. Other network outcomes remain fail-closed.
+
+The preceding exact-head run `32219446833` failed only with
+`windows-job-evidence-incomplete`: the composite network proof had succeeded,
+but the final completeness helper still required `network_outcome.denied()`.
+The one-line semantic split was covered by Rust tests and corrected in this
+head. Local focused validation is green: Rust 53/53, containment diagnostics
+10/10, format, lint (0 warnings / 0 errors), typecheck, docs (94 Markdown
+files), and `git diff --check`. This closes P8.2b only; overall P8.2 product
+journeys, P8.3 candidate integrity/signing, P8.4 clean-machine and
+real-provider acceptance, release, deployment, and user acceptance remain
+open.
+
 ### 2026-08-19 P8.2b Windows timeout selected; controlled denial repair local (gate remains open)
 
 Draft pull request
