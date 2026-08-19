@@ -83,6 +83,7 @@ export const GOOSE_CONTAINMENT_PROBE_DIAGNOSTIC_CODES = Object.freeze([
   "windows-filesystem-evidence-incomplete",
   "windows-job-evidence-incomplete",
   "windows-network-evidence-incomplete",
+  "windows-network-control-invalid",
   "windows-network-connected",
   "windows-network-timeout",
   "windows-network-unreachable",

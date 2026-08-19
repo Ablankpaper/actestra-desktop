@@ -4,6 +4,59 @@ Last updated: 2026-08-19
 
 ## Current phase
 
+### 2026-08-19 P8.2b Windows timeout selected; controlled denial repair local (gate remains open)
+
+Draft pull request
+[#68](https://github.com/Ablankpaper/actestra-desktop/pull/68) reached exact
+diagnostic head `2e661d3ac284f346b1084809516fb5dfc7aaa83c`. Pull-request run
+[`32217053851`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32217053851)
+completed five jobs successfully and failed only Windows containment job
+[`95960429255`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32217053851/job/95960429255).
+The exact Windows runner passed native-primitives compilation and execution,
+frozen-lock verification, build, and Artifact admission. Its manifest SHA-256
+was `84b7996de29e1fd2090d1a01aad51f5120ed75fc6a22a35e7c6582cd241ee374`,
+its executable SHA-256 was
+`1f882d46d88c13a11a54958681e03ceb757a8c1eac90cba0c8e954072e0c7f80`,
+and its executable size was 487,936 bytes. The containment run then selected
+the closed `windows-network-timeout` category; the success-only evidence upload
+was skipped.
+
+The result proves the capability-free AppContainer Worker could not establish
+the hostile loopback connection during the fixed two-second attempt, but a
+timeout alone is not sufficient evidence that the listener and host network
+path were healthy. The local repair therefore does not admit an unconditional
+timeout. Before launching the Worker, the supervisor connects to the same
+listener through its ordinary host token and drains that exact accepted
+connection. If this positive control fails, the probe exits nonzero as
+`windows-network-control-invalid`. After launch, a timeout is accepted only
+when the listener accepted no Worker connection. A successful Worker connect,
+missing control, refused/unreachable address, unavailable network stack,
+missing raw status, or any unclassified result remains nonzero and
+non-admitting.
+
+The composite rule was written RED to GREEN. Its test requires all three
+conditions independently: host control reachable, Worker timeout, and no
+server-side Worker connection. Portable Rust tests pass 53/53 and containment
+diagnostics pass 10/10 locally. The probe does not expose the listener address,
+port, raw WinSock value, error text, path, handle, environment value, or
+credential, and it does not grant an AppContainer network capability or widen
+production Worker authority.
+
+Two fresh complete `bun run check` attempts both passed format, lint,
+typecheck, the P8 contract, and Electron SQLite, then stopped in the broad
+parallel test phase on two different existing process-timing failures. The
+first read a shell-created but still empty Windows-control fixture; its
+isolated rerun passed 7 tests / 1 platform skip. The second timed out while
+cleaning a Team model probe group; its isolated rerun passed 94/94. Neither
+failure touches a changed file or reproduces in isolation, but neither failed
+complete run is reported as GREEN. The preceding exact diagnostic head passed
+all six CI jobs except the expected Windows containment discriminator, and the
+preceding local diagnostic commit completed `bun run check` at exit 0. A new
+exact-head Windows run must compile and execute the positive control, verify
+all six capabilities, and preserve the success-only evidence Artifact before
+P8.2b can close. Overall P8.2, P8.3, P8.4, candidate creation, release,
+deployment, and user acceptance remain open.
+
 ### 2026-08-19 P8.2b exact-head HANDLE proof passed; Windows network error split local (gate remains open)
 
 Draft pull request

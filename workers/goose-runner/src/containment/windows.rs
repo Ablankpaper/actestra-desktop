@@ -22,7 +22,7 @@ use std::sync::mpsc;
 #[cfg(windows)]
 use std::thread;
 #[cfg(windows)]
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 #[cfg(windows)]
 use super::windows_contract::{
@@ -146,6 +146,7 @@ enum WindowsProbeFailure {
     Filesystem,
     Job,
     Network,
+    NetworkControl,
     NetworkConnected,
     NetworkTimedOut,
     NetworkUnreachable,
@@ -195,6 +196,7 @@ impl WindowsProbeFailure {
             Self::Filesystem => "windows-filesystem-evidence-incomplete",
             Self::Job => "windows-job-evidence-incomplete",
             Self::Network => "windows-network-evidence-incomplete",
+            Self::NetworkControl => "windows-network-control-invalid",
             Self::NetworkConnected => "windows-network-connected",
             Self::NetworkTimedOut => "windows-network-timeout",
             Self::NetworkUnreachable => "windows-network-unreachable",
@@ -226,6 +228,70 @@ fn classify_windows_cleanup_failure(receipt: WindowsCleanupReceipt) -> Option<Wi
         return Some(WindowsProbeFailure::Cleanup);
     }
     None
+}
+
+#[cfg(any(windows, test))]
+fn classify_windows_network_evidence(
+    control_reachable: bool,
+    no_worker_connection: bool,
+    outcome: WindowsNetworkProbeOutcome,
+) -> Option<WindowsProbeFailure> {
+    if !control_reachable {
+        return Some(WindowsProbeFailure::NetworkControl);
+    }
+    if !no_worker_connection || outcome == WindowsNetworkProbeOutcome::Connected {
+        return Some(WindowsProbeFailure::NetworkConnected);
+    }
+    match outcome {
+        WindowsNetworkProbeOutcome::AccessDenied | WindowsNetworkProbeOutcome::TimedOut => None,
+        WindowsNetworkProbeOutcome::Unreachable => Some(WindowsProbeFailure::NetworkUnreachable),
+        WindowsNetworkProbeOutcome::Refused => Some(WindowsProbeFailure::NetworkRefused),
+        WindowsNetworkProbeOutcome::AddressUnavailable => {
+            Some(WindowsProbeFailure::NetworkAddressUnavailable)
+        }
+        WindowsNetworkProbeOutcome::InvalidArgument => {
+            Some(WindowsProbeFailure::NetworkInvalidArgument)
+        }
+        WindowsNetworkProbeOutcome::NetworkStackUnavailable => {
+            Some(WindowsProbeFailure::NetworkStackUnavailable)
+        }
+        WindowsNetworkProbeOutcome::PermissionDeniedWithoutCode => {
+            Some(WindowsProbeFailure::NetworkPermissionDeniedWithoutCode)
+        }
+        WindowsNetworkProbeOutcome::RawCodeAbsent => {
+            Some(WindowsProbeFailure::NetworkRawCodeAbsent)
+        }
+        WindowsNetworkProbeOutcome::NotAttempted | WindowsNetworkProbeOutcome::Unclassified => {
+            Some(WindowsProbeFailure::NetworkUnclassified)
+        }
+        WindowsNetworkProbeOutcome::Connected => {
+            unreachable!("handled before the closed failure match")
+        }
+    }
+}
+
+#[cfg(windows)]
+fn prove_windows_loopback_listener_reachable(listener: &TcpListener, address: &SocketAddr) -> bool {
+    let control = match TcpStream::connect_timeout(address, Duration::from_secs(1)) {
+        Ok(control) => control,
+        Err(_) => return false,
+    };
+    let deadline = Instant::now() + Duration::from_secs(1);
+    loop {
+        match listener.accept() {
+            Ok((accepted, _)) => {
+                drop(accepted);
+                drop(control);
+                return true;
+            }
+            Err(error)
+                if error.kind() == std::io::ErrorKind::WouldBlock && Instant::now() < deadline =>
+            {
+                thread::sleep(Duration::from_millis(5));
+            }
+            Err(_) => return false,
+        }
+    }
 }
 
 #[cfg(windows)]
@@ -718,6 +784,12 @@ fn collect_windows_hostile_evidence() -> Result<WindowsHostileEvidence, WindowsP
     listener
         .set_nonblocking(true)
         .map_err(|_| WindowsProbeFailure::WorkerLaunch)?;
+    let loopback_address = listener
+        .local_addr()
+        .map_err(|_| WindowsProbeFailure::NetworkControl)?;
+    if !prove_windows_loopback_listener_reachable(&listener, &loopback_address) {
+        return Err(WindowsProbeFailure::NetworkControl);
+    }
 
     let executable = env::current_exe().map_err(|_| WindowsProbeFailure::WorkerLaunch)?;
     let current_directory = executable
@@ -841,35 +913,10 @@ fn collect_windows_hostile_evidence() -> Result<WindowsHostileEvidence, WindowsP
     if !result.filesystem_attempted || !result.filesystem_denied || !outside_unchanged {
         return Err(WindowsProbeFailure::Filesystem);
     }
-    if !no_connection {
-        return Err(WindowsProbeFailure::NetworkConnected);
-    }
-    match result.network_outcome {
-        WindowsNetworkProbeOutcome::AccessDenied => {}
-        WindowsNetworkProbeOutcome::Connected => return Err(WindowsProbeFailure::NetworkConnected),
-        WindowsNetworkProbeOutcome::TimedOut => return Err(WindowsProbeFailure::NetworkTimedOut),
-        WindowsNetworkProbeOutcome::Unreachable => {
-            return Err(WindowsProbeFailure::NetworkUnreachable);
-        }
-        WindowsNetworkProbeOutcome::Refused => return Err(WindowsProbeFailure::NetworkRefused),
-        WindowsNetworkProbeOutcome::AddressUnavailable => {
-            return Err(WindowsProbeFailure::NetworkAddressUnavailable);
-        }
-        WindowsNetworkProbeOutcome::InvalidArgument => {
-            return Err(WindowsProbeFailure::NetworkInvalidArgument);
-        }
-        WindowsNetworkProbeOutcome::NetworkStackUnavailable => {
-            return Err(WindowsProbeFailure::NetworkStackUnavailable);
-        }
-        WindowsNetworkProbeOutcome::PermissionDeniedWithoutCode => {
-            return Err(WindowsProbeFailure::NetworkPermissionDeniedWithoutCode);
-        }
-        WindowsNetworkProbeOutcome::RawCodeAbsent => {
-            return Err(WindowsProbeFailure::NetworkRawCodeAbsent);
-        }
-        WindowsNetworkProbeOutcome::NotAttempted | WindowsNetworkProbeOutcome::Unclassified => {
-            return Err(WindowsProbeFailure::NetworkUnclassified);
-        }
+    if let Some(failure) =
+        classify_windows_network_evidence(true, no_connection, result.network_outcome)
+    {
+        return Err(failure);
     }
     if !result.process_attempted || !result.process_denied || !observation.single_active_process {
         return Err(WindowsProbeFailure::Process);
@@ -937,9 +984,10 @@ pub(crate) fn run_windows_containment_probe() -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_windows_cleanup_failure, classify_windows_network_outcome,
-        hostile_result_complete, is_closed_filesystem_denial, is_closed_process_denial,
-        WindowsNetworkProbeOutcome, WindowsProbeFailure, WindowsProbeResult,
+        classify_windows_cleanup_failure, classify_windows_network_evidence,
+        classify_windows_network_outcome, hostile_result_complete, is_closed_filesystem_denial,
+        is_closed_process_denial, WindowsNetworkProbeOutcome, WindowsProbeFailure,
+        WindowsProbeResult,
     };
     use crate::windows_supervisor::WindowsCleanupReceipt;
     use std::io::ErrorKind;
@@ -1023,6 +1071,30 @@ mod tests {
         assert!(hostile_result_complete(&result));
         result.process_attempted = false;
         assert!(!hostile_result_complete(&result));
+    }
+
+    #[test]
+    fn accepts_timeout_only_with_a_reachable_control_and_no_worker_connection() {
+        assert_eq!(
+            classify_windows_network_evidence(true, true, WindowsNetworkProbeOutcome::TimedOut,),
+            None,
+        );
+        assert_eq!(
+            classify_windows_network_evidence(false, true, WindowsNetworkProbeOutcome::TimedOut,),
+            Some(WindowsProbeFailure::NetworkControl),
+        );
+        assert_eq!(
+            classify_windows_network_evidence(true, false, WindowsNetworkProbeOutcome::TimedOut,),
+            Some(WindowsProbeFailure::NetworkConnected),
+        );
+        assert_eq!(
+            classify_windows_network_evidence(true, true, WindowsNetworkProbeOutcome::AccessDenied,),
+            None,
+        );
+        assert_eq!(
+            classify_windows_network_evidence(true, true, WindowsNetworkProbeOutcome::Unclassified,),
+            Some(WindowsProbeFailure::NetworkUnclassified),
+        );
     }
 
     #[test]
@@ -1129,6 +1201,10 @@ mod tests {
             (
                 WindowsProbeFailure::Network,
                 "windows-network-evidence-incomplete",
+            ),
+            (
+                WindowsProbeFailure::NetworkControl,
+                "windows-network-control-invalid",
             ),
             (
                 WindowsProbeFailure::NetworkConnected,

@@ -36,6 +36,7 @@ describe("Goose containment probe diagnostics", () => {
       "windows-filesystem-evidence-incomplete",
       "windows-job-evidence-incomplete",
       "windows-network-evidence-incomplete",
+      "windows-network-control-invalid",
       "windows-network-connected",
       "windows-network-timeout",
       "windows-network-unreachable",
