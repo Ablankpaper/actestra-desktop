@@ -103,9 +103,11 @@ git -C "$runtime_root" switch -c actestra/acp-runtime-adapter-v1 \
 ```
 
 Expected: `Ablankpaper/actestra-goose-runtime` is private, is not a GitHub Fork,
-has no Actions or automatic synchronization, and `main` equals the exact
-accepted upstream base. The new branch starts at that same commit. If the named
-branch already exists, stop and inspect it instead of force-pushing or silently
+has GitHub Actions disabled and no automatic synchronization, and `main` equals
+the exact accepted upstream base. The base retains its original upstream
+workflow and Dependabot configuration bytes, but they do not move an admitted
+runtime ref. The new branch starts at that same commit. If the named branch
+already exists, stop and inspect it instead of force-pushing or silently
 reusing it.
 
 - [ ] **Step 2: Write failing upstream tests for the seam**
@@ -430,8 +432,12 @@ reach a private-source build step and that the deploy key is never uploaded,
 echoed, or passed to the runner. They must also pin the expected GitHub ED25519
 host-key fingerprint
 `SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU`. The private runtime
-repository itself keeps GitHub Actions disabled and has no workflow, webhook,
-Dependabot, scheduled sync, or moving branch dependency.
+repository itself keeps GitHub Actions disabled and has no webhook, scheduled
+sync, moving branch dependency, automatic merge, or update bot with write
+authority over an admitted runtime ref. The exact upstream base does contain
+inherited workflow and Dependabot configuration files; tests and documentation
+must not falsely claim that those files are absent. External proposals cannot
+change the immutable runtime SHA admitted by Actestra.
 
 - [ ] **Step 6: Update provenance, Apache-2.0 notice, and rollback truth**
 

@@ -147,7 +147,11 @@ shim or an update channel.
   exact immutable runtime commit from the private repository. Do not import
   the Goose repository into the Actestra source tree.
 - Do not configure GitHub Fork ancestry, automatic synchronization, a moving
-  branch dependency, Dependabot updates, or any other upstream-update bot.
+  branch dependency, automatic merge, or any update bot with write authority
+  over an admitted runtime ref. The exact upstream base contains its original
+  workflow and Dependabot configuration files; repository Actions stay
+  disabled, and neither inherited definitions nor bot-created proposals may
+  advance Actestra's pinned runtime commit.
 - Give Actestra CI read-only access with a repository-scoped deploy key stored
   only as an Actions secret. The private runtime repository must not receive
   the Actestra repository's credentials, and pull requests from external forks
