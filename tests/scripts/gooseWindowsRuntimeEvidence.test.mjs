@@ -153,6 +153,7 @@ describe("Goose Windows runtime evidence", () => {
     if (!fs.existsSync(runnerPath)) return;
     const runner = fs.readFileSync(runnerPath, "utf8");
     expect(runner).toContain("goose:runner:admit-build");
+    expect(runner).toContain('["--silent", "run", "goose:runner:admit-build"]');
     expect(runner).toContain("ACTESTRA_GOOSE_CONTAINMENT_EVIDENCE_PATH");
     expect(runner).toContain("gooseRunnerWindowsNative.integration.ts");
     expect(runner).toContain("validateGooseWindowsRuntimeEvidence");

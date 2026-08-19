@@ -139,7 +139,7 @@ function currentHead() {
 }
 
 function admitExactArtifact(expectedManifestSha256) {
-  const result = runBounded("bun", ["run", "goose:runner:admit-build"]);
+  const result = runBounded("bun", ["--silent", "run", "goose:runner:admit-build"]);
   if (
     result.error !== undefined ||
     result.status !== 0 ||
