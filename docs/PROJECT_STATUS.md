@@ -4,7 +4,7 @@ Last updated: 2026-08-19
 
 ## Current phase
 
-### 2026-08-19 P8.2c Batch 1 private Goose runtime admission local; CI pending
+### 2026-08-19 P8.2c Batch 1 private Goose runtime admission accepted
 
 The P8.2c source boundary now pins the standalone private
 `Ablankpaper/actestra-goose-runtime` repository at immutable commit
@@ -43,7 +43,18 @@ was cancelled because its remaining results could not verify the corrected
 head. The local correction keeps key creation, frozen fetch, and trap-based
 deletion in one step, normalizes only the Windows temporary path with
 `cygpath`, and applies POSIX modes only on non-Windows runners. A new exact-head
-CI run is required.
+CI run was required.
+
+The corrected exact head `87e3d29268920ce2d4ba3f179a913a51cf7cbfb0`
+passes pull-request CI run
+[`32249942348`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32249942348)
+with all six jobs green: Windows and Ubuntu x64 Goose build probes, Windows and
+Ubuntu x64 Goose containment, macOS arm64 foundation, and Goose runner
+admission. Every job fetched and admitted the exact private runtime. The two
+Windows jobs crossed the prior NTFS setup failure, Windows containment passed
+against the exact artifact, and the admission job passed the real Goose ACP
+handshake and cleanup. This closes Batch 1 source, provenance, credential
+scope, and exact-head CI admission only.
 
 This is source/provenance admission only. No adapted Windows Goose session,
 authenticated model/capability bridge, Electron package, P8.2c exit, P8.3
