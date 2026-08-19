@@ -4,6 +4,41 @@ Last updated: 2026-08-19
 
 ## Current phase
 
+### 2026-08-19 P8.2b parent-side handle proof passed; network outcome discriminator local (gate remains open)
+
+Draft pull request #68 reached exact head
+`5c78dedd04daaed2e134da3bdd5fb5de24521baf`. Pull-request run
+[`32211250074`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32211250074)
+built and admitted the exact Windows runner. Windows build-probe job
+`95944224255`, Goose runner admission `95944224324`, Ubuntu build
+`95944224126`, and Ubuntu containment `95944224194` passed. Windows
+containment job
+[`95944224178`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32211250074/job/95944224178)
+passed build, frozen-lock, and artifact-admission steps, then failed the native
+acceptance with `windows-network-evidence-incomplete`; the success-only
+evidence upload was skipped. The exact Windows artifact had manifest SHA-256
+`7b26769dccc5d64b0d9683a640886ae29e8f1b4285c8378f14026d851ac5dc36`,
+executable SHA-256
+`269b44778b2ce36f5da7c69c05196ba55a4e4eb75d7d4408d83b6d33d53b612d`,
+and size 485,888 bytes.
+
+This result proves that the parent-side suspended `DuplicateHandle` check no
+longer terminates the child and did not classify the deliberately excluded
+handle as inherited or ambiguous. The Worker completed the request and reached
+the later hostile network evidence check. The network probe previously reduced
+every non-`WSAEACCES` result and a successful connection to one boolean, so the
+failure does not yet justify admitting another WinSock outcome as a denial.
+
+The local diagnostic follow-up keeps every outcome non-admitting and records
+only one closed category in the fixed internal result frame: access denied,
+connected, timed out, unreachable, refused, other, or not attempted. The
+public failure vocabulary maps these to bounded, path-free codes while only
+access denied remains accepted as containment proof. The focused Rust suite
+passes 52/52 and containment diagnostics pass 10/10 locally. A new exact-head
+Windows run is required to identify the actual network outcome. P8.2b,
+overall P8.2, P8.3, P8.4, candidate creation, release, deployment, and user
+acceptance remain open.
+
 ### 2026-08-19 P8.2b parent-side excluded-handle proof implemented (Windows CI pending)
 
 The `GetHandleInformation` route was removed after exact-head Windows run

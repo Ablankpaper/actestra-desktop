@@ -15,12 +15,59 @@ pub(crate) enum WindowsContainmentRole {
 pub(crate) struct WindowsProbeResult {
     pub(crate) filesystem_attempted: bool,
     pub(crate) filesystem_denied: bool,
-    pub(crate) network_attempted: bool,
-    pub(crate) network_denied: bool,
+    pub(crate) network_outcome: WindowsNetworkProbeOutcome,
     pub(crate) process_attempted: bool,
     pub(crate) process_denied: bool,
     pub(crate) environment_canary_absent: bool,
     pub(crate) excluded_handle_absent: bool,
+}
+
+#[cfg(any(windows, test))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum WindowsNetworkProbeOutcome {
+    NotAttempted,
+    AccessDenied,
+    Connected,
+    TimedOut,
+    Unreachable,
+    Refused,
+    Other,
+}
+
+#[cfg(any(windows, test))]
+impl WindowsNetworkProbeOutcome {
+    fn code(self) -> u8 {
+        match self {
+            Self::NotAttempted => 0,
+            Self::AccessDenied => 1,
+            Self::Connected => 2,
+            Self::TimedOut => 3,
+            Self::Unreachable => 4,
+            Self::Refused => 5,
+            Self::Other => 6,
+        }
+    }
+
+    fn from_code(value: u8) -> Result<Self, ()> {
+        match value {
+            0 => Ok(Self::NotAttempted),
+            1 => Ok(Self::AccessDenied),
+            2 => Ok(Self::Connected),
+            3 => Ok(Self::TimedOut),
+            4 => Ok(Self::Unreachable),
+            5 => Ok(Self::Refused),
+            6 => Ok(Self::Other),
+            _ => Err(()),
+        }
+    }
+
+    pub(crate) fn attempted(self) -> bool {
+        self != Self::NotAttempted
+    }
+
+    pub(crate) fn denied(self) -> bool {
+        self == Self::AccessDenied
+    }
 }
 
 #[cfg(any(windows, test))]
@@ -248,8 +295,8 @@ pub(crate) fn admit_probe_role(
 pub(crate) fn encode_result(result: WindowsProbeResult) -> [u8; WINDOWS_PROBE_RESULT_FRAME_LENGTH] {
     let flags = u8::from(result.filesystem_attempted)
         | (u8::from(result.filesystem_denied) << 1)
-        | (u8::from(result.network_attempted) << 2)
-        | (u8::from(result.network_denied) << 3)
+        | (u8::from(result.network_outcome.attempted()) << 2)
+        | (u8::from(result.network_outcome.denied()) << 3)
         | (u8::from(result.process_attempted) << 4)
         | (u8::from(result.process_denied) << 5)
         | (u8::from(result.environment_canary_absent) << 6)
@@ -261,7 +308,7 @@ pub(crate) fn encode_result(result: WindowsProbeResult) -> [u8; WINDOWS_PROBE_RE
         WINDOWS_PROBE_FRAME_MAGIC[3],
         WINDOWS_PROBE_FRAME_VERSION,
         flags,
-        0,
+        result.network_outcome.code(),
         0,
     ]
 }
@@ -270,16 +317,21 @@ pub(crate) fn decode_result(bytes: &[u8]) -> Result<WindowsProbeResult, ()> {
     if bytes.len() != WINDOWS_PROBE_RESULT_FRAME_LENGTH
         || bytes[..4] != WINDOWS_PROBE_FRAME_MAGIC
         || bytes[4] != WINDOWS_PROBE_FRAME_VERSION
-        || bytes[6..] != [0, 0]
+        || bytes[7] != 0
     {
         return Err(());
     }
     let flags = bytes[5];
+    let network_outcome = WindowsNetworkProbeOutcome::from_code(bytes[6])?;
+    if (flags & (1 << 2) != 0) != network_outcome.attempted()
+        || (flags & (1 << 3) != 0) != network_outcome.denied()
+    {
+        return Err(());
+    }
     Ok(WindowsProbeResult {
         filesystem_attempted: flags & (1 << 0) != 0,
         filesystem_denied: flags & (1 << 1) != 0,
-        network_attempted: flags & (1 << 2) != 0,
-        network_denied: flags & (1 << 3) != 0,
+        network_outcome,
         process_attempted: flags & (1 << 4) != 0,
         process_denied: flags & (1 << 5) != 0,
         environment_canary_absent: flags & (1 << 6) != 0,
@@ -305,9 +357,9 @@ mod tests {
         admit_probe_role, bounded_probe_metadata, decode_parent_death_ready,
         decode_parent_death_request, decode_request_frame, decode_result,
         encode_parent_death_ready, encode_parent_death_request, encode_request_frame,
-        encode_result, parse_role, WindowsContainmentRole, WindowsParentDeathReady,
-        WindowsProbeRequest, WindowsProbeResult, WINDOWS_PROBE_CHILD_ARGUMENT,
-        WINDOWS_PROBE_PARENT_ARGUMENT,
+        encode_result, parse_role, WindowsContainmentRole, WindowsNetworkProbeOutcome,
+        WindowsParentDeathReady, WindowsProbeRequest, WindowsProbeResult,
+        WINDOWS_PROBE_CHILD_ARGUMENT, WINDOWS_PROBE_PARENT_ARGUMENT,
     };
 
     fn argv(arguments: &[&str]) -> Vec<String> {
@@ -351,23 +403,44 @@ mod tests {
 
     #[test]
     fn encodes_and_decodes_one_exact_fixed_result_frame() {
+        for network_outcome in [
+            WindowsNetworkProbeOutcome::NotAttempted,
+            WindowsNetworkProbeOutcome::AccessDenied,
+            WindowsNetworkProbeOutcome::Connected,
+            WindowsNetworkProbeOutcome::TimedOut,
+            WindowsNetworkProbeOutcome::Unreachable,
+            WindowsNetworkProbeOutcome::Refused,
+            WindowsNetworkProbeOutcome::Other,
+        ] {
+            let result = WindowsProbeResult {
+                filesystem_attempted: true,
+                filesystem_denied: true,
+                network_outcome,
+                process_attempted: true,
+                process_denied: true,
+                environment_canary_absent: true,
+                excluded_handle_absent: true,
+            };
+            assert_eq!(decode_result(&encode_result(result)).unwrap(), result);
+        }
         let result = WindowsProbeResult {
             filesystem_attempted: true,
             filesystem_denied: true,
-            network_attempted: true,
-            network_denied: false,
+            network_outcome: WindowsNetworkProbeOutcome::Other,
             process_attempted: true,
             process_denied: true,
             environment_canary_absent: true,
             excluded_handle_absent: true,
         };
-        assert_eq!(decode_result(&encode_result(result)).unwrap(), result);
         assert!(decode_result(&[0; 8]).is_err());
         let mut encoded = encode_result(result).to_vec();
         encoded.push(0);
         assert!(decode_result(&encoded).is_err());
         encoded = encode_result(result).to_vec();
         encoded[7] = 1;
+        assert!(decode_result(&encoded).is_err());
+        encoded = encode_result(result).to_vec();
+        encoded[6] = u8::MAX;
         assert!(decode_result(&encoded).is_err());
     }
 

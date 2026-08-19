@@ -24,8 +24,6 @@ use std::thread;
 #[cfg(windows)]
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-#[cfg(any(windows, test))]
-use super::windows_contract::WindowsProbeResult;
 #[cfg(windows)]
 use super::windows_contract::{
     admit_probe_role, bounded_probe_metadata, decode_parent_death_ready,
@@ -34,6 +32,8 @@ use super::windows_contract::{
     WINDOWS_PARENT_DEATH_READY_LENGTH, WINDOWS_PARENT_DEATH_REQUEST_LENGTH,
     WINDOWS_PROBE_CHILD_ARGUMENT,
 };
+#[cfg(any(windows, test))]
+use super::windows_contract::{WindowsNetworkProbeOutcome, WindowsProbeResult};
 #[cfg(any(windows, test))]
 use crate::windows_supervisor::WindowsCleanupReceipt;
 #[cfg(windows)]
@@ -65,8 +65,14 @@ fn is_closed_filesystem_denial(kind: std::io::ErrorKind, raw_code: Option<i32>) 
 }
 
 #[cfg(any(windows, test))]
-fn is_closed_network_denial(raw_code: Option<i32>) -> bool {
-    raw_code == Some(10_013)
+fn classify_windows_network_outcome(raw_code: Option<i32>) -> WindowsNetworkProbeOutcome {
+    match raw_code {
+        Some(10_013) => WindowsNetworkProbeOutcome::AccessDenied,
+        Some(10_060) => WindowsNetworkProbeOutcome::TimedOut,
+        Some(10_051 | 10_065) => WindowsNetworkProbeOutcome::Unreachable,
+        Some(10_061) => WindowsNetworkProbeOutcome::Refused,
+        _ => WindowsNetworkProbeOutcome::Other,
+    }
 }
 
 #[cfg(any(windows, test))]
@@ -78,8 +84,8 @@ fn is_closed_process_denial(raw_code: Option<i32>) -> bool {
 fn hostile_result_complete(result: &WindowsProbeResult) -> bool {
     result.filesystem_attempted
         && result.filesystem_denied
-        && result.network_attempted
-        && result.network_denied
+        && result.network_outcome.attempted()
+        && result.network_outcome.denied()
         && result.process_attempted
         && result.process_denied
         && result.environment_canary_absent
@@ -116,6 +122,11 @@ enum WindowsProbeFailure {
     Filesystem,
     Job,
     Network,
+    NetworkConnected,
+    NetworkTimedOut,
+    NetworkUnreachable,
+    NetworkRefused,
+    NetworkOther,
     ParentDeath,
     ParentDeathFrame,
     Process,
@@ -155,6 +166,11 @@ impl WindowsProbeFailure {
             Self::Filesystem => "windows-filesystem-evidence-incomplete",
             Self::Job => "windows-job-evidence-incomplete",
             Self::Network => "windows-network-evidence-incomplete",
+            Self::NetworkConnected => "windows-network-connected",
+            Self::NetworkTimedOut => "windows-network-timeout",
+            Self::NetworkUnreachable => "windows-network-unreachable",
+            Self::NetworkRefused => "windows-network-refused",
+            Self::NetworkOther => "windows-network-other",
             Self::ParentDeath => "windows-parent-death-evidence-incomplete",
             Self::ParentDeathFrame => "windows-parent-death-frame-invalid",
             Self::Process => "windows-process-evidence-incomplete",
@@ -407,12 +423,12 @@ fn execute_windows_hostile_probe(
         Ipv4Addr::LOCALHOST,
         request.loopback_port(),
     ));
-    let network_denied = match TcpStream::connect_timeout(&address, Duration::from_secs(2)) {
+    let network_outcome = match TcpStream::connect_timeout(&address, Duration::from_secs(2)) {
         Ok(stream) => {
             drop(stream);
-            false
+            WindowsNetworkProbeOutcome::Connected
         }
-        Err(error) => is_closed_network_denial(error.raw_os_error()),
+        Err(error) => classify_windows_network_outcome(error.raw_os_error()),
     };
     if !mark_stage(WindowsProbeChildStage::NetworkComplete) {
         return Err(());
@@ -440,8 +456,7 @@ fn execute_windows_hostile_probe(
     Ok(WindowsProbeResult {
         filesystem_attempted: true,
         filesystem_denied: read_denied && write_denied,
-        network_attempted: true,
-        network_denied,
+        network_outcome,
         process_attempted: true,
         process_denied,
         environment_canary_absent: env::var_os("ACTESTRA_ENVIRONMENT_CANARY").is_none(),
@@ -454,8 +469,7 @@ fn incomplete_hostile_result(excluded_handle_absent: bool) -> WindowsProbeResult
     WindowsProbeResult {
         filesystem_attempted: false,
         filesystem_denied: false,
-        network_attempted: false,
-        network_denied: false,
+        network_outcome: WindowsNetworkProbeOutcome::NotAttempted,
         process_attempted: false,
         process_denied: false,
         environment_canary_absent: env::var_os("ACTESTRA_ENVIRONMENT_CANARY").is_none(),
@@ -791,8 +805,19 @@ fn collect_windows_hostile_evidence() -> Result<WindowsHostileEvidence, WindowsP
     if !result.filesystem_attempted || !result.filesystem_denied || !outside_unchanged {
         return Err(WindowsProbeFailure::Filesystem);
     }
-    if !result.network_attempted || !result.network_denied || !no_connection {
-        return Err(WindowsProbeFailure::Network);
+    if !no_connection || result.network_outcome == WindowsNetworkProbeOutcome::Connected {
+        return Err(WindowsProbeFailure::NetworkConnected);
+    }
+    match result.network_outcome {
+        WindowsNetworkProbeOutcome::AccessDenied => {}
+        WindowsNetworkProbeOutcome::TimedOut => return Err(WindowsProbeFailure::NetworkTimedOut),
+        WindowsNetworkProbeOutcome::Unreachable => {
+            return Err(WindowsProbeFailure::NetworkUnreachable);
+        }
+        WindowsNetworkProbeOutcome::Refused => return Err(WindowsProbeFailure::NetworkRefused),
+        WindowsNetworkProbeOutcome::NotAttempted | WindowsNetworkProbeOutcome::Other => {
+            return Err(WindowsProbeFailure::NetworkOther);
+        }
     }
     if !result.process_attempted || !result.process_denied || !observation.single_active_process {
         return Err(WindowsProbeFailure::Process);
@@ -860,9 +885,9 @@ pub(crate) fn run_windows_containment_probe() -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_windows_cleanup_failure, hostile_result_complete, is_closed_filesystem_denial,
-        is_closed_network_denial, is_closed_process_denial, WindowsProbeFailure,
-        WindowsProbeResult,
+        classify_windows_cleanup_failure, classify_windows_network_outcome,
+        hostile_result_complete, is_closed_filesystem_denial, is_closed_process_denial,
+        WindowsNetworkProbeOutcome, WindowsProbeFailure, WindowsProbeResult,
     };
     use crate::windows_supervisor::WindowsCleanupReceipt;
     use std::io::ErrorKind;
@@ -875,8 +900,30 @@ mod tests {
         ));
         assert!(is_closed_filesystem_denial(ErrorKind::Other, Some(5)));
         assert!(!is_closed_filesystem_denial(ErrorKind::NotFound, Some(2)));
-        assert!(is_closed_network_denial(Some(10_013)));
-        assert!(!is_closed_network_denial(Some(10_061)));
+        assert_eq!(
+            classify_windows_network_outcome(Some(10_013)),
+            WindowsNetworkProbeOutcome::AccessDenied,
+        );
+        assert_eq!(
+            classify_windows_network_outcome(Some(10_060)),
+            WindowsNetworkProbeOutcome::TimedOut,
+        );
+        assert_eq!(
+            classify_windows_network_outcome(Some(10_051)),
+            WindowsNetworkProbeOutcome::Unreachable,
+        );
+        assert_eq!(
+            classify_windows_network_outcome(Some(10_065)),
+            WindowsNetworkProbeOutcome::Unreachable,
+        );
+        assert_eq!(
+            classify_windows_network_outcome(Some(10_061)),
+            WindowsNetworkProbeOutcome::Refused,
+        );
+        assert_eq!(
+            classify_windows_network_outcome(Some(5)),
+            WindowsNetworkProbeOutcome::Other,
+        );
         assert!(is_closed_process_denial(Some(5)));
         assert!(is_closed_process_denial(Some(1_816)));
         assert!(!is_closed_process_denial(Some(2)));
@@ -887,8 +934,7 @@ mod tests {
         let mut result = WindowsProbeResult {
             filesystem_attempted: true,
             filesystem_denied: true,
-            network_attempted: true,
-            network_denied: true,
+            network_outcome: WindowsNetworkProbeOutcome::AccessDenied,
             process_attempted: true,
             process_denied: true,
             environment_canary_absent: true,
@@ -1004,6 +1050,23 @@ mod tests {
                 WindowsProbeFailure::Network,
                 "windows-network-evidence-incomplete",
             ),
+            (
+                WindowsProbeFailure::NetworkConnected,
+                "windows-network-connected",
+            ),
+            (
+                WindowsProbeFailure::NetworkTimedOut,
+                "windows-network-timeout",
+            ),
+            (
+                WindowsProbeFailure::NetworkUnreachable,
+                "windows-network-unreachable",
+            ),
+            (
+                WindowsProbeFailure::NetworkRefused,
+                "windows-network-refused",
+            ),
+            (WindowsProbeFailure::NetworkOther, "windows-network-other"),
             (
                 WindowsProbeFailure::ParentDeath,
                 "windows-parent-death-evidence-incomplete",
