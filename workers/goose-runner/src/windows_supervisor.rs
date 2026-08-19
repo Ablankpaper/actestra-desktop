@@ -23,8 +23,8 @@ use std::path::Path;
 use std::ptr::{null, null_mut};
 #[cfg(windows)]
 use windows_sys::Win32::Foundation::{
-    CloseHandle, GetLastError, SetHandleInformation, ERROR_BROKEN_PIPE, ERROR_INVALID_HANDLE,
-    HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
+    CloseHandle, GetHandleInformation, GetLastError, SetHandleInformation, ERROR_BROKEN_PIPE,
+    HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 #[cfg(windows)]
 use windows_sys::Win32::Security::Isolation::{
@@ -98,6 +98,8 @@ const WINDOWS_WORKER_MODE_ARGUMENT: &str = "--actestra-windows-worker-v1";
 const WINDOWS_WORKER_PROGRAM_NAME: &str = "actestra-goose-runner.exe";
 #[cfg(any(windows, test))]
 const WINDOWS_DIRECTORY_MAX_U16: usize = 32_767;
+#[cfg(any(windows, test))]
+const WINDOWS_ERROR_INVALID_HANDLE_CODE: u32 = 6;
 #[cfg(any(windows, test))]
 pub(crate) const WINDOWS_PROBE_CHILD_REQUEST_FAILURE_EXIT_CODE: i32 = 81;
 #[cfg(any(windows, test))]
@@ -1804,10 +1806,26 @@ fn excluded_probe_handle_is_absent(encoded_handle: u64) -> bool {
     if handle.is_null() || handle == INVALID_HANDLE_VALUE {
         return false;
     }
-    // SAFETY: the numeric value is sent only by the parent that owns the deliberately excluded
-    // inheritable handle. A non-inherited value must fail as an invalid handle in this process.
-    let wait = unsafe { WaitForSingleObject(handle, 0) };
-    wait == WAIT_FAILED && unsafe { GetLastError() } == ERROR_INVALID_HANDLE
+    let mut flags = 0_u32;
+    // SAFETY: GetHandleInformation performs a read-only query. The numeric value is sent only by
+    // the parent that owns the deliberately excluded inheritable handle; an absent value is
+    // reported as ERROR_INVALID_HANDLE rather than being waited on or otherwise operated upon.
+    let query_succeeded = unsafe { GetHandleInformation(handle, &mut flags) } != 0;
+    let last_error = if query_succeeded {
+        0
+    } else {
+        // SAFETY: this immediately captures the error from the failed GetHandleInformation call.
+        unsafe { GetLastError() }
+    };
+    excluded_probe_handle_absence_from_information_query(query_succeeded, last_error)
+}
+
+#[cfg(any(windows, test))]
+fn excluded_probe_handle_absence_from_information_query(
+    query_succeeded: bool,
+    last_error: u32,
+) -> bool {
+    !query_succeeded && last_error == WINDOWS_ERROR_INVALID_HANDLE_CODE
 }
 
 #[cfg(windows)]
@@ -2434,6 +2452,20 @@ mod tests {
                 WindowsProbeExchangeFailure::WorkerUnexpectedExit
             );
         }
+    }
+
+    #[test]
+    fn proves_excluded_handle_absence_only_from_an_invalid_information_query() {
+        assert!(excluded_probe_handle_absence_from_information_query(
+            false,
+            WINDOWS_ERROR_INVALID_HANDLE_CODE,
+        ));
+        assert!(!excluded_probe_handle_absence_from_information_query(
+            true, 0,
+        ));
+        assert!(!excluded_probe_handle_absence_from_information_query(
+            false, 5,
+        ));
     }
 }
 

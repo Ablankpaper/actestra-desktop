@@ -4,6 +4,44 @@ Last updated: 2026-08-19
 
 ## Current phase
 
+### 2026-08-19 P8.2b Windows excluded-handle probe isolated and local repair (gate remains open)
+
+Draft pull request
+[#68](https://github.com/Ablankpaper/actestra-desktop/pull/68) reached exact
+head `f1839412f73c4279f715cbbc915e404849e75549`. Pull-request run
+[`32205798445`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32205798445)
+built and admitted the exact Windows runner, preserved the frozen lock, and
+failed Windows containment job
+[`95928734916`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32205798445/job/95928734916)
+with `windows-child-excluded-handle-stage-invalid`. The ordered child
+transcript proves that the AppContainer probe obtained standard input, read
+the bounded request length and frame, decoded the request, and then terminated
+inside the deliberately excluded-handle check. Build, Artifact admission,
+AppContainer entry, and the request transport are therefore not the immediate
+failure boundary.
+
+The excluded-handle probe previously passed the deliberately non-inherited raw
+handle value to `WaitForSingleObject`. The local repair instead uses the
+read-only `GetHandleInformation` query and accepts absence only when that query
+fails with the closed Win32 `ERROR_INVALID_HANDLE` value. A successful query or
+any other error remains fail closed. No AppContainer capability, Job Object
+limit, inherited-handle allowlist, environment cleaning, evidence-upload rule,
+or runtime authority is widened.
+
+The correction was written test-first: the focused test failed before the
+implementation and now passes. All 52 portable runner tests, the containment
+diagnostic suite (10/10), Rust formatting, documentation-link validation, and
+`git diff --check` pass locally. The complete `bun run check` gate also exits 0
+with 164 test files passed / 2 skipped and 1,761 tests passed / 10 skipped,
+followed by the P7 abuse, smoke-harness, product-boundary, frozen-foundation,
+downstream, and package gates. A minimal `windows-sys` 0.61.2 probe compiles
+for `x86_64-pc-windows-msvc`; the macOS host still lacks the Windows C/assembly
+toolchain needed to cross-compile the full Goose dependency graph. A new
+exact-head Windows run must therefore compile and execute this Windows-only
+branch, produce a verified six-capability containment record, and preserve its
+success-only evidence Artifact before P8.2b can close. Overall P8.2, P8.3,
+P8.4, candidate creation, release, deployment, and user acceptance remain open.
+
 ### 2026-08-19 P8.2b Windows child request stage isolated (substage verification pending)
 
 Draft pull request
