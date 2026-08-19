@@ -31,7 +31,12 @@ pub(crate) enum WindowsNetworkProbeOutcome {
     TimedOut,
     Unreachable,
     Refused,
-    Other,
+    AddressUnavailable,
+    InvalidArgument,
+    NetworkStackUnavailable,
+    PermissionDeniedWithoutCode,
+    RawCodeAbsent,
+    Unclassified,
 }
 
 #[cfg(any(windows, test))]
@@ -44,7 +49,12 @@ impl WindowsNetworkProbeOutcome {
             Self::TimedOut => 3,
             Self::Unreachable => 4,
             Self::Refused => 5,
-            Self::Other => 6,
+            Self::Unclassified => 6,
+            Self::AddressUnavailable => 7,
+            Self::InvalidArgument => 8,
+            Self::NetworkStackUnavailable => 9,
+            Self::PermissionDeniedWithoutCode => 10,
+            Self::RawCodeAbsent => 11,
         }
     }
 
@@ -56,7 +66,12 @@ impl WindowsNetworkProbeOutcome {
             3 => Ok(Self::TimedOut),
             4 => Ok(Self::Unreachable),
             5 => Ok(Self::Refused),
-            6 => Ok(Self::Other),
+            6 => Ok(Self::Unclassified),
+            7 => Ok(Self::AddressUnavailable),
+            8 => Ok(Self::InvalidArgument),
+            9 => Ok(Self::NetworkStackUnavailable),
+            10 => Ok(Self::PermissionDeniedWithoutCode),
+            11 => Ok(Self::RawCodeAbsent),
             _ => Err(()),
         }
     }
@@ -410,7 +425,12 @@ mod tests {
             WindowsNetworkProbeOutcome::TimedOut,
             WindowsNetworkProbeOutcome::Unreachable,
             WindowsNetworkProbeOutcome::Refused,
-            WindowsNetworkProbeOutcome::Other,
+            WindowsNetworkProbeOutcome::AddressUnavailable,
+            WindowsNetworkProbeOutcome::InvalidArgument,
+            WindowsNetworkProbeOutcome::NetworkStackUnavailable,
+            WindowsNetworkProbeOutcome::PermissionDeniedWithoutCode,
+            WindowsNetworkProbeOutcome::RawCodeAbsent,
+            WindowsNetworkProbeOutcome::Unclassified,
         ] {
             let result = WindowsProbeResult {
                 filesystem_attempted: true,
@@ -426,7 +446,7 @@ mod tests {
         let result = WindowsProbeResult {
             filesystem_attempted: true,
             filesystem_denied: true,
-            network_outcome: WindowsNetworkProbeOutcome::Other,
+            network_outcome: WindowsNetworkProbeOutcome::Unclassified,
             process_attempted: true,
             process_denied: true,
             environment_canary_absent: true,

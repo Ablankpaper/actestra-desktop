@@ -4,6 +4,48 @@ Last updated: 2026-08-19
 
 ## Current phase
 
+### 2026-08-19 P8.2b exact-head HANDLE proof passed; Windows network error split local (gate remains open)
+
+Draft pull request
+[#68](https://github.com/Ablankpaper/actestra-desktop/pull/68) reached exact
+head `0ee4bf1c40d0a7a6b43789fdf3b54990ac3d1c11`. Pull-request run
+[`32215185835`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32215185835)
+completed five jobs successfully and failed only Windows containment job
+[`95955252370`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32215185835/job/95955252370).
+The exact Windows runner passed native-primitives compilation and execution,
+frozen-lock verification, build, and Artifact admission. Its manifest SHA-256
+was `be1a68fa48bee8d05f36984651c40e8b21b28f199a89ed7c3a83714214b691fd`,
+its executable SHA-256 was
+`b5de68c6184a82fcd3e3ec4791fcdf3fc988dda2a56d32242ea113d1bb05d78f`,
+and its executable size was 486,400 bytes. The containment run then failed
+closed at `windows-network-other`; the success-only evidence upload was
+skipped.
+
+This result verifies the parent-side `DuplicateHandle` plus
+`CompareObjectHandles` proof on Windows 2025. The deliberately excluded object
+was not inherited or ambiguous, the Worker reached the hostile network probe,
+and no handle-value collision was misclassified. It does not prove network
+containment: the preceding diagnostic grouped every remaining raw WinSock
+value and every missing raw value into `other`, so the result cannot justify
+admitting a new network denial category.
+
+The local follow-up is diagnostic only and was written RED to GREEN. It splits
+the previous `other` bucket into address unavailable, invalid argument,
+network-stack unavailable, permission denied without a raw code, raw code
+absent, and unclassified. It uses only `std::io::ErrorKind` and a closed set of
+WinSock values; no raw value, error text, path, address, port, handle,
+environment value, or credential enters the result frame or public
+diagnostic. `WSAEACCES` remains the only accepted network-containment result.
+Every new category remains nonzero and non-admitting. Focused portable Rust
+tests pass 52/52 and containment diagnostics pass 10/10 locally. A new
+complete `bun run check` exits 0 with 164 test files passed / 2 skipped and
+1,761 tests passed / 10 skipped, followed by the P7 abuse, smoke-harness,
+product-boundary, frozen-foundation, downstream, and package gates. A new
+exact-head Windows run is required to select the actual category before a
+behavioral repair or an acceptance change is justified. P8.2b, overall P8.2,
+P8.3, P8.4, candidate creation, release, deployment, and user acceptance
+remain open.
+
 ### 2026-08-19 P8.2b parent-side handle proof passed; network outcome discriminator local (gate remains open)
 
 Draft pull request #68 reached exact head

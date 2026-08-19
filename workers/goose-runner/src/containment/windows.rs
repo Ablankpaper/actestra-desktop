@@ -65,13 +65,37 @@ fn is_closed_filesystem_denial(kind: std::io::ErrorKind, raw_code: Option<i32>) 
 }
 
 #[cfg(any(windows, test))]
-fn classify_windows_network_outcome(raw_code: Option<i32>) -> WindowsNetworkProbeOutcome {
+fn classify_windows_network_outcome(
+    kind: std::io::ErrorKind,
+    raw_code: Option<i32>,
+) -> WindowsNetworkProbeOutcome {
     match raw_code {
         Some(10_013) => WindowsNetworkProbeOutcome::AccessDenied,
         Some(10_060) => WindowsNetworkProbeOutcome::TimedOut,
         Some(10_051 | 10_065) => WindowsNetworkProbeOutcome::Unreachable,
         Some(10_061) => WindowsNetworkProbeOutcome::Refused,
-        _ => WindowsNetworkProbeOutcome::Other,
+        Some(10_049) => WindowsNetworkProbeOutcome::AddressUnavailable,
+        Some(10_022) => WindowsNetworkProbeOutcome::InvalidArgument,
+        Some(10_043 | 10_044 | 10_045 | 10_046 | 10_047 | 10_050 | 10_091 | 10_092 | 10_093) => {
+            WindowsNetworkProbeOutcome::NetworkStackUnavailable
+        }
+        Some(_) => WindowsNetworkProbeOutcome::Unclassified,
+        None => match kind {
+            std::io::ErrorKind::PermissionDenied => {
+                WindowsNetworkProbeOutcome::PermissionDeniedWithoutCode
+            }
+            std::io::ErrorKind::TimedOut => WindowsNetworkProbeOutcome::TimedOut,
+            std::io::ErrorKind::NetworkUnreachable | std::io::ErrorKind::HostUnreachable => {
+                WindowsNetworkProbeOutcome::Unreachable
+            }
+            std::io::ErrorKind::ConnectionRefused => WindowsNetworkProbeOutcome::Refused,
+            std::io::ErrorKind::AddrNotAvailable => WindowsNetworkProbeOutcome::AddressUnavailable,
+            std::io::ErrorKind::InvalidInput => WindowsNetworkProbeOutcome::InvalidArgument,
+            std::io::ErrorKind::NetworkDown | std::io::ErrorKind::Unsupported => {
+                WindowsNetworkProbeOutcome::NetworkStackUnavailable
+            }
+            _ => WindowsNetworkProbeOutcome::RawCodeAbsent,
+        },
     }
 }
 
@@ -126,7 +150,12 @@ enum WindowsProbeFailure {
     NetworkTimedOut,
     NetworkUnreachable,
     NetworkRefused,
-    NetworkOther,
+    NetworkAddressUnavailable,
+    NetworkInvalidArgument,
+    NetworkStackUnavailable,
+    NetworkPermissionDeniedWithoutCode,
+    NetworkRawCodeAbsent,
+    NetworkUnclassified,
     ParentDeath,
     ParentDeathFrame,
     Process,
@@ -170,7 +199,14 @@ impl WindowsProbeFailure {
             Self::NetworkTimedOut => "windows-network-timeout",
             Self::NetworkUnreachable => "windows-network-unreachable",
             Self::NetworkRefused => "windows-network-refused",
-            Self::NetworkOther => "windows-network-other",
+            Self::NetworkAddressUnavailable => "windows-network-address-unavailable",
+            Self::NetworkInvalidArgument => "windows-network-invalid-argument",
+            Self::NetworkStackUnavailable => "windows-network-stack-unavailable",
+            Self::NetworkPermissionDeniedWithoutCode => {
+                "windows-network-permission-denied-without-code"
+            }
+            Self::NetworkRawCodeAbsent => "windows-network-raw-code-absent",
+            Self::NetworkUnclassified => "windows-network-unclassified",
             Self::ParentDeath => "windows-parent-death-evidence-incomplete",
             Self::ParentDeathFrame => "windows-parent-death-frame-invalid",
             Self::Process => "windows-process-evidence-incomplete",
@@ -428,7 +464,7 @@ fn execute_windows_hostile_probe(
             drop(stream);
             WindowsNetworkProbeOutcome::Connected
         }
-        Err(error) => classify_windows_network_outcome(error.raw_os_error()),
+        Err(error) => classify_windows_network_outcome(error.kind(), error.raw_os_error()),
     };
     if !mark_stage(WindowsProbeChildStage::NetworkComplete) {
         return Err(());
@@ -816,8 +852,23 @@ fn collect_windows_hostile_evidence() -> Result<WindowsHostileEvidence, WindowsP
             return Err(WindowsProbeFailure::NetworkUnreachable);
         }
         WindowsNetworkProbeOutcome::Refused => return Err(WindowsProbeFailure::NetworkRefused),
-        WindowsNetworkProbeOutcome::NotAttempted | WindowsNetworkProbeOutcome::Other => {
-            return Err(WindowsProbeFailure::NetworkOther);
+        WindowsNetworkProbeOutcome::AddressUnavailable => {
+            return Err(WindowsProbeFailure::NetworkAddressUnavailable);
+        }
+        WindowsNetworkProbeOutcome::InvalidArgument => {
+            return Err(WindowsProbeFailure::NetworkInvalidArgument);
+        }
+        WindowsNetworkProbeOutcome::NetworkStackUnavailable => {
+            return Err(WindowsProbeFailure::NetworkStackUnavailable);
+        }
+        WindowsNetworkProbeOutcome::PermissionDeniedWithoutCode => {
+            return Err(WindowsProbeFailure::NetworkPermissionDeniedWithoutCode);
+        }
+        WindowsNetworkProbeOutcome::RawCodeAbsent => {
+            return Err(WindowsProbeFailure::NetworkRawCodeAbsent);
+        }
+        WindowsNetworkProbeOutcome::NotAttempted | WindowsNetworkProbeOutcome::Unclassified => {
+            return Err(WindowsProbeFailure::NetworkUnclassified);
         }
     }
     if !result.process_attempted || !result.process_denied || !observation.single_active_process {
@@ -902,28 +953,56 @@ mod tests {
         assert!(is_closed_filesystem_denial(ErrorKind::Other, Some(5)));
         assert!(!is_closed_filesystem_denial(ErrorKind::NotFound, Some(2)));
         assert_eq!(
-            classify_windows_network_outcome(Some(10_013)),
+            classify_windows_network_outcome(ErrorKind::PermissionDenied, Some(10_013)),
             WindowsNetworkProbeOutcome::AccessDenied,
         );
         assert_eq!(
-            classify_windows_network_outcome(Some(10_060)),
+            classify_windows_network_outcome(ErrorKind::TimedOut, Some(10_060)),
             WindowsNetworkProbeOutcome::TimedOut,
         );
         assert_eq!(
-            classify_windows_network_outcome(Some(10_051)),
+            classify_windows_network_outcome(ErrorKind::NetworkUnreachable, Some(10_051)),
             WindowsNetworkProbeOutcome::Unreachable,
         );
         assert_eq!(
-            classify_windows_network_outcome(Some(10_065)),
+            classify_windows_network_outcome(ErrorKind::HostUnreachable, Some(10_065)),
             WindowsNetworkProbeOutcome::Unreachable,
         );
         assert_eq!(
-            classify_windows_network_outcome(Some(10_061)),
+            classify_windows_network_outcome(ErrorKind::ConnectionRefused, Some(10_061)),
             WindowsNetworkProbeOutcome::Refused,
         );
         assert_eq!(
-            classify_windows_network_outcome(Some(5)),
-            WindowsNetworkProbeOutcome::Other,
+            classify_windows_network_outcome(ErrorKind::AddrNotAvailable, Some(10_049)),
+            WindowsNetworkProbeOutcome::AddressUnavailable,
+        );
+        assert_eq!(
+            classify_windows_network_outcome(ErrorKind::InvalidInput, Some(10_022)),
+            WindowsNetworkProbeOutcome::InvalidArgument,
+        );
+        for raw_code in [
+            10_043, 10_044, 10_045, 10_046, 10_047, 10_050, 10_091, 10_092, 10_093,
+        ] {
+            assert_eq!(
+                classify_windows_network_outcome(ErrorKind::Other, Some(raw_code)),
+                WindowsNetworkProbeOutcome::NetworkStackUnavailable,
+            );
+        }
+        assert_eq!(
+            classify_windows_network_outcome(ErrorKind::PermissionDenied, None),
+            WindowsNetworkProbeOutcome::PermissionDeniedWithoutCode,
+        );
+        assert_eq!(
+            classify_windows_network_outcome(ErrorKind::TimedOut, None),
+            WindowsNetworkProbeOutcome::TimedOut,
+        );
+        assert_eq!(
+            classify_windows_network_outcome(ErrorKind::Other, None),
+            WindowsNetworkProbeOutcome::RawCodeAbsent,
+        );
+        assert_eq!(
+            classify_windows_network_outcome(ErrorKind::Other, Some(5)),
+            WindowsNetworkProbeOutcome::Unclassified,
         );
         assert!(is_closed_process_denial(Some(5)));
         assert!(is_closed_process_denial(Some(1_816)));
@@ -1067,7 +1146,30 @@ mod tests {
                 WindowsProbeFailure::NetworkRefused,
                 "windows-network-refused",
             ),
-            (WindowsProbeFailure::NetworkOther, "windows-network-other"),
+            (
+                WindowsProbeFailure::NetworkAddressUnavailable,
+                "windows-network-address-unavailable",
+            ),
+            (
+                WindowsProbeFailure::NetworkInvalidArgument,
+                "windows-network-invalid-argument",
+            ),
+            (
+                WindowsProbeFailure::NetworkStackUnavailable,
+                "windows-network-stack-unavailable",
+            ),
+            (
+                WindowsProbeFailure::NetworkPermissionDeniedWithoutCode,
+                "windows-network-permission-denied-without-code",
+            ),
+            (
+                WindowsProbeFailure::NetworkRawCodeAbsent,
+                "windows-network-raw-code-absent",
+            ),
+            (
+                WindowsProbeFailure::NetworkUnclassified,
+                "windows-network-unclassified",
+            ),
             (
                 WindowsProbeFailure::ParentDeath,
                 "windows-parent-death-evidence-incomplete",
