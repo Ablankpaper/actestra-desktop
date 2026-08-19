@@ -105,11 +105,14 @@ fn is_closed_process_denial(raw_code: Option<i32>) -> bool {
 }
 
 #[cfg(any(windows, test))]
-fn hostile_result_complete(result: &WindowsProbeResult) -> bool {
+fn hostile_result_complete_after_network_verification(
+    result: &WindowsProbeResult,
+    network_verified: bool,
+) -> bool {
     result.filesystem_attempted
         && result.filesystem_denied
         && result.network_outcome.attempted()
-        && result.network_outcome.denied()
+        && network_verified
         && result.process_attempted
         && result.process_denied
         && result.environment_canary_absent
@@ -921,7 +924,7 @@ fn collect_windows_hostile_evidence() -> Result<WindowsHostileEvidence, WindowsP
     if !result.process_attempted || !result.process_denied || !observation.single_active_process {
         return Err(WindowsProbeFailure::Process);
     }
-    if !hostile_result_complete(&result) {
+    if !hostile_result_complete_after_network_verification(&result, true) {
         return Err(WindowsProbeFailure::Job);
     }
 
@@ -985,9 +988,9 @@ pub(crate) fn run_windows_containment_probe() -> String {
 mod tests {
     use super::{
         classify_windows_cleanup_failure, classify_windows_network_evidence,
-        classify_windows_network_outcome, hostile_result_complete, is_closed_filesystem_denial,
-        is_closed_process_denial, WindowsNetworkProbeOutcome, WindowsProbeFailure,
-        WindowsProbeResult,
+        classify_windows_network_outcome, hostile_result_complete_after_network_verification,
+        is_closed_filesystem_denial, is_closed_process_denial, WindowsNetworkProbeOutcome,
+        WindowsProbeFailure, WindowsProbeResult,
     };
     use crate::windows_supervisor::WindowsCleanupReceipt;
     use std::io::ErrorKind;
@@ -1068,9 +1071,13 @@ mod tests {
             environment_canary_absent: true,
             excluded_handle_absent: true,
         };
-        assert!(hostile_result_complete(&result));
+        assert!(hostile_result_complete_after_network_verification(
+            &result, true,
+        ));
         result.process_attempted = false;
-        assert!(!hostile_result_complete(&result));
+        assert!(!hostile_result_complete_after_network_verification(
+            &result, true,
+        ));
     }
 
     #[test]
@@ -1095,6 +1102,22 @@ mod tests {
             classify_windows_network_evidence(true, true, WindowsNetworkProbeOutcome::Unclassified,),
             Some(WindowsProbeFailure::NetworkUnclassified),
         );
+
+        let timed_out = WindowsProbeResult {
+            filesystem_attempted: true,
+            filesystem_denied: true,
+            network_outcome: WindowsNetworkProbeOutcome::TimedOut,
+            process_attempted: true,
+            process_denied: true,
+            environment_canary_absent: true,
+            excluded_handle_absent: true,
+        };
+        assert!(hostile_result_complete_after_network_verification(
+            &timed_out, true,
+        ));
+        assert!(!hostile_result_complete_after_network_verification(
+            &timed_out, false,
+        ));
     }
 
     #[test]
