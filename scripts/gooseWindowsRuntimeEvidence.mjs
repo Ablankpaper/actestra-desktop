@@ -4,6 +4,16 @@ const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
 const MAX_ARTIFACT_ADMISSION_OUTPUT_BYTES = 64 * 1024;
 const FAILURE_STAGE_CODES = Object.freeze({
   "artifact-admission": "windows-runtime-artifact-admission-failed",
+  "artifact-admission-missing-artifact": "windows-runtime-artifact-admission-missing-artifact",
+  "artifact-admission-invalid-manifest": "windows-runtime-artifact-admission-invalid-manifest",
+  "artifact-admission-incompatible-artifact":
+    "windows-runtime-artifact-admission-incompatible-artifact",
+  "artifact-admission-digest-mismatch": "windows-runtime-artifact-admission-digest-mismatch",
+  "artifact-admission-invalid-sbom": "windows-runtime-artifact-admission-invalid-sbom",
+  "artifact-admission-unsafe-audit": "windows-runtime-artifact-admission-unsafe-audit",
+  "artifact-admission-unexpected": "windows-runtime-artifact-admission-rejected",
+  "artifact-binding-incomplete": "windows-runtime-artifact-binding-invalid",
+  "fixture-setup": "windows-runtime-fixture-setup-failed",
   "composition-open": "windows-runtime-composition-open-failed",
   "read-tool": "windows-runtime-read-tool-failed",
   "approved-write-tool": "windows-runtime-approved-write-tool-failed",

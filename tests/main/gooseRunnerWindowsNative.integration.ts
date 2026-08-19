@@ -28,6 +28,7 @@ import {
   type GooseMcpSessionComposition,
 } from "../../apps/desktop/src/main/workers/gooseMcpSessionComposition";
 import {
+  GooseRunnerArtifactError,
   admitGooseRunnerArtifact,
   type AdmittedGooseRunnerArtifact,
 } from "../../apps/desktop/src/main/workers/gooseRunnerArtifact";
@@ -116,14 +117,10 @@ async function runGit(repository: string, ...args: readonly string[]): Promise<s
 }
 
 async function admitArtifact(): Promise<AdmittedGooseRunnerArtifact> {
-  const artifact = await admitGooseRunnerArtifact(artifactDirectory!, {
+  return admitGooseRunnerArtifact(artifactDirectory!, {
     expectedTargetTriple: "x86_64-pc-windows-msvc",
     trustedManifestSha256: trustedManifestSha256!,
   });
-  if (artifact.sourceCommit === undefined || artifact.containment === undefined) {
-    throw new Error("Windows runtime integration requires exact containment-bound provenance");
-  }
-  return artifact;
 }
 
 interface CodingFixture {
@@ -345,7 +342,22 @@ async function closeComposition(
 describe.skipIf(!nativeEnabled)("native Windows Goose authenticated runtime composition", () => {
   it("binds the exact runtime journey and lifecycle evidence", async () => {
     await markFailure("artifact-admission");
-    const artifact = await admitArtifact();
+    let artifact: AdmittedGooseRunnerArtifact;
+    try {
+      artifact = await admitArtifact();
+    } catch (error) {
+      await markFailure(
+        error instanceof GooseRunnerArtifactError
+          ? `artifact-admission-${error.code}`
+          : "artifact-admission-unexpected",
+      );
+      throw error;
+    }
+    await markFailure("artifact-binding-incomplete");
+    if (artifact.sourceCommit === undefined || artifact.containment === undefined) {
+      throw new Error("Windows runtime integration requires exact containment-bound provenance");
+    }
+    await markFailure("fixture-setup");
     const fixture = await createFixture("journey");
     const baseHead = await runGit(fixture.sourceRoot, "rev-parse", "HEAD");
     const baseStatus = await runGit(fixture.sourceRoot, "status", "--porcelain=v1");

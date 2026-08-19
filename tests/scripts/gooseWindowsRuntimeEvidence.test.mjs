@@ -114,6 +114,30 @@ describe("Goose Windows runtime evidence", () => {
         path: "C:\\private",
       }),
     ).toBeUndefined();
+    expect(
+      classifyGooseWindowsRuntimeFailureEvidence({
+        contractVersion: 1,
+        stage: "artifact-admission-digest-mismatch",
+      }),
+    ).toBe("windows-runtime-artifact-admission-digest-mismatch");
+    expect(
+      classifyGooseWindowsRuntimeFailureEvidence({
+        contractVersion: 1,
+        stage: "artifact-admission-unexpected",
+      }),
+    ).toBe("windows-runtime-artifact-admission-rejected");
+    expect(
+      classifyGooseWindowsRuntimeFailureEvidence({
+        contractVersion: 1,
+        stage: "artifact-binding-incomplete",
+      }),
+    ).toBe("windows-runtime-artifact-binding-invalid");
+    expect(
+      classifyGooseWindowsRuntimeFailureEvidence({
+        contractVersion: 1,
+        stage: "fixture-setup",
+      }),
+    ).toBe("windows-runtime-fixture-setup-failed");
   });
 
   it("classifies only one closed Artifact admission error without echoing diagnostics", () => {
@@ -194,6 +218,10 @@ describe("Goose Windows runtime evidence", () => {
       fs.readFileSync(path.join(repositoryRoot, "package.json"), "utf8"),
     );
     const runnerPath = path.join(repositoryRoot, "scripts/run-goose-runner-windows-runtime.mjs");
+    const integrationPath = path.join(
+      repositoryRoot,
+      "tests/main/gooseRunnerWindowsNative.integration.ts",
+    );
     const vitest = fs.readFileSync(path.join(repositoryRoot, "vitest.config.ts"), "utf8");
 
     expect(packageJson.scripts["goose:runner:integration:windows"]).toBe(
@@ -210,11 +238,17 @@ describe("Goose Windows runtime evidence", () => {
     expect(runner).toContain("classifyGooseWindowsArtifactAdmissionExecution");
     expect(runner).toContain("windows-runtime-artifact-binding-invalid");
     expect(runner).toContain("windows-runtime-artifact-admission-output-invalid");
+    expect(runner).toContain("windows-runtime-fixture-setup-failed");
     expect(runner).toContain("classifyGooseWindowsRuntimeFailureEvidence");
     expect(runner).toContain("readFailureCode");
     expect(runner).not.toContain('stdio: "inherit"');
     expect(vitest).toContain("nativeWindowsGooseIntegrationFiles");
     expect(vitest).toContain('"tests/main/gooseRunnerWindowsNative.integration.ts"');
     expect(vitest).toContain('ACTESTRA_GOOSE_WINDOWS_RUNTIME_INTEGRATION === "1"');
+    const integration = fs.readFileSync(integrationPath, "utf8");
+    expect(integration).toContain("GooseRunnerArtifactError");
+    expect(integration).toContain("`artifact-admission-${error.code}`");
+    expect(integration).toContain('markFailure("artifact-binding-incomplete")');
+    expect(integration).toContain('markFailure("fixture-setup")');
   });
 });

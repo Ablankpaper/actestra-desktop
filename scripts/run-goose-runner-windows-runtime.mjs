@@ -40,6 +40,7 @@ const FAILURE_CODES = new Set([
   "windows-runtime-evidence-invalid",
   "windows-runtime-evidence-missing",
   "windows-runtime-evidence-too-large",
+  "windows-runtime-fixture-setup-failed",
   "windows-runtime-test-failed",
   "windows-runtime-target-unsupported",
 ]);
