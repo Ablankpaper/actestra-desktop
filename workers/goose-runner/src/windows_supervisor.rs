@@ -2359,6 +2359,7 @@ pub(crate) fn run_worker() -> i32 {
 pub(crate) fn run_worker_with_arguments(_arguments: &[String]) -> i32 {
     #[cfg(windows)]
     {
+        let mut startup = WorkerStartupStateMachine::new();
         let (control_value, ready_value) =
             match crate::windows_control::parse_worker_handle_arguments(_arguments) {
                 Ok(Some(values)) => values,
@@ -2377,7 +2378,21 @@ pub(crate) fn run_worker_with_arguments(_arguments: &[String]) -> i32 {
                 return 1;
             }
         };
+        if startup
+            .advance(WorkerStartupStage::ControlValidated)
+            .is_err()
+        {
+            eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+            return 1;
+        }
         if !verify_worker_boundary() {
+            eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+            return 1;
+        }
+        if startup
+            .advance(WorkerStartupStage::BoundaryVerified)
+            .is_err()
+        {
             eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
             return 1;
         }
@@ -2398,38 +2413,114 @@ pub(crate) fn run_worker_with_arguments(_arguments: &[String]) -> i32 {
                 return 1;
             }
         };
-        let connected_pipes = pipe_runtime.block_on(async {
-            let capability = WindowsNamedPipeClient::connect_once(&pipe_names.capability)?;
-            let model = WindowsNamedPipeClient::connect_once(&pipe_names.model)?;
-            Ok::<_, crate::windows_named_pipe::WindowsNamedPipeError>((capability, model))
-        });
-        let (capability_pipe, model_pipe) = match connected_pipes {
-            Ok(pipes) => pipes,
-            Err(_) => {
-                eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-                return 1;
-            }
-        };
         let ready_handle = ready_value as usize as HANDLE;
-        let ready_result = write_all_handle(ready_handle, WINDOWS_WORKER_READY_MARKER);
-        unsafe { CloseHandle(ready_handle) };
-        if ready_result.is_err() {
+        let result = pipe_runtime.block_on(async {
+            let capability_pipe =
+                WindowsNamedPipeClient::connect_once(&pipe_names.capability).map_err(|_| ())?;
+            startup
+                .advance(WorkerStartupStage::CapabilityConnected)
+                .map_err(|_| ())?;
+            let model_pipe =
+                WindowsNamedPipeClient::connect_once(&pipe_names.model).map_err(|_| ())?;
+            startup
+                .advance(WorkerStartupStage::ModelConnected)
+                .map_err(|_| ())?;
+
+            let session_id = std::sync::Arc::new(tokio::sync::OnceCell::new());
+            let capability_client = WindowsCapabilityClient::new(
+                capability_pipe,
+                control.attempt_lease.clone(),
+                session_id.clone(),
+            )
+            .map_err(|_| ())?;
+            let model_provider = WindowsModelProvider::new(
+                model_pipe,
+                control.attempt_lease.clone(),
+                session_id,
+                control.model_id.clone(),
+            )
+            .map_err(|_| ())?;
+            let (data_dir, config_dir) = prepare_goose_state_directories(&control.private_root)?;
+            let adapter = goose::acp::server::AcpRuntimeAdapter {
+                provider_id: "actestra".to_string(),
+                model_config: goose_providers::model::ModelConfig::new(&control.model_id),
+                provider: std::sync::Arc::new(model_provider),
+                extension_name: "actestra-capability-proxy".to_string(),
+                extension_config: goose::agents::ExtensionConfig::Builtin {
+                    name: "actestra-capability-proxy".to_string(),
+                    description: "Actestra capability proxy".to_string(),
+                    display_name: None,
+                    timeout: None,
+                    bundled: Some(true),
+                    available_tools: Vec::new(),
+                },
+                extension_client: std::sync::Arc::new(capability_client),
+                data_dir,
+                config_dir,
+            };
+            startup
+                .advance(WorkerStartupStage::AdaptersConstructed)
+                .map_err(|_| ())?;
+            let ready_result = write_all_handle(ready_handle, WINDOWS_WORKER_READY_MARKER);
+            unsafe { CloseHandle(ready_handle) };
+            if ready_result.is_err() {
+                return Err(());
+            }
+            startup
+                .advance(WorkerStartupStage::ReadyWritten)
+                .map_err(|_| ())?;
+            startup
+                .advance(WorkerStartupStage::AcpServing)
+                .map_err(|_| ())?;
+            goose::acp::server::run_with_runtime_adapter(adapter)
+                .await
+                .map_err(|_| ())
+        });
+        if result.is_err() {
             eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
             return 1;
         }
-        drop((capability_pipe, model_pipe, pipe_runtime));
-        // Task 7 supplies the adapted Goose runtime and ACP service. Until then a Worker that
-        // reaches the bridge boundary but has no serving loop must fail closed rather than
-        // turning readiness into a false successful runtime completion.
-        let _ = control;
-        eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-        1
+        0
     }
     #[cfg(not(windows))]
     {
         eprintln!("{WINDOWS_RESOURCE_FAILURE_MARKER}");
         1
     }
+}
+
+fn prepare_goose_state_directories(
+    private_root: &str,
+) -> Result<(std::path::PathBuf, std::path::PathBuf), ()> {
+    let root = std::path::Path::new(private_root);
+    if !root.is_absolute() {
+        return Err(());
+    }
+    let root_metadata = std::fs::symlink_metadata(root).map_err(|_| ())?;
+    if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
+        return Err(());
+    }
+    let canonical_root = std::fs::canonicalize(root).map_err(|_| ())?;
+    let data_dir = root.join("goose-data");
+    let config_dir = root.join("goose-config");
+    for directory in [&data_dir, &config_dir] {
+        match std::fs::symlink_metadata(directory) {
+            Ok(metadata) => {
+                if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                    return Err(());
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                std::fs::create_dir(directory).map_err(|_| ())?;
+            }
+            Err(_) => return Err(()),
+        }
+        let canonical_directory = std::fs::canonicalize(directory).map_err(|_| ())?;
+        if canonical_directory.parent() != Some(canonical_root.as_path()) {
+            return Err(());
+        }
+    }
+    Ok((data_dir, config_dir))
 }
 
 #[cfg(windows)]
@@ -2762,6 +2853,66 @@ fn read_control_frame_from_fd(
     parse_control_frame(&frame)
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum WorkerStartupStage {
+    ControlValidated,
+    BoundaryVerified,
+    CapabilityConnected,
+    ModelConnected,
+    AdaptersConstructed,
+    ReadyWritten,
+    AcpServing,
+}
+
+const WORKER_STARTUP_ORDER: [WorkerStartupStage; 7] = [
+    WorkerStartupStage::ControlValidated,
+    WorkerStartupStage::BoundaryVerified,
+    WorkerStartupStage::CapabilityConnected,
+    WorkerStartupStage::ModelConnected,
+    WorkerStartupStage::AdaptersConstructed,
+    WorkerStartupStage::ReadyWritten,
+    WorkerStartupStage::AcpServing,
+];
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct WorkerStartupStateMachine {
+    observed: Vec<WorkerStartupStage>,
+}
+
+impl WorkerStartupStateMachine {
+    pub(crate) fn new() -> Self {
+        Self {
+            observed: Vec::new(),
+        }
+    }
+
+    pub(crate) fn advance(&mut self, stage: WorkerStartupStage) -> Result<(), ()> {
+        if WORKER_STARTUP_ORDER.get(self.observed.len()).copied() != Some(stage) {
+            return Err(());
+        }
+        self.observed.push(stage);
+        Ok(())
+    }
+
+    pub(crate) fn observed(&self) -> &[WorkerStartupStage] {
+        &self.observed
+    }
+}
+
+#[cfg(test)]
+fn simulate_worker_startup(
+    fail_at: Option<WorkerStartupStage>,
+) -> Result<Vec<WorkerStartupStage>, WorkerStartupStage> {
+    let mut state = WorkerStartupStateMachine::new();
+    for stage in WORKER_STARTUP_ORDER {
+        state.advance(stage).expect("the startup order is valid");
+        if fail_at == Some(stage) {
+            return Err(stage);
+        }
+    }
+    Ok(state.observed().to_vec())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2776,6 +2927,95 @@ mod tests {
         assert!(receipt.complete());
         receipt.profile_removed = false;
         assert!(!receipt.complete());
+    }
+
+    #[test]
+    fn creates_only_private_goose_state_directories() {
+        let root = test_private_root("directories");
+        let (data_dir, config_dir) = prepare_goose_state_directories(root.to_str().unwrap())
+            .expect("private Goose directories should be created");
+        assert_eq!(data_dir.parent(), Some(root.as_path()));
+        assert_eq!(config_dir.parent(), Some(root.as_path()));
+        assert!(data_dir.is_dir());
+        assert!(config_dir.is_dir());
+
+        std::fs::remove_dir_all(&data_dir).unwrap();
+        std::fs::create_dir(&data_dir).unwrap();
+        assert!(prepare_goose_state_directories(root.to_str().unwrap()).is_ok());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlinked_private_goose_state_directories() {
+        let root = test_private_root("symlink");
+        let outside = test_private_root("outside");
+        std::os::unix::fs::symlink(&outside, root.join("goose-data")).unwrap();
+        assert!(prepare_goose_state_directories(root.to_str().unwrap()).is_err());
+        std::fs::remove_dir_all(root).unwrap();
+        std::fs::remove_dir_all(outside).unwrap();
+    }
+
+    fn test_private_root(label: &str) -> std::path::PathBuf {
+        let unique = format!(
+            "actestra-goose-{label}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let root = std::env::temp_dir().join(unique);
+        std::fs::create_dir(&root).unwrap();
+        root
+    }
+
+    #[test]
+    fn windows_worker_runtime_startup_order_is_fixed() {
+        assert_eq!(
+            simulate_worker_startup(None).unwrap(),
+            vec![
+                WorkerStartupStage::ControlValidated,
+                WorkerStartupStage::BoundaryVerified,
+                WorkerStartupStage::CapabilityConnected,
+                WorkerStartupStage::ModelConnected,
+                WorkerStartupStage::AdaptersConstructed,
+                WorkerStartupStage::ReadyWritten,
+                WorkerStartupStage::AcpServing,
+            ]
+        );
+    }
+
+    #[test]
+    fn windows_worker_runtime_startup_failure_stops_before_later_stages() {
+        let expected = [
+            WorkerStartupStage::ControlValidated,
+            WorkerStartupStage::BoundaryVerified,
+            WorkerStartupStage::CapabilityConnected,
+            WorkerStartupStage::ModelConnected,
+            WorkerStartupStage::AdaptersConstructed,
+            WorkerStartupStage::ReadyWritten,
+            WorkerStartupStage::AcpServing,
+        ];
+
+        for (index, stage) in expected.into_iter().enumerate() {
+            let error = simulate_worker_startup(Some(stage)).unwrap_err();
+            assert_eq!(error, stage);
+            let mut state = WorkerStartupStateMachine::new();
+            for expected_stage in expected.into_iter().take(index + 1) {
+                state.advance(expected_stage).unwrap();
+            }
+            assert_eq!(state.observed(), &expected[..index + 1]);
+        }
+    }
+
+    #[test]
+    fn windows_worker_runtime_startup_state_machine_rejects_skips_and_replays() {
+        let mut state = WorkerStartupStateMachine::new();
+        assert!(state.advance(WorkerStartupStage::BoundaryVerified).is_err());
+        assert!(state.advance(WorkerStartupStage::ControlValidated).is_ok());
+        assert!(state.advance(WorkerStartupStage::ControlValidated).is_err());
+        assert!(state.advance(WorkerStartupStage::BoundaryVerified).is_ok());
     }
 
     #[test]
