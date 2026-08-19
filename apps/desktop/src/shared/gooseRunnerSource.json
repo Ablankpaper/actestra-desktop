@@ -7,9 +7,16 @@
   "goose": {
     "repository": "https://github.com/aaif-goose/goose.git",
     "version": "1.45.0",
-    "commit": "4dc0420f5704a92806c6628c8f0a3497d7a88759",
+    "baseCommit": "4dc0420f5704a92806c6628c8f0a3497d7a88759",
+    "runtimeRepository": "ssh://git@github.com/Ablankpaper/actestra-goose-runtime.git",
+    "runtimeCommit": "e246f395592b01995cd34faf5e3ce1ed5444a41a",
+    "changedPaths": [
+      "crates/goose/src/acp/server.rs",
+      "crates/goose/src/acp/server_factory.rs",
+      "crates/goose/src/acp/server/new_session.rs"
+    ],
     "cargoFeatures": [],
-    "patchSetSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    "patchSetSha256": "a5f2df85313dbbd1ac20bef3fafba4e40e32e2ffa0c76ad5a5d62414d1eae1f4"
   },
   "acp": {
     "protocolVersion": 1,

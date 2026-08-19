@@ -217,7 +217,7 @@ function createRunnerArtifactFixture(): {
     "version = 4",
     'name = "goose"',
     'version = "1.45.0"',
-    `source = "git+https://github.com/aaif-goose/goose?rev=${sourceContract.goose.commit}#${sourceContract.goose.commit}"`,
+    `source = "git+${sourceContract.goose.runtimeRepository}?rev=${sourceContract.goose.runtimeCommit}#${sourceContract.goose.runtimeCommit}"`,
     'name = "event-listener"',
     'version = "5.4.2"',
     'name = "lru"',
@@ -243,21 +243,21 @@ function createRunnerArtifactFixture(): {
     components: [
       {
         type: "library",
-        "bom-ref": `pkg:cargo/goose@${sourceContract.goose.version}?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Faaif-goose%2Fgoose%40${sourceContract.goose.commit}`,
+        "bom-ref": `pkg:cargo/goose@${sourceContract.goose.version}?vcs_url=${encodeURIComponent(`git+${sourceContract.goose.runtimeRepository}@${sourceContract.goose.runtimeCommit}`)}`,
         name: "goose",
         version: sourceContract.goose.version,
-        purl: `pkg:cargo/goose@${sourceContract.goose.version}?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Faaif-goose%2Fgoose%40${sourceContract.goose.commit}`,
+        purl: `pkg:cargo/goose@${sourceContract.goose.version}?vcs_url=${encodeURIComponent(`git+${sourceContract.goose.runtimeRepository}@${sourceContract.goose.runtimeCommit}`)}`,
       },
     ],
     dependencies: [
       {
         ref: `pkg:cargo/${sourceContract.runner.name}@${sourceContract.runner.version}`,
         dependsOn: [
-          `pkg:cargo/goose@${sourceContract.goose.version}?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Faaif-goose%2Fgoose%40${sourceContract.goose.commit}`,
+          `pkg:cargo/goose@${sourceContract.goose.version}?vcs_url=${encodeURIComponent(`git+${sourceContract.goose.runtimeRepository}@${sourceContract.goose.runtimeCommit}`)}`,
         ],
       },
       {
-        ref: `pkg:cargo/goose@${sourceContract.goose.version}?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Faaif-goose%2Fgoose%40${sourceContract.goose.commit}`,
+        ref: `pkg:cargo/goose@${sourceContract.goose.version}?vcs_url=${encodeURIComponent(`git+${sourceContract.goose.runtimeRepository}@${sourceContract.goose.runtimeCommit}`)}`,
         dependsOn: [],
       },
     ],

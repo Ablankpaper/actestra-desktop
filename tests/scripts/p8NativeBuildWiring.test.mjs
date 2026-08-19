@@ -28,6 +28,62 @@ function expectOrderedFragments(contents, fragments) {
 }
 
 describe("P8 native Goose build wiring", () => {
+  it("admits the private runtime only for same-repository CI with a read-only deploy key", () => {
+    const workflow = read(".github/workflows/ci.yml");
+    const sameRepositoryCondition =
+      "if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository";
+    const hostKey =
+      "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl";
+
+    for (const jobId of [
+      "goose-runner",
+      "goose-runner-windows",
+      "goose-runner-linux",
+      "goose-containment-windows",
+      "goose-containment-linux",
+      "macos",
+    ]) {
+      const job = readWorkflowJob(workflow, jobId);
+      expect(job, `missing CI job ${jobId}`).not.toBe("");
+      expect(job).toContain(sameRepositoryCondition);
+      expect(job).toContain("name: Admit private Goose runtime source");
+      expect(job).toContain(
+        "ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY: ${{ secrets.ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY }}",
+      );
+      expect(job).toContain(hostKey);
+      expect(job).toContain("CARGO_NET_GIT_FETCH_WITH_CLI=true");
+      expect(job).toContain("GIT_SSH_COMMAND<<ACTESTRA_GOOSE_SSH");
+      expect(job).toContain("name: Fetch admitted private Goose runtime source");
+      expect(job).toContain("cargo fetch --manifest-path workers/goose-runner/Cargo.toml --locked");
+      expect(job).toContain("name: Retire private Goose runtime credential");
+      expect(job).toContain('rm -rf -- "$RUNNER_TEMP/actestra-goose-runtime-ssh"');
+      expect(job).toContain("echo 'GIT_SSH_COMMAND=' >> \"$GITHUB_ENV\"");
+      expectOrderedFragments(job, [
+        "name: Checkout",
+        "name: Install dependencies",
+        "name: Admit private Goose runtime source",
+        "name: Fetch admitted private Goose runtime source",
+        "name: Retire private Goose runtime credential",
+      ]);
+      const credentialWindow = job.slice(
+        job.indexOf("name: Admit private Goose runtime source"),
+        job.indexOf("name: Retire private Goose runtime credential"),
+      );
+      expect(credentialWindow.match(/\bcargo\b/gu)).toHaveLength(1);
+      expect(credentialWindow).not.toContain("bun run");
+      const uploadSteps = job
+        .split(/\n\s+- name:/u)
+        .filter((step) => step.includes("upload-artifact"))
+        .join("\n");
+      expect(uploadSteps).not.toContain("ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY");
+      expect(uploadSteps).not.toContain("actestra-goose-runtime-ssh");
+    }
+
+    expect(workflow).toContain(
+      "# GitHub ED25519 fingerprint: SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU",
+    );
+  });
+
   it("registers a build-only emitted-artifact verifier at the production admission boundary", () => {
     const scripts = JSON.parse(read("package.json")).scripts;
     const verifierPath = path.join(repositoryRoot, "scripts/admit-goose-runner-build.ts");

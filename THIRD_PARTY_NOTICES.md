@@ -47,18 +47,34 @@ AionUi material identified there.
 
 ## P5.1 Goose runner build materials
 
-The minimal `actestra-goose-runner` resolves Goose `v1.45.0` at exact commit
-`4dc0420f5704a92806c6628c8f0a3497d7a88759` as an Apache-2.0 Cargo
-dependency with default features disabled and no enabled Goose feature. The
-upstream source tree and official CLI binary are not committed. The exact
+The minimal `actestra-goose-runner` keeps Goose `v1.45.0` at canonical upstream
+base `4dc0420f5704a92806c6628c8f0a3497d7a88759`. For the P8.2c Windows runtime
+composition it resolves `goose` and `goose-providers` from the standalone
+private `Ablankpaper/actestra-goose-runtime` repository at immutable commit
+`e246f395592b01995cd34faf5e3ce1ed5444a41a`. That commit modifies only the
+three ACP server files recorded in `workers/goose-runner/PATCHES.md`; their
+binary full-index diff SHA-256 is
+`a5f2df85313dbbd1ac20bef3fafba4e40e32e2ffa0c76ad5a5d62414d1eae1f4`.
+The adapter is default-off, and Goose default features remain disabled with no
+enabled Goose feature.
+
+Goose is Apache-2.0 and has no root `NOTICE`. The upstream source tree is not
+vendored into Actestra and the official CLI binary is not committed. The exact
 Apache-2.0 payload is retained at
 `workers/goose-runner/licenses/GOOSE-APACHE-2.0.txt`, and each generated runner
 artifact copies it beside the executable, lock, audit report, CycloneDX 1.6
 SBOM, and immutable manifest.
 
+The private repository is not a GitHub Fork and has no automatic upstream
+synchronization. Actestra admits the immutable commit and exact diff rather
+than a moving branch. Rollback restores the canonical upstream base and keeps
+Windows production runtime admission disabled.
+
 The generated local artifact and any future seven-day CI artifact are admission
 evidence, not a packaged, signed, notarized, released, or distributed Actestra
 component.
+The private runtime pin also does not prove adapted Windows execution, an
+Electron package, candidate status, P8.2c completion, or overall P8 completion.
 Before a desktop candidate includes the runner, Release must verify the full
 transitive SBOM and license expressions, applicable notices, package placement,
 signature, provenance, update and rollback behavior, and target-platform

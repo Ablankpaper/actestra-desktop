@@ -6,7 +6,8 @@ rust-version = "1.94.1"
 publish = false
 
 [dependencies]
-goose = { git = "https://github.com/aaif-goose/goose", rev = "4dc0420f5704a92806c6628c8f0a3497d7a88759", default-features = false }
+goose = { git = "ssh://git@github.com/Ablankpaper/actestra-goose-runtime.git", rev = "e246f395592b01995cd34faf5e3ce1ed5444a41a", default-features = false }
+goose-providers = { git = "ssh://git@github.com/Ablankpaper/actestra-goose-runtime.git", rev = "e246f395592b01995cd34faf5e3ce1ed5444a41a", default-features = false }
 libc = "0.2"
 serde = "1.0.229"
 serde_json = "1.0.151"

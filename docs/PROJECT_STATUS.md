@@ -4,6 +4,43 @@ Last updated: 2026-08-19
 
 ## Current phase
 
+### 2026-08-19 P8.2c Batch 1 private Goose runtime admission local; CI pending
+
+The P8.2c source boundary now pins the standalone private
+`Ablankpaper/actestra-goose-runtime` repository at immutable commit
+`e246f395592b01995cd34faf5e3ce1ed5444a41a`, descending from canonical Goose
+`v1.45.0` commit `4dc0420f5704a92806c6628c8f0a3497d7a88759`. The admitted
+binary full-index diff changes exactly the three declared ACP server files and
+has SHA-256
+`a5f2df85313dbbd1ac20bef3fafba4e40e32e2ffa0c76ad5a5d62414d1eae1f4`.
+The private runtime is Apache-2.0, upstream has no root `NOTICE`, its adapter
+seam is default-off, and the admitted Goose Cargo feature set remains empty.
+
+The Actestra artifact and build contracts fail closed on canonical repository,
+base, private repository, runtime commit, changed-path set and order, patch
+digest, lock source, and feature drift. Six existing CI jobs admit the private
+source only for same-repository work. They load a repository-scoped read-only
+deploy key after dependency installation, run one frozen `cargo fetch`, then
+delete the key and clear the SSH command before tests, builds, or Artifact
+uploads. The private repository is not a GitHub Fork; its default branch stays
+at the canonical base, GitHub Actions are disabled, and it has no webhook or
+automatic upstream synchronization.
+
+Local Batch 1 evidence is green: source and workflow tests pass 98/98, runner
+Rust tests pass 53/53, `cargo metadata --locked` resolves the exact private
+commit, and the real metadata/check-out contract verifies source, ancestry,
+changed paths, patch digest, and features. Project format, Rust format, lint
+(zero warnings and errors), typecheck, documentation links (96 Markdown
+files), and `git diff --check` pass.
+
+This is local source/provenance admission only. The Actestra branch and this
+exact head have not yet been pushed or run in CI. No adapted Windows Goose
+session, authenticated model/capability bridge, Electron package, P8.2c exit,
+P8.3 candidate integrity, P8.4 real-provider acceptance, release, deployment,
+or user acceptance is claimed. Rollback restores canonical Goose
+`4dc0420f5704a92806c6628c8f0a3497d7a88759` and keeps Windows production
+runtime admission disabled.
+
 ### 2026-08-19 P8.2b Windows containment verified; P8.2b gate closed
 
 Draft pull request

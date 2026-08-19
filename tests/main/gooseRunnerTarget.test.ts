@@ -14,6 +14,22 @@ const processModulePath = path.join(
   repositoryRoot,
   "apps/desktop/src/main/workers/gooseRunnerProcess.ts",
 );
+const runnerLockPath = path.join(repositoryRoot, "workers/goose-runner/Cargo.lock");
+
+const expectedGooseSource = {
+  repository: "https://github.com/aaif-goose/goose.git",
+  version: "1.45.0",
+  baseCommit: "4dc0420f5704a92806c6628c8f0a3497d7a88759",
+  runtimeRepository: "ssh://git@github.com/Ablankpaper/actestra-goose-runtime.git",
+  runtimeCommit: "e246f395592b01995cd34faf5e3ce1ed5444a41a",
+  changedPaths: [
+    "crates/goose/src/acp/server.rs",
+    "crates/goose/src/acp/server_factory.rs",
+    "crates/goose/src/acp/server/new_session.rs",
+  ],
+  cargoFeatures: [],
+  patchSetSha256: "a5f2df85313dbbd1ac20bef3fafba4e40e32e2ffa0c76ad5a5d62414d1eae1f4",
+} as const;
 
 const expectedBuildTargets = [
   {
@@ -98,6 +114,26 @@ const expectedP8BuildToolAssets = {
 } as const;
 
 describe("Goose runner native build targets", () => {
+  it("pins the exact private Goose runtime source and patch contract", () => {
+    expect(sourceContract.goose).toEqual(expectedGooseSource);
+  });
+
+  it("locks every Goose workspace package to the admitted private runtime revision", () => {
+    const lockfile = readFileSync(runnerLockPath, "utf8");
+    const expectedSource =
+      `git+ssh://git@github.com/Ablankpaper/actestra-goose-runtime.git?rev=${expectedGooseSource.runtimeCommit}` +
+      `#${expectedGooseSource.runtimeCommit}`;
+    const gooseSources = [
+      ...lockfile.matchAll(
+        /name = "(?:goose|goose-acp-macros|goose-download-manager|goose-provider-types|goose-providers|goose-sdk-types)"\nversion = "[^"]+"\nsource = "([^"]+)"/g,
+      ),
+    ].map((match) => match[1]);
+
+    expect(gooseSources).toHaveLength(6);
+    expect(new Set(gooseSources)).toEqual(new Set([expectedSource]));
+    expect(lockfile).not.toContain("git+https://github.com/aaif-goose/goose");
+  });
+
   it("publishes only the exact native host and target records", () => {
     const contract = sourceContract as typeof sourceContract & {
       readonly buildTargets?: unknown;

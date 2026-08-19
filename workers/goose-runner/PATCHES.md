@@ -1,12 +1,37 @@
 # Goose runner patch set
 
-The P5.1 runner applies no source patch to Goose `v1.45.0`. Its patch series is
-empty and therefore has SHA-256
-`e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`.
+The admitted Goose compatibility target remains upstream `v1.45.0` at exact
+commit `4dc0420f5704a92806c6628c8f0a3497d7a88759`. For the P8.2c Windows
+authenticated-runtime work, Actestra resolves the `goose` and
+`goose-providers` crates from the standalone private repository
+`Ablankpaper/actestra-goose-runtime` at immutable commit
+`e246f395592b01995cd34faf5e3ce1ed5444a41a`. That repository is not a GitHub
+Fork and has no automatic upstream synchronization.
+
+The runtime commit descends from the exact upstream commit and changes only:
+
+- `crates/goose/src/acp/server.rs`;
+- `crates/goose/src/acp/server_factory.rs`; and
+- `crates/goose/src/acp/server/new_session.rs`.
+
+The binary, full-index Git diff for those three files has SHA-256
+`a5f2df85313dbbd1ac20bef3fafba4e40e32e2ffa0c76ad5a5d62414d1eae1f4`.
+The patch adds a default-off ACP runtime-adapter seam that fixes one Provider,
+model, and MCP client for one active session. The ordinary upstream entry point
+remains the default. The Actestra source contract rejects a different base,
+runtime commit, repository, changed-path set, patch digest, or non-empty Goose
+feature set.
+
+Goose remains Apache-2.0 and the upstream root contains no `NOTICE`. The exact
+license payload is retained in `licenses/GOOSE-APACHE-2.0.txt` and copied beside
+generated runner evidence.
 
 Dependency resolution remains Actestra-owned through the committed runner
-`Cargo.lock`. In particular, the first admitted lock must resolve
-`event-listener` `5.4.2` or newer without modifying Goose source. The 2026-08-12
-`RUSTSEC-2026-0253` unsoundness advisory additionally requires the committed
-lock to resolve `lru` `0.18.2`; the dependency enters through Goose core, so
-the Goose source pin and empty feature set remain unchanged.
+`Cargo.lock`. It resolves `event-listener` `5.4.2` and `lru` `0.18.2` to remove
+the reviewed unsound versions without widening the empty Goose feature set.
+
+Rollback restores both Cargo dependencies and the source contract to canonical
+upstream commit `4dc0420f5704a92806c6628c8f0a3497d7a88759`, restores the empty-patch
+digest, and keeps Windows production runtime admission disabled. This record
+does not prove adapted Goose execution on Windows, an Electron package,
+candidate integrity, P8.2c completion, or overall P8 completion.
