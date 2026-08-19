@@ -103,7 +103,6 @@ enum WindowsProbeFailure {
     ChildRequestLengthStage,
     ChildRequestFrameStage,
     ChildRequestDecodeStage,
-    ChildExcludedHandleStage,
     ChildFilesystemStage,
     ChildNetworkStage,
     ChildProcessStage,
@@ -112,6 +111,8 @@ enum WindowsProbeFailure {
     ChildUnexpectedExit,
     ChildResultFrame,
     Cleanup,
+    ExcludedHandleInherited,
+    ExcludedHandleAmbiguous,
     Filesystem,
     Job,
     Network,
@@ -141,7 +142,6 @@ impl WindowsProbeFailure {
             Self::ChildRequestLengthStage => "windows-child-request-length-stage-invalid",
             Self::ChildRequestFrameStage => "windows-child-request-frame-stage-invalid",
             Self::ChildRequestDecodeStage => "windows-child-request-decode-stage-invalid",
-            Self::ChildExcludedHandleStage => "windows-child-excluded-handle-stage-invalid",
             Self::ChildFilesystemStage => "windows-child-filesystem-stage-invalid",
             Self::ChildNetworkStage => "windows-child-network-stage-invalid",
             Self::ChildProcessStage => "windows-child-process-stage-invalid",
@@ -150,6 +150,8 @@ impl WindowsProbeFailure {
             Self::ChildUnexpectedExit => "windows-child-unexpected-exit-invalid",
             Self::ChildResultFrame => "windows-child-result-frame-invalid",
             Self::Cleanup => "windows-cleanup-incomplete",
+            Self::ExcludedHandleInherited => "windows-excluded-handle-inherited",
+            Self::ExcludedHandleAmbiguous => "windows-excluded-handle-ambiguous",
             Self::Filesystem => "windows-filesystem-evidence-incomplete",
             Self::Job => "windows-job-evidence-incomplete",
             Self::Network => "windows-network-evidence-incomplete",
@@ -182,6 +184,12 @@ fn classify_windows_launch_failure(failure: WindowsContainmentFailure) -> Window
         }
         WindowsContainmentFailure::Pipes | WindowsContainmentFailure::WorkerLaunch => {
             WindowsProbeFailure::WorkerLaunch
+        }
+        WindowsContainmentFailure::ExcludedHandleInherited => {
+            WindowsProbeFailure::ExcludedHandleInherited
+        }
+        WindowsContainmentFailure::ExcludedHandleAmbiguous => {
+            WindowsProbeFailure::ExcludedHandleAmbiguous
         }
     }
 }
@@ -724,9 +732,6 @@ fn collect_windows_hostile_evidence() -> Result<WindowsHostileEvidence, WindowsP
                 WindowsProbeExchangeFailure::WorkerRequestDecodeStage => {
                     WindowsProbeFailure::ChildRequestDecodeStage
                 }
-                WindowsProbeExchangeFailure::WorkerExcludedHandleStage => {
-                    WindowsProbeFailure::ChildExcludedHandleStage
-                }
                 WindowsProbeExchangeFailure::WorkerFilesystemStage => {
                     WindowsProbeFailure::ChildFilesystemStage
                 }
@@ -775,6 +780,7 @@ fn collect_windows_hostile_evidence() -> Result<WindowsHostileEvidence, WindowsP
         || !result.excluded_handle_absent
         || !observation.app_container
         || !observation.assigned_before_resume
+        || !observation.excluded_handle_absent
         || !observation.resumed_once
     {
         return Err(WindowsProbeFailure::Job);
@@ -953,10 +959,6 @@ mod tests {
                 "windows-child-request-decode-stage-invalid",
             ),
             (
-                WindowsProbeFailure::ChildExcludedHandleStage,
-                "windows-child-excluded-handle-stage-invalid",
-            ),
-            (
                 WindowsProbeFailure::ChildFilesystemStage,
                 "windows-child-filesystem-stage-invalid",
             ),
@@ -985,6 +987,14 @@ mod tests {
                 "windows-child-result-frame-invalid",
             ),
             (WindowsProbeFailure::Cleanup, "windows-cleanup-incomplete"),
+            (
+                WindowsProbeFailure::ExcludedHandleInherited,
+                "windows-excluded-handle-inherited",
+            ),
+            (
+                WindowsProbeFailure::ExcludedHandleAmbiguous,
+                "windows-excluded-handle-ambiguous",
+            ),
             (
                 WindowsProbeFailure::Filesystem,
                 "windows-filesystem-evidence-incomplete",

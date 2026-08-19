@@ -23,8 +23,9 @@ use std::path::Path;
 use std::ptr::{null, null_mut};
 #[cfg(windows)]
 use windows_sys::Win32::Foundation::{
-    CloseHandle, GetHandleInformation, GetLastError, SetHandleInformation, ERROR_BROKEN_PIPE,
-    HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, WAIT_OBJECT_0, WAIT_TIMEOUT,
+    CloseHandle, DuplicateHandle, GetLastError, SetHandleInformation, DUPLICATE_SAME_ACCESS,
+    ERROR_BROKEN_PIPE, HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, WAIT_OBJECT_0,
+    WAIT_TIMEOUT,
 };
 #[cfg(windows)]
 use windows_sys::Win32::Security::Isolation::{
@@ -100,7 +101,6 @@ const WINDOWS_WORKER_PROGRAM_NAME: &str = "actestra-goose-runner.exe";
 const WINDOWS_DIRECTORY_MAX_U16: usize = 32_767;
 #[cfg(any(windows, test))]
 const WINDOWS_ERROR_INVALID_HANDLE_CODE: u32 = 6;
-#[cfg(any(windows, test))]
 pub(crate) const WINDOWS_PROBE_CHILD_REQUEST_FAILURE_EXIT_CODE: i32 = 81;
 #[cfg(any(windows, test))]
 pub(crate) const WINDOWS_PROBE_CHILD_RESULT_FAILURE_EXIT_CODE: i32 = 82;
@@ -115,7 +115,6 @@ pub(crate) enum WindowsProbeChildStage {
     RequestLengthRead,
     RequestFrameRead,
     RequestDecoded,
-    ExcludedHandleChecked,
     FilesystemComplete,
     NetworkComplete,
     ProcessComplete,
@@ -131,23 +130,21 @@ impl WindowsProbeChildStage {
             Self::RequestLengthRead => 0xa3,
             Self::RequestFrameRead => 0xa4,
             Self::RequestDecoded => 0xa5,
-            Self::ExcludedHandleChecked => 0xa6,
-            Self::FilesystemComplete => 0xa7,
-            Self::NetworkComplete => 0xa8,
-            Self::ProcessComplete => 0xa9,
-            Self::ResultWritten => 0xaa,
+            Self::FilesystemComplete => 0xa6,
+            Self::NetworkComplete => 0xa7,
+            Self::ProcessComplete => 0xa8,
+            Self::ResultWritten => 0xa9,
         }
     }
 }
 
 #[cfg(any(windows, test))]
-const WINDOWS_PROBE_CHILD_STAGES: [WindowsProbeChildStage; 10] = [
+const WINDOWS_PROBE_CHILD_STAGES: [WindowsProbeChildStage; 9] = [
     WindowsProbeChildStage::Entry,
     WindowsProbeChildStage::InputHandleReady,
     WindowsProbeChildStage::RequestLengthRead,
     WindowsProbeChildStage::RequestFrameRead,
     WindowsProbeChildStage::RequestDecoded,
-    WindowsProbeChildStage::ExcludedHandleChecked,
     WindowsProbeChildStage::FilesystemComplete,
     WindowsProbeChildStage::NetworkComplete,
     WindowsProbeChildStage::ProcessComplete,
@@ -412,6 +409,8 @@ enum WorkerLaunchFailureStage {
     CreateProcess(CreateProcessFailureReason),
     AssignJob,
     QueryJobMembership,
+    ExcludedHandleInherited,
+    ExcludedHandleAmbiguous,
     ResumeThread,
 }
 
@@ -426,6 +425,8 @@ impl WorkerLaunchFailureStage {
             Self::CreateProcess(_) => "create-process",
             Self::AssignJob => "assign-job",
             Self::QueryJobMembership => "query-job-membership",
+            Self::ExcludedHandleInherited => "excluded-handle-inherited",
+            Self::ExcludedHandleAmbiguous => "excluded-handle-ambiguous",
             Self::ResumeThread => "resume-thread",
         }
     }
@@ -483,6 +484,8 @@ impl WorkerLaunchFailureStage {
             Self::CreateProcess(CreateProcessFailureReason::Other(_)) => 40,
             Self::AssignJob => 41,
             Self::QueryJobMembership => 42,
+            Self::ExcludedHandleInherited => 44,
+            Self::ExcludedHandleAmbiguous => 45,
             Self::ResumeThread => 43,
         }
     }
@@ -857,7 +860,7 @@ pub(crate) struct WindowsContainmentLaunch {
     job: JobObject,
     worker: WorkerProcess,
     pipes: WorkerPipeSet,
-    excluded_handle_value: u64,
+    excluded_handle_absent: bool,
 }
 
 #[cfg(any(windows, test))]
@@ -876,7 +879,6 @@ pub(crate) enum WindowsProbeExchangeFailure {
     WorkerRequestLengthStage,
     WorkerRequestFrameStage,
     WorkerRequestDecodeStage,
-    WorkerExcludedHandleStage,
     WorkerFilesystemStage,
     WorkerNetworkStage,
     WorkerProcessStage,
@@ -940,9 +942,6 @@ fn classify_windows_probe_child_exit_with_transcript(
             WindowsProbeExchangeFailure::WorkerRequestDecodeStage
         }
         Some(marker) if marker == WindowsProbeChildStage::RequestDecoded.marker() => {
-            WindowsProbeExchangeFailure::WorkerExcludedHandleStage
-        }
-        Some(marker) if marker == WindowsProbeChildStage::ExcludedHandleChecked.marker() => {
             WindowsProbeExchangeFailure::WorkerFilesystemStage
         }
         Some(marker) if marker == WindowsProbeChildStage::FilesystemComplete.marker() => {
@@ -963,6 +962,7 @@ fn classify_windows_probe_child_exit_with_transcript(
 pub(crate) struct WindowsContainmentObservation {
     pub(crate) app_container: bool,
     pub(crate) assigned_before_resume: bool,
+    pub(crate) excluded_handle_absent: bool,
     pub(crate) resumed_once: bool,
     pub(crate) exact_job_limits: bool,
     pub(crate) single_active_process: bool,
@@ -1061,6 +1061,7 @@ impl WindowsContainmentLaunch {
             app_container: is_app_container == 1,
             assigned_before_resume: self.worker.was_assigned_before_resume()
                 && self.job.contains_process(self.worker.process_handle())?,
+            excluded_handle_absent: self.excluded_handle_absent,
             resumed_once: self.worker.was_resumed_from_one_suspend(),
             exact_job_limits: self.job.query_back()?.is_exact(),
             single_active_process: self.job.active_process_count()? == 1,
@@ -1071,7 +1072,7 @@ impl WindowsContainmentLaunch {
         &mut self,
         request: &WindowsProbeRequest,
     ) -> Result<WindowsProbeResult, WindowsProbeExchangeFailure> {
-        let frame = encode_request_frame(request, self.excluded_handle_value)
+        let frame = encode_request_frame(request, self.excluded_handle_absent)
             .map_err(|_| WindowsProbeExchangeFailure::RequestFrame)?;
         let frame_length =
             u32::try_from(frame.len()).map_err(|_| WindowsProbeExchangeFailure::RequestFrame)?;
@@ -1141,6 +1142,8 @@ pub(crate) enum WindowsContainmentFailure {
     Job,
     Pipes,
     WorkerLaunch,
+    ExcludedHandleInherited,
+    ExcludedHandleAmbiguous,
 }
 
 #[cfg(windows)]
@@ -1346,6 +1349,7 @@ impl JobObject {
             stdio,
             variant,
             WINDOWS_WORKER_MODE_ARGUMENT,
+            None,
         )
     }
 
@@ -1359,7 +1363,13 @@ impl JobObject {
         stdio: Option<[HANDLE; 3]>,
         variant: WorkerLaunchVariant,
         command_argument: &str,
+        excluded_handle: Option<HANDLE>,
     ) -> Result<WorkerProcess, WorkerLaunchFailureStage> {
+        if excluded_handle.is_some_and(|handle| handle.is_null() || handle == INVALID_HANDLE_VALUE)
+            || excluded_handle.is_some_and(|handle| inherited_handles.contains(&handle))
+        {
+            return Err(WorkerLaunchFailureStage::InputValidation);
+        }
         if inherited_handles.is_empty()
             || inherited_handles.iter().any(|handle| {
                 handle.is_null()
@@ -1514,6 +1524,16 @@ impl JobObject {
             return Err(WorkerLaunchFailureStage::QueryJobMembership);
         }
         worker.assigned_before_resume = true;
+        // The Worker is still suspended, so its handle table holds exactly what CreateProcessW
+        // inherited and nothing the Worker could have opened for itself. Proving absence here is
+        // therefore race free and keeps the excluded value inside the supervisor.
+        if let Some(handle) = excluded_handle {
+            match excluded_probe_handle_absence_in_worker(worker.process, handle as usize as u64) {
+                Some(true) => {}
+                Some(false) => return Err(WorkerLaunchFailureStage::ExcludedHandleInherited),
+                None => return Err(WorkerLaunchFailureStage::ExcludedHandleAmbiguous),
+            }
+        }
         // SAFETY: thread is the suspended primary thread returned by CreateProcessW.
         let previous_suspend_count = unsafe { ResumeThread(worker.thread) };
         if previous_suspend_count != 1 {
@@ -1688,7 +1708,7 @@ pub(crate) fn launch_windows_containment_worker(
         AppContainerProfile::create(attempt_id).map_err(|()| WindowsContainmentFailure::Profile)?;
     let job = JobObject::create().map_err(|()| WindowsContainmentFailure::Job)?;
     let mut pipes = WorkerPipeSet::create().map_err(|()| WindowsContainmentFailure::Pipes)?;
-    let excluded_handle_value = excluded_handle
+    excluded_handle
         .encoded_value()
         .map_err(|()| WindowsContainmentFailure::WorkerLaunch)?;
     let inherited_handles = pipes.inherited_handles();
@@ -1707,15 +1727,26 @@ pub(crate) fn launch_windows_containment_worker(
             Some(pipes.stdio()),
             WorkerLaunchVariant::Production,
             child_argument,
+            Some(excluded_handle.handle),
         )
-        .map_err(|_| WindowsContainmentFailure::WorkerLaunch)?;
+        .map_err(|stage| match stage {
+            WorkerLaunchFailureStage::ExcludedHandleInherited => {
+                WindowsContainmentFailure::ExcludedHandleInherited
+            }
+            WorkerLaunchFailureStage::ExcludedHandleAmbiguous => {
+                WindowsContainmentFailure::ExcludedHandleAmbiguous
+            }
+            _ => WindowsContainmentFailure::WorkerLaunch,
+        })?;
     pipes.close_worker_endpoints();
     Ok(WindowsContainmentLaunch {
         profile,
         job,
         worker,
         pipes,
-        excluded_handle_value,
+        // Reaching this point is the proof: the launch fails closed unless the supervisor observed
+        // ERROR_INVALID_HANDLE for the excluded value in the suspended Worker handle table.
+        excluded_handle_absent: true,
     })
 }
 
@@ -1797,35 +1828,66 @@ fn read_windows_probe_child_stage_transcript(handle: HANDLE) -> Result<Vec<u8>, 
     }
 }
 
-#[cfg(windows)]
-fn excluded_probe_handle_is_absent(encoded_handle: u64) -> bool {
-    let Ok(value) = usize::try_from(encoded_handle) else {
-        return false;
-    };
-    let handle = value as HANDLE;
-    if handle.is_null() || handle == INVALID_HANDLE_VALUE {
-        return false;
+/// Decides the excluded-handle verdict from one parent-side `DuplicateHandle` attempt against the
+/// Worker handle table. A successful duplicate means the deliberately excluded handle survived
+/// into the Worker, so containment failed. Only the exact `ERROR_INVALID_HANDLE` value proves the
+/// slot is empty. Every other Win32 error is ambiguous and stays fail closed.
+#[cfg(any(windows, test))]
+fn excluded_handle_absence_from_duplicate_attempt(
+    duplicate_succeeded: bool,
+    last_error: u32,
+) -> Option<bool> {
+    match (duplicate_succeeded, last_error) {
+        (true, _) => Some(false),
+        (false, WINDOWS_ERROR_INVALID_HANDLE_CODE) => Some(true),
+        (false, _) => None,
     }
-    let mut flags = 0_u32;
-    // SAFETY: GetHandleInformation performs a read-only query. The numeric value is sent only by
-    // the parent that owns the deliberately excluded inheritable handle; an absent value is
-    // reported as ERROR_INVALID_HANDLE rather than being waited on or otherwise operated upon.
-    let query_succeeded = unsafe { GetHandleInformation(handle, &mut flags) } != 0;
-    let last_error = if query_succeeded {
-        0
-    } else {
-        // SAFETY: this immediately captures the error from the failed GetHandleInformation call.
-        unsafe { GetLastError() }
-    };
-    excluded_probe_handle_absence_from_information_query(query_succeeded, last_error)
 }
 
-#[cfg(any(windows, test))]
-fn excluded_probe_handle_absence_from_information_query(
-    query_succeeded: bool,
-    last_error: u32,
-) -> bool {
-    !query_succeeded && last_error == WINDOWS_ERROR_INVALID_HANDLE_CODE
+/// Queries the Worker handle table from the supervisor. Inherited handles keep their numeric value
+/// in the child, so the excluded value is the exact slot to interrogate. The contained Worker never
+/// touches the value: an AppContainer process under
+/// `JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION` is terminated by the raised
+/// `STATUS_INVALID_HANDLE` before it can report anything.
+#[cfg(windows)]
+fn excluded_probe_handle_absence_in_worker(
+    worker_process: HANDLE,
+    excluded_handle_value: u64,
+) -> Option<bool> {
+    if worker_process.is_null() || worker_process == INVALID_HANDLE_VALUE {
+        return None;
+    }
+    let value = usize::try_from(excluded_handle_value).ok()?;
+    let source = value as HANDLE;
+    if source.is_null() || source == INVALID_HANDLE_VALUE {
+        return None;
+    }
+    let mut duplicate: HANDLE = null_mut();
+    // SAFETY: worker_process is the live CreateProcessW handle owned by WorkerProcess and carries
+    // PROCESS_DUP_HANDLE. source is interpreted only inside the Worker handle table, duplicate is a
+    // valid out pointer, and the request is a non-inheritable read of the existing access mask.
+    let duplicate_succeeded = unsafe {
+        DuplicateHandle(
+            worker_process,
+            source,
+            GetCurrentProcess(),
+            &mut duplicate,
+            0,
+            0,
+            DUPLICATE_SAME_ACCESS,
+        )
+    } != 0;
+    let last_error = if duplicate_succeeded {
+        0
+    } else {
+        // SAFETY: this immediately captures the error from the failed DuplicateHandle call.
+        unsafe { GetLastError() }
+    };
+    if duplicate_succeeded && !duplicate.is_null() && duplicate != INVALID_HANDLE_VALUE {
+        // SAFETY: the duplicate is owned by this process and is not retained beyond the verdict.
+        unsafe { CloseHandle(duplicate) };
+    }
+    excluded_handle_absence_from_duplicate_attempt(duplicate_succeeded, last_error)
 }
 
 #[cfg(windows)]
@@ -1857,12 +1919,11 @@ pub(crate) fn read_windows_probe_request(
     read_exact_handle(input, &mut frame).map_err(|()| WindowsProbeChildRequestFailure::Request)?;
     write_windows_probe_child_stage(WindowsProbeChildStage::RequestFrameRead)
         .map_err(|()| WindowsProbeChildRequestFailure::StageWrite)?;
-    let (request, encoded_handle) =
+    // The supervisor already proved absence against this Worker handle table before resuming it.
+    // The child only echoes that verdict; it never receives or operates on the excluded value.
+    let (request, excluded_handle_absent) =
         decode_request_frame(&frame).map_err(|()| WindowsProbeChildRequestFailure::Request)?;
     write_windows_probe_child_stage(WindowsProbeChildStage::RequestDecoded)
-        .map_err(|()| WindowsProbeChildRequestFailure::StageWrite)?;
-    let excluded_handle_absent = excluded_probe_handle_is_absent(encoded_handle);
-    write_windows_probe_child_stage(WindowsProbeChildStage::ExcludedHandleChecked)
         .map_err(|()| WindowsProbeChildRequestFailure::StageWrite)?;
     Ok((request, excluded_handle_absent))
 }
@@ -2249,6 +2310,8 @@ mod tests {
             WorkerLaunchFailureStage::CreateProcess(CreateProcessFailureReason::Other(u32::MAX)),
             WorkerLaunchFailureStage::AssignJob,
             WorkerLaunchFailureStage::QueryJobMembership,
+            WorkerLaunchFailureStage::ExcludedHandleInherited,
+            WorkerLaunchFailureStage::ExcludedHandleAmbiguous,
             WorkerLaunchFailureStage::ResumeThread,
         ];
         assert_eq!(
@@ -2261,17 +2324,37 @@ mod tests {
                 "create-process",
                 "assign-job",
                 "query-job-membership",
+                "excluded-handle-inherited",
+                "excluded-handle-ambiguous",
                 "resume-thread",
             ]
         );
         assert_eq!(
             stages.map(WorkerLaunchFailureStage::reason_code),
-            ["none", "none", "none", "none", "other", "none", "none", "none"]
+            ["none", "none", "none", "none", "other", "none", "none", "none", "none", "none",]
         );
         assert_eq!(
             stages.map(WorkerLaunchFailureStage::unclassified_win32_code),
-            [None, None, None, None, Some(u32::MAX), None, None, None]
+            [
+                None,
+                None,
+                None,
+                None,
+                Some(u32::MAX),
+                None,
+                None,
+                None,
+                None,
+                None,
+            ]
         );
+        let mut exit_codes = stages
+            .map(WorkerLaunchFailureStage::diagnostic_exit_code)
+            .to_vec();
+        let total = exit_codes.len();
+        exit_codes.sort_unstable();
+        exit_codes.dedup();
+        assert_eq!(exit_codes.len(), total);
         for code in stages.map(WorkerLaunchFailureStage::code) {
             assert!(code
                 .bytes()
@@ -2405,7 +2488,6 @@ mod tests {
             WindowsProbeChildStage::RequestLengthRead,
             WindowsProbeChildStage::RequestFrameRead,
             WindowsProbeChildStage::RequestDecoded,
-            WindowsProbeChildStage::ExcludedHandleChecked,
             WindowsProbeChildStage::FilesystemComplete,
             WindowsProbeChildStage::NetworkComplete,
             WindowsProbeChildStage::ProcessComplete,
@@ -2413,7 +2495,7 @@ mod tests {
         ];
         assert_eq!(
             stages.map(WindowsProbeChildStage::marker),
-            [0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7, 0xa8, 0xa9, 0xaa]
+            [0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7, 0xa8, 0xa9]
         );
 
         for (length, expected) in [
@@ -2422,12 +2504,11 @@ mod tests {
             (2, WindowsProbeExchangeFailure::WorkerRequestLengthStage),
             (3, WindowsProbeExchangeFailure::WorkerRequestFrameStage),
             (4, WindowsProbeExchangeFailure::WorkerRequestDecodeStage),
-            (5, WindowsProbeExchangeFailure::WorkerExcludedHandleStage),
-            (6, WindowsProbeExchangeFailure::WorkerFilesystemStage),
-            (7, WindowsProbeExchangeFailure::WorkerNetworkStage),
-            (8, WindowsProbeExchangeFailure::WorkerProcessStage),
-            (9, WindowsProbeExchangeFailure::WorkerResultStage),
-            (10, WindowsProbeExchangeFailure::WorkerUnexpectedExit),
+            (5, WindowsProbeExchangeFailure::WorkerFilesystemStage),
+            (6, WindowsProbeExchangeFailure::WorkerNetworkStage),
+            (7, WindowsProbeExchangeFailure::WorkerProcessStage),
+            (8, WindowsProbeExchangeFailure::WorkerResultStage),
+            (9, WindowsProbeExchangeFailure::WorkerUnexpectedExit),
         ] {
             let transcript: Vec<u8> = stages[..length]
                 .iter()
@@ -2443,9 +2524,7 @@ mod tests {
             vec![0xa2],
             vec![0xa1, 0xa3],
             vec![0xa1, 0xa2, 0xa2],
-            vec![
-                0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7, 0xa8, 0xa9, 0xaa, 0xab,
-            ],
+            vec![0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7, 0xa8, 0xa9, 0xaa],
         ] {
             assert_eq!(
                 classify_windows_probe_child_exit_with_transcript(u32::MAX, &invalid),
@@ -2455,17 +2534,22 @@ mod tests {
     }
 
     #[test]
-    fn proves_excluded_handle_absence_only_from_an_invalid_information_query() {
-        assert!(excluded_probe_handle_absence_from_information_query(
-            false,
-            WINDOWS_ERROR_INVALID_HANDLE_CODE,
-        ));
-        assert!(!excluded_probe_handle_absence_from_information_query(
-            true, 0,
-        ));
-        assert!(!excluded_probe_handle_absence_from_information_query(
-            false, 5,
-        ));
+    fn proves_excluded_handle_absence_only_from_parent_side_duplicate_failure() {
+        assert_eq!(
+            excluded_handle_absence_from_duplicate_attempt(
+                false,
+                WINDOWS_ERROR_INVALID_HANDLE_CODE,
+            ),
+            Some(true),
+        );
+        assert_eq!(
+            excluded_handle_absence_from_duplicate_attempt(true, 0),
+            Some(false),
+        );
+        assert_eq!(
+            excluded_handle_absence_from_duplicate_attempt(false, 5),
+            None,
+        );
     }
 }
 
@@ -2599,6 +2683,7 @@ mod windows_native_tests {
 
         assert!(observation.app_container);
         assert!(observation.assigned_before_resume);
+        assert!(observation.excluded_handle_absent);
         assert!(observation.resumed_once);
         assert!(observation.exact_job_limits);
         assert!(observation.single_active_process);

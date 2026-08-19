@@ -4,6 +4,33 @@ Last updated: 2026-08-19
 
 ## Current phase
 
+### 2026-08-19 P8.2b parent-side excluded-handle proof implemented (Windows CI pending)
+
+The `GetHandleInformation` route was removed after exact-head Windows run
+`32207713253` / containment job `95934057414` showed that querying an invalid
+handle inside the AppContainer Worker terminates the child before it can emit
+the stage marker. The local implementation now keeps the proof in the
+supervisor: while the Worker remains suspended and after Job assignment, the
+parent calls `DuplicateHandle` against the Worker process handle table for the
+deliberately excluded value. A successful duplicate is classified as
+`windows-excluded-handle-inherited`; only `ERROR_INVALID_HANDLE` proves absence;
+all other errors classify as `windows-excluded-handle-ambiguous` and fail
+closed. The child receives only the parent-verified boolean in the bounded
+request frame and no longer calls a Win32 API on an invalid handle.
+
+The local RED tests are now GREEN: Goose runner Rust tests 52/52,
+containment-diagnostics 10/10, Rust formatting, project formatting, lint,
+typecheck, and `git diff --check` pass. `bun run check` also exits 0 with 164
+test files passed / 2 skipped and 1,761 tests passed / 10 skipped, followed by
+the P7 abuse, smoke-harness, product-boundary, frozen-foundation, downstream,
+and package gates. These edits are still local at this point; PR #68 remains
+at the preceding exact head `cc3b607`, whose Windows containment job is red.
+The macOS host cannot execute the Windows MSVC/AppContainer branch. A new
+exact-head Windows CI run must build the changed runner, pass containment, and
+preserve the success-only six-capability evidence Artifact before P8.2b can
+close. Overall P8.2, P8.3, P8.4, candidate creation, release, deployment, and
+user acceptance remain open.
+
 ### 2026-08-19 P8.2b Windows excluded-handle probe isolated and local repair (gate remains open)
 
 Draft pull request

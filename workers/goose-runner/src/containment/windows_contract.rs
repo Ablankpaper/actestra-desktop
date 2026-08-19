@@ -151,13 +151,13 @@ fn is_bounded_probe_path(value: &str) -> bool {
         && !value.chars().any(char::is_control)
 }
 
+/// Carries the parent-verified excluded-handle verdict. The raw handle value never crosses this
+/// boundary: the supervisor proves absence against the Worker handle table before the Worker is
+/// resumed, and the contained child only echoes the resulting boolean into its result frame.
 pub(crate) fn encode_request_frame(
     request: &WindowsProbeRequest,
-    excluded_handle: u64,
+    excluded_handle_absent: bool,
 ) -> Result<Vec<u8>, ()> {
-    if excluded_handle == 0 || excluded_handle == u64::MAX {
-        return Err(());
-    }
     let read_path = request.outside_read_path.as_bytes();
     let write_path = request.outside_write_path.as_bytes();
     let read_length = u16::try_from(read_path.len()).map_err(|_| ())?;
@@ -172,7 +172,8 @@ pub(crate) fn encode_request_frame(
     frame.push(WINDOWS_PROBE_REQUEST_VERSION);
     frame.push(0);
     frame.extend_from_slice(&request.loopback_port.to_le_bytes());
-    frame.extend_from_slice(&excluded_handle.to_le_bytes());
+    frame.push(u8::from(excluded_handle_absent));
+    frame.extend_from_slice(&[0; 7]);
     frame.extend_from_slice(&read_length.to_le_bytes());
     frame.extend_from_slice(&write_length.to_le_bytes());
     frame.extend_from_slice(read_path);
@@ -180,7 +181,7 @@ pub(crate) fn encode_request_frame(
     Ok(frame)
 }
 
-pub(crate) fn decode_request_frame(bytes: &[u8]) -> Result<(WindowsProbeRequest, u64), ()> {
+pub(crate) fn decode_request_frame(bytes: &[u8]) -> Result<(WindowsProbeRequest, bool), ()> {
     if bytes.len() < WINDOWS_PROBE_REQUEST_HEADER_LENGTH
         || bytes.len() > WINDOWS_PROBE_REQUEST_MAX_FRAME_BYTES
         || bytes[..4] != WINDOWS_PROBE_REQUEST_MAGIC
@@ -190,8 +191,12 @@ pub(crate) fn decode_request_frame(bytes: &[u8]) -> Result<(WindowsProbeRequest,
         return Err(());
     }
     let loopback_port = u16::from_le_bytes(bytes[6..8].try_into().map_err(|_| ())?);
-    let excluded_handle = u64::from_le_bytes(bytes[8..16].try_into().map_err(|_| ())?);
-    if excluded_handle == 0 || excluded_handle == u64::MAX {
+    let excluded_handle_absent = match bytes[8] {
+        0 => false,
+        1 => true,
+        _ => return Err(()),
+    };
+    if bytes[9..16] != [0; 7] {
         return Err(());
     }
     let read_length = u16::from_le_bytes(bytes[16..18].try_into().map_err(|_| ())?) as usize;
@@ -213,7 +218,7 @@ pub(crate) fn decode_request_frame(bytes: &[u8]) -> Result<(WindowsProbeRequest,
         .map_err(|_| ())?
         .to_string();
     let request = WindowsProbeRequest::new(outside_read_path, outside_write_path, loopback_port)?;
-    Ok((request, excluded_handle))
+    Ok((request, excluded_handle_absent))
 }
 
 pub(crate) fn parse_role(arguments: &[String]) -> Result<Option<WindowsContainmentRole>, ()> {
@@ -374,17 +379,23 @@ mod tests {
             49_152,
         )
         .unwrap();
-        let frame = encode_request_frame(&request, 0x1234).unwrap();
-        let (decoded, excluded_handle) = decode_request_frame(&frame).unwrap();
+        let frame = encode_request_frame(&request, true).unwrap();
+        let (decoded, excluded_handle_absent) = decode_request_frame(&frame).unwrap();
 
         assert_eq!(decoded, request);
-        assert_eq!(excluded_handle, 0x1234);
+        assert!(excluded_handle_absent);
         let mut trailing = frame.clone();
         trailing.push(0);
         assert!(decode_request_frame(&trailing).is_err());
         let mut reserved = frame;
         reserved[5] = 1;
         assert!(decode_request_frame(&reserved).is_err());
+        let mut invalid_boolean = encode_request_frame(&request, false).unwrap();
+        invalid_boolean[8] = 2;
+        assert!(decode_request_frame(&invalid_boolean).is_err());
+        let mut nonzero_padding = encode_request_frame(&request, false).unwrap();
+        nonzero_padding[9] = 1;
+        assert!(decode_request_frame(&nonzero_padding).is_err());
     }
 
     #[test]
@@ -400,10 +411,6 @@ mod tests {
             1,
         )
         .is_err());
-        let request =
-            WindowsProbeRequest::new("C:\\in".to_string(), "C:\\out".to_string(), 1).unwrap();
-        assert!(encode_request_frame(&request, 0).is_err());
-        assert!(encode_request_frame(&request, u64::MAX).is_err());
         assert!(WindowsProbeRequest::new("C:\\in".to_string(), "C:\\out".to_string(), 0).is_err());
     }
 
