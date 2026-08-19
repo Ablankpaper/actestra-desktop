@@ -13,6 +13,8 @@ mod windows_control;
 #[cfg(any(windows, test))]
 mod windows_model_bridge;
 #[cfg(any(windows, test))]
+mod windows_named_pipe;
+#[cfg(any(windows, test))]
 mod windows_supervisor;
 #[cfg(all(unix, test))]
 use containment::apply_resource_limits_with;
