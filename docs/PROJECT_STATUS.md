@@ -2,6 +2,52 @@
 
 Last updated: 2026-08-20
 
+## 2026-08-20 P8.2c Batch 4 Task 12 exact Windows runtime evidence (portable implementation green; native evidence pending)
+
+Task 12 is implemented locally on branch
+`codex/p8-2c-windows-runtime-composition` on top of exact pushed head
+`19dd393fc14888a5c6614e87172ccb8db414b37a`. The new Windows-only integration
+admits the exact containment-bound `x86_64-pc-windows-msvc` runner Artifact,
+creates a real Git source checkout and Actestra-owned isolated worktree, uses
+the real isolated coding platform and `GooseCodingToolInvoker`, and drives one
+deterministic MCP-free ACP sequence through the Main-owned authenticated model
+and capability channels. The sequence reads an existing worktree file, obtains
+the real Tool Gateway approval for a write, writes
+`windows-runtime-acceptance.txt` only in the isolated worktree, starts a second
+blocked prompt, and observes cancellation. A separate Main-style process then
+opens the exact runtime and is terminated so the parent-liveness channel must
+remove the Supervisor and contained Worker. The source checkout HEAD, status,
+and original bytes are asserted unchanged.
+
+The new runner re-admits the same manifest before and after the test, requires
+the explicit containment-evidence file and manifest digest, binds source/base/
+private-runtime/patch/manifest/executable/containment digests, and emits only
+the closed 22-field runtime evidence record. The validator rejects missing or
+extra fields, false outcomes, target or digest drift, nonzero residual process
+counts, and path/PID/SID/pipe/prompt/API-key/tool-argument/raw-error material.
+The parent process deliberately carries environment and credential canaries;
+the real Windows Worker cannot reach ACP readiness unless its existing
+`verify_worker_boundary()` proves those values absent. No Provider credential,
+Renderer authority, original-workspace write, HTTP/MCP endpoint, or new tool is
+introduced.
+
+Portable local evidence is green: the evidence suite passes `16/16`, TypeScript
+typecheck is clean, format is clean, lint reports zero warnings/errors, and
+`git diff --check` passes. On macOS the native integration is deliberately not
+executed and is not Windows evidence. Exact-head CI run
+[`32277562900`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32277562900)
+for Task 11 head `19dd393` currently has Ubuntu containment, Ubuntu build, and
+Goose admission green; macOS foundation and both Windows jobs remain in
+progress.
+
+This does not close Task 12 or P8.2c. Task 13 must add and pass the separate
+exact-head Windows authenticated-runtime CI job against the same built Artifact
+and containment record. The bounded runtime Artifact must then be downloaded
+and independently revalidated before recording native evidence. Windows
+Electron/package/provider acceptance, overall P8.2, P8.3 candidate integrity
+and signing, P8.4 clean-machine and real-provider/manual Team acceptance,
+release, deployment, and user acceptance remain open.
+
 ## 2026-08-20 P8.2c Batch 3 Task 11 MCP-free Windows ACP composition (local/package green; native gate open)
 
 Task 11 is implemented locally on top of `ffc005f`. ACP session options are
