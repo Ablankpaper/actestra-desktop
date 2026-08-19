@@ -119,6 +119,7 @@ describe("Goose Windows runtime evidence", () => {
       fs.readFileSync(path.join(repositoryRoot, "package.json"), "utf8"),
     );
     const runnerPath = path.join(repositoryRoot, "scripts/run-goose-runner-windows-runtime.mjs");
+    const vitest = fs.readFileSync(path.join(repositoryRoot, "vitest.config.ts"), "utf8");
 
     expect(packageJson.scripts["goose:runner:integration:windows"]).toBe(
       "node scripts/run-goose-runner-windows-runtime.mjs",
@@ -133,5 +134,8 @@ describe("Goose Windows runtime evidence", () => {
     expect(runner).toContain("classifyGooseWindowsRuntimeFailureEvidence");
     expect(runner).toContain("readFailureCode");
     expect(runner).not.toContain('stdio: "inherit"');
+    expect(vitest).toContain("nativeWindowsGooseIntegrationFiles");
+    expect(vitest).toContain('"tests/main/gooseRunnerWindowsNative.integration.ts"');
+    expect(vitest).toContain('ACTESTRA_GOOSE_WINDOWS_RUNTIME_INTEGRATION === "1"');
   });
 });

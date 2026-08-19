@@ -49,6 +49,16 @@ launcher did not read the integration test's bounded failure-stage record;
 that diagnostic gap is now fixed locally by mapping only closed stages for
 composition-open, read-tool, approved-write-tool, cancellation, and
 parent-death. No raw error, path, PID, or credential can cross the boundary.
+The next exact-head run
+[`32284767717`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32284767717)
+proved why no stage existed: Vitest reported no matching test before executing
+the integration body. The Windows-only `.integration.ts` file had not been
+added to the conditional Vitest include list, unlike the established Linux
+native integration. The Windows file is now admitted only when the full six-
+variable runtime evidence contract is present. A local command-shape probe
+changed from `No test files found` at exit `1` to one collected,
+platform-skipped file at exit `0`; that proves collection only and remains no
+Windows runtime evidence.
 
 This does not close Task 13, Task 12, or P8.2c. A new exact-head CI run must
 compile and execute the corrected Windows job, publish
