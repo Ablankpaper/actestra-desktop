@@ -7,7 +7,11 @@ mod linux_runtime;
 #[cfg(any(windows, test))]
 mod windows_bridge;
 #[cfg(any(windows, test))]
+mod windows_capability_bridge;
+#[cfg(any(windows, test))]
 mod windows_control;
+#[cfg(any(windows, test))]
+mod windows_model_bridge;
 #[cfg(any(windows, test))]
 mod windows_supervisor;
 #[cfg(all(unix, test))]
