@@ -1,8 +1,532 @@
 # Project Status
 
-Last updated: 2026-08-17
+Last updated: 2026-08-19
 
 ## Current phase
+
+### 2026-08-19 P8.2b Windows containment verified; P8.2b gate closed
+
+Draft pull request
+[#68](https://github.com/Ablankpaper/actestra-desktop/pull/68) reached exact
+head `c9871dac252ec9c1d6092b0704b14dbdc85e31fe`. Pull-request run
+[`32220641275`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32220641275)
+completed all six jobs successfully: Windows build probe, Windows containment,
+Ubuntu build probe, Ubuntu containment, Goose runner admission, and macOS
+foundation. The Windows containment job completed both exact acceptance and
+success-only evidence preservation.
+
+The preserved evidence Artifact
+`p8-goose-containment-windows-6878da53ff453a982ac58803a3f9d4ded8559798`
+contains a verified record for `x86_64-pc-windows-msvc`:
+
+- manifest SHA-256: `cd9562bb73395849cb53c44e56ce80c01bc54865ea913506cc0abd4c3665993d`
+- executable SHA-256: `3b144602c317884977a0131973be129ac41dabe10d299f37c6658cdfc39b74bf`
+- probe SHA-256: `dd3d0e3c32ae0686297540cb2b69cefaecf4a99868c86ebabe7d68808dd7fd22`
+- evidence status: `verified`
+
+This closes the Windows P8.2b containment gate. The verified run crossed the
+AppContainer, inherited-environment, Job/resource, parent-side excluded-handle
+identity, filesystem, network, process-tree, parent-death, and cleanup checks.
+For the network check, the supervisor first reached and drained the positive
+host control connection; the Worker then timed out without a server-side
+Worker connection. The final aggregate now consumes that already-verified
+network result, so a valid timeout is not rejected by the old `denied()`-only
+completion check. Other network outcomes remain fail-closed.
+
+The preceding exact-head run `32219446833` failed only with
+`windows-job-evidence-incomplete`: the composite network proof had succeeded,
+but the final completeness helper still required `network_outcome.denied()`.
+The one-line semantic split was covered by Rust tests and corrected in this
+head. Local focused validation is green: Rust 53/53, containment diagnostics
+10/10, format, lint (0 warnings / 0 errors), typecheck, docs (94 Markdown
+files), and `git diff --check`. This closes P8.2b only; overall P8.2 product
+journeys, P8.3 candidate integrity/signing, P8.4 clean-machine and
+real-provider acceptance, release, deployment, and user acceptance remain
+open.
+
+### 2026-08-19 P8.2b Windows timeout selected; controlled denial repair local (gate remains open)
+
+Draft pull request
+[#68](https://github.com/Ablankpaper/actestra-desktop/pull/68) reached exact
+diagnostic head `2e661d3ac284f346b1084809516fb5dfc7aaa83c`. Pull-request run
+[`32217053851`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32217053851)
+completed five jobs successfully and failed only Windows containment job
+[`95960429255`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32217053851/job/95960429255).
+The exact Windows runner passed native-primitives compilation and execution,
+frozen-lock verification, build, and Artifact admission. Its manifest SHA-256
+was `84b7996de29e1fd2090d1a01aad51f5120ed75fc6a22a35e7c6582cd241ee374`,
+its executable SHA-256 was
+`1f882d46d88c13a11a54958681e03ceb757a8c1eac90cba0c8e954072e0c7f80`,
+and its executable size was 487,936 bytes. The containment run then selected
+the closed `windows-network-timeout` category; the success-only evidence upload
+was skipped.
+
+The result proves the capability-free AppContainer Worker could not establish
+the hostile loopback connection during the fixed two-second attempt, but a
+timeout alone is not sufficient evidence that the listener and host network
+path were healthy. The local repair therefore does not admit an unconditional
+timeout. Before launching the Worker, the supervisor connects to the same
+listener through its ordinary host token and drains that exact accepted
+connection. If this positive control fails, the probe exits nonzero as
+`windows-network-control-invalid`. After launch, a timeout is accepted only
+when the listener accepted no Worker connection. A successful Worker connect,
+missing control, refused/unreachable address, unavailable network stack,
+missing raw status, or any unclassified result remains nonzero and
+non-admitting.
+
+The composite rule was written RED to GREEN. Its test requires all three
+conditions independently: host control reachable, Worker timeout, and no
+server-side Worker connection. Portable Rust tests pass 53/53 and containment
+diagnostics pass 10/10 locally. The probe does not expose the listener address,
+port, raw WinSock value, error text, path, handle, environment value, or
+credential, and it does not grant an AppContainer network capability or widen
+production Worker authority.
+
+Two fresh complete `bun run check` attempts both passed format, lint,
+typecheck, the P8 contract, and Electron SQLite, then stopped in the broad
+parallel test phase on two different existing process-timing failures. The
+first read a shell-created but still empty Windows-control fixture; its
+isolated rerun passed 7 tests / 1 platform skip. The second timed out while
+cleaning a Team model probe group; its isolated rerun passed 94/94. Neither
+failure touches a changed file or reproduces in isolation, but neither failed
+complete run is reported as GREEN. The preceding exact diagnostic head passed
+all six CI jobs except the expected Windows containment discriminator, and the
+preceding local diagnostic commit completed `bun run check` at exit 0. A new
+exact-head Windows run must compile and execute the positive control, verify
+all six capabilities, and preserve the success-only evidence Artifact before
+P8.2b can close. Overall P8.2, P8.3, P8.4, candidate creation, release,
+deployment, and user acceptance remain open.
+
+### 2026-08-19 P8.2b exact-head HANDLE proof passed; Windows network error split local (gate remains open)
+
+Draft pull request
+[#68](https://github.com/Ablankpaper/actestra-desktop/pull/68) reached exact
+head `0ee4bf1c40d0a7a6b43789fdf3b54990ac3d1c11`. Pull-request run
+[`32215185835`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32215185835)
+completed five jobs successfully and failed only Windows containment job
+[`95955252370`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32215185835/job/95955252370).
+The exact Windows runner passed native-primitives compilation and execution,
+frozen-lock verification, build, and Artifact admission. Its manifest SHA-256
+was `be1a68fa48bee8d05f36984651c40e8b21b28f199a89ed7c3a83714214b691fd`,
+its executable SHA-256 was
+`b5de68c6184a82fcd3e3ec4791fcdf3fc988dda2a56d32242ea113d1bb05d78f`,
+and its executable size was 486,400 bytes. The containment run then failed
+closed at `windows-network-other`; the success-only evidence upload was
+skipped.
+
+This result verifies the parent-side `DuplicateHandle` plus
+`CompareObjectHandles` proof on Windows 2025. The deliberately excluded object
+was not inherited or ambiguous, the Worker reached the hostile network probe,
+and no handle-value collision was misclassified. It does not prove network
+containment: the preceding diagnostic grouped every remaining raw WinSock
+value and every missing raw value into `other`, so the result cannot justify
+admitting a new network denial category.
+
+The local follow-up is diagnostic only and was written RED to GREEN. It splits
+the previous `other` bucket into address unavailable, invalid argument,
+network-stack unavailable, permission denied without a raw code, raw code
+absent, and unclassified. It uses only `std::io::ErrorKind` and a closed set of
+WinSock values; no raw value, error text, path, address, port, handle,
+environment value, or credential enters the result frame or public
+diagnostic. `WSAEACCES` remains the only accepted network-containment result.
+Every new category remains nonzero and non-admitting. Focused portable Rust
+tests pass 52/52 and containment diagnostics pass 10/10 locally. A new
+complete `bun run check` exits 0 with 164 test files passed / 2 skipped and
+1,761 tests passed / 10 skipped, followed by the P7 abuse, smoke-harness,
+product-boundary, frozen-foundation, downstream, and package gates. A new
+exact-head Windows run is required to select the actual category before a
+behavioral repair or an acceptance change is justified. P8.2b, overall P8.2,
+P8.3, P8.4, candidate creation, release, deployment, and user acceptance
+remain open.
+
+### 2026-08-19 P8.2b parent-side handle proof passed; network outcome discriminator local (gate remains open)
+
+Draft pull request #68 reached exact head
+`5c78dedd04daaed2e134da3bdd5fb5de24521baf`. Pull-request run
+[`32211250074`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32211250074)
+built and admitted the exact Windows runner. Windows build-probe job
+`95944224255`, Goose runner admission `95944224324`, Ubuntu build
+`95944224126`, and Ubuntu containment `95944224194` passed. Windows
+containment job
+[`95944224178`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32211250074/job/95944224178)
+passed build, frozen-lock, and artifact-admission steps, then failed the native
+acceptance with `windows-network-evidence-incomplete`; the success-only
+evidence upload was skipped. The exact Windows artifact had manifest SHA-256
+`7b26769dccc5d64b0d9683a640886ae29e8f1b4285c8378f14026d851ac5dc36`,
+executable SHA-256
+`269b44778b2ce36f5da7c69c05196ba55a4e4eb75d7d4408d83b6d33d53b612d`,
+and size 485,888 bytes.
+
+This result proves that the parent-side suspended `DuplicateHandle` check no
+longer terminates the child and did not classify the deliberately excluded
+handle as inherited or ambiguous. The Worker completed the request and reached
+the later hostile network evidence check. The network probe previously reduced
+every non-`WSAEACCES` result and a successful connection to one boolean, so the
+failure does not yet justify admitting another WinSock outcome as a denial.
+
+The local diagnostic follow-up keeps every outcome non-admitting and records
+only one closed category in the fixed internal result frame: access denied,
+connected, timed out, unreachable, refused, other, or not attempted. The
+public failure vocabulary maps these to bounded, path-free codes while only
+access denied remains accepted as containment proof. The focused Rust suite
+passes 52/52 and containment diagnostics pass 10/10 locally. A new exact-head
+Windows run is required to identify the actual network outcome. P8.2b,
+overall P8.2, P8.3, P8.4, candidate creation, release, deployment, and user
+acceptance remain open.
+
+### 2026-08-19 P8.2b parent-side excluded-handle proof implemented (Windows CI pending)
+
+The `GetHandleInformation` route was removed after exact-head Windows run
+`32207713253` / containment job `95934057414` showed that querying an invalid
+handle inside the AppContainer Worker terminates the child before it can emit
+the stage marker. The local implementation now keeps the proof in the
+supervisor: while the Worker remains suspended and after Job assignment, the
+parent calls `DuplicateHandle` against the Worker process handle table for the
+deliberately excluded value. A successful duplicate is classified as
+`windows-excluded-handle-inherited`; only `ERROR_INVALID_HANDLE` proves absence;
+all other errors classify as `windows-excluded-handle-ambiguous` and fail
+closed. The child receives only the parent-verified boolean in the bounded
+request frame and no longer calls a Win32 API on an invalid handle.
+
+The local RED tests are now GREEN: Goose runner Rust tests 52/52,
+containment-diagnostics 10/10, Rust formatting, project formatting, lint,
+typecheck, and `git diff --check` pass. `bun run check` also exits 0 with 164
+test files passed / 2 skipped and 1,761 tests passed / 10 skipped, followed by
+the P7 abuse, smoke-harness, product-boundary, frozen-foundation, downstream,
+and package gates. These edits are still local at this point; PR #68 remains
+at the preceding exact head `cc3b607`, whose Windows containment job is red.
+The macOS host cannot execute the Windows MSVC/AppContainer branch. A new
+exact-head Windows CI run must build the changed runner, pass containment, and
+preserve the success-only six-capability evidence Artifact before P8.2b can
+close. Overall P8.2, P8.3, P8.4, candidate creation, release, deployment, and
+user acceptance remain open.
+
+### 2026-08-19 P8.2b Windows excluded-handle probe isolated and local repair (gate remains open)
+
+Draft pull request
+[#68](https://github.com/Ablankpaper/actestra-desktop/pull/68) reached exact
+head `f1839412f73c4279f715cbbc915e404849e75549`. Pull-request run
+[`32205798445`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32205798445)
+built and admitted the exact Windows runner, preserved the frozen lock, and
+failed Windows containment job
+[`95928734916`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32205798445/job/95928734916)
+with `windows-child-excluded-handle-stage-invalid`. The ordered child
+transcript proves that the AppContainer probe obtained standard input, read
+the bounded request length and frame, decoded the request, and then terminated
+inside the deliberately excluded-handle check. Build, Artifact admission,
+AppContainer entry, and the request transport are therefore not the immediate
+failure boundary.
+
+The excluded-handle probe previously passed the deliberately non-inherited raw
+handle value to `WaitForSingleObject`. The local repair instead uses the
+read-only `GetHandleInformation` query and accepts absence only when that query
+fails with the closed Win32 `ERROR_INVALID_HANDLE` value. A successful query or
+any other error remains fail closed. No AppContainer capability, Job Object
+limit, inherited-handle allowlist, environment cleaning, evidence-upload rule,
+or runtime authority is widened.
+
+The correction was written test-first: the focused test failed before the
+implementation and now passes. All 52 portable runner tests, the containment
+diagnostic suite (10/10), Rust formatting, documentation-link validation, and
+`git diff --check` pass locally. The complete `bun run check` gate also exits 0
+with 164 test files passed / 2 skipped and 1,761 tests passed / 10 skipped,
+followed by the P7 abuse, smoke-harness, product-boundary, frozen-foundation,
+downstream, and package gates. A minimal `windows-sys` 0.61.2 probe compiles
+for `x86_64-pc-windows-msvc`; the macOS host still lacks the Windows C/assembly
+toolchain needed to cross-compile the full Goose dependency graph. A new
+exact-head Windows run must therefore compile and execute this Windows-only
+branch, produce a verified six-capability containment record, and preserve its
+success-only evidence Artifact before P8.2b can close. Overall P8.2, P8.3,
+P8.4, candidate creation, release, deployment, and user acceptance remain open.
+
+### 2026-08-19 P8.2b Windows child request stage isolated (substage verification pending)
+
+Draft pull request
+[#68](https://github.com/Ablankpaper/actestra-desktop/pull/68) reached exact
+diagnostic head `a270f2405402f040fbb256deed2cd354520888a1`. Pull-request run
+[`32204212767`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32204212767)
+built and admitted the exact Windows runner, preserved the frozen lock, and
+failed Windows containment job
+[`95924090568`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32204212767/job/95924090568)
+with `windows-child-request-stage-invalid`. This proves the AppContainer child
+entered the probe role and wrote its entry marker, then terminated before the
+request read completed. It rules out CreateProcess, AppContainer creation,
+Job assignment, build, and artifact admission as the immediate failure stage.
+
+The follow-up local diagnostic splits the request boundary into five fixed
+sub-stages: standard-input handle admitted, length read, frame read, frame
+decoded, and excluded-handle check complete. Together with the later
+filesystem, network, process, and result-write stages, the transcript remains
+an exact ordered byte sequence on the inherited stderr pipe. It never records
+raw exit statuses, paths, environment values, handle values, SIDs,
+credentials, or Win32 text. An invalid or mixed transcript remains
+`windows-child-unexpected-exit-invalid`; every failure remains nonzero and
+non-admitting.
+
+The follow-up is locally validated by its RED-to-GREEN Rust test, containment
+diagnostics 10/10, and Rust formatting. The preceding exact head passed the
+Windows native-primitives compile, while the macOS host cannot compile the
+runner's C dependencies for MSVC. A new exact-head Windows job is still
+required to select the request sub-stage before a behavioral repair is
+justified. P8.2b remains open until Windows containment produces and preserves
+a verified six-capability evidence Artifact.
+
+### 2026-08-19 P8.2b exact-head probe-route correction disproved; exit discriminator added (gate remains open)
+
+Draft pull request
+[#68](https://github.com/Ablankpaper/actestra-desktop/pull/68) reached exact
+head `9ed17e80652352d164f1f9d3516bdc21ba92770a`. Pull-request run
+[`32183130018`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32183130018)
+completed with five successful jobs and one failed job. The Windows x64 build
+probe (`95860608121`), Ubuntu x64 build probe (`95860608122`), Goose runner
+admission (`95860608190`), Ubuntu x64 containment (`95860608214`), and macOS
+arm64 foundation (`95860608256`) all passed. Windows containment job
+[`95860608291`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32183130018/job/95860608291)
+built and admitted the exact Windows runner, preserved the frozen lock, and
+then failed the exact containment acceptance with the closed code
+`windows-child-unexpected-exit-invalid`. The success-only Windows evidence
+upload was skipped, so no failed result was retained as an admitting Artifact.
+
+This exact result disproves the preceding route-only repair as a complete root
+cause. The repaired bytes did compile and the separate native supervisor
+primitives passed, but the real admitted runner still terminated after the
+AppContainer child launch and before it returned its fixed result frame. The
+old exit classifier collapsed explicit entry failure, Rust panic, Windows
+image/dependency initialization failure, runtime fault, and every other
+unexpected process status into the same code, so the run does not justify a
+new behavioral repair.
+
+The follow-up local change is diagnostic only and was written test-first. It
+adds closed, path-free categories for child entry failure, Rust panic, known
+Windows image/dependency loading statuses, and known runtime-fault statuses;
+all other statuses remain `windows-child-unexpected-exit-invalid`. It does not
+emit a raw status, path, handle, environment value, SID, credential, or Win32
+message. Every category remains nonzero and non-admitting. The focused
+diagnostic file passes 10/10, all portable runner tests pass 50/50, Rust and
+project formatting pass, lint remains at zero warnings and errors, and
+`git diff --check` is clean. Exact-head Windows CI is still required to select
+the actual category before any root-cause repair is made.
+
+No AppContainer capability, Job Object limit, inherited-handle allowlist,
+environment cleaning, admission rule, `foundation/`, Renderer, preload,
+provider, persistence, or UI authority was weakened or changed. Windows
+containment, P8.2b, overall P8.2, P8.3, P8.4, candidate creation, release,
+deployment, and user acceptance remain open.
+
+### 2026-08-19 P8.2b Windows `LOCALAPPDATA` root cause proved and local repair (gate remains open)
+
+Draft pull request
+[#68](https://github.com/Ablankpaper/actestra-desktop/pull/68) reached exact
+diagnostic head `4ea0d9ddaa9883bf32619c91baf5872e80737073`. Pull-request run
+[`32158083962`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32158083962)
+completed the native-primitives step in Windows build-probe job
+[`95780046553`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32158083962/job/95780046553)
+successfully before the remaining run was deliberately cancelled. The four
+native tests passed in 0.15 seconds. The sanitized environment discriminator
+reported the exact results:
+
+- absent `LOCALAPPDATA`: `failure`, `environment-variable-not-found`, Win32
+  `203`;
+- attempt-private `LOCALAPPDATA`: `success`, Win32 `0`;
+- restored runner `LOCALAPPDATA`: `success`, Win32 `0`.
+
+The companion launch matrix also showed that production inheritance,
+security-capabilities-only inheritance, handle-list-only inheritance, and plain
+inheritance all created a process, while the two sparse custom blocks still
+failed with Win32 `203`. This is native evidence that the production failure is
+the cleaned supervisor environment omitting one Windows-required variable; it
+does not authorize inheriting the host environment or weakening AppContainer,
+the handle allowlist, Job Object, suspended launch, or fail-closed admission.
+
+The follow-up local correction was written test-first. Before implementation,
+four assertions failed because the strict environment lacked `LOCALAPPDATA` and
+the attempt-private directory did not exist. Main now binds `LOCALAPPDATA` to
+`<attempt-root>/local-app-data` and creates that directory with the other
+attempt-private directories before transport startup. It does not read or copy
+the host value. The parent-environment canary and credential sweep remain in
+the exact whitelist test.
+
+After the minimal correction, the three directly affected files passed 28
+tests with one platform skip. The expanded environment, credential, resource,
+Windows bridge, and lifecycle slice passed 76 tests with one platform skip;
+Rust formatting and all 35 portable runner tests passed. A complete
+`bun run check` then reached exit 0 with 163 test files passed / 2 skipped and
+1,752 tests passed / 10 skipped, followed by the P7 abuse, smoke-harness,
+product-boundary, frozen-foundation, downstream, and package gates. Existing
+frozen-foundation bundler notices remain warnings rather than failed gates.
+
+This local repair still requires exact-head Windows build-probe and containment
+evidence. Windows runtime admission remains fail closed. P8.2b, overall P8.2,
+candidate creation, release, deployment, and user acceptance remain open.
+
+### 2026-08-18 P8.2b Windows sixth native denial and discriminator (gate remains open)
+
+Draft pull request
+[#68](https://github.com/Ablankpaper/actestra-desktop/pull/68) reached exact
+implementation head `500d8115003e2a14638c79f26db38531eeb507cf`. Pull-request run
+[`32103584563`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32103584563)
+failed Windows build-probe job
+[`95608623187`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32103584563/job/95608623187):
+the AppContainer-profile and Job Object tests passed, while the suspended Worker
+launch again failed at `stage=create-process reason=other win32_code=203`. This
+is the sixth native Windows failure of the same Task 4 launch test. The workflow
+was then cancelled after preserving the failed job; that cancellation does not
+turn the Windows failure into a pass.
+
+The exact result disproves the preceding `SystemRoot`-only hypothesis. Two
+single-variable production hypotheses are now explicitly false on
+`windows-2025`: supplying an explicit current directory, and replacing the
+empty custom environment with exactly one trusted `SystemRoot` entry. The
+numeric name `ERROR_ENVVAR_NOT_FOUND` is therefore insufficient to conclude
+that adding more environment variables is the correct production repair. The
+remaining fault may be an environment requirement or the interaction between
+`PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES`, the inherited-handle list, and
+`CreateProcessW`.
+
+The next local change is evidence gathering, not a seventh repair guess. A
+`cfg(test)`-only launch matrix compares the exact production structure against
+parent-environment inheritance, trusted `SystemRoot + WINDIR`, trusted
+`ComSpec + SystemRoot + WINDIR`, security-capabilities-only, handle-list-only,
+and plain `CreateProcessW` variants. Every result uses only a closed variant
+label, stage, reason, and numeric Win32 code. No path, environment value,
+parent-environment entry, SID, handle value, prompt, lease, or credential is
+printed. CI uses `--nocapture --test-threads=1` so all variants complete and
+their sanitized outcomes are preserved before the production assertion keeps
+the job fail closed.
+
+The non-test build exposes only `WorkerLaunchVariant::Production`; it still
+uses the capability-free AppContainer, explicit handle allowlist, trusted
+`SystemRoot` block, explicit current directory, suspended launch, Job Object
+assignment-before-resume, and closed `run_supervisor()` / `run_worker()`
+entries. No diagnostic variant is available to a production caller and no
+Windows runtime admission is enabled.
+
+TDD first failed the source contract on the absent seven matrix labels and
+failed Rust compilation on the absent diagnostic environment constructor. The
+minimal implementation now passes the focused source contract 6/6, the
+portable Windows supervisor slice 7/7, and the three related script files
+21/21; Rust format, lint, format, and `git diff --check` are also green. The
+first full `bun run check` attempt exposed one parallel
+`p7PackagedTrust.test.mjs` fixture race (`packaged planner or main entry is
+missing`); its isolated rerun passed 10/10. A fresh complete rerun then exited
+0 with 162 files passed / 2 skipped and 1,741 tests passed / 9 skipped, followed
+by the P7 abuse, smoke-harness, product-boundary, frozen-foundation,
+downstream, and package gates.
+
+The discriminator has no Windows result yet. Task 4, Windows containment,
+cross-platform P8.2b, overall P8.2, candidate creation, release, and user
+acceptance all remain open.
+
+### 2026-08-18 P8.2b Windows worker environment correction (local only; gate remains open)
+
+Draft pull request
+[#68](https://github.com/Ablankpaper/actestra-desktop/pull/68) reached implementation
+head `84e9e2cf9eb9c80d3994b269c42e403c49a1233f`. Pull-request run
+[`32101652973`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32101652973)
+failed its Windows native supervisor probe
+[`95603175848`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32101652973/job/95603175848)
+at the exact closed boundary `stage=create-process reason=other win32_code=203`;
+the other two native supervisor tests passed. Win32 code 203 is
+`ERROR_ENVVAR_NOT_FOUND`. The failing call supplied a custom Unicode environment
+block containing only two NUL code units, so the next single hypothesis is that
+AppContainer process creation requires a trusted `SystemRoot` entry rather than
+an entirely empty environment.
+
+The local correction obtains the Windows directory through
+`GetWindowsDirectoryW` and supplies exactly the sorted, double-NUL-terminated
+`SystemRoot=<Windows directory>` entry. It does not enumerate or inherit the
+parent environment and does not log the directory or environment content. The
+AppContainer profile, security-capabilities attribute, inherited-handle
+allowlist, Job Object, creation flags, explicit current directory, and
+fail-closed `run_supervisor()` / `run_worker()` entries are unchanged.
+
+TDD evidence first failed the source contract 2/5 on the absent API/feature and
+failed Rust compilation on the absent environment-block constructor. After the
+minimal implementation, the source contract passed 5/5, the portable Windows
+supervisor unit slice passed 6/6, and the three related script files passed
+14/14. Rust formatting, focused JavaScript lint/format, `git diff --check`, and
+a direct `x86_64-pc-windows-msvc` metadata compile of the exact supervisor
+source also passed. A full macOS-hosted Windows Cargo cross-check is not usable
+as native evidence because transitive C builds require the absent MSVC SDK
+headers; it stopped in `zstd-sys`/`libsqlite3-sys`, before this source was the
+failure boundary.
+
+The complete local `bun run check` then exited 0: 162 test files passed / 2
+skipped, 1,740 tests passed / 9 skipped, followed by the P7 abuse,
+smoke-harness, product-boundary, frozen-foundation, downstream, and package
+gates. The existing frozen-foundation bundler notices remain warnings rather
+than failed gates.
+
+This is local implementation evidence only. Windows Task 4 remains open until
+the next `windows-2025` native run passes all three supervisor tests and the
+exact Windows build/admission job completes. No Windows containment Artifact,
+package journey, P8.2b acceptance, P8.2 completion, candidate, release, or user
+acceptance is claimed.
+
+### 2026-08-18 P8.2b Ubuntu containment accepted on the exact PR implementation head
+
+Draft pull request
+[#68](https://github.com/Ablankpaper/actestra-desktop/pull/68) now has exact
+Ubuntu runtime-containment evidence for implementation head
+`e597d85abef885c2b6a78a61a4860d1180614bac`. Pull-request run
+[`32087808605`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32087808605)
+completed Ubuntu containment job
+[`95563851187`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32087808605/job/95563851187)
+successfully. The job independently built and admitted the exact
+`x86_64-unknown-linux-gnu` Goose Artifact, built and inspected the DEB,
+installed the root-owned package layout and AppArmor profile, re-admitted that
+installed package, ran the authenticated Linux Goose integration, passed the
+native containment acceptance, re-admitted the bound manifest, uploaded the
+bounded evidence, and removed the temporary package layout. Steps 9 through 19
+all completed successfully; in particular the containment, bound-manifest, and
+evidence-preservation steps 16, 17, and 18 are green.
+
+This run followed a fail-closed diagnostic run rather than concealing the
+earlier failure. Exact head
+`5bd6bd4ac1068d67366dc2c56c5b02b7be51ef0c`, run
+[`32086110390`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32086110390),
+and Ubuntu job `95558874746` reached the native acceptance and emitted the
+single closed stage `parent-death-readiness-failed`. Root-cause tracing showed
+that the intermediate child closed `death_pipe[0]` and `watch_pipe[1]` before
+creating `ready_pipe`; Linux then reused those available descriptor slots for
+the new pipe. The grandchild repeated the stale closes and could therefore
+close the new ready writer before reporting readiness. A TDD regression failed
+on those two stale closes, then passed after the minimal repair removed only
+the redundant grandchild closes. The focused probe file passed 22/22 and the
+four related containment files passed 60/60.
+
+Fresh local evidence for the corrected bytes is `bun run check` at exit 0:
+160 test files passed / 2 skipped, 1,730 tests passed / 9 skipped, followed by
+the P7 abuse, smoke-harness, product-boundary, frozen-foundation, downstream,
+and package gates. Formatting, lint (0 warnings/errors), typecheck, P8 contract,
+Electron SQLite, Rust formatting, and `git diff --check` also passed. The
+artifact-dependent local `goose:runner:test` command was not counted because
+this isolated worktree had no generated macOS runner manifest, and the local
+Linux cross-check stopped at the known missing `x86_64-linux-gnu-gcc` tool.
+Those local environment gaps are not substituted for native evidence; the
+successful Ubuntu job compiled and ran the exact Linux bytes.
+
+The success-only Artifact
+`p8-goose-containment-ubuntu-8122a771196596556b04e3e7e1d8003957dd2205`
+(GitHub Artifact `9307692493`) is present and unexpired. Its downloaded
+`containment-evidence.json` is `verified` for
+`x86_64-unknown-linux-gnu` and binds manifest SHA-256
+`a3d85832a17ef92947adedcc376b2a290ad0b7902bcec1d3b1692f537c339e07`,
+executable SHA-256
+`abdf2cb7cb75784a7824bb5e1dc512563cfc029e3d31a155c4594624c8b0aee3`,
+and probe SHA-256
+`ce317cf9673d860118975cc78f8c202e815756e31b24dc229cc902046ff6d6f1`.
+No `foundation/`, Renderer, preload, provider, persistence, or UI authority was
+changed by the repair.
+
+This accepts the Ubuntu native containment and authenticated runner-integration
+slice on the exact pull-request implementation head only. Pull request 68 is
+not merged, and this is not merged-main or clean-machine evidence. Windows
+runtime containment remains a separate open target; full Electron package
+journeys and the remaining P8.2 matrix obligations are also not established by
+this runner-only Artifact. Therefore cross-platform P8.2b, overall P8.2, P8.3,
+P8.4, candidate, signing/notarization, release, deployment, distribution,
+real-provider, clean-machine, and final user acceptance remain open.
 
 ### 2026-08-17 P8.2a native Goose build admission accepted on main
 
@@ -60,6 +584,339 @@ transport is created. Windows/Linux runtime containment, Electron packaging,
 product journeys, P7 platform obligations, P8.2 overall, P8.3, P8.4, candidate,
 signing/notarization, release, deployment, distribution, clean-machine,
 real-provider, and final user acceptance remain open.
+
+### 2026-08-17 P8.2b Linux containment probe scaffold (not an acceptance)
+
+The isolated implementation worktree
+`/Users/zizimutou/actestra-worktrees/p8-2b-runtime-containment` is on
+`codex/p8-2b-runtime-containment` at `b22b99d` (the implementation slice is
+`ca64b8e`).
+The shared launch contract and Rust containment boundary are preserved in the
+preceding commits `c8d2c26` and `40fb687`. This slice adds a Linux-only
+feasibility-probe entry point and a bounded evidence validator. The validator
+requires the exact probe key set, binds target/source/executable digests, and
+returns only closed reason codes; the probe runner also bounds output and
+checks the exact regular executable digest before launch. Landlock capability
+classification now requires a positive ABI result, and probe metadata accepts
+only bounded safe target/digest strings. The Linux backend deliberately keeps
+all six capabilities false and reports `evidence-incomplete` until the native
+filesystem, network, process, resource, parent-death, and cleanup hostile
+probes are implemented and run on Ubuntu.
+
+Local evidence for this scaffold: 6 focused test files / 49 tests passed,
+Rust macOS debug tests 8/8 passed (including the existing native resource
+child), TypeScript typecheck passed, lint reported 0 warnings/errors, format
+check passed, and `git diff --check` passed. This is local evidence only.
+
+This record does not claim Linux or Windows compilation, native containment,
+hostile-probe denial, an artifact-bound manifest containment record, runtime
+admission, ACP on either non-Darwin target, packaging, or Electron acceptance.
+The resolver remains Darwin-only and the non-Darwin `network-policy-unavailable`
+fail-closed behavior is unchanged. The next required work is a real Ubuntu
+backend and native CI evidence, followed by binding the six booleans to the
+exact runner manifest before any non-Darwin runtime can be admitted.
+
+### 2026-08-17 P8.2b local hardening follow-up (not an acceptance)
+
+The local-hardening follow-up was developed on
+`codex/p8-2b-runtime-containment` from formal
+`HEAD 39566b342ca2c8492199d600247265df592463ce`. The evidence binder now uses a
+closed failure-code set: an unexpected filesystem or runtime exception falls
+back to `containment-bind-failed` and never echoes an OS error message or path.
+A regression deliberately runs the binder against an unreadable manifest and
+asserts both the fixed code and the absence of the fixture path.
+
+Fresh local evidence for this follow-up is 8 focused files / 68 tests passed,
+TypeScript typecheck passed, lint reported 0 warnings/errors, format check
+passed, Rust format check passed, Rust macOS tests passed (8/8), and
+`git diff --check` passed. This is development-worktree evidence only; it is
+not a pull-request or merged-main result.
+
+The first complete-gate attempt exposed a real downstream integration omission:
+the new `gooseRunnerContainment.ts` source was not present in the materialized
+AionUi overlay. The overlay now declares that source copy and its expected
+destination. A fresh `bun run check` then exited 0: 148 test files passed / 2
+skipped, 1,573 tests passed / 9 skipped; downstream reported 369 declared files
+and 126 reviewed source copies; and the materialized package completed.
+
+The runtime gate remains open. The Linux probe still deliberately emits
+`evidence-incomplete` (`complete = false`) because the authenticated Main MCP
+and model bridge, cgroup/process-count enforcement, and full descendant
+parent-death evidence are not implemented as a packaged runtime composition.
+The Docker/LinuxKit run is not native Ubuntu evidence (its seccomp hostile
+probe returns the fixed environment-limitation stage), so it cannot advance a
+target. Windows still has only the fail-closed scaffold: no Job Object,
+restricted identity, named-pipe bridge, or native hostile probe. The resolver
+therefore remains Darwin-only, and no Linux/Windows Artifact may start a
+private root or ACP transport.
+
+The digest-binding follow-up was revalidated after the latest test addition:
+the focused containment evidence/probe suite passed 2 files / 19 tests, the
+Rust macOS containment tests passed 8/8, and format, lint (0 warnings/errors),
+TypeScript typecheck, documentation links, Rust format, and `git diff --check`
+all passed. A fresh full `bun run check` completed its 148-test-file suite
+with 1,575 passed / 9 skipped, preserved the 28-case / 168-variant P7 abuse
+gate, and completed the downstream boundary and package stages. A separate
+`bun run package` also exited 0. These were development-worktree results
+collected before target-native pull-request evidence; they do not change the
+native-runtime non-claims above.
+
+This follow-up also adds a bounded `goose:runner:containment:accept` command.
+The existing pull-request workflow now keeps its Windows/Linux build-only jobs
+unchanged and adds separate `goose-containment-windows` and
+`goose-containment-linux` jobs. Each containment job independently builds and
+admits the exact native Artifact on its target host, binds the probe record,
+reruns the probe, and fails on incomplete or unsupported evidence. The jobs use
+no provider credentials and upload only bounded successful containment
+metadata. On this macOS host the command correctly returns
+`target-unsupported` (exit 2). No target-native containment job has run yet, so
+this is pull-request workflow/entry-point wiring, not Linux or Windows
+acceptance.
+
+After adding this acceptance slice, the fresh local gate still exits 0: Vitest
+reports 149 files passed / 2 skipped and 1,579 tests passed / 9 skipped; lint
+remains 0 warnings/errors; the P7 abuse gate remains 28 cases / 168 variants;
+and the downstream, foundation, boundary, and package stages all complete.
+
+### 2026-08-17 P8.2b Linux cgroup-v2 feasibility slice (not an acceptance)
+
+The same isolated `codex/p8-2b-runtime-containment` worktree now adds a
+Linux-only cgroup-v2 resource and process-count probe without enabling Linux
+runtime admission. The probe verifies the real cgroup-v2 filesystem magic,
+parses one bounded unified membership, and requires `cpu`, `memory`, and
+`pids` to be already delegated by the host. It does not mutate a shared
+parent's `cgroup.subtree_control`. Inside an attempt-named child cgroup it
+binds a supplemental `cpu.max` rate probe, a checked
+`memory.current + 1 GiB` `memory.max`, and `pids.max` equal to the measured
+single-task baseline. The cumulative 120 CPU-second and 1 GiB address-space
+growth contract remains independently enforced by the existing
+`RLIMIT_CPU`/`RLIMIT_AS` stage; the cgroup CPU rate is not treated as a
+replacement for that contract.
+
+The hostile child is held until Main-side setup is complete, enters the
+existing Landlock filesystem boundary, proves it cannot rewrite `cpu.max`,
+`memory.max`, or `pids.max`, then requires a new `fork()` to fail with
+`EAGAIN`. Every setup, delegation, baseline, limit, widening, process-count,
+wait, and cleanup failure maps to a fixed `resource-*` code. The Node evidence
+binder and native acceptance wrapper accept only that closed vocabulary and
+never forward raw probe stderr, paths, or platform errors. The child cgroup
+and probe roots must both be removed before the stage can pass.
+
+TDD evidence for this slice includes the expected pre-implementation RED, then
+7 focused files / 61 tests GREEN after the early-failure cleanup regressions,
+macOS Goose Rust tests 8/8 GREEN, Rust format GREEN, format check GREEN, lint 0
+warnings/errors, TypeScript typecheck GREEN, and `git diff --check` GREEN.
+Because this Mac lacks the Linux C cross compiler, the full Goose cross-check
+stops in the existing `zstd-sys` build dependency; an isolated dependency-free
+Linux-target wrapper nevertheless compiles the actual `linux.rs` and its test
+code with `cargo check --tests`. That wrapper is compile evidence only, not a
+native Ubuntu execution. The macOS acceptance entry remains correctly
+fail-closed as `target-unsupported` with exit 2.
+
+A fresh complete `bun run check` exits 0 after this slice: 150 test files pass
+/ 2 skip, 1,584 tests pass / 9 skip, the P7 abuse gate remains 28 cases / 168
+exact variants, and Electron SQLite, smoke harness, boundary, frozen
+foundation, downstream overlay, and package all pass.
+
+This does not close the Linux feasibility or runtime gate. The native Ubuntu
+workflow has not run this exact source and Artifact; the probe still emits
+`complete = false`; the authenticated Main MCP/model bridge, a production
+composition that reconciles Goose's required runtime threads with zero child
+processes, full descendant-tree parent-death evidence, ACP/runtime integration,
+and target-native denial/cancel/crash/recovery/cleanup remain open. Windows is
+unchanged and still lacks its Job Object, restricted identity, named-pipe
+bridge, and native hostile evidence. The resolver remains Darwin-only.
+
+The final local audit corrected two additional trust-boundary defects before
+the branch was prepared for review. The Windows Bun setup action is now pinned
+to the same complete 40-hex commit as the other jobs, with a regression that
+rejects every shortened action reference. An existing containment record is
+also revalidated against the current probe source digest both when binding and
+when the final acceptance command reads it, so source drift cannot reuse stale
+evidence. The old standalone manual workflow was removed; the native jobs now
+run as independent jobs in the existing pull-request workflow while preserving
+the build-only jobs' no-upload contract.
+
+Fresh evidence after those corrections is 9 focused files / 67 tests passed,
+Goose Rust macOS release tests 8/8 passed, the dependency-free wrapper around
+the actual Linux containment module passed
+`cargo check --target x86_64-unknown-linux-gnu --tests`, Rust formatting passed,
+and `actionlint v1.7.7 .github/workflows/ci.yml` exited 0. The final local
+`bun run check` also exited 0 with 150 test files passed / 2 skipped and 1,585
+tests passed / 9 skipped; format, lint (0 warnings/errors), typecheck, the P8
+contract, Electron SQLite, P7 abuse cases, smoke harness, product boundary,
+frozen foundation, downstream overlay, and package stages all passed. This
+local evidence was collected before any target-native containment job ran, so
+P8.2b and overall P8.2 remain open and non-Darwin runtime admission remains
+fail closed.
+
+### 2026-08-17 P8.2b target-native diagnostic PR (gate remains open)
+
+Draft pull request
+[#68](https://github.com/Ablankpaper/actestra-desktop/pull/68) publishes exact
+branch head `815c8e1e908d39996ccec772b1df0a249d227b2f`. Its pull-request CI run
+[`31977086293`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/31977086293)
+completed with the intended evidence separation: the macOS arm64 foundation
+job `95238089254`, Ubuntu x64 build-only job `95238089263`, Windows x64
+build-only job `95238089265`, and Goose runner admission job `95238089270` all
+passed. The two new target-native containment jobs failed closed, so the
+overall run is correctly red rather than treating build admission as runtime
+acceptance.
+
+Ubuntu containment job `95238089303` independently built and admitted an
+`x86_64-unknown-linux-gnu` Artifact with manifest SHA-256
+`aceb4fc7d7460bfa789b07ae2d3a4dfd952b4d50325f7e3c052fa40f9abf5064`,
+executable SHA-256
+`dd3ba07b5479e59d5bd402023174634fcfc6811d57c5a3fd44e673579b256c78`,
+and executable size 74,131,792 bytes. Its native acceptance returned only the
+closed code `resource-cgroup-controller-not-delegated` and exited 2. This
+establishes that the Ubuntu 24.04 hosted runner does not delegate the required
+`cpu`, `memory`, and `pids` controllers to the current unprivileged cgroup; it
+does not justify mutating a shared parent cgroup, adding root authority, or
+weakening the resource contract.
+
+Windows containment job `95238089313` independently built and admitted an
+`x86_64-pc-windows-msvc` Artifact with manifest SHA-256
+`d0ea05e39058c75097a8d5279e15b868b11d674eefc8dd0db898e921b4fd3f38`,
+executable SHA-256
+`816d7897041c121f9b86828341a902664c1fa7d4b4e05e668eec84253d66e914`,
+and executable size 137,216 bytes. Its native acceptance returned the closed
+code `evidence-incomplete` and terminated nonzero, matching the current
+Windows scaffold. Neither failed job uploaded a success-only containment
+Artifact, and the completed run has no published evidence Artifact.
+
+The next Linux slice must replace the unavailable cgroup delegation assumption
+with a reviewed product-owned, unprivileged resource/process authority or an
+equivalent enforcement composition. It must permit the runner's required
+Tokio threads while denying new processes and exec, retain the fixed cumulative
+CPU and address-space limits, prove parent-death and cleanup on native Ubuntu,
+and keep Linux runtime admission disabled until all six exact evidence fields
+verify. Windows remains a separate later slice for Job Object, restricted
+identity, named-pipe bridge, and hostile-probe completion. P8.2b, P8.2, P8.3,
+and P8.4 remain open.
+
+### 2026-08-17 P8.2b Linux process/resource equivalence implementation (local only)
+
+The unprivileged Linux process/resource replacement is implemented locally on
+`codex/p8-2b-runtime-containment` through implementation head
+`dd87665fc51e04d4e40d441bd84a5aacb67f17cf`. The six-commit reviewed sequence
+is design `aed9e54d9409ddf0440e71bdb98caea29b5576e4`, plan
+`9bfeb200efac303711e8e06b26926cf05d19f363`, thread-aware process policy
+`90f04463d306a946cbafd21163c9eb267825daf6`, production startup enforcement
+`3bf9d580c0fff54af497a43bd6873fe802ef4df8`, RLIMIT resource equivalence
+`ebd3bea6f8e38896ee31b590f49572b4332457f6`, and bounded partial-stage evidence
+`dd87665fc51e04d4e40d441bd84a5aacb67f17cf`.
+
+The Linux runner now applies the fixed 120 CPU-second and baseline-plus-1-GiB
+address-space hard limits, then installs one x86-64 classic-BPF seccomp policy
+before constructing Tokio or starting the parent-liveness thread. The same
+installer is used by the native hostile probe. It permits only legacy clone
+calls carrying the required thread-group, shared-signal, and shared-memory
+flags; returns `ENOSYS` for `clone3`; and denies non-thread clone, fork, vfork,
+execve, and execveat. The resource probe reads the real Linux virtual-size
+baseline, verifies the exact `RLIMIT_CPU` and `RLIMIT_AS` values, and requires
+hard-limit widening to fail with `EPERM`. Mandatory cgroup-v2 delegation and
+the thread-counting `pids.max` assumption are removed from the evidence path.
+
+The native JSON now preserves measured `processTree` and `resources` booleans
+instead of hiding them behind the overall result. This does not weaken the
+gate: `complete` remains hard-coded false, status remains
+`evidence-incomplete`, the validator still binds only `verified` evidence with
+all six capabilities true, and incomplete manifests remain byte-for-byte
+unchanged. Only the closed `process-evidence-incomplete`,
+`resource-evidence-incomplete`, and `remaining-evidence-incomplete` outcomes
+cross the Node boundary; raw platform output and paths remain excluded.
+
+Fresh local evidence for these exact implementation bytes is 9 focused test
+files / 69 tests passed, Goose Rust macOS release tests 8/8 passed, Rust and
+project formatting passed, lint reported 0 warnings/errors, TypeScript
+typecheck passed, documentation links passed, and actionlint v1.7.7 run through
+Go against `.github/workflows/ci.yml` exited 0 without diagnostics. The single
+full `bun run check` exited 0 with 150 test files passed / 2 skipped and 1,589
+tests passed / 9 skipped; the P8 contract, Electron SQLite, 28-case /
+168-variant P7 abuse gate, smoke harness, product boundary, frozen foundation,
+downstream overlay, and package stages all passed.
+
+This is local macOS development evidence only. No Ubuntu 24.04 runner has
+executed these new bytes, so Linux `processTree` or `resources` is not yet a
+target-native verified result. Linux runtime admission and the resolver remain
+disabled, no containment manifest is bound, and authenticated ACP composition,
+filesystem/network production composition, target-native parent-death and
+cleanup, Electron packaging, Windows containment, P8.2b, P8.2, P8.3, and P8.4
+remain open. No foundation, Renderer, preload, provider, persistence, or UI
+authority changed.
+
+### 2026-08-17 P8.2b first native build diagnostic and Linux compile correction
+
+Draft pull request 68 pushed exact head
+`86e8e13c0ff7f3c9050ff1fe2b858cdb904f000e` to pull-request CI run
+[`31980531759`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/31980531759).
+Both Ubuntu jobs failed during Rust compilation, before Artifact admission or
+the containment probe could run: containment job `95246399987` and build-only
+job `95246400003` reported Rust `E0369` at
+`src/containment/linux.rs:504` because `JoinHandle::join()` returns a
+`Result<u8, Box<dyn Any + Send>>` whose panic payload cannot be compared with
+`Ok(7_u8)`. Both logs also reported the test-only
+`apply_resource_limits_with` re-export as unused in the production build.
+Consequently this run establishes no native Linux process, resource, Artifact,
+or runtime result; the containment gate remains open.
+
+Correction commit
+`53c2c18d7aaca9a0d0f87ba9d0847339eb2b591b` uses a pattern match for the
+thread result and exports the resource-limit seam only for Unix test builds.
+Two source-contract regressions lock those exact boundaries. Fresh local
+evidence for the corrected bytes is 9 focused files / 71 tests passed, macOS
+Goose Rust release tests 8/8 passed, and Rust formatting passed. A temporary,
+dependency-minimal wrapper compiled the real `containment/mod.rs`, `linux.rs`,
+and `unix.rs` with
+`cargo check --offline --target x86_64-unknown-linux-gnu` at exit 0; that is
+Linux type-check evidence only, not native Ubuntu execution. The unchanged
+broader corrected source had already passed one complete `bun run check` at
+exit 0 with 150 test files passed / 2 skipped and 1,591 tests passed / 9
+skipped. The next and only advancing key is a new exact-head pull-request run;
+Linux admission remains disabled, `complete` remains false, and no incomplete
+containment record may be bound.
+
+### 2026-08-17 P8.2b Linux runtime composition Task 4 (local implementation, gate remains open)
+
+Task 1–3's Main-owned Unix bridge, Linux namespace relay, and lifecycle
+composition are joined by the local Task 4 change at commit `21cd915`. The
+Node ACP transport now recognizes both fixed native setup markers: a Linux
+bridge failure remains `network-policy-unavailable`, while the existing native
+resource marker remains `worker-resource-enforcement-unavailable`. The
+handshake unwraps either code without collapsing it to `transport-error`,
+`spawn-failed`, or a successful turn. No raw stderr, path, socket name, or
+environment value crosses the boundary.
+
+The acceptance contract now explicitly locks that Linux probe output remains
+`complete = false` / `evidence-incomplete`, incomplete output cannot mutate a
+runner manifest, source commit/executable SHA-256/probe SHA-256 are all bound
+to the exact runner and probe implementation, and containment evidence upload
+is success-only. The Darwin-only resolver and the non-Darwin pre-root
+`network-policy-unavailable` stop are unchanged.
+
+Fresh local evidence for this exact implementation is:
+
+- the combined Main/bridge/lifecycle/composition/containment/portability and
+  evidence suite passed 12 files / 167 tests;
+- `cargo test --manifest-path workers/goose-runner/Cargo.toml --locked --offline`
+  exited 0 (14 runner unit tests and the macOS native-limit child test passed);
+- `bun run check` exited 0: 151 test files passed / 2 skipped, 1,616 tests
+  passed / 9 skipped; P8 contract, Electron SQLite, P7 abuse (28 cases / 168
+  variants), smoke harness, boundary, foundation, downstream, and package all
+  passed; format, lint (0 warnings/errors), typecheck, Rust format, actionlint,
+  and `git diff --check` also passed.
+
+The artifact-dependent `bun run goose:runner:test` command was attempted but
+could not start because this worktree has no generated macOS runner manifest at
+`.actestra/goose-runner/aarch64-apple-darwin/actestra-goose-runner.manifest.json`;
+this is missing local build output, not a reported Rust test failure. No fresh
+Ubuntu 24.04 native job has executed this exact commit, the Linux probe has not
+produced admissible complete evidence, and no containment manifest is bound.
+Therefore P8.2b, overall P8.2, Windows containment, P8.3, P8.4, packaged
+Electron/provider acceptance, candidate, release, and final user acceptance
+remain open. No `foundation/`, Renderer, preload, provider, persistence, or UI
+authority changed.
 
 ### 2026-08-16 P8.1 acceptance contract accepted on main
 

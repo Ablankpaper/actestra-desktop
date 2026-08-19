@@ -1,3 +1,7 @@
+import http from "node:http";
+import { lstat, mkdir, mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   GooseLoopbackModelServerError,
@@ -62,6 +66,61 @@ afterEach(async () => {
 });
 
 describe("Goose loopback model server", () => {
+  it("serves the unchanged model handler through one Main-owned Unix socket", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "actestra-model-unix-"));
+    const bridgeDirectory = path.join(root, "bridge");
+    const socketPath = path.join(bridgeDirectory, "model.sock");
+    await mkdir(bridgeDirectory, { mode: 0o700 });
+    const server = await startGooseLoopbackModelServer({
+      modelId: "actestra-caller-model",
+      attemptLease: MODEL_LEASE,
+      invokeModel: modelInvoker,
+      socketPath,
+      loopbackPort: 43_124,
+    });
+    openServers.push(server);
+    try {
+      expect(server.baseUrl).toBe("http://127.0.0.1:43124/v1");
+      const response = await new Promise<{
+        readonly status: number;
+        readonly body: string;
+      }>((resolve, reject) => {
+        const request = http.request(
+          {
+            socketPath,
+            path: "/v1/models",
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${MODEL_LEASE}`,
+              Host: "127.0.0.1:43124",
+            },
+          },
+          (incoming) => {
+            const chunks: Buffer[] = [];
+            incoming.on("data", (chunk: Buffer) => chunks.push(chunk));
+            incoming.once("end", () =>
+              resolve({
+                status: incoming.statusCode ?? 0,
+                body: Buffer.concat(chunks).toString("utf8"),
+              }),
+            );
+          },
+        );
+        request.once("error", reject);
+        request.end();
+      });
+      expect(response.status).toBe(200);
+      expect(JSON.parse(response.body)).toMatchObject({
+        data: [{ id: "actestra-caller-model" }],
+      });
+    } finally {
+      await server.close();
+      openServers.splice(openServers.indexOf(server), 1);
+      await expect(lstat(socketPath)).rejects.toMatchObject({ code: "ENOENT" });
+      await rm(root, { recursive: true });
+    }
+  });
+
   it("serves one authenticated caller-selected OpenAI-compatible model catalog", async () => {
     const server = await startGooseLoopbackModelServer({
       modelId: "actestra-caller-model",

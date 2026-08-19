@@ -56,6 +56,7 @@ describe("P5 native AionUI desktop-main composition", () => {
     );
     for (const sourceName of [
       "gooseAcpHandshake.ts",
+      "gooseBridgeSocket.ts",
       "gooseCodingToolInvoker.ts",
       "gooseLoopbackModelServer.ts",
       "gooseMcpCapabilityServer.ts",

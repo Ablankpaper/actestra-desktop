@@ -253,6 +253,7 @@ replaceOnce(
         const coding = await startTrustedActestraCodingJourneyRuntime({
           userDataPath: app.getPath('userData'),
           runnerAdmission: resolveTrustedActestraCodingRunnerAdmission(process.env),
+          linuxPackageResourcesPath: process.platform === 'linux' ? process.resourcesPath : undefined,
           modelBinding,
         });
         if (coding === null) return null;
@@ -1105,6 +1106,7 @@ replaceOnce(
                 getMainService: () => isolatedCodingMainService,
                 runnerAdmission: trustedRuntime.coding.runnerAdmission,
                 admittedArtifact: trustedRuntime.coding.admittedArtifact,
+                revalidateArtifact: trustedRuntime.coding.revalidateArtifact,
               });
               const coding = new AionUiCodingJourneyService({
                 persistence: activePersistence,

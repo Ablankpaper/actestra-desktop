@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
-import type { AddressInfo, Socket } from "node:net";
+import type { Socket } from "node:net";
 import path from "node:path";
 import {
   CODING_DIFF_TOOL_ID,
@@ -16,6 +16,13 @@ import {
   type IsolatedCodingToolId,
   type IsolatedCodingToolInput,
 } from "../../core";
+import {
+  closeGooseBridgeServer,
+  GooseBridgeSocketError,
+  listenGooseBridgeServer,
+  type GooseBridgeListenerOptions,
+  type GooseBridgeServerBinding,
+} from "./gooseBridgeSocket";
 
 const MCP_PROTOCOL_VERSION = "2025-03-26";
 const SERVER_NAME = "actestra-core";
@@ -47,6 +54,8 @@ export interface StartGooseMcpCapabilityServerOptions {
   readonly testIds: readonly string[];
   readonly workspaceDirectory: string;
   readonly invokeTool: GooseMcpToolInvoker;
+  readonly socketPath?: string;
+  readonly loopbackPort?: number;
 }
 
 export interface GooseMcpCapabilityServer {
@@ -57,6 +66,7 @@ export interface GooseMcpCapabilityServer {
 
 export type GooseMcpCapabilityServerErrorCode =
   | "invalid-config"
+  | "listen-failed"
   | "invalid-wait-timeout"
   | "closed"
   | "tools-list-timeout";
@@ -243,19 +253,28 @@ function validateOptions(options: StartGooseMcpCapabilityServerOptions): {
   readonly testIds: readonly string[];
   readonly workspaceDirectory: string;
   readonly invokeTool: GooseMcpToolInvoker;
+  readonly socketPath?: string;
+  readonly loopbackPort?: number;
 } {
   if (!isRecord(options)) {
     throw invalidConfig("Goose MCP server options must be an object");
   }
   const keys = Reflect.ownKeys(options);
   if (
-    keys.length !== 5 ||
+    keys.length < 5 ||
+    keys.length > 7 ||
     keys.some(
       (key) =>
         typeof key !== "string" ||
-        !["attemptLease", "commandIds", "testIds", "workspaceDirectory", "invokeTool"].includes(
-          key,
-        ),
+        ![
+          "attemptLease",
+          "commandIds",
+          "testIds",
+          "workspaceDirectory",
+          "invokeTool",
+          "socketPath",
+          "loopbackPort",
+        ].includes(key),
     )
   ) {
     throw invalidConfig("Goose MCP server options contain unsupported fields");
@@ -284,12 +303,27 @@ function validateOptions(options: StartGooseMcpCapabilityServerOptions): {
   if (typeof invokeTool !== "function") {
     throw invalidConfig("Goose MCP server tool invoker must be a function");
   }
+  const socketPath = Object.hasOwn(options, "socketPath")
+    ? ownDataProperty(options, "socketPath")
+    : undefined;
+  const loopbackPort = Object.hasOwn(options, "loopbackPort")
+    ? ownDataProperty(options, "loopbackPort")
+    : undefined;
+  if ((socketPath === undefined) !== (loopbackPort === undefined)) {
+    throw invalidConfig("Goose MCP server socket path and loopback port must be paired");
+  }
   return Object.freeze({
     attemptLease,
     commandIds: snapshotRegistryIds(ownDataProperty(options, "commandIds"), "commandIds"),
     testIds: snapshotRegistryIds(ownDataProperty(options, "testIds"), "testIds"),
     workspaceDirectory,
     invokeTool: invokeTool as GooseMcpToolInvoker,
+    ...(socketPath === undefined
+      ? {}
+      : {
+          socketPath: socketPath as string,
+          loopbackPort: loopbackPort as number,
+        }),
   });
 }
 
@@ -664,6 +698,7 @@ export async function startGooseMcpCapabilityServer(
   let toolsListed = false;
   let activeSessionId: string | undefined;
   let closed = false;
+  let serverBinding: GooseBridgeServerBinding;
 
   const resolveToolsListWaiters = (): void => {
     toolsListed = true;
@@ -860,25 +895,28 @@ export async function startGooseMcpCapabilityServer(
   });
   server.on("clientError", (_error, socket) => socket.destroy());
 
-  await new Promise<void>((resolve, reject) => {
-    const onError = (error: Error): void => {
-      server.off("listening", onListening);
-      reject(error);
-    };
-    const onListening = (): void => {
-      server.off("error", onError);
-      resolve();
-    };
-    server.once("error", onError);
-    server.once("listening", onListening);
-    server.listen(0, "127.0.0.1");
-  });
-
-  const address = server.address() as AddressInfo;
-  expectedHost = `127.0.0.1:${address.port}`;
+  try {
+    const listenerOptions: GooseBridgeListenerOptions | undefined =
+      config.socketPath === undefined
+        ? undefined
+        : Object.freeze({ socketPath: config.socketPath, loopbackPort: config.loopbackPort });
+    serverBinding = await listenGooseBridgeServer(server, listenerOptions);
+  } catch (error) {
+    for (const socket of sockets) {
+      socket.destroy();
+    }
+    throw new GooseMcpCapabilityServerError(
+      error instanceof GooseBridgeSocketError && error.code === "invalid-config"
+        ? "invalid-config"
+        : "listen-failed",
+      "Goose MCP capability server could not open its listener",
+      { cause: error },
+    );
+  }
+  expectedHost = serverBinding.host;
   let closePromise: Promise<void> | undefined;
   return Object.freeze({
-    url: `http://127.0.0.1:${address.port}/mcp`,
+    url: `http://${serverBinding.host}/mcp`,
     waitForToolsList(timeoutMs = DEFAULT_TOOLS_LIST_WAIT_MS): Promise<void> {
       if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_TOOLS_LIST_WAIT_MS) {
         return Promise.reject(
@@ -925,15 +963,7 @@ export async function startGooseMcpCapabilityServer(
             "Goose MCP capability server closed before tools/list was accepted",
           ),
         );
-        const serverClosed = new Promise<void>((resolve, reject) => {
-          server.close((error) => {
-            if (error === undefined) {
-              resolve();
-            } else {
-              reject(error);
-            }
-          });
-        });
+        const serverClosed = closeGooseBridgeServer(server, sockets, serverBinding);
         for (const controller of toolCallControllers) {
           controller.abort("goose-mcp-capability-server-closing");
         }

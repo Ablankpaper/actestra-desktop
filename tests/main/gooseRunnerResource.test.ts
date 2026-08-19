@@ -6,10 +6,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { GOOSE_WORKER_RESOURCE_PROFILE } from "../../apps/desktop/src/core/workerResourceBudget";
 import type { AdmittedGooseRunnerArtifact } from "../../apps/desktop/src/main/workers/gooseRunnerArtifact";
 import {
+  GOOSE_NATIVE_NETWORK_POLICY_FAILURE_MARKER,
   GOOSE_NATIVE_RESOURCE_LIMIT_FAILURE_MARKER,
   GooseRunnerProcessError,
   assertGooseAcpSpawnOptions,
   createGooseRunnerEnvironment,
+  createGooseRunnerSetupFailureMatcher,
   createGooseRunnerResourceFailureMatcher,
   openGooseRunnerHandshake,
   type GooseAcpSpawnOptions,
@@ -51,6 +53,7 @@ async function createRunnerFixture(): Promise<{
 
 function exactSpawnOptions(root: string): GooseAcpSpawnOptions {
   return Object.freeze({
+    executableAuthority: "attempt-private",
     executablePath: path.join(root, "bin", "actestra-goose-runner"),
     workingDirectory: path.join(root, "work"),
     environment: createGooseRunnerEnvironment(root),
@@ -66,6 +69,19 @@ class NativeLimitFailureTransport extends LoopbackGooseAcpTransport {
         new GooseRunnerProcessError(
           "worker-resource-enforcement-unavailable",
           "Goose native resource enforcement is unavailable",
+        ),
+      );
+    });
+  }
+}
+
+class NativeNetworkFailureTransport extends LoopbackGooseAcpTransport {
+  override sendLine(): void {
+    queueMicrotask(() => {
+      this.emitError(
+        new GooseRunnerProcessError(
+          "network-policy-unavailable",
+          "Goose native network policy is unavailable",
         ),
       );
     });
@@ -144,6 +160,52 @@ describe("Goose runner native resource boundary", () => {
     );
   });
 
+  it("requires the exact immutable Windows supervisor contract before spawn", () => {
+    const root = path.resolve(os.tmpdir(), "actestra-goose-windows-options");
+    const attemptLease = "lease_0123456789abcdef0123456789abcdef";
+    const windows = Object.freeze({
+      supervisorMode: "--actestra-windows-supervisor-v1" as const,
+      capabilityPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.capability`,
+      modelPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.model`,
+      attemptLease,
+      attemptId: "0123456789abcdef0123456789abcdef",
+      executableSha256: "a".repeat(64),
+      modelId: "test-model",
+      targetTriple: "x86_64-pc-windows-msvc" as const,
+    });
+    const exact = Object.freeze({
+      ...exactSpawnOptions(root),
+      executableAuthority: "windows-supervisor" as const,
+      windows,
+    });
+
+    expect(() => assertGooseAcpSpawnOptions(exact)).not.toThrow();
+    for (const invalid of [
+      Object.freeze({ ...exact, windows: undefined }),
+      Object.freeze({
+        ...exact,
+        networkPolicy: Object.freeze({
+          kind: "loopback-session" as const,
+          host: "127.0.0.1" as const,
+          capabilityProxyPort: 41_001,
+          modelProxyPort: 41_002,
+        }),
+      }),
+      Object.freeze({ ...exact, windows: { ...windows } }),
+      Object.freeze({
+        ...exact,
+        environment: Object.freeze({ ...exact.environment, OPENAI_API_KEY: attemptLease }),
+      }),
+    ]) {
+      expect(() => assertGooseAcpSpawnOptions(invalid)).toThrowError(
+        expect.objectContaining({
+          name: "GooseRunnerProcessError",
+          code: "network-policy-unavailable",
+        }),
+      );
+    }
+  });
+
   it("denies process fork and arbitrary exec while retaining only admitted launch and ports", () => {
     const root = path.resolve(os.tmpdir(), "actestra-goose-resource-sandbox");
     const executablePath = path.join(root, "bin", "actestra-goose-runner");
@@ -178,6 +240,37 @@ describe("Goose runner native resource boundary", () => {
     expect(Object.keys(matcher)).toEqual(["push"]);
   });
 
+  it("maps the Linux bridge setup marker to network-policy-unavailable, never spawn-failed", () => {
+    const matcher = createGooseRunnerSetupFailureMatcher();
+    const split = Math.floor(GOOSE_NATIVE_NETWORK_POLICY_FAILURE_MARKER.length / 2);
+
+    expect(
+      matcher.push(
+        Buffer.from(`ignored:${GOOSE_NATIVE_NETWORK_POLICY_FAILURE_MARKER.slice(0, split)}`),
+      ),
+    ).toBeUndefined();
+    const code = matcher.push(
+      Buffer.from(`${GOOSE_NATIVE_NETWORK_POLICY_FAILURE_MARKER.slice(split)}:ignored`),
+    );
+    expect(code).toBe("network-policy-unavailable");
+    expect(code).not.toBe("spawn-failed");
+    expect(Object.keys(matcher)).toEqual(["push"]);
+  });
+
+  it.each([
+    ["ACTESTRA_GOOSE_ASYNC_RUNTIME_SETUP_FAILED", "runner-runtime"],
+    ["ACTESTRA_GOOSE_ACP_SERVER_FAILED", "runner-acp"],
+    ["ACTESTRA_GOOSE_LINUX_RELAY_STOPPED", "runner-relay"],
+    ["ACTESTRA_GOOSE_RUNNER_PANICKED", "runner-panic"],
+  ])("maps the fixed %s marker without retaining stderr", (marker, expected) => {
+    const matcher = createGooseRunnerSetupFailureMatcher();
+    const split = Math.floor(marker.length / 2);
+
+    expect(matcher.push(Buffer.from(`ignored:${marker.slice(0, split)}`))).toBeUndefined();
+    expect(matcher.push(Buffer.from(`${marker.slice(split)}:ignored`))).toBe(expected);
+    expect(Object.keys(matcher)).toEqual(["push"]);
+  });
+
   it("preserves native limit setup failure as the closed resource incident code", async () => {
     const fixture = await createRunnerFixture();
 
@@ -190,6 +283,22 @@ describe("Goose runner native resource boundary", () => {
     ).rejects.toMatchObject({
       name: "GooseRunnerProcessError",
       code: "worker-resource-enforcement-unavailable",
+    });
+    expect(await readdir(fixture.privateRootParent)).toEqual([]);
+  });
+
+  it("preserves native bridge setup failure as the closed network incident code", async () => {
+    const fixture = await createRunnerFixture();
+
+    await expect(
+      openGooseRunnerHandshake({
+        artifact: fixture.artifact,
+        privateRootParent: fixture.privateRootParent,
+        transportFactory: () => new NativeNetworkFailureTransport(),
+      }),
+    ).rejects.toMatchObject({
+      name: "GooseRunnerProcessError",
+      code: "network-policy-unavailable",
     });
     expect(await readdir(fixture.privateRootParent)).toEqual([]);
   });

@@ -288,6 +288,69 @@ describe("Goose runner artifact admission", () => {
     },
   );
 
+  it("admits and returns an exact artifact-bound containment record", async () => {
+    const { directory, manifest } = await createArtifactFixture({ target: linuxFixtureTarget });
+    const containment = {
+      contractVersion: 1,
+      targetTriple: linuxFixtureTarget.targetTriple,
+      sourceCommit: manifest.provenance.actestraCommit,
+      probeSha256: "d".repeat(64),
+      executableSha256: manifest.runner.executable.sha256,
+      filesystem: true,
+      network: true,
+      processTree: true,
+      resources: true,
+      parentDeath: true,
+      cleanup: true,
+    } as const;
+    const manifestWithContainment = JSON.stringify({ ...manifest, containment });
+    await writeFile(path.join(directory, GOOSE_RUNNER_MANIFEST_FILE), manifestWithContainment);
+
+    const artifact = await admitGooseRunnerArtifact(
+      directory,
+      admissionOptions(sha256(manifestWithContainment), linuxFixtureTarget.targetTriple),
+    );
+
+    expect(artifact.containment).toEqual(containment);
+    expect(Object.isFrozen(artifact.containment)).toBe(true);
+    expect(artifact.sourceCommit).toBe(manifest.provenance.actestraCommit);
+  });
+
+  it.each([
+    ["false capability", { filesystem: false }],
+    ["stale executable digest", { executableSha256: "e".repeat(64) }],
+    ["non-string digest", { probeSha256: 1 }],
+    ["unknown field", { unexpected: true }],
+  ])("rejects an unsafe containment record: %s", async (_label, override) => {
+    const { directory, manifest } = await createArtifactFixture({ target: linuxFixtureTarget });
+    const containment = {
+      contractVersion: 1,
+      targetTriple: linuxFixtureTarget.targetTriple,
+      sourceCommit: manifest.provenance.actestraCommit,
+      probeSha256: "d".repeat(64),
+      executableSha256: manifest.runner.executable.sha256,
+      filesystem: true,
+      network: true,
+      processTree: true,
+      resources: true,
+      parentDeath: true,
+      cleanup: true,
+      ...override,
+    };
+    const manifestWithContainment = JSON.stringify({ ...manifest, containment });
+    await writeFile(path.join(directory, GOOSE_RUNNER_MANIFEST_FILE), manifestWithContainment);
+
+    await expect(
+      admitGooseRunnerArtifact(
+        directory,
+        admissionOptions(sha256(manifestWithContainment), linuxFixtureTarget.targetTriple),
+      ),
+    ).rejects.toMatchObject({
+      name: "GooseRunnerArtifactError",
+      code: "incompatible-artifact",
+    });
+  });
+
   it("rejects executable suffix substitution for an admitted target", async () => {
     const { directory, manifestSha256 } = await createArtifactFixture({
       target: windowsFixtureTarget,

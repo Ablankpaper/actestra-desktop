@@ -24,4 +24,27 @@ describe("Goose runner native build script", () => {
     expect(source).not.toContain('`${toolDirectory}:${process.env.PATH ?? ""}`');
     expect(source).not.toContain('process.platform === "win32" ? "actestra-goose-runner.exe"');
   });
+
+  it("binds every containment implementation file into the runner source digest", () => {
+    const source = fs.readFileSync(buildScriptPath, "utf8");
+    for (const relativePath of [
+      "apps/desktop/src/main/workers/gooseRunnerContainment.ts",
+      "apps/desktop/src/main/workers/gooseRunnerProcess.ts",
+      "apps/desktop/src/main/workers/gooseRunnerTarget.ts",
+      "scripts/gooseContainmentEvidence.mjs",
+      "scripts/record-goose-runner-containment.mjs",
+      "scripts/run-goose-runner-containment.mjs",
+      "scripts/test-goose-runner-containment.mjs",
+      "workers/goose-runner/src/containment/mod.rs",
+      "workers/goose-runner/src/containment/linux.rs",
+      "workers/goose-runner/src/containment/unix.rs",
+      "workers/goose-runner/src/containment/windows.rs",
+      "workers/goose-runner/src/linux_bootstrap.rs",
+      "workers/goose-runner/src/windows_bridge.rs",
+      "workers/goose-runner/src/windows_control.rs",
+      "workers/goose-runner/src/windows_supervisor.rs",
+    ]) {
+      expect(source).toContain(`"${relativePath}"`);
+    }
+  });
 });

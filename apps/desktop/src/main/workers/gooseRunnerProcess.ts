@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { spawn, type ChildProcessByStdio } from "node:child_process";
 import { constants as fsConstants, createReadStream, realpathSync } from "node:fs";
 import { chmod, copyFile, lstat, mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
@@ -24,15 +24,33 @@ import {
   type WorkerResourceBudget,
 } from "../../core";
 import type { AdmittedGooseRunnerArtifact } from "./gooseRunnerArtifact";
+import {
+  assertGooseContainmentLaunch,
+  hasVerifiedGooseContainment,
+} from "./gooseRunnerContainment";
 import { createGooseRunnerSandboxLaunch } from "./gooseRunnerSandbox";
-import { resolveGooseRunnerRuntimeTarget } from "./gooseRunnerTarget";
+import { GOOSE_LINUX_EXECUTABLE_PATH } from "../../shared/gooseRunnerLinuxPackage";
+import {
+  isGooseRunnerExecutableAuthorityAdmitted,
+  resolveGooseRunnerExecutableAuthority,
+  resolveGooseRunnerRuntimeTarget,
+  type GooseExecutableAuthority,
+} from "./gooseRunnerTarget";
 
 const MAX_STDOUT_LINE_BYTES = 64 * 1024;
 const MAX_STDERR_BYTES = 256 * 1024;
+const STDIN_EXIT_OBSERVATION_MS = 100;
 const CLOSE_GRACE_MS = 1_000;
 const TERMINATE_GRACE_MS = 1_000;
 export const GOOSE_NATIVE_RESOURCE_LIMIT_FAILURE_MARKER =
   "ACTESTRA_GOOSE_RESOURCE_LIMIT_SETUP_FAILED";
+export const GOOSE_NATIVE_NETWORK_POLICY_FAILURE_MARKER =
+  "ACTESTRA_GOOSE_NETWORK_POLICY_SETUP_FAILED";
+export const GOOSE_NATIVE_ASYNC_RUNTIME_FAILURE_MARKER =
+  "ACTESTRA_GOOSE_ASYNC_RUNTIME_SETUP_FAILED";
+export const GOOSE_NATIVE_ACP_SERVER_FAILURE_MARKER = "ACTESTRA_GOOSE_ACP_SERVER_FAILED";
+export const GOOSE_NATIVE_RELAY_FAILURE_MARKER = "ACTESTRA_GOOSE_LINUX_RELAY_STOPPED";
+export const GOOSE_NATIVE_PANIC_FAILURE_MARKER = "ACTESTRA_GOOSE_RUNNER_PANICKED";
 export type GooseRunnerProcessErrorCode =
   | "invalid-options"
   | "artifact-mismatch"
@@ -54,6 +72,7 @@ export class GooseRunnerProcessError extends Error {
 
 export interface GooseAcpSpawnOptions {
   readonly executablePath: string;
+  readonly executableAuthority?: GooseExecutableAuthority;
   readonly workingDirectory: string;
   readonly workspaceDirectory?: string;
   readonly environment: Readonly<Record<string, string>>;
@@ -66,6 +85,16 @@ export interface GooseAcpSpawnOptions {
         readonly capabilityProxyPort: number;
         readonly modelProxyPort: number;
       };
+  readonly windows?: Readonly<{
+    readonly supervisorMode: "--actestra-windows-supervisor-v1";
+    readonly capabilityPipeName: string;
+    readonly modelPipeName: string;
+    readonly attemptLease: string;
+    readonly attemptId: string;
+    readonly executableSha256: string;
+    readonly modelId: string;
+    readonly targetTriple: "x86_64-pc-windows-msvc";
+  }>;
 }
 
 export type GooseAcpTransportFactory = (options: GooseAcpSpawnOptions) => GooseAcpTransport;
@@ -74,7 +103,26 @@ export interface GooseRunnerResourceFailureMatcher {
   push(chunk: Uint8Array): boolean;
 }
 
+export interface GooseRunnerSetupFailureMatcher {
+  push(chunk: Uint8Array): GooseRunnerSetupFailure | undefined;
+}
+
+export type GooseRunnerSetupFailure =
+  | "network-policy-unavailable"
+  | "worker-resource-enforcement-unavailable"
+  | "runner-runtime"
+  | "runner-acp"
+  | "runner-relay"
+  | "runner-panic";
+
 type GooseChildProcess = ChildProcessByStdio<Writable, Readable, Readable>;
+
+export interface GooseAcpLaunchCommand {
+  readonly command: string;
+  readonly arguments: readonly string[];
+}
+
+const WINDOWS_CONTROL_MAX_BYTES = 32 * 1024;
 
 export interface GooseRunnerModelBinding {
   readonly baseUrl: string;
@@ -82,12 +130,48 @@ export interface GooseRunnerModelBinding {
   readonly attemptLease: string;
 }
 
+export interface GooseRunnerPreparedRoot {
+  readonly root: string;
+  readonly bridgeDirectory: string;
+  readonly executableAuthority?: GooseExecutableAuthority;
+  readonly executablePath: string;
+  readonly workingDirectory: string;
+}
+
+export interface GooseRunnerPreparedBridge {
+  readonly capabilityProxyUrl: string;
+  readonly modelBinding: GooseRunnerModelBinding;
+  readonly capabilitySocketPath: string;
+  readonly modelSocketPath: string;
+  readonly windows?: GooseRunnerWindowsBridgeEnvironment;
+  close(): Promise<void>;
+}
+
+export interface GooseRunnerLinuxBridgeEnvironment {
+  readonly capabilitySocketPath: string;
+  readonly modelSocketPath: string;
+  readonly capabilityPort: number;
+  readonly modelPort: number;
+  readonly workspaceRoot: string;
+}
+
+export interface GooseRunnerWindowsBridgeEnvironment {
+  readonly capabilityPipeName: string;
+  readonly modelPipeName: string;
+  readonly attemptLease: string;
+}
+
+export type GooseRunnerBridgeFactory = (
+  root: GooseRunnerPreparedRoot,
+) => Promise<GooseRunnerPreparedBridge>;
+
 export interface OpenGooseRunnerHandshakeOptions {
   readonly artifact: AdmittedGooseRunnerArtifact;
   readonly privateRootParent: string;
   readonly workspaceDirectory?: string;
   readonly capabilityProxyUrl?: string;
   readonly modelBinding?: GooseRunnerModelBinding;
+  readonly prepareBridge?: GooseRunnerBridgeFactory;
   readonly handshakeTimeoutMs?: number;
   readonly transportFactory?: GooseAcpTransportFactory;
 }
@@ -100,6 +184,16 @@ export interface OpenGooseRunnerHandshakeResult {
   prompt(options: GooseAcpPromptOptions): Promise<GooseAcpPromptResult>;
   close(): Promise<void>;
 }
+
+export interface GooseRunnerProcessDependencies {
+  readonly platform?: NodeJS.Platform;
+  readonly architecture?: string;
+}
+
+const DEFAULT_PROCESS_DEPENDENCIES: GooseRunnerProcessDependencies = Object.freeze({
+  platform: process.platform,
+  architecture: process.arch,
+});
 
 function isAbsoluteDirectory(value: string): boolean {
   return typeof value === "string" && path.isAbsolute(value);
@@ -119,6 +213,7 @@ async function sha256File(filePath: string): Promise<string> {
 export function createGooseRunnerEnvironment(
   privateRoot: string,
   modelBinding?: GooseRunnerModelBinding,
+  linuxBridge?: GooseRunnerLinuxBridgeEnvironment,
 ): Readonly<Record<string, string>> {
   if (!isAbsoluteDirectory(privateRoot)) {
     throw new GooseRunnerProcessError(
@@ -128,7 +223,17 @@ export function createGooseRunnerEnvironment(
   }
   const stableModelBinding =
     modelBinding === undefined ? undefined : validateModelBinding(modelBinding).binding;
+  const stableLinuxBridge =
+    linuxBridge === undefined
+      ? undefined
+      : validateLinuxBridgeEnvironment(privateRoot, linuxBridge);
   const temporaryDirectory = path.join(privateRoot, "tmp");
+  const localAppDataDirectory = path.join(privateRoot, "local-app-data");
+  // Main constructs a strict whitelist environment for the supervisor process.
+  // On Windows, the supervisor then inherits this cleaned environment to the Worker
+  // (lpEnvironment=nullptr), because sparse hand-built environment blocks fail
+  // AppContainer process initialization with ERROR_ENVVAR_NOT_FOUND.
+  // On macOS/Linux, the Worker receives this exact environment through Node spawn.
   return Object.freeze({
     GOOSE_PATH_ROOT: privateRoot,
     GOOSE_TELEMETRY_OFF: "1",
@@ -138,6 +243,8 @@ export function createGooseRunnerEnvironment(
     TMPDIR: temporaryDirectory,
     TMP: temporaryDirectory,
     TEMP: temporaryDirectory,
+    // Windows AppContainer process creation requires this value; keep it attempt-private.
+    LOCALAPPDATA: localAppDataDirectory,
     TZ: "UTC",
     OTEL_SDK_DISABLED: "true",
     OTEL_TRACES_EXPORTER: "none",
@@ -154,6 +261,15 @@ export function createGooseRunnerEnvironment(
           OPENAI_API_KEY: stableModelBinding.attemptLease,
           NO_PROXY: "127.0.0.1,localhost",
         }),
+    ...(stableLinuxBridge === undefined
+      ? {}
+      : {
+          ACTESTRA_GOOSE_LINUX_CAPABILITY_SOCKET: stableLinuxBridge.capabilitySocketPath,
+          ACTESTRA_GOOSE_LINUX_MODEL_SOCKET: stableLinuxBridge.modelSocketPath,
+          ACTESTRA_GOOSE_LINUX_CAPABILITY_PORT: String(stableLinuxBridge.capabilityPort),
+          ACTESTRA_GOOSE_LINUX_MODEL_PORT: String(stableLinuxBridge.modelPort),
+          ACTESTRA_GOOSE_LINUX_WORKSPACE_ROOT: stableLinuxBridge.workspaceRoot,
+        }),
   });
 }
 
@@ -165,6 +281,73 @@ function hasExactGooseResourceBudget(value: WorkerResourceBudget): boolean {
     value.maxOutputBytes === GOOSE_WORKER_RESOURCE_PROFILE.maxOutputBytes &&
     value.maxPrivateStorageBytes === GOOSE_WORKER_RESOURCE_PROFILE.maxPrivateStorageBytes &&
     value.maxChildProcesses === GOOSE_WORKER_RESOURCE_PROFILE.maxChildProcesses
+  );
+}
+
+function hasExactWindowsSupervisorSpawnContract(options: GooseAcpSpawnOptions): boolean {
+  const windows = options.windows;
+  if (
+    windows === undefined ||
+    !Object.isFrozen(windows) ||
+    Reflect.ownKeys(windows).length !== 8 ||
+    Reflect.ownKeys(windows).some(
+      (key) =>
+        typeof key !== "string" ||
+        ![
+          "attemptLease",
+          "attemptId",
+          "capabilityPipeName",
+          "executableSha256",
+          "modelId",
+          "modelPipeName",
+          "supervisorMode",
+          "targetTriple",
+        ].includes(key),
+    ) ||
+    windows.supervisorMode !== "--actestra-windows-supervisor-v1" ||
+    options.networkPolicy !== "deny-all"
+  ) {
+    return false;
+  }
+  const validPipeName = (pipeName: string): boolean =>
+    /^\\\\\.\\pipe\\LOCAL\\Actestra\.Goose\.[A-Za-z0-9._-]{16,128}$/.test(pipeName) &&
+    Buffer.byteLength(pipeName, "utf8") <= 180;
+  if (
+    !validPipeName(windows.capabilityPipeName) ||
+    !validPipeName(windows.modelPipeName) ||
+    windows.capabilityPipeName === windows.modelPipeName ||
+    !/^[a-f0-9]{32}$/.test(windows.attemptId) ||
+    !/^[a-f0-9]{64}$/.test(windows.executableSha256) ||
+    windows.modelId.length < 1 ||
+    windows.modelId.length > 256 ||
+    Array.from(windows.modelId).some((character) => /\p{Cc}/u.test(character)) ||
+    windows.targetTriple !== "x86_64-pc-windows-msvc" ||
+    windows.attemptLease.length < 32 ||
+    windows.attemptLease.length > 256 ||
+    !/^[A-Za-z0-9._~-]+$/.test(windows.attemptLease)
+  ) {
+    return false;
+  }
+  const forbiddenEnvironmentKeys = [
+    "GOOSE_PROVIDER",
+    "GOOSE_MODEL",
+    "OPENAI_BASE_URL",
+    "OPENAI_API_KEY",
+    "NO_PROXY",
+    "ACTESTRA_GOOSE_LINUX_CAPABILITY_SOCKET",
+    "ACTESTRA_GOOSE_LINUX_MODEL_SOCKET",
+    "ACTESTRA_GOOSE_LINUX_CAPABILITY_PORT",
+    "ACTESTRA_GOOSE_LINUX_MODEL_PORT",
+    "ACTESTRA_GOOSE_LINUX_WORKSPACE_ROOT",
+  ];
+  if (forbiddenEnvironmentKeys.some((key) => Object.hasOwn(options.environment, key))) {
+    return false;
+  }
+  const environmentValues = new Set(Object.values(options.environment));
+  return (
+    !environmentValues.has(windows.attemptLease) &&
+    !environmentValues.has(windows.capabilityPipeName) &&
+    !environmentValues.has(windows.modelPipeName)
   );
 }
 
@@ -205,14 +388,39 @@ export function assertGooseAcpSpawnOptions(
       "Goose native resource limits are unavailable before launch",
     );
   }
+  if (
+    options.executableAuthority !== undefined &&
+    options.executableAuthority !== "attempt-private" &&
+    options.executableAuthority !== "linux-package" &&
+    options.executableAuthority !== "windows-supervisor"
+  ) {
+    throw new GooseRunnerProcessError("invalid-options", "Goose executable authority is invalid");
+  }
+  if (
+    options.executableAuthority === "windows-supervisor" &&
+    !hasExactWindowsSupervisorSpawnContract(options)
+  ) {
+    throw new GooseRunnerProcessError(
+      "network-policy-unavailable",
+      "Windows Goose launch requires the exact admitted supervisor contract",
+    );
+  }
+  if (options.executableAuthority !== "windows-supervisor" && options.windows !== undefined) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Windows Goose supervisor metadata is unavailable for this executable authority",
+    );
+  }
 }
 
 /**
  * Recognizes only the runner's fixed setup marker. Its state retains no stderr
  * content, so native diagnostic text never crosses the process boundary.
  */
-export function createGooseRunnerResourceFailureMatcher(): GooseRunnerResourceFailureMatcher {
-  const marker = Buffer.from(GOOSE_NATIVE_RESOURCE_LIMIT_FAILURE_MARKER, "utf8");
+function createGooseRunnerFixedMarkerMatcher(
+  markerText: string,
+): GooseRunnerResourceFailureMatcher {
+  const marker = Buffer.from(markerText, "utf8");
   const fallback = new Uint8Array(marker.length);
   for (let index = 1, prefixLength = 0; index < marker.length; ) {
     if (marker[index] === marker[prefixLength]) {
@@ -245,6 +453,57 @@ export function createGooseRunnerResourceFailureMatcher(): GooseRunnerResourceFa
       return false;
     },
   });
+}
+
+export function createGooseRunnerResourceFailureMatcher(): GooseRunnerResourceFailureMatcher {
+  return createGooseRunnerFixedMarkerMatcher(GOOSE_NATIVE_RESOURCE_LIMIT_FAILURE_MARKER);
+}
+
+export function createGooseRunnerSetupFailureMatcher(): GooseRunnerSetupFailureMatcher {
+  const network = createGooseRunnerFixedMarkerMatcher(GOOSE_NATIVE_NETWORK_POLICY_FAILURE_MARKER);
+  const resources = createGooseRunnerResourceFailureMatcher();
+  const runtime = createGooseRunnerFixedMarkerMatcher(GOOSE_NATIVE_ASYNC_RUNTIME_FAILURE_MARKER);
+  const acp = createGooseRunnerFixedMarkerMatcher(GOOSE_NATIVE_ACP_SERVER_FAILURE_MARKER);
+  const relay = createGooseRunnerFixedMarkerMatcher(GOOSE_NATIVE_RELAY_FAILURE_MARKER);
+  const panic = createGooseRunnerFixedMarkerMatcher(GOOSE_NATIVE_PANIC_FAILURE_MARKER);
+  let detected: GooseRunnerSetupFailure | undefined;
+  return Object.freeze({
+    push(chunk: Uint8Array) {
+      if (detected !== undefined) return detected;
+      if (network.push(chunk)) {
+        detected = "network-policy-unavailable";
+      } else if (resources.push(chunk)) {
+        detected = "worker-resource-enforcement-unavailable";
+      } else if (runtime.push(chunk)) {
+        detected = "runner-runtime";
+      } else if (acp.push(chunk)) {
+        detected = "runner-acp";
+      } else if (relay.push(chunk)) {
+        detected = "runner-relay";
+      } else if (panic.push(chunk)) {
+        detected = "runner-panic";
+      }
+      return detected;
+    },
+  });
+}
+
+function setupFailureError(failure: GooseRunnerSetupFailure): GooseRunnerProcessError {
+  if (failure === "network-policy-unavailable") {
+    return new GooseRunnerProcessError(failure, "Goose native network policy is unavailable");
+  }
+  if (failure === "worker-resource-enforcement-unavailable") {
+    return new GooseRunnerProcessError(failure, "Goose native resource enforcement is unavailable");
+  }
+  const message =
+    failure === "runner-runtime"
+      ? "Goose async runtime failed"
+      : failure === "runner-acp"
+        ? "Goose ACP server failed"
+        : failure === "runner-relay"
+          ? "Goose Linux relay stopped"
+          : "Goose runner panicked";
+  return new GooseRunnerProcessError("spawn-failed", message);
 }
 
 function wait(milliseconds: number): Promise<void> {
@@ -314,6 +573,10 @@ function exactLoopbackMcpPort(url: string): number | undefined {
   return port <= 65_535 ? port : undefined;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function validateModelBinding(modelBinding: GooseRunnerModelBinding): {
   readonly binding: GooseRunnerModelBinding;
   readonly port: number;
@@ -344,6 +607,229 @@ function validateModelBinding(modelBinding: GooseRunnerModelBinding): {
       attemptLease: modelBinding.attemptLease,
     }),
     port,
+  });
+}
+
+function validatePreparedBridge(
+  root: GooseRunnerPreparedRoot,
+  value: unknown,
+): GooseRunnerPreparedBridge {
+  if (!isRecord(value)) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose bridge factory must return an object",
+    );
+  }
+  const keys = Reflect.ownKeys(value);
+  if (
+    keys.length < 5 ||
+    keys.length > 6 ||
+    keys.some(
+      (key) =>
+        typeof key !== "string" ||
+        ![
+          "capabilityProxyUrl",
+          "modelBinding",
+          "capabilitySocketPath",
+          "modelSocketPath",
+          "windows",
+          "close",
+        ].includes(key),
+    )
+  ) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose bridge factory returned unsupported fields",
+    );
+  }
+  const capabilityProxyUrl = value.capabilityProxyUrl;
+  const capabilitySocketPath = value.capabilitySocketPath;
+  const modelSocketPath = value.modelSocketPath;
+  const windows = value.windows;
+  const close = value.close;
+  if (
+    typeof capabilityProxyUrl !== "string" ||
+    typeof capabilitySocketPath !== "string" ||
+    typeof modelSocketPath !== "string" ||
+    typeof close !== "function"
+  ) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose bridge factory returned an invalid endpoint contract",
+    );
+  }
+  const bridgeDirectory = path.join(root.root, "bridge");
+  const validSocketPath = (socketPath: string): boolean =>
+    path.isAbsolute(socketPath) &&
+    path.resolve(socketPath) === socketPath &&
+    !socketPath.includes("\0") &&
+    Buffer.byteLength(socketPath, "utf8") <= 103 &&
+    path.dirname(socketPath) === bridgeDirectory;
+  if (
+    !validSocketPath(capabilitySocketPath) ||
+    !validSocketPath(modelSocketPath) ||
+    capabilitySocketPath === modelSocketPath
+  ) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose bridge factory returned sockets outside the prepared bridge",
+    );
+  }
+  const capabilityPort = exactLoopbackMcpPort(capabilityProxyUrl);
+  let modelBinding: { readonly binding: GooseRunnerModelBinding; readonly port: number };
+  try {
+    modelBinding = validateModelBinding(value.modelBinding as GooseRunnerModelBinding);
+  } catch (error) {
+    if (error instanceof GooseRunnerProcessError) {
+      throw error;
+    }
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose bridge factory returned an invalid model binding",
+      { cause: error },
+    );
+  }
+  if (capabilityPort === undefined || capabilityPort === modelBinding.port) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose bridge factory returned ambiguous loopback endpoints",
+    );
+  }
+  return Object.freeze({
+    capabilityProxyUrl,
+    modelBinding: modelBinding.binding,
+    capabilitySocketPath,
+    modelSocketPath,
+    ...(windows === undefined ? {} : { windows: validateWindowsBridgeEnvironment(windows) }),
+    close: close as () => Promise<void>,
+  });
+}
+
+function validateWindowsBridgeEnvironment(value: unknown): GooseRunnerWindowsBridgeEnvironment {
+  if (!isRecord(value)) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose Windows bridge environment must be an object",
+    );
+  }
+  const keys = Reflect.ownKeys(value);
+  if (
+    keys.length !== 3 ||
+    keys.some(
+      (key) =>
+        typeof key !== "string" ||
+        !["attemptLease", "capabilityPipeName", "modelPipeName"].includes(key),
+    )
+  ) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose Windows bridge environment contains unsupported fields",
+    );
+  }
+  const { capabilityPipeName, modelPipeName, attemptLease } = value;
+  const validPipeName = (pipeName: unknown): pipeName is string =>
+    typeof pipeName === "string" &&
+    /^\\\\\.\\pipe\\LOCAL\\Actestra\.Goose\.[a-f0-9]{32}\.(?:capability|model)$/.test(pipeName) &&
+    Buffer.byteLength(pipeName, "utf8") <= 180;
+  if (
+    !validPipeName(capabilityPipeName) ||
+    !validPipeName(modelPipeName) ||
+    capabilityPipeName === modelPipeName ||
+    !capabilityPipeName.endsWith(".capability") ||
+    !modelPipeName.endsWith(".model") ||
+    capabilityPipeName.slice(0, -"capability".length) !== modelPipeName.slice(0, -"model".length) ||
+    typeof attemptLease !== "string" ||
+    attemptLease.length < 32 ||
+    attemptLease.length > 256 ||
+    !/^[A-Za-z0-9._~-]+$/.test(attemptLease)
+  ) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose Windows bridge environment is invalid",
+    );
+  }
+  return Object.freeze({ capabilityPipeName, modelPipeName, attemptLease });
+}
+
+function windowsBridgeAttemptId(value: GooseRunnerWindowsBridgeEnvironment): string {
+  const match = value.capabilityPipeName.match(
+    /^\\\\\.\\pipe\\LOCAL\\Actestra\.Goose\.([a-f0-9]{32})\.capability$/,
+  );
+  if (match?.[1] === undefined) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose Windows bridge attempt identity is invalid",
+    );
+  }
+  return match[1];
+}
+
+function validateLinuxBridgeEnvironment(
+  privateRoot: string,
+  value: GooseRunnerLinuxBridgeEnvironment,
+): GooseRunnerLinuxBridgeEnvironment {
+  if (!isRecord(value)) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose Linux bridge environment must be an object",
+    );
+  }
+  const keys = Reflect.ownKeys(value);
+  if (
+    keys.length !== 5 ||
+    keys.some(
+      (key) =>
+        typeof key !== "string" ||
+        ![
+          "capabilitySocketPath",
+          "modelSocketPath",
+          "capabilityPort",
+          "modelPort",
+          "workspaceRoot",
+        ].includes(key),
+    )
+  ) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose Linux bridge environment contains unsupported fields",
+    );
+  }
+  const { capabilitySocketPath, modelSocketPath, capabilityPort, modelPort, workspaceRoot } = value;
+  const bridgeDirectory = path.join(privateRoot, "bridge");
+  const validSocketPath = (socketPath: unknown): socketPath is string =>
+    typeof socketPath === "string" &&
+    path.isAbsolute(socketPath) &&
+    path.resolve(socketPath) === socketPath &&
+    !socketPath.includes("\0") &&
+    Buffer.byteLength(socketPath, "utf8") <= 103 &&
+    path.dirname(socketPath) === bridgeDirectory;
+  const validPort = (port: unknown): port is number =>
+    Number.isSafeInteger(port) && (port as number) >= 1 && (port as number) <= 65_535;
+  if (
+    !validSocketPath(capabilitySocketPath) ||
+    !validSocketPath(modelSocketPath) ||
+    capabilitySocketPath === modelSocketPath ||
+    !validPort(capabilityPort) ||
+    !validPort(modelPort) ||
+    capabilityPort === modelPort ||
+    typeof workspaceRoot !== "string" ||
+    !path.isAbsolute(workspaceRoot) ||
+    path.resolve(workspaceRoot) !== workspaceRoot ||
+    path.parse(workspaceRoot).root === workspaceRoot ||
+    workspaceRoot.includes("\0") ||
+    Buffer.byteLength(workspaceRoot, "utf8") > 4 * 1024
+  ) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose Linux bridge environment is invalid",
+    );
+  }
+  return Object.freeze({
+    capabilitySocketPath,
+    modelSocketPath,
+    capabilityPort,
+    modelPort,
+    workspaceRoot,
   });
 }
 
@@ -406,14 +892,17 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
   private readonly errorListeners = new Set<(error: Error) => void>();
   private readonly exitListeners = new Set<(code: number | null, signal: string | null) => void>();
   private readonly exitPromise: Promise<void>;
-  private readonly nativeResourceFailureMatcher = createGooseRunnerResourceFailureMatcher();
+  private readonly nativeSetupFailureMatcher = createGooseRunnerSetupFailureMatcher();
   private stdoutBuffer = "";
   private stderrBytes = 0;
   private exited = false;
   private transportFailed = false;
   private closePromise: Promise<void> | undefined;
 
-  constructor(private readonly child: GooseChildProcess) {
+  constructor(
+    private readonly child: GooseChildProcess,
+    private readonly parentLiveness?: Writable,
+  ) {
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => {
       this.stdoutBuffer += chunk;
@@ -434,13 +923,9 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
       }
     });
     child.stderr.on("data", (chunk: Buffer) => {
-      if (this.nativeResourceFailureMatcher.push(chunk)) {
-        this.failTransport(
-          new GooseRunnerProcessError(
-            "worker-resource-enforcement-unavailable",
-            "Goose native resource enforcement is unavailable",
-          ),
-        );
+      const setupFailure = this.nativeSetupFailureMatcher.push(chunk);
+      if (setupFailure !== undefined) {
+        this.failTransport(setupFailureError(setupFailure));
         return;
       }
       this.stderrBytes += chunk.byteLength;
@@ -448,13 +933,23 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
         this.failTransport(new Error("Goose stderr exceeded the bounded diagnostic size"));
       }
     });
-    for (const stream of [child.stdin, child.stdout, child.stderr]) {
+    child.stdin.on("error", (error) => {
+      const failure = new Error("Goose stdin stream failed", { cause: error });
+      const observation = setTimeout(() => {
+        if (!this.exited) this.failTransport(failure);
+      }, STDIN_EXIT_OBSERVATION_MS);
+      observation.unref();
+    });
+    for (const [stream, message] of [
+      [child.stdout, "Goose stdout stream failed"],
+      [child.stderr, "Goose stderr stream failed"],
+    ] as const) {
       stream.on("error", (error) => {
-        this.failTransport(error);
+        this.failTransport(new Error(message, { cause: error }));
       });
     }
     child.once("error", (error) => {
-      this.failTransport(error);
+      this.failTransport(new Error("Goose child process emitted an error", { cause: error }));
     });
     this.exitPromise = new Promise((resolve) => {
       child.once("close", (code, signal) => {
@@ -527,6 +1022,7 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
   }
 
   private async closeProcess(): Promise<void> {
+    this.parentLiveness?.end();
     this.child.stdin.end();
     if (await this.waitForProcessTreeExit(CLOSE_GRACE_MS)) {
       return;
@@ -545,39 +1041,173 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
   }
 }
 
-function createNodeGooseAcpTransport(options: GooseAcpSpawnOptions): GooseAcpTransport {
+export function encodeWindowsSupervisorControlFrame(options: GooseAcpSpawnOptions): Uint8Array {
   assertGooseAcpSpawnOptions(options);
-  const networkProfile = macosNetworkProfile(options);
+  const windows = options.windows;
+  const workspaceDirectory = options.workspaceDirectory;
   if (
-    networkProfile === undefined ||
-    !path.isAbsolute(options.executablePath) ||
-    !path.isAbsolute(options.workingDirectory)
+    options.executableAuthority !== "windows-supervisor" ||
+    windows === undefined ||
+    workspaceDirectory === undefined ||
+    !path.isAbsolute(workspaceDirectory) ||
+    path.parse(workspaceDirectory).root === workspaceDirectory
   ) {
+    throw new GooseRunnerProcessError(
+      "network-policy-unavailable",
+      "Windows Goose control requires the exact admitted supervisor contract",
+    );
+  }
+  const payload = Buffer.from(
+    JSON.stringify({
+      attemptId: windows.attemptId,
+      attemptLease: windows.attemptLease,
+      contractVersion: 1,
+      executableSha256: windows.executableSha256,
+      modelId: windows.modelId,
+      privateRoot: path.dirname(options.workingDirectory),
+      resourceBudget: options.resourceBudget,
+      targetTriple: windows.targetTriple,
+      worktreeRoot: workspaceDirectory,
+    }),
+    "utf8",
+  );
+  if (payload.byteLength === 0 || payload.byteLength > WINDOWS_CONTROL_MAX_BYTES) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Windows Goose control exceeded the bounded contract",
+    );
+  }
+  const frame = Buffer.alloc(payload.byteLength + 4);
+  frame.writeUInt32LE(payload.byteLength, 0);
+  payload.copy(frame, 4);
+  return frame;
+}
+
+export function resolveGooseAcpLaunchCommand(
+  options: GooseAcpSpawnOptions,
+  dependencies: GooseRunnerProcessDependencies = DEFAULT_PROCESS_DEPENDENCIES,
+): GooseAcpLaunchCommand {
+  assertGooseAcpSpawnOptions(options);
+  if (!path.isAbsolute(options.executablePath) || !path.isAbsolute(options.workingDirectory)) {
     throw new GooseRunnerProcessError("invalid-options", "Goose spawn options are invalid");
   }
+  const platform = dependencies.platform ?? process.platform;
+  const architecture = dependencies.architecture ?? process.arch;
   const privateRoot = path.dirname(options.workingDirectory);
-  if (path.dirname(path.dirname(options.executablePath)) !== privateRoot) {
+  const executableAuthority =
+    options.executableAuthority ??
+    (platform === "darwin" ? ("attempt-private" as const) : undefined);
+  if (!isGooseRunnerExecutableAuthorityAdmitted(platform, architecture, executableAuthority)) {
+    throw new GooseRunnerProcessError(
+      "network-policy-unavailable",
+      "Goose launch requires the exact executable authority for this host",
+    );
+  }
+  if (
+    executableAuthority === "attempt-private" &&
+    path.dirname(path.dirname(options.executablePath)) !== privateRoot
+  ) {
     throw new GooseRunnerProcessError(
       "invalid-options",
       "Goose executable and working directory must share one private root",
     );
   }
-  if (process.platform !== "darwin" || !process.arch.includes("64")) {
+  if (
+    executableAuthority === "linux-package" &&
+    (platform !== "linux" || options.executablePath !== GOOSE_LINUX_EXECUTABLE_PATH)
+  ) {
     throw new GooseRunnerProcessError(
-      "network-policy-unavailable",
-      "P5.1 admits the deny-all Goose handshake launcher only on macOS",
+      "invalid-options",
+      "Linux Goose must launch from the fixed packaged executable",
     );
   }
+  let command: string;
+  let arguments_: readonly string[];
+  if (platform === "darwin" && architecture.includes("64")) {
+    const networkProfile = macosNetworkProfile(options);
+    if (networkProfile === undefined) {
+      throw new GooseRunnerProcessError("invalid-options", "Goose spawn options are invalid");
+    }
+    command = "/usr/bin/sandbox-exec";
+    arguments_ = ["-p", networkProfile, options.executablePath];
+  } else if (platform === "linux" && architecture === "x64") {
+    const policy = options.networkPolicy;
+    const workspaceDirectory = options.workspaceDirectory;
+    const capabilitySocket = options.environment.ACTESTRA_GOOSE_LINUX_CAPABILITY_SOCKET;
+    const modelSocket = options.environment.ACTESTRA_GOOSE_LINUX_MODEL_SOCKET;
+    const bridgeDirectory = path.join(privateRoot, "bridge");
+    const validBridgeSocket = (socketPath: string | undefined): socketPath is string =>
+      socketPath !== undefined &&
+      path.isAbsolute(socketPath) &&
+      path.resolve(socketPath) === socketPath &&
+      path.dirname(socketPath) === bridgeDirectory;
+    if (
+      policy === "deny-all" ||
+      policy.kind !== "loopback-session" ||
+      policy.host !== "127.0.0.1" ||
+      policy.capabilityProxyPort === policy.modelProxyPort ||
+      workspaceDirectory === undefined ||
+      !path.isAbsolute(workspaceDirectory) ||
+      !validBridgeSocket(capabilitySocket) ||
+      !validBridgeSocket(modelSocket) ||
+      capabilitySocket === modelSocket ||
+      options.environment.ACTESTRA_GOOSE_LINUX_CAPABILITY_PORT !==
+        String(policy.capabilityProxyPort) ||
+      options.environment.ACTESTRA_GOOSE_LINUX_MODEL_PORT !== String(policy.modelProxyPort) ||
+      options.environment.ACTESTRA_GOOSE_LINUX_WORKSPACE_ROOT !== workspaceDirectory
+    ) {
+      throw new GooseRunnerProcessError(
+        "network-policy-unavailable",
+        "Linux Goose launch requires the exact admitted bridge contract",
+      );
+    }
+    command = options.executablePath;
+    arguments_ = [];
+  } else if (platform === "win32" && architecture === "x64") {
+    const windows = options.windows;
+    if (
+      executableAuthority !== "windows-supervisor" ||
+      windows === undefined ||
+      options.networkPolicy !== "deny-all" ||
+      path.dirname(path.dirname(options.executablePath)) !== privateRoot
+    ) {
+      throw new GooseRunnerProcessError(
+        "network-policy-unavailable",
+        "Windows Goose launch requires the exact admitted supervisor contract",
+      );
+    }
+    command = options.executablePath;
+    arguments_ = [windows.supervisorMode];
+  } else {
+    throw new GooseRunnerProcessError(
+      "network-policy-unavailable",
+      "The current host lacks an admitted Goose process launcher",
+    );
+  }
+  return Object.freeze({ command, arguments: Object.freeze([...arguments_]) });
+}
+
+export function createNodeGooseAcpTransport(
+  options: GooseAcpSpawnOptions,
+  dependencies: GooseRunnerProcessDependencies = DEFAULT_PROCESS_DEPENDENCIES,
+): GooseAcpTransport {
+  const launch = resolveGooseAcpLaunchCommand(options, dependencies);
+  const platform = dependencies.platform ?? process.platform;
+  const windowsSupervisor = platform === "win32";
 
   let child: GooseChildProcess;
   try {
-    child = spawn("/usr/bin/sandbox-exec", ["-p", networkProfile, options.executablePath], {
+    child = spawn(launch.command, launch.arguments, {
       cwd: options.workingDirectory,
-      env: { ...options.environment, ACTESTRA_PARENT_LIVENESS_FD: "3" },
+      env: windowsSupervisor
+        ? { ...options.environment }
+        : { ...options.environment, ACTESTRA_PARENT_LIVENESS_FD: "3" },
       detached: true,
-      // fd 3 is a parent-liveness pipe. The admitted runner watches its read
-      // end and terminates its process group when Main disappears.
-      stdio: ["pipe", "pipe", "pipe", "pipe"],
+      // Windows reserves fd 3 for the one-shot control frame and fd 4 for
+      // parent liveness. Other hosts retain the existing fd 3 liveness pipe.
+      stdio: windowsSupervisor
+        ? ["pipe", "pipe", "pipe", "pipe", "pipe"]
+        : ["pipe", "pipe", "pipe", "pipe"],
       windowsHide: true,
     });
   } catch (error) {
@@ -585,17 +1215,34 @@ function createNodeGooseAcpTransport(options: GooseAcpSpawnOptions): GooseAcpTra
       cause: error,
     });
   }
-  return new NodeGooseAcpTransport(child);
+  if (!windowsSupervisor) {
+    return new NodeGooseAcpTransport(child);
+  }
+  const control = child.stdio[3];
+  const parentLiveness = child.stdio[4];
+  if (
+    control === null ||
+    parentLiveness === null ||
+    typeof (control as Writable).write !== "function" ||
+    typeof (parentLiveness as Writable).write !== "function"
+  ) {
+    child.kill();
+    throw new GooseRunnerProcessError(
+      "spawn-failed",
+      "Windows Goose inherited control channels are unavailable",
+    );
+  }
+  const controlWriter = control as Writable;
+  controlWriter.once("error", () => child.kill());
+  controlWriter.end(Buffer.from(encodeWindowsSupervisorControlFrame(options)));
+  return new NodeGooseAcpTransport(child, parentLiveness as Writable);
 }
 
 async function preparePrivateRoot(
   parent: string,
   artifact: AdmittedGooseRunnerArtifact,
-): Promise<{
-  readonly root: string;
-  readonly executablePath: string;
-  readonly workingDirectory: string;
-}> {
+  executableAuthority: GooseExecutableAuthority,
+): Promise<GooseRunnerPreparedRoot> {
   if (!isAbsoluteDirectory(parent)) {
     throw new GooseRunnerProcessError(
       "invalid-options",
@@ -617,35 +1264,70 @@ async function preparePrivateRoot(
   }
   await realpath(parent);
 
-  const root = await mkdtemp(path.join(parent, "goose-attempt-"));
-  try {
-    const binaryDirectory = path.join(root, "bin");
-    const workingDirectory = path.join(root, "work");
-    await Promise.all(
-      ["config", "data", "state", "home", "tmp", "bin", "work"].map((name) =>
-        mkdir(path.join(root, name), { mode: 0o700 }),
-      ),
-    );
-    const executableName =
-      process.platform === "win32" ? "actestra-goose-runner.exe" : "actestra-goose-runner";
-    const executablePath = path.join(binaryDirectory, executableName);
-    await copyFile(artifact.executablePath, executablePath, fsConstants.COPYFILE_EXCL);
-    if (process.platform !== "win32") {
-      await chmod(executablePath, 0o500);
-    }
-    const stagedStat = await lstat(executablePath);
+  if (executableAuthority === "linux-package") {
+    const linuxInstall = artifact.linuxInstall;
     if (
-      !stagedStat.isFile() ||
-      stagedStat.isSymbolicLink() ||
-      stagedStat.size !== artifact.executableSize ||
-      (await sha256File(executablePath)) !== artifact.executableSha256
+      linuxInstall === undefined ||
+      !Object.isFrozen(linuxInstall) ||
+      linuxInstall.contractVersion !== 1 ||
+      linuxInstall.resourcesPath !== "/opt/Actestra/resources" ||
+      linuxInstall.executablePath !== GOOSE_LINUX_EXECUTABLE_PATH ||
+      linuxInstall.runnerManifestSha256 !== artifact.manifestSha256 ||
+      linuxInstall.executableSha256 !== artifact.executableSha256
     ) {
       throw new GooseRunnerProcessError(
         "artifact-mismatch",
-        "Staged Goose executable does not match the admitted artifact",
+        "Linux Goose launch lacks the fixed package attestation",
       );
     }
-    return { root, executablePath, workingDirectory };
+  }
+
+  const root = await mkdtemp(path.join(parent, "goose-attempt-"));
+  try {
+    const workingDirectory = path.join(root, "work");
+    const directories = [
+      "config",
+      "data",
+      "state",
+      "home",
+      "tmp",
+      "local-app-data",
+      "work",
+      "bridge",
+    ];
+    if (executableAuthority !== "linux-package") directories.push("bin");
+    await Promise.all(directories.map((name) => mkdir(path.join(root, name), { mode: 0o700 })));
+    let executablePath: string;
+    if (executableAuthority === "linux-package") {
+      executablePath = GOOSE_LINUX_EXECUTABLE_PATH;
+    } else {
+      const binaryDirectory = path.join(root, "bin");
+      const executableName = path.basename(artifact.executablePath);
+      executablePath = path.join(binaryDirectory, executableName);
+      await copyFile(artifact.executablePath, executablePath, fsConstants.COPYFILE_EXCL);
+      if (process.platform !== "win32") {
+        await chmod(executablePath, 0o500);
+      }
+      const stagedStat = await lstat(executablePath);
+      if (
+        !stagedStat.isFile() ||
+        stagedStat.isSymbolicLink() ||
+        stagedStat.size !== artifact.executableSize ||
+        (await sha256File(executablePath)) !== artifact.executableSha256
+      ) {
+        throw new GooseRunnerProcessError(
+          "artifact-mismatch",
+          "Staged Goose executable does not match the admitted artifact",
+        );
+      }
+    }
+    return Object.freeze({
+      root,
+      bridgeDirectory: path.join(root, "bridge"),
+      executableAuthority,
+      executablePath,
+      workingDirectory,
+    });
   } catch (error) {
     try {
       await rm(root, { recursive: true });
@@ -670,12 +1352,23 @@ async function removePrivateRoot(root: string): Promise<void> {
   }
 }
 
-async function closeAndRemove(connection: GooseAcpConnection, privateRoot: string): Promise<void> {
+async function closeAndRemove(
+  connection: GooseAcpConnection,
+  privateRoot: string,
+  bridge: GooseRunnerPreparedBridge | undefined,
+): Promise<void> {
   const errors: unknown[] = [];
   try {
     await connection.close();
   } catch (error) {
     errors.push(error);
+  }
+  if (bridge !== undefined) {
+    try {
+      await bridge.close();
+    } catch (error) {
+      errors.push(error);
+    }
   }
   try {
     await removePrivateRoot(privateRoot);
@@ -693,32 +1386,35 @@ async function closeAndRemove(connection: GooseAcpConnection, privateRoot: strin
 
 export async function openGooseRunnerHandshake(
   options: OpenGooseRunnerHandshakeOptions,
+  dependencies: GooseRunnerProcessDependencies = DEFAULT_PROCESS_DEPENDENCIES,
 ): Promise<OpenGooseRunnerHandshakeResult> {
-  const runtimeTarget = resolveGooseRunnerRuntimeTarget(process.platform, process.arch);
+  const platform = dependencies.platform ?? process.platform;
+  const architecture = dependencies.architecture ?? process.arch;
+  const runtimeTarget = resolveGooseRunnerRuntimeTarget(platform, architecture);
   if (runtimeTarget === undefined || options.artifact.targetTriple !== runtimeTarget.targetTriple) {
     throw new GooseRunnerProcessError(
       "network-policy-unavailable",
       "The current host lacks admitted Goose runtime containment",
     );
   }
-  const capabilityProxyPort =
-    options.capabilityProxyUrl === undefined
-      ? undefined
-      : exactLoopbackMcpPort(options.capabilityProxyUrl);
-  if (options.capabilityProxyUrl !== undefined && capabilityProxyPort === undefined) {
+  const executableAuthority = resolveGooseRunnerExecutableAuthority(runtimeTarget.platform);
+  if (executableAuthority === undefined) {
     throw new GooseRunnerProcessError(
-      "invalid-options",
-      "Goose runner capability proxy must use the exact admitted loopback MCP endpoint",
+      "network-policy-unavailable",
+      "The current host lacks admitted Goose executable authority",
     );
   }
-  if ((capabilityProxyPort === undefined) !== (options.modelBinding === undefined)) {
+  const containmentVerified = hasVerifiedGooseContainment(options.artifact.containment, {
+    targetTriple: options.artifact.targetTriple,
+    executableSha256: options.artifact.executableSha256,
+    sourceCommit: options.artifact.sourceCommit ?? "",
+  });
+  if (runtimeTarget.platform !== "darwin" && !containmentVerified) {
     throw new GooseRunnerProcessError(
-      "invalid-options",
-      "Goose runner loopback session requires both MCP and model bindings",
+      "network-policy-unavailable",
+      "The admitted Goose artifact lacks exact native containment evidence",
     );
   }
-  const stableModelBinding =
-    options.modelBinding === undefined ? undefined : validateModelBinding(options.modelBinding);
   const admittedWorkspaceDirectory =
     options.workspaceDirectory === undefined
       ? undefined
@@ -729,23 +1425,132 @@ export async function openGooseRunnerHandshake(
             { cause: error },
           );
         });
-  let prepared:
-    | { readonly root: string; readonly executablePath: string; readonly workingDirectory: string }
-    | undefined;
+  if (options.prepareBridge !== undefined && typeof options.prepareBridge !== "function") {
+    throw new GooseRunnerProcessError("invalid-options", "Goose bridge factory must be a function");
+  }
+  if (
+    options.prepareBridge !== undefined &&
+    (options.capabilityProxyUrl !== undefined || options.modelBinding !== undefined)
+  ) {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose bridge factory cannot be combined with direct loopback bindings",
+    );
+  }
+  if (options.prepareBridge === undefined) {
+    const capabilityProxyPort =
+      options.capabilityProxyUrl === undefined
+        ? undefined
+        : exactLoopbackMcpPort(options.capabilityProxyUrl);
+    if (options.capabilityProxyUrl !== undefined && capabilityProxyPort === undefined) {
+      throw new GooseRunnerProcessError(
+        "invalid-options",
+        "Goose runner capability proxy must use the exact admitted loopback MCP endpoint",
+      );
+    }
+    if ((capabilityProxyPort === undefined) !== (options.modelBinding === undefined)) {
+      throw new GooseRunnerProcessError(
+        "invalid-options",
+        "Goose runner loopback session requires both MCP and model bindings",
+      );
+    }
+    if (options.modelBinding !== undefined) {
+      validateModelBinding(options.modelBinding);
+    }
+  }
+  if (
+    runtimeTarget.platform === "linux" &&
+    (options.prepareBridge === undefined || admittedWorkspaceDirectory === undefined)
+  ) {
+    throw new GooseRunnerProcessError(
+      "network-policy-unavailable",
+      "Linux Goose runtime requires one prepared bridge and admitted workspace",
+    );
+  }
+  if (runtimeTarget.platform === "win32" && options.prepareBridge === undefined) {
+    throw new GooseRunnerProcessError(
+      "network-policy-unavailable",
+      "Windows Goose runtime requires the exact admitted named-pipe bridge contract",
+    );
+  }
+  let prepared: GooseRunnerPreparedRoot | undefined;
+  let bridge: GooseRunnerPreparedBridge | undefined;
   let transport: GooseAcpTransport | undefined;
   try {
-    prepared = await preparePrivateRoot(options.privateRootParent, options.artifact);
+    prepared = await preparePrivateRoot(
+      options.privateRootParent,
+      options.artifact,
+      executableAuthority,
+    );
+    if (options.prepareBridge !== undefined) {
+      const candidate = await options.prepareBridge(prepared);
+      try {
+        bridge = validatePreparedBridge(prepared, candidate);
+      } catch (error) {
+        try {
+          await candidate.close();
+        } catch (cleanupError) {
+          throw new GooseRunnerProcessError(
+            "cleanup-failed",
+            "Goose bridge contract was invalid and bridge cleanup failed",
+            { cause: new AggregateError([error, cleanupError]) },
+          );
+        }
+        throw error;
+      }
+      if (runtimeTarget.platform === "win32" && bridge.windows === undefined) {
+        throw new GooseRunnerProcessError(
+          "network-policy-unavailable",
+          "Windows Goose runtime requires the exact admitted named-pipe bridge contract",
+        );
+      }
+    }
     const resourceBudget = freezeWorkerResourceBudget(GOOSE_WORKER_RESOURCE_PROFILE);
+    const capabilityProxyUrl = bridge?.capabilityProxyUrl ?? options.capabilityProxyUrl;
+    const modelBinding = bridge?.modelBinding ?? options.modelBinding;
+    const capabilityProxyPort =
+      capabilityProxyUrl === undefined ? undefined : exactLoopbackMcpPort(capabilityProxyUrl);
+    if (capabilityProxyUrl !== undefined && capabilityProxyPort === undefined) {
+      throw new GooseRunnerProcessError(
+        "invalid-options",
+        "Goose runner capability proxy must use the exact admitted loopback MCP endpoint",
+      );
+    }
+    const stableModelBinding =
+      modelBinding === undefined ? undefined : validateModelBinding(modelBinding);
+    const linuxBridgeEnvironment =
+      runtimeTarget.platform === "linux" &&
+      bridge !== undefined &&
+      capabilityProxyPort !== undefined &&
+      stableModelBinding !== undefined &&
+      admittedWorkspaceDirectory !== undefined
+        ? Object.freeze({
+            capabilitySocketPath: bridge.capabilitySocketPath,
+            modelSocketPath: bridge.modelSocketPath,
+            capabilityPort: capabilityProxyPort,
+            modelPort: stableModelBinding.port,
+            workspaceRoot: admittedWorkspaceDirectory,
+          })
+        : undefined;
+    const windowsBridgeEnvironment =
+      runtimeTarget.platform === "win32" ? bridge?.windows : undefined;
     const spawnOptions: GooseAcpSpawnOptions = Object.freeze({
       executablePath: prepared.executablePath,
+      executableAuthority,
       workingDirectory: prepared.workingDirectory,
       ...(admittedWorkspaceDirectory === undefined
         ? {}
         : { workspaceDirectory: admittedWorkspaceDirectory }),
-      environment: createGooseRunnerEnvironment(prepared.root, stableModelBinding?.binding),
+      environment: createGooseRunnerEnvironment(
+        prepared.root,
+        runtimeTarget.platform === "win32" ? undefined : stableModelBinding?.binding,
+        linuxBridgeEnvironment,
+      ),
       resourceBudget,
       networkPolicy:
-        capabilityProxyPort === undefined || stableModelBinding === undefined
+        runtimeTarget.platform === "win32" ||
+        capabilityProxyPort === undefined ||
+        stableModelBinding === undefined
           ? "deny-all"
           : Object.freeze({
               kind: "loopback-session",
@@ -753,7 +1558,48 @@ export async function openGooseRunnerHandshake(
               capabilityProxyPort,
               modelProxyPort: stableModelBinding.port,
             }),
+      ...(windowsBridgeEnvironment === undefined
+        ? {}
+        : {
+            windows: Object.freeze({
+              supervisorMode: "--actestra-windows-supervisor-v1" as const,
+              capabilityPipeName: windowsBridgeEnvironment.capabilityPipeName,
+              modelPipeName: windowsBridgeEnvironment.modelPipeName,
+              attemptLease: windowsBridgeEnvironment.attemptLease,
+              attemptId: windowsBridgeAttemptId(windowsBridgeEnvironment),
+              executableSha256: options.artifact.executableSha256,
+              modelId: stableModelBinding!.binding.modelId,
+              targetTriple: "x86_64-pc-windows-msvc" as const,
+            }),
+          }),
     });
+    assertGooseContainmentLaunch(
+      Object.freeze({
+        platform: runtimeTarget.platform,
+        architecture: runtimeTarget.architecture,
+        targetTriple: runtimeTarget.targetTriple,
+        executableAuthority,
+        executablePath: prepared.executablePath,
+        privateRoot: prepared.root,
+        ...(admittedWorkspaceDirectory === undefined
+          ? {}
+          : { workspaceDirectory: admittedWorkspaceDirectory }),
+        networkPolicy:
+          spawnOptions.networkPolicy === "deny-all"
+            ? "deny-all"
+            : Object.freeze({
+                kind: "loopback-session",
+                host: "127.0.0.1",
+                capabilityProxyPort: spawnOptions.networkPolicy.capabilityProxyPort,
+                modelProxyPort: spawnOptions.networkPolicy.modelProxyPort,
+              }),
+        resourceBudget,
+        parentLiveness: Object.freeze({
+          kind: "inherited-ipc",
+          token: randomBytes(16).toString("hex"),
+        }),
+      }),
+    );
     transport = (options.transportFactory ?? createNodeGooseAcpTransport)(spawnOptions);
     const connection = await connectGooseAcp(transport, {
       timeoutMs: options.handshakeTimeoutMs,
@@ -777,7 +1623,7 @@ export async function openGooseRunnerHandshake(
           }
           return await connection.openSession(sessionOptions);
         } catch (error) {
-          closePromise ??= closeAndRemove(connection, prepared!.root);
+          closePromise ??= closeAndRemove(connection, prepared!.root, bridge);
           try {
             await closePromise;
           } catch (cleanupError) {
@@ -796,7 +1642,7 @@ export async function openGooseRunnerHandshake(
         try {
           return await connection.discoverTools(discoveryOptions);
         } catch (error) {
-          closePromise ??= closeAndRemove(connection, prepared!.root);
+          closePromise ??= closeAndRemove(connection, prepared!.root, bridge);
           try {
             await closePromise;
           } catch (cleanupError) {
@@ -813,7 +1659,7 @@ export async function openGooseRunnerHandshake(
         try {
           return await connection.prompt(promptOptions);
         } catch (error) {
-          closePromise ??= closeAndRemove(connection, prepared!.root);
+          closePromise ??= closeAndRemove(connection, prepared!.root, bridge);
           try {
             await closePromise;
           } catch (cleanupError) {
@@ -827,7 +1673,7 @@ export async function openGooseRunnerHandshake(
         }
       },
       close(): Promise<void> {
-        closePromise ??= closeAndRemove(connection, prepared!.root);
+        closePromise ??= closeAndRemove(connection, prepared!.root, bridge);
         return closePromise;
       },
     });
@@ -836,6 +1682,13 @@ export async function openGooseRunnerHandshake(
     if (transport !== undefined) {
       try {
         await transport.close();
+      } catch (cleanupError) {
+        cleanupErrors.push(cleanupError);
+      }
+    }
+    if (bridge !== undefined) {
+      try {
+        await bridge.close();
       } catch (cleanupError) {
         cleanupErrors.push(cleanupError);
       }
@@ -858,7 +1711,8 @@ export async function openGooseRunnerHandshake(
       error instanceof GooseAcpHandshakeError &&
       error.code === "transport-error" &&
       error.cause instanceof GooseRunnerProcessError &&
-      error.cause.code === "worker-resource-enforcement-unavailable"
+      (error.cause.code === "network-policy-unavailable" ||
+        error.cause.code === "worker-resource-enforcement-unavailable")
     ) {
       throw error.cause;
     }

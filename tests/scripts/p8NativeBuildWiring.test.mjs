@@ -58,6 +58,14 @@ describe("P8 native Goose build wiring", () => {
     expect(runtimeProcess).toContain('from "./gooseRunnerTarget"');
   });
 
+  it("passes only Electron-owned Linux package resources into coding runtime admission", () => {
+    const patch = read("downstream/aionui-v2.1.41/patches/0014-actestra-team-work.mjs");
+    expect(patch).toContain(
+      "linuxPackageResourcesPath: process.platform === 'linux' ? process.resourcesPath : undefined",
+    );
+    expect(patch).not.toContain("ACTESTRA_GOOSE_LINUX_PACKAGE");
+  });
+
   it("probes Windows and Linux native build admission without claiming runtime support", () => {
     const workflow = read(".github/workflows/ci.yml");
     expect(workflow).toContain("name: Goose runner admission");
@@ -71,7 +79,7 @@ describe("P8 native Goose build wiring", () => {
       expect(job, `missing CI job ${jobId}`).not.toBe("");
       expect(job).toContain(`name: ${jobName}`);
       expect(job).toContain(`runs-on: ${runner}`);
-      expect(job).toContain("timeout-minutes: 35");
+      expect(job).toContain(`timeout-minutes: ${jobId === "goose-runner-windows" ? "50" : "35"}`);
       expect(job).toContain("actions/checkout@11d5960a326750d5838078e36cf38b85af677262");
       expect(job).toContain("actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020");
       expect(job).toContain("node-version: 24.13.0");
@@ -80,13 +88,17 @@ describe("P8 native Goose build wiring", () => {
       expect(job).toContain(
         "rustup toolchain install 1.96.1 --profile minimal --component rustfmt",
       );
+      const nativeAdmissionTests =
+        jobId === "goose-runner-windows"
+          ? "bun run test tests/main/gooseRunnerTarget.test.ts tests/main/gooseRunnerArtifact.test.ts tests/main/gooseRunnerLifecycle.test.ts tests/main/gooseRunnerWindowsBridge.test.ts tests/scripts/p8NativeBuildWiring.test.mjs"
+          : "bun run test tests/main/gooseRunnerTarget.test.ts tests/main/gooseRunnerArtifact.test.ts tests/main/gooseRunnerLifecycle.test.ts tests/scripts/p8NativeBuildWiring.test.mjs";
       expectOrderedFragments(job, [
         "bun install --frozen-lockfile",
         "bun run goose:runner:format:check",
         "bun run goose:runner:tools",
         "bun run goose:runner:build",
         "git diff --exit-code -- workers/goose-runner/Cargo.lock",
-        "bun run test tests/main/gooseRunnerTarget.test.ts tests/main/gooseRunnerArtifact.test.ts tests/main/gooseRunnerLifecycle.test.ts tests/scripts/p8NativeBuildWiring.test.mjs",
+        nativeAdmissionTests,
         "bun run goose:runner:admit-build",
       ]);
       for (const forbidden of [
@@ -102,5 +114,84 @@ describe("P8 native Goose build wiring", () => {
         expect(job, `${jobId} must not claim or run ${forbidden}`).not.toContain(forbidden);
       }
     }
+  });
+
+  it("runs the Windows supervisor native tests before admitting the emitted artifact", () => {
+    const workflow = read(".github/workflows/ci.yml");
+    const job = readWorkflowJob(workflow, "goose-runner-windows");
+
+    expectOrderedFragments(job, [
+      "bun run goose:runner:format:check",
+      "cargo test --manifest-path workers/goose-runner/Cargo.toml --locked windows_native_tests",
+      "bun run goose:runner:build",
+      "bun run goose:runner:admit-build",
+    ]);
+  });
+
+  it("installs the exact Ubuntu package layout with sudo only around setup and teardown", () => {
+    const workflow = read(".github/workflows/ci.yml");
+    const job = readWorkflowJob(workflow, "goose-containment-linux");
+    expectOrderedFragments(job, [
+      "Build exact Ubuntu Goose runner artifact",
+      "Install temporary Ubuntu Goose package layout",
+      "Re-admit installed Ubuntu Goose package",
+      "Run authenticated Linux Goose integration",
+      "Run exact Ubuntu containment acceptance",
+      "Remove temporary Ubuntu Goose package layout",
+    ]);
+    expect(job).toContain("kernel.apparmor_restrict_unprivileged_userns");
+    expect(job).toContain("downstream:aionui:inspect:deb");
+    expect(job).toContain("dist:linux");
+    expect(job).toContain("dpkg-deb --extract");
+    expect(job).toContain("ACTESTRA_GOOSE_LINUX_BOOTSTRAP_OK");
+    expect(job).toContain("goose:runner:admit-package:linux");
+    expect(job).not.toContain("sysctl -w");
+    expect(job).toContain("sudo install");
+    expect(job).toContain("id -u");
+
+    const integrationStep = job.slice(
+      job.indexOf("- name: Run authenticated Linux Goose integration"),
+      job.indexOf("- name: Run exact Ubuntu containment acceptance"),
+    );
+    const containmentStep = job.slice(
+      job.indexOf("- name: Run exact Ubuntu containment acceptance"),
+      job.indexOf("- name: Re-admit bound Ubuntu Goose runner artifact"),
+    );
+    expect(integrationStep).not.toContain("sudo");
+    expect(containmentStep).not.toContain("sudo");
+  });
+
+  it("normalizes the GitHub Ubuntu opt root only for admission and restores its exact mode", () => {
+    const workflow = read(".github/workflows/ci.yml");
+    const job = readWorkflowJob(workflow, "goose-containment-linux");
+    const installStep = job.slice(
+      job.indexOf("- name: Install temporary Ubuntu Goose package layout"),
+      job.indexOf("- name: Re-admit installed Ubuntu Goose package"),
+    );
+    const cleanupStep = job.slice(
+      job.indexOf("- name: Remove temporary Ubuntu Goose package layout"),
+    );
+
+    expect(installStep).toContain("id: linux-package-install");
+    expectOrderedFragments(installStep, [
+      'test "$(stat -c \'%u\' /opt)" = "0"',
+      "original_opt_mode=\"$(stat -c '%a' /opt)\"",
+      'echo "opt_mode=$original_opt_mode" >> "$GITHUB_OUTPUT"',
+      "sudo chmod 0755 /opt",
+      'test "$(stat -c \'%a:%u\' /opt)" = "755:0"',
+      "sudo install -d -o root -g root -m 0755 /opt/Actestra/resources/actestra-goose-runner",
+    ]);
+    expect(installStep).toContain("755 | 777) ;;");
+    expect(cleanupStep).toContain(
+      "ACTESTRA_ORIGINAL_OPT_MODE: ${{ steps.linux-package-install.outputs.opt_mode }}",
+    );
+    expectOrderedFragments(cleanupStep, [
+      "sudo rm -rf -- /opt/Actestra",
+      "test ! -e /opt/Actestra",
+      'sudo chmod "$ACTESTRA_ORIGINAL_OPT_MODE" /opt',
+      'exit "$cleanup_status"',
+    ]);
+    expect(job).not.toContain("chmod -R");
+    expect(job).not.toContain("chmod 0777 /opt");
   });
 });

@@ -1,0 +1,232 @@
+// @vitest-environment node
+
+import { describe, expect, it } from "vitest";
+import * as nativeIntegrationEvidence from "../../scripts/gooseNativeIntegrationEvidence.mjs";
+
+const { validateGooseNativeIntegrationEvidence, GOOSE_NATIVE_INTEGRATION_EVIDENCE_KEYS } =
+  nativeIntegrationEvidence;
+
+const binding = Object.freeze({
+  targetTriple: "x86_64-unknown-linux-gnu",
+  sourceCommit: "a".repeat(40),
+  executableSha256: "b".repeat(64),
+});
+
+function validEvidence() {
+  return {
+    contractVersion: 1,
+    targetTriple: binding.targetTriple,
+    sourceCommit: binding.sourceCommit,
+    executableSha256: binding.executableSha256,
+    initialize: true,
+    openSession: true,
+    toolDiscovery: true,
+    prompt: true,
+    toolDenial: true,
+    cancellation: true,
+    crashRestart: true,
+    parentDeath: true,
+    cleanup: true,
+    status: "verified",
+  };
+}
+
+describe("Goose native integration evidence", () => {
+  it("accepts exactly the nine verified outcomes bound to one Artifact", () => {
+    expect(validateGooseNativeIntegrationEvidence(validEvidence(), binding)).toEqual({ ok: true });
+    expect(Object.keys(validEvidence()).sort()).toEqual([
+      ...GOOSE_NATIVE_INTEGRATION_EVIDENCE_KEYS,
+    ]);
+  });
+
+  it.each([
+    ["extra key", { extra: true }],
+    ["false capability", { prompt: false }],
+    ["wrong target", { targetTriple: "x86_64-unknown-linux-musl" }],
+    ["wrong source", { sourceCommit: "c".repeat(40) }],
+    ["wrong executable", { executableSha256: "d".repeat(64) }],
+    ["raw path", { sourceCommit: "/tmp/secret" }],
+  ])("rejects %s without exposing a path or raw diagnostic", (_label, mutation) => {
+    const candidate = { ...validEvidence(), ...mutation };
+    const result = validateGooseNativeIntegrationEvidence(candidate, binding);
+    expect(result.ok).toBe(false);
+    expect(JSON.stringify(result)).not.toContain("/tmp/secret");
+    expect(JSON.stringify(result)).not.toContain("x86_64-unknown-linux-musl");
+  });
+
+  it("rejects an actually missing outcome key", () => {
+    const candidate = validEvidence();
+    delete candidate.cleanup;
+
+    expect(validateGooseNativeIntegrationEvidence(candidate, binding)).toEqual({
+      ok: false,
+      code: "invalid-integration-evidence",
+    });
+  });
+
+  it("rejects mismatched Artifact identity with a closed code", () => {
+    expect(
+      validateGooseNativeIntegrationEvidence(validEvidence(), {
+        ...binding,
+        executableSha256: "e".repeat(64),
+      }),
+    ).toEqual({ ok: false, code: "integration-artifact-mismatch" });
+  });
+
+  it("classifies only exact closed failure-stage evidence", () => {
+    const classify = nativeIntegrationEvidence.classifyGooseNativeIntegrationFailureEvidence;
+    expect(typeof classify).toBe("function");
+    if (typeof classify !== "function") return;
+
+    for (const [stage, code] of [
+      ["artifact-admission", "integration-artifact-admission-failed"],
+      ["bridge-capability-open", "integration-bridge-capability-open-failed"],
+      ["bridge-config", "integration-bridge-config-failed"],
+      ["bridge-model-open", "integration-bridge-model-open-failed"],
+      ["bridge-open", "integration-bridge-open-failed"],
+      ["bridge-port-reservation", "integration-bridge-port-reservation-failed"],
+      ["bridge-socket-listen", "integration-bridge-socket-listen-failed"],
+      ["bridge-socket-permission", "integration-bridge-socket-permission-failed"],
+      ["bridge-socket-state", "integration-bridge-socket-state-failed"],
+      ["composition-cleanup", "integration-composition-cleanup-failed"],
+      ["composition-open", "integration-composition-open-failed"],
+      ["handshake", "integration-handshake-failed"],
+      ["handshake-cleanup", "integration-handshake-cleanup-failed"],
+      ["handshake-process-exit", "integration-handshake-process-exit-failed"],
+      ["handshake-process-signal", "integration-handshake-process-signal-failed"],
+      ["handshake-response", "integration-handshake-response-failed"],
+      ["handshake-timeout", "integration-handshake-timeout-failed"],
+      ["handshake-transport", "integration-handshake-transport-failed"],
+      ["handshake-transport-process", "integration-handshake-transport-process-failed"],
+      ["handshake-transport-stderr", "integration-handshake-transport-stderr-failed"],
+      ["handshake-transport-stdin", "integration-handshake-transport-stdin-failed"],
+      ["handshake-transport-stdout", "integration-handshake-transport-stdout-failed"],
+      ["initialize", "integration-initialize-failed"],
+      ["launch-contract", "integration-launch-contract-failed"],
+      ["runner-open", "integration-runner-open-failed"],
+      ["runner-acp", "integration-runner-acp-failed"],
+      ["runner-panic", "integration-runner-panic-failed"],
+      ["runner-relay", "integration-runner-relay-failed"],
+      ["runner-runtime", "integration-runner-runtime-failed"],
+      ["runner-process-spawn", "integration-runner-process-spawn-failed"],
+      ["runner-stdin", "integration-runner-stdin-failed"],
+      ["runner-spawn", "integration-runner-spawn-failed"],
+      ["runtime-network", "integration-runtime-network-failed"],
+      ["runtime-resource", "integration-runtime-resource-failed"],
+      ["session-open", "integration-session-open-failed"],
+      ["tool-discovery", "integration-tool-discovery-failed"],
+      ["prompt", "integration-prompt-failed"],
+      ["tool-denial", "integration-tool-denial-failed"],
+      ["cancellation", "integration-cancellation-failed"],
+      ["crash", "integration-crash-failed"],
+      ["restart", "integration-restart-failed"],
+      ["parent-death", "integration-parent-death-failed"],
+      [
+        "parent-death-supervisor-group-missing",
+        "integration-parent-death-supervisor-group-missing-failed",
+      ],
+      [
+        "parent-death-supervisor-group-inaccessible",
+        "integration-parent-death-supervisor-group-inaccessible-failed",
+      ],
+      [
+        "parent-death-supervisor-group-malformed",
+        "integration-parent-death-supervisor-group-malformed-failed",
+      ],
+      [
+        "parent-death-supervisor-group-unavailable",
+        "integration-parent-death-supervisor-group-unavailable-failed",
+      ],
+      ["parent-death-runner-group-missing", "integration-parent-death-runner-group-missing-failed"],
+      [
+        "parent-death-runner-group-inaccessible",
+        "integration-parent-death-runner-group-inaccessible-failed",
+      ],
+      [
+        "parent-death-runner-group-malformed",
+        "integration-parent-death-runner-group-malformed-failed",
+      ],
+      [
+        "parent-death-runner-group-unavailable",
+        "integration-parent-death-runner-group-unavailable-failed",
+      ],
+      [
+        "parent-death-supervisor-not-exited",
+        "integration-parent-death-supervisor-not-exited-failed",
+      ],
+      [
+        "parent-death-capability-owner-mismatch",
+        "integration-parent-death-capability-owner-mismatch-failed",
+      ],
+      ["parent-death-model-owner-mismatch", "integration-parent-death-model-owner-mismatch-failed"],
+      [
+        "parent-death-capability-orphan-owner",
+        "integration-parent-death-capability-orphan-owner-failed",
+      ],
+      ["parent-death-model-orphan-owner", "integration-parent-death-model-orphan-owner-failed"],
+      [
+        "parent-death-capability-owner-unresolved",
+        "integration-parent-death-capability-owner-unresolved-failed",
+      ],
+      [
+        "parent-death-model-owner-unresolved",
+        "integration-parent-death-model-owner-unresolved-failed",
+      ],
+      [
+        "parent-death-capability-owner-not-listed",
+        "integration-parent-death-capability-owner-not-listed-failed",
+      ],
+      [
+        "parent-death-model-owner-not-listed",
+        "integration-parent-death-model-owner-not-listed-failed",
+      ],
+      [
+        "parent-death-capability-owner-no-visible-process",
+        "integration-parent-death-capability-owner-no-visible-process-failed",
+      ],
+      [
+        "parent-death-model-owner-no-visible-process",
+        "integration-parent-death-model-owner-no-visible-process-failed",
+      ],
+      [
+        "parent-death-capability-owner-scan-failed",
+        "integration-parent-death-capability-owner-scan-failed",
+      ],
+      ["parent-death-model-owner-scan-failed", "integration-parent-death-model-owner-scan-failed"],
+      [
+        "parent-death-capability-owner-fd-inaccessible",
+        "integration-parent-death-capability-owner-fd-inaccessible-failed",
+      ],
+      [
+        "parent-death-model-owner-fd-inaccessible",
+        "integration-parent-death-model-owner-fd-inaccessible-failed",
+      ],
+      [
+        "parent-death-capability-owner-process-race",
+        "integration-parent-death-capability-owner-process-race-failed",
+      ],
+      [
+        "parent-death-model-owner-process-race",
+        "integration-parent-death-model-owner-process-race-failed",
+      ],
+      ["parent-death-runner-not-exited", "integration-parent-death-runner-not-exited-failed"],
+      ["parent-death-capability-socket", "integration-parent-death-capability-socket-failed"],
+      ["parent-death-model-socket", "integration-parent-death-model-socket-failed"],
+      ["parent-death-private-root", "integration-parent-death-private-root-failed"],
+      ["cleanup", "integration-cleanup-failed"],
+    ]) {
+      expect(classify({ contractVersion: 1, stage })).toBe(code);
+    }
+    for (const candidate of [
+      { contractVersion: 1, stage: "invented" },
+      { contractVersion: 1, stage: "toString" },
+      { contractVersion: 1, stage: "__proto__" },
+      { contractVersion: 1, stage: "/tmp/private" },
+      { contractVersion: 1, stage: "prompt", detail: "/tmp/private" },
+      { contractVersion: 2, stage: "prompt" },
+      null,
+    ]) {
+      expect(classify(candidate)).toBeUndefined();
+    }
+  });
+});

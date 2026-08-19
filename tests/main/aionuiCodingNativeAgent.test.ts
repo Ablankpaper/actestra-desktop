@@ -102,6 +102,7 @@ describe("P5.3 retained AionUI Goose agent and coding journey", () => {
     ]) {
       expect(source).toContain(marker);
     }
+    expect(source).toContain("revalidateArtifact: activeCodingRuntime.revalidateArtifact");
     expect(source).not.toContain("ACTESTRA_GOOSE_RUNNER_MANIFEST_SHA256: request");
     expect(source).not.toContain("createCustomAgent({ id: 'actestra-goose'");
   });

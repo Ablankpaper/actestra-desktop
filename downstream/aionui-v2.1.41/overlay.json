@@ -268,6 +268,17 @@
       ],
       "authorityOwner": "Actestra Main owns diagnostic evidence collection, native destination selection, private atomic file output, and the fixed Renderer-visible status projection",
       "rollback": "Regenerate without patch 0020 to remove the About diagnostics entry, fixed preload operation, Main IPC composition, and P7.4 packaged acceptance hook. Schema v23 audit integrity and retention state remain authoritative and inert; no frozen source, native AionUI profile, exported report, or prior audit evidence is rewritten."
+    },
+    {
+      "path": "patches/0021-actestra-ubuntu-apparmor-bootstrap.mjs",
+      "classification": ["R1"],
+      "domains": [
+        "Ubuntu DEB AppArmor profile",
+        "root-owned Goose package resources",
+        "Linux runner admission"
+      ],
+      "authorityOwner": "Actestra Main and the native electron-builder DEB lifecycle; no Renderer or runtime privilege authority",
+      "rollback": "Regenerate without patch 0021 and remove the Linux package staging wrapper. Darwin and Windows runner paths, the existing Linux fail-closed resolver, and frozen foundation remain unchanged."
     }
   ],
   "sourceCopies": [
@@ -620,6 +631,10 @@
       "destination": "packages/desktop/src/actestra/main/workers/gooseCodingEvidenceCoordinator.ts"
     },
     {
+      "source": "apps/desktop/src/main/workers/gooseBridgeSocket.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/gooseBridgeSocket.ts"
+    },
+    {
       "source": "apps/desktop/src/main/workers/gooseLoopbackModelServer.ts",
       "destination": "packages/desktop/src/actestra/main/workers/gooseLoopbackModelServer.ts"
     },
@@ -634,6 +649,14 @@
     {
       "source": "apps/desktop/src/main/workers/gooseRunnerArtifact.ts",
       "destination": "packages/desktop/src/actestra/main/workers/gooseRunnerArtifact.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/workers/gooseRunnerLinuxPackage.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/gooseRunnerLinuxPackage.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/workers/gooseRunnerContainment.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/gooseRunnerContainment.ts"
     },
     {
       "source": "apps/desktop/src/main/workers/actestraCodingJourneyRuntime.ts",
@@ -770,6 +793,10 @@
     {
       "source": "apps/desktop/src/utility/worker/generalWorkerService.ts",
       "destination": "packages/desktop/src/actestra/utility/worker/generalWorkerService.ts"
+    },
+    {
+      "source": "apps/desktop/src/shared/gooseRunnerLinuxPackage.ts",
+      "destination": "packages/desktop/src/actestra/shared/gooseRunnerLinuxPackage.ts"
     }
   ],
   "assetCopies": [
@@ -812,6 +839,11 @@
       "source": "apps/desktop/resources/Actestra-512.png",
       "destination": "public/pwa/icon-512.png",
       "sha256": "67eb8b9a1619d550ff16bde4ce2122face59057a5a1079173fab05ad5ea2aed5"
+    },
+    {
+      "source": "apps/desktop/resources/linux/actestra-apparmor-profile",
+      "destination": "resources/actestra-apparmor-profile",
+      "sha256": "bdf714b9dff9867bb3267554dab5eb666bdd226a5a727759494573a4a7e3c9a6"
     }
   ],
   "expectedChangedFiles": [
@@ -910,10 +942,13 @@
     "packages/desktop/src/actestra/main/workers/gooseCodingToolInvoker.ts",
     "packages/desktop/src/actestra/main/workers/gooseCodingArtifactPublisher.ts",
     "packages/desktop/src/actestra/main/workers/gooseCodingEvidenceCoordinator.ts",
+    "packages/desktop/src/actestra/main/workers/gooseBridgeSocket.ts",
     "packages/desktop/src/actestra/main/workers/gooseLoopbackModelServer.ts",
     "packages/desktop/src/actestra/main/workers/gooseMcpCapabilityServer.ts",
     "packages/desktop/src/actestra/main/workers/gooseMcpSessionComposition.ts",
     "packages/desktop/src/actestra/main/workers/gooseRunnerArtifact.ts",
+    "packages/desktop/src/actestra/main/workers/gooseRunnerLinuxPackage.ts",
+    "packages/desktop/src/actestra/main/workers/gooseRunnerContainment.ts",
     "packages/desktop/src/actestra/main/workers/actestraCodingJourneyRuntime.ts",
     "packages/desktop/src/actestra/main/workers/actestraGeneralWorkRuntime.ts",
     "packages/desktop/src/actestra/main/workers/gooseRunnerProcess.ts",
@@ -938,6 +973,8 @@
     "packages/desktop/src/actestra/shared/persistenceUtilityProtocol.ts",
     "packages/desktop/src/actestra/shared/generalWorkerProtocol.ts",
     "packages/desktop/src/actestra/shared/gooseRunnerSource.json",
+    "packages/desktop/src/actestra/shared/gooseRunnerLinuxPackage.ts",
+    "resources/actestra-apparmor-profile",
     "packages/desktop/src/actestra/shared/teamPlannerSidecarProtocol.ts",
     "packages/desktop/src/actestra/shared/webviewPolicy.ts",
     "packages/desktop/src/actestra/utility/orchestration/actestraNativeTeamPlannerEntry.ts",

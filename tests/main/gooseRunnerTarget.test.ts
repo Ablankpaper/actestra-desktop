@@ -129,8 +129,20 @@ describe("Goose runner native build targets", () => {
       "runtime: [",
       'target.resolveGooseRunnerRuntimeTarget("darwin", "arm64")?.targetTriple,',
       'target.resolveGooseRunnerRuntimeTarget("darwin", "x64")?.targetTriple,',
-      'target.resolveGooseRunnerRuntimeTarget("win32", "x64"),',
-      'target.resolveGooseRunnerRuntimeTarget("linux", "x64"),',
+      'target.resolveGooseRunnerRuntimeTarget("win32", "x64")?.targetTriple,',
+      'target.resolveGooseRunnerRuntimeTarget("linux", "x64")?.targetTriple,',
+      "],",
+      "authorities: [",
+      'target.resolveGooseRunnerExecutableAuthority("darwin"),',
+      'target.resolveGooseRunnerExecutableAuthority("linux"),',
+      'target.resolveGooseRunnerExecutableAuthority("win32"),',
+      "],",
+      "authorityAdmission: [",
+      'target.isGooseRunnerExecutableAuthorityAdmitted("darwin", "arm64", "attempt-private"),',
+      'target.isGooseRunnerExecutableAuthorityAdmitted("linux", "x64", "linux-package"),',
+      'target.isGooseRunnerExecutableAuthorityAdmitted("win32", "x64", "windows-supervisor"),',
+      'target.isGooseRunnerExecutableAuthorityAdmitted("linux", "x64", "attempt-private"),',
+      'target.isGooseRunnerExecutableAuthorityAdmitted("linux", "arm64", "linux-package"),',
       "],",
       "validationRejections: [",
       "null,",
@@ -157,7 +169,14 @@ describe("Goose runner native build targets", () => {
       byHost: expectedBuildTargets,
       byTriple: expectedBuildTargets,
       unsupported: [true, true, true, true],
-      runtime: ["aarch64-apple-darwin", "x86_64-apple-darwin", null, null],
+      runtime: [
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin",
+        "x86_64-pc-windows-msvc",
+        "x86_64-unknown-linux-gnu",
+      ],
+      authorities: ["attempt-private", "linux-package", "windows-supervisor"],
+      authorityAdmission: [true, true, true, false, false],
       validationRejections: [
         "Goose runner build targets are invalid",
         "Goose runner build target contract is invalid",
@@ -169,16 +188,17 @@ describe("Goose runner native build targets", () => {
   it("uses the shared runtime ceiling before any private-root or transport side effect", () => {
     const source = readFileSync(processModulePath, "utf8");
     const runtimeResolution = source.indexOf(
-      "resolveGooseRunnerRuntimeTarget(process.platform, process.arch)",
+      "resolveGooseRunnerRuntimeTarget(platform, architecture)",
     );
-    const privateRootPreparation = source.indexOf(
-      "prepared = await preparePrivateRoot(options.privateRootParent, options.artifact)",
-    );
+    const containmentResolution = source.indexOf("hasVerifiedGooseContainment(");
+    const privateRootPreparation = source.indexOf("prepared = await preparePrivateRoot(");
 
     expect(source).toContain('from "./gooseRunnerTarget"');
     expect(source).not.toContain("function currentTargetTriple()");
     expect(runtimeResolution).toBeGreaterThan(-1);
     expect(runtimeResolution).toBeLessThan(privateRootPreparation);
+    expect(containmentResolution).toBeGreaterThan(-1);
+    expect(containmentResolution).toBeLessThan(privateRootPreparation);
   });
 
   it("pins complete build-tool asset evidence for every admitted host", () => {

@@ -63,7 +63,7 @@ jobs:
   goose-runner-windows:
     name: P8.2 Windows x64 Goose build probe
     runs-on: windows-2025
-    timeout-minutes: 35
+    timeout-minutes: 50
 
     steps:
       - name: Checkout
@@ -88,6 +88,11 @@ jobs:
       - name: Verify Goose runner Rust formatting
         run: bun run goose:runner:format:check
 
+      - name: Verify Windows supervisor native primitives
+        run: >-
+          cargo test --manifest-path workers/goose-runner/Cargo.toml
+          --locked windows_native_tests -- --nocapture --test-threads=1
+
       - name: Install pinned Goose runner audit tools
         run: bun run goose:runner:tools
 
@@ -103,6 +108,7 @@ jobs:
           tests/main/gooseRunnerTarget.test.ts
           tests/main/gooseRunnerArtifact.test.ts
           tests/main/gooseRunnerLifecycle.test.ts
+          tests/main/gooseRunnerWindowsBridge.test.ts
           tests/scripts/p8NativeBuildWiring.test.mjs
 
       - name: Admit emitted Goose runner artifact
@@ -155,6 +161,254 @@ jobs:
 
       - name: Admit emitted Goose runner artifact
         run: bun run goose:runner:admit-build
+
+  goose-containment-windows:
+    name: P8.2 Windows x64 Goose containment
+    runs-on: windows-2025
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.13.0
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.9
+
+      - name: Install Rust 1.96.1
+        run: rustup toolchain install 1.96.1 --profile minimal --component rustfmt
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Verify Goose runner Rust formatting
+        run: bun run goose:runner:format:check
+
+      - name: Install pinned Goose runner audit tools
+        run: bun run goose:runner:tools
+
+      - name: Build exact Windows Goose runner artifact
+        run: bun run goose:runner:build
+
+      - name: Verify Goose runner lock remains frozen
+        run: git diff --exit-code -- workers/goose-runner/Cargo.lock
+
+      - name: Admit exact Windows Goose runner artifact
+        run: bun run goose:runner:admit-build
+
+      - name: Run exact Windows containment acceptance
+        shell: pwsh
+        run: |
+          bun run goose:runner:containment:accept | Tee-Object -FilePath containment-evidence.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Preserve bounded Windows containment evidence
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: p8-goose-containment-windows-${{ github.sha }}
+          path: containment-evidence.json
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+  goose-containment-linux:
+    name: P8.2 Ubuntu x64 Goose containment
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.13.0
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.9
+
+      - name: Install Rust 1.96.1
+        run: rustup toolchain install 1.96.1 --profile minimal --component rustfmt
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Verify Goose runner Rust formatting
+        run: bun run goose:runner:format:check
+
+      - name: Install pinned Goose runner audit tools
+        run: bun run goose:runner:tools
+
+      - name: Build exact Ubuntu Goose runner artifact
+        run: bun run goose:runner:build
+
+      - name: Verify Goose runner lock remains frozen
+        run: git diff --exit-code -- workers/goose-runner/Cargo.lock
+
+      - name: Admit exact Ubuntu Goose runner artifact
+        run: bun run goose:runner:admit-build
+
+      - name: Build and inspect exact Ubuntu DEB package
+        id: linux-package
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Build the real downstream DEB so the inspector sees the same
+          # electron-builder maintainer scripts and resource destinations that
+          # Ubuntu would install. This is package-wiring evidence only.
+          bun run downstream:aionui:install
+          bun run downstream:aionui:stage:linux-goose
+          bun run --cwd .actestra/aionui-v2.1.41 dist:linux -- --x64
+          deb_path="$(find .actestra/aionui-v2.1.41/out -maxdepth 1 -type f -name '*.deb' -print -quit)"
+          test -n "$deb_path"
+          copied_deb="$RUNNER_TEMP/actestra-aionui-goose.deb"
+          install -D -m 0644 "$deb_path" "$copied_deb"
+          echo "path=$copied_deb" >> "$GITHUB_OUTPUT"
+          bun run downstream:aionui:inspect:deb -- "$copied_deb"
+
+      - name: Install temporary Ubuntu Goose package layout
+        id: linux-package-install
+        shell: bash
+        env:
+          ACTESTRA_LINUX_DEB_PATH: ${{ steps.linux-package.outputs.path }}
+        run: |
+          set -euo pipefail
+          cleanup_on_error() {
+            set +e
+            sudo apparmor_parser --remove /etc/apparmor.d/Actestra >/dev/null 2>&1 || true
+            sudo rm -f -- /etc/apparmor.d/Actestra
+            sudo rm -rf -- /opt/Actestra
+          }
+          trap cleanup_on_error ERR
+
+          test "$(id -u)" -ne 0
+          test "$(cat /sys/module/apparmor/parameters/enabled)" = "Y"
+          test "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns)" = "1"
+          command -v apparmor_parser >/dev/null
+          test -f "$ACTESTRA_LINUX_DEB_PATH"
+
+          extract_root="$RUNNER_TEMP/actestra-aionui-goose-deb-extract"
+          rm -rf -- "$extract_root"
+          mkdir -p "$extract_root"
+          dpkg-deb --extract "$ACTESTRA_LINUX_DEB_PATH" "$extract_root"
+          package_resources="$extract_root/opt/Actestra/resources"
+          test -d "$package_resources/actestra-goose-runner"
+          test -f "$package_resources/apparmor-profile"
+          test -f "$package_resources/actestra-goose-runner-admission.json"
+
+          # GitHub's Ubuntu builder deliberately makes /opt world-writable for
+          # hosted tools. Normalize only the fixed package parent for the
+          # admission run, then restore the builder's exact mode in teardown.
+          test "$(stat -c '%u' /opt)" = "0"
+          original_opt_mode="$(stat -c '%a' /opt)"
+          case "$original_opt_mode" in
+            755 | 777) ;;
+            *) exit 1 ;;
+          esac
+          echo "opt_mode=$original_opt_mode" >> "$GITHUB_OUTPUT"
+          sudo chmod 0755 /opt
+          test "$(stat -c '%a:%u' /opt)" = "755:0"
+
+          sudo install -d -o root -g root -m 0755 /opt/Actestra/resources/actestra-goose-runner
+          sudo install -o root -g root -m 0755 /usr/bin/true /opt/Actestra/Actestra
+          sudo install -o root -g root -m 0644 \
+            "$package_resources/apparmor-profile" /opt/Actestra/resources/apparmor-profile
+          sudo install -o root -g root -m 0644 \
+            "$package_resources/actestra-goose-runner-admission.json" \
+            /opt/Actestra/resources/actestra-goose-runner-admission.json
+          for runner_file in \
+            GOOSE-APACHE-2.0.txt \
+            Cargo.lock \
+            actestra-goose-runner \
+            actestra-goose-runner.audit.json \
+            actestra-goose-runner.cdx.json \
+            actestra-goose-runner.manifest.json; do
+            mode=0644
+            if [ "$runner_file" = "actestra-goose-runner" ]; then mode=0555; fi
+            sudo install -o root -g root -m "$mode" \
+              "$package_resources/actestra-goose-runner/$runner_file" \
+              "/opt/Actestra/resources/actestra-goose-runner/$runner_file"
+          done
+          sudo install -o root -g root -m 0644 \
+            "$package_resources/apparmor-profile" /etc/apparmor.d/Actestra
+          sudo apparmor_parser --replace --write-cache --skip-read-cache /etc/apparmor.d/Actestra
+          test "$(sudo cat /sys/module/apparmor/parameters/enabled)" = "Y"
+          test "$(sudo sysctl -n kernel.apparmor_restrict_unprivileged_userns)" = "1"
+          bootstrap_output="$(/opt/Actestra/resources/actestra-goose-runner/actestra-goose-runner --actestra-linux-bootstrap-check)"
+          test "$bootstrap_output" = "ACTESTRA_GOOSE_LINUX_BOOTSTRAP_OK"
+
+      - name: Re-admit installed Ubuntu Goose package
+        run: bun run goose:runner:admit-package:linux
+
+      - name: Run authenticated Linux Goose integration
+        id: linux-integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          integration_root="$(mktemp -d "${RUNNER_TEMP}/actestra-goose-integration-XXXXXX")"
+          echo "root=${integration_root}" >> "$GITHUB_OUTPUT"
+          bun run goose:runner:integration:linux > "${integration_root}/integration-evidence.json"
+
+      - name: Run exact Ubuntu containment acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          bun run goose:runner:containment:accept -- \
+            "${{ steps.linux-integration.outputs.root }}/integration-evidence.json" \
+            "${{ steps.linux-integration.outputs.root }}" \
+            | tee containment-evidence.json
+
+      - name: Re-admit bound Ubuntu Goose runner artifact
+        run: bun run goose:runner:admit-build
+
+      - name: Preserve bounded Ubuntu containment evidence
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: p8-goose-containment-ubuntu-${{ github.sha }}
+          path: containment-evidence.json
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+      - name: Remove temporary Ubuntu Goose package layout
+        if: always()
+        shell: bash
+        env:
+          ACTESTRA_ORIGINAL_OPT_MODE: ${{ steps.linux-package-install.outputs.opt_mode }}
+        run: |
+          set +e
+          cleanup_status=0
+          sudo apparmor_parser --remove /etc/apparmor.d/Actestra >/dev/null 2>&1 || true
+          sudo rm -f -- /etc/apparmor.d/Actestra || cleanup_status=1
+          sudo rm -rf -- /opt/Actestra || cleanup_status=1
+          if sudo grep -Fq "Actestra-Goose-Runner" /sys/kernel/security/apparmor/profiles 2>/dev/null; then
+            cleanup_status=1
+          fi
+          if pgrep -f '^/opt/Actestra/resources/actestra-goose-runner/actestra-goose-runner( |$)' >/dev/null 2>&1; then
+            cleanup_status=1
+          fi
+          test ! -e /etc/apparmor.d/Actestra || cleanup_status=1
+          test ! -e /opt/Actestra || cleanup_status=1
+          case "$ACTESTRA_ORIGINAL_OPT_MODE" in
+            755 | 777)
+              sudo chmod "$ACTESTRA_ORIGINAL_OPT_MODE" /opt || cleanup_status=1
+              ;;
+            *) cleanup_status=1 ;;
+          esac
+          exit "$cleanup_status"
 
   macos:
     name: macOS arm64 foundation

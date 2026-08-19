@@ -5,6 +5,12 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AdmittedGooseRunnerArtifact } from "../../apps/desktop/src/main/workers/gooseRunnerArtifact";
 import {
+  GOOSE_LINUX_ARTIFACT_DIRECTORY,
+  GOOSE_LINUX_EXECUTABLE_PATH,
+  GOOSE_LINUX_RESOURCES_PATH,
+  GOOSE_LINUX_TARGET_TRIPLE,
+} from "../../apps/desktop/src/shared/gooseRunnerLinuxPackage";
+import {
   createGooseRunnerEnvironment,
   openGooseRunnerHandshake,
   type GooseAcpSpawnOptions,
@@ -13,6 +19,8 @@ import { EXPECTED_GOOSE_INITIALIZE_RESULT, LoopbackGooseAcpTransport } from "../
 
 const fixtureDirectories: string[] = [];
 const fixtureTargetTriple = process.arch === "x64" ? "x86_64-apple-darwin" : "aarch64-apple-darwin";
+const fixtureTemporaryRoot = process.platform === "win32" ? os.tmpdir() : "/tmp";
+const linuxIt = process.platform === "win32" ? it.skip : it;
 
 class FailingCloseGooseAcpTransport extends LoopbackGooseAcpTransport {
   override async close(): Promise<void> {
@@ -22,7 +30,7 @@ class FailingCloseGooseAcpTransport extends LoopbackGooseAcpTransport {
 }
 
 async function createLifecycleFixture() {
-  const directory = await mkdtemp(path.join(os.tmpdir(), "actestra-goose-lifecycle-"));
+  const directory = await mkdtemp(path.join(fixtureTemporaryRoot, "actestra-goose-lifecycle-"));
   fixtureDirectories.push(directory);
   const artifactDirectory = path.join(directory, "artifact");
   const privateRootParent = path.join(directory, "attempts");
@@ -56,7 +64,7 @@ afterEach(async () => {
 
 describe("Goose runner private lifecycle", () => {
   it("uses a closed environment without inheriting credentials or user configuration", () => {
-    const root = path.resolve(os.tmpdir(), "actestra-goose-environment-fixture");
+    const root = path.resolve(fixtureTemporaryRoot, "actestra-goose-environment-fixture");
     expect(createGooseRunnerEnvironment(root)).toEqual({
       GOOSE_PATH_ROOT: root,
       GOOSE_TELEMETRY_OFF: "1",
@@ -66,6 +74,7 @@ describe("Goose runner private lifecycle", () => {
       TMPDIR: path.join(root, "tmp"),
       TMP: path.join(root, "tmp"),
       TEMP: path.join(root, "tmp"),
+      LOCALAPPDATA: path.join(root, "local-app-data"),
       TZ: "UTC",
       OTEL_SDK_DISABLED: "true",
       OTEL_TRACES_EXPORTER: "none",
@@ -74,6 +83,44 @@ describe("Goose runner private lifecycle", () => {
       ACTESTRA_GOOSE_CPU_SECONDS: "120",
       ACTESTRA_GOOSE_ADDRESS_SPACE_BYTES: "1073741824",
     });
+  });
+
+  it("adds only the five fixed Linux bridge fields to the closed runner environment", () => {
+    const root = path.resolve(fixtureTemporaryRoot, "actestra-goose-environment-fixture");
+    const bridgeDirectory = path.join(root, "bridge");
+    const workspaceRoot = path.join(root, "workspace");
+    const environment = createGooseRunnerEnvironment(
+      root,
+      {
+        baseUrl: "http://127.0.0.1:43124/v1",
+        modelId: "actestra-loopback-model",
+        attemptLease: "model-lease-0123456789abcdef0123456789abcdef",
+      },
+      {
+        capabilitySocketPath: path.join(bridgeDirectory, "capability.sock"),
+        modelSocketPath: path.join(bridgeDirectory, "model.sock"),
+        capabilityPort: 43_123,
+        modelPort: 43_124,
+        workspaceRoot,
+      },
+    );
+
+    expect(environment).toMatchObject({
+      ACTESTRA_GOOSE_LINUX_CAPABILITY_SOCKET: path.join(bridgeDirectory, "capability.sock"),
+      ACTESTRA_GOOSE_LINUX_MODEL_SOCKET: path.join(bridgeDirectory, "model.sock"),
+      ACTESTRA_GOOSE_LINUX_CAPABILITY_PORT: "43123",
+      ACTESTRA_GOOSE_LINUX_MODEL_PORT: "43124",
+      ACTESTRA_GOOSE_LINUX_WORKSPACE_ROOT: workspaceRoot,
+    });
+    expect(
+      Object.keys(environment).filter((key) => key.startsWith("ACTESTRA_GOOSE_LINUX_")),
+    ).toEqual([
+      "ACTESTRA_GOOSE_LINUX_CAPABILITY_SOCKET",
+      "ACTESTRA_GOOSE_LINUX_MODEL_SOCKET",
+      "ACTESTRA_GOOSE_LINUX_CAPABILITY_PORT",
+      "ACTESTRA_GOOSE_LINUX_MODEL_PORT",
+      "ACTESTRA_GOOSE_LINUX_WORKSPACE_ROOT",
+    ]);
   });
 
   it.skipIf(process.platform !== "darwin")(
@@ -123,11 +170,144 @@ describe("Goose runner private lifecycle", () => {
     },
   );
 
+  it.skipIf(process.platform !== "darwin")(
+    "prepares the private-root bridge before transport and shares one idempotent close",
+    async () => {
+      const fixture = await createLifecycleFixture();
+      const events: string[] = [];
+      const transport = new LoopbackGooseAcpTransport();
+      let preparedRoot:
+        | {
+            readonly root: string;
+            readonly bridgeDirectory: string;
+            readonly executablePath: string;
+            readonly workingDirectory: string;
+          }
+        | undefined;
+      const bridgeClose = vi.fn(async () => {
+        events.push("bridge:close");
+      });
+
+      const opened = await openGooseRunnerHandshake({
+        artifact: fixture.artifact,
+        privateRootParent: fixture.privateRootParent,
+        prepareBridge: async (root) => {
+          preparedRoot = root;
+          events.push("bridge:prepare");
+          return Object.freeze({
+            capabilityProxyUrl: "http://127.0.0.1:43123/mcp",
+            modelBinding: Object.freeze({
+              baseUrl: "http://127.0.0.1:43124/v1",
+              modelId: "actestra-loopback-model",
+              attemptLease: "model-lease-0123456789abcdef0123456789abcdef",
+            }),
+            capabilitySocketPath: path.join(root.bridgeDirectory, "capability.sock"),
+            modelSocketPath: path.join(root.bridgeDirectory, "model.sock"),
+            close: bridgeClose,
+          });
+        },
+        transportFactory: (options) => {
+          events.push("transport");
+          expect(preparedRoot?.bridgeDirectory).toBe(path.join(preparedRoot?.root ?? "", "bridge"));
+          expect(options.networkPolicy).toEqual({
+            kind: "loopback-session",
+            host: "127.0.0.1",
+            capabilityProxyPort: 43_123,
+            modelProxyPort: 43_124,
+          });
+          return transport;
+        },
+      });
+
+      expect(events).toEqual(["bridge:prepare", "transport"]);
+      expect(preparedRoot).toBeDefined();
+      expect(await readdir(preparedRoot!.bridgeDirectory)).toEqual([]);
+
+      const firstClose = opened.close();
+      const secondClose = opened.close();
+      expect(secondClose).toBe(firstClose);
+      await firstClose;
+      expect(bridgeClose).toHaveBeenCalledTimes(1);
+      expect(events).toEqual(["bridge:prepare", "transport", "bridge:close"]);
+      expect(await readdir(fixture.privateRootParent)).toEqual([]);
+    },
+  );
+
+  it.skipIf(process.platform !== "darwin")(
+    "closes a prepared bridge and removes the root when transport startup fails",
+    async () => {
+      const fixture = await createLifecycleFixture();
+      const bridgeClose = vi.fn(async () => undefined);
+      const transportFailure = new Error("injected transport startup failure");
+
+      await expect(
+        openGooseRunnerHandshake({
+          artifact: fixture.artifact,
+          privateRootParent: fixture.privateRootParent,
+          prepareBridge: async (root) =>
+            Object.freeze({
+              capabilityProxyUrl: "http://127.0.0.1:43123/mcp",
+              modelBinding: Object.freeze({
+                baseUrl: "http://127.0.0.1:43124/v1",
+                modelId: "actestra-loopback-model",
+                attemptLease: "model-lease-0123456789abcdef0123456789abcdef",
+              }),
+              capabilitySocketPath: path.join(root.bridgeDirectory, "capability.sock"),
+              modelSocketPath: path.join(root.bridgeDirectory, "model.sock"),
+              close: bridgeClose,
+            }),
+          transportFactory: () => {
+            throw transportFailure;
+          },
+        }),
+      ).rejects.toMatchObject({ code: "spawn-failed" });
+
+      expect(bridgeClose).toHaveBeenCalledTimes(1);
+      expect(await readdir(fixture.privateRootParent)).toEqual([]);
+    },
+  );
+
+  it.skipIf(process.platform !== "darwin")(
+    "rejects a prepared bridge whose sockets escape the prepared root",
+    async () => {
+      const fixture = await createLifecycleFixture();
+      const bridgeClose = vi.fn(async () => undefined);
+      const transportFactory = vi.fn(() => new LoopbackGooseAcpTransport());
+
+      await expect(
+        openGooseRunnerHandshake({
+          artifact: fixture.artifact,
+          privateRootParent: fixture.privateRootParent,
+          prepareBridge: async (root) =>
+            Object.freeze({
+              capabilityProxyUrl: "http://127.0.0.1:43123/mcp",
+              modelBinding: Object.freeze({
+                baseUrl: "http://127.0.0.1:43124/v1",
+                modelId: "actestra-loopback-model",
+                attemptLease: "model-lease-0123456789abcdef0123456789abcdef",
+              }),
+              capabilitySocketPath: path.join(root.root, "escape.sock"),
+              modelSocketPath: path.join(root.bridgeDirectory, "model.sock"),
+              close: bridgeClose,
+            }),
+          transportFactory,
+        }),
+      ).rejects.toMatchObject({ code: "invalid-options" });
+
+      expect(transportFactory).not.toHaveBeenCalled();
+      expect(bridgeClose).toHaveBeenCalledTimes(1);
+      expect(await readdir(fixture.privateRootParent)).toEqual([]);
+    },
+  );
+
   it.each(["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"])(
     "rejects a matching %s build before creating a private root or transport",
     async (targetTriple) => {
       const fixture = await createLifecycleFixture();
       const transportFactory = vi.fn(() => new LoopbackGooseAcpTransport());
+      const prepareBridge = vi.fn(async () => {
+        throw new Error("bridge factory must not run before runtime admission");
+      });
 
       await expect(
         openGooseRunnerHandshake({
@@ -136,6 +316,7 @@ describe("Goose runner private lifecycle", () => {
             targetTriple,
           },
           privateRootParent: fixture.privateRootParent,
+          prepareBridge,
           transportFactory,
         }),
       ).rejects.toMatchObject({
@@ -144,9 +325,120 @@ describe("Goose runner private lifecycle", () => {
       });
 
       expect(transportFactory).not.toHaveBeenCalled();
+      expect(prepareBridge).not.toHaveBeenCalled();
       expect(await readdir(fixture.privateRootParent)).toEqual([]);
     },
   );
+
+  linuxIt("uses the fixed Linux package executable without creating an attempt bin", async () => {
+    const fixture = await createLifecycleFixture();
+    const transport = new LoopbackGooseAcpTransport();
+    const executableSha256 = fixture.artifact.executableSha256;
+    const linuxArtifact = Object.freeze({
+      ...fixture.artifact,
+      directory: GOOSE_LINUX_ARTIFACT_DIRECTORY,
+      executablePath: GOOSE_LINUX_EXECUTABLE_PATH,
+      targetTriple: GOOSE_LINUX_TARGET_TRIPLE,
+      sourceCommit: "a".repeat(40),
+      containment: Object.freeze({
+        contractVersion: 1 as const,
+        targetTriple: GOOSE_LINUX_TARGET_TRIPLE,
+        sourceCommit: "a".repeat(40),
+        probeSha256: "b".repeat(64),
+        executableSha256,
+        filesystem: true as const,
+        network: true as const,
+        processTree: true as const,
+        resources: true as const,
+        parentDeath: true as const,
+        cleanup: true as const,
+      }),
+      linuxInstall: Object.freeze({
+        contractVersion: 1 as const,
+        resourcesPath: GOOSE_LINUX_RESOURCES_PATH,
+        executablePath: GOOSE_LINUX_EXECUTABLE_PATH,
+        runnerManifestSha256: fixture.artifact.manifestSha256,
+        executableSha256,
+        profileSha256: "c".repeat(64),
+      }),
+    });
+    let spawnOptions: GooseAcpSpawnOptions | undefined;
+    const opened = await openGooseRunnerHandshake(
+      {
+        artifact: linuxArtifact,
+        privateRootParent: fixture.privateRootParent,
+        workspaceDirectory: fixture.repository,
+        prepareBridge: async (root) =>
+          Object.freeze({
+            capabilityProxyUrl: "http://127.0.0.1:43123/mcp",
+            modelBinding: Object.freeze({
+              baseUrl: "http://127.0.0.1:43124/v1",
+              modelId: "actestra-loopback-model",
+              attemptLease: "model-lease-0123456789abcdef0123456789abcdef",
+            }),
+            capabilitySocketPath: path.join(root.bridgeDirectory, "capability.sock"),
+            modelSocketPath: path.join(root.bridgeDirectory, "model.sock"),
+            close: async () => undefined,
+          }),
+        transportFactory: (options) => {
+          spawnOptions = options;
+          return transport;
+        },
+      },
+      { platform: "linux", architecture: "x64" },
+    );
+
+    expect(spawnOptions?.executableAuthority).toBe("linux-package");
+    expect(spawnOptions?.executablePath).toBe(GOOSE_LINUX_EXECUTABLE_PATH);
+    expect(await readdir(opened.privateRoot)).toEqual(
+      expect.arrayContaining(["config", "data", "state", "home", "tmp", "work", "bridge"]),
+    );
+    expect(await readdir(opened.privateRoot)).not.toContain("bin");
+    await opened.close();
+    expect(await readdir(fixture.privateRootParent)).toEqual([]);
+  });
+
+  it("rejects a generic Linux Artifact and removes the partial root before bridge startup", async () => {
+    const fixture = await createLifecycleFixture();
+    const prepareBridge = vi.fn(async () => {
+      throw new Error("bridge must not start without the package attestation");
+    });
+    const executableSha256 = fixture.artifact.executableSha256;
+
+    await expect(
+      openGooseRunnerHandshake(
+        {
+          artifact: {
+            ...fixture.artifact,
+            directory: GOOSE_LINUX_ARTIFACT_DIRECTORY,
+            executablePath: GOOSE_LINUX_EXECUTABLE_PATH,
+            targetTriple: GOOSE_LINUX_TARGET_TRIPLE,
+            sourceCommit: "a".repeat(40),
+            containment: Object.freeze({
+              contractVersion: 1,
+              targetTriple: GOOSE_LINUX_TARGET_TRIPLE,
+              sourceCommit: "a".repeat(40),
+              probeSha256: "b".repeat(64),
+              executableSha256,
+              filesystem: true,
+              network: true,
+              processTree: true,
+              resources: true,
+              parentDeath: true,
+              cleanup: true,
+            }),
+          },
+          privateRootParent: fixture.privateRootParent,
+          workspaceDirectory: fixture.repository,
+          prepareBridge,
+        },
+        { platform: "linux", architecture: "x64" },
+      ),
+    ).rejects.toMatchObject({ code: "artifact-mismatch" });
+
+    expect(prepareBridge).not.toHaveBeenCalled();
+    expect(await readdir(fixture.privateRootParent)).toEqual([]);
+  });
 
   it.skipIf(process.platform !== "darwin")(
     "removes the private root after a version rejection without touching a repository",
@@ -192,6 +484,7 @@ describe("Goose runner private lifecycle", () => {
           "ACTESTRA_GOOSE_CPU_SECONDS",
           "ACTESTRA_GOOSE_ADDRESS_SPACE_BYTES",
           "HOME",
+          "LOCALAPPDATA",
           "OTEL_LOGS_EXPORTER",
           "OTEL_METRICS_EXPORTER",
           "OTEL_SDK_DISABLED",

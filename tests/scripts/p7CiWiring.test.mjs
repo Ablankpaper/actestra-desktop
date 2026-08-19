@@ -146,6 +146,11 @@ describe("P7 CI wiring", () => {
     expect(source).toMatch(/\.catch\(\s*\(\): undefined => undefined,?\s*\)/u);
   });
 
+  it("keeps the Main-owned bridge cleanup callback strict-typecheckable downstream", () => {
+    const source = read("apps/desktop/src/main/workers/gooseBridgeSocket.ts");
+    expect(source).toMatch(/unlink\(socketPath\)\.catch\(\s*\(\): undefined => undefined,?\s*\)/u);
+  });
+
   it("composes the P7 bridge patch after the persistence path import", () => {
     const patch = read("downstream/aionui-v2.1.41/patches/0017-actestra-p7-security-smoke.mjs");
     expect(patch).toContain(

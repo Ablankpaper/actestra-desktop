@@ -149,6 +149,9 @@ function main() {
     !overlay.patches.some(
       (patch) => patch.path === "patches/0020-actestra-p7-diagnostic-export.mjs",
     ) ||
+    !overlay.patches.some(
+      (patch) => patch.path === "patches/0021-actestra-ubuntu-apparmor-bootstrap.mjs",
+    ) ||
     overlay.uiContract.layoutChangesAllowed !== true ||
     overlay.uiContract.featureEntryRemovalAllowed !== false
   ) {
@@ -185,6 +188,27 @@ function main() {
     !diagnosticExportPatch.rollback.includes("Regenerate without patch 0020")
   ) {
     throw new Error("Invalid P7.4 diagnostic-export downstream authority metadata");
+  }
+
+  const linuxAppArmorPatch = overlay.patches.find(
+    (patch) => patch.path === "patches/0021-actestra-ubuntu-apparmor-bootstrap.mjs",
+  );
+  if (
+    linuxAppArmorPatch.classification.length !== 1 ||
+    linuxAppArmorPatch.classification[0] !== "R1" ||
+    !linuxAppArmorPatch.authorityOwner.includes("electron-builder") ||
+    !linuxAppArmorPatch.rollback.includes("Regenerate without patch 0021")
+  ) {
+    throw new Error("Invalid Ubuntu AppArmor downstream authority metadata");
+  }
+  for (const domain of [
+    "Ubuntu DEB AppArmor profile",
+    "root-owned Goose package resources",
+    "Linux runner admission",
+  ]) {
+    if (!linuxAppArmorPatch.domains.includes(domain)) {
+      throw new Error(`Ubuntu AppArmor patch is missing reviewed domain: ${domain}`);
+    }
   }
   for (const domain of [
     "explicit-consent local diagnostic export",
@@ -331,10 +355,12 @@ function main() {
     "packages/desktop/src/actestra/main/workers/gooseAcpHandshake.ts",
     "packages/desktop/src/actestra/main/workers/gooseCodingToolInvoker.ts",
     "packages/desktop/src/actestra/main/workers/gooseCodingEvidenceCoordinator.ts",
+    "packages/desktop/src/actestra/main/workers/gooseBridgeSocket.ts",
     "packages/desktop/src/actestra/main/workers/gooseLoopbackModelServer.ts",
     "packages/desktop/src/actestra/main/workers/gooseMcpCapabilityServer.ts",
     "packages/desktop/src/actestra/main/workers/gooseMcpSessionComposition.ts",
     "packages/desktop/src/actestra/main/workers/gooseRunnerArtifact.ts",
+    "packages/desktop/src/actestra/main/workers/gooseRunnerLinuxPackage.ts",
     "packages/desktop/src/actestra/main/workers/actestraCodingJourneyRuntime.ts",
     "packages/desktop/src/actestra/main/workers/gooseRunnerProcess.ts",
     "packages/desktop/src/actestra/main/workers/gooseRunnerTarget.ts",
@@ -343,6 +369,7 @@ function main() {
     "packages/desktop/src/actestra/main/privileged/isolatedCodingToolExecutor.ts",
     "packages/desktop/src/actestra/main/privileged/isolatedCodingToolPlatform.ts",
     "packages/desktop/src/actestra/shared/gooseRunnerSource.json",
+    "packages/desktop/src/actestra/shared/gooseRunnerLinuxPackage.ts",
   ]) {
     if (!sourceCopyDestinations.has(requiredCodingSourceCopy)) {
       throw new Error(`Missing isolated-coding source copy: ${requiredCodingSourceCopy}`);
@@ -467,6 +494,15 @@ function main() {
     }
   }
 
+  const linuxProfileAsset = overlay.assetCopies.find(
+    (asset) =>
+      asset.source === "apps/desktop/resources/linux/actestra-apparmor-profile" &&
+      asset.destination === "resources/actestra-apparmor-profile",
+  );
+  if (linuxProfileAsset === undefined) {
+    throw new Error("Missing Ubuntu AppArmor profile asset-copy contract");
+  }
+
   const packageJson = readJson(path.join(outputRoot, "package.json"));
   if (
     packageJson.name !== "actestra-desktop" ||
@@ -476,7 +512,8 @@ function main() {
     throw new Error("Materialized package does not have the Actestra F1 identity");
   }
 
-  requireText(path.join(outputRoot, "packages/desktop/electron-builder.yml"), [
+  const builderConfigPath = path.join(outputRoot, "packages/desktop/electron-builder.yml");
+  requireText(builderConfigPath, [
     "appId: com.bignormal.actestra",
     "productName: Actestra",
     "executableName: Actestra",
@@ -488,6 +525,13 @@ function main() {
     "to: LICENSE.electron.txt",
     "from: node_modules/electron/dist/LICENSES.chromium.html",
     "to: LICENSES.chromium.html",
+  ]);
+  requireOrderedFragments(builderConfigPath, [
+    "extraResources:",
+    "- from: resources/actestra-goose-runner\n    to: actestra-goose-runner",
+    "- from: resources/actestra-goose-runner-admission.json\n    to: actestra-goose-runner-admission.json",
+    "deb:\n  appArmorProfile: resources/actestra-apparmor-profile",
+    "linux:\n",
   ]);
   requireText(path.join(outputRoot, "packages/desktop/src/common/config/actestraProduct.ts"), [
     "name: 'Actestra'",
@@ -1646,6 +1690,8 @@ function main() {
     "resolveTrustedActestraCodingRunnerAdmission",
     "startTrustedActestraCodingJourneyRuntime",
     "admitGooseRunnerArtifact",
+    "admitInstalledGooseRunnerLinuxPackage",
+    "linuxPackageResourcesPath",
     "goose-private",
     '"git.status"',
     '"git.diff-check"',
@@ -1661,6 +1707,7 @@ function main() {
     "../compatibility/aionuiCodingAgentService",
     "../privileged/isolatedCodingToolPlatform",
     "./gooseRunnerArtifact",
+    "./gooseRunnerLinuxPackage",
   ];
   const codingJourneyRuntimeImports = extractStaticModuleSpecifiers(
     fs.readFileSync(codingJourneyRuntimePath, "utf8"),
@@ -1673,6 +1720,46 @@ function main() {
   ) {
     throw new Error(
       `Actestra coding runtime import closure is invalid: ${codingJourneyRuntimeImports.join(", ")}`,
+    );
+  }
+  const linuxPackageAdmissionPath = path.join(
+    outputRoot,
+    "packages/desktop/src/actestra/main/workers/gooseRunnerLinuxPackage.ts",
+  );
+  requireText(linuxPackageAdmissionPath, [
+    "GOOSE_LINUX_BOOTSTRAP_OK_MARKER",
+    "admitInstalledGooseRunnerLinuxPackage",
+    "parseGooseRunnerLinuxPackageAdmission",
+    "GOOSE_LINUX_RESOURCES_PATH",
+    "runBootstrapCheck",
+  ]);
+  rejectText(linuxPackageAdmissionPath, [
+    "sudo",
+    "setuid",
+    "sysctl -w",
+    "ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIRECTORY",
+    "process.env",
+    "Renderer",
+  ]);
+  const allowedLinuxPackageAdmissionImports = [
+    "node:child_process",
+    "node:crypto",
+    "node:fs/promises",
+    "node:path",
+    "../../shared/gooseRunnerLinuxPackage",
+    "./gooseRunnerArtifact",
+  ];
+  const linuxPackageAdmissionImports = extractStaticModuleSpecifiers(
+    fs.readFileSync(linuxPackageAdmissionPath, "utf8"),
+  );
+  if (
+    linuxPackageAdmissionImports.length !== allowedLinuxPackageAdmissionImports.length ||
+    linuxPackageAdmissionImports.some(
+      (specifier, index) => specifier !== allowedLinuxPackageAdmissionImports[index],
+    )
+  ) {
+    throw new Error(
+      `Ubuntu Goose package admission import closure is invalid: ${linuxPackageAdmissionImports.join(", ")}`,
     );
   }
   requireText(path.join(outputRoot, "tests/unit/actestra/codingAgentClient.dom.test.ts"), [

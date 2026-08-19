@@ -1,18 +1,27 @@
 // @vitest-environment node
 
-import { mkdtemp, realpath, rm, stat, symlink } from "node:fs/promises";
+import { mkdtemp, readdir, realpath, rm, stat, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GooseLoopbackModelInvoker } from "../../apps/desktop/src/main/workers/gooseLoopbackModelServer";
 import type { AdmittedGooseRunnerArtifact } from "../../apps/desktop/src/main/workers/gooseRunnerArtifact";
+import type { AdmittedGooseRunnerLinuxPackage } from "../../apps/desktop/src/main/workers/gooseRunnerLinuxPackage";
 import {
   resolveTrustedActestraCodingRunnerAdmission,
   startTrustedActestraCodingJourneyRuntime,
   type ActestraCodingJourneyRuntimeDependencies,
   type ActestraCodingModelBinding,
 } from "../../apps/desktop/src/main/workers/actestraCodingJourneyRuntime";
+import {
+  GOOSE_LINUX_ADMISSION_RECORD_FILE,
+  GOOSE_LINUX_ARTIFACT_DIRECTORY,
+  GOOSE_LINUX_EXECUTABLE_PATH,
+  GOOSE_LINUX_PROFILE_FILE,
+  GOOSE_LINUX_RESOURCES_PATH,
+  GOOSE_LINUX_TARGET_TRIPLE,
+} from "../../apps/desktop/src/shared/gooseRunnerLinuxPackage";
 
 const roots: string[] = [];
 const realArtifactDirectory = process.env.ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIR;
@@ -53,6 +62,45 @@ const modelBinding = Object.freeze({
   modelId: "actestra.test.model",
   invokeModel,
 }) satisfies ActestraCodingModelBinding;
+
+const linuxArtifact = Object.freeze({
+  ...artifact,
+  directory: GOOSE_LINUX_ARTIFACT_DIRECTORY,
+  executablePath: GOOSE_LINUX_EXECUTABLE_PATH,
+  targetTriple: GOOSE_LINUX_TARGET_TRIPLE,
+  manifestPath: `${GOOSE_LINUX_ARTIFACT_DIRECTORY}/actestra-goose-runner.manifest.json`,
+  linuxInstall: Object.freeze({
+    contractVersion: 1 as const,
+    resourcesPath: GOOSE_LINUX_RESOURCES_PATH,
+    executablePath: GOOSE_LINUX_EXECUTABLE_PATH,
+    runnerManifestSha256: artifact.manifestSha256,
+    executableSha256: artifact.executableSha256,
+    profileSha256: "c".repeat(64),
+  }),
+}) satisfies AdmittedGooseRunnerArtifact;
+
+const linuxPackage = Object.freeze({
+  resourcesPath: GOOSE_LINUX_RESOURCES_PATH,
+  profilePath: `${GOOSE_LINUX_RESOURCES_PATH}/${GOOSE_LINUX_PROFILE_FILE}`,
+  recordPath: `${GOOSE_LINUX_RESOURCES_PATH}/${GOOSE_LINUX_ADMISSION_RECORD_FILE}`,
+  runnerAdmission: Object.freeze({
+    directory: GOOSE_LINUX_ARTIFACT_DIRECTORY,
+    trustedManifestSha256: linuxArtifact.manifestSha256,
+    expectedTargetTriple: GOOSE_LINUX_TARGET_TRIPLE,
+  }),
+  artifact: linuxArtifact,
+  record: Object.freeze({
+    contractVersion: 1 as const,
+    targetTriple: GOOSE_LINUX_TARGET_TRIPLE,
+    runnerManifestSha256: linuxArtifact.manifestSha256,
+    executableSha256: linuxArtifact.executableSha256,
+    profileSha256: "c".repeat(64),
+    profileName: "Actestra-Goose-Runner" as const,
+    executablePath: GOOSE_LINUX_EXECUTABLE_PATH,
+  }),
+  executablePath: GOOSE_LINUX_EXECUTABLE_PATH,
+  bootstrapMarker: "ACTESTRA_GOOSE_LINUX_BOOTSTRAP_OK" as const,
+}) satisfies AdmittedGooseRunnerLinuxPackage;
 
 function dependencies(
   admitRunnerArtifact: ActestraCodingJourneyRuntimeDependencies["admitRunnerArtifact"],
@@ -166,6 +214,57 @@ describe("trusted Actestra coding journey runtime startup", () => {
     });
     expect(Object.isFrozen(runtime!.commands["git.status"])).toBe(true);
     expect(Object.isFrozen(runtime!.commands["git.status"]!.args)).toBe(true);
+  });
+
+  it("uses only the Electron-owned fixed Linux package and ignores environment runner admission", async () => {
+    const userDataPath = await profileRoot();
+    const admitRunnerArtifact = vi.fn(async () => artifact);
+    const admitLinuxPackage = vi.fn(async () => linuxPackage);
+
+    const runtime = await startTrustedActestraCodingJourneyRuntime(
+      {
+        userDataPath,
+        runnerAdmission,
+        linuxPackageResourcesPath: GOOSE_LINUX_RESOURCES_PATH,
+        modelBinding,
+      },
+      {
+        admitRunnerArtifact,
+        admitLinuxPackage,
+        platform: "linux",
+      },
+    );
+
+    expect(runtime).not.toBeNull();
+    expect(admitLinuxPackage).toHaveBeenCalledWith(GOOSE_LINUX_RESOURCES_PATH);
+    expect(admitRunnerArtifact).not.toHaveBeenCalled();
+    expect(runtime!.linuxPackage).toBe(linuxPackage);
+    expect(runtime!.runnerAdmission.directory).toBe(GOOSE_LINUX_ARTIFACT_DIRECTORY);
+    expect(runtime!.revalidateArtifact).toBeTypeOf("function");
+    await expect(runtime!.revalidateArtifact!()).resolves.toBe(linuxArtifact);
+    expect(admitLinuxPackage).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails before creating goose-private when the fixed Linux package is unavailable", async () => {
+    const userDataPath = await profileRoot();
+    const admitLinuxPackage = vi.fn(async () => null);
+
+    await expect(
+      startTrustedActestraCodingJourneyRuntime(
+        {
+          userDataPath,
+          runnerAdmission,
+          linuxPackageResourcesPath: GOOSE_LINUX_RESOURCES_PATH,
+          modelBinding,
+        },
+        {
+          admitRunnerArtifact: vi.fn(async () => artifact),
+          admitLinuxPackage,
+          platform: "linux",
+        },
+      ),
+    ).resolves.toBeNull();
+    expect(await readdir(userDataPath)).not.toContain("goose-private");
   });
 
   it("fails closed for symlinked profiles, malformed model bindings, and runner admission failures", async () => {

@@ -4,6 +4,7 @@ import { access, lstat, readFile, readdir, realpath } from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
 import path from "node:path";
 import sourceContract from "../../shared/gooseRunnerSource.json";
+import type { GooseContainmentEvidence } from "./gooseRunnerContainment";
 import { resolveGooseRunnerBuildTargetByTriple } from "./gooseRunnerTarget";
 
 export const GOOSE_RUNNER_MANIFEST_FILE = "actestra-goose-runner.manifest.json" as const;
@@ -50,10 +51,25 @@ export interface AdmittedGooseRunnerArtifact {
   readonly executableSha256: string;
   readonly executableSize: number;
   readonly targetTriple: string;
+  /** Exact Actestra source commit recorded by the artifact provenance. */
+  readonly sourceCommit?: string;
   readonly gooseCommit: typeof sourceContract.goose.commit;
   readonly gooseVersion: typeof sourceContract.goose.version;
   readonly manifestPath: string;
   readonly manifestSha256: string;
+  /** Present only after Main has admitted the fixed Ubuntu package layout. */
+  readonly linuxInstall?: Readonly<GooseRunnerLinuxInstallAttestation>;
+  /** Present only when the artifact carries a validated native probe record. */
+  readonly containment?: GooseContainmentEvidence;
+}
+
+export interface GooseRunnerLinuxInstallAttestation {
+  readonly contractVersion: 1;
+  readonly resourcesPath: "/opt/Actestra/resources";
+  readonly executablePath: "/opt/Actestra/resources/actestra-goose-runner/actestra-goose-runner";
+  readonly runnerManifestSha256: string;
+  readonly executableSha256: string;
+  readonly profileSha256: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -71,11 +87,13 @@ function requireExactKeys(
   value: Record<string, unknown>,
   expected: readonly string[],
   label: string,
+  optional: readonly string[] = [],
 ): void {
-  const expectedSet = new Set(expected);
+  const expectedSet = new Set([...expected, ...optional]);
   const actual = Object.keys(value);
   if (
-    actual.length !== expected.length ||
+    actual.length < expected.length ||
+    actual.length > expected.length + optional.length ||
     actual.some((key) => !expectedSet.has(key)) ||
     expected.some((key) => !Object.hasOwn(value, key))
   ) {
@@ -84,6 +102,83 @@ function requireExactKeys(
       `${label} keys do not match the artifact contract`,
     );
   }
+}
+
+const CONTAINMENT_KEYS = [
+  "cleanup",
+  "contractVersion",
+  "executableSha256",
+  "filesystem",
+  "network",
+  "parentDeath",
+  "probeSha256",
+  "processTree",
+  "resources",
+  "sourceCommit",
+  "targetTriple",
+] as const;
+
+function parseContainmentEvidence(
+  value: unknown,
+  binding: Readonly<{
+    readonly targetTriple: string;
+    readonly sourceCommit: string;
+    readonly executableSha256: string;
+  }>,
+): GooseContainmentEvidence {
+  if (!isRecord(value)) {
+    throw new GooseRunnerArtifactError(
+      "incompatible-artifact",
+      "Goose containment evidence is not an object",
+    );
+  }
+  const actualKeys = Object.keys(value);
+  if (
+    actualKeys.length !== CONTAINMENT_KEYS.length ||
+    actualKeys.some((key) => !CONTAINMENT_KEYS.includes(key as (typeof CONTAINMENT_KEYS)[number]))
+  ) {
+    throw new GooseRunnerArtifactError(
+      "incompatible-artifact",
+      "Goose containment evidence keys are unsupported",
+    );
+  }
+  if (
+    value.contractVersion !== 1 ||
+    typeof value.targetTriple !== "string" ||
+    typeof value.sourceCommit !== "string" ||
+    typeof value.probeSha256 !== "string" ||
+    typeof value.executableSha256 !== "string" ||
+    value.targetTriple !== binding.targetTriple ||
+    value.sourceCommit !== binding.sourceCommit ||
+    value.executableSha256 !== binding.executableSha256 ||
+    !SHA256_PATTERN.test(value.probeSha256) ||
+    !SHA256_PATTERN.test(value.executableSha256) ||
+    !COMMIT_PATTERN.test(value.sourceCommit) ||
+    value.filesystem !== true ||
+    value.network !== true ||
+    value.processTree !== true ||
+    value.resources !== true ||
+    value.parentDeath !== true ||
+    value.cleanup !== true
+  ) {
+    throw new GooseRunnerArtifactError(
+      "incompatible-artifact",
+      "Goose containment evidence is not bound to a complete native proof",
+    );
+  }
+  return Object.freeze({
+    contractVersion: 1,
+    targetTriple: value.targetTriple as string,
+    sourceCommit: value.sourceCommit as string,
+    probeSha256: value.probeSha256 as string,
+    executableSha256: value.executableSha256 as string,
+    filesystem: true,
+    network: true,
+    processTree: true,
+    resources: true,
+    parentDeath: true,
+    cleanup: true,
+  });
 }
 
 function requireString(value: unknown, label: string): string {
@@ -553,6 +648,7 @@ export async function admitGooseRunnerArtifact(
     manifest,
     ["contractVersion", "runner", "goose", "acp", "build", "materials", "provenance"],
     "Goose runner manifest",
+    ["containment"],
   );
   if (manifest.contractVersion !== 1) {
     throw new GooseRunnerArtifactError(
@@ -770,15 +866,25 @@ export async function admitGooseRunnerArtifact(
     );
   }
 
+  const containment = Object.hasOwn(manifest, "containment")
+    ? parseContainmentEvidence(manifest.containment, {
+        targetTriple,
+        sourceCommit: provenance.actestraCommit as string,
+        executableSha256,
+      })
+    : undefined;
+
   return Object.freeze({
     directory,
     executablePath,
     executableSha256,
     executableSize: executableStat.size,
     targetTriple,
+    sourceCommit: provenance.actestraCommit as string,
     gooseCommit: sourceContract.goose.commit,
     gooseVersion: sourceContract.goose.version,
     manifestPath,
     manifestSha256: sha256Buffer(manifestBuffer),
+    ...(containment === undefined ? {} : { containment }),
   });
 }

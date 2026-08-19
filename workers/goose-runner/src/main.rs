@@ -1,200 +1,161 @@
 use std::env;
+mod containment;
+#[cfg(any(target_os = "linux", test))]
+mod linux_bootstrap;
+#[cfg(any(target_os = "linux", all(unix, test)))]
+mod linux_runtime;
+#[cfg(any(windows, test))]
+mod windows_bridge;
+#[cfg(any(windows, test))]
+mod windows_control;
+#[cfg(any(windows, test))]
+mod windows_supervisor;
+#[cfg(all(unix, test))]
+use containment::apply_resource_limits_with;
+#[cfg(target_os = "linux")]
+use containment::install_process_creation_filter;
+use containment::RESOURCE_LIMIT_FAILURE_MARKER;
 #[cfg(unix)]
-use std::io::Read;
-#[cfg(unix)]
-use std::os::fd::FromRawFd;
+use containment::{apply_resource_limits, watch_parent_liveness};
+#[cfg(windows)]
+use containment::{apply_resource_limits, watch_parent_liveness};
+#[cfg(test)]
+use containment::{
+    parse_resource_limits_with, NativeResourceLimits, ADDRESS_SPACE_LIMIT_ENVIRONMENT_KEY,
+    CPU_LIMIT_ENVIRONMENT_KEY,
+};
+#[cfg(all(test, target_os = "macos"))]
+use containment::{ADDRESS_SPACE_LIMIT_BYTES, CPU_LIMIT_SECONDS};
 
-const CPU_LIMIT_ENVIRONMENT_KEY: &str = "ACTESTRA_GOOSE_CPU_SECONDS";
-const ADDRESS_SPACE_LIMIT_ENVIRONMENT_KEY: &str = "ACTESTRA_GOOSE_ADDRESS_SPACE_BYTES";
-const CPU_LIMIT_SECONDS: u64 = 120;
-const ADDRESS_SPACE_LIMIT_BYTES: u64 = 1_073_741_824;
-const RESOURCE_LIMIT_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_RESOURCE_LIMIT_SETUP_FAILED";
+#[cfg(target_os = "linux")]
+const LINUX_NETWORK_POLICY_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_NETWORK_POLICY_SETUP_FAILED";
+#[cfg(target_os = "linux")]
+const LINUX_ASYNC_RUNTIME_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_ASYNC_RUNTIME_SETUP_FAILED";
+#[cfg(target_os = "linux")]
+const LINUX_ACP_SERVER_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_ACP_SERVER_FAILED";
+#[cfg(target_os = "linux")]
+const LINUX_RELAY_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_LINUX_RELAY_STOPPED";
+#[cfg(target_os = "linux")]
+const LINUX_PANIC_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_RUNNER_PANICKED";
+#[cfg(target_os = "linux")]
+const LINUX_RUNTIME_ENVIRONMENT_KEYS: [&str; 5] = [
+    "ACTESTRA_GOOSE_LINUX_CAPABILITY_SOCKET",
+    "ACTESTRA_GOOSE_LINUX_MODEL_SOCKET",
+    "ACTESTRA_GOOSE_LINUX_CAPABILITY_PORT",
+    "ACTESTRA_GOOSE_LINUX_MODEL_PORT",
+    "ACTESTRA_GOOSE_LINUX_WORKSPACE_ROOT",
+];
 
-#[derive(Clone, Copy)]
-struct NativeResourceLimits {
-    cpu_seconds: u64,
-    address_space_bytes: u64,
+#[cfg(any(windows, test))]
+fn should_dispatch_windows_probe(arguments: &[String], probe_marker: Option<&str>) -> bool {
+    probe_marker == Some("1")
+        && !matches!(windows_control::WindowsMode::parse(arguments), Ok(Some(_)))
 }
 
-fn parse_exact_limit<F>(read_environment: &mut F, key: &str, expected: u64) -> Result<u64, ()>
-where
-    F: FnMut(&str) -> Option<String>,
-{
-    let value = read_environment(key).ok_or(())?;
-    if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
-        return Err(());
-    }
-    let parsed = value.parse::<u64>().map_err(|_| ())?;
-    if parsed != expected {
-        return Err(());
-    }
-    Ok(parsed)
-}
-
-fn parse_resource_limits_with<F>(mut read_environment: F) -> Result<NativeResourceLimits, ()>
-where
-    F: FnMut(&str) -> Option<String>,
-{
-    Ok(NativeResourceLimits {
-        cpu_seconds: parse_exact_limit(
-            &mut read_environment,
-            CPU_LIMIT_ENVIRONMENT_KEY,
-            CPU_LIMIT_SECONDS,
-        )?,
-        address_space_bytes: parse_exact_limit(
-            &mut read_environment,
-            ADDRESS_SPACE_LIMIT_ENVIRONMENT_KEY,
-            ADDRESS_SPACE_LIMIT_BYTES,
-        )?,
-    })
-}
-
-#[cfg(unix)]
-fn apply_resource_limits_with<F>(
-    limits: NativeResourceLimits,
-    launch_baseline_bytes: u64,
-    mut set_limit: F,
-) -> Result<(), ()>
-where
-    F: FnMut(i32, u64, u64) -> libc::c_int,
-{
-    let address_space_cap = launch_baseline_bytes
-        .checked_add(limits.address_space_bytes)
-        .filter(|value| *value <= libc::rlim_t::MAX as u64)
-        .ok_or(())?;
-    if set_limit(
-        libc::RLIMIT_CPU as i32,
-        limits.cpu_seconds,
-        limits.cpu_seconds,
-    ) != 0
-    {
-        return Err(());
-    }
-    if set_limit(libc::RLIMIT_AS as i32, address_space_cap, address_space_cap) != 0 {
-        return Err(());
-    }
-    Ok(())
-}
-
-#[cfg(target_os = "macos")]
-#[allow(deprecated)]
-fn current_virtual_size_bytes() -> Result<u64, ()> {
-    let mut info = std::mem::MaybeUninit::<libc::mach_task_basic_info_data_t>::uninit();
-    let mut count = libc::MACH_TASK_BASIC_INFO_COUNT;
-    let status = unsafe {
-        libc::task_info(
-            libc::mach_task_self(),
-            libc::MACH_TASK_BASIC_INFO,
-            info.as_mut_ptr().cast::<libc::integer_t>(),
-            &mut count,
-        )
-    };
-    if status != libc::KERN_SUCCESS || count != libc::MACH_TASK_BASIC_INFO_COUNT {
-        return Err(());
-    }
-    let info = unsafe { info.assume_init() };
-    Ok(info.virtual_size as u64)
+#[cfg(any(windows, test))]
+fn should_run_windows_containment_probe(arguments: &[String], probe_marker: Option<&str>) -> bool {
+    should_dispatch_windows_probe(arguments, probe_marker)
+        && matches!(windows_control::WindowsMode::parse(arguments), Ok(None))
 }
 
 #[cfg(target_os = "linux")]
-fn virtual_size_bytes_from_statm(statm: &str, page_size: i64) -> Result<u64, ()> {
-    if page_size <= 0 {
-        return Err(());
+fn prepare_linux_runtime() -> Result<
+    (
+        linux_runtime::LinuxBridgeEnvironment,
+        linux_runtime::LinuxRelayListeners,
+    ),
+    &'static str,
+> {
+    linux_bootstrap::verify_current_linux_bootstrap()
+        .map_err(|_| LINUX_NETWORK_POLICY_FAILURE_MARKER)?;
+    if LINUX_RUNTIME_ENVIRONMENT_KEYS != linux_runtime::LINUX_RUNTIME_ENVIRONMENT_KEYS {
+        return Err(LINUX_NETWORK_POLICY_FAILURE_MARKER);
     }
-    let pages = statm.split_whitespace().next().ok_or(())?;
-    if pages.is_empty() || !pages.bytes().all(|byte| byte.is_ascii_digit()) {
-        return Err(());
+    if containment::PR_SET_PDEATHSIG != 1 {
+        return Err(LINUX_NETWORK_POLICY_FAILURE_MARKER);
     }
-    let pages = pages.parse::<u64>().map_err(|_| ())?;
-    if pages == 0 {
-        return Err(());
-    }
-    pages.checked_mul(page_size as u64).ok_or(())
+    let environment = linux_runtime::LinuxBridgeEnvironment::from_environment()
+        .map_err(|_| LINUX_NETWORK_POLICY_FAILURE_MARKER)?;
+    containment::set_parent_death_signal().map_err(|_| LINUX_NETWORK_POLICY_FAILURE_MARKER)?;
+    apply_resource_limits().map_err(|_| RESOURCE_LIMIT_FAILURE_MARKER)?;
+    let private_root = environment
+        .private_root()
+        .map_err(|_| LINUX_NETWORK_POLICY_FAILURE_MARKER)?;
+    containment::prepare_linux_filesystem_containment(&private_root, &environment.workspace_root)
+        .map_err(|_| LINUX_NETWORK_POLICY_FAILURE_MARKER)?;
+    install_process_creation_filter().map_err(|_| LINUX_NETWORK_POLICY_FAILURE_MARKER)?;
+    let listeners = linux_runtime::bind_loopback_listeners(&environment)
+        .map_err(|_| LINUX_NETWORK_POLICY_FAILURE_MARKER)?;
+    Ok((environment, listeners))
 }
-
-#[cfg(target_os = "linux")]
-fn current_virtual_size_bytes() -> Result<u64, ()> {
-    let statm = std::fs::read_to_string("/proc/self/statm").map_err(|_| ())?;
-    let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
-    virtual_size_bytes_from_statm(&statm, page_size)
-}
-
-#[cfg(unix)]
-fn apply_resource_limits() -> Result<(), ()> {
-    let limits = parse_resource_limits_with(|key| env::var(key).ok())?;
-    let launch_baseline_bytes = current_virtual_size_bytes()?;
-    apply_resource_limits_with(limits, launch_baseline_bytes, |resource, soft, hard| {
-        let limit = libc::rlimit {
-            rlim_cur: soft as libc::rlim_t,
-            rlim_max: hard as libc::rlim_t,
-        };
-        unsafe { libc::setrlimit(resource as _, &limit) }
-    })
-}
-
-#[cfg(windows)]
-fn apply_resource_limits() -> Result<(), ()> {
-    parse_resource_limits_with(|key| env::var(key).ok())?;
-    Err(())
-}
-
-#[cfg(unix)]
-fn watch_parent_liveness() {
-    let Ok(raw_fd) = env::var("ACTESTRA_PARENT_LIVENESS_FD") else {
-        return;
-    };
-    let Ok(raw_fd) = raw_fd.parse::<i32>() else {
-        return;
-    };
-    let process_id = unsafe { libc::getpid() };
-    // sandbox-exec normally preserves the detached process group, but make
-    // that ownership explicit before accepting the liveness channel. This
-    // prevents a parent-death cleanup from ever signalling the supervisor's
-    // group if a launcher changes its process-group semantics.
-    let mut process_group = unsafe { libc::getpgrp() };
-    // A detached macOS child is commonly already a session/process-group
-    // leader. Calling setpgid on that session leader returns EPERM even
-    // though the desired isolation is already in place. Only establish a
-    // group when the launcher has not done so for us.
-    if process_group != process_id {
-        if unsafe { libc::setpgid(0, process_id) } != 0 {
-            eprintln!("ACTESTRA_GOOSE_RUNNER_FAILED: could not establish process group");
-            std::process::exit(1);
-        }
-        process_group = unsafe { libc::getpgrp() };
-    }
-    if process_group != process_id {
-        eprintln!("ACTESTRA_GOOSE_RUNNER_FAILED: runner is not its process-group leader");
-        std::process::exit(1);
-    }
-    std::thread::spawn(move || {
-        // SAFETY: fd 3 is opened by Main as the read end of a CLOEXEC pipe and
-        // remains owned by this runner until the supervisor disappears.
-        let mut pipe = unsafe { std::fs::File::from_raw_fd(raw_fd) };
-        let mut byte = [0_u8; 1];
-        loop {
-            match pipe.read(&mut byte) {
-                Ok(0) => {
-                    // The runner is the process-group leader. Terminate the
-                    // complete group before exiting so descendants cannot be
-                    // orphaned when Main dies unexpectedly.
-                    unsafe {
-                        libc::signal(libc::SIGTERM, libc::SIG_IGN);
-                        libc::kill(-process_group, libc::SIGTERM);
-                    }
-                    std::process::exit(0);
-                }
-                Ok(_) => {}
-                Err(_) => return,
-            }
-        }
-    });
-}
-
-#[cfg(windows)]
-fn watch_parent_liveness() {}
 
 fn main() {
+    #[cfg(target_os = "linux")]
+    {
+        let mut arguments = env::args();
+        let _program = arguments.next();
+        if arguments.next().as_deref() == Some(linux_bootstrap::BOOTSTRAP_ARGUMENT) {
+            let success = arguments.next().is_none()
+                && linux_bootstrap::verify_current_linux_bootstrap().is_ok();
+            if success {
+                println!("{}", linux_bootstrap::BOOTSTRAP_OK);
+            } else {
+                eprintln!("{}", linux_bootstrap::BOOTSTRAP_FAILED);
+                std::process::exit(1);
+            }
+            return;
+        }
+    }
+    #[cfg(windows)]
+    let windows_arguments: Vec<String> = env::args().collect();
+    #[cfg(windows)]
+    if should_dispatch_windows_probe(
+        &windows_arguments,
+        env::var("ACTESTRA_GOOSE_CONTAINMENT_PROBE").ok().as_deref(),
+    ) {
+        if let Some(exit_code) = containment::dispatch_windows_containment_role(&windows_arguments)
+        {
+            std::process::exit(exit_code);
+        }
+    }
+    #[cfg(windows)]
+    if should_run_windows_containment_probe(
+        &windows_arguments,
+        env::var("ACTESTRA_GOOSE_CONTAINMENT_PROBE").ok().as_deref(),
+    ) {
+        println!("{}", containment::run_containment_probe());
+        return;
+    }
+    #[cfg(not(windows))]
+    if env::var("ACTESTRA_GOOSE_CONTAINMENT_PROBE").as_deref() == Ok("1") {
+        println!("{}", containment::run_containment_probe());
+        return;
+    }
+    #[cfg(windows)]
+    {
+        let exit_code = match windows_control::WindowsMode::parse(&windows_arguments) {
+            Ok(Some(windows_control::WindowsMode::Supervisor)) => {
+                windows_supervisor::run_supervisor()
+            }
+            Ok(Some(windows_control::WindowsMode::Worker)) => windows_supervisor::run_worker(),
+            Ok(None) | Err(()) => {
+                eprintln!("{}", windows_supervisor::WINDOWS_SETUP_FAILURE_MARKER);
+                1
+            }
+        };
+        std::process::exit(exit_code);
+    }
+    #[cfg(target_os = "linux")]
+    std::panic::set_hook(Box::new(|_| eprintln!("{LINUX_PANIC_FAILURE_MARKER}")));
+    #[cfg(target_os = "linux")]
+    let prepared_linux_runtime = match prepare_linux_runtime() {
+        Ok(prepared) => prepared,
+        Err(marker) => {
+            eprintln!("{marker}");
+            std::process::exit(1);
+        }
+    };
+    #[cfg(not(target_os = "linux"))]
     if apply_resource_limits().is_err() {
         eprintln!("{RESOURCE_LIMIT_FAILURE_MARKER}");
         std::process::exit(1);
@@ -206,21 +167,97 @@ fn main() {
     {
         Ok(runtime) => runtime,
         Err(_) => {
+            #[cfg(target_os = "linux")]
+            eprintln!("{LINUX_ASYNC_RUNTIME_FAILURE_MARKER}");
+            #[cfg(not(target_os = "linux"))]
             eprintln!("ACTESTRA_GOOSE_RUNNER_FAILED: could not create async runtime");
             std::process::exit(1);
         }
     };
     runtime.block_on(async {
-        watch_parent_liveness();
-        if let Err(error) = goose::acp::server::run(Vec::new(), false).await {
-            eprintln!("ACTESTRA_GOOSE_RUNNER_FAILED: {error:#}");
-            std::process::exit(1);
+        #[cfg(target_os = "linux")]
+        {
+            let (environment, listeners) = prepared_linux_runtime;
+            let mut relay = match linux_runtime::LinuxRelay::start(listeners, environment) {
+                Ok(relay) => relay,
+                Err(_) => {
+                    eprintln!("{LINUX_NETWORK_POLICY_FAILURE_MARKER}");
+                    std::process::exit(1);
+                }
+            };
+            watch_parent_liveness();
+            let mut goose = std::pin::pin!(goose::acp::server::run(Vec::new(), false));
+            let result = tokio::select! {
+                result = &mut goose => Some(result),
+                relay_result = relay.wait() => {
+                    if relay_result.is_err() {
+                        eprintln!("{LINUX_NETWORK_POLICY_FAILURE_MARKER}");
+                    } else {
+                        eprintln!("{LINUX_RELAY_FAILURE_MARKER}");
+                    }
+                    None
+                },
+            };
+            relay.shutdown().await;
+            match result {
+                Some(Ok(())) => return,
+                Some(Err(error)) => {
+                    eprintln!("{LINUX_ACP_SERVER_FAILURE_MARKER}");
+                    eprintln!("ACTESTRA_GOOSE_RUNNER_FAILED: {error:#}");
+                    std::process::exit(1);
+                }
+                None => std::process::exit(1),
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            watch_parent_liveness();
+            if let Err(error) = goose::acp::server::run(Vec::new(), false).await {
+                eprintln!("ACTESTRA_GOOSE_RUNNER_FAILED: {error:#}");
+                std::process::exit(1);
+            }
         }
     });
 }
 
 #[cfg(test)]
 mod tests {
+    #[cfg(test)]
+    #[test]
+    fn probe_marker_does_not_intercept_production_windows_modes() {
+        let worker = vec![
+            "actestra-goose-runner.exe".to_string(),
+            "--actestra-windows-worker-v1".to_string(),
+        ];
+        let supervisor = vec![
+            "actestra-goose-runner.exe".to_string(),
+            "--actestra-windows-supervisor-v1".to_string(),
+        ];
+        let probe_child = vec![
+            "actestra-goose-runner.exe".to_string(),
+            "--actestra-windows-containment-child-v1".to_string(),
+        ];
+        let no_argument = vec!["actestra-goose-runner.exe".to_string()];
+
+        assert!(!should_dispatch_windows_probe(&worker, Some("1")));
+        assert!(!should_dispatch_windows_probe(&supervisor, Some("1")));
+        assert!(should_dispatch_windows_probe(&probe_child, Some("1")));
+        assert!(should_dispatch_windows_probe(&no_argument, Some("1")));
+        assert!(!should_dispatch_windows_probe(&probe_child, None));
+        assert!(!should_run_windows_containment_probe(
+            &probe_child,
+            Some("1")
+        ));
+        assert!(should_run_windows_containment_probe(
+            &no_argument,
+            Some("1")
+        ));
+    }
+
+    #[cfg(target_os = "linux")]
+    use super::containment::unix::current_virtual_size_bytes;
+    #[cfg(target_os = "linux")]
+    use super::containment::unix::virtual_size_bytes_from_statm;
     use super::*;
     use std::collections::HashMap;
 
@@ -232,6 +269,51 @@ mod tests {
                 "1073741824".to_string(),
             ),
         ])
+    }
+
+    #[test]
+    fn accepts_only_the_exact_packaged_linux_bootstrap_identity() {
+        assert!(linux_bootstrap::verify_bootstrap_inputs(
+            "/opt/Actestra/resources/actestra-goose-runner/actestra-goose-runner",
+            "Actestra-Goose-Runner (unconfined)\n",
+            "Y\n",
+            "1\n",
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn rejects_changed_linux_bootstrap_path_profile_or_host_state() {
+        let executable = "/opt/Actestra/resources/actestra-goose-runner/actestra-goose-runner";
+        for candidate in [
+            (
+                "/tmp/runner",
+                "Actestra-Goose-Runner (unconfined)\n",
+                "Y\n",
+                "1\n",
+            ),
+            (executable, "unconfined\n", "Y\n", "1\n"),
+            (
+                executable,
+                "Actestra-Goose-Runner (unconfined)\n",
+                "N\n",
+                "1\n",
+            ),
+            (
+                executable,
+                "Actestra-Goose-Runner (unconfined)\n",
+                "Y\n",
+                "0\n",
+            ),
+        ] {
+            assert!(linux_bootstrap::verify_bootstrap_inputs(
+                candidate.0,
+                candidate.1,
+                candidate.2,
+                candidate.3,
+            )
+            .is_err());
+        }
     }
 
     #[test]
@@ -422,5 +504,40 @@ mod tests {
             },)
             .is_err()
         );
+    }
+}
+
+#[cfg(test)]
+mod containment_contract_tests {
+    use super::containment::{assert_containment_config, ContainmentConfig, ContainmentNetwork};
+
+    #[test]
+    fn accepts_only_the_fixed_private_root_and_network_contract() {
+        let config = ContainmentConfig {
+            private_root: "/owned/attempt".to_string(),
+            workspace_root: Some("/owned/worktree".to_string()),
+            network: ContainmentNetwork::DenyAll,
+            cpu_seconds: 120,
+            address_space_bytes: 1_073_741_824,
+            parent_liveness: true,
+        };
+
+        assert_containment_config(&config).unwrap();
+    }
+
+    #[test]
+    fn rejects_widened_budget_and_missing_parent_liveness() {
+        let mut config = ContainmentConfig {
+            private_root: "/owned/attempt".to_string(),
+            workspace_root: None,
+            network: ContainmentNetwork::DenyAll,
+            cpu_seconds: 121,
+            address_space_bytes: 1_073_741_824,
+            parent_liveness: false,
+        };
+
+        assert!(assert_containment_config(&config).is_err());
+        config.cpu_seconds = 120;
+        assert!(assert_containment_config(&config).is_err());
     }
 }

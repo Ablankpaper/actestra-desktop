@@ -1,0 +1,10 @@
+abi <abi/4.0>,
+include <tunables/global>
+
+profile "Actestra" "/opt/Actestra/Actestra" flags=(unconfined) {
+  userns,
+}
+
+profile "Actestra-Goose-Runner" "/opt/Actestra/resources/actestra-goose-runner/actestra-goose-runner" flags=(unconfined) {
+  userns,
+}
