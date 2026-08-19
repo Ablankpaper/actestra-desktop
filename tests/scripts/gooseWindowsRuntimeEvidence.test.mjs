@@ -163,6 +163,31 @@ describe("Goose Windows runtime evidence", () => {
       }),
     ).toBe("windows-runtime-coding-session-open-failed");
     for (const [stage, code] of [
+      [
+        "coding-session-open-invalid-options",
+        "windows-runtime-coding-session-invalid-options-failed",
+      ],
+      [
+        "coding-session-open-repository-invalid",
+        "windows-runtime-coding-session-repository-invalid-failed",
+      ],
+      [
+        "coding-session-open-repository-config-denied",
+        "windows-runtime-coding-session-repository-config-denied-failed",
+      ],
+      [
+        "coding-session-open-worktree-create-failed",
+        "windows-runtime-coding-session-worktree-create-failed",
+      ],
+      ["coding-session-open-cleanup-failed", "windows-runtime-coding-session-cleanup-failed"],
+      [
+        "coding-session-open-persistence-failed",
+        "windows-runtime-coding-session-persistence-failed",
+      ],
+    ]) {
+      expect(classifyGooseWindowsRuntimeFailureEvidence({ contractVersion: 1, stage })).toBe(code);
+    }
+    for (const [stage, code] of [
       ["fixture-filesystem", "windows-runtime-fixture-filesystem-failed"],
       ["fixture-git-config", "windows-runtime-fixture-git-config-failed"],
       ["fixture-git-commit", "windows-runtime-fixture-git-commit-failed"],

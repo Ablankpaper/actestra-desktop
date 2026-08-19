@@ -96,6 +96,36 @@ async function markFailure(stage: string): Promise<void> {
   });
 }
 
+const CODING_SESSION_OPEN_ERROR_CODES = new Set([
+  "invalid-options",
+  "repository-invalid",
+  "repository-config-denied",
+  "worktree-create-failed",
+  "cleanup-failed",
+  "open-failed",
+]);
+
+function codingSessionOpenFailureStage(error: unknown): string {
+  const pending: unknown[] = [error];
+  const visited = new Set<object>();
+  while (pending.length > 0) {
+    const current = pending.shift();
+    if (typeof current !== "object" || current === null || visited.has(current)) continue;
+    visited.add(current);
+    if (
+      "code" in current &&
+      typeof current.code === "string" &&
+      CODING_SESSION_OPEN_ERROR_CODES.has(current.code)
+    ) {
+      if (current.code === "open-failed") return "coding-session-open-persistence-failed";
+      return `coding-session-open-${current.code}`;
+    }
+    if ("cause" in current) pending.push(current.cause);
+    if ("errors" in current && current.errors instanceof Array) pending.push(...current.errors);
+  }
+  return "coding-session-open";
+}
+
 async function runGit(repository: string, ...args: readonly string[]): Promise<string> {
   const result = await execFileAsync("git", ["-C", repository, ...args], {
     encoding: "utf8",
@@ -424,14 +454,20 @@ describe.skipIf(!nativeEnabled)("native Windows Goose authenticated runtime comp
       }
     };
     await markFailure("coding-session-open");
-    const codingSession = await fixture.mainService.open({
-      repositoryRoot: fixture.sourceRoot,
-      workspaceId: fixture.workspace,
-      grantId: workspaceGrantId(`windows-runtime-grant-${fixture.task}`),
-      displayName: "Windows runtime acceptance workspace",
-      commands: {},
-      tests: {},
-    });
+    let codingSession;
+    try {
+      codingSession = await fixture.mainService.open({
+        repositoryRoot: fixture.sourceRoot,
+        workspaceId: fixture.workspace,
+        grantId: workspaceGrantId(`windows-runtime-grant-${fixture.task}`),
+        displayName: "Windows runtime acceptance workspace",
+        commands: {},
+        tests: {},
+      });
+    } catch (error) {
+      await markFailure(codingSessionOpenFailureStage(error));
+      throw error;
+    }
     const toolInvoker = createGooseCodingToolInvoker({
       persistence: fixture.persistence,
       clock: fixture.clock,

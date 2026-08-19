@@ -22,6 +22,15 @@ const FAILURE_STAGE_CODES = Object.freeze({
   "fixture-domain-state": "windows-runtime-fixture-domain-state-failed",
   "fixture-baseline": "windows-runtime-fixture-baseline-failed",
   "coding-session-open": "windows-runtime-coding-session-open-failed",
+  "coding-session-open-invalid-options": "windows-runtime-coding-session-invalid-options-failed",
+  "coding-session-open-repository-invalid":
+    "windows-runtime-coding-session-repository-invalid-failed",
+  "coding-session-open-repository-config-denied":
+    "windows-runtime-coding-session-repository-config-denied-failed",
+  "coding-session-open-worktree-create-failed":
+    "windows-runtime-coding-session-worktree-create-failed",
+  "coding-session-open-cleanup-failed": "windows-runtime-coding-session-cleanup-failed",
+  "coding-session-open-persistence-failed": "windows-runtime-coding-session-persistence-failed",
   "composition-open": "windows-runtime-composition-open-failed",
   "read-tool": "windows-runtime-read-tool-failed",
   "approved-write-tool": "windows-runtime-approved-write-tool-failed",
