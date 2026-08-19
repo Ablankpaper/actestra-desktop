@@ -138,6 +138,38 @@ describe("Goose Windows runtime evidence", () => {
         stage: "fixture-setup",
       }),
     ).toBe("windows-runtime-fixture-setup-failed");
+    expect(
+      classifyGooseWindowsRuntimeFailureEvidence({
+        contractVersion: 1,
+        stage: "fixture-git-init",
+      }),
+    ).toBe("windows-runtime-fixture-git-init-failed");
+    expect(
+      classifyGooseWindowsRuntimeFailureEvidence({
+        contractVersion: 1,
+        stage: "fixture-persistence-open",
+      }),
+    ).toBe("windows-runtime-fixture-persistence-open-failed");
+    expect(
+      classifyGooseWindowsRuntimeFailureEvidence({
+        contractVersion: 1,
+        stage: "fixture-domain-state",
+      }),
+    ).toBe("windows-runtime-fixture-domain-state-failed");
+    expect(
+      classifyGooseWindowsRuntimeFailureEvidence({
+        contractVersion: 1,
+        stage: "coding-session-open",
+      }),
+    ).toBe("windows-runtime-coding-session-open-failed");
+    for (const [stage, code] of [
+      ["fixture-filesystem", "windows-runtime-fixture-filesystem-failed"],
+      ["fixture-git-config", "windows-runtime-fixture-git-config-failed"],
+      ["fixture-git-commit", "windows-runtime-fixture-git-commit-failed"],
+      ["fixture-baseline", "windows-runtime-fixture-baseline-failed"],
+    ]) {
+      expect(classifyGooseWindowsRuntimeFailureEvidence({ contractVersion: 1, stage })).toBe(code);
+    }
   });
 
   it("classifies only one closed Artifact admission error without echoing diagnostics", () => {
@@ -250,5 +282,9 @@ describe("Goose Windows runtime evidence", () => {
     expect(integration).toContain("`artifact-admission-${error.code}`");
     expect(integration).toContain('markFailure("artifact-binding-incomplete")');
     expect(integration).toContain('markFailure("fixture-setup")');
+    expect(integration).toContain('markFailure("fixture-git-init")');
+    expect(integration).toContain('markFailure("fixture-persistence-open")');
+    expect(integration).toContain('markFailure("fixture-domain-state")');
+    expect(integration).toContain('markFailure("coding-session-open")');
   });
 });

@@ -192,18 +192,23 @@ function graph(fixture: {
 }
 
 async function createFixture(suffix: string): Promise<CodingFixture> {
+  await markFailure("fixture-filesystem");
   const root = await mkdtemp(path.join(os.tmpdir(), "actestra-goose-windows-runtime-"));
   fixtureRoots.push(root);
   const sourceRoot = path.join(root, "source");
   const sourceFile = path.join(sourceRoot, "answer.txt");
   const privateRootParent = path.join(root, "goose-private");
   await Promise.all([mkdir(sourceRoot), mkdir(privateRootParent)]);
+  await markFailure("fixture-git-init");
   await runGit(sourceRoot, "init", "--initial-branch=main");
+  await markFailure("fixture-git-config");
   await runGit(sourceRoot, "config", "user.name", "Actestra Test");
   await runGit(sourceRoot, "config", "user.email", "actestra-test@example.invalid");
+  await markFailure("fixture-git-commit");
   await writeFile(sourceFile, "before\n", "utf8");
   await runGit(sourceRoot, "add", "answer.txt");
   await runGit(sourceRoot, "commit", "-m", "fixture");
+  await markFailure("fixture-persistence-open");
   const { client: persistence } = await openTestPersistenceUtility(
     path.join(root, "product-state"),
   );
@@ -215,6 +220,7 @@ async function createFixture(suffix: string): Promise<CodingFixture> {
     worker: workerId(`windows-runtime-worker-${suffix}`),
     now: clock.now(),
   };
+  await markFailure("fixture-domain-state");
   await persistence.replaceDomainGraph(graph(ids));
   const mainService = createIsolatedCodingMainService({
     persistence,
@@ -359,6 +365,7 @@ describe.skipIf(!nativeEnabled)("native Windows Goose authenticated runtime comp
     }
     await markFailure("fixture-setup");
     const fixture = await createFixture("journey");
+    await markFailure("fixture-baseline");
     const baseHead = await runGit(fixture.sourceRoot, "rev-parse", "HEAD");
     const baseStatus = await runGit(fixture.sourceRoot, "status", "--porcelain=v1");
     const baseBytes = await readFile(fixture.sourceFile, "utf8");
@@ -416,6 +423,7 @@ describe.skipIf(!nativeEnabled)("native Windows Goose authenticated runtime comp
           throw new Error("Windows runtime model sequence exceeded its bounded contract");
       }
     };
+    await markFailure("coding-session-open");
     const codingSession = await fixture.mainService.open({
       repositoryRoot: fixture.sourceRoot,
       workspaceId: fixture.workspace,
