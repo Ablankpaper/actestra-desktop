@@ -394,6 +394,21 @@ impl WindowsCapabilityClient {
         Ok(session.clone())
     }
 
+    fn bind_or_check_session(&self, requested: &str) -> Result<String, ServiceError> {
+        if !is_bridge_token(requested, 1, 256) {
+            return Err(ServiceError::TransportClosed);
+        }
+        if let Some(session) = self.session_id.get() {
+            return (session == requested)
+                .then(|| session.clone())
+                .ok_or(ServiceError::TransportClosed);
+        }
+        if self.session_id.set(requested.to_string()).is_err() {
+            return self.checked_session(requested);
+        }
+        Ok(requested.to_string())
+    }
+
     fn list_request_id(&self) -> Result<String, ServiceError> {
         self.next_request_id
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
@@ -485,7 +500,7 @@ impl McpClientTrait for WindowsCapabilityClient {
         if next_cursor.is_some() {
             return Err(ServiceError::TransportClosed);
         }
-        let session_id = self.checked_session(session_id)?;
+        let session_id = self.bind_or_check_session(session_id)?;
         let request_id = self.list_request_id()?;
         let response = self
             .exchange(
@@ -808,6 +823,42 @@ mod tests {
         assert!(info.capabilities.tools.is_some());
         assert!(info.capabilities.resources.is_none());
         assert!(info.capabilities.prompts.is_none());
+        main.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn windows_capability_bridge_binds_the_runtime_session_on_first_tool_discovery() {
+        let (worker, main) = tokio::io::duplex(64 * 1024);
+        let session = Arc::new(OnceCell::new());
+        let client = WindowsCapabilityClient::new(
+            crate::windows_bridge::WindowsBridgeChannel::from_duplex(worker),
+            LEASE.to_string(),
+            session.clone(),
+        )
+        .unwrap();
+        let main = tokio::spawn(async move {
+            let mut main = crate::windows_bridge::WindowsBridgeChannel::from_duplex(main);
+            let request =
+                decode_capability_frame(&main.read_frame().await.unwrap(), LEASE, SESSION).unwrap();
+            let CapabilityFrame::ListRequest { request_id, .. } = request else {
+                panic!("expected list request");
+            };
+            main.write_frame(
+                &encode_capability_frame(&CapabilityFrame::ListResponse {
+                    request_id,
+                    tools: tool_definitions(),
+                })
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        });
+
+        let listed = McpClientTrait::list_tools(&client, SESSION, None, CancellationToken::new())
+            .await
+            .unwrap();
+        assert_eq!(listed.tools.len(), TOOL_NAMES.len());
+        assert_eq!(session.get().map(String::as_str), Some(SESSION));
         main.await.unwrap();
     }
 

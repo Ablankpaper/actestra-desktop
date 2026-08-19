@@ -3018,6 +3018,199 @@ mod tests {
         assert!(state.advance(WorkerStartupStage::BoundaryVerified).is_ok());
     }
 
+    #[tokio::test]
+    async fn windows_worker_runtime_initializes_an_mcp_free_adapted_acp_session() {
+        use crate::windows_capability_bridge::{
+            decode_capability_frame, encode_capability_frame, CapabilityFrame,
+            WindowsCapabilityClient,
+        };
+        use crate::windows_model_bridge::WindowsModelProvider;
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+        use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
+
+        const LEASE: &str = "lease_0123456789abcdef0123456789abcdef";
+        const MODEL: &str = "actestra-fixed-model";
+        const TOOLS: [&str; 6] = [
+            "actestra.coding.file.read-text",
+            "actestra.coding.file.write-text",
+            "actestra.coding.terminal.run",
+            "actestra.coding.git.inspect",
+            "actestra.coding.diff.inspect",
+            "actestra.coding.test.run",
+        ];
+
+        let root = test_private_root("acp-runtime");
+        let workspace = root.join("work");
+        std::fs::create_dir(&workspace).unwrap();
+        let (data_dir, config_dir) =
+            prepare_goose_state_directories(root.to_str().unwrap()).unwrap();
+        let session_id = std::sync::Arc::new(tokio::sync::OnceCell::new());
+        let (capability_worker, capability_main) = tokio::io::duplex(64 * 1024);
+        let capability_client = WindowsCapabilityClient::new(
+            crate::windows_bridge::WindowsBridgeChannel::from_duplex(capability_worker),
+            LEASE.to_string(),
+            session_id.clone(),
+        )
+        .unwrap();
+        let (model_worker, _model_main) = tokio::io::duplex(64 * 1024);
+        let model_provider = WindowsModelProvider::new(
+            crate::windows_bridge::WindowsBridgeChannel::from_duplex(model_worker),
+            LEASE.to_string(),
+            session_id.clone(),
+            MODEL.to_string(),
+        )
+        .unwrap();
+        let adapter = goose::acp::server::AcpRuntimeAdapter {
+            provider_id: "actestra".to_string(),
+            model_config: goose_providers::model::ModelConfig::new(MODEL),
+            provider: std::sync::Arc::new(model_provider),
+            extension_name: "actestra-capability-proxy".to_string(),
+            extension_config: goose::agents::ExtensionConfig::Builtin {
+                name: "actestra-capability-proxy".to_string(),
+                description: "Actestra capability proxy".to_string(),
+                display_name: None,
+                timeout: None,
+                bundled: Some(true),
+                available_tools: Vec::new(),
+            },
+            extension_client: std::sync::Arc::new(capability_client),
+            data_dir: data_dir.clone(),
+            config_dir: config_dir.clone(),
+        };
+        let server = goose::acp::server_factory::AcpServer::new_with_runtime_adapter(
+            goose::acp::server_factory::AcpServerFactoryConfig {
+                builtins: Vec::new(),
+                data_dir,
+                config_dir,
+                goose_platform: goose::agents::GoosePlatform::GooseCli,
+                additional_source_roots: Vec::new(),
+                enable_scheduler: false,
+            },
+            adapter,
+        );
+        let agent = server.create_agent().await.unwrap();
+        let (server_stream, client_stream) = tokio::io::duplex(256 * 1024);
+        let (server_read, server_write) = tokio::io::split(server_stream);
+        let serve_task = tokio::spawn(goose::acp::server::serve(
+            agent,
+            server_read.compat(),
+            server_write.compat_write(),
+        ));
+        let (client_read, mut client_write) = tokio::io::split(client_stream);
+        let mut client_read = tokio::io::BufReader::new(client_read);
+
+        async fn send(
+            writer: &mut tokio::io::WriteHalf<tokio::io::DuplexStream>,
+            value: serde_json::Value,
+        ) {
+            let mut line = serde_json::to_vec(&value).unwrap();
+            line.push(b'\n');
+            writer.write_all(&line).await.unwrap();
+        }
+
+        async fn response(
+            reader: &mut tokio::io::BufReader<tokio::io::ReadHalf<tokio::io::DuplexStream>>,
+            expected_id: &str,
+        ) -> serde_json::Value {
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).await.unwrap();
+                assert!(!line.is_empty(), "ACP transport closed before the response");
+                let message: serde_json::Value = serde_json::from_str(&line).unwrap();
+                if message.get("id").and_then(serde_json::Value::as_str) == Some(expected_id) {
+                    return message;
+                }
+            }
+        }
+
+        send(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": "initialize-1",
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": 1,
+                    "clientCapabilities": {},
+                    "clientInfo": {"name": "actestra-test", "version": "1"}
+                }
+            }),
+        )
+        .await;
+        let initialized = response(&mut client_read, "initialize-1").await;
+        assert_eq!(initialized["result"]["agentInfo"]["name"], "goose");
+
+        send(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": "session-1",
+                "method": "session/new",
+                "params": {"cwd": workspace, "mcpServers": []}
+            }),
+        )
+        .await;
+        let opened = response(&mut client_read, "session-1").await;
+        let acp_session = opened["result"]["sessionId"]
+            .as_str()
+            .expect("adapted session id")
+            .to_string();
+        assert!(session_id.get().is_none());
+
+        let capability_task = tokio::spawn(async move {
+            let mut main =
+                crate::windows_bridge::WindowsBridgeChannel::from_duplex(capability_main);
+            let request =
+                decode_capability_frame(&main.read_frame().await.unwrap(), LEASE, &acp_session)
+                    .unwrap();
+            let CapabilityFrame::ListRequest { request_id, .. } = request else {
+                panic!("expected injected extension list request");
+            };
+            let tools = TOOLS
+                .iter()
+                .map(|name| serde_json::json!({"inputSchema": {}, "name": name}))
+                .collect();
+            main.write_frame(
+                &encode_capability_frame(&CapabilityFrame::ListResponse { request_id, tools })
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+            acp_session
+        });
+        send(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": "tools-1",
+                "method": "_goose/unstable/tools/list",
+                "params": {
+                    "sessionId": opened["result"]["sessionId"],
+                    "extensionName": "actestra-capability-proxy"
+                }
+            }),
+        )
+        .await;
+        let discovered = response(&mut client_read, "tools-1").await;
+        let names = discovered["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|tool| tool["name"].as_str().unwrap().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(names.len(), TOOLS.len());
+        assert!(names
+            .iter()
+            .all(|name| name.starts_with("actestra-capability-proxy__actestra.coding.")));
+        let bound_session = capability_task.await.unwrap();
+        assert_eq!(session_id.get(), Some(&bound_session));
+
+        drop(client_write);
+        serve_task.abort();
+        let _ = serve_task.await;
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn derives_exact_attempt_scoped_pipe_names_without_private_text() {
         let names = derive_pipe_names("0123456789abcdef0123456789abcdef").unwrap();
