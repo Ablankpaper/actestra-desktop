@@ -805,11 +805,12 @@ fn collect_windows_hostile_evidence() -> Result<WindowsHostileEvidence, WindowsP
     if !result.filesystem_attempted || !result.filesystem_denied || !outside_unchanged {
         return Err(WindowsProbeFailure::Filesystem);
     }
-    if !no_connection || result.network_outcome == WindowsNetworkProbeOutcome::Connected {
+    if !no_connection {
         return Err(WindowsProbeFailure::NetworkConnected);
     }
     match result.network_outcome {
         WindowsNetworkProbeOutcome::AccessDenied => {}
+        WindowsNetworkProbeOutcome::Connected => return Err(WindowsProbeFailure::NetworkConnected),
         WindowsNetworkProbeOutcome::TimedOut => return Err(WindowsProbeFailure::NetworkTimedOut),
         WindowsNetworkProbeOutcome::Unreachable => {
             return Err(WindowsProbeFailure::NetworkUnreachable);

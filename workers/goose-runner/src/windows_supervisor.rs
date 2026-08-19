@@ -23,9 +23,9 @@ use std::path::Path;
 use std::ptr::{null, null_mut};
 #[cfg(windows)]
 use windows_sys::Win32::Foundation::{
-    CloseHandle, DuplicateHandle, GetLastError, SetHandleInformation, DUPLICATE_SAME_ACCESS,
-    ERROR_BROKEN_PIPE, HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, WAIT_OBJECT_0,
-    WAIT_TIMEOUT,
+    CloseHandle, CompareObjectHandles, DuplicateHandle, GetLastError, SetHandleInformation,
+    DUPLICATE_SAME_ACCESS, ERROR_BROKEN_PIPE, HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE,
+    WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 #[cfg(windows)]
 use windows_sys::Win32::Security::Isolation::{
@@ -1528,7 +1528,11 @@ impl JobObject {
         // inherited and nothing the Worker could have opened for itself. Proving absence here is
         // therefore race free and keeps the excluded value inside the supervisor.
         if let Some(handle) = excluded_handle {
-            match excluded_probe_handle_absence_in_worker(worker.process, handle as usize as u64) {
+            match excluded_probe_handle_absence_in_worker(
+                worker.process,
+                handle as usize as u64,
+                handle,
+            ) {
                 Some(true) => {}
                 Some(false) => return Err(WorkerLaunchFailureStage::ExcludedHandleInherited),
                 None => return Err(WorkerLaunchFailureStage::ExcludedHandleAmbiguous),
@@ -1829,18 +1833,21 @@ fn read_windows_probe_child_stage_transcript(handle: HANDLE) -> Result<Vec<u8>, 
 }
 
 /// Decides the excluded-handle verdict from one parent-side `DuplicateHandle` attempt against the
-/// Worker handle table. A successful duplicate means the deliberately excluded handle survived
-/// into the Worker, so containment failed. Only the exact `ERROR_INVALID_HANDLE` value proves the
-/// slot is empty. Every other Win32 error is ambiguous and stays fail closed.
+/// Worker handle table. A successful duplicate proves that the numeric slot is occupied; only an
+/// object-identity match proves that the deliberately excluded handle survived into the Worker.
+/// An identity mismatch or exact `ERROR_INVALID_HANDLE` proves the excluded object is absent.
+/// Every other Win32 error is ambiguous and stays fail closed.
 #[cfg(any(windows, test))]
 fn excluded_handle_absence_from_duplicate_attempt(
     duplicate_succeeded: bool,
     last_error: u32,
+    identity_matched: bool,
 ) -> Option<bool> {
-    match (duplicate_succeeded, last_error) {
-        (true, _) => Some(false),
-        (false, WINDOWS_ERROR_INVALID_HANDLE_CODE) => Some(true),
-        (false, _) => None,
+    match (duplicate_succeeded, last_error, identity_matched) {
+        (true, _, true) => Some(false),
+        (true, _, false) => Some(true),
+        (false, WINDOWS_ERROR_INVALID_HANDLE_CODE, _) => Some(true),
+        (false, _, _) => None,
     }
 }
 
@@ -1848,11 +1855,14 @@ fn excluded_handle_absence_from_duplicate_attempt(
 /// in the child, so the excluded value is the exact slot to interrogate. The contained Worker never
 /// touches the value: an AppContainer process under
 /// `JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION` is terminated by the raised
-/// `STATUS_INVALID_HANDLE` before it can report anything.
+/// `STATUS_INVALID_HANDLE` before it can report anything. When `DuplicateHandle` succeeds,
+/// `CompareObjectHandles` confirms the duplicate refers to the same kernel object, preventing
+/// false-positive failures when an unrelated handle coincidentally occupies that numeric slot.
 #[cfg(windows)]
 fn excluded_probe_handle_absence_in_worker(
     worker_process: HANDLE,
     excluded_handle_value: u64,
+    excluded_handle_original: HANDLE,
 ) -> Option<bool> {
     if worker_process.is_null() || worker_process == INVALID_HANDLE_VALUE {
         return None;
@@ -1860,6 +1870,9 @@ fn excluded_probe_handle_absence_in_worker(
     let value = usize::try_from(excluded_handle_value).ok()?;
     let source = value as HANDLE;
     if source.is_null() || source == INVALID_HANDLE_VALUE {
+        return None;
+    }
+    if excluded_handle_original.is_null() || excluded_handle_original == INVALID_HANDLE_VALUE {
         return None;
     }
     let mut duplicate: HANDLE = null_mut();
@@ -1883,11 +1896,22 @@ fn excluded_probe_handle_absence_in_worker(
         // SAFETY: this immediately captures the error from the failed DuplicateHandle call.
         unsafe { GetLastError() }
     };
+    let identity_matched =
+        if duplicate_succeeded && !duplicate.is_null() && duplicate != INVALID_HANDLE_VALUE {
+            // SAFETY: both handles are live. CompareObjectHandles compares kernel object identity.
+            unsafe { CompareObjectHandles(excluded_handle_original, duplicate) != 0 }
+        } else {
+            false
+        };
     if duplicate_succeeded && !duplicate.is_null() && duplicate != INVALID_HANDLE_VALUE {
         // SAFETY: the duplicate is owned by this process and is not retained beyond the verdict.
         unsafe { CloseHandle(duplicate) };
     }
-    excluded_handle_absence_from_duplicate_attempt(duplicate_succeeded, last_error)
+    excluded_handle_absence_from_duplicate_attempt(
+        duplicate_succeeded,
+        last_error,
+        identity_matched,
+    )
 }
 
 #[cfg(windows)]
@@ -2534,20 +2558,25 @@ mod tests {
     }
 
     #[test]
-    fn proves_excluded_handle_absence_only_from_parent_side_duplicate_failure() {
+    fn proves_excluded_handle_absence_from_parent_side_duplicate_and_identity_checks() {
         assert_eq!(
             excluded_handle_absence_from_duplicate_attempt(
                 false,
                 WINDOWS_ERROR_INVALID_HANDLE_CODE,
+                false
             ),
             Some(true),
         );
         assert_eq!(
-            excluded_handle_absence_from_duplicate_attempt(true, 0),
+            excluded_handle_absence_from_duplicate_attempt(true, 0, true),
             Some(false),
         );
         assert_eq!(
-            excluded_handle_absence_from_duplicate_attempt(false, 5),
+            excluded_handle_absence_from_duplicate_attempt(true, 0, false),
+            Some(true),
+        );
+        assert_eq!(
+            excluded_handle_absence_from_duplicate_attempt(false, 5, false),
             None,
         );
     }
