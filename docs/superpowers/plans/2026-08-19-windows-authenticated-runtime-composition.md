@@ -129,7 +129,7 @@ pub struct AcpRuntimeAdapter {
 The tests must assert:
 
 ```rust
-assert!(server.config.runtime_adapter.is_none());
+assert!(server.runtime_adapter.is_none());
 assert_eq!(adapted_session.provider_name.as_deref(), Some("actestra"));
 assert_eq!(adapted_session.model_config.unwrap().model_name, "actestra-fixed-model");
 assert_eq!(loaded_tools, vec!["actestra-capability-proxy__actestra.coding.file-read"]);
@@ -149,11 +149,23 @@ its temporary `data_dir`/`config_dir`.
 cargo test --manifest-path "$runtime_root/crates/goose/Cargo.toml" acp_runtime_adapter --no-run
 ```
 
-Expected: compilation fails because `AcpRuntimeAdapter` and the optional factory input do not exist.
+Expected: compilation fails because `AcpRuntimeAdapter` and the
+Actestra-only adapted constructor do not exist.
 
 - [ ] **Step 4: Implement the minimal seam**
 
-Add `runtime_adapter: Option<AcpRuntimeAdapter>` to both `GooseAcpAgentOptions` and `AcpServerFactoryConfig`. Preserve the existing `run()` path by passing `None`; add a separate entry point used only by Actestra:
+Keep both public `AcpServerFactoryConfig` and `GooseAcpAgentOptions` shapes
+unchanged so the default-off seam does not force changes across Goose CLI,
+upstream integration tests, or other callers outside the admitted three-file
+patch. Store `runtime_adapter: Option<AcpRuntimeAdapter>` in the private
+`AcpServer` state instead. Existing `AcpServer::new(config)` initializes it to
+`None`; add `AcpServer::new_with_runtime_adapter(config, adapter)` for the
+Actestra-only entry point. Add internal
+`GooseAcpAgent::new_with_runtime_adapter(...)` and `new_internal(...)`
+constructors; the existing `GooseAcpAgent::new(...)` delegates to the internal
+constructor with no adapter and retains current behavior. Preserve the
+existing `run()` path unchanged; add a separate entry point used only by
+Actestra:
 
 ```rust
 pub async fn run_with_runtime_adapter(adapter: AcpRuntimeAdapter) -> Result<()> {
@@ -161,7 +173,7 @@ pub async fn run_with_runtime_adapter(adapter: AcpRuntimeAdapter) -> Result<()> 
     let incoming = tokio::io::stdin().compat();
     let data_dir = adapter.data_dir.clone();
     let config_dir = adapter.config_dir.clone();
-    let server = crate::acp::server_factory::AcpServer::new(
+    let server = crate::acp::server_factory::AcpServer::new_with_runtime_adapter(
         crate::acp::server_factory::AcpServerFactoryConfig {
             builtins: Vec::new(),
             data_dir,
@@ -169,8 +181,8 @@ pub async fn run_with_runtime_adapter(adapter: AcpRuntimeAdapter) -> Result<()> 
             goose_platform: GoosePlatform::GooseCli,
             additional_source_roots: Vec::new(),
             enable_scheduler: false,
-            runtime_adapter: Some(adapter),
         },
+        adapter,
     );
     let agent = server.create_agent().await?;
     serve(agent, incoming, outgoing).await
@@ -189,6 +201,13 @@ In adapted mode, `handle_new_session()` must:
 6. remove the partial session and release no active registration if any step fails.
 
 The normal `runtime_adapter: None` path must retain the upstream provider factory, extension loading, and session behavior byte-for-byte except for the optional branch. The adapted path must not call `Paths::data_dir()`, `Paths::config_dir()`, or read Provider/model/extension defaults from environment or global Goose configuration.
+
+The agent stores the adapter and explicit single-session ownership state only
+for the adapted path. A failed `session/new` must clear that ownership state so
+one safe retry is possible; a successful active session must cause every
+second `session/new` to fail closed. In adapted mode `config()` must reject
+global configuration access, and model, Provider, mode, and thinking-effort
+mutation entry points must reject the request without mutating session state.
 
 - [ ] **Step 5: Run upstream GREEN and inspect the private runtime diff**
 
