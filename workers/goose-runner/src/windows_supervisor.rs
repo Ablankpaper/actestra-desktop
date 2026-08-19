@@ -816,19 +816,29 @@ pub(crate) enum WindowsProbeExchangeFailure {
     WorkerWait,
     WorkerRequest,
     WorkerResult,
+    WorkerEntry,
+    WorkerPanic,
+    WorkerImageLoad,
+    WorkerRuntimeFault,
     WorkerUnexpectedExit,
     ResultFrame,
 }
 
 #[cfg(any(windows, test))]
 fn classify_windows_probe_child_exit(exit_code: u32) -> WindowsProbeExchangeFailure {
-    match i32::try_from(exit_code).ok() {
-        Some(WINDOWS_PROBE_CHILD_REQUEST_FAILURE_EXIT_CODE) => {
+    match exit_code {
+        value if value == WINDOWS_PROBE_CHILD_REQUEST_FAILURE_EXIT_CODE as u32 => {
             WindowsProbeExchangeFailure::WorkerRequest
         }
-        Some(WINDOWS_PROBE_CHILD_RESULT_FAILURE_EXIT_CODE) => {
+        value if value == WINDOWS_PROBE_CHILD_RESULT_FAILURE_EXIT_CODE as u32 => {
             WindowsProbeExchangeFailure::WorkerResult
         }
+        1 => WindowsProbeExchangeFailure::WorkerEntry,
+        101 => WindowsProbeExchangeFailure::WorkerPanic,
+        0xc000_0022 | 0xc000_007b | 0xc000_0135 | 0xc000_0142 => {
+            WindowsProbeExchangeFailure::WorkerImageLoad
+        }
+        0xc000_0005 | 0xc000_0409 => WindowsProbeExchangeFailure::WorkerRuntimeFault,
         _ => WindowsProbeExchangeFailure::WorkerUnexpectedExit,
     }
 }
@@ -2167,6 +2177,26 @@ mod tests {
             classify_windows_probe_child_exit(WINDOWS_PROBE_CHILD_RESULT_FAILURE_EXIT_CODE as u32),
             WindowsProbeExchangeFailure::WorkerResult
         );
+        assert_eq!(
+            classify_windows_probe_child_exit(1),
+            WindowsProbeExchangeFailure::WorkerEntry
+        );
+        assert_eq!(
+            classify_windows_probe_child_exit(101),
+            WindowsProbeExchangeFailure::WorkerPanic
+        );
+        for exit_code in [0xc000_0022, 0xc000_007b, 0xc000_0135, 0xc000_0142] {
+            assert_eq!(
+                classify_windows_probe_child_exit(exit_code),
+                WindowsProbeExchangeFailure::WorkerImageLoad
+            );
+        }
+        for exit_code in [0xc000_0005, 0xc000_0409] {
+            assert_eq!(
+                classify_windows_probe_child_exit(exit_code),
+                WindowsProbeExchangeFailure::WorkerRuntimeFault
+            );
+        }
         assert_eq!(
             classify_windows_probe_child_exit(u32::MAX),
             WindowsProbeExchangeFailure::WorkerUnexpectedExit

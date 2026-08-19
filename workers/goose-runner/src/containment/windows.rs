@@ -92,6 +92,10 @@ enum WindowsProbeFailure {
     ChildWorkerWait,
     ChildRequestRead,
     ChildResultWrite,
+    ChildEntry,
+    ChildPanic,
+    ChildImageLoad,
+    ChildRuntimeFault,
     ChildUnexpectedExit,
     ChildResultFrame,
     Cleanup,
@@ -115,6 +119,10 @@ impl WindowsProbeFailure {
             Self::ChildWorkerWait => "windows-child-worker-wait-invalid",
             Self::ChildRequestRead => "windows-child-request-read-invalid",
             Self::ChildResultWrite => "windows-child-result-write-invalid",
+            Self::ChildEntry => "windows-child-entry-invalid",
+            Self::ChildPanic => "windows-child-panic-invalid",
+            Self::ChildImageLoad => "windows-child-image-load-invalid",
+            Self::ChildRuntimeFault => "windows-child-runtime-fault-invalid",
             Self::ChildUnexpectedExit => "windows-child-unexpected-exit-invalid",
             Self::ChildResultFrame => "windows-child-result-frame-invalid",
             Self::Cleanup => "windows-cleanup-incomplete",
@@ -647,6 +655,12 @@ fn collect_windows_hostile_evidence() -> Result<WindowsHostileEvidence, WindowsP
                 WindowsProbeExchangeFailure::WorkerWait => WindowsProbeFailure::ChildWorkerWait,
                 WindowsProbeExchangeFailure::WorkerRequest => WindowsProbeFailure::ChildRequestRead,
                 WindowsProbeExchangeFailure::WorkerResult => WindowsProbeFailure::ChildResultWrite,
+                WindowsProbeExchangeFailure::WorkerEntry => WindowsProbeFailure::ChildEntry,
+                WindowsProbeExchangeFailure::WorkerPanic => WindowsProbeFailure::ChildPanic,
+                WindowsProbeExchangeFailure::WorkerImageLoad => WindowsProbeFailure::ChildImageLoad,
+                WindowsProbeExchangeFailure::WorkerRuntimeFault => {
+                    WindowsProbeFailure::ChildRuntimeFault
+                }
                 WindowsProbeExchangeFailure::WorkerUnexpectedExit => {
                     WindowsProbeFailure::ChildUnexpectedExit
                 }
@@ -820,6 +834,22 @@ mod tests {
             (
                 WindowsProbeFailure::ChildResultWrite,
                 "windows-child-result-write-invalid",
+            ),
+            (
+                WindowsProbeFailure::ChildEntry,
+                "windows-child-entry-invalid",
+            ),
+            (
+                WindowsProbeFailure::ChildPanic,
+                "windows-child-panic-invalid",
+            ),
+            (
+                WindowsProbeFailure::ChildImageLoad,
+                "windows-child-image-load-invalid",
+            ),
+            (
+                WindowsProbeFailure::ChildRuntimeFault,
+                "windows-child-runtime-fault-invalid",
             ),
             (
                 WindowsProbeFailure::ChildUnexpectedExit,

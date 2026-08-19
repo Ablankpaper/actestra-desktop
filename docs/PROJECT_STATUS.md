@@ -4,6 +4,48 @@ Last updated: 2026-08-19
 
 ## Current phase
 
+### 2026-08-19 P8.2b exact-head probe-route correction disproved; exit discriminator added (gate remains open)
+
+Draft pull request
+[#68](https://github.com/Ablankpaper/actestra-desktop/pull/68) reached exact
+head `9ed17e80652352d164f1f9d3516bdc21ba92770a`. Pull-request run
+[`32183130018`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32183130018)
+completed with five successful jobs and one failed job. The Windows x64 build
+probe (`95860608121`), Ubuntu x64 build probe (`95860608122`), Goose runner
+admission (`95860608190`), Ubuntu x64 containment (`95860608214`), and macOS
+arm64 foundation (`95860608256`) all passed. Windows containment job
+[`95860608291`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32183130018/job/95860608291)
+built and admitted the exact Windows runner, preserved the frozen lock, and
+then failed the exact containment acceptance with the closed code
+`windows-child-unexpected-exit-invalid`. The success-only Windows evidence
+upload was skipped, so no failed result was retained as an admitting Artifact.
+
+This exact result disproves the preceding route-only repair as a complete root
+cause. The repaired bytes did compile and the separate native supervisor
+primitives passed, but the real admitted runner still terminated after the
+AppContainer child launch and before it returned its fixed result frame. The
+old exit classifier collapsed explicit entry failure, Rust panic, Windows
+image/dependency initialization failure, runtime fault, and every other
+unexpected process status into the same code, so the run does not justify a
+new behavioral repair.
+
+The follow-up local change is diagnostic only and was written test-first. It
+adds closed, path-free categories for child entry failure, Rust panic, known
+Windows image/dependency loading statuses, and known runtime-fault statuses;
+all other statuses remain `windows-child-unexpected-exit-invalid`. It does not
+emit a raw status, path, handle, environment value, SID, credential, or Win32
+message. Every category remains nonzero and non-admitting. The focused
+diagnostic file passes 10/10, all portable runner tests pass 50/50, Rust and
+project formatting pass, lint remains at zero warnings and errors, and
+`git diff --check` is clean. Exact-head Windows CI is still required to select
+the actual category before any root-cause repair is made.
+
+No AppContainer capability, Job Object limit, inherited-handle allowlist,
+environment cleaning, admission rule, `foundation/`, Renderer, preload,
+provider, persistence, or UI authority was weakened or changed. Windows
+containment, P8.2b, overall P8.2, P8.3, P8.4, candidate creation, release,
+deployment, and user acceptance remain open.
+
 ### 2026-08-19 P8.2b Windows `LOCALAPPDATA` root cause proved and local repair (gate remains open)
 
 Draft pull request
