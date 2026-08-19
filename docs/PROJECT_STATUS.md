@@ -1,6 +1,48 @@
 # Project Status
 
-Last updated: 2026-08-19
+Last updated: 2026-08-20
+
+## 2026-08-20 P8.2c Batch 3 Task 9 Main authenticated bridge hosts (local slice green; native gate remains open)
+
+Task 9 is implemented locally on top of `40cc9af`. Main now has separate
+authenticated Windows model and capability bridge hosts around the existing
+Actestra invoker ports. Both hosts consume the versioned length-prefixed frame
+protocol, bind exactly one ACP session to the attempt lease, reject malformed,
+stale, duplicate, wrong-scope, and cross-boundary requests, support bounded
+cancellation, and close idempotently. The model host preserves the existing
+failure vocabulary and counters: only a completion that passes Main's
+completion contract and can be serialized onto the bridge counts as served;
+broker or completion/serialization refusal counts as
+`model-completion-refused`; malformed or duplicate requests count as
+`rejectedRequestCount`. The capability host lists the exact six
+`CODING_TOOL_IDS`, reuses the existing tool schemas and `parseCodingToolInput`,
+and delegates execution to the existing `GooseMcpToolInvoker`; it does not
+gain filesystem, Git, shell, credential, or network authority.
+
+The protocol validator now also applies the existing coding-tool input
+contract before a capability call frame is admitted, and the existing MCP
+tool-list builder is shared by the Windows host so the Windows and loopback
+surfaces cannot drift in tool names or schemas. New tests exercise successful
+model and tool calls, refusal classification, malformed/wrong-scope input,
+replay rejection, cancellation, session binding, exact six-tool discovery,
+and idempotent cleanup.
+
+Local evidence is green: the focused protocol/host suite passes `13` tests
+with `56` assertions; `bun run check` exits `0` with `168` test files passed /
+`2` skipped and `1,805` tests passed / `10` skipped. The same run passed the
+P8 contract, Electron SQLite, P7 abuse gate (`28` cases / `168` variants),
+smoke harness, product boundary, frozen foundation, downstream overlay, and
+package gates. Format, lint (zero warnings/errors), typecheck, and
+`git diff --check` also pass.
+
+This does not close Task 9 or P8.2c yet: the Windows native runtime has not
+consumed these Main hosts through the real Supervisor channels, and the
+exact-head CI run `32271632641` is still in progress (Ubuntu build probe,
+Goose admission, and macOS foundation are green; Windows build/containment,
+Ubuntu containment, and the remaining CI jobs are not final). Task 10's
+explicit transport-mode composition and seven-channel implementation,
+Windows authenticated runtime integration, Electron/provider-backed
+acceptance, P8.3, P8.4, release, deployment, and user acceptance remain open.
 
 ## Current phase
 

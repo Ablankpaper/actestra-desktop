@@ -1,5 +1,5 @@
 import { TextDecoder } from "node:util";
-import { CODING_TOOL_IDS } from "../../core";
+import { CODING_TOOL_IDS, parseCodingToolInput } from "../../core";
 import type {
   ActestraMainModelCompletion,
   ActestraMainModelInvocation,
@@ -314,6 +314,11 @@ function validateCapabilityFrame(
       const sessionId = token(object.sessionId, 1, 256);
       checkScope(lease, sessionId, options);
       if (!isOneOf(object.toolName, BRIDGE_TOOL_IDS) || !isJsonObject(object.arguments)) {
+        throw new GooseAuthenticatedBridgeProtocolError();
+      }
+      try {
+        parseCodingToolInput(object.toolName, JSON.stringify(object.arguments));
+      } catch {
         throw new GooseAuthenticatedBridgeProtocolError();
       }
       return;
