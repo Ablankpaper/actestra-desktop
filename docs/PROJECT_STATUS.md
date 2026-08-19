@@ -33,11 +33,22 @@ changed paths, patch digest, and features. Project format, Rust format, lint
 (zero warnings and errors), typecheck, documentation links (96 Markdown
 files), and `git diff --check` pass.
 
-This is local source/provenance admission only. The Actestra branch and this
-exact head have not yet been pushed or run in CI. No adapted Windows Goose
-session, authenticated model/capability bridge, Electron package, P8.2c exit,
-P8.3 candidate integrity, P8.4 real-provider acceptance, release, deployment,
-or user acceptance is claimed. Rollback restores canonical Goose
+The first pushed Batch 1 head `497bd243cbdd6d75ac55f19e8b4b7686a46f0a4d`
+started pull-request run
+[`32249392029`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32249392029).
+Both Windows jobs failed before private-source fetch because Git Bash
+`install -m 700 -d` could not change permissions on the NTFS-backed
+`RUNNER_TEMP`; Ubuntu completed the same credential setup and fetch. The run
+was cancelled because its remaining results could not verify the corrected
+head. The local correction keeps key creation, frozen fetch, and trap-based
+deletion in one step, normalizes only the Windows temporary path with
+`cygpath`, and applies POSIX modes only on non-Windows runners. A new exact-head
+CI run is required.
+
+This is source/provenance admission only. No adapted Windows Goose session,
+authenticated model/capability bridge, Electron package, P8.2c exit, P8.3
+candidate integrity, P8.4 real-provider acceptance, release, deployment, or
+user acceptance is claimed. Rollback restores canonical Goose
 `4dc0420f5704a92806c6628c8f0a3497d7a88759` and keeps Windows production
 runtime admission disabled.
 

@@ -36,37 +36,34 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Admit private Goose runtime source
+      - name: Fetch admitted private Goose runtime source
         shell: bash
         env:
           ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY: ${{ secrets.ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY }}
         run: |
           set -euo pipefail
           test -n "$ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY"
-          key_root="$RUNNER_TEMP/actestra-goose-runtime-ssh"
-          install -m 700 -d "$key_root"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            key_root="$(cygpath -u "$RUNNER_TEMP")/actestra-goose-runtime-ssh"
+          else
+            key_root="$RUNNER_TEMP/actestra-goose-runtime-ssh"
+          fi
+          trap 'rm -rf -- "$key_root"' EXIT
+          mkdir -p "$key_root"
+          if [ "$RUNNER_OS" != "Windows" ]; then
+            chmod 700 "$key_root"
+          fi
           printf '%s\n' "$ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY" > "$key_root/id_ed25519"
-          chmod 600 "$key_root/id_ed25519"
+          if [ "$RUNNER_OS" != "Windows" ]; then
+            chmod 600 "$key_root/id_ed25519"
+          fi
           # GitHub ED25519 fingerprint: SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU
           printf '%s\n' \
             'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' \
             > "$key_root/known_hosts"
-          echo 'CARGO_NET_GIT_FETCH_WITH_CLI=true' >> "$GITHUB_ENV"
-          {
-            echo 'GIT_SSH_COMMAND<<ACTESTRA_GOOSE_SSH'
-            echo "ssh -i $key_root/id_ed25519 -o IdentitiesOnly=yes -o UserKnownHostsFile=$key_root/known_hosts"
-            echo 'ACTESTRA_GOOSE_SSH'
-          } >> "$GITHUB_ENV"
-
-      - name: Fetch admitted private Goose runtime source
-        run: cargo fetch --manifest-path workers/goose-runner/Cargo.toml --locked
-
-      - name: Retire private Goose runtime credential
-        if: always()
-        shell: bash
-        run: |
-          rm -rf -- "$RUNNER_TEMP/actestra-goose-runtime-ssh"
-          echo 'GIT_SSH_COMMAND=' >> "$GITHUB_ENV"
+          export CARGO_NET_GIT_FETCH_WITH_CLI=true
+          export GIT_SSH_COMMAND="ssh -i $key_root/id_ed25519 -o IdentitiesOnly=yes -o UserKnownHostsFile=$key_root/known_hosts"
+          cargo fetch --manifest-path workers/goose-runner/Cargo.toml --locked
 
       - name: Verify Goose runner Rust formatting
         run: bun run goose:runner:format:check
@@ -119,37 +116,34 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Admit private Goose runtime source
+      - name: Fetch admitted private Goose runtime source
         shell: bash
         env:
           ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY: ${{ secrets.ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY }}
         run: |
           set -euo pipefail
           test -n "$ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY"
-          key_root="$RUNNER_TEMP/actestra-goose-runtime-ssh"
-          install -m 700 -d "$key_root"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            key_root="$(cygpath -u "$RUNNER_TEMP")/actestra-goose-runtime-ssh"
+          else
+            key_root="$RUNNER_TEMP/actestra-goose-runtime-ssh"
+          fi
+          trap 'rm -rf -- "$key_root"' EXIT
+          mkdir -p "$key_root"
+          if [ "$RUNNER_OS" != "Windows" ]; then
+            chmod 700 "$key_root"
+          fi
           printf '%s\n' "$ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY" > "$key_root/id_ed25519"
-          chmod 600 "$key_root/id_ed25519"
+          if [ "$RUNNER_OS" != "Windows" ]; then
+            chmod 600 "$key_root/id_ed25519"
+          fi
           # GitHub ED25519 fingerprint: SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU
           printf '%s\n' \
             'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' \
             > "$key_root/known_hosts"
-          echo 'CARGO_NET_GIT_FETCH_WITH_CLI=true' >> "$GITHUB_ENV"
-          {
-            echo 'GIT_SSH_COMMAND<<ACTESTRA_GOOSE_SSH'
-            echo "ssh -i $key_root/id_ed25519 -o IdentitiesOnly=yes -o UserKnownHostsFile=$key_root/known_hosts"
-            echo 'ACTESTRA_GOOSE_SSH'
-          } >> "$GITHUB_ENV"
-
-      - name: Fetch admitted private Goose runtime source
-        run: cargo fetch --manifest-path workers/goose-runner/Cargo.toml --locked
-
-      - name: Retire private Goose runtime credential
-        if: always()
-        shell: bash
-        run: |
-          rm -rf -- "$RUNNER_TEMP/actestra-goose-runtime-ssh"
-          echo 'GIT_SSH_COMMAND=' >> "$GITHUB_ENV"
+          export CARGO_NET_GIT_FETCH_WITH_CLI=true
+          export GIT_SSH_COMMAND="ssh -i $key_root/id_ed25519 -o IdentitiesOnly=yes -o UserKnownHostsFile=$key_root/known_hosts"
+          cargo fetch --manifest-path workers/goose-runner/Cargo.toml --locked
 
       - name: Verify Goose runner Rust formatting
         run: bun run goose:runner:format:check
@@ -206,37 +200,34 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Admit private Goose runtime source
+      - name: Fetch admitted private Goose runtime source
         shell: bash
         env:
           ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY: ${{ secrets.ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY }}
         run: |
           set -euo pipefail
           test -n "$ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY"
-          key_root="$RUNNER_TEMP/actestra-goose-runtime-ssh"
-          install -m 700 -d "$key_root"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            key_root="$(cygpath -u "$RUNNER_TEMP")/actestra-goose-runtime-ssh"
+          else
+            key_root="$RUNNER_TEMP/actestra-goose-runtime-ssh"
+          fi
+          trap 'rm -rf -- "$key_root"' EXIT
+          mkdir -p "$key_root"
+          if [ "$RUNNER_OS" != "Windows" ]; then
+            chmod 700 "$key_root"
+          fi
           printf '%s\n' "$ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY" > "$key_root/id_ed25519"
-          chmod 600 "$key_root/id_ed25519"
+          if [ "$RUNNER_OS" != "Windows" ]; then
+            chmod 600 "$key_root/id_ed25519"
+          fi
           # GitHub ED25519 fingerprint: SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU
           printf '%s\n' \
             'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' \
             > "$key_root/known_hosts"
-          echo 'CARGO_NET_GIT_FETCH_WITH_CLI=true' >> "$GITHUB_ENV"
-          {
-            echo 'GIT_SSH_COMMAND<<ACTESTRA_GOOSE_SSH'
-            echo "ssh -i $key_root/id_ed25519 -o IdentitiesOnly=yes -o UserKnownHostsFile=$key_root/known_hosts"
-            echo 'ACTESTRA_GOOSE_SSH'
-          } >> "$GITHUB_ENV"
-
-      - name: Fetch admitted private Goose runtime source
-        run: cargo fetch --manifest-path workers/goose-runner/Cargo.toml --locked
-
-      - name: Retire private Goose runtime credential
-        if: always()
-        shell: bash
-        run: |
-          rm -rf -- "$RUNNER_TEMP/actestra-goose-runtime-ssh"
-          echo 'GIT_SSH_COMMAND=' >> "$GITHUB_ENV"
+          export CARGO_NET_GIT_FETCH_WITH_CLI=true
+          export GIT_SSH_COMMAND="ssh -i $key_root/id_ed25519 -o IdentitiesOnly=yes -o UserKnownHostsFile=$key_root/known_hosts"
+          cargo fetch --manifest-path workers/goose-runner/Cargo.toml --locked
 
       - name: Verify Goose runner Rust formatting
         run: bun run goose:runner:format:check
@@ -287,37 +278,34 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Admit private Goose runtime source
+      - name: Fetch admitted private Goose runtime source
         shell: bash
         env:
           ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY: ${{ secrets.ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY }}
         run: |
           set -euo pipefail
           test -n "$ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY"
-          key_root="$RUNNER_TEMP/actestra-goose-runtime-ssh"
-          install -m 700 -d "$key_root"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            key_root="$(cygpath -u "$RUNNER_TEMP")/actestra-goose-runtime-ssh"
+          else
+            key_root="$RUNNER_TEMP/actestra-goose-runtime-ssh"
+          fi
+          trap 'rm -rf -- "$key_root"' EXIT
+          mkdir -p "$key_root"
+          if [ "$RUNNER_OS" != "Windows" ]; then
+            chmod 700 "$key_root"
+          fi
           printf '%s\n' "$ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY" > "$key_root/id_ed25519"
-          chmod 600 "$key_root/id_ed25519"
+          if [ "$RUNNER_OS" != "Windows" ]; then
+            chmod 600 "$key_root/id_ed25519"
+          fi
           # GitHub ED25519 fingerprint: SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU
           printf '%s\n' \
             'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' \
             > "$key_root/known_hosts"
-          echo 'CARGO_NET_GIT_FETCH_WITH_CLI=true' >> "$GITHUB_ENV"
-          {
-            echo 'GIT_SSH_COMMAND<<ACTESTRA_GOOSE_SSH'
-            echo "ssh -i $key_root/id_ed25519 -o IdentitiesOnly=yes -o UserKnownHostsFile=$key_root/known_hosts"
-            echo 'ACTESTRA_GOOSE_SSH'
-          } >> "$GITHUB_ENV"
-
-      - name: Fetch admitted private Goose runtime source
-        run: cargo fetch --manifest-path workers/goose-runner/Cargo.toml --locked
-
-      - name: Retire private Goose runtime credential
-        if: always()
-        shell: bash
-        run: |
-          rm -rf -- "$RUNNER_TEMP/actestra-goose-runtime-ssh"
-          echo 'GIT_SSH_COMMAND=' >> "$GITHUB_ENV"
+          export CARGO_NET_GIT_FETCH_WITH_CLI=true
+          export GIT_SSH_COMMAND="ssh -i $key_root/id_ed25519 -o IdentitiesOnly=yes -o UserKnownHostsFile=$key_root/known_hosts"
+          cargo fetch --manifest-path workers/goose-runner/Cargo.toml --locked
 
       - name: Verify Goose runner Rust formatting
         run: bun run goose:runner:format:check
@@ -376,37 +364,34 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Admit private Goose runtime source
+      - name: Fetch admitted private Goose runtime source
         shell: bash
         env:
           ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY: ${{ secrets.ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY }}
         run: |
           set -euo pipefail
           test -n "$ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY"
-          key_root="$RUNNER_TEMP/actestra-goose-runtime-ssh"
-          install -m 700 -d "$key_root"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            key_root="$(cygpath -u "$RUNNER_TEMP")/actestra-goose-runtime-ssh"
+          else
+            key_root="$RUNNER_TEMP/actestra-goose-runtime-ssh"
+          fi
+          trap 'rm -rf -- "$key_root"' EXIT
+          mkdir -p "$key_root"
+          if [ "$RUNNER_OS" != "Windows" ]; then
+            chmod 700 "$key_root"
+          fi
           printf '%s\n' "$ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY" > "$key_root/id_ed25519"
-          chmod 600 "$key_root/id_ed25519"
+          if [ "$RUNNER_OS" != "Windows" ]; then
+            chmod 600 "$key_root/id_ed25519"
+          fi
           # GitHub ED25519 fingerprint: SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU
           printf '%s\n' \
             'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' \
             > "$key_root/known_hosts"
-          echo 'CARGO_NET_GIT_FETCH_WITH_CLI=true' >> "$GITHUB_ENV"
-          {
-            echo 'GIT_SSH_COMMAND<<ACTESTRA_GOOSE_SSH'
-            echo "ssh -i $key_root/id_ed25519 -o IdentitiesOnly=yes -o UserKnownHostsFile=$key_root/known_hosts"
-            echo 'ACTESTRA_GOOSE_SSH'
-          } >> "$GITHUB_ENV"
-
-      - name: Fetch admitted private Goose runtime source
-        run: cargo fetch --manifest-path workers/goose-runner/Cargo.toml --locked
-
-      - name: Retire private Goose runtime credential
-        if: always()
-        shell: bash
-        run: |
-          rm -rf -- "$RUNNER_TEMP/actestra-goose-runtime-ssh"
-          echo 'GIT_SSH_COMMAND=' >> "$GITHUB_ENV"
+          export CARGO_NET_GIT_FETCH_WITH_CLI=true
+          export GIT_SSH_COMMAND="ssh -i $key_root/id_ed25519 -o IdentitiesOnly=yes -o UserKnownHostsFile=$key_root/known_hosts"
+          cargo fetch --manifest-path workers/goose-runner/Cargo.toml --locked
 
       - name: Verify Goose runner Rust formatting
         run: bun run goose:runner:format:check
@@ -598,37 +583,34 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Admit private Goose runtime source
+      - name: Fetch admitted private Goose runtime source
         shell: bash
         env:
           ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY: ${{ secrets.ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY }}
         run: |
           set -euo pipefail
           test -n "$ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY"
-          key_root="$RUNNER_TEMP/actestra-goose-runtime-ssh"
-          install -m 700 -d "$key_root"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            key_root="$(cygpath -u "$RUNNER_TEMP")/actestra-goose-runtime-ssh"
+          else
+            key_root="$RUNNER_TEMP/actestra-goose-runtime-ssh"
+          fi
+          trap 'rm -rf -- "$key_root"' EXIT
+          mkdir -p "$key_root"
+          if [ "$RUNNER_OS" != "Windows" ]; then
+            chmod 700 "$key_root"
+          fi
           printf '%s\n' "$ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY" > "$key_root/id_ed25519"
-          chmod 600 "$key_root/id_ed25519"
+          if [ "$RUNNER_OS" != "Windows" ]; then
+            chmod 600 "$key_root/id_ed25519"
+          fi
           # GitHub ED25519 fingerprint: SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU
           printf '%s\n' \
             'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' \
             > "$key_root/known_hosts"
-          echo 'CARGO_NET_GIT_FETCH_WITH_CLI=true' >> "$GITHUB_ENV"
-          {
-            echo 'GIT_SSH_COMMAND<<ACTESTRA_GOOSE_SSH'
-            echo "ssh -i $key_root/id_ed25519 -o IdentitiesOnly=yes -o UserKnownHostsFile=$key_root/known_hosts"
-            echo 'ACTESTRA_GOOSE_SSH'
-          } >> "$GITHUB_ENV"
-
-      - name: Fetch admitted private Goose runtime source
-        run: cargo fetch --manifest-path workers/goose-runner/Cargo.toml --locked
-
-      - name: Retire private Goose runtime credential
-        if: always()
-        shell: bash
-        run: |
-          rm -rf -- "$RUNNER_TEMP/actestra-goose-runtime-ssh"
-          echo 'GIT_SSH_COMMAND=' >> "$GITHUB_ENV"
+          export CARGO_NET_GIT_FETCH_WITH_CLI=true
+          export GIT_SSH_COMMAND="ssh -i $key_root/id_ed25519 -o IdentitiesOnly=yes -o UserKnownHostsFile=$key_root/known_hosts"
+          cargo fetch --manifest-path workers/goose-runner/Cargo.toml --locked
 
       - name: Verify source, tests, boundaries, and renderer build
         run: bun run check
