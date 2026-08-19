@@ -145,18 +145,22 @@ not as an unrecorded compatibility shim.
   runtime admission. Rollback must not fall back to direct HTTP, direct
   Provider credentials, or an uncontained Worker.
 
-The optional Goose seam supplies three typed values:
+The optional Goose seam supplies four typed inputs:
 
 1. a fixed session Provider identity and model configuration that do not depend
    on global Goose configuration or environment variables;
 2. an `Arc<dyn Provider>` created by the Actestra runner;
 3. one named and configured `Arc<dyn McpClientTrait>` installed before the ACP
-   session is registered as active.
+   session is registered as active;
+4. per-attempt Goose data and configuration directories derived inside the
+   Worker's admitted private root, never the user's global Goose paths.
 
 The seam must not expose raw credentials, arbitrary extension factories,
 generic command execution, global registry mutation, or a post-activation race.
-Provider and extension installation failure rejects `session/new` and removes
-the partially created session.
+Adapted session creation must not read Provider, model, extension, mode, naming,
+data-directory, or configuration-directory defaults from global Goose
+configuration or environment variables. Provider and extension installation
+failure rejects `session/new` and removes the partially created session.
 
 ## Runtime topology
 
@@ -176,10 +180,11 @@ Electron Main
                                      +----------- AppContainer Worker -+
 ```
 
-Main starts the Supervisor with six exact channels:
+Main starts the Supervisor with seven exact channels:
 
-- ACP stdin and stdout through standard handles;
-- bounded stderr diagnostics;
+- ACP stdin through the standard input handle;
+- ACP stdout through the standard output handle;
+- bounded stderr diagnostics through the standard error handle;
 - one one-shot control channel;
 - one parent-liveness channel;
 - one duplex capability bridge channel;
@@ -211,7 +216,8 @@ The Worker startup order is exact:
 3. connect once to each attempt-scoped named pipe;
 4. construct the model Provider and MCP client adapters;
 5. construct `GooseAcpAgent` with no builtins, no scheduler, the fixed session
-   model configuration, and the optional runtime adapters;
+   model configuration, per-attempt private state directories, and the optional
+   runtime adapters;
 6. report ready over the dedicated ready handle;
 7. serve Goose ACP over Worker stdin/stdout until orderly close, cancellation,
    parent death, or failure.
