@@ -228,6 +228,8 @@ describe("Windows Goose runner bridge contract", () => {
         [
           "#!/bin/sh",
           "set -eu",
+          ': > "control-frame.bin"',
+          "sleep 0.05",
           'cat <&3 > "control-frame.bin"',
           'if [ "${ACTESTRA_ENVIRONMENT_CANARY+x}" = x ]; then canary=present; else canary=absent; fi',
           "if [ -e /dev/fd/4 ]; then liveness=present; else liveness=missing; fi",
@@ -262,10 +264,8 @@ describe("Windows Goose runner bridge contract", () => {
         architecture: "x64",
       });
       try {
-        const [controlFrame, launchEvidence] = await Promise.all([
-          waitForFile(controlPath),
-          waitForFile(launchEvidencePath),
-        ]);
+        const launchEvidence = await waitForFile(launchEvidencePath);
+        const controlFrame = await readFile(controlPath);
         expect(controlFrame).toEqual(Buffer.from(encodeWindowsSupervisorControlFrame(options)));
         expect(launchEvidence.toString("utf8").trim()).toBe(
           "--actestra-windows-supervisor-v1|missing|absent|present",
