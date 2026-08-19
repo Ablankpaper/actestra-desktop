@@ -643,6 +643,10 @@
       "destination": "packages/desktop/src/actestra/main/workers/gooseMcpCapabilityServer.ts"
     },
     {
+      "source": "apps/desktop/src/main/workers/gooseAuthenticatedBridgeProtocol.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/gooseAuthenticatedBridgeProtocol.ts"
+    },
+    {
       "source": "apps/desktop/src/main/workers/gooseMcpSessionComposition.ts",
       "destination": "packages/desktop/src/actestra/main/workers/gooseMcpSessionComposition.ts"
     },
@@ -957,6 +961,7 @@
     "packages/desktop/src/actestra/main/workers/gooseBridgeSocket.ts",
     "packages/desktop/src/actestra/main/workers/gooseLoopbackModelServer.ts",
     "packages/desktop/src/actestra/main/workers/gooseMcpCapabilityServer.ts",
+    "packages/desktop/src/actestra/main/workers/gooseAuthenticatedBridgeProtocol.ts",
     "packages/desktop/src/actestra/main/workers/gooseMcpSessionComposition.ts",
     "packages/desktop/src/actestra/main/workers/gooseRunnerArtifact.ts",
     "packages/desktop/src/actestra/main/workers/gooseRunnerLinuxPackage.ts",

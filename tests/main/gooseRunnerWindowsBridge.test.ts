@@ -501,9 +501,11 @@ describe("Windows Goose runner bridge contract", () => {
               modelId: "test-model",
               attemptLease,
             }),
+            modelId: "test-model",
             capabilitySocketPath: path.join(root.bridgeDirectory, "capability.sock"),
             modelSocketPath: path.join(root.bridgeDirectory, "model.sock"),
             windows: Object.freeze({ capabilityPipeName, modelPipeName, attemptLease }),
+            attachWindowsChannels() {},
             async close() {},
           }),
         transportFactory: (options) => {

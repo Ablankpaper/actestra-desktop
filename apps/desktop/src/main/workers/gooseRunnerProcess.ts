@@ -110,6 +110,7 @@ export interface GooseAcpSpawnOptions {
     readonly modelId: string;
     readonly targetTriple: "x86_64-pc-windows-msvc";
   }>;
+  readonly attachWindowsChannels?: (channels: GooseWindowsSupervisorChannels) => void;
 }
 
 export type GooseAcpTransportFactory = (options: GooseAcpSpawnOptions) => GooseAcpTransport;
@@ -160,11 +161,13 @@ export interface GooseRunnerPreparedRoot {
 }
 
 export interface GooseRunnerPreparedBridge {
-  readonly capabilityProxyUrl: string;
-  readonly modelBinding: GooseRunnerModelBinding;
-  readonly capabilitySocketPath: string;
-  readonly modelSocketPath: string;
+  readonly capabilityProxyUrl?: string;
+  readonly modelBinding?: GooseRunnerModelBinding;
+  readonly capabilitySocketPath?: string;
+  readonly modelSocketPath?: string;
   readonly windows?: GooseRunnerWindowsBridgeEnvironment;
+  readonly modelId?: string;
+  readonly attachWindowsChannels?: (channels: GooseWindowsSupervisorChannels) => void;
   close(): Promise<void>;
 }
 
@@ -650,8 +653,8 @@ function validatePreparedBridge(
   }
   const keys = Reflect.ownKeys(value);
   if (
-    keys.length < 5 ||
-    keys.length > 6 ||
+    keys.length < 2 ||
+    keys.length > 9 ||
     keys.some(
       (key) =>
         typeof key !== "string" ||
@@ -660,7 +663,9 @@ function validatePreparedBridge(
           "modelBinding",
           "capabilitySocketPath",
           "modelSocketPath",
+          "modelId",
           "windows",
+          "attachWindowsChannels",
           "close",
         ].includes(key),
     )
@@ -674,12 +679,43 @@ function validatePreparedBridge(
   const capabilitySocketPath = value.capabilitySocketPath;
   const modelSocketPath = value.modelSocketPath;
   const windows = value.windows;
+  const modelId = value.modelId;
+  const attachWindowsChannels = value.attachWindowsChannels;
   const close = value.close;
+  if (typeof close !== "function") {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose bridge factory returned an invalid endpoint contract",
+    );
+  }
+  if (windows !== undefined) {
+    if (typeof attachWindowsChannels !== "function") {
+      throw new GooseRunnerProcessError(
+        "invalid-options",
+        "Windows Goose bridge factory must attach the authenticated channels",
+      );
+    }
+    return Object.freeze({
+      windows: validateWindowsBridgeEnvironment(windows),
+      modelId:
+        typeof modelId === "string" && modelId.length > 0 && modelId.length <= 256
+          ? modelId
+          : (() => {
+              throw new GooseRunnerProcessError(
+                "invalid-options",
+                "Windows Goose bridge factory must return the admitted model identifier",
+              );
+            })(),
+      attachWindowsChannels: attachWindowsChannels as (
+        channels: GooseWindowsSupervisorChannels,
+      ) => void,
+      close: close as () => Promise<void>,
+    });
+  }
   if (
     typeof capabilityProxyUrl !== "string" ||
     typeof capabilitySocketPath !== "string" ||
-    typeof modelSocketPath !== "string" ||
-    typeof close !== "function"
+    typeof modelSocketPath !== "string"
   ) {
     throw new GooseRunnerProcessError(
       "invalid-options",
@@ -729,6 +765,14 @@ function validatePreparedBridge(
     capabilitySocketPath,
     modelSocketPath,
     ...(windows === undefined ? {} : { windows: validateWindowsBridgeEnvironment(windows) }),
+    ...(attachWindowsChannels === undefined
+      ? {}
+      : {
+          attachWindowsChannels: attachWindowsChannels as (
+            channels: GooseWindowsSupervisorChannels,
+          ) => void,
+        }),
+    ...(modelId === undefined ? {} : { modelId: modelId as string }),
     close: close as () => Promise<void>,
   });
 }
@@ -1284,6 +1328,7 @@ export function createNodeGooseAcpTransport(
   const controlWriter = control as Writable;
   controlWriter.once("error", () => child.kill());
   controlWriter.end(Buffer.from(encodeWindowsSupervisorControlFrame(options)));
+  options.attachWindowsChannels?.({ capability: capability as Duplex, model: model as Duplex });
   return new NodeGooseAcpTransport(child, parentLiveness as Writable, {
     capability: capability as Duplex,
     model: model as Duplex,
@@ -1575,7 +1620,9 @@ export async function openGooseRunnerHandshake(
       bridge !== undefined &&
       capabilityProxyPort !== undefined &&
       stableModelBinding !== undefined &&
-      admittedWorkspaceDirectory !== undefined
+      admittedWorkspaceDirectory !== undefined &&
+      typeof bridge.capabilitySocketPath === "string" &&
+      typeof bridge.modelSocketPath === "string"
         ? Object.freeze({
             capabilitySocketPath: bridge.capabilitySocketPath,
             modelSocketPath: bridge.modelSocketPath,
@@ -1620,10 +1667,13 @@ export async function openGooseRunnerHandshake(
               attemptLease: windowsBridgeEnvironment.attemptLease,
               attemptId: windowsBridgeAttemptId(windowsBridgeEnvironment),
               executableSha256: options.artifact.executableSha256,
-              modelId: stableModelBinding!.binding.modelId,
+              modelId: stableModelBinding?.binding.modelId ?? bridge?.modelId ?? "",
               targetTriple: "x86_64-pc-windows-msvc" as const,
             }),
           }),
+      ...(bridge?.attachWindowsChannels === undefined
+        ? {}
+        : { attachWindowsChannels: bridge.attachWindowsChannels }),
     });
     assertGooseContainmentLaunch(
       Object.freeze({

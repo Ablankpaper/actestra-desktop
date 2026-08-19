@@ -30,6 +30,22 @@ import {
   type OpenGooseRunnerHandshakeOptions,
   type OpenGooseRunnerHandshakeResult,
 } from "./gooseRunnerProcess";
+import {
+  resolveGooseSessionTransportMode,
+  type GooseCapabilityBoundary,
+  type GooseModelBoundary,
+} from "./gooseSessionTransport";
+import {
+  startGooseWindowsCapabilityBridgeHost,
+  type GooseWindowsCapabilityBridgeHost,
+  type StartGooseWindowsCapabilityBridgeHostOptions,
+} from "./gooseWindowsCapabilityBridgeHost";
+import {
+  startGooseWindowsModelBridgeHost,
+  type GooseWindowsModelBridgeHost,
+  type StartGooseWindowsModelBridgeHostOptions,
+} from "./gooseWindowsModelBridgeHost";
+import type { Duplex } from "node:stream";
 
 const DEFAULT_TOOLS_LIST_WAIT_MS = 30_000;
 const EXPECTED_GOOSE_TOOL_NAMES = Object.freeze(
@@ -91,12 +107,23 @@ export interface GooseMcpSessionCompositionDependencies {
   openRunnerHandshake(
     options: OpenGooseRunnerHandshakeOptions,
   ): Promise<OpenGooseRunnerHandshakeResult>;
+  startWindowsCapabilityHost?(
+    options: StartGooseWindowsCapabilityBridgeHostOptions,
+  ): GooseWindowsCapabilityBridgeHost;
+  startWindowsModelHost?(
+    options: StartGooseWindowsModelBridgeHostOptions,
+  ): GooseWindowsModelBridgeHost;
 }
+
+type CapabilityServer = GooseMcpCapabilityServer | GooseCapabilityBoundary;
+type ModelServer = GooseLoopbackModelServer | GooseModelBoundary;
 
 const DEFAULT_DEPENDENCIES: GooseMcpSessionCompositionDependencies = Object.freeze({
   startCapabilityServer: startGooseMcpCapabilityServer,
   startModelServer: startGooseLoopbackModelServer,
   openRunnerHandshake: openGooseRunnerHandshake,
+  startWindowsCapabilityHost: startGooseWindowsCapabilityBridgeHost,
+  startWindowsModelHost: startGooseWindowsModelBridgeHost,
 });
 
 function createAttemptLease(): string {
@@ -104,8 +131,8 @@ function createAttemptLease(): string {
 }
 
 async function closePreparedBridgeServers(
-  capabilityServer: GooseMcpCapabilityServer | undefined,
-  modelServer: GooseLoopbackModelServer | undefined,
+  capabilityServer: CapabilityServer | undefined,
+  modelServer: ModelServer | undefined,
 ): Promise<void> {
   const failures: unknown[] = [];
   if (modelServer !== undefined) {
@@ -160,8 +187,8 @@ function normalizeDiscoveredToolNames(value: unknown): readonly string[] {
 
 async function collectCleanupFailures(
   runner: OpenGooseRunnerHandshakeResult | undefined,
-  capabilityServer: GooseMcpCapabilityServer | undefined,
-  modelServer: GooseLoopbackModelServer | undefined,
+  capabilityServer: CapabilityServer | undefined,
+  modelServer: ModelServer | undefined,
   runnerOwnsBridgeServers = false,
 ): Promise<unknown[]> {
   const failures: unknown[] = [];
@@ -191,8 +218,8 @@ async function collectCleanupFailures(
 
 async function closeComposition(
   runner: OpenGooseRunnerHandshakeResult,
-  capabilityServer: GooseMcpCapabilityServer,
-  modelServer: GooseLoopbackModelServer,
+  capabilityServer: CapabilityServer,
+  modelServer: ModelServer,
   runnerOwnsBridgeServers: boolean,
 ): Promise<void> {
   const failures = await collectCleanupFailures(
@@ -215,14 +242,22 @@ export async function openGooseMcpSessionComposition(
   dependencies: GooseMcpSessionCompositionDependencies = DEFAULT_DEPENDENCIES,
 ): Promise<GooseMcpSessionComposition> {
   const attemptLease = createAttemptLease();
+  const runtimeTargetTriple =
+    process.platform === "win32"
+      ? "x86_64-pc-windows-msvc"
+      : process.platform === "linux"
+        ? "x86_64-unknown-linux-gnu"
+        : options.artifact.targetTriple;
+  const transportMode = resolveGooseSessionTransportMode(runtimeTargetTriple);
+  const windowsAuthenticated = transportMode === "windows-authenticated";
   let modelAttemptLease = createAttemptLease();
   while (modelAttemptLease === attemptLease) {
     modelAttemptLease = createAttemptLease();
   }
-  let capabilityServer: GooseMcpCapabilityServer | undefined;
-  let modelServer: GooseLoopbackModelServer | undefined;
+  let capabilityServer: CapabilityServer | undefined;
+  let modelServer: ModelServer | undefined;
   let runner: OpenGooseRunnerHandshakeResult | undefined;
-  const runnerOwnsBridgeServers = process.platform === "linux";
+  const runnerOwnsBridgeServers = transportMode === "linux-relay" || windowsAuthenticated;
   let session: GooseAcpSession;
   let toolNames: readonly string[];
   try {
@@ -231,6 +266,45 @@ export async function openGooseMcpSessionComposition(
       const prepareBridge = async (
         root: GooseRunnerPreparedRoot,
       ): Promise<GooseRunnerPreparedBridge> => {
+        if (windowsAuthenticated) {
+          const attemptId = randomBytes(16).toString("hex");
+          const capabilityPipeName = `\\\\.\\pipe\\LOCAL\\Actestra.Goose.${attemptId}.capability`;
+          const modelPipeName = `\\\\.\\pipe\\LOCAL\\Actestra.Goose.${attemptId}.model`;
+          let bridgeClosePromise: Promise<void> | undefined;
+          let attached = false;
+          const attachWindowsChannels = (channels: { capability: Duplex; model: Duplex }): void => {
+            if (attached)
+              throw new GooseRunnerProcessError(
+                "invalid-options",
+                "Windows Goose bridge channels were attached twice",
+              );
+            attached = true;
+            capabilityServer = (
+              dependencies.startWindowsCapabilityHost ?? startGooseWindowsCapabilityBridgeHost
+            )({
+              stream: channels.capability,
+              attemptLease,
+              commandIds: options.commandIds,
+              testIds: options.testIds,
+              invokeTool: options.toolInvoker,
+            });
+            modelServer = (dependencies.startWindowsModelHost ?? startGooseWindowsModelBridgeHost)({
+              stream: channels.model,
+              attemptLease: modelAttemptLease,
+              invokeModel: options.modelInvoker,
+            });
+          };
+          const close = (): Promise<void> => {
+            bridgeClosePromise ??= closePreparedBridgeServers(capabilityServer, modelServer);
+            return bridgeClosePromise;
+          };
+          return Object.freeze({
+            windows: Object.freeze({ capabilityPipeName, modelPipeName, attemptLease }),
+            modelId: options.modelId,
+            attachWindowsChannels,
+            close,
+          });
+        }
         const [capabilityPort, modelPort] = await reserveDistinctBridgePorts();
         const capabilitySocketPath = path.join(root.bridgeDirectory, "capability.sock");
         const modelSocketPath = path.join(root.bridgeDirectory, "model.sock");
@@ -251,9 +325,11 @@ export async function openGooseMcpSessionComposition(
             socketPath: modelSocketPath,
             loopbackPort: modelPort,
           });
+          const loopbackCapabilityServer = capabilityServer as GooseMcpCapabilityServer;
+          const loopbackModelServer = modelServer as GooseLoopbackModelServer;
           if (
-            capabilityServer.url !== `http://127.0.0.1:${String(capabilityPort)}/mcp` ||
-            modelServer.baseUrl !== `http://127.0.0.1:${String(modelPort)}/v1`
+            loopbackCapabilityServer.url !== `http://127.0.0.1:${String(capabilityPort)}/mcp` ||
+            loopbackModelServer.baseUrl !== `http://127.0.0.1:${String(modelPort)}/v1`
           ) {
             throw new GooseRunnerProcessError(
               "invalid-options",
@@ -280,9 +356,9 @@ export async function openGooseMcpSessionComposition(
           return bridgeClosePromise;
         };
         return Object.freeze({
-          capabilityProxyUrl: capabilityServer.url,
+          capabilityProxyUrl: (capabilityServer as GooseMcpCapabilityServer).url,
           modelBinding: Object.freeze({
-            baseUrl: modelServer.baseUrl,
+            baseUrl: (modelServer as GooseLoopbackModelServer).baseUrl,
             modelId: options.modelId,
             attemptLease: modelAttemptLease,
           }),
@@ -317,9 +393,9 @@ export async function openGooseMcpSessionComposition(
         artifact: options.artifact,
         privateRootParent: options.privateRootParent,
         workspaceDirectory: options.workspaceDirectory,
-        capabilityProxyUrl: capabilityServer.url,
+        capabilityProxyUrl: (capabilityServer as GooseMcpCapabilityServer).url,
         modelBinding: {
-          baseUrl: modelServer.baseUrl,
+          baseUrl: (modelServer as GooseLoopbackModelServer).baseUrl,
           modelId: options.modelId,
           attemptLease: modelAttemptLease,
         },
@@ -334,13 +410,29 @@ export async function openGooseMcpSessionComposition(
         "Goose bridge composition did not produce all required runtime resources",
       );
     }
-    session = await runner.openSession({
-      workspaceDirectory: options.workspaceDirectory,
-      capabilityProxyUrl: capabilityServer.url,
-      attemptLease,
-      ...(options.sessionTimeoutMs === undefined ? {} : { timeoutMs: options.sessionTimeoutMs }),
-    });
+    session = await runner.openSession(
+      windowsAuthenticated
+        ? {
+            transport: "injected",
+            workspaceDirectory: options.workspaceDirectory,
+            ...(options.sessionTimeoutMs === undefined
+              ? {}
+              : { timeoutMs: options.sessionTimeoutMs }),
+          }
+        : {
+            transport: "mcp-http",
+            workspaceDirectory: options.workspaceDirectory,
+            capabilityProxyUrl: (capabilityServer as GooseMcpCapabilityServer).url,
+            attemptLease,
+            ...(options.sessionTimeoutMs === undefined
+              ? {}
+              : { timeoutMs: options.sessionTimeoutMs }),
+          },
+    );
     modelServer.bindSession(session.sessionId);
+    if (windowsAuthenticated) {
+      (capabilityServer as GooseCapabilityBoundary).bindSession(session.sessionId);
+    }
     const toolsListed = capabilityServer.waitForToolsList(
       options.sessionTimeoutMs ?? DEFAULT_TOOLS_LIST_WAIT_MS,
     );

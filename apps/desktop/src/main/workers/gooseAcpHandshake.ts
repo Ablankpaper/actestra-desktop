@@ -111,12 +111,19 @@ export interface GooseAcpConnection {
   close(): Promise<void>;
 }
 
-export interface GooseAcpSessionOptions {
-  readonly workspaceDirectory: string;
-  readonly capabilityProxyUrl: string;
-  readonly attemptLease: string;
-  readonly timeoutMs?: number;
-}
+export type GooseAcpSessionOptions =
+  | Readonly<{
+      readonly transport?: "mcp-http";
+      readonly workspaceDirectory: string;
+      readonly capabilityProxyUrl: string;
+      readonly attemptLease: string;
+      readonly timeoutMs?: number;
+    }>
+  | Readonly<{
+      readonly transport: "injected";
+      readonly workspaceDirectory: string;
+      readonly timeoutMs?: number;
+    }>;
 
 export type GooseAcpSetupNotificationKind = "usage_update" | "available_commands_update";
 
@@ -733,6 +740,10 @@ async function openGooseAcpSession(
           ),
         );
       }, timeoutMs);
+      const mcpOptions = options as Extract<
+        GooseAcpSessionOptions,
+        { readonly transport?: "mcp-http" }
+      >;
       transport.sendLine(
         JSON.stringify({
           jsonrpc: "2.0",
@@ -740,19 +751,22 @@ async function openGooseAcpSession(
           method: "session/new",
           params: {
             cwd: options.workspaceDirectory,
-            mcpServers: [
-              {
-                type: "http",
-                name: ACTESTRA_GOOSE_MCP_EXTENSION_NAME,
-                url: options.capabilityProxyUrl,
-                headers: [
-                  {
-                    name: "Authorization",
-                    value: `Bearer ${options.attemptLease}`,
-                  },
-                ],
-              },
-            ],
+            mcpServers:
+              options.transport === "injected"
+                ? []
+                : [
+                    {
+                      type: "http",
+                      name: ACTESTRA_GOOSE_MCP_EXTENSION_NAME,
+                      url: mcpOptions.capabilityProxyUrl,
+                      headers: [
+                        {
+                          name: "Authorization",
+                          value: `Bearer ${mcpOptions.attemptLease}`,
+                        },
+                      ],
+                    },
+                  ],
           },
         }),
       );
@@ -1623,25 +1637,39 @@ function assertSessionOptions(options: GooseAcpSessionOptions): void {
       "Goose session workspace must be an absolute path",
     );
   }
-  const loopbackMatch = /^http:\/\/127\.0\.0\.1:([1-9][0-9]{0,4})\/mcp$/.exec(
-    options.capabilityProxyUrl,
-  );
-  const loopbackPort = loopbackMatch === null ? 0 : Number(loopbackMatch[1]);
-  if (loopbackPort < 1 || loopbackPort > 65_535) {
+  const transport = options.transport ?? "mcp-http";
+  if (transport !== "injected" && transport !== "mcp-http") {
     throw new GooseAcpSessionError(
       "invalid-session-options",
-      "Goose session capability proxy must use the exact admitted loopback HTTP endpoint",
+      "Goose session transport is not admitted",
     );
   }
-  if (
-    typeof options.attemptLease !== "string" ||
-    options.attemptLease.length < 32 ||
-    options.attemptLease.length > 256 ||
-    !/^[A-Za-z0-9._~-]+$/.test(options.attemptLease)
-  ) {
+  if (transport === "mcp-http" && "capabilityProxyUrl" in options && "attemptLease" in options) {
+    const loopbackMatch = /^http:\/\/127\.0\.0\.1:([1-9][0-9]{0,4})\/mcp$/.exec(
+      options.capabilityProxyUrl,
+    );
+    const loopbackPort = loopbackMatch === null ? 0 : Number(loopbackMatch[1]);
+    if (loopbackPort < 1 || loopbackPort > 65_535) {
+      throw new GooseAcpSessionError(
+        "invalid-session-options",
+        "Goose session capability proxy must use the exact admitted loopback HTTP endpoint",
+      );
+    }
+    if (
+      typeof options.attemptLease !== "string" ||
+      options.attemptLease.length < 32 ||
+      options.attemptLease.length > 256 ||
+      !/^[A-Za-z0-9._~-]+$/.test(options.attemptLease)
+    ) {
+      throw new GooseAcpSessionError(
+        "invalid-session-options",
+        "Goose session attempt lease is not a bounded opaque bearer value",
+      );
+    }
+  } else if (transport === "mcp-http") {
     throw new GooseAcpSessionError(
       "invalid-session-options",
-      "Goose session attempt lease is not a bounded opaque bearer value",
+      "Goose MCP session requires an admitted capability proxy and lease",
     );
   }
   if (

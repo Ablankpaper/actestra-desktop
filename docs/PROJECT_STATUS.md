@@ -2,6 +2,31 @@
 
 Last updated: 2026-08-20
 
+## 2026-08-20 P8.2c Batch 3 Task 11 MCP-free Windows ACP composition (local/package green; native gate open)
+
+Task 11 is implemented locally on top of `ffc005f`. ACP session options are
+now a backward-compatible discriminated union: macOS/Linux retain the existing
+MCP-HTTP `session/new` request, while the Windows authenticated mode sends
+`mcpServers: []` and places neither a URL nor an attempt lease in ACP. The
+Windows composition creates the Main-owned model and capability hosts, attaches
+them to the Supervisor's duplex channels, binds both to the one ACP session,
+waits for the exact six-tool discovery, and preserves the existing refusal and
+rejected-request counters and durable error mapping. Existing loopback and
+Linux relay composition tests remain unchanged and green.
+
+Local evidence is green: the focused cross-layer suite passes `110` tests with
+`2` platform skips; format, lint (zero warnings/errors), typecheck, and
+`git diff --check` pass. The downstream overlay now declares the shared bridge
+protocol as well as the new composition dependencies (`377` declared files),
+and `bun run downstream:aionui:package` completes after materialization and
+Electron/Vite bundling.
+
+This does not close Task 11 or P8.2c: the Windows-only duplex test is skipped on
+macOS, no exact-artifact Windows ACP/runtime/provider journey has run, and
+Windows CI is still in progress. Task 12 exact Windows runtime evidence,
+Electron/provider-backed acceptance, P8.3, P8.4, release, deployment, and user
+acceptance remain open.
+
 ## 2026-08-20 P8.2c Batch 3 Task 10 explicit transport modes and seven-channel launch (local slice green; composition/native gate open)
 
 Task 10's launch slice is implemented locally on top of `201f121`. The Main

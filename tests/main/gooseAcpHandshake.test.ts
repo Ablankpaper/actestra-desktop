@@ -21,6 +21,28 @@ afterEach(() => {
 });
 
 describe("Goose ACP handshake", () => {
+  it("opens an injected session without placing an MCP URL or lease in ACP", async () => {
+    const transport = new LoopbackGooseAcpTransport();
+    const connection = await connectGooseAcp(transport);
+
+    const session = await connection.openSession({
+      transport: "injected",
+      workspaceDirectory: "/tmp/actestra-worktree",
+    });
+
+    expect(session.sessionId).toBe("goose-session-1");
+    const sessionRequest = JSON.parse(transport.sentLines[1]!) as {
+      readonly params?: { readonly mcpServers?: unknown; readonly cwd?: unknown };
+    };
+    expect(sessionRequest.params).toEqual({
+      cwd: "/tmp/actestra-worktree",
+      mcpServers: [],
+    });
+    expect(JSON.stringify(sessionRequest)).not.toContain("127.0.0.1");
+    expect(JSON.stringify(sessionRequest)).not.toContain("Bearer");
+    await connection.close();
+  });
+
   it("negotiates the exact Goose identity and closed capability manifest", async () => {
     const transport = new LoopbackGooseAcpTransport();
     const connection = await connectGooseAcp(transport);

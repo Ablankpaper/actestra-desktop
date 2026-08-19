@@ -93,6 +93,98 @@ const runnerPromptResult = Object.freeze({
 }) satisfies GooseAcpPromptResult;
 
 describe("Goose MCP session composition", () => {
+  it("composes Windows authenticated hosts through an injected MCP-free ACP session", async () => {
+    const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { ...originalPlatform, value: "win32" });
+    const events: string[] = [];
+    let attached = false;
+    const modelHost = modelServerDouble({
+      bindSession(sessionId: string) {
+        events.push(`model:bind:${sessionId}`);
+      },
+    });
+    const capabilityHost = Object.freeze({
+      bindSession(sessionId: string) {
+        events.push(`capability:bind:${sessionId}`);
+      },
+      async waitForToolsList() {
+        events.push("capability:tools");
+      },
+      async close() {
+        events.push("capability:close");
+      },
+    });
+    const dependencies: GooseMcpSessionCompositionDependencies = {
+      startCapabilityServer: async () => {
+        throw new Error("Windows must not start loopback capability server");
+      },
+      startModelServer: async () => {
+        throw new Error("Windows must not start loopback model server");
+      },
+      startWindowsCapabilityHost: () => capabilityHost,
+      startWindowsModelHost: () => modelHost,
+      async openRunnerHandshake(options) {
+        const bridge = await options.prepareBridge!(
+          Object.freeze({
+            root: "/tmp/actestra-goose-attempt",
+            bridgeDirectory: "/tmp/actestra-goose-attempt/bridge",
+            executablePath: "/tmp/actestra-goose-attempt/bin/runner.exe",
+            workingDirectory: "/tmp/actestra-goose-attempt/work",
+          }),
+        );
+        bridge.attachWindowsChannels?.({ capability: {} as never, model: {} as never });
+        attached = true;
+        return Object.freeze({
+          info: runnerInfo,
+          privateRoot: "/tmp/actestra-goose-attempt",
+          async openSession(sessionOptions: GooseAcpSessionOptions) {
+            expect(sessionOptions).toEqual({
+              transport: "injected",
+              workspaceDirectory: path.resolve("/tmp/actestra-worktree"),
+            });
+            return runnerSession;
+          },
+          async discoverTools() {
+            return runnerDiscovery;
+          },
+          async prompt() {
+            return runnerPromptResult;
+          },
+          async close() {
+            events.push("runner:close");
+            await bridge.close();
+          },
+        });
+      },
+    };
+    try {
+      const opened = await openGooseMcpSessionComposition(
+        {
+          artifact: Object.freeze({ ...artifact, targetTriple: "x86_64-pc-windows-msvc" }),
+          privateRootParent: path.resolve("/tmp/actestra-goose-attempts"),
+          workspaceDirectory: path.resolve("/tmp/actestra-worktree"),
+          modelId: "actestra-caller-model",
+          modelInvoker,
+          toolInvoker,
+          commandIds: Object.freeze(["git.status"]),
+          testIds: Object.freeze(["test.unit"]),
+        },
+        dependencies,
+      );
+      expect(attached).toBe(true);
+      expect(opened.toolNames).toEqual(runnerDiscovery.toolNames);
+      expect(events).toEqual([
+        "model:bind:goose-session-1",
+        "capability:bind:goose-session-1",
+        "capability:tools",
+      ]);
+      await opened.close();
+      expect(events).toContain("runner:close");
+    } finally {
+      Object.defineProperty(process, "platform", originalPlatform);
+    }
+  });
+
   it("owns separate generated leases across model, MCP, and ACP boundaries", async () => {
     let serverLease: string | undefined;
     let sessionLease: string | undefined;
@@ -131,7 +223,9 @@ describe("Goose MCP session composition", () => {
           info: runnerInfo,
           privateRoot: "/tmp/actestra-goose-attempt",
           async openSession(options: GooseAcpSessionOptions) {
-            sessionLease = options.attemptLease;
+            sessionLease = (
+              options as Extract<GooseAcpSessionOptions, { readonly transport?: "mcp-http" }>
+            ).attemptLease;
             expect(options).toMatchObject({
               workspaceDirectory: path.resolve("/tmp/actestra-worktree"),
               capabilityProxyUrl: "http://127.0.0.1:43123/mcp",
