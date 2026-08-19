@@ -271,6 +271,27 @@ describe("Goose runner native resource boundary", () => {
     expect(Object.keys(matcher)).toEqual(["push"]);
   });
 
+  it.each([
+    "windows-control-channel-invalid",
+    "windows-ready-channel-invalid",
+    "windows-capability-pipe-invalid",
+    "windows-model-pipe-invalid",
+    "windows-acp-relay-failed",
+    "windows-capability-relay-failed",
+    "windows-model-relay-failed",
+    "windows-worker-runtime-failed",
+    "windows-runtime-timeout",
+    "windows-runtime-cleanup-failed",
+  ])("maps the closed Windows stage %s without retaining stderr", (stage) => {
+    const matcher = createGooseRunnerSetupFailureMatcher();
+    const marker = `Goose windows containment failed at bounded stage ${stage}`;
+    const split = Math.floor(marker.length / 2);
+
+    expect(matcher.push(Buffer.from(marker.slice(0, split)))).toBeUndefined();
+    expect(matcher.push(Buffer.from(marker.slice(split)))).toBe("windows-runtime");
+    expect(Object.keys(matcher)).toEqual(["push"]);
+  });
+
   it("preserves native limit setup failure as the closed resource incident code", async () => {
     const fixture = await createRunnerFixture();
 

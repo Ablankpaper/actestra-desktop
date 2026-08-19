@@ -25,6 +25,19 @@ impl WindowsBridgeChannel {
         }
     }
 
+    #[cfg(windows)]
+    pub(crate) fn from_raw_handle(
+        handle: windows_sys::Win32::Foundation::HANDLE,
+    ) -> Result<Self, ()> {
+        use std::os::windows::io::{FromRawHandle, RawHandle};
+        if handle.is_null() || handle == windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
+            return Err(());
+        }
+        // SAFETY: the caller transfers sole ownership of this live handle to the File wrapper.
+        let file = unsafe { std::fs::File::from_raw_handle(handle as RawHandle) };
+        Ok(Self::new(tokio::fs::File::from_std(file)))
+    }
+
     #[cfg(test)]
     pub(crate) fn from_duplex(stream: tokio::io::DuplexStream) -> Self {
         Self::new(stream)
@@ -53,6 +66,56 @@ impl WindowsBridgeChannel {
         frame.extend_from_slice(&payload);
         decode_json_frame(&frame)?;
         Ok(frame)
+    }
+
+    #[cfg(windows)]
+    pub(crate) async fn copy_to(self, destination: Self) -> Result<(), ()> {
+        let mut source = self.stream;
+        let mut destination = destination.stream;
+        tokio::io::copy(&mut source, &mut destination)
+            .await
+            .map(|_| ())
+            .map_err(|_| ())
+    }
+
+    pub(crate) async fn relay_framed_bidirectional(self, other: Self) -> Result<(), ()> {
+        let (left_reader, left_writer) = tokio::io::split(self.stream);
+        let (right_reader, right_writer) = tokio::io::split(other.stream);
+        tokio::select! {
+            result = relay_framed_direction(left_reader, right_writer) => result,
+            result = relay_framed_direction(right_reader, left_writer) => result,
+        }
+    }
+
+    #[cfg(windows)]
+    pub(crate) async fn read_once(&mut self, target: &mut [u8]) -> Result<usize, ()> {
+        self.stream.read(target).await.map_err(|_| ())
+    }
+}
+
+async fn relay_framed_direction<R, W>(mut source: R, mut destination: W) -> Result<(), ()>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
+    loop {
+        let mut length_bytes = [0_u8; 4];
+        if source.read(&mut length_bytes[..1]).await.map_err(|_| ())? == 0 {
+            return Ok(());
+        }
+        source
+            .read_exact(&mut length_bytes[1..])
+            .await
+            .map_err(|_| ())?;
+        let payload_length = u32::from_le_bytes(length_bytes) as usize;
+        if payload_length == 0 || payload_length > WINDOWS_BRIDGE_MAX_FRAME_BYTES {
+            return Err(());
+        }
+        let mut payload = vec![0_u8; payload_length];
+        source.read_exact(&mut payload).await.map_err(|_| ())?;
+        destination.write_all(&length_bytes).await.map_err(|_| ())?;
+        destination.write_all(&payload).await.map_err(|_| ())?;
+        destination.flush().await.map_err(|_| ())?;
     }
 }
 
@@ -179,5 +242,57 @@ mod tests {
 
         worker.write_frame(&frame).await.unwrap();
         assert_eq!(main.read_frame().await.unwrap(), frame);
+    }
+
+    #[tokio::test]
+    async fn framed_relay_forwards_both_directions_and_rejects_oversize() {
+        let (main_side, relay_main) = tokio::io::duplex(4096);
+        let (worker_side, relay_worker) = tokio::io::duplex(4096);
+        let mut main_side = WindowsBridgeChannel::from_duplex(main_side);
+        let mut worker_side = WindowsBridgeChannel::from_duplex(worker_side);
+        let relay = tokio::spawn(
+            WindowsBridgeChannel::from_duplex(relay_main)
+                .relay_framed_bidirectional(WindowsBridgeChannel::from_duplex(relay_worker)),
+        );
+        let request = encode_json_frame(&json!({"contractVersion": 1, "kind": "request"})).unwrap();
+        main_side.write_frame(&request).await.unwrap();
+        assert_eq!(worker_side.read_frame().await.unwrap(), request);
+        let response =
+            encode_json_frame(&json!({"contractVersion": 1, "kind": "response"})).unwrap();
+        worker_side.write_frame(&response).await.unwrap();
+        assert_eq!(main_side.read_frame().await.unwrap(), response);
+        drop((main_side, worker_side));
+        assert!(relay.await.unwrap().is_ok());
+
+        let (mut attacker, relay_main) = tokio::io::duplex(16);
+        let (_worker, relay_worker) = tokio::io::duplex(16);
+        let relay = tokio::spawn(
+            WindowsBridgeChannel::from_duplex(relay_main)
+                .relay_framed_bidirectional(WindowsBridgeChannel::from_duplex(relay_worker)),
+        );
+        attacker
+            .write_all(&((WINDOWS_BRIDGE_MAX_FRAME_BYTES + 1) as u32).to_le_bytes())
+            .await
+            .unwrap();
+        assert!(relay.await.unwrap().is_err());
+    }
+
+    #[tokio::test]
+    async fn framed_relay_accepts_partial_headers_and_ends_on_disconnect() {
+        let (mut sender, relay_left) = tokio::io::duplex(4096);
+        let (relay_right, mut receiver) = tokio::io::duplex(4096);
+        let relay = tokio::spawn(
+            WindowsBridgeChannel::from_duplex(relay_left)
+                .relay_framed_bidirectional(WindowsBridgeChannel::from_duplex(relay_right)),
+        );
+        let frame = encode_json_frame(&json!({"kind": "partial"})).unwrap();
+        sender.write_all(&frame[..1]).await.unwrap();
+        sender.write_all(&frame[1..3]).await.unwrap();
+        sender.write_all(&frame[3..]).await.unwrap();
+        drop(sender);
+        let mut forwarded = vec![0_u8; frame.len()];
+        receiver.read_exact(&mut forwarded).await.unwrap();
+        assert_eq!(forwarded, frame);
+        assert!(relay.await.unwrap().is_ok());
     }
 }

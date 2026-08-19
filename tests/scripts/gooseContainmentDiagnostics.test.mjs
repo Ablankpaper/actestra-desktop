@@ -53,6 +53,16 @@ describe("Goose containment probe diagnostics", () => {
       "windows-profile-cleanup-failed",
       "windows-resource-evidence-incomplete",
       "windows-worker-launch-failed",
+      "windows-control-channel-invalid",
+      "windows-ready-channel-invalid",
+      "windows-capability-pipe-invalid",
+      "windows-model-pipe-invalid",
+      "windows-acp-relay-failed",
+      "windows-capability-relay-failed",
+      "windows-model-relay-failed",
+      "windows-worker-runtime-failed",
+      "windows-runtime-timeout",
+      "windows-runtime-cleanup-failed",
     ]) {
       expect(
         classifyGooseContainmentProbeStderr(

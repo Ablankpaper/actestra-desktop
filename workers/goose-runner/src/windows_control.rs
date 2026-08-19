@@ -37,10 +37,43 @@ impl WindowsMode {
         match modes {
             [] => Ok(None),
             [mode] if mode == "--actestra-windows-supervisor-v1" => Ok(Some(Self::Supervisor)),
-            [mode] if mode == "--actestra-windows-worker-v1" => Ok(Some(Self::Worker)),
+            [mode, control, ready]
+                if mode == "--actestra-windows-worker-v1"
+                    && parse_worker_handle_pair(control, ready).is_some() =>
+            {
+                Ok(Some(Self::Worker))
+            }
             _ => Err(()),
         }
     }
+}
+
+pub(crate) fn parse_worker_handle_arguments(
+    arguments: &[String],
+) -> Result<Option<(u64, u64)>, ()> {
+    let modes = arguments.get(1..).ok_or(())?;
+    match modes {
+        [mode, control, ready] if mode == "--actestra-windows-worker-v1" => {
+            Ok(Some(parse_worker_handle_pair(control, ready).ok_or(())?))
+        }
+        _ => Ok(None),
+    }
+}
+
+fn parse_worker_handle_pair(control: &str, ready: &str) -> Option<(u64, u64)> {
+    let control = parse_worker_handle_value(control)?;
+    let ready = parse_worker_handle_value(ready)?;
+    (control != ready).then_some((control, ready))
+}
+
+fn parse_worker_handle_value(value: &str) -> Option<u64> {
+    // Worker handle arguments use one bounded decimal representation: no sign, whitespace,
+    // prefix, sentinel, or platform-dependent pointer text is admitted.
+    if value.is_empty() || value.len() > 20 || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    let parsed = value.parse::<u64>().ok()?;
+    (parsed != 0 && parsed != u64::MAX).then_some(parsed)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -381,6 +414,8 @@ mod tests {
         let worker = vec![
             "actestra-goose-runner.exe".to_string(),
             "--actestra-windows-worker-v1".to_string(),
+            "100".to_string(),
+            "101".to_string(),
         ];
         assert_eq!(
             WindowsMode::parse(&supervisor).unwrap(),
@@ -389,6 +424,10 @@ mod tests {
         assert_eq!(
             WindowsMode::parse(&worker).unwrap(),
             Some(WindowsMode::Worker)
+        );
+        assert_eq!(
+            parse_worker_handle_arguments(&worker).unwrap(),
+            Some((100, 101))
         );
         assert_eq!(
             WindowsMode::parse(&["actestra-goose-runner.exe".to_string()]).unwrap(),
@@ -409,9 +448,28 @@ mod tests {
                 "--actestra-windows-supervisor-v1".to_string(),
                 "--actestra-windows-worker-v1".to_string(),
             ],
+            vec![
+                "actestra-goose-runner.exe".to_string(),
+                "--actestra-windows-worker-v1".to_string(),
+                "0".to_string(),
+                "101".to_string(),
+            ],
+            vec![
+                "actestra-goose-runner.exe".to_string(),
+                "--actestra-windows-worker-v1".to_string(),
+                "101".to_string(),
+                "101".to_string(),
+            ],
         ] {
             assert!(WindowsMode::parse(&rejected).is_err());
         }
+        let repeated_worker_handle = vec![
+            "actestra-goose-runner.exe".to_string(),
+            "--actestra-windows-worker-v1".to_string(),
+            "101".to_string(),
+            "101".to_string(),
+        ];
+        assert!(parse_worker_handle_arguments(&repeated_worker_handle).is_err());
     }
 
     #[test]

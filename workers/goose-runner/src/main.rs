@@ -143,7 +143,9 @@ fn main() {
             Ok(Some(windows_control::WindowsMode::Supervisor)) => {
                 windows_supervisor::run_supervisor()
             }
-            Ok(Some(windows_control::WindowsMode::Worker)) => windows_supervisor::run_worker(),
+            Ok(Some(windows_control::WindowsMode::Worker)) => {
+                windows_supervisor::run_worker_with_arguments(&windows_arguments)
+            }
             Ok(None) | Err(()) => {
                 eprintln!("{}", windows_supervisor::WINDOWS_SETUP_FAILURE_MARKER);
                 1
@@ -234,6 +236,8 @@ mod tests {
         let worker = vec![
             "actestra-goose-runner.exe".to_string(),
             "--actestra-windows-worker-v1".to_string(),
+            "100".to_string(),
+            "101".to_string(),
         ];
         let supervisor = vec![
             "actestra-goose-runner.exe".to_string(),

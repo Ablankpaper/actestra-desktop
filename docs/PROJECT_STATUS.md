@@ -4,6 +4,42 @@ Last updated: 2026-08-19
 
 ## Current phase
 
+### 2026-08-19 P8.2c Batch 2 Task 6 local supervisor-relay implementation (native gate remains open)
+
+The Windows Supervisor composition now has the Task 6 source slice in place:
+Main launches seven ordered channels (ACP stdin/stdout/stderr, one-shot control,
+parent liveness, and duplex capability/model), while the Worker inherits exactly
+five handles (the three ACP handles plus dedicated control-read and ready-write
+handles). The Supervisor creates the two attempt-scoped `LOCAL` named pipes,
+accepts both AppContainer clients before consuming the dedicated ready marker,
+and relays ACP bytes plus bounded length-prefixed capability/model frames. The
+framed relays reject zero or oversized payloads, handle partial reads/writes,
+and terminate on disconnect. Parent-liveness close, Worker exit, relay failure,
+and the fixed active-duration budget are terminal; cleanup is bounded and emits
+the primary failure and an independent cleanup-failure code when both occur.
+The pre-Task-7 Worker intentionally fails closed after bridge readiness because
+the adapted Goose ACP/provider runtime is not yet present.
+
+Local evidence on branch `codex/p8-2c-windows-runtime-composition` is green:
+Goose Rust tests pass `74/74`; the focused Supervisor, diagnostic, bridge,
+lifecycle, and Main setup-classification suite passes `66` with `1` platform
+skip; TypeScript typecheck, project format, documentation links, and
+`git diff --check` pass. An isolated Windows-target API probe using the current
+source passes. The complete Cargo Windows-target check cannot run on this macOS
+host because the existing `zstd-sys`/`libsqlite3-sys` C builds lack the Windows
+CRT; this is environment evidence, not Windows native execution. The complete
+local `bun run check` exits `0`: Vitest reports `165` files passed / `2`
+skipped and `1,792` tests passed / `10` skipped; the P7 gate passes all `28`
+cases and `168` exact variants; smoke harness, product boundary (`143`
+Actestra-owned source files), frozen foundation, downstream overlay, and
+package checks all pass.
+
+This does not close Task 6 or P8.2c: Windows native execution, exact-artifact
+CI, and real relay behavior remain unverified. Task 7 must add the adapted Goose
+ACP/provider runtime and startup-order tests before any Windows runtime or
+Electron/provider-backed acceptance claim. P8.3, P8.4, release, deployment,
+and user acceptance remain open.
+
 ### 2026-08-19 P8.2c Batch 1 private Goose runtime admission accepted
 
 The P8.2c source boundary now pins the standalone private

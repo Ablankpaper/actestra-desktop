@@ -375,7 +375,8 @@ describe("Windows Goose runner bridge contract", () => {
         );
         expect(outcome.error).toMatchObject({
           name: "GooseRunnerProcessError",
-          code: "worker-resource-enforcement-unavailable",
+          code: "spawn-failed",
+          message: "Goose Windows runtime failed",
         });
       } finally {
         if (previousCanary === undefined) {

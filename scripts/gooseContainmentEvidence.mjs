@@ -100,6 +100,16 @@ export const GOOSE_CONTAINMENT_PROBE_DIAGNOSTIC_CODES = Object.freeze([
   "windows-profile-cleanup-failed",
   "windows-resource-evidence-incomplete",
   "windows-worker-launch-failed",
+  "windows-control-channel-invalid",
+  "windows-ready-channel-invalid",
+  "windows-capability-pipe-invalid",
+  "windows-model-pipe-invalid",
+  "windows-acp-relay-failed",
+  "windows-capability-relay-failed",
+  "windows-model-relay-failed",
+  "windows-worker-runtime-failed",
+  "windows-runtime-timeout",
+  "windows-runtime-cleanup-failed",
 ]);
 const PROBE_DIAGNOSTIC_CODES = new Set(GOOSE_CONTAINMENT_PROBE_DIAGNOSTIC_CODES);
 

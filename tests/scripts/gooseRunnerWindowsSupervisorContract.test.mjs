@@ -36,7 +36,7 @@ describe("Windows Goose supervisor source contract", () => {
     const containment = read("workers/goose-runner/src/containment/windows.rs");
 
     expect(main).toContain("windows_supervisor::run_supervisor()");
-    expect(main).toContain("windows_supervisor::run_worker()");
+    expect(main).toContain("windows_supervisor::run_worker_with_arguments(&windows_arguments)");
     expect(main.indexOf("windows_supervisor::run_supervisor()")).toBeLessThan(
       main.indexOf("tokio::runtime::Builder::new_multi_thread()"),
     );
@@ -168,5 +168,53 @@ describe("Windows Goose supervisor source contract", () => {
     expect(supervisor).toContain(
       "Worker process token must have AppContainer isolation, not a plain token",
     );
+  });
+
+  it("keeps seven Main channels and exactly five inherited Worker handles", () => {
+    const mainProcess = read("apps/desktop/src/main/workers/gooseRunnerProcess.ts");
+    const supervisor = read("workers/goose-runner/src/windows_supervisor.rs");
+    const control = read("workers/goose-runner/src/windows_control.rs");
+    expect(mainProcess).toContain('? ["pipe", "pipe", "pipe", "pipe", "pipe", "pipe", "pipe"]');
+    expect(mainProcess).toContain("const capability = extendedStdio[5]");
+    expect(mainProcess).toContain("const model = extendedStdio[6]");
+    expect(mainProcess).toContain("readonly windowsChannels?: GooseWindowsSupervisorChannels");
+    for (const field of [
+      "worker_control_read",
+      "worker_ready_write",
+      "supervisor_control_write",
+      "supervisor_ready_read",
+      "capability_pipe",
+      "model_pipe",
+    ]) {
+      expect(supervisor).toContain(field);
+    }
+    expect(supervisor).toContain("fn inherited_handles(&self) -> [HANDLE; 5]");
+    expect(supervisor).toContain("self.worker_control_read");
+    expect(supervisor).toContain("self.worker_ready_write");
+    expect(control).toContain("parse_worker_handle_arguments");
+    expect(control).toContain("bounded decimal");
+    expect(supervisor).toContain("CloseHandle(control_handle)");
+    expect(supervisor).toContain("CloseHandle(ready_handle)");
+    expect(supervisor.indexOf("let accepted = pipe_runtime.block_on(async")).toBeLessThan(
+      supervisor.indexOf("let mut marker = vec![0_u8; WINDOWS_WORKER_READY_MARKER.len()]"),
+    );
+  });
+
+  it("declares closed supervisor relay failure stages", () => {
+    const supervisor = read("workers/goose-runner/src/windows_supervisor.rs");
+    for (const stage of [
+      "windows-control-channel-invalid",
+      "windows-ready-channel-invalid",
+      "windows-capability-pipe-invalid",
+      "windows-model-pipe-invalid",
+      "windows-acp-relay-failed",
+      "windows-capability-relay-failed",
+      "windows-model-relay-failed",
+      "windows-worker-runtime-failed",
+      "windows-runtime-timeout",
+      "windows-runtime-cleanup-failed",
+    ]) {
+      expect(supervisor).toContain(`"${stage}"`);
+    }
   });
 });

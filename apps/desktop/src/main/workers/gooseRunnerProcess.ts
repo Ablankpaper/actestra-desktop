@@ -4,7 +4,7 @@ import { constants as fsConstants, createReadStream, realpathSync } from "node:f
 import { chmod, copyFile, lstat, mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
-import type { Readable, Writable } from "node:stream";
+import type { Duplex, Readable, Writable } from "node:stream";
 import {
   GooseAcpHandshakeError,
   connectGooseAcp,
@@ -51,6 +51,20 @@ export const GOOSE_NATIVE_ASYNC_RUNTIME_FAILURE_MARKER =
 export const GOOSE_NATIVE_ACP_SERVER_FAILURE_MARKER = "ACTESTRA_GOOSE_ACP_SERVER_FAILED";
 export const GOOSE_NATIVE_RELAY_FAILURE_MARKER = "ACTESTRA_GOOSE_LINUX_RELAY_STOPPED";
 export const GOOSE_NATIVE_PANIC_FAILURE_MARKER = "ACTESTRA_GOOSE_RUNNER_PANICKED";
+const GOOSE_WINDOWS_RUNTIME_FAILURE_MARKERS = Object.freeze(
+  [
+    "windows-control-channel-invalid",
+    "windows-ready-channel-invalid",
+    "windows-capability-pipe-invalid",
+    "windows-model-pipe-invalid",
+    "windows-acp-relay-failed",
+    "windows-capability-relay-failed",
+    "windows-model-relay-failed",
+    "windows-worker-runtime-failed",
+    "windows-runtime-timeout",
+    "windows-runtime-cleanup-failed",
+  ].map((stage) => `Goose windows containment failed at bounded stage ${stage}`),
+);
 export type GooseRunnerProcessErrorCode =
   | "invalid-options"
   | "artifact-mismatch"
@@ -113,9 +127,15 @@ export type GooseRunnerSetupFailure =
   | "runner-runtime"
   | "runner-acp"
   | "runner-relay"
-  | "runner-panic";
+  | "runner-panic"
+  | "windows-runtime";
 
 type GooseChildProcess = ChildProcessByStdio<Writable, Readable, Readable>;
+
+export interface GooseWindowsSupervisorChannels {
+  readonly capability: Duplex;
+  readonly model: Duplex;
+}
 
 export interface GooseAcpLaunchCommand {
   readonly command: string;
@@ -466,6 +486,9 @@ export function createGooseRunnerSetupFailureMatcher(): GooseRunnerSetupFailureM
   const acp = createGooseRunnerFixedMarkerMatcher(GOOSE_NATIVE_ACP_SERVER_FAILURE_MARKER);
   const relay = createGooseRunnerFixedMarkerMatcher(GOOSE_NATIVE_RELAY_FAILURE_MARKER);
   const panic = createGooseRunnerFixedMarkerMatcher(GOOSE_NATIVE_PANIC_FAILURE_MARKER);
+  const windowsRuntime = GOOSE_WINDOWS_RUNTIME_FAILURE_MARKERS.map((marker) =>
+    createGooseRunnerFixedMarkerMatcher(marker),
+  );
   let detected: GooseRunnerSetupFailure | undefined;
   return Object.freeze({
     push(chunk: Uint8Array) {
@@ -482,6 +505,8 @@ export function createGooseRunnerSetupFailureMatcher(): GooseRunnerSetupFailureM
         detected = "runner-relay";
       } else if (panic.push(chunk)) {
         detected = "runner-panic";
+      } else if (windowsRuntime.some((matcher) => matcher.push(chunk))) {
+        detected = "windows-runtime";
       }
       return detected;
     },
@@ -502,7 +527,9 @@ function setupFailureError(failure: GooseRunnerSetupFailure): GooseRunnerProcess
         ? "Goose ACP server failed"
         : failure === "runner-relay"
           ? "Goose Linux relay stopped"
-          : "Goose runner panicked";
+          : failure === "runner-panic"
+            ? "Goose runner panicked"
+            : "Goose Windows runtime failed";
   return new GooseRunnerProcessError("spawn-failed", message);
 }
 
@@ -902,6 +929,7 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
   constructor(
     private readonly child: GooseChildProcess,
     private readonly parentLiveness?: Writable,
+    readonly windowsChannels?: GooseWindowsSupervisorChannels,
   ) {
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => {
@@ -1023,6 +1051,8 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
 
   private async closeProcess(): Promise<void> {
     this.parentLiveness?.end();
+    this.windowsChannels?.capability.end();
+    this.windowsChannels?.model.end();
     this.child.stdin.end();
     if (await this.waitForProcessTreeExit(CLOSE_GRACE_MS)) {
       return;
@@ -1203,10 +1233,11 @@ export function createNodeGooseAcpTransport(
         ? { ...options.environment }
         : { ...options.environment, ACTESTRA_PARENT_LIVENESS_FD: "3" },
       detached: true,
-      // Windows reserves fd 3 for the one-shot control frame and fd 4 for
-      // parent liveness. Other hosts retain the existing fd 3 liveness pipe.
+      // Windows reserves fd 3 for the one-shot control frame, fd 4 for parent liveness,
+      // and fd 5/fd 6 for the duplex capability/model supervisor channels. Other hosts
+      // retain the existing fd 3 liveness pipe.
       stdio: windowsSupervisor
-        ? ["pipe", "pipe", "pipe", "pipe", "pipe"]
+        ? ["pipe", "pipe", "pipe", "pipe", "pipe", "pipe", "pipe"]
         : ["pipe", "pipe", "pipe", "pipe"],
       windowsHide: true,
     });
@@ -1220,11 +1251,28 @@ export function createNodeGooseAcpTransport(
   }
   const control = child.stdio[3];
   const parentLiveness = child.stdio[4];
+  const extendedStdio = child.stdio as unknown as readonly [
+    Writable,
+    Readable,
+    Readable,
+    Readable | Writable | null | undefined,
+    Readable | Writable | null | undefined,
+    Duplex | null | undefined,
+    Duplex | null | undefined,
+  ];
+  const capability = extendedStdio[5];
+  const model = extendedStdio[6];
   if (
     control === null ||
     parentLiveness === null ||
+    capability === null ||
+    model === null ||
     typeof (control as Writable).write !== "function" ||
-    typeof (parentLiveness as Writable).write !== "function"
+    typeof (parentLiveness as Writable).write !== "function" ||
+    typeof (capability as Duplex).write !== "function" ||
+    typeof (capability as Duplex).on !== "function" ||
+    typeof (model as Duplex).write !== "function" ||
+    typeof (model as Duplex).on !== "function"
   ) {
     child.kill();
     throw new GooseRunnerProcessError(
@@ -1235,7 +1283,10 @@ export function createNodeGooseAcpTransport(
   const controlWriter = control as Writable;
   controlWriter.once("error", () => child.kill());
   controlWriter.end(Buffer.from(encodeWindowsSupervisorControlFrame(options)));
-  return new NodeGooseAcpTransport(child, parentLiveness as Writable);
+  return new NodeGooseAcpTransport(child, parentLiveness as Writable, {
+    capability: capability as Duplex,
+    model: model as Duplex,
+  });
 }
 
 async function preparePrivateRoot(

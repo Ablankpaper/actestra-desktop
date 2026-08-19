@@ -11,7 +11,65 @@ use crate::containment::windows_contract::{
     WINDOWS_PROBE_CHILD_ARGUMENT, WINDOWS_PROBE_PARENT_ARGUMENT,
 };
 #[cfg(windows)]
+use crate::windows_named_pipe::{WindowsNamedPipeClient, WindowsNamedPipeServer};
+#[cfg(windows)]
 const WINDOWS_WORKER_READY_MARKER: &[u8] = b"ACTESTRA_GOOSE_WINDOWS_WORKER_READY\n";
+#[cfg(any(windows, test))]
+const WINDOWS_RUNTIME_FAILURE_CODES: [&str; 10] = [
+    "windows-control-channel-invalid",
+    "windows-ready-channel-invalid",
+    "windows-capability-pipe-invalid",
+    "windows-model-pipe-invalid",
+    "windows-acp-relay-failed",
+    "windows-capability-relay-failed",
+    "windows-model-relay-failed",
+    "windows-worker-runtime-failed",
+    "windows-runtime-timeout",
+    "windows-runtime-cleanup-failed",
+];
+
+#[cfg(any(windows, test))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WindowsRuntimeEvent {
+    ParentLiveness(Result<(), ()>),
+    WorkerExit(Result<u32, ()>),
+    Timeout,
+    AcpRelay(Result<(), ()>),
+    CapabilityRelay(Result<(), ()>),
+    ModelRelay(Result<(), ()>),
+}
+
+#[cfg(any(windows, test))]
+fn classify_runtime_event(event: WindowsRuntimeEvent) -> Result<(), &'static str> {
+    match event {
+        WindowsRuntimeEvent::ParentLiveness(Ok(())) | WindowsRuntimeEvent::WorkerExit(Ok(0)) => {
+            Ok(())
+        }
+        WindowsRuntimeEvent::Timeout => Err("windows-runtime-timeout"),
+        WindowsRuntimeEvent::AcpRelay(_) => Err("windows-acp-relay-failed"),
+        WindowsRuntimeEvent::CapabilityRelay(_) => Err("windows-capability-relay-failed"),
+        WindowsRuntimeEvent::ModelRelay(_) => Err("windows-model-relay-failed"),
+        WindowsRuntimeEvent::ParentLiveness(Err(()))
+        | WindowsRuntimeEvent::WorkerExit(Ok(_))
+        | WindowsRuntimeEvent::WorkerExit(Err(())) => Err("windows-worker-runtime-failed"),
+    }
+}
+
+#[cfg(any(windows, test))]
+fn runtime_diagnostic_codes(
+    runtime_result: Result<(), &'static str>,
+    cleanup_complete: bool,
+) -> [Option<&'static str>; 2] {
+    let primary = runtime_result.err().map(|code| {
+        if WINDOWS_RUNTIME_FAILURE_CODES.contains(&code) {
+            code
+        } else {
+            "windows-worker-runtime-failed"
+        }
+    });
+    let cleanup = (!cleanup_complete).then_some("windows-runtime-cleanup-failed");
+    [primary, cleanup]
+}
 
 #[cfg(windows)]
 use std::ffi::c_void;
@@ -24,8 +82,8 @@ use std::ptr::{null, null_mut};
 #[cfg(windows)]
 use windows_sys::Win32::Foundation::{
     CloseHandle, CompareObjectHandles, DuplicateHandle, GetLastError, SetHandleInformation,
-    DUPLICATE_SAME_ACCESS, ERROR_BROKEN_PIPE, HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE,
-    WAIT_OBJECT_0, WAIT_TIMEOUT,
+    DUPLICATE_SAME_ACCESS, ERROR_BROKEN_PIPE, ERROR_INSUFFICIENT_BUFFER, HANDLE,
+    HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 #[cfg(windows)]
 use windows_sys::Win32::Security::Isolation::{
@@ -35,8 +93,8 @@ use windows_sys::Win32::Security::Isolation::{
 use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
 #[cfg(windows)]
 use windows_sys::Win32::Security::{
-    EqualSid, FreeSid, GetTokenInformation, TokenIsAppContainer, PSID, SECURITY_CAPABILITIES,
-    TOKEN_QUERY,
+    EqualSid, FreeSid, GetTokenInformation, TokenIsAppContainer, TokenUser, PSID,
+    SECURITY_CAPABILITIES, TOKEN_QUERY, TOKEN_USER,
 };
 #[cfg(windows)]
 use windows_sys::Win32::Storage::FileSystem::{ReadFile, WriteFile};
@@ -196,6 +254,30 @@ fn build_command_line_for_argument(argument: &str) -> Result<Vec<u16>, ()> {
 fn build_worker_command_line() -> Vec<u16> {
     build_command_line_for_argument(WINDOWS_WORKER_MODE_ARGUMENT)
         .expect("the production Windows worker argument must be accepted")
+}
+
+#[cfg(windows)]
+fn build_worker_command_line_with_handles(
+    control_read: HANDLE,
+    ready_write: HANDLE,
+) -> Result<Vec<u16>, ()> {
+    if control_read.is_null()
+        || control_read == INVALID_HANDLE_VALUE
+        || ready_write.is_null()
+        || ready_write == INVALID_HANDLE_VALUE
+    {
+        return Err(());
+    }
+    let control = control_read as usize as u64;
+    let ready = ready_write as usize as u64;
+    if control == 0 || control == u64::MAX || ready == 0 || ready == u64::MAX || control == ready {
+        return Err(());
+    }
+    Ok(
+        format!("{WINDOWS_WORKER_PROGRAM_NAME} {WINDOWS_WORKER_MODE_ARGUMENT} {control} {ready}\0")
+            .encode_utf16()
+            .collect(),
+    )
 }
 
 #[cfg(test)]
@@ -503,6 +585,8 @@ enum SupervisorFailureStage {
     ControlSerialization,
     ControlWrite,
     WorkerReady,
+    CapabilityPipe,
+    ModelPipe,
 }
 
 #[cfg(any(windows, test))]
@@ -518,8 +602,33 @@ impl SupervisorFailureStage {
             Self::ControlSerialization => 15,
             Self::ControlWrite => 16,
             Self::WorkerReady => 17,
+            Self::CapabilityPipe => 18,
+            Self::ModelPipe => 19,
         }
     }
+}
+
+#[cfg(any(windows, test))]
+fn runtime_code_for_supervisor_failure(stage: SupervisorFailureStage) -> Option<&'static str> {
+    match stage {
+        SupervisorFailureStage::ControlFrame
+        | SupervisorFailureStage::ControlSerialization
+        | SupervisorFailureStage::ControlWrite => Some("windows-control-channel-invalid"),
+        SupervisorFailureStage::WorkerReady => Some("windows-ready-channel-invalid"),
+        SupervisorFailureStage::CapabilityPipe => Some("windows-capability-pipe-invalid"),
+        SupervisorFailureStage::ModelPipe => Some("windows-model-pipe-invalid"),
+        _ => None,
+    }
+}
+
+#[cfg(windows)]
+fn report_supervisor_failure(stage: SupervisorFailureStage, fallback_marker: &str) -> i32 {
+    if let Some(code) = runtime_code_for_supervisor_failure(stage) {
+        eprintln!("Goose windows containment failed at bounded stage {code}");
+    } else {
+        eprintln!("{fallback_marker}");
+    }
+    stage.diagnostic_exit_code()
 }
 
 pub(crate) struct WindowsPipeNames {
@@ -640,6 +749,10 @@ impl AppContainerProfile {
         }
     }
 
+    fn sid(&self) -> PSID {
+        self.sid
+    }
+
     fn remove(&mut self) -> Result<(), ()> {
         if self.removed {
             return Ok(());
@@ -664,6 +777,88 @@ impl Drop for AppContainerProfile {
             }
             FreeSid(self.sid);
         }
+    }
+}
+
+#[cfg(windows)]
+struct CurrentProcessOwnerSid {
+    _storage: Vec<usize>,
+    sid: PSID,
+}
+
+#[cfg(windows)]
+impl CurrentProcessOwnerSid {
+    fn read() -> Result<Self, ()> {
+        let mut token = null_mut();
+        if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) } == 0
+            || token.is_null()
+        {
+            return Err(());
+        }
+        let mut required = 0_u32;
+        let sized = unsafe { GetTokenInformation(token, TokenUser, null_mut(), 0, &mut required) };
+        if sized != 0 || unsafe { GetLastError() } != ERROR_INSUFFICIENT_BUFFER {
+            unsafe { CloseHandle(token) };
+            return Err(());
+        }
+        let words = (required as usize).div_ceil(size_of::<usize>());
+        let mut storage = vec![0_usize; words];
+        let read = unsafe {
+            GetTokenInformation(
+                token,
+                TokenUser,
+                storage.as_mut_ptr().cast::<c_void>(),
+                required,
+                &mut required,
+            )
+        };
+        unsafe { CloseHandle(token) };
+        if read == 0 {
+            return Err(());
+        }
+        let sid = unsafe { (*storage.as_ptr().cast::<TOKEN_USER>()).User.Sid };
+        if sid.is_null() {
+            return Err(());
+        }
+        Ok(Self {
+            _storage: storage,
+            sid,
+        })
+    }
+}
+
+#[cfg(windows)]
+struct WindowsRuntimePipes {
+    capability_pipe: WindowsNamedPipeServer,
+    model_pipe: WindowsNamedPipeServer,
+    _owner: CurrentProcessOwnerSid,
+}
+
+#[cfg(windows)]
+#[derive(Debug)]
+enum WindowsRuntimePipeFailure {
+    Capability,
+    Model,
+}
+
+#[cfg(windows)]
+impl WindowsRuntimePipes {
+    fn create(
+        names: &WindowsPipeNames,
+        profile: &AppContainerProfile,
+    ) -> Result<Self, WindowsRuntimePipeFailure> {
+        let owner =
+            CurrentProcessOwnerSid::read().map_err(|()| WindowsRuntimePipeFailure::Capability)?;
+        let capability_pipe =
+            WindowsNamedPipeServer::create(&names.capability, owner.sid, profile.sid())
+                .map_err(|_| WindowsRuntimePipeFailure::Capability)?;
+        let model_pipe = WindowsNamedPipeServer::create(&names.model, owner.sid, profile.sid())
+            .map_err(|_| WindowsRuntimePipeFailure::Model)?;
+        Ok(Self {
+            capability_pipe,
+            model_pipe,
+            _owner: owner,
+        })
     }
 }
 
@@ -1413,7 +1608,12 @@ impl JobObject {
             .collect();
         // lpApplicationName keeps image resolution bound to the admitted absolute executable.
         // argv[0] is a fixed non-secret basename so WindowsMode still receives the mode at argv[1].
-        let mut command_line_wide = build_command_line_for_argument(command_argument)
+        let mut command_line_wide =
+            if command_argument == WINDOWS_WORKER_MODE_ARGUMENT && inherited_handles.len() == 5 {
+                build_worker_command_line_with_handles(inherited_handles[3], inherited_handles[4])
+            } else {
+                build_command_line_for_argument(command_argument)
+            }
             .map_err(|()| WorkerLaunchFailureStage::InputValidation)?;
 
         let security_capabilities = profile.security_capabilities();
@@ -1568,6 +1768,10 @@ struct WorkerPipeSet {
     worker_stdin: HANDLE,
     worker_stdout: HANDLE,
     worker_stderr: HANDLE,
+    supervisor_control_write: HANDLE,
+    worker_control_read: HANDLE,
+    supervisor_ready_read: HANDLE,
+    worker_ready_write: HANDLE,
 }
 
 #[cfg(windows)]
@@ -1584,6 +1788,10 @@ impl WorkerPipeSet {
         let mut worker_stdout = null_mut();
         let mut supervisor_stderr = null_mut();
         let mut worker_stderr = null_mut();
+        let mut supervisor_control_write = null_mut();
+        let mut worker_control_read = null_mut();
+        let mut supervisor_ready_read = null_mut();
+        let mut worker_ready_write = null_mut();
         let created = unsafe {
             CreatePipe(
                 &mut worker_stdin,
@@ -1603,6 +1811,18 @@ impl WorkerPipeSet {
                     &raw mut attributes,
                     0,
                 ) != 0
+                && CreatePipe(
+                    &mut worker_control_read,
+                    &mut supervisor_control_write,
+                    &raw mut attributes,
+                    0,
+                ) != 0
+                && CreatePipe(
+                    &mut supervisor_ready_read,
+                    &mut worker_ready_write,
+                    &raw mut attributes,
+                    0,
+                ) != 0
         };
         if !created {
             for handle in [
@@ -1612,6 +1832,10 @@ impl WorkerPipeSet {
                 worker_stdout,
                 supervisor_stderr,
                 worker_stderr,
+                supervisor_control_write,
+                worker_control_read,
+                supervisor_ready_read,
+                worker_ready_write,
             ] {
                 if !handle.is_null() {
                     unsafe { CloseHandle(handle) };
@@ -1619,7 +1843,13 @@ impl WorkerPipeSet {
             }
             return Err(());
         }
-        for handle in [supervisor_stdin, supervisor_stdout, supervisor_stderr] {
+        for handle in [
+            supervisor_stdin,
+            supervisor_stdout,
+            supervisor_stderr,
+            supervisor_control_write,
+            supervisor_ready_read,
+        ] {
             // SAFETY: each handle is a live parent-side pipe endpoint. Clearing only the inherit
             // bit keeps it private while the child-side endpoints remain explicitly allowlisted.
             if unsafe { SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0) } == 0 {
@@ -1630,6 +1860,10 @@ impl WorkerPipeSet {
                     worker_stdout,
                     supervisor_stderr,
                     worker_stderr,
+                    supervisor_control_write,
+                    worker_control_read,
+                    supervisor_ready_read,
+                    worker_ready_write,
                 ] {
                     if !owned.is_null() {
                         unsafe { CloseHandle(owned) };
@@ -1645,15 +1879,29 @@ impl WorkerPipeSet {
             worker_stdin,
             worker_stdout,
             worker_stderr,
+            supervisor_control_write,
+            worker_control_read,
+            supervisor_ready_read,
+            worker_ready_write,
         })
     }
 
-    fn inherited_handles(&self) -> [HANDLE; 3] {
+    fn inherited_handles(&self) -> [HANDLE; 5] {
+        [
+            self.worker_stdin,
+            self.worker_stdout,
+            self.worker_stderr,
+            self.worker_control_read,
+            self.worker_ready_write,
+        ]
+    }
+
+    fn probe_inherited_handles(&self) -> [HANDLE; 3] {
         [self.worker_stdin, self.worker_stdout, self.worker_stderr]
     }
 
     fn stdio(&self) -> [HANDLE; 3] {
-        self.inherited_handles()
+        [self.worker_stdin, self.worker_stdout, self.worker_stderr]
     }
 
     fn close_worker_endpoints(&mut self) {
@@ -1661,6 +1909,8 @@ impl WorkerPipeSet {
             &mut self.worker_stdin,
             &mut self.worker_stdout,
             &mut self.worker_stderr,
+            &mut self.worker_control_read,
+            &mut self.worker_ready_write,
         ] {
             if !handle.is_null() {
                 unsafe { CloseHandle(*handle) };
@@ -1676,6 +1926,24 @@ impl WorkerPipeSet {
             self.supervisor_stdin = null_mut();
         }
     }
+
+    fn take_worker_stdin(&mut self) -> Result<HANDLE, ()> {
+        let handle = self.supervisor_stdin;
+        if handle.is_null() || handle == INVALID_HANDLE_VALUE {
+            return Err(());
+        }
+        self.supervisor_stdin = null_mut();
+        Ok(handle)
+    }
+
+    fn take_worker_stdout(&mut self) -> Result<HANDLE, ()> {
+        let handle = self.supervisor_stdout;
+        if handle.is_null() || handle == INVALID_HANDLE_VALUE {
+            return Err(());
+        }
+        self.supervisor_stdout = null_mut();
+        Ok(handle)
+    }
 }
 
 #[cfg(windows)]
@@ -1688,6 +1956,10 @@ impl Drop for WorkerPipeSet {
             &mut self.worker_stdin,
             &mut self.worker_stdout,
             &mut self.worker_stderr,
+            &mut self.supervisor_control_write,
+            &mut self.worker_control_read,
+            &mut self.supervisor_ready_read,
+            &mut self.worker_ready_write,
         ] {
             if !handle.is_null() {
                 unsafe { CloseHandle(*handle) };
@@ -1715,7 +1987,7 @@ pub(crate) fn launch_windows_containment_worker(
     excluded_handle
         .encoded_value()
         .map_err(|()| WindowsContainmentFailure::WorkerLaunch)?;
-    let inherited_handles = pipes.inherited_handles();
+    let inherited_handles = pipes.probe_inherited_handles();
     if inherited_handles
         .iter()
         .any(|handle| *handle == excluded_handle.handle)
@@ -1803,6 +2075,81 @@ fn read_exact_handle(handle: HANDLE, bytes: &mut [u8]) -> Result<(), ()> {
         offset += read as usize;
     }
     Ok(())
+}
+
+#[cfg(windows)]
+fn handle_from_fd(fd: i32) -> Result<HANDLE, ()> {
+    if fd < 0 {
+        return Err(());
+    }
+    // SAFETY: _get_osfhandle only reads the CRT descriptor table and returns its owned OS handle.
+    let raw = unsafe { libc::get_osfhandle(fd) };
+    if raw == -1 {
+        return Err(());
+    }
+    let source = raw as usize as HANDLE;
+    if source.is_null() || source == INVALID_HANDLE_VALUE {
+        return Err(());
+    }
+    let mut duplicate = null_mut();
+    if unsafe {
+        DuplicateHandle(
+            GetCurrentProcess(),
+            source,
+            GetCurrentProcess(),
+            &mut duplicate,
+            0,
+            0,
+            DUPLICATE_SAME_ACCESS,
+        )
+    } == 0
+        || duplicate.is_null()
+        || duplicate == INVALID_HANDLE_VALUE
+    {
+        return Err(());
+    }
+    Ok(duplicate)
+}
+
+#[cfg(windows)]
+async fn wait_for_parent_liveness() -> Result<(), ()> {
+    let handle = handle_from_fd(4)?;
+    let mut channel = crate::windows_bridge::WindowsBridgeChannel::from_raw_handle(handle)?;
+    let mut byte = [0_u8; 1];
+    match channel.read_once(&mut byte).await? {
+        0 => Ok(()),
+        _ => Err(()),
+    }
+}
+
+#[cfg(windows)]
+async fn wait_for_worker_exit_handle(handle: HANDLE) -> Result<u32, ()> {
+    loop {
+        match unsafe { WaitForSingleObject(handle, 0) } {
+            WAIT_OBJECT_0 => {
+                let mut exit_code = 0_u32;
+                if unsafe { GetExitCodeProcess(handle, &mut exit_code) } == 0 {
+                    return Err(());
+                }
+                return Ok(exit_code);
+            }
+            WAIT_TIMEOUT => {}
+            _ => return Err(()),
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+}
+
+#[cfg(windows)]
+fn cleanup_runtime(
+    job: &JobObject,
+    worker: &WorkerProcess,
+    profile: &mut AppContainerProfile,
+) -> bool {
+    let job_terminated = job.terminate_for_cleanup().is_ok();
+    let worker_terminal = worker.wait_for_exit(5_000).is_ok();
+    let profile_removed = profile.remove().is_ok();
+    job_terminated && worker_terminal && profile_removed
 }
 
 #[cfg(windows)]
@@ -1990,8 +2337,10 @@ pub(crate) fn run_supervisor() -> i32 {
         let control = match read_control_frame_from_fd(3) {
             Ok(control) => control,
             Err(()) => {
-                eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-                return SupervisorFailureStage::ControlFrame.diagnostic_exit_code();
+                return report_supervisor_failure(
+                    SupervisorFailureStage::ControlFrame,
+                    WINDOWS_SETUP_FAILURE_MARKER,
+                );
             }
         };
         return launch_controlled_worker(control);
@@ -2004,11 +2353,24 @@ pub(crate) fn run_supervisor() -> i32 {
 }
 
 pub(crate) fn run_worker() -> i32 {
+    run_worker_with_arguments(&[])
+}
+
+pub(crate) fn run_worker_with_arguments(_arguments: &[String]) -> i32 {
     #[cfg(windows)]
     {
-        let input = unsafe { GetStdHandle(STD_INPUT_HANDLE) };
-        let output = unsafe { GetStdHandle(STD_OUTPUT_HANDLE) };
-        let control = match read_control_frame_from_handle(input) {
+        let (control_value, ready_value) =
+            match crate::windows_control::parse_worker_handle_arguments(_arguments) {
+                Ok(Some(values)) => values,
+                _ => {
+                    eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+                    return 1;
+                }
+            };
+        let control_handle = control_value as usize as HANDLE;
+        let control_result = read_control_frame_from_handle(control_handle);
+        unsafe { CloseHandle(control_handle) };
+        let control = match control_result {
             Ok(control) => control,
             Err(()) => {
                 eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
@@ -2019,12 +2381,49 @@ pub(crate) fn run_worker() -> i32 {
             eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
             return 1;
         }
-        if write_all_handle(output, WINDOWS_WORKER_READY_MARKER).is_err() {
+        let pipe_names = match derive_pipe_names(&control.attempt_id) {
+            Ok(names) => names,
+            Err(()) => {
+                eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+                return 1;
+            }
+        };
+        let pipe_runtime = match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(runtime) => runtime,
+            Err(_) => {
+                eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+                return 1;
+            }
+        };
+        let connected_pipes = pipe_runtime.block_on(async {
+            let capability = WindowsNamedPipeClient::connect_once(&pipe_names.capability)?;
+            let model = WindowsNamedPipeClient::connect_once(&pipe_names.model)?;
+            Ok::<_, crate::windows_named_pipe::WindowsNamedPipeError>((capability, model))
+        });
+        let (capability_pipe, model_pipe) = match connected_pipes {
+            Ok(pipes) => pipes,
+            Err(_) => {
+                eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+                return 1;
+            }
+        };
+        let ready_handle = ready_value as usize as HANDLE;
+        let ready_result = write_all_handle(ready_handle, WINDOWS_WORKER_READY_MARKER);
+        unsafe { CloseHandle(ready_handle) };
+        if ready_result.is_err() {
             eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
             return 1;
         }
+        drop((capability_pipe, model_pipe, pipe_runtime));
+        // Task 7 supplies the adapted Goose runtime and ACP service. Until then a Worker that
+        // reaches the bridge boundary but has no serving loop must fail closed rather than
+        // turning readiness into a false successful runtime completion.
         let _ = control;
-        0
+        eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+        1
     }
     #[cfg(not(windows))]
     {
@@ -2095,11 +2494,50 @@ fn verify_worker_boundary() -> bool {
 
 #[cfg(windows)]
 fn launch_controlled_worker(control: crate::windows_control::WindowsControlMessage) -> i32 {
-    let profile = match AppContainerProfile::create(&control.attempt_id) {
+    let mut profile = match AppContainerProfile::create(&control.attempt_id) {
         Ok(profile) => profile,
         Err(()) => {
             eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
             return SupervisorFailureStage::Profile.diagnostic_exit_code();
+        }
+    };
+    let pipe_runtime = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(_) => {
+            return report_supervisor_failure(
+                SupervisorFailureStage::CapabilityPipe,
+                WINDOWS_SETUP_FAILURE_MARKER,
+            );
+        }
+    };
+    let pipe_names = match derive_pipe_names(&control.attempt_id) {
+        Ok(names) => names,
+        Err(()) => {
+            return report_supervisor_failure(
+                SupervisorFailureStage::CapabilityPipe,
+                WINDOWS_SETUP_FAILURE_MARKER,
+            );
+        }
+    };
+    let runtime_pipes = {
+        let _runtime_guard = pipe_runtime.enter();
+        match WindowsRuntimePipes::create(&pipe_names, &profile) {
+            Ok(pipes) => pipes,
+            Err(WindowsRuntimePipeFailure::Capability) => {
+                return report_supervisor_failure(
+                    SupervisorFailureStage::CapabilityPipe,
+                    WINDOWS_SETUP_FAILURE_MARKER,
+                );
+            }
+            Err(WindowsRuntimePipeFailure::Model) => {
+                return report_supervisor_failure(
+                    SupervisorFailureStage::ModelPipe,
+                    WINDOWS_SETUP_FAILURE_MARKER,
+                );
+            }
         }
     };
     let job = match JobObject::create() {
@@ -2142,29 +2580,141 @@ fn launch_controlled_worker(control: crate::windows_control::WindowsControlMessa
     let payload = match crate::windows_control::serialize_control_message(&control) {
         Ok(payload) => payload,
         Err(()) => {
-            eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-            return SupervisorFailureStage::ControlSerialization.diagnostic_exit_code();
+            return report_supervisor_failure(
+                SupervisorFailureStage::ControlSerialization,
+                WINDOWS_SETUP_FAILURE_MARKER,
+            );
         }
     };
     let mut frame = Vec::with_capacity(payload.len() + 4);
     frame.extend_from_slice(&(payload.len() as u32).to_le_bytes());
     frame.extend_from_slice(&payload);
-    if write_all_handle(pipes.supervisor_stdin, &frame).is_err() {
-        eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-        return SupervisorFailureStage::ControlWrite.diagnostic_exit_code();
+    if write_all_handle(pipes.supervisor_control_write, &frame).is_err() {
+        return report_supervisor_failure(
+            SupervisorFailureStage::ControlWrite,
+            WINDOWS_SETUP_FAILURE_MARKER,
+        );
     }
-    unsafe { CloseHandle(pipes.supervisor_stdin) };
-    pipes.supervisor_stdin = null_mut();
+    unsafe { CloseHandle(pipes.supervisor_control_write) };
+    pipes.supervisor_control_write = null_mut();
+    let WindowsRuntimePipes {
+        capability_pipe,
+        model_pipe,
+        _owner,
+    } = runtime_pipes;
+    let accepted = pipe_runtime.block_on(async {
+        let capability = capability_pipe
+            .accept_once()
+            .await
+            .map_err(|_| WindowsRuntimePipeFailure::Capability)?;
+        let model = model_pipe
+            .accept_once()
+            .await
+            .map_err(|_| WindowsRuntimePipeFailure::Model)?;
+        Ok::<_, WindowsRuntimePipeFailure>((capability, model))
+    });
+    let (capability_worker, model_worker) = match accepted {
+        Ok(pipes) => pipes,
+        Err(WindowsRuntimePipeFailure::Capability) => {
+            return report_supervisor_failure(
+                SupervisorFailureStage::CapabilityPipe,
+                WINDOWS_SETUP_FAILURE_MARKER,
+            );
+        }
+        Err(WindowsRuntimePipeFailure::Model) => {
+            return report_supervisor_failure(
+                SupervisorFailureStage::ModelPipe,
+                WINDOWS_SETUP_FAILURE_MARKER,
+            );
+        }
+    };
+    // The Worker writes ready only after both named-pipe client connections succeed. Accepting
+    // the two servers before waiting on the dedicated ready handle avoids a startup deadlock.
     let mut marker = vec![0_u8; WINDOWS_WORKER_READY_MARKER.len()];
-    let worker_ready = read_exact_handle(pipes.supervisor_stdout, &mut marker).is_ok()
+    let worker_ready = read_exact_handle(pipes.supervisor_ready_read, &mut marker).is_ok()
         && marker == WINDOWS_WORKER_READY_MARKER;
     if !worker_ready {
-        eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-        return SupervisorFailureStage::WorkerReady.diagnostic_exit_code();
+        return report_supervisor_failure(
+            SupervisorFailureStage::WorkerReady,
+            WINDOWS_SETUP_FAILURE_MARKER,
+        );
     }
-    eprintln!("{WINDOWS_RESOURCE_FAILURE_MARKER}");
-    let _ = worker;
-    1
+    let worker_stdin = match pipes.take_worker_stdin() {
+        Ok(handle) => handle,
+        Err(()) => {
+            eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+            return SupervisorFailureStage::Pipes.diagnostic_exit_code();
+        }
+    };
+    let worker_stdout = match pipes.take_worker_stdout() {
+        Ok(handle) => handle,
+        Err(()) => {
+            eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+            return SupervisorFailureStage::Pipes.diagnostic_exit_code();
+        }
+    };
+    let acp_input =
+        handle_from_fd(0).and_then(crate::windows_bridge::WindowsBridgeChannel::from_raw_handle);
+    let acp_output =
+        handle_from_fd(1).and_then(crate::windows_bridge::WindowsBridgeChannel::from_raw_handle);
+    let capability_main =
+        handle_from_fd(5).and_then(crate::windows_bridge::WindowsBridgeChannel::from_raw_handle);
+    let model_main =
+        handle_from_fd(6).and_then(crate::windows_bridge::WindowsBridgeChannel::from_raw_handle);
+    let worker_stdin = crate::windows_bridge::WindowsBridgeChannel::from_raw_handle(worker_stdin);
+    let worker_stdout = crate::windows_bridge::WindowsBridgeChannel::from_raw_handle(worker_stdout);
+    let (acp_input, acp_output, capability_main, model_main, worker_stdin, worker_stdout) = match (
+        acp_input,
+        acp_output,
+        capability_main,
+        model_main,
+        worker_stdin,
+        worker_stdout,
+    ) {
+        (Ok(a), Ok(b), Ok(c), Ok(d), Ok(e), Ok(f)) => (a, b, c, d, e, f),
+        _ => {
+            eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+            return SupervisorFailureStage::Pipes.diagnostic_exit_code();
+        }
+    };
+    let worker_process_handle = worker.process_handle();
+    let runtime_timeout_ms = control.resource_budget.max_active_duration_ms;
+    let relay_result = pipe_runtime.block_on(async move {
+        let acp_in = acp_input.copy_to(worker_stdin);
+        let acp_out = worker_stdout.copy_to(acp_output);
+        let capability = capability_main.relay_framed_bidirectional(capability_worker);
+        let model = model_main.relay_framed_bidirectional(model_worker);
+        tokio::select! {
+            result = wait_for_parent_liveness() => {
+                classify_runtime_event(WindowsRuntimeEvent::ParentLiveness(result))
+            },
+            result = wait_for_worker_exit_handle(worker_process_handle) => {
+                classify_runtime_event(WindowsRuntimeEvent::WorkerExit(result))
+            },
+            _ = tokio::time::sleep(std::time::Duration::from_millis(runtime_timeout_ms)) => {
+                classify_runtime_event(WindowsRuntimeEvent::Timeout)
+            },
+            result = acp_in => classify_runtime_event(WindowsRuntimeEvent::AcpRelay(result)),
+            result = acp_out => classify_runtime_event(WindowsRuntimeEvent::AcpRelay(result)),
+            result = capability => {
+                classify_runtime_event(WindowsRuntimeEvent::CapabilityRelay(result))
+            },
+            result = model => classify_runtime_event(WindowsRuntimeEvent::ModelRelay(result)),
+        }
+    });
+    let cleanup_complete = cleanup_runtime(&job, &worker, &mut profile);
+    let diagnostic_codes = runtime_diagnostic_codes(relay_result, cleanup_complete);
+    drop((_owner, worker, pipes, profile, pipe_runtime));
+    for code in diagnostic_codes.into_iter().flatten() {
+        if WINDOWS_RUNTIME_FAILURE_CODES.contains(&code) {
+            eprintln!("Goose windows containment failed at bounded stage {code}");
+        }
+    }
+    if diagnostic_codes == [None, None] {
+        0
+    } else {
+        1
+    }
 }
 
 #[cfg(windows)]
@@ -2387,6 +2937,122 @@ mod tests {
     }
 
     #[test]
+    fn keeps_runtime_failure_codes_closed_and_sanitized() {
+        assert_eq!(WINDOWS_RUNTIME_FAILURE_CODES.len(), 10);
+        for code in WINDOWS_RUNTIME_FAILURE_CODES {
+            assert!(code.starts_with("windows-"));
+            assert!(code
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte == b'-'));
+            assert!(!code.contains(['/', '\\', ' ', ':']));
+        }
+    }
+
+    #[test]
+    fn maps_runtime_setup_failures_to_reachable_closed_diagnostics() {
+        assert_eq!(
+            runtime_code_for_supervisor_failure(SupervisorFailureStage::ControlFrame),
+            Some("windows-control-channel-invalid")
+        );
+        assert_eq!(
+            runtime_code_for_supervisor_failure(SupervisorFailureStage::ControlSerialization),
+            Some("windows-control-channel-invalid")
+        );
+        assert_eq!(
+            runtime_code_for_supervisor_failure(SupervisorFailureStage::ControlWrite),
+            Some("windows-control-channel-invalid")
+        );
+        assert_eq!(
+            runtime_code_for_supervisor_failure(SupervisorFailureStage::WorkerReady),
+            Some("windows-ready-channel-invalid")
+        );
+        assert_eq!(
+            runtime_code_for_supervisor_failure(SupervisorFailureStage::CapabilityPipe),
+            Some("windows-capability-pipe-invalid")
+        );
+        assert_eq!(
+            runtime_code_for_supervisor_failure(SupervisorFailureStage::ModelPipe),
+            Some("windows-model-pipe-invalid")
+        );
+        assert_eq!(
+            runtime_code_for_supervisor_failure(SupervisorFailureStage::Job),
+            None
+        );
+    }
+
+    #[test]
+    fn classifies_runtime_completion_without_misreporting_orderly_shutdown() {
+        assert_eq!(
+            classify_runtime_event(WindowsRuntimeEvent::ParentLiveness(Ok(()))),
+            Ok(())
+        );
+        assert_eq!(
+            classify_runtime_event(WindowsRuntimeEvent::ParentLiveness(Err(()))),
+            Err("windows-worker-runtime-failed")
+        );
+        assert_eq!(
+            classify_runtime_event(WindowsRuntimeEvent::WorkerExit(Ok(0))),
+            Ok(())
+        );
+        assert_eq!(
+            classify_runtime_event(WindowsRuntimeEvent::WorkerExit(Ok(1))),
+            Err("windows-worker-runtime-failed")
+        );
+        assert_eq!(
+            classify_runtime_event(WindowsRuntimeEvent::WorkerExit(Err(()))),
+            Err("windows-worker-runtime-failed")
+        );
+        assert_eq!(
+            classify_runtime_event(WindowsRuntimeEvent::Timeout),
+            Err("windows-runtime-timeout")
+        );
+        assert_eq!(
+            classify_runtime_event(WindowsRuntimeEvent::AcpRelay(Err(()))),
+            Err("windows-acp-relay-failed")
+        );
+        assert_eq!(
+            classify_runtime_event(WindowsRuntimeEvent::AcpRelay(Ok(()))),
+            Err("windows-acp-relay-failed")
+        );
+        assert_eq!(
+            classify_runtime_event(WindowsRuntimeEvent::CapabilityRelay(Err(()))),
+            Err("windows-capability-relay-failed")
+        );
+        assert_eq!(
+            classify_runtime_event(WindowsRuntimeEvent::CapabilityRelay(Ok(()))),
+            Err("windows-capability-relay-failed")
+        );
+        assert_eq!(
+            classify_runtime_event(WindowsRuntimeEvent::ModelRelay(Err(()))),
+            Err("windows-model-relay-failed")
+        );
+        assert_eq!(
+            classify_runtime_event(WindowsRuntimeEvent::ModelRelay(Ok(()))),
+            Err("windows-model-relay-failed")
+        );
+    }
+
+    #[test]
+    fn retains_primary_runtime_failure_and_reports_cleanup_separately() {
+        assert_eq!(
+            runtime_diagnostic_codes(Err("windows-model-relay-failed"), false),
+            [
+                Some("windows-model-relay-failed"),
+                Some("windows-runtime-cleanup-failed")
+            ]
+        );
+        assert_eq!(
+            runtime_diagnostic_codes(Ok(()), false),
+            [None, Some("windows-runtime-cleanup-failed")]
+        );
+        assert_eq!(runtime_diagnostic_codes(Ok(()), true), [None, None]);
+        assert_eq!(
+            runtime_diagnostic_codes(Err("untrusted runtime detail"), true),
+            [Some("windows-worker-runtime-failed"), None]
+        );
+    }
+
+    #[test]
     fn classifies_create_process_failures_without_raw_error_output() {
         let classifications = [
             (2, CreateProcessFailureReason::FileNotFound),
@@ -2456,10 +3122,12 @@ mod tests {
             SupervisorFailureStage::ControlSerialization,
             SupervisorFailureStage::ControlWrite,
             SupervisorFailureStage::WorkerReady,
+            SupervisorFailureStage::CapabilityPipe,
+            SupervisorFailureStage::ModelPipe,
         ];
         assert_eq!(
             stages.map(SupervisorFailureStage::diagnostic_exit_code),
-            [10, 11, 12, 13, 14, 32, 15, 16, 17]
+            [10, 11, 12, 13, 14, 32, 15, 16, 17, 18, 19]
         );
     }
 
