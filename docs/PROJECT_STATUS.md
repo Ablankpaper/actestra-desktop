@@ -4,6 +4,53 @@ Last updated: 2026-08-19
 
 ## Current phase
 
+### 2026-08-19 P8.2c Batch 2 Task 7 local Worker runtime composition (native gate remains open)
+
+Task 7 is now implemented locally on top of `5ca5ef8`, beginning with commit
+`583bf21`. The Windows Worker no longer exits immediately after bridge
+readiness. Its startup path has a fixed, fail-closed seven-stage order:
+control validation, boundary verification, capability-pipe connection,
+model-pipe connection, adapter construction, ready notification, and adapted
+Goose ACP serving. The Worker constructs the existing
+`WindowsModelProvider` and `WindowsCapabilityClient`, binds the fixed
+`actestra` Provider identity and control-supplied model ID, installs the fixed
+`actestra-capability-proxy` extension, creates `goose-data` and `goose-config`
+only under the admitted attempt-private root, writes ready only after all of
+those steps succeed, and then calls the pinned private Goose runtime's
+`run_with_runtime_adapter()` entry point. It does not read Goose Provider,
+model, URL, credential, or global data/configuration environment variables.
+
+Portable local evidence is green: `cargo fmt --check`, `cargo test --locked`
+for `workers/goose-runner` (`81` tests passed), `git diff --check`, and the
+complete `bun run check` (`165` test files passed / `2` skipped and `1,792`
+tests passed / `10` skipped, followed by P7, smoke-harness, product-boundary,
+frozen-foundation, downstream-overlay, and package gates at exit `0`). The new
+tests lock startup ordering, every transition's stop-before-later-stage
+behavior, skip/replay rejection, symlink-safe private Goose state directories,
+first-discovery session binding, and a real in-process `initialize` -> MCP-free
+`session/new` -> injected-extension tool-discovery exchange through the pinned
+Goose ACP agent. That in-process exchange caught and closed a real defect: the
+shared model/capability session cell was previously never populated, so the
+first injected tool discovery would have failed closed before Main could bind
+the session. The capability adapter now atomically binds the first valid
+Goose-supplied session ID and rejects every later mismatch. The complete gate
+also reproduced an existing shell-fixture race in the Windows control-channel
+test: file existence could be observed after redirection created an empty file
+but before `cat` finished. The regression now makes that window deterministic,
+waits for the later launch-evidence completion marker, and only then reads and
+compares the exact control frame; the focused suite passes `7` tests with the
+native-Windows case skipped on macOS.
+
+This does not close Task 7 or P8.2c. The full Windows-target Cargo check was
+attempted again and remains blocked on this macOS host by the existing native
+C toolchain gap (`zstd-sys`, `libsqlite3-sys`, and tree-sitter builds cannot
+find Windows CRT headers/tools); this is not Windows execution evidence. The
+real Windows native startup/ACP session, exact-artifact authenticated runtime
+integration, Windows CI, and Electron/provider-backed acceptance remain open.
+The subsequent Task 8–11 Main bridge/composition work and Batch 4 evidence/CI
+tasks are not claimed complete. P8.3, P8.4, release, deployment, and user
+acceptance remain open.
+
 ### 2026-08-19 P8.2c Batch 2 Task 6 local supervisor-relay implementation (native gate remains open)
 
 The Windows Supervisor composition now has the Task 6 source slice in place:
