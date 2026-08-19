@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   GOOSE_WINDOWS_RUNTIME_EVIDENCE_KEYS,
+  classifyGooseWindowsArtifactAdmissionFailure,
   classifyGooseWindowsRuntimeFailureEvidence,
   validateGooseWindowsRuntimeEvidence,
 } from "../../scripts/gooseWindowsRuntimeEvidence.mjs";
@@ -114,6 +115,30 @@ describe("Goose Windows runtime evidence", () => {
     ).toBeUndefined();
   });
 
+  it("classifies only one closed Artifact admission error without echoing diagnostics", () => {
+    expect(
+      classifyGooseWindowsArtifactAdmissionFailure(
+        '$ bun scripts/admit-goose-runner-build.ts\r\n{"status":"failed","code":"incompatible-artifact"}\r\nerror: script exited with code 1\r\n',
+      ),
+    ).toBe("windows-runtime-artifact-admission-incompatible-artifact");
+    expect(
+      classifyGooseWindowsArtifactAdmissionFailure('{"status":"failed","code":"unsafe-audit"}\n'),
+    ).toBe("windows-runtime-artifact-admission-unsafe-audit");
+    expect(
+      classifyGooseWindowsArtifactAdmissionFailure(
+        '{"status":"failed","code":"incompatible-artifact","path":"C:\\\\private"}\n',
+      ),
+    ).toBeUndefined();
+    expect(
+      classifyGooseWindowsArtifactAdmissionFailure('{"status":"failed","code":"private-error"}\n'),
+    ).toBeUndefined();
+    expect(
+      classifyGooseWindowsArtifactAdmissionFailure(
+        '{"status":"failed","code":"invalid-manifest"}\n{"status":"failed","code":"digest-mismatch"}\n',
+      ),
+    ).toBeUndefined();
+  });
+
   it("registers a bounded exact-artifact Windows runtime runner", () => {
     const packageJson = JSON.parse(
       fs.readFileSync(path.join(repositoryRoot, "package.json"), "utf8"),
@@ -131,6 +156,7 @@ describe("Goose Windows runtime evidence", () => {
     expect(runner).toContain("ACTESTRA_GOOSE_CONTAINMENT_EVIDENCE_PATH");
     expect(runner).toContain("gooseRunnerWindowsNative.integration.ts");
     expect(runner).toContain("validateGooseWindowsRuntimeEvidence");
+    expect(runner).toContain("classifyGooseWindowsArtifactAdmissionFailure");
     expect(runner).toContain("classifyGooseWindowsRuntimeFailureEvidence");
     expect(runner).toContain("readFailureCode");
     expect(runner).not.toContain('stdio: "inherit"');

@@ -6,6 +6,8 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import {
+  GOOSE_WINDOWS_ARTIFACT_ADMISSION_FAILURE_CODES,
+  classifyGooseWindowsArtifactAdmissionFailure,
   classifyGooseWindowsRuntimeFailureEvidence,
   validateGooseWindowsRuntimeEvidence,
 } from "./gooseWindowsRuntimeEvidence.mjs";
@@ -20,6 +22,7 @@ const CONTAINMENT_KEYS = Object.freeze(
   ["executableSha256", "manifestSha256", "probeSha256", "status", "targetTriple"].sort(),
 );
 const FAILURE_CODES = new Set([
+  ...GOOSE_WINDOWS_ARTIFACT_ADMISSION_FAILURE_CODES,
   "windows-runtime-artifact-admission-failed",
   "windows-runtime-artifact-mismatch",
   "windows-runtime-containment-evidence-invalid",
@@ -144,7 +147,10 @@ function admitExactArtifact(expectedManifestSha256) {
     Buffer.byteLength(result.stdout ?? "", "utf8") > MAX_OUTPUT_BYTES ||
     Buffer.byteLength(result.stderr ?? "", "utf8") > MAX_OUTPUT_BYTES
   ) {
-    throw new Error("windows-runtime-artifact-admission-failed");
+    throw new Error(
+      classifyGooseWindowsArtifactAdmissionFailure(result.stderr) ??
+        "windows-runtime-artifact-admission-failed",
+    );
   }
   const admitted = parseSingleJsonLine(result.stdout, "windows-runtime-artifact-admission-failed");
   if (

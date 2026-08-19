@@ -9,6 +9,17 @@ const FAILURE_STAGE_CODES = Object.freeze({
   cancellation: "windows-runtime-cancellation-failed",
   "parent-death": "windows-runtime-parent-death-failed",
 });
+const ARTIFACT_ADMISSION_FAILURE_CODES = Object.freeze({
+  "missing-artifact": "windows-runtime-artifact-admission-missing-artifact",
+  "invalid-manifest": "windows-runtime-artifact-admission-invalid-manifest",
+  "incompatible-artifact": "windows-runtime-artifact-admission-incompatible-artifact",
+  "digest-mismatch": "windows-runtime-artifact-admission-digest-mismatch",
+  "invalid-sbom": "windows-runtime-artifact-admission-invalid-sbom",
+  "unsafe-audit": "windows-runtime-artifact-admission-unsafe-audit",
+  "unsupported-build-host": "windows-runtime-artifact-admission-unsupported-build-host",
+  "invalid-build-manifest": "windows-runtime-artifact-admission-invalid-build-manifest",
+  "build-artifact-unavailable": "windows-runtime-artifact-admission-build-unavailable",
+});
 const BOOLEAN_OUTCOMES = Object.freeze([
   "acpInitialized",
   "mcpFreeSessionCreated",
@@ -99,5 +110,36 @@ export function classifyGooseWindowsRuntimeFailureEvidence(value) {
     : undefined;
 }
 
+export function classifyGooseWindowsArtifactAdmissionFailure(value) {
+  if (typeof value !== "string" || Buffer.byteLength(value, "utf8") > 64 * 1024) {
+    return undefined;
+  }
+  const jsonLines = value
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("{") && line.endsWith("}"));
+  if (jsonLines.length !== 1) return undefined;
+  let failure;
+  try {
+    failure = JSON.parse(jsonLines[0]);
+  } catch {
+    return undefined;
+  }
+  if (
+    !isRecord(failure) ||
+    !hasExactKeys(failure, ["code", "status"]) ||
+    failure.status !== "failed" ||
+    typeof failure.code !== "string"
+  ) {
+    return undefined;
+  }
+  return Object.hasOwn(ARTIFACT_ADMISSION_FAILURE_CODES, failure.code)
+    ? ARTIFACT_ADMISSION_FAILURE_CODES[failure.code]
+    : undefined;
+}
+
 export const GOOSE_WINDOWS_RUNTIME_EVIDENCE_KEYS = EVIDENCE_KEYS;
+export const GOOSE_WINDOWS_ARTIFACT_ADMISSION_FAILURE_CODES = Object.freeze(
+  Object.values(ARTIFACT_ADMISSION_FAILURE_CODES),
+);
 export const GOOSE_WINDOWS_RUNTIME_TARGET_TRIPLE = TARGET_TRIPLE;
