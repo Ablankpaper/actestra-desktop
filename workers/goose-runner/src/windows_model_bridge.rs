@@ -1,8 +1,18 @@
 use crate::windows_bridge::{
     decode_json_frame, encode_json_frame, exact_bridge_token, has_exact_keys, is_bridge_token,
-    WINDOWS_BRIDGE_CONTRACT_VERSION,
+    PendingRequests, WindowsBridgeChannel, WINDOWS_BRIDGE_CONTRACT_VERSION,
+    WINDOWS_BRIDGE_MAX_PENDING_REQUESTS,
 };
+use goose_providers::base::{stream_from_single_message, MessageStream, Provider};
+use goose_providers::conversation::message::{Message, MessageContentBlock};
+use goose_providers::conversation::token_usage::{ProviderUsage, Usage};
+use goose_providers::errors::ProviderError;
+use goose_providers::model::ModelConfig;
+use rmcp::model::{CallToolRequestParams, Role, Tool};
 use serde_json::{json, Map, Value};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use tokio::sync::{Mutex, OnceCell};
 
 const COMPLETION_REQUEST_KEYS: [&str; 6] = [
     "contractVersion",
@@ -376,10 +386,423 @@ fn validate_bounded_text(value: &str) -> Result<(), ()> {
     Ok(())
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum WindowsModelBridgeError {
+    InvalidLease,
+    InvalidModelId,
+}
+
+impl std::fmt::Display for WindowsModelBridgeError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::InvalidLease => "invalid Windows model bridge lease",
+            Self::InvalidModelId => "invalid Windows model bridge model id",
+        })
+    }
+}
+
+impl std::error::Error for WindowsModelBridgeError {}
+
+struct ModelBridgeState {
+    channel: WindowsBridgeChannel,
+    pending: PendingRequests,
+}
+
+pub(crate) struct WindowsModelProvider {
+    state: Arc<Mutex<ModelBridgeState>>,
+    lease: String,
+    session_id: Arc<OnceCell<String>>,
+    model_id: String,
+    next_request_id: AtomicU64,
+}
+
+impl WindowsModelProvider {
+    pub(crate) fn new(
+        channel: WindowsBridgeChannel,
+        lease: String,
+        session_id: Arc<OnceCell<String>>,
+        model_id: String,
+    ) -> Result<Self, WindowsModelBridgeError> {
+        if !is_bridge_token(&lease, 32, 256) {
+            return Err(WindowsModelBridgeError::InvalidLease);
+        }
+        if model_id.is_empty() || model_id.len() > 256 || model_id.chars().any(char::is_control) {
+            return Err(WindowsModelBridgeError::InvalidModelId);
+        }
+        Ok(Self {
+            state: Arc::new(Mutex::new(ModelBridgeState {
+                channel,
+                pending: PendingRequests::new(WINDOWS_BRIDGE_MAX_PENDING_REQUESTS)
+                    .expect("fixed Windows model request capacity is valid"),
+            })),
+            lease,
+            session_id,
+            model_id,
+            next_request_id: AtomicU64::new(1),
+        })
+    }
+
+    fn session_id(&self) -> Result<&str, ProviderError> {
+        let session_id = self
+            .session_id
+            .get()
+            .map(String::as_str)
+            .ok_or_else(model_bridge_unavailable)?;
+        if !is_bridge_token(session_id, 1, 256) {
+            return Err(model_bridge_unavailable());
+        }
+        Ok(session_id)
+    }
+
+    fn request_id(&self) -> Result<String, ProviderError> {
+        self.next_request_id
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+                value.checked_add(1)
+            })
+            .map(|value| format!("model-{value}"))
+            .map_err(|_| model_bridge_unavailable())
+    }
+
+    async fn complete(
+        &self,
+        invocation: Value,
+        declared_tools: &[Tool],
+    ) -> Result<(Message, ProviderUsage), ProviderError> {
+        let session_id = self.session_id()?.to_string();
+        let request_id = self.request_id()?;
+        let request = encode_model_frame(&ModelFrame::CompletionRequest {
+            request_id: request_id.clone(),
+            lease: self.lease.clone(),
+            session_id: session_id.clone(),
+            invocation,
+        })
+        .map_err(|_| model_request_rejected())?;
+
+        let mut cancellation = ModelRequestCancellation::new(
+            self.state.clone(),
+            request_id.clone(),
+            self.lease.clone(),
+        );
+        let mut state = self.state.lock().await;
+        state
+            .pending
+            .begin(&request_id)
+            .map_err(|_| model_bridge_unavailable())?;
+        if state.channel.write_frame(&request).await.is_err() {
+            let _ = state.pending.cancel(&request_id);
+            cancellation.disarm();
+            return Err(model_bridge_unavailable());
+        }
+        let response = match state.channel.read_frame().await {
+            Ok(frame) => decode_model_frame(&frame, &self.lease, &session_id),
+            Err(()) => Err(()),
+        };
+        let response = match response {
+            Ok(response) => response,
+            Err(()) => {
+                cancel_model_request(&mut state, &request_id, &self.lease).await;
+                cancellation.disarm();
+                return Err(model_bridge_unavailable());
+            }
+        };
+        let response_request_id = match &response {
+            ModelFrame::CompletionResponse { request_id, .. }
+            | ModelFrame::Error { request_id, .. } => request_id,
+            _ => {
+                cancel_model_request(&mut state, &request_id, &self.lease).await;
+                cancellation.disarm();
+                return Err(model_bridge_unavailable());
+            }
+        };
+        if response_request_id != &request_id || state.pending.complete(&request_id).is_err() {
+            let _ = state.pending.cancel(&request_id);
+            cancellation.disarm();
+            return Err(model_bridge_unavailable());
+        }
+        cancellation.disarm();
+
+        match response {
+            ModelFrame::CompletionResponse { completion, .. } => {
+                completion_to_goose(completion, &self.model_id, declared_tools)
+            }
+            ModelFrame::Error { code, .. } => Err(model_error(code)),
+            _ => Err(model_bridge_unavailable()),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl Provider for WindowsModelProvider {
+    fn get_name(&self) -> &str {
+        "actestra"
+    }
+
+    async fn stream(
+        &self,
+        model_config: &ModelConfig,
+        system: &str,
+        messages: &[Message],
+        tools: &[Tool],
+    ) -> Result<MessageStream, ProviderError> {
+        if model_config.model_name != self.model_id {
+            return Err(model_request_rejected());
+        }
+        let session_id = self.session_id()?;
+        let invocation = project_invocation(session_id, system, messages, tools)?;
+        let (message, usage) = self.complete(invocation, tools).await?;
+        Ok(stream_from_single_message(message, usage))
+    }
+}
+
+struct ModelRequestCancellation {
+    state: Arc<Mutex<ModelBridgeState>>,
+    request_id: String,
+    lease: String,
+    armed: bool,
+}
+
+impl ModelRequestCancellation {
+    fn new(state: Arc<Mutex<ModelBridgeState>>, request_id: String, lease: String) -> Self {
+        Self {
+            state,
+            request_id,
+            lease,
+            armed: true,
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for ModelRequestCancellation {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        let Ok(runtime) = tokio::runtime::Handle::try_current() else {
+            return;
+        };
+        let state = self.state.clone();
+        let request_id = self.request_id.clone();
+        let lease = self.lease.clone();
+        runtime.spawn(async move {
+            let mut state = state.lock().await;
+            cancel_model_request(&mut state, &request_id, &lease).await;
+        });
+    }
+}
+
+async fn cancel_model_request(state: &mut ModelBridgeState, request_id: &str, lease: &str) {
+    if state.pending.cancel(request_id).is_ok() {
+        if let Ok(frame) = encode_model_frame(&ModelFrame::Cancel {
+            request_id: request_id.to_string(),
+            lease: lease.to_string(),
+        }) {
+            let _ = state.channel.write_frame(&frame).await;
+        }
+    }
+}
+
+fn project_invocation(
+    session_id: &str,
+    system: &str,
+    messages: &[Message],
+    tools: &[Tool],
+) -> Result<Value, ProviderError> {
+    let mut projected_messages = vec![json!({"content": system, "role": "system"})];
+    for message in messages {
+        project_message(message, &mut projected_messages)?;
+    }
+    let projected_tools = tools
+        .iter()
+        .map(project_tool)
+        .collect::<Result<Vec<_>, _>>()?;
+    let invocation = json!({
+        "messages": projected_messages,
+        "purpose": "coding",
+        "responseMode": "text-or-tool-call",
+        "sessionId": session_id,
+        "tools": projected_tools,
+    });
+    validate_invocation(&invocation, session_id).map_err(|_| model_request_rejected())?;
+    Ok(invocation)
+}
+
+fn project_message(message: &Message, output: &mut Vec<Value>) -> Result<(), ProviderError> {
+    let role = match message.role {
+        Role::User => "user",
+        Role::Assistant => "assistant",
+    };
+    for content in &message.content {
+        match content {
+            MessageContentBlock::Text(text) => {
+                output.push(json!({"content": text.text, "role": role}));
+            }
+            MessageContentBlock::ToolRequest(request) if role == "assistant" => {
+                let call = request
+                    .tool_call
+                    .as_ref()
+                    .map_err(|_| model_request_rejected())?;
+                output.push(json!({
+                    "role": "assistant",
+                    "toolCalls": [{
+                        "arguments": call.arguments.clone().unwrap_or_default(),
+                        "callId": request.id,
+                        "name": call.name,
+                    }]
+                }));
+            }
+            MessageContentBlock::ToolResponse(response) => {
+                let result = response
+                    .tool_result
+                    .as_ref()
+                    .map_err(|_| model_request_rejected())?;
+                let text = result
+                    .content
+                    .iter()
+                    .map(|content| {
+                        content
+                            .as_text()
+                            .map(|text| text.text.as_str())
+                            .ok_or_else(model_request_rejected)
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
+                    .join("\n");
+                output.push(json!({
+                    "callId": response.id,
+                    "content": text,
+                    "role": "tool"
+                }));
+            }
+            _ => return Err(model_request_rejected()),
+        }
+    }
+    Ok(())
+}
+
+fn project_tool(tool: &Tool) -> Result<Value, ProviderError> {
+    let mut projected = Map::new();
+    projected.insert("name".to_string(), Value::String(tool.name.to_string()));
+    projected.insert(
+        "inputSchema".to_string(),
+        Value::Object((*tool.input_schema).clone()),
+    );
+    if let Some(description) = &tool.description {
+        projected.insert(
+            "description".to_string(),
+            Value::String(description.to_string()),
+        );
+    }
+    let projected = Value::Object(projected);
+    validate_tool(&projected).map_err(|_| model_request_rejected())?;
+    Ok(projected)
+}
+
+fn completion_to_goose(
+    completion: Value,
+    model_id: &str,
+    declared_tools: &[Tool],
+) -> Result<(Message, ProviderUsage), ProviderError> {
+    let object = completion
+        .as_object()
+        .ok_or_else(model_bridge_unavailable)?;
+    let prompt_tokens = usage_i32(object, "promptTokens")?;
+    let completion_tokens = usage_i32(object, "completionTokens")?;
+    let usage = ProviderUsage::new(
+        model_id.to_string(),
+        Usage::new(Some(prompt_tokens), Some(completion_tokens), None),
+    );
+    match object.get("type").and_then(Value::as_str) {
+        Some("message") => Ok((
+            Message::assistant().with_text(
+                object
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .ok_or_else(model_bridge_unavailable)?,
+            ),
+            usage,
+        )),
+        Some("tool-call") => {
+            let name = object
+                .get("name")
+                .and_then(Value::as_str)
+                .ok_or_else(model_bridge_unavailable)?;
+            if !declared_tools.iter().any(|tool| tool.name == name) {
+                return Err(model_completion_refused());
+            }
+            let call_id = object
+                .get("callId")
+                .and_then(Value::as_str)
+                .ok_or_else(model_bridge_unavailable)?;
+            let arguments = object
+                .get("arguments")
+                .and_then(Value::as_object)
+                .cloned()
+                .ok_or_else(model_bridge_unavailable)?;
+            Ok((
+                Message::assistant().with_tool_request(
+                    call_id,
+                    Ok(CallToolRequestParams::new(name.to_string()).with_arguments(arguments)),
+                ),
+                usage,
+            ))
+        }
+        _ => Err(model_bridge_unavailable()),
+    }
+}
+
+fn usage_i32(object: &Map<String, Value>, key: &str) -> Result<i32, ProviderError> {
+    let usage = object
+        .get("usage")
+        .and_then(Value::as_object)
+        .and_then(|usage| usage.get(key))
+        .and_then(Value::as_u64)
+        .ok_or_else(model_bridge_unavailable)?;
+    i32::try_from(usage).map_err(|_| model_bridge_unavailable())
+}
+
+fn model_bridge_unavailable() -> ProviderError {
+    ProviderError::NetworkError("Actestra model bridge unavailable".to_string())
+}
+
+fn model_request_rejected() -> ProviderError {
+    ProviderError::RequestFailed("Actestra model request rejected".to_string())
+}
+
+fn model_completion_refused() -> ProviderError {
+    ProviderError::Refusal {
+        details: "Actestra model completion refused".to_string(),
+        category: Some("model-completion-refused".to_string()),
+    }
+}
+
+fn model_error(code: ModelBridgeErrorCode) -> ProviderError {
+    match code {
+        ModelBridgeErrorCode::Cancelled => {
+            ProviderError::RequestFailed("Actestra model request cancelled".to_string())
+        }
+        ModelBridgeErrorCode::ModelCompletionRefused => model_completion_refused(),
+        ModelBridgeErrorCode::ModelRequestRejected => model_request_rejected(),
+        ModelBridgeErrorCode::ModelTimeout => {
+            ProviderError::NetworkError("Actestra model bridge timed out".to_string())
+        }
+        ModelBridgeErrorCode::ModelUnavailable => model_bridge_unavailable(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::StreamExt;
+    use goose_providers::base::Provider;
+    use goose_providers::conversation::message::{Message, MessageContentBlock};
+    use goose_providers::model::ModelConfig;
+    use rmcp::model::{JsonObject, Tool};
     use serde_json::{json, Value};
+    use std::sync::Arc;
+    use tokio::sync::OnceCell;
 
     const LEASE: &str = "lease_0123456789abcdef0123456789abcdef";
     const SESSION: &str = "session-1";
@@ -536,5 +959,243 @@ mod tests {
             session_id: SESSION.to_string(),
             invocation,
         })
+    }
+
+    fn model_provider(worker: tokio::io::DuplexStream) -> WindowsModelProvider {
+        let session = Arc::new(OnceCell::new());
+        session.set(SESSION.to_string()).unwrap();
+        WindowsModelProvider::new(
+            crate::windows_bridge::WindowsBridgeChannel::from_duplex(worker),
+            LEASE.to_string(),
+            session,
+            "actestra-fixed-model".to_string(),
+        )
+        .unwrap()
+    }
+
+    async fn next_stream_item(
+        mut stream: goose_providers::base::MessageStream,
+    ) -> (
+        Option<Message>,
+        Option<goose_providers::conversation::token_usage::ProviderUsage>,
+    ) {
+        stream.next().await.unwrap().unwrap()
+    }
+
+    #[tokio::test]
+    async fn windows_model_bridge_streams_one_text_completion_through_the_real_provider_trait() {
+        let (worker, main) = tokio::io::duplex(64 * 1024);
+        let provider = model_provider(worker);
+        let main = tokio::spawn(async move {
+            let mut main = crate::windows_bridge::WindowsBridgeChannel::from_duplex(main);
+            let request =
+                decode_model_frame(&main.read_frame().await.unwrap(), LEASE, SESSION).unwrap();
+            let ModelFrame::CompletionRequest {
+                request_id,
+                invocation,
+                ..
+            } = request
+            else {
+                panic!("expected completion request");
+            };
+            assert_eq!(
+                invocation,
+                json!({
+                    "messages": [
+                        {"content": "bounded system", "role": "system"},
+                        {"content": "bounded prompt", "role": "user"}
+                    ],
+                    "purpose": "coding",
+                    "responseMode": "text-or-tool-call",
+                    "sessionId": SESSION,
+                    "tools": []
+                })
+            );
+            main.write_frame(
+                &encode_model_frame(&ModelFrame::CompletionResponse {
+                    request_id,
+                    completion: json!({
+                        "text": "bounded answer",
+                        "type": "message",
+                        "usage": {"completionTokens": 2, "promptTokens": 3}
+                    }),
+                })
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        });
+
+        let stream = Provider::stream(
+            &provider,
+            &ModelConfig::new("actestra-fixed-model"),
+            "bounded system",
+            &[Message::user().with_text("bounded prompt")],
+            &[],
+        )
+        .await
+        .unwrap();
+        let (message, usage) = next_stream_item(stream).await;
+        let message = message.unwrap();
+        assert_eq!(message.role, rmcp::model::Role::Assistant);
+        assert_eq!(message.content.len(), 1);
+        assert_eq!(message.content[0].as_text(), Some("bounded answer"));
+        let usage = usage.unwrap();
+        assert_eq!(usage.model, "actestra-fixed-model");
+        assert_eq!(usage.usage.input_tokens, Some(3));
+        assert_eq!(usage.usage.output_tokens, Some(2));
+        main.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn windows_model_bridge_streams_one_declared_tool_call() {
+        let (worker, main) = tokio::io::duplex(64 * 1024);
+        let provider = model_provider(worker);
+        let main = tokio::spawn(async move {
+            let mut main = crate::windows_bridge::WindowsBridgeChannel::from_duplex(main);
+            let request =
+                decode_model_frame(&main.read_frame().await.unwrap(), LEASE, SESSION).unwrap();
+            let ModelFrame::CompletionRequest {
+                request_id,
+                invocation,
+                ..
+            } = request
+            else {
+                panic!("expected completion request");
+            };
+            assert_eq!(
+                invocation["tools"],
+                json!([{
+                    "description": "Read one bounded text file",
+                    "inputSchema": {"type": "object"},
+                    "name": "actestra.coding.file.read-text"
+                }])
+            );
+            main.write_frame(
+                &encode_model_frame(&ModelFrame::CompletionResponse {
+                    request_id,
+                    completion: json!({
+                        "arguments": {"contractVersion": 1, "relativePath": "README.md"},
+                        "callId": "call-1",
+                        "name": "actestra.coding.file.read-text",
+                        "type": "tool-call",
+                        "usage": {"completionTokens": 4, "promptTokens": 7}
+                    }),
+                })
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        });
+
+        let mut schema = JsonObject::new();
+        schema.insert("type".to_string(), json!("object"));
+        let tools = [Tool::new(
+            "actestra.coding.file.read-text",
+            "Read one bounded text file",
+            schema,
+        )];
+        let stream = Provider::stream(
+            &provider,
+            &ModelConfig::new("actestra-fixed-model"),
+            "bounded system",
+            &[Message::user().with_text("read the file")],
+            &tools,
+        )
+        .await
+        .unwrap();
+        let (message, usage) = next_stream_item(stream).await;
+        let message = message.unwrap();
+        assert_eq!(message.content.len(), 1);
+        let MessageContentBlock::ToolRequest(tool_request) = &message.content[0] else {
+            panic!("expected tool request");
+        };
+        assert_eq!(tool_request.id, "call-1");
+        let call = tool_request.tool_call.as_ref().unwrap();
+        assert_eq!(call.name, "actestra.coding.file.read-text");
+        assert_eq!(
+            call.arguments.as_ref().unwrap().get("relativePath"),
+            Some(&json!("README.md"))
+        );
+        assert_eq!(usage.unwrap().usage.total_tokens, Some(11));
+        main.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn windows_model_bridge_sends_cancel_when_the_provider_future_is_dropped() {
+        let (worker, main) = tokio::io::duplex(64 * 1024);
+        let provider = Arc::new(model_provider(worker));
+        let worker_task = {
+            let provider = provider.clone();
+            tokio::spawn(async move {
+                Provider::stream(
+                    provider.as_ref(),
+                    &ModelConfig::new("actestra-fixed-model"),
+                    "bounded system",
+                    &[Message::user().with_text("bounded prompt")],
+                    &[],
+                )
+                .await
+            })
+        };
+        let mut main = crate::windows_bridge::WindowsBridgeChannel::from_duplex(main);
+        let request =
+            decode_model_frame(&main.read_frame().await.unwrap(), LEASE, SESSION).unwrap();
+        let ModelFrame::CompletionRequest { request_id, .. } = request else {
+            panic!("expected completion request");
+        };
+        worker_task.abort();
+        assert!(matches!(worker_task.await, Err(error) if error.is_cancelled()));
+        let cancel = decode_model_frame(&main.read_frame().await.unwrap(), LEASE, SESSION).unwrap();
+        assert_eq!(
+            cancel,
+            ModelFrame::Cancel {
+                request_id,
+                lease: LEASE.to_string()
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn windows_model_bridge_fails_closed_on_a_malformed_or_disconnected_response() {
+        for malformed in [true, false] {
+            let (worker, main) = tokio::io::duplex(64 * 1024);
+            let provider = model_provider(worker);
+            let main = tokio::spawn(async move {
+                let mut main = crate::windows_bridge::WindowsBridgeChannel::from_duplex(main);
+                main.read_frame().await.unwrap();
+                if malformed {
+                    main.write_frame(
+                        &crate::windows_bridge::encode_json_frame(&json!({
+                            "contractVersion": 1,
+                            "kind": "unknown-response"
+                        }))
+                        .unwrap(),
+                    )
+                    .await
+                    .unwrap();
+                }
+            });
+            let result = Provider::stream(
+                &provider,
+                &ModelConfig::new("actestra-fixed-model"),
+                "bounded system",
+                &[Message::user().with_text("bounded prompt")],
+                &[],
+            )
+            .await;
+            let error = match result {
+                Err(error) => error,
+                Ok(_) => panic!("malformed or disconnected response must fail closed"),
+            };
+            assert_eq!(
+                error,
+                goose_providers::errors::ProviderError::NetworkError(
+                    "Actestra model bridge unavailable".to_string()
+                )
+            );
+            assert!(!error.to_string().contains("unknown-response"));
+            main.await.unwrap();
+        }
     }
 }
