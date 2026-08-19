@@ -40,7 +40,8 @@ use crate::windows_supervisor::WindowsCleanupReceipt;
 use crate::windows_supervisor::{
     launch_windows_containment_worker, open_windows_probe_process, read_windows_probe_request,
     remove_windows_probe_profile, write_windows_probe_child_stage, write_windows_probe_result,
-    ProbeHandle, WindowsContainmentFailure, WindowsProbeChildStage, WindowsProbeExchangeFailure,
+    ProbeHandle, WindowsContainmentFailure, WindowsProbeChildRequestFailure,
+    WindowsProbeChildStage, WindowsProbeExchangeFailure,
     WINDOWS_PROBE_CHILD_REQUEST_FAILURE_EXIT_CODE, WINDOWS_PROBE_CHILD_RESULT_FAILURE_EXIT_CODE,
     WINDOWS_PROBE_CHILD_STAGE_FAILURE_EXIT_CODE,
 };
@@ -98,7 +99,11 @@ enum WindowsProbeFailure {
     ChildImageLoad,
     ChildRuntimeFault,
     ChildBeforeEntry,
-    ChildRequestStage,
+    ChildInputHandleStage,
+    ChildRequestLengthStage,
+    ChildRequestFrameStage,
+    ChildRequestDecodeStage,
+    ChildExcludedHandleStage,
     ChildFilesystemStage,
     ChildNetworkStage,
     ChildProcessStage,
@@ -132,7 +137,11 @@ impl WindowsProbeFailure {
             Self::ChildImageLoad => "windows-child-image-load-invalid",
             Self::ChildRuntimeFault => "windows-child-runtime-fault-invalid",
             Self::ChildBeforeEntry => "windows-child-before-entry-invalid",
-            Self::ChildRequestStage => "windows-child-request-stage-invalid",
+            Self::ChildInputHandleStage => "windows-child-input-handle-stage-invalid",
+            Self::ChildRequestLengthStage => "windows-child-request-length-stage-invalid",
+            Self::ChildRequestFrameStage => "windows-child-request-frame-stage-invalid",
+            Self::ChildRequestDecodeStage => "windows-child-request-decode-stage-invalid",
+            Self::ChildExcludedHandleStage => "windows-child-excluded-handle-stage-invalid",
             Self::ChildFilesystemStage => "windows-child-filesystem-stage-invalid",
             Self::ChildNetworkStage => "windows-child-network-stage-invalid",
             Self::ChildProcessStage => "windows-child-process-stage-invalid",
@@ -338,14 +347,14 @@ fn run_probe_child() -> i32 {
     }
     let (request, excluded_handle_absent) = match read_windows_probe_request() {
         Ok(request) => request,
-        Err(()) => {
+        Err(WindowsProbeChildRequestFailure::Request) => {
             eprintln!("{WINDOWS_CONTAINMENT_ROLE_FAILURE_MARKER}");
             return WINDOWS_PROBE_CHILD_REQUEST_FAILURE_EXIT_CODE;
         }
+        Err(WindowsProbeChildRequestFailure::StageWrite) => {
+            return WINDOWS_PROBE_CHILD_STAGE_FAILURE_EXIT_CODE;
+        }
     };
-    if write_windows_probe_child_stage(WindowsProbeChildStage::RequestRead).is_err() {
-        return WINDOWS_PROBE_CHILD_STAGE_FAILURE_EXIT_CODE;
-    }
     let mut mark_stage = |stage| write_windows_probe_child_stage(stage).is_ok();
     let result =
         match execute_windows_hostile_probe(&request, excluded_handle_absent, &mut mark_stage) {
@@ -703,8 +712,20 @@ fn collect_windows_hostile_evidence() -> Result<WindowsHostileEvidence, WindowsP
                 WindowsProbeExchangeFailure::WorkerBeforeEntry => {
                     WindowsProbeFailure::ChildBeforeEntry
                 }
-                WindowsProbeExchangeFailure::WorkerRequestStage => {
-                    WindowsProbeFailure::ChildRequestStage
+                WindowsProbeExchangeFailure::WorkerInputHandleStage => {
+                    WindowsProbeFailure::ChildInputHandleStage
+                }
+                WindowsProbeExchangeFailure::WorkerRequestLengthStage => {
+                    WindowsProbeFailure::ChildRequestLengthStage
+                }
+                WindowsProbeExchangeFailure::WorkerRequestFrameStage => {
+                    WindowsProbeFailure::ChildRequestFrameStage
+                }
+                WindowsProbeExchangeFailure::WorkerRequestDecodeStage => {
+                    WindowsProbeFailure::ChildRequestDecodeStage
+                }
+                WindowsProbeExchangeFailure::WorkerExcludedHandleStage => {
+                    WindowsProbeFailure::ChildExcludedHandleStage
                 }
                 WindowsProbeExchangeFailure::WorkerFilesystemStage => {
                     WindowsProbeFailure::ChildFilesystemStage
@@ -916,8 +937,24 @@ mod tests {
                 "windows-child-before-entry-invalid",
             ),
             (
-                WindowsProbeFailure::ChildRequestStage,
-                "windows-child-request-stage-invalid",
+                WindowsProbeFailure::ChildInputHandleStage,
+                "windows-child-input-handle-stage-invalid",
+            ),
+            (
+                WindowsProbeFailure::ChildRequestLengthStage,
+                "windows-child-request-length-stage-invalid",
+            ),
+            (
+                WindowsProbeFailure::ChildRequestFrameStage,
+                "windows-child-request-frame-stage-invalid",
+            ),
+            (
+                WindowsProbeFailure::ChildRequestDecodeStage,
+                "windows-child-request-decode-stage-invalid",
+            ),
+            (
+                WindowsProbeFailure::ChildExcludedHandleStage,
+                "windows-child-excluded-handle-stage-invalid",
             ),
             (
                 WindowsProbeFailure::ChildFilesystemStage,

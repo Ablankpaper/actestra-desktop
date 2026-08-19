@@ -4,24 +4,37 @@ Last updated: 2026-08-19
 
 ## Current phase
 
-### 2026-08-19 P8.2b Windows child-stage transcript instrumentation (exact-head verification pending)
+### 2026-08-19 P8.2b Windows child request stage isolated (substage verification pending)
 
-The follow-up diagnostic change at the current branch head adds a bounded,
-binary stage transcript to the Windows containment probe's inherited stderr
-pipe. It records only a fixed ordered sequence (entry, request read,
-filesystem complete, network complete, process complete, and result written);
-it never records raw exit statuses, paths, environment values, handles, SIDs,
-credentials, or Win32 text. The parent reduces an otherwise unknown child
-exit to a closed stage code only when the transcript is exactly valid; invalid
-or mixed output remains 'windows-child-unexpected-exit-invalid'. The probe
-still exits nonzero and cannot produce admitting evidence on every failure.
+Draft pull request
+[#68](https://github.com/Ablankpaper/actestra-desktop/pull/68) reached exact
+diagnostic head `a270f2405402f040fbb256deed2cd354520888a1`. Pull-request run
+[`32204212767`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32204212767)
+built and admitted the exact Windows runner, preserved the frozen lock, and
+failed Windows containment job
+[`95924090568`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32204212767/job/95924090568)
+with `windows-child-request-stage-invalid`. This proves the AppContainer child
+entered the probe role and wrote its entry marker, then terminated before the
+request read completed. It rules out CreateProcess, AppContainer creation,
+Job assignment, build, and artifact admission as the immediate failure stage.
 
-The change is locally validated by Goose Rust tests 51/51, containment
-diagnostics 10/10, Rust formatting, and git diff --check. The Windows target
-is installed locally, but a host-side cross-check cannot compile the runner's C
-dependencies with the macOS toolchain; the Windows build and runtime CI job is
-the authoritative next check. P8.2b remains open until the exact-head Windows
-containment job reports a verified six-capability evidence Artifact.
+The follow-up local diagnostic splits the request boundary into five fixed
+sub-stages: standard-input handle admitted, length read, frame read, frame
+decoded, and excluded-handle check complete. Together with the later
+filesystem, network, process, and result-write stages, the transcript remains
+an exact ordered byte sequence on the inherited stderr pipe. It never records
+raw exit statuses, paths, environment values, handle values, SIDs,
+credentials, or Win32 text. An invalid or mixed transcript remains
+`windows-child-unexpected-exit-invalid`; every failure remains nonzero and
+non-admitting.
+
+The follow-up is locally validated by its RED-to-GREEN Rust test, containment
+diagnostics 10/10, and Rust formatting. The preceding exact head passed the
+Windows native-primitives compile, while the macOS host cannot compile the
+runner's C dependencies for MSVC. A new exact-head Windows job is still
+required to select the request sub-stage before a behavioral repair is
+justified. P8.2b remains open until Windows containment produces and preserves
+a verified six-capability evidence Artifact.
 
 ### 2026-08-19 P8.2b exact-head probe-route correction disproved; exit discriminator added (gate remains open)
 
