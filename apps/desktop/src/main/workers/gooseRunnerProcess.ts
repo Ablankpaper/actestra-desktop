@@ -36,6 +36,7 @@ import {
   resolveGooseRunnerRuntimeTarget,
   type GooseExecutableAuthority,
 } from "./gooseRunnerTarget";
+import { GOOSE_WINDOWS_STDIO_CHANNELS } from "./gooseSessionTransport";
 
 const MAX_STDOUT_LINE_BYTES = 64 * 1024;
 const MAX_STDERR_BYTES = 256 * 1024;
@@ -1237,7 +1238,7 @@ export function createNodeGooseAcpTransport(
       // and fd 5/fd 6 for the duplex capability/model supervisor channels. Other hosts
       // retain the existing fd 3 liveness pipe.
       stdio: windowsSupervisor
-        ? ["pipe", "pipe", "pipe", "pipe", "pipe", "pipe", "pipe"]
+        ? GOOSE_WINDOWS_STDIO_CHANNELS.map(() => "pipe" as const)
         : ["pipe", "pipe", "pipe", "pipe"],
       windowsHide: true,
     });

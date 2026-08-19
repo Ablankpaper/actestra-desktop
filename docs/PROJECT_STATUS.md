@@ -2,6 +2,33 @@
 
 Last updated: 2026-08-20
 
+## 2026-08-20 P8.2c Batch 3 Task 10 explicit transport modes and seven-channel launch (local slice green; composition/native gate open)
+
+Task 10's launch slice is implemented locally on top of `201f121`. The Main
+side now selects an explicit transport mode from the exact runner target:
+macOS uses the existing loopback path, Linux uses the existing socket relay,
+and Windows is admitted only as `windows-authenticated`. Windows launch uses
+the shared seven-channel order (ACP stdin/stdout/stderr, one-shot control,
+parent liveness, capability, and model), with the last two channels represented
+as duplex streams and no URL, SSE, or MCP endpoint added to the environment.
+The existing Windows control contract remains unchanged; the new channel
+module is registered in the downstream overlay so materialized package builds
+include it.
+
+Portable local evidence is green: the complete `bun run check` exits `0` with
+`169` test files passed / `3` skipped and `1,808` tests passed / `11` skipped;
+P7 abuse, smoke harness, product boundary, frozen foundation, downstream
+overlay (`376` declared files), package, format, lint (zero warnings/errors),
+typecheck, Electron SQLite, and `git diff --check` also pass. The Windows-only
+duplex native test is skipped on macOS and therefore is not Windows evidence.
+
+This does not close Task 10 or P8.2c: the Main bridge hosts are not yet attached
+to the real Windows transport lifecycle, the ACP session still uses the
+loopback MCP request shape, and no exact-artifact Windows runtime/provider
+journey has run. Task 11 (MCP-free injected Windows ACP session), Task 12 exact
+Windows runtime evidence, Windows CI, Electron/provider-backed acceptance,
+P8.3, P8.4, release, deployment, and user acceptance remain open.
+
 ## 2026-08-20 P8.2c Batch 3 Task 9 Main authenticated bridge hosts (local slice green; native gate remains open)
 
 Task 9 is implemented locally on top of `40cc9af`. Main now has separate

@@ -172,9 +172,13 @@ describe("Windows Goose supervisor source contract", () => {
 
   it("keeps seven Main channels and exactly five inherited Worker handles", () => {
     const mainProcess = read("apps/desktop/src/main/workers/gooseRunnerProcess.ts");
+    const transport = read("apps/desktop/src/main/workers/gooseSessionTransport.ts");
     const supervisor = read("workers/goose-runner/src/windows_supervisor.rs");
     const control = read("workers/goose-runner/src/windows_control.rs");
-    expect(mainProcess).toContain('? ["pipe", "pipe", "pipe", "pipe", "pipe", "pipe", "pipe"]');
+    expect(mainProcess).toContain('GOOSE_WINDOWS_STDIO_CHANNELS.map(() => "pipe" as const)');
+    expect(transport).toContain('"parent-liveness"');
+    expect(transport).toContain('"capability"');
+    expect(transport).toContain('"model"');
     expect(mainProcess).toContain("const capability = extendedStdio[5]");
     expect(mainProcess).toContain("const model = extendedStdio[6]");
     expect(mainProcess).toContain("readonly windowsChannels?: GooseWindowsSupervisorChannels");
