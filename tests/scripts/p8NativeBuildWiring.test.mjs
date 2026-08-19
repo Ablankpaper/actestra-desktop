@@ -40,6 +40,7 @@ describe("P8 native Goose build wiring", () => {
       "goose-runner-windows",
       "goose-runner-linux",
       "goose-containment-windows",
+      "goose-runtime-windows",
       "goose-containment-linux",
       "macos",
     ]) {
@@ -178,6 +179,7 @@ describe("P8 native Goose build wiring", () => {
   it("runs the Windows supervisor native tests before admitting the emitted artifact", () => {
     const workflow = read(".github/workflows/ci.yml");
     const job = readWorkflowJob(workflow, "goose-runner-windows");
+    const bridgeContract = read("tests/main/gooseRunnerWindowsBridge.test.ts");
 
     expectOrderedFragments(job, [
       "bun run goose:runner:format:check",
@@ -185,6 +187,41 @@ describe("P8 native Goose build wiring", () => {
       "bun run goose:runner:build",
       "bun run goose:runner:admit-build",
     ]);
+    expect(bridgeContract).not.toContain("fail-closed post-spawn marker");
+    expect(bridgeContract).not.toContain("Windows supervisor spawn probe timed out");
+  });
+
+  it("binds one exact Windows artifact through containment and authenticated runtime evidence", () => {
+    const workflow = read(".github/workflows/ci.yml");
+    const job = readWorkflowJob(workflow, "goose-runtime-windows");
+
+    expect(job).toContain("name: P8.2 Windows x64 Goose authenticated runtime");
+    expect(job).toContain("runs-on: windows-2025");
+    expect(job).toContain("timeout-minutes: 60");
+    expectOrderedFragments(job, [
+      "bun run goose:runner:format:check",
+      "cargo test --manifest-path workers/goose-runner/Cargo.toml --locked windows_native_tests",
+      "bun run test tests/main/gooseRunnerWindowsChannelNative.test.ts",
+      "bun run goose:runner:tools",
+      "bun run goose:runner:build",
+      "git diff --exit-code -- workers/goose-runner/Cargo.lock",
+      "bun run goose:runner:admit-build",
+      "bun run goose:runner:containment:accept | Tee-Object -FilePath containment-evidence.json",
+      "ACTESTRA_GOOSE_RUNNER_MANIFEST_SHA256",
+      "ACTESTRA_GOOSE_CONTAINMENT_EVIDENCE_PATH",
+      "bun run goose:runner:integration:windows | Tee-Object -FilePath windows-runtime-evidence.json",
+      "name: Re-admit exact Windows Goose runner",
+      "run: bun run goose:runner:admit-build",
+      "name: Preserve bounded Windows authenticated runtime evidence",
+    ]);
+    expect(job).toContain("if: success()");
+    expect(job).toContain("name: p8-goose-runtime-windows-${{ github.sha }}");
+    expect(job).toContain("path: windows-runtime-evidence.json");
+    expect(job).toContain("retention-days: 3");
+    expect(job).toContain("compression-level: 0");
+    expect(job).not.toContain("OPENAI_API_KEY");
+    expect(job).not.toContain("ANTHROPIC_API_KEY");
+    expect(job).not.toContain("provider credential");
   });
 
   it("installs the exact Ubuntu package layout with sudo only around setup and teardown", () => {

@@ -219,7 +219,7 @@ describe("Goose runner native build targets", () => {
         "Goose runner build target identities are ambiguous",
       ],
     });
-  });
+  }, 20_000);
 
   it("uses the shared runtime ceiling before any private-root or transport side effect", () => {
     const source = readFileSync(processModulePath, "utf8");

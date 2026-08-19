@@ -2,6 +2,51 @@
 
 Last updated: 2026-08-20
 
+## 2026-08-20 P8.2c Batch 4 Task 13 Windows authenticated-runtime CI wiring (local contract green; exact-head native evidence pending)
+
+Task 13 is implemented locally on branch
+`codex/p8-2c-windows-runtime-composition` on top of exact pushed Task 12 head
+`dc547e45cd2ba7737aca3465f7680bca3d099860`. CI now has a separate
+`windows-2025` authenticated-runtime job that builds and admits one exact
+Windows runner, produces exact containment evidence, binds the runtime test to
+the manifest and containment digests, runs the Task 12 MCP-free integration,
+re-admits the same Artifact, and uploads only the bounded runtime evidence on
+success. The P8 root contract now rejects a missing, reordered, credentialed,
+or unbounded version of this job.
+
+The superseded real-Artifact bridge probe that required the post-Task-7
+Windows Supervisor to fail after spawning has been removed. Its requirement
+contradicted the Task 12 runtime contract, which now requires the Supervisor to
+remain alive through authenticated ACP, model, Tool Gateway, cancellation, and
+parent-death cleanup. Contract tests forbid restoring the obsolete
+`fail-closed post-spawn` or timeout markers. The separate build-target child
+process test now has a bounded `20` second timeout because exact-head run
+[`32277562900`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32277562900)
+measured that operation at `13.169` seconds under the parallel Windows batch.
+
+That run is now final for exact head `19dd393fc14888a5c6614e87172ccb8db414b37a`:
+Windows containment, Ubuntu containment, Windows and Ubuntu artifact builds,
+Goose admission, and macOS foundation all crossed their native or package
+steps, but the Windows build-probe job failed only in the two test contracts
+above. The obsolete bridge probe waited `15` seconds for a failure that the
+working runtime no longer emits, while the independent build-target child
+process exceeded Vitest's default `5` second timeout. This is test-harness
+evidence, not a Windows runtime failure or authenticated-runtime success.
+
+Fresh local evidence for Task 13 is green: the focused suite passes `26/26`;
+the P8 contract reports `3` targets, `14` journeys, and `7` evidence classes;
+format, lint (zero warnings/errors), typecheck, documentation links (`96`
+Markdown files), and `git diff --check` pass.
+
+This does not close Task 13, Task 12, or P8.2c. A new exact-head CI run must
+compile and execute the added Windows job, publish
+`p8-goose-runtime-windows-<exact SHA>`, and the downloaded record must pass the
+independent Task 12 evidence validator before native runtime composition is
+recorded as verified. Windows Electron/package/provider acceptance, overall
+P8.2, P8.3 candidate integrity and signing, P8.4 clean-machine and
+real-provider/manual Team acceptance, release, deployment, and user acceptance
+remain open.
+
 ## 2026-08-20 P8.2c Batch 4 Task 12 exact Windows runtime evidence (portable implementation green; native evidence pending)
 
 Task 12 is implemented locally on branch

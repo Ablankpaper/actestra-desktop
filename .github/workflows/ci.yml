@@ -338,6 +338,111 @@ jobs:
           retention-days: 3
           compression-level: 0
 
+  goose-runtime-windows:
+    name: P8.2 Windows x64 Goose authenticated runtime
+    runs-on: windows-2025
+    timeout-minutes: 60
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.13.0
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.9
+
+      - name: Install Rust 1.96.1
+        run: rustup toolchain install 1.96.1 --profile minimal --component rustfmt
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Fetch admitted private Goose runtime source
+        shell: bash
+        env:
+          ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY: ${{ secrets.ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            key_root="$(cygpath -u "$RUNNER_TEMP")/actestra-goose-runtime-ssh"
+          else
+            key_root="$RUNNER_TEMP/actestra-goose-runtime-ssh"
+          fi
+          trap 'rm -rf -- "$key_root"' EXIT
+          mkdir -p "$key_root"
+          if [ "$RUNNER_OS" != "Windows" ]; then
+            chmod 700 "$key_root"
+          fi
+          printf '%s\n' "$ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY" > "$key_root/id_ed25519"
+          if [ "$RUNNER_OS" != "Windows" ]; then
+            chmod 600 "$key_root/id_ed25519"
+          fi
+          # GitHub ED25519 fingerprint: SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU
+          printf '%s\n' \
+            'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' \
+            > "$key_root/known_hosts"
+          export CARGO_NET_GIT_FETCH_WITH_CLI=true
+          export GIT_SSH_COMMAND="ssh -i $key_root/id_ed25519 -o IdentitiesOnly=yes -o UserKnownHostsFile=$key_root/known_hosts"
+          cargo fetch --manifest-path workers/goose-runner/Cargo.toml --locked
+
+      - name: Verify Goose runner Rust formatting
+        run: bun run goose:runner:format:check
+
+      - name: Verify Windows supervisor native primitives
+        run: |
+          cargo test --manifest-path workers/goose-runner/Cargo.toml --locked windows_native_tests -- --nocapture --test-threads=1
+          bun run test tests/main/gooseRunnerWindowsChannelNative.test.ts
+
+      - name: Install pinned Goose runner audit tools
+        run: bun run goose:runner:tools
+
+      - name: Build exact Windows Goose runner artifact
+        run: bun run goose:runner:build
+
+      - name: Verify Goose runner lock remains frozen
+        run: git diff --exit-code -- workers/goose-runner/Cargo.lock
+
+      - name: Admit exact Windows Goose runner artifact
+        run: bun run goose:runner:admit-build
+
+      - name: Run exact Windows containment acceptance
+        shell: pwsh
+        run: |
+          bun run goose:runner:containment:accept | Tee-Object -FilePath containment-evidence.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run authenticated Windows Goose runtime
+        shell: pwsh
+        run: |
+          $manifest = (Get-FileHash -Algorithm SHA256 .actestra/goose-runner/x86_64-pc-windows-msvc/actestra-goose-runner.manifest.json).Hash.ToLowerInvariant()
+          $containment = (Get-FileHash -Algorithm SHA256 containment-evidence.json).Hash.ToLowerInvariant()
+          $env:ACTESTRA_GOOSE_RUNNER_MANIFEST_SHA256 = $manifest
+          $env:ACTESTRA_GOOSE_CONTAINMENT_EVIDENCE_PATH = "$pwd/containment-evidence.json"
+          $env:ACTESTRA_GOOSE_CONTAINMENT_EVIDENCE_SHA256 = $containment
+          bun run goose:runner:integration:windows | Tee-Object -FilePath windows-runtime-evidence.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Re-admit exact Windows Goose runner
+        run: bun run goose:runner:admit-build
+
+      - name: Preserve bounded Windows authenticated runtime evidence
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: p8-goose-runtime-windows-${{ github.sha }}
+          path: windows-runtime-evidence.json
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
   goose-containment-linux:
     name: P8.2 Ubuntu x64 Goose containment
     runs-on: ubuntu-24.04
