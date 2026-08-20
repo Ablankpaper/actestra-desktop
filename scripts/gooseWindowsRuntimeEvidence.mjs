@@ -42,7 +42,17 @@ const FAILURE_STAGE_CODES = Object.freeze({
   "runner-acp": "windows-runtime-runner-acp-failed",
   "runner-relay": "windows-runtime-runner-relay-failed",
   "runner-panic": "windows-runtime-runner-panic-failed",
-  "windows-runtime": "windows-runtime-native-setup-failed",
+  "windows-control-channel-invalid": "windows-runtime-supervisor-control-channel-invalid-failed",
+  "windows-ready-channel-invalid": "windows-runtime-supervisor-ready-channel-invalid-failed",
+  "windows-capability-channel-invalid":
+    "windows-runtime-supervisor-capability-channel-invalid-failed",
+  "windows-model-channel-invalid": "windows-runtime-supervisor-model-channel-invalid-failed",
+  "windows-acp-relay-failed": "windows-runtime-supervisor-acp-relay-failed",
+  "windows-capability-relay-failed": "windows-runtime-supervisor-capability-relay-failed",
+  "windows-model-relay-failed": "windows-runtime-supervisor-model-relay-failed",
+  "windows-worker-runtime-failed": "windows-runtime-supervisor-worker-runtime-failed",
+  "windows-runtime-timeout": "windows-runtime-supervisor-timeout-failed",
+  "windows-runtime-cleanup-failed": "windows-runtime-supervisor-cleanup-failed",
   "windows-worker-control-frame-invalid": "windows-runtime-worker-control-frame-invalid-failed",
   "windows-worker-boundary-verification-failed":
     "windows-runtime-worker-boundary-verification-failed",
@@ -131,6 +141,18 @@ const CODING_SESSION_OPEN_ERROR_CODES = new Set([
   "worktree-create-failed",
   "cleanup-failed",
 ]);
+const WINDOWS_SUPERVISOR_FAILURE_STAGES = Object.freeze([
+  "windows-control-channel-invalid",
+  "windows-ready-channel-invalid",
+  "windows-capability-channel-invalid",
+  "windows-model-channel-invalid",
+  "windows-acp-relay-failed",
+  "windows-capability-relay-failed",
+  "windows-model-relay-failed",
+  "windows-worker-runtime-failed",
+  "windows-runtime-timeout",
+  "windows-runtime-cleanup-failed",
+]);
 const WINDOWS_WORKER_STARTUP_STAGES = Object.freeze([
   "windows-worker-control-frame-invalid",
   "windows-worker-boundary-verification-failed",
@@ -154,7 +176,7 @@ const WINDOWS_OPEN_FAILURE_STAGES = Object.freeze([
   "runner-acp",
   "runner-relay",
   "runner-panic",
-  "windows-runtime",
+  ...WINDOWS_SUPERVISOR_FAILURE_STAGES,
   ...WINDOWS_WORKER_STARTUP_STAGES,
   "handshake-process-exit",
   "handshake-process-signal",
@@ -306,6 +328,7 @@ export function classifyGooseWindowsOpeningFailure(error) {
       if (code === "worker-resource-enforcement-unavailable") return "runtime-resource";
       if (code === "invalid-options") return "launch-contract";
       if (code === "cleanup-failed") return "composition-cleanup";
+      if (WINDOWS_SUPERVISOR_FAILURE_STAGES.includes(code)) return code;
       if (WINDOWS_WORKER_STARTUP_STAGES.includes(code)) return code;
       if (code === "spawn-failed") {
         if (message === "Failed to launch Goose ACP process") return "runner-process-spawn";
@@ -314,7 +337,6 @@ export function classifyGooseWindowsOpeningFailure(error) {
         if (message === "Goose ACP server failed") return "runner-acp";
         if (message === "Goose Linux relay stopped") return "runner-relay";
         if (message === "Goose runner panicked") return "runner-panic";
-        if (message === "Goose Windows runtime failed") return "windows-runtime";
         if (message === "Goose handshake launch failed") fallback = "runner-open";
         else return "runner-process-spawn";
       }

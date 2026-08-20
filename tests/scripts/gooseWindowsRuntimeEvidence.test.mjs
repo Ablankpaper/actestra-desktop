@@ -73,13 +73,6 @@ describe("Goose Windows runtime evidence", () => {
     expect(
       classifyGooseWindowsOpeningFailure({
         name: "GooseRunnerProcessError",
-        code: "spawn-failed",
-        message: "Goose Windows runtime failed",
-      }),
-    ).toBe("windows-runtime");
-    expect(
-      classifyGooseWindowsOpeningFailure({
-        name: "GooseRunnerProcessError",
         code: "windows-worker-control-frame-invalid",
         message: "Goose Windows worker startup failed",
       }),
@@ -189,6 +182,48 @@ describe("Goose Windows runtime evidence", () => {
       "windows-runtime-worker-ready-signal-failed",
       "windows-runtime-worker-acp-handshake-failed",
     ]);
+  });
+
+  it("maps each supervisor stage to a distinct final evidence token", () => {
+    const stages = [
+      "windows-control-channel-invalid",
+      "windows-ready-channel-invalid",
+      "windows-capability-channel-invalid",
+      "windows-model-channel-invalid",
+      "windows-acp-relay-failed",
+      "windows-capability-relay-failed",
+      "windows-model-relay-failed",
+      "windows-worker-runtime-failed",
+      "windows-runtime-timeout",
+      "windows-runtime-cleanup-failed",
+    ];
+    const tokens = stages.map((stage) =>
+      classifyGooseWindowsRuntimeFailureEvidence({ contractVersion: 1, stage }),
+    );
+    expect(new Set(tokens).size).toBe(10);
+    expect(tokens.every((token) => typeof token === "string" && token.length > 0)).toBe(true);
+    expect(tokens.every((token) => !token.includes("\\") && !token.includes("/"))).toBe(true);
+    expect(tokens).toEqual([
+      "windows-runtime-supervisor-control-channel-invalid-failed",
+      "windows-runtime-supervisor-ready-channel-invalid-failed",
+      "windows-runtime-supervisor-capability-channel-invalid-failed",
+      "windows-runtime-supervisor-model-channel-invalid-failed",
+      "windows-runtime-supervisor-acp-relay-failed",
+      "windows-runtime-supervisor-capability-relay-failed",
+      "windows-runtime-supervisor-model-relay-failed",
+      "windows-runtime-supervisor-worker-runtime-failed",
+      "windows-runtime-supervisor-timeout-failed",
+      "windows-runtime-supervisor-cleanup-failed",
+    ]);
+    stages.forEach((stage) => {
+      expect(
+        classifyGooseWindowsOpeningFailure({
+          name: "GooseRunnerProcessError",
+          code: stage,
+          message: "Goose Windows supervisor failed",
+        }),
+      ).toBe(stage);
+    });
   });
 
   it("keeps every classified worker startup token admitted by the outer runtime runner", async () => {
