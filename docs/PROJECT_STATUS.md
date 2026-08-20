@@ -2,6 +2,29 @@
 
 Last updated: 2026-08-20
 
+## 2026-08-20 P8.2c CI follow-up: unavailable `arrayref` remote blocked all jobs
+
+Exact-head CI run `32352605516` for commit `55734a6` did not execute any
+Windows runtime or containment code. Every Goose-related job stopped in
+`Fetch admitted private Goose runtime source` while Cargo attempted to fetch
+the `[patch.crates-io]` `arrayref` source from `https://github.com/droundy/arrayref`.
+The repository returned `Repository not found`; the injected SSH deploy key
+could not help because the patch URL was HTTPS. This is a supply-chain fetch
+configuration failure, not a new Worker, AppContainer, ACL, or named-pipe
+result. Ubuntu containment also reported a cleanup failure after its setup
+step was skipped, which is a secondary workflow symptom.
+
+The local remediation changes the patch to an explicit path dependency at
+`workers/goose-runner/vendor/arrayref`, an exact source copy of
+`arrayref 0.3.9` at upstream commit
+`f8d0299d863922db6c409d08098941e833b70d69`. Its BSD-2-Clause license and
+`SOURCE.md` provenance record are retained, and all vendor files are included
+in the runner source-tree digest. A regression test locks the path patch and
+rejects the unavailable remote form. Local offline Cargo metadata and the
+runner's 82 Rust tests pass. This remediation is not yet pushed or CI-verified;
+P8.2c remains open and the next gate is one exact-head run that reaches the
+Windows authenticated runtime.
+
 ## 2026-08-20 P8.2c CI follow-up: yanked `arrayref` supply-chain gate
 
 Exact-head CI run `32344480355` for commit `18950d2` did not reach the Windows

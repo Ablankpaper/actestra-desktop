@@ -148,10 +148,12 @@ The yanked-package check is incomplete because crates.io queries timed out; it
 is tracked as an environment gap and does not replace the vulnerability result.
 
 For the current P8.2c runner lock, crates.io subsequently marked the selected
-`arrayref 0.3.9` (via `blake3 1.8.5`) as yanked. The runner now uses a temporary
-immutable source pin to the pre-yank `droundy/arrayref` commit
+`arrayref 0.3.9` (via `blake3 1.8.5`) as yanked. The runner now uses a
+vendored exact source copy of the pre-yank `droundy/arrayref` commit
 `f8d0299d863922db6c409d08098941e833b70d69`; no yanked registry package is
-accepted and the audit remains fail-closed.
+accepted and the audit remains fail-closed. The copy and its BSD-2-Clause
+license are included in the runner source-tree digest because the upstream
+repository is unavailable to CI.
 
 Static reverse dependency analysis of the exact lock and manifests shows:
 

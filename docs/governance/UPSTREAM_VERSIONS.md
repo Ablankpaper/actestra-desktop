@@ -160,8 +160,11 @@ clarified before Actestra distributes AionCore-derived code or binaries.
   still selected it, and the newly published `arrayref 0.3.10` was not yet a
   reviewed registry input. The runner's `Cargo.toml` therefore pins the
   pre-yank source at `droundy/arrayref` commit
-  `f8d0299d863922db6c409d08098941e833b70d69`; this is a temporary fail-closed
-  supply-chain pin, not an audit waiver.
+  `f8d0299d863922db6c409d08098941e833b70d69` is vendored under
+  `workers/goose-runner/vendor/arrayref` because the upstream repository is
+  unavailable to CI. The copy is included in the runner source-tree digest,
+  retains its BSD-2-Clause license, and is removable once a reviewed non-yanked
+  registry release is available.
 - The first exact runner lock and embedded-metadata scans both report only
   `RUSTSEC-2023-0071` for `rsa 0.9.10`. ADR-0025 permits that record only as
   `metadata-only-not-compiled`: the active graph excludes RSA and SQLx MySQL,

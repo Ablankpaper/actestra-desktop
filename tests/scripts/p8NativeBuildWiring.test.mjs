@@ -88,6 +88,21 @@ describe("P8 native Goose build wiring", () => {
     );
   });
 
+  it("keeps the immutable yanked-package patch in the reproducible source tree", () => {
+    const manifest = read("workers/goose-runner/Cargo.toml");
+    const lock = read("workers/goose-runner/Cargo.lock");
+
+    expect(manifest).toContain('arrayref = { path = "vendor/arrayref" }');
+    expect(lock).toContain('name = "arrayref"');
+    expect(lock).not.toContain("arrayref?rev=");
+    expect(
+      fs.existsSync(path.join(repositoryRoot, "workers/goose-runner/vendor/arrayref/SOURCE.md")),
+    ).toBe(true);
+    expect(read("workers/goose-runner/vendor/arrayref/SOURCE.md")).toContain(
+      "f8d0299d863922db6c409d08098941e833b70d69",
+    );
+  });
+
   it("registers a build-only emitted-artifact verifier at the production admission boundary", () => {
     const scripts = JSON.parse(read("package.json")).scripts;
     const verifierPath = path.join(repositoryRoot, "scripts/admit-goose-runner-build.ts");

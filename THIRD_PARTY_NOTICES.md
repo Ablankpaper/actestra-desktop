@@ -73,6 +73,12 @@ Windows production runtime admission disabled.
 The generated local artifact and any future seven-day CI artifact are admission
 evidence, not a packaged, signed, notarized, released, or distributed Actestra
 component.
+
+The runner also carries a source copy of `arrayref 0.3.9` under
+`workers/goose-runner/vendor/arrayref`. It is BSD-2-Clause licensed; its
+upstream commit and reason for vendoring are recorded in that directory's
+`SOURCE.md`. This copy replaces the yanked crates.io package selected by
+`blake3` and is included in the runner source-tree digest.
 The private runtime pin also does not prove adapted Windows execution, an
 Electron package, candidate status, P8.2c completion, or overall P8 completion.
 Before a desktop candidate includes the runner, Release must verify the full
