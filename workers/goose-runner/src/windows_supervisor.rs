@@ -591,6 +591,7 @@ enum SupervisorFailureStage {
     WorkerReady,
     CapabilityPipe,
     ModelPipe,
+    WorkerRuntime,
 }
 
 #[cfg(any(windows, test))]
@@ -608,6 +609,7 @@ impl SupervisorFailureStage {
             Self::WorkerReady => 17,
             Self::CapabilityPipe => 18,
             Self::ModelPipe => 19,
+            Self::WorkerRuntime => 46,
         }
     }
 }
@@ -621,6 +623,7 @@ fn runtime_code_for_supervisor_failure(stage: SupervisorFailureStage) -> Option<
         SupervisorFailureStage::WorkerReady => Some("windows-ready-channel-invalid"),
         SupervisorFailureStage::CapabilityPipe => Some("windows-capability-pipe-invalid"),
         SupervisorFailureStage::ModelPipe => Some("windows-model-pipe-invalid"),
+        SupervisorFailureStage::WorkerRuntime => Some("windows-worker-runtime-failed"),
         _ => None,
     }
 }
@@ -2145,6 +2148,23 @@ async fn wait_for_worker_exit_handle(handle: HANDLE) -> Result<u32, ()> {
 }
 
 #[cfg(windows)]
+async fn accept_runtime_pipe_or_worker_exit(
+    pipe: WindowsNamedPipeServer,
+    worker_handle: HANDLE,
+    pipe_failure: SupervisorFailureStage,
+) -> Result<crate::windows_bridge::WindowsBridgeChannel, SupervisorFailureStage> {
+    tokio::select! {
+        result = pipe.accept_once() => {
+            result.map_err(|_| pipe_failure)
+        }
+        result = wait_for_worker_exit_handle(worker_handle) => {
+            let _ = result;
+            Err(SupervisorFailureStage::WorkerRuntime)
+        }
+    }
+}
+
+#[cfg(windows)]
 fn cleanup_runtime(
     job: &JobObject,
     worker: &WorkerProcess,
@@ -2698,30 +2718,23 @@ fn launch_controlled_worker(control: crate::windows_control::WindowsControlMessa
         _owner,
     } = runtime_pipes;
     let accepted = pipe_runtime.block_on(async {
-        let capability = capability_pipe
-            .accept_once()
-            .await
-            .map_err(|_| WindowsRuntimePipeFailure::Capability)?;
-        let model = model_pipe
-            .accept_once()
-            .await
-            .map_err(|_| WindowsRuntimePipeFailure::Model)?;
-        Ok::<_, WindowsRuntimePipeFailure>((capability, model))
+        let capability = accept_runtime_pipe_or_worker_exit(
+            capability_pipe,
+            worker.process_handle(),
+            SupervisorFailureStage::CapabilityPipe,
+        )
+        .await?;
+        let model = accept_runtime_pipe_or_worker_exit(
+            model_pipe,
+            worker.process_handle(),
+            SupervisorFailureStage::ModelPipe,
+        )
+        .await?;
+        Ok::<_, SupervisorFailureStage>((capability, model))
     });
     let (capability_worker, model_worker) = match accepted {
         Ok(pipes) => pipes,
-        Err(WindowsRuntimePipeFailure::Capability) => {
-            return report_supervisor_failure(
-                SupervisorFailureStage::CapabilityPipe,
-                WINDOWS_SETUP_FAILURE_MARKER,
-            );
-        }
-        Err(WindowsRuntimePipeFailure::Model) => {
-            return report_supervisor_failure(
-                SupervisorFailureStage::ModelPipe,
-                WINDOWS_SETUP_FAILURE_MARKER,
-            );
-        }
+        Err(stage) => return report_supervisor_failure(stage, WINDOWS_SETUP_FAILURE_MARKER),
     };
     // The Worker writes ready only after both named-pipe client connections succeed. Accepting
     // the two servers before waiting on the dedicated ready handle avoids a startup deadlock.
@@ -3412,6 +3425,10 @@ mod tests {
             Some("windows-model-pipe-invalid")
         );
         assert_eq!(
+            runtime_code_for_supervisor_failure(SupervisorFailureStage::WorkerRuntime),
+            Some("windows-worker-runtime-failed")
+        );
+        assert_eq!(
             runtime_code_for_supervisor_failure(SupervisorFailureStage::Job),
             None
         );
@@ -3561,10 +3578,11 @@ mod tests {
             SupervisorFailureStage::WorkerReady,
             SupervisorFailureStage::CapabilityPipe,
             SupervisorFailureStage::ModelPipe,
+            SupervisorFailureStage::WorkerRuntime,
         ];
         assert_eq!(
             stages.map(SupervisorFailureStage::diagnostic_exit_code),
-            [10, 11, 12, 13, 14, 32, 15, 16, 17, 18, 19]
+            [10, 11, 12, 13, 14, 32, 15, 16, 17, 18, 19, 46]
         );
     }
 
