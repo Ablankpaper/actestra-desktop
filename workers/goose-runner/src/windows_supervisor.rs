@@ -108,14 +108,23 @@ use std::ffi::c_void;
 #[cfg(windows)]
 use std::mem::{size_of, size_of_val, zeroed};
 #[cfg(windows)]
+use std::os::windows::ffi::OsStrExt;
+#[cfg(windows)]
 use std::path::Path;
 #[cfg(windows)]
 use std::ptr::{null, null_mut};
 #[cfg(windows)]
 use windows_sys::Win32::Foundation::{
     CloseHandle, CompareObjectHandles, DuplicateHandle, GetHandleInformation, GetLastError,
-    SetHandleInformation, DUPLICATE_SAME_ACCESS, ERROR_BROKEN_PIPE, ERROR_INSUFFICIENT_BUFFER,
-    HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, WAIT_OBJECT_0, WAIT_TIMEOUT,
+    LocalFree, SetHandleInformation, DUPLICATE_SAME_ACCESS, ERROR_BROKEN_PIPE,
+    ERROR_INSUFFICIENT_BUFFER, ERROR_SUCCESS, HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE,
+    WAIT_OBJECT_0, WAIT_TIMEOUT,
+};
+#[cfg(windows)]
+use windows_sys::Win32::Security::Authorization::{
+    GetEffectiveRightsFromAclW, GetNamedSecurityInfoW, SetEntriesInAclW, SetNamedSecurityInfoW,
+    EXPLICIT_ACCESS_W, NO_MULTIPLE_TRUSTEE, SET_ACCESS, SE_FILE_OBJECT, TRUSTEE_IS_SID,
+    TRUSTEE_IS_USER, TRUSTEE_W,
 };
 #[cfg(windows)]
 use windows_sys::Win32::Security::Isolation::{
@@ -125,11 +134,17 @@ use windows_sys::Win32::Security::Isolation::{
 use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
 #[cfg(windows)]
 use windows_sys::Win32::Security::{
-    EqualSid, FreeSid, GetTokenInformation, TokenIsAppContainer, TokenUser, PSID,
-    SECURITY_CAPABILITIES, TOKEN_QUERY, TOKEN_USER,
+    EqualSid, FreeSid, GetTokenInformation, TokenIsAppContainer, TokenUser, ACL,
+    DACL_SECURITY_INFORMATION, NO_INHERITANCE, PSECURITY_DESCRIPTOR, PSID, SECURITY_CAPABILITIES,
+    SUB_CONTAINERS_AND_OBJECTS_INHERIT, TOKEN_QUERY, TOKEN_USER,
 };
 #[cfg(windows)]
-use windows_sys::Win32::Storage::FileSystem::{ReadFile, WriteFile};
+use windows_sys::Win32::Storage::FileSystem::{
+    ReadFile, WriteFile, DELETE, FILE_ADD_FILE, FILE_ADD_SUBDIRECTORY, FILE_DELETE_CHILD,
+    FILE_GENERIC_EXECUTE, FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_READ_ATTRIBUTES,
+    FILE_READ_EA, FILE_TRAVERSE, FILE_WRITE_ATTRIBUTES, FILE_WRITE_EA, READ_CONTROL, SYNCHRONIZE,
+    WRITE_DAC, WRITE_OWNER,
+};
 #[cfg(windows)]
 use windows_sys::Win32::System::Console::{
     GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
@@ -183,6 +198,22 @@ const WINDOWS_JOB_ACTIVE_PROCESS_LIMIT: u32 = 1;
 const WINDOWS_JOB_MEMORY_LIMIT_BYTES: usize = 1_073_741_824;
 #[cfg(windows)]
 const WINDOWS_JOB_USER_TIME_100NS: i64 = 120 * 10_000_000;
+#[cfg(windows)]
+const STATE_ROOT_ACCESS_MASK: u32 =
+    FILE_TRAVERSE | FILE_READ_ATTRIBUTES | FILE_READ_EA | READ_CONTROL | SYNCHRONIZE;
+#[cfg(windows)]
+const STATE_DIRECTORY_ACCESS_MASK: u32 =
+    FILE_GENERIC_READ | FILE_GENERIC_WRITE | FILE_GENERIC_EXECUTE | DELETE;
+#[cfg(windows)]
+const STATE_FORBIDDEN_ACCESS_MASK: u32 = WRITE_DAC | WRITE_OWNER;
+#[cfg(windows)]
+const STATE_ROOT_FORBIDDEN_ACCESS_MASK: u32 = STATE_FORBIDDEN_ACCESS_MASK
+    | FILE_ADD_FILE
+    | FILE_ADD_SUBDIRECTORY
+    | FILE_DELETE_CHILD
+    | FILE_WRITE_ATTRIBUTES
+    | FILE_WRITE_EA
+    | DELETE;
 #[cfg(any(windows, test))]
 const WINDOWS_WORKER_MODE_ARGUMENT: &str = "--actestra-windows-worker-v1";
 #[cfg(all(test, windows))]
@@ -652,6 +683,8 @@ impl WorkerLaunchFailureStage {
 enum AnonymousPipeTestChildFailure {
     Runtime,
     Channel,
+    StateDirectory,
+    RootWriteAllowed,
     FrameEncode,
     FrameWrite,
     FrameRead,
@@ -666,6 +699,8 @@ impl AnonymousPipeTestChildFailure {
         match self {
             Self::Runtime => 201,
             Self::Channel => 202,
+            Self::StateDirectory => 208,
+            Self::RootWriteAllowed => 209,
             Self::FrameEncode => 203,
             Self::FrameWrite => 204,
             Self::FrameRead => 205,
@@ -678,6 +713,8 @@ impl AnonymousPipeTestChildFailure {
         match self {
             Self::Runtime => "test-child-runtime-failed",
             Self::Channel => "test-child-channel-invalid",
+            Self::StateDirectory => "test-child-state-directory-failed",
+            Self::RootWriteAllowed => "test-child-root-write-allowed",
             Self::FrameEncode => "test-child-frame-encode-failed",
             Self::FrameWrite => "test-child-frame-write-failed",
             Self::FrameRead => "test-child-frame-read-failed",
@@ -693,6 +730,8 @@ fn classify_anonymous_pipe_test_child_exit(exit_code: u32) -> AnonymousPipeTestC
     match exit_code {
         201 => AnonymousPipeTestChildFailure::Runtime,
         202 => AnonymousPipeTestChildFailure::Channel,
+        208 => AnonymousPipeTestChildFailure::StateDirectory,
+        209 => AnonymousPipeTestChildFailure::RootWriteAllowed,
         203 => AnonymousPipeTestChildFailure::FrameEncode,
         204 => AnonymousPipeTestChildFailure::FrameWrite,
         205 => AnonymousPipeTestChildFailure::FrameRead,
@@ -2810,6 +2849,169 @@ fn prepare_goose_state_directories(
 }
 
 #[cfg(windows)]
+fn wide_path(path: &Path) -> Result<Vec<u16>, ()> {
+    let mut value: Vec<u16> = path.as_os_str().encode_wide().collect();
+    if value.is_empty() || value.iter().any(|unit| *unit == 0) {
+        return Err(());
+    }
+    value.push(0);
+    Ok(value)
+}
+
+#[cfg(windows)]
+fn exact_sid_trustee(sid: PSID) -> Result<TRUSTEE_W, ()> {
+    if sid.is_null() {
+        return Err(());
+    }
+    Ok(TRUSTEE_W {
+        pMultipleTrustee: null_mut(),
+        MultipleTrusteeOperation: NO_MULTIPLE_TRUSTEE,
+        TrusteeForm: TRUSTEE_IS_SID,
+        TrusteeType: TRUSTEE_IS_USER,
+        ptstrName: sid.cast(),
+    })
+}
+
+#[cfg(windows)]
+fn exact_sid_effective_rights(path: &Path, sid: PSID) -> Result<u32, ()> {
+    let wide = wide_path(path)?;
+    let trustee = exact_sid_trustee(sid)?;
+    let mut dacl: *mut ACL = null_mut();
+    let mut descriptor: PSECURITY_DESCRIPTOR = null_mut();
+    // SAFETY: wide is a NUL-terminated existing filesystem path. Only the DACL and owning
+    // descriptor are requested; descriptor is released with LocalFree below.
+    let read_result = unsafe {
+        GetNamedSecurityInfoW(
+            wide.as_ptr(),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            null_mut(),
+            null_mut(),
+            &mut dacl,
+            null_mut(),
+            &mut descriptor,
+        )
+    };
+    if read_result != ERROR_SUCCESS || descriptor.is_null() || dacl.is_null() {
+        if !descriptor.is_null() {
+            // SAFETY: descriptor was allocated by GetNamedSecurityInfoW.
+            unsafe { LocalFree(descriptor) };
+        }
+        return Err(());
+    }
+    let mut rights = 0_u32;
+    // SAFETY: dacl remains owned by descriptor for this call and trustee contains the exact live
+    // AppContainer SID retained by AppContainerProfile.
+    let rights_result = unsafe { GetEffectiveRightsFromAclW(dacl, &trustee, &mut rights) };
+    // SAFETY: descriptor was allocated by GetNamedSecurityInfoW and is no longer needed.
+    unsafe { LocalFree(descriptor) };
+    if rights_result != ERROR_SUCCESS {
+        return Err(());
+    }
+    Ok(rights)
+}
+
+#[cfg(windows)]
+fn grant_exact_appcontainer_directory_access(
+    path: &Path,
+    sid: PSID,
+    access_mask: u32,
+    forbidden_mask: u32,
+    inheritance: u32,
+) -> Result<(), ()> {
+    let wide = wide_path(path)?;
+    let trustee = exact_sid_trustee(sid)?;
+    let mut current_dacl: *mut ACL = null_mut();
+    let mut descriptor: PSECURITY_DESCRIPTOR = null_mut();
+    // SAFETY: wide is a NUL-terminated existing directory. descriptor owns current_dacl and is
+    // released after SetEntriesInAclW has copied the existing ACL.
+    let read_result = unsafe {
+        GetNamedSecurityInfoW(
+            wide.as_ptr(),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            null_mut(),
+            null_mut(),
+            &mut current_dacl,
+            null_mut(),
+            &mut descriptor,
+        )
+    };
+    if read_result != ERROR_SUCCESS || descriptor.is_null() || current_dacl.is_null() {
+        if !descriptor.is_null() {
+            // SAFETY: descriptor was allocated by GetNamedSecurityInfoW.
+            unsafe { LocalFree(descriptor) };
+        }
+        return Err(());
+    }
+    let entry = EXPLICIT_ACCESS_W {
+        grfAccessPermissions: access_mask,
+        grfAccessMode: SET_ACCESS,
+        grfInheritance: inheritance,
+        Trustee: trustee,
+    };
+    let mut updated_dacl: *mut ACL = null_mut();
+    // SAFETY: entry refers to the retained exact SID, current_dacl is valid for descriptor's
+    // lifetime, and updated_dacl is an out pointer released with LocalFree.
+    let merge_result = unsafe { SetEntriesInAclW(1, &entry, current_dacl, &mut updated_dacl) };
+    // SAFETY: descriptor was allocated by GetNamedSecurityInfoW and current_dacl is no longer used.
+    unsafe { LocalFree(descriptor) };
+    if merge_result != ERROR_SUCCESS || updated_dacl.is_null() {
+        if !updated_dacl.is_null() {
+            // SAFETY: updated_dacl was allocated by SetEntriesInAclW.
+            unsafe { LocalFree(updated_dacl.cast()) };
+        }
+        return Err(());
+    }
+    // SAFETY: wide is the same bounded directory path and updated_dacl is a valid ACL containing
+    // the exact AppContainer SID entry plus the existing owner/system entries.
+    let write_result = unsafe {
+        SetNamedSecurityInfoW(
+            wide.as_ptr() as *mut u16,
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            null_mut(),
+            null_mut(),
+            updated_dacl,
+            null_mut(),
+        )
+    };
+    // SAFETY: updated_dacl was allocated by SetEntriesInAclW and is no longer used.
+    unsafe { LocalFree(updated_dacl.cast()) };
+    if write_result != ERROR_SUCCESS {
+        return Err(());
+    }
+    let effective = exact_sid_effective_rights(path, sid)?;
+    if effective & access_mask != access_mask || effective & forbidden_mask != 0 {
+        return Err(());
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn prepare_appcontainer_goose_state_directories(private_root: &str, sid: PSID) -> Result<(), ()> {
+    let root = Path::new(private_root);
+    let (data_dir, config_dir) = prepare_goose_state_directories(private_root)?;
+    grant_exact_appcontainer_directory_access(
+        root,
+        sid,
+        STATE_ROOT_ACCESS_MASK,
+        STATE_ROOT_FORBIDDEN_ACCESS_MASK,
+        NO_INHERITANCE,
+    )?;
+    for directory in [&data_dir, &config_dir] {
+        grant_exact_appcontainer_directory_access(
+            directory,
+            sid,
+            STATE_DIRECTORY_ACCESS_MASK,
+            STATE_FORBIDDEN_ACCESS_MASK,
+            SUB_CONTAINERS_AND_OBJECTS_INHERIT,
+        )?;
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
 fn verify_worker_boundary() -> bool {
     if std::env::var_os("ACTESTRA_ENVIRONMENT_CANARY").is_some() {
         return false;
@@ -2878,6 +3080,12 @@ fn launch_controlled_worker(control: crate::windows_control::WindowsControlMessa
             return SupervisorFailureStage::Profile.diagnostic_exit_code();
         }
     };
+    if prepare_appcontainer_goose_state_directories(&control.private_root, profile.sid()).is_err() {
+        return report_supervisor_failure(
+            SupervisorFailureStage::WorkerStartup(WorkerStartupFailure::StateDirectory),
+            WINDOWS_SETUP_FAILURE_MARKER,
+        );
+    }
     let bridge_runtime = match tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -4182,9 +4390,40 @@ mod windows_native_tests {
         let mut handle_frame = [0_u8; 16];
         read_exact_handle(input, &mut handle_frame)
             .map_err(|_| AnonymousPipeTestChildFailure::Channel)?;
+        let mut root_length = [0_u8; 4];
+        read_exact_handle(input, &mut root_length)
+            .map_err(|_| AnonymousPipeTestChildFailure::Channel)?;
+        let root_length = u32::from_le_bytes(root_length) as usize;
+        if root_length == 0 || root_length > WINDOWS_CONTROL_MAX_BYTES {
+            return Err(AnonymousPipeTestChildFailure::Channel);
+        }
+        let mut root_bytes = vec![0_u8; root_length];
+        read_exact_handle(input, &mut root_bytes)
+            .map_err(|_| AnonymousPipeTestChildFailure::Channel)?;
         // SAFETY: the test child owns its inherited stdin endpoint and no longer needs it after
-        // receiving the two dedicated bridge handles.
+        // receiving the two dedicated bridge handles and bounded private-root path.
         unsafe { CloseHandle(input) };
+        let private_root = String::from_utf8(root_bytes)
+            .map_err(|_| AnonymousPipeTestChildFailure::StateDirectory)?;
+        let (data_dir, config_dir) = prepare_goose_state_directories(&private_root)
+            .map_err(|_| AnonymousPipeTestChildFailure::StateDirectory)?;
+        for (index, directory) in [&data_dir, &config_dir].into_iter().enumerate() {
+            let probe = directory.join(format!("appcontainer-state-{index}.txt"));
+            std::fs::write(&probe, b"state")
+                .map_err(|_| AnonymousPipeTestChildFailure::StateDirectory)?;
+            if std::fs::read(&probe).map_err(|_| AnonymousPipeTestChildFailure::StateDirectory)?
+                != b"state"
+            {
+                return Err(AnonymousPipeTestChildFailure::StateDirectory);
+            }
+            std::fs::remove_file(probe)
+                .map_err(|_| AnonymousPipeTestChildFailure::StateDirectory)?;
+        }
+        let root_probe = std::path::Path::new(&private_root).join("appcontainer-root-write.txt");
+        if std::fs::write(&root_probe, b"forbidden").is_ok() {
+            let _ = std::fs::remove_file(root_probe);
+            return Err(AnonymousPipeTestChildFailure::RootWriteAllowed);
+        }
         let capability_read = u64::from_le_bytes(
             handle_frame[..8]
                 .try_into()
@@ -4240,9 +4479,20 @@ mod windows_native_tests {
         let current_directory = executable
             .parent()
             .expect("the native test executable must have an absolute parent");
+        let private_root = test_private_root("appcontainer-state");
+        let private_root_text = private_root.to_str().expect("the test path must be UTF-8");
+        prepare_appcontainer_goose_state_directories(private_root_text, profile.sid())
+            .expect("the exact AppContainer SID must receive bounded state-directory access");
+        let private_root_bytes = private_root_text.as_bytes();
         let capability_handle_frame = [
             (pipes.worker_capability_read as usize as u64).to_le_bytes(),
             (pipes.worker_capability_write as usize as u64).to_le_bytes(),
+        ]
+        .concat();
+        let test_control_frame = [
+            capability_handle_frame,
+            (private_root_bytes.len() as u32).to_le_bytes().to_vec(),
+            private_root_bytes.to_vec(),
         ]
         .concat();
         let inherited_handles = pipes.inherited_handles();
@@ -4260,7 +4510,7 @@ mod windows_native_tests {
             .expect("the AppContainer anonymous-pipe test child must launch");
         pipes.close_worker_endpoints();
         let supervisor_control = pipes.take_worker_stdin().expect("supervisor control");
-        if write_all_handle(supervisor_control, &capability_handle_frame).is_err() {
+        if write_all_handle(supervisor_control, &test_control_frame).is_err() {
             panic!(
                 "the AppContainer anonymous-pipe test failed at bounded stage {}",
                 "test-supervisor-control-write-failed"
@@ -4313,6 +4563,8 @@ mod windows_native_tests {
                 "test-child-wait-failed"
             ),
         }
+        std::fs::remove_dir_all(private_root)
+            .expect("the AppContainer state test root must be removable after exit");
     }
 
     #[test]

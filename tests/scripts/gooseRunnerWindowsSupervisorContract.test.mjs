@@ -30,6 +30,34 @@ describe("Windows Goose supervisor source contract", () => {
     expect(manifest).not.toContain("Win32_Security_AppLocker");
   });
 
+  it("grants only the exact AppContainer SID bounded access to private Goose state", () => {
+    const manifest = read("workers/goose-runner/Cargo.toml");
+    const supervisor = read("workers/goose-runner/src/windows_supervisor.rs");
+
+    expect(manifest).toContain('"Win32_Security_Authorization"');
+    for (const api of [
+      "GetNamedSecurityInfoW",
+      "SetEntriesInAclW",
+      "SetNamedSecurityInfoW",
+      "GetEffectiveRightsFromAclW",
+    ]) {
+      expect(supervisor).toContain(api);
+    }
+    expect(supervisor).toContain("prepare_appcontainer_goose_state_directories");
+    expect(supervisor).toContain("profile.sid()");
+    expect(supervisor.indexOf("prepare_appcontainer_goose_state_directories")).toBeLessThan(
+      supervisor.indexOf("job.launch_suspended_worker_with_stdio"),
+    );
+    expect(supervisor).toContain("STATE_ROOT_ACCESS_MASK");
+    expect(supervisor).toContain("STATE_DIRECTORY_ACCESS_MASK");
+    expect(supervisor).toContain("NO_INHERITANCE");
+    expect(supervisor).toContain("SUB_CONTAINERS_AND_OBJECTS_INHERIT");
+    expect(supervisor).not.toContain("ALL APPLICATION PACKAGES");
+    expect(supervisor).not.toContain("ALL RESTRICTED APPLICATION PACKAGES");
+    expect(supervisor).not.toContain("S-1-15-2-1");
+    expect(supervisor).not.toContain("S-1-15-2-2");
+  });
+
   it("dispatches exact Windows modes before ordinary Goose while containment stays fail closed", () => {
     const main = read("workers/goose-runner/src/main.rs");
     const supervisor = read("workers/goose-runner/src/windows_supervisor.rs");

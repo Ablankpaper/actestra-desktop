@@ -2,6 +2,60 @@
 
 Last updated: 2026-08-21
 
+## 2026-08-21 P8.2c Windows Goose state-directory ACL remediation (local; exact-head CI pending)
+
+Exact-head CI run
+[`32391373152`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32391373152)
+for head `153306c17b91d82328c62790310444a247f90e21` passed Goose runner
+admission, the Windows build probe and native primitives, Windows containment,
+both Ubuntu jobs, and the macOS foundation job. The Windows authenticated
+runtime reached the Worker and failed at the newly preserved exact stage
+`windows-runtime-worker-state-directory-failed`. The bounded failure Artifact
+was independently downloaded and has SHA-256
+`38a4c736fd7c33bd703aedef9fdf4210f0828fb271f5a47c8bc09dc45253c71a`;
+its complete content is
+`{"contractVersion":1,"code":"windows-runtime-worker-state-directory-failed"}`.
+This proves that control parsing, AppContainer boundary verification, runtime
+creation, and both inherited-handle bridges succeeded before the Worker tried
+to prepare its Goose state directories.
+
+The bounded local remediation creates and validates only `goose-data` and
+`goose-config`, then adds an inheritable access entry for the exact retained
+AppContainer SID before Worker launch. The attempt-private root receives only
+traverse, attribute, read-control, and synchronization access; the two Goose
+state directories receive read, write, execute, and delete access for
+themselves and their children. Existing owner and system ACL entries are
+preserved. The implementation does not grant `ALL APPLICATION PACKAGES` or
+`ALL RESTRICTED APPLICATION PACKAGES`, add an AppContainer capability, widen
+the worktree, executable, network, Renderer, preload, or credential boundary,
+or add a retry. It reads the effective exact-SID rights back after each ACL
+write and fails closed if required rights are absent or `WRITE_DAC` /
+`WRITE_OWNER` (or root write/delete rights) are present.
+
+The existing Windows AppContainer native pipe test now also proves that the
+child can create, read, and delete files in both admitted Goose state
+directories while a direct write in the attempt-private root is denied. The
+new Win32 ACL call surface has been separately type-checked as metadata for
+`x86_64-pc-windows-msvc` with Rust `1.96.1`; a full macOS-hosted Windows build
+still cannot replace Windows evidence because transitive native C crates need
+the MSVC CRT and assembler toolchain. Fresh local evidence for this remediation
+passes `cargo fmt --all --check`, all `82` portable Rust tests, the focused
+Windows Supervisor source contract (`11/11`), root formatting (`412` files),
+documentation links (`98` Markdown files), and `git diff --check`. The complete
+`bun run check` composite gate exits `0`: zero-warning lint and typecheck,
+`171` test files passed / `3` skipped with `1842` tests passed / `10` skipped,
+all `28` P7 abuse cases and `168` exact variants denied-safe, smoke harness,
+product boundary, frozen AionUI foundation, downstream materialization and
+package build all passed. Its remaining Vite `use client`, circular-chunk, and
+large-chunk notices are pre-existing frozen-foundation build warnings.
+
+P8.2c remains open. The next accepted evidence must come from one newly pushed
+exact head and must pass the Windows build probe, Windows containment, and
+Windows authenticated-runtime jobs. Only a successful runtime Artifact whose
+digest, content, and source head are independently revalidated can close
+P8.2c; Windows Electron/package acceptance, P8.2 overall, P8.3, P8.4, release,
+deployment, and user acceptance remain separate and open.
+
 ## 2026-08-21 P8.2c Worker exit checking (format blocked; regression tests added)
 
 Commits `f9b8c84` and `4cea96d` completed the Supervisor stage diagnostic chain
@@ -13,7 +67,7 @@ blocking full native verification.
 
 The format issue was two lines around `GetExitCodeProcess` at
 `windows_supervisor.rs:2976-2977` that `rustfmt` reformatted. Local fix applied
-via `cargo fmt --all`. Two regression tests added: 
+via `cargo fmt --all`. Two regression tests added:
 `classifies_worker_startup_exit_codes_to_distinct_failure_stages` covers the
 eight Worker exit codes 101/102/103/108/113/114/115/116 plus 0/1/259 (STILL_ACTIVE),
 and `maps_worker_startup_failures_to_distinct_runtime_codes` locks the eight
