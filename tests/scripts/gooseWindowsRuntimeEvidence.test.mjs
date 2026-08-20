@@ -524,6 +524,11 @@ describe("Goose Windows runtime evidence", () => {
     expect(runner).toContain("windows-runtime-fixture-setup-failed");
     expect(runner).toContain("classifyGooseWindowsRuntimeFailureEvidence");
     expect(runner).toContain("readFailureCode");
+    expect(runner).toContain('"windows-runtime-test-cleanup-failed"');
+    expect(runner).toContain('"windows-runtime-test-stage-unknown-failed"');
+    expect(runner).toContain("let primaryFailure");
+    expect(runner).toContain("Preserve the actionable primary stage");
+    expect(runner).not.toContain('? "windows-runtime-test-failed"');
     expect(runner).not.toContain('stdio: "inherit"');
     expect(vitest).toContain("nativeWindowsGooseIntegrationFiles");
     expect(vitest).toContain('"tests/main/gooseRunnerWindowsNative.integration.ts"');

@@ -91,6 +91,7 @@ const FAILURE_CODES = new Set([
   "windows-runtime-test-failure-evidence-missing-failed",
   "windows-runtime-test-failure-evidence-invalid-failed",
   "windows-runtime-test-failure-evidence-too-large-failed",
+  "windows-runtime-test-cleanup-failed",
   "windows-runtime-target-unsupported",
 ]);
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -111,7 +112,7 @@ function digest(value) {
 }
 
 function fail(code) {
-  const safeCode = FAILURE_CODES.has(code) ? code : "windows-runtime-test-failed";
+  const safeCode = FAILURE_CODES.has(code) ? code : "windows-runtime-test-stage-unknown-failed";
   process.stderr.write(`Goose Windows runtime ${safeCode}\n`);
   process.exitCode = 2;
 }
@@ -191,7 +192,7 @@ async function readFailureCode(failureEvidencePath) {
 function safeFailureCode(value) {
   return typeof value === "string" && FAILURE_CODES.has(value)
     ? value
-    : "windows-runtime-test-failed";
+    : "windows-runtime-test-stage-unknown-failed";
 }
 
 async function writeFailureOutput(code) {
@@ -376,6 +377,8 @@ async function main() {
   );
   const evidencePath = path.join(evidenceDirectory, "windows-runtime-evidence.json");
   const failureEvidencePath = path.join(evidenceDirectory, "windows-runtime-failure.json");
+  let primaryFailure;
+  let cleanupFailure = false;
   try {
     const child = runBounded("bun", ["run", "test", "--", "--bail=1", integrationTest], {
       ...boundedSystemEnvironment(),
@@ -447,9 +450,19 @@ async function main() {
       throw new Error("windows-runtime-artifact-mismatch");
     }
     process.stdout.write(`${JSON.stringify(evidence)}\n`);
+  } catch (error) {
+    primaryFailure = error;
   } finally {
-    await rm(evidenceDirectory, { recursive: true, force: true });
+    try {
+      await rm(evidenceDirectory, { recursive: true, force: true });
+    } catch {
+      // Preserve the actionable primary stage. Cleanup is still fail-closed
+      // when it is the only failure, but must not erase the runtime diagnosis.
+      cleanupFailure = true;
+    }
   }
+  if (primaryFailure !== undefined) throw primaryFailure;
+  if (cleanupFailure) throw new Error("windows-runtime-test-cleanup-failed");
 }
 
 try {

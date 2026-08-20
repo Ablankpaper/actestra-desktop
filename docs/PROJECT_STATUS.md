@@ -21,6 +21,16 @@ remains unchanged. This dependency remediation is uncommitted and has not been
 sent to CI yet. P8.2c remains open until the lock/build/admission gate passes
 and a new exact-head Windows runtime result is obtained.
 
+The follow-up exact-head run `32349088724` confirmed that the dependency gate
+is fixed: all seven jobs crossed artifact admission, Windows containment passed,
+and Windows authenticated runtime actually ran. It still failed with the
+bounded artifact code `windows-runtime-test-failed`, so P8.2c is not closed.
+The remaining local remediation preserves a primary runtime stage when temporary
+evidence-directory cleanup fails and maps any otherwise-unrecognized failure to
+the explicit `windows-runtime-test-stage-unknown-failed` token instead of the
+opaque generic fallback. Focused evidence/wiring tests remain green; this
+change is not yet pushed for a new native run.
+
 ## 2026-08-20 P8.2c Batch 4 authenticated-runtime failure diagnostics (local remediation; native rerun pending)
 
 The exact-head `dfee41e` Windows CI run `32340569696` proved the runner build,
