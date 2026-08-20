@@ -2,6 +2,63 @@
 
 Last updated: 2026-08-20
 
+## 2026-08-20 P8.2c Windows AppContainer named-pipe integrity remediation (local green; native rerun pending)
+
+Exact-head CI run
+[`32361943175`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32361943175)
+for pushed head `36a316ba9ba4e11c042ad9edb8a37ca2fcf67486` passed both
+Windows and Ubuntu build probes, both containment jobs, Ubuntu authenticated
+integration, Goose admission, and the macOS foundation/package/smoke job. The
+Windows authenticated-runtime job alone failed. Its bounded failure Artifact
+`p8-goose-runtime-windows-failure-2d8ca6da4bd4b40f0aaea94394afa27553740d30`
+contains the independently downloaded exact record
+`{"contractVersion":1,"code":"windows-runtime-worker-capability-pipe-failed"}`.
+This proves the previous outer-code remediation worked and places the native
+failure after AppContainer launch, Job assignment, Worker boundary verification,
+and Tokio runtime creation but before model-pipe connection, private-state setup,
+ready signalling, or ACP handshake.
+
+The remaining boundary defect is the pipe object's mandatory-integrity policy.
+The server already used the required `\\.\pipe\LOCAL\` namespace, requested a
+duplex byte pipe, and placed only the required owner SID and exact AppContainer
+SID in its DACL. Tokio's client opens the pipe for both read and write, and the
+DACL mask covers that request. The security descriptor did not carry a
+mandatory-integrity SACL, however. Under Windows Mandatory Integrity Control an
+unlabelled object is treated as medium integrity, so the low-integrity
+AppContainer cannot obtain write access even after its exact SID passes the
+DACL. This explains the observed failure at the first capability-pipe client
+open without authorizing a wider SID, network capability, loopback exemption,
+or namespace change.
+
+The local remediation adds one low-integrity mandatory label with
+`SYSTEM_MANDATORY_LABEL_NO_WRITE_UP` to each existing exact-SID pipe security
+descriptor. The two-entry DACL, one-client limit, local namespace, AppContainer,
+Job, handle allowlist, clean environment, and deny-all network boundary remain
+unchanged. A new Windows-native regression launches the real test child through
+the production AppContainer and Job path, requires a bidirectional capability-
+pipe exchange, and then requires a clean child exit. The existing ACL test now
+also verifies the one exact low-integrity label in memory. The prior exact-head
+production failure is the native RED evidence; this host cannot execute the new
+Windows-only test.
+
+Local evidence is green: the runner's `82` portable Rust tests pass, the
+Windows-only security-descriptor slice compiles for
+`x86_64-pc-windows-msvc` in an isolated API probe, documentation links pass for
+all `98` Markdown files, and the complete `bun run check` gate exits `0` with
+`171` test files passed / `3` skipped and `1840` tests passed / `10` skipped.
+Format, zero-warning lint, typecheck, P8 contract, Electron SQLite, P7 abuse,
+smoke harness, product boundary, frozen foundation, downstream overlay/package,
+and `git diff --check` pass in that same local state. The full Goose dependency
+graph still cannot be cross-compiled from this macOS host because native C
+dependencies require the Windows MSVC CRT; that is not native Windows evidence.
+
+P8.2c remains open. The next required evidence is one exact-head Windows run in
+which the new native AppContainer pipe test passes and the authenticated runtime
+advances through both pipes to the deterministic ACP journey. A successful
+runtime Artifact must be downloaded and independently revalidated before the
+gate may close. Windows Electron/package acceptance, P8.2 overall, P8.3, P8.4,
+release, deployment, and user acceptance remain separate and open.
+
 ## 2026-08-20 P8.2c Windows authenticated-runtime outer-code closure remediation
 
 Exact-head CI run `32354734352` for source head `16d55da` crossed the vendored

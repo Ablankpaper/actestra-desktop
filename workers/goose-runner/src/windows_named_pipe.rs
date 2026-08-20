@@ -51,15 +51,17 @@ use std::mem::size_of;
 use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeServer, PipeMode, ServerOptions};
 #[cfg(windows)]
 use windows_sys::Win32::Security::{
-    AddAccessAllowedAce, EqualSid, GetAce, GetLengthSid, InitializeAcl,
-    InitializeSecurityDescriptor, IsValidSid, SetSecurityDescriptorDacl, ACCESS_ALLOWED_ACE, ACL,
-    ACL_REVISION, PSID, SECURITY_ATTRIBUTES, SECURITY_DESCRIPTOR,
+    AddAccessAllowedAce, AddMandatoryAce, CreateWellKnownSid, EqualSid, GetAce, GetLengthSid,
+    InitializeAcl, InitializeSecurityDescriptor, IsValidSid, SetSecurityDescriptorDacl,
+    SetSecurityDescriptorSacl, WinLowLabelSid, ACCESS_ALLOWED_ACE, ACL, ACL_REVISION, PSID,
+    SECURITY_ATTRIBUTES, SECURITY_DESCRIPTOR, SECURITY_MAX_SID_SIZE, SYSTEM_MANDATORY_LABEL_ACE,
 };
 #[cfg(windows)]
 use windows_sys::Win32::Storage::FileSystem::{FILE_GENERIC_READ, FILE_GENERIC_WRITE};
 #[cfg(windows)]
 use windows_sys::Win32::System::SystemServices::{
-    ACCESS_ALLOWED_ACE_TYPE, SECURITY_DESCRIPTOR_REVISION,
+    ACCESS_ALLOWED_ACE_TYPE, SECURITY_DESCRIPTOR_REVISION, SYSTEM_MANDATORY_LABEL_ACE_TYPE,
+    SYSTEM_MANDATORY_LABEL_NO_WRITE_UP,
 };
 
 #[cfg(windows)]
@@ -68,6 +70,8 @@ const WINDOWS_PIPE_ACCESS_MASK: u32 = FILE_GENERIC_READ | FILE_GENERIC_WRITE;
 #[cfg(windows)]
 struct PipeSecurityDescriptor {
     acl: Vec<u32>,
+    sacl: Vec<u32>,
+    low_integrity_sid: Vec<usize>,
     descriptor: Box<SECURITY_DESCRIPTOR>,
 }
 
@@ -121,6 +125,54 @@ impl PipeSecurityDescriptor {
             return Err(WindowsNamedPipeError::SecurityPolicyUnavailable);
         }
 
+        let low_integrity_sid_words = (SECURITY_MAX_SID_SIZE as usize).div_ceil(size_of::<usize>());
+        let mut low_integrity_sid = vec![0_usize; low_integrity_sid_words];
+        let low_integrity_sid_pointer = low_integrity_sid.as_mut_ptr().cast::<c_void>();
+        let mut low_integrity_sid_length = u32::try_from(
+            low_integrity_sid
+                .len()
+                .checked_mul(size_of::<usize>())
+                .ok_or(WindowsNamedPipeError::SecurityPolicyUnavailable)?,
+        )
+        .map_err(|_| WindowsNamedPipeError::SecurityPolicyUnavailable)?;
+        if unsafe {
+            CreateWellKnownSid(
+                WinLowLabelSid,
+                std::ptr::null_mut(),
+                low_integrity_sid_pointer,
+                &mut low_integrity_sid_length,
+            )
+        } == 0
+            || unsafe { IsValidSid(low_integrity_sid_pointer) } == 0
+        {
+            return Err(WindowsNamedPipeError::SecurityPolicyUnavailable);
+        }
+        let low_integrity_sid_length = unsafe { GetLengthSid(low_integrity_sid_pointer) } as usize;
+        let mandatory_ace_header_bytes = size_of::<SYSTEM_MANDATORY_LABEL_ACE>()
+            .checked_sub(size_of::<u32>())
+            .ok_or(WindowsNamedPipeError::SecurityPolicyUnavailable)?;
+        let sacl_bytes = size_of::<ACL>()
+            .checked_add(mandatory_ace_header_bytes)
+            .and_then(|size| size.checked_add(low_integrity_sid_length))
+            .ok_or(WindowsNamedPipeError::SecurityPolicyUnavailable)?;
+        let sacl_length = u32::try_from(sacl_bytes)
+            .map_err(|_| WindowsNamedPipeError::SecurityPolicyUnavailable)?;
+        let mut sacl = vec![0_u32; sacl_bytes.div_ceil(size_of::<u32>())];
+        let sacl_pointer = sacl.as_mut_ptr().cast::<ACL>();
+        if unsafe { InitializeAcl(sacl_pointer, sacl_length, ACL_REVISION) } == 0
+            || unsafe {
+                AddMandatoryAce(
+                    sacl_pointer,
+                    ACL_REVISION,
+                    0,
+                    SYSTEM_MANDATORY_LABEL_NO_WRITE_UP,
+                    low_integrity_sid_pointer,
+                )
+            } == 0
+        {
+            return Err(WindowsNamedPipeError::SecurityPolicyUnavailable);
+        }
+
         let mut descriptor = Box::<SECURITY_DESCRIPTOR>::default();
         if unsafe {
             InitializeSecurityDescriptor(
@@ -136,11 +188,26 @@ impl PipeSecurityDescriptor {
                     0,
                 )
             } == 0
+            || unsafe {
+                SetSecurityDescriptorSacl(
+                    descriptor.as_mut() as *mut SECURITY_DESCRIPTOR as *mut c_void,
+                    1,
+                    sacl_pointer,
+                    0,
+                )
+            } == 0
         {
             return Err(WindowsNamedPipeError::SecurityPolicyUnavailable);
         }
-        let security = Self { acl, descriptor };
-        if !security.grants_exactly(owner_sid, app_container_sid) {
+        let security = Self {
+            acl,
+            sacl,
+            low_integrity_sid,
+            descriptor,
+        };
+        if !security.grants_exactly(owner_sid, app_container_sid)
+            || !security.labels_low_integrity()
+        {
             return Err(WindowsNamedPipeError::SecurityPolicyUnavailable);
         }
         Ok(security)
@@ -181,6 +248,27 @@ impl PipeSecurityDescriptor {
             }
         }
         owner_seen && app_container_seen
+    }
+
+    fn labels_low_integrity(&self) -> bool {
+        let sacl_pointer = self.sacl.as_ptr().cast::<ACL>();
+        let sacl = unsafe { &*sacl_pointer };
+        if sacl.AceCount != 1 {
+            return false;
+        }
+        let mut raw_ace = std::ptr::null_mut::<c_void>();
+        if unsafe { GetAce(sacl_pointer, 0, &mut raw_ace) } == 0 || raw_ace.is_null() {
+            return false;
+        }
+        let ace = unsafe { &*raw_ace.cast::<SYSTEM_MANDATORY_LABEL_ACE>() };
+        if u32::from(ace.Header.AceType) != SYSTEM_MANDATORY_LABEL_ACE_TYPE
+            || ace.Mask != SYSTEM_MANDATORY_LABEL_NO_WRITE_UP
+        {
+            return false;
+        }
+        let sid = std::ptr::addr_of!(ace.SidStart) as PSID;
+        let expected = self.low_integrity_sid.as_ptr().cast_mut().cast::<c_void>();
+        (unsafe { EqualSid(sid, expected) }) != 0
     }
 
     fn attributes(&mut self) -> SECURITY_ATTRIBUTES {
@@ -429,6 +517,7 @@ mod tests {
             let server =
                 WindowsNamedPipeServer::create(&names.capability, owner.sid, profile.sid).unwrap();
             assert!(server.security.grants_exactly(owner.sid, profile.sid));
+            assert!(server.security.labels_low_integrity());
 
             let mut client = WindowsNamedPipeClient::connect_once(&names.capability).unwrap();
             let mut accepted = server.accept_once().await.unwrap();

@@ -187,6 +187,9 @@ const WINDOWS_JOB_MEMORY_LIMIT_BYTES: usize = 1_073_741_824;
 const WINDOWS_JOB_USER_TIME_100NS: i64 = 120 * 10_000_000;
 #[cfg(any(windows, test))]
 const WINDOWS_WORKER_MODE_ARGUMENT: &str = "--actestra-windows-worker-v1";
+#[cfg(all(test, windows))]
+const WINDOWS_NAMED_PIPE_TEST_CHILD_ARGUMENT: &str =
+    "windows_supervisor::windows_native_tests::appcontainer_named_pipe_client_child";
 #[cfg(any(windows, test))]
 const WINDOWS_WORKER_PROGRAM_NAME: &str = "actestra-goose-runner.exe";
 #[cfg(any(windows, test))]
@@ -273,10 +276,13 @@ fn build_minimal_windows_environment_block(windows_directory: &[u16]) -> Result<
 
 #[cfg(any(windows, test))]
 fn build_command_line_for_argument(argument: &str) -> Result<Vec<u16>, ()> {
-    if !matches!(
+    let admitted = matches!(
         argument,
         WINDOWS_WORKER_MODE_ARGUMENT | WINDOWS_PROBE_CHILD_ARGUMENT | WINDOWS_PROBE_PARENT_ARGUMENT
-    ) {
+    );
+    #[cfg(all(test, windows))]
+    let admitted = admitted || argument == WINDOWS_NAMED_PIPE_TEST_CHILD_ARGUMENT;
+    if !admitted {
         return Err(());
     }
     Ok(format!("{WINDOWS_WORKER_PROGRAM_NAME} {argument}\0")
@@ -3922,6 +3928,144 @@ mod windows_native_tests {
             // SAFETY: the test wrapper owns the event handle created below.
             unsafe { CloseHandle(self.0) };
         }
+    }
+
+    fn current_test_process_is_app_container() -> bool {
+        let mut token: HANDLE = null_mut();
+        // SAFETY: the current-process pseudo handle is valid and token is an out pointer.
+        if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) } == 0
+            || token.is_null()
+        {
+            return false;
+        }
+        let mut is_app_container = 0_u32;
+        let mut return_length = 0_u32;
+        // SAFETY: token is live and the output buffer exactly matches TokenIsAppContainer.
+        let queried = unsafe {
+            GetTokenInformation(
+                token,
+                TokenIsAppContainer,
+                (&raw mut is_app_container).cast::<c_void>(),
+                size_of::<u32>() as u32,
+                &mut return_length,
+            )
+        } != 0;
+        // SAFETY: token was opened above and is no longer needed.
+        unsafe { CloseHandle(token) };
+        queried && is_app_container == 1
+    }
+
+    #[test]
+    fn appcontainer_named_pipe_client_child() {
+        if !current_test_process_is_app_container() {
+            return;
+        }
+
+        use std::io::Read as _;
+
+        let mut attempt_id_bytes = [0_u8; 32];
+        std::io::stdin()
+            .read_exact(&mut attempt_id_bytes)
+            .expect("the AppContainer test child must receive one exact attempt id");
+        let attempt_id = std::str::from_utf8(&attempt_id_bytes)
+            .expect("the AppContainer test attempt id must be UTF-8");
+        let names = derive_pipe_names(attempt_id)
+            .expect("the AppContainer test child must derive the exact pipe names");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("the AppContainer test child runtime must start");
+        runtime.block_on(async {
+            let mut client = WindowsNamedPipeClient::connect_once(&names.capability)
+                .expect("the exact AppContainer SID must connect to the capability pipe");
+            let frame = crate::windows_bridge::encode_json_frame(
+                &serde_json::json!({"contractVersion": 1, "kind": "appcontainer-test"}),
+            )
+            .expect("the AppContainer test frame must encode");
+            client
+                .write_frame(&frame)
+                .await
+                .expect("the AppContainer client must write to the capability pipe");
+            assert_eq!(
+                client
+                    .read_frame()
+                    .await
+                    .expect("the AppContainer client must read from the capability pipe"),
+                frame,
+            );
+        });
+    }
+
+    #[test]
+    fn exact_appcontainer_connects_to_the_acl_bound_capability_pipe() {
+        let attempt_id = unique_attempt_id();
+        let profile = AppContainerProfile::create(&attempt_id)
+            .expect("a unique AppContainer profile must be created");
+        let names = derive_pipe_names(&attempt_id).expect("the exact pipe names must derive");
+        let pipe_runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("the named-pipe test runtime must start");
+        let runtime_pipes = {
+            let _guard = pipe_runtime.enter();
+            WindowsRuntimePipes::create(&names, &profile)
+                .expect("the exact ACL-bound named pipes must be created")
+        };
+        let WindowsRuntimePipes {
+            capability_pipe,
+            model_pipe,
+            _owner,
+        } = runtime_pipes;
+        drop(model_pipe);
+
+        let job = JobObject::create().expect("the AppContainer test Job must be configured");
+        let mut pipes = WorkerPipeSet::create().expect("the AppContainer test pipes must open");
+        let executable = std::env::current_exe().expect("the native test executable must resolve");
+        let current_directory = executable
+            .parent()
+            .expect("the native test executable must have an absolute parent");
+        let inherited_handles = pipes.probe_inherited_handles();
+        let worker = job
+            .launch_suspended_worker_with_variant_and_stdio_and_argument(
+                &profile,
+                &executable,
+                current_directory,
+                &inherited_handles,
+                Some(pipes.stdio()),
+                WorkerLaunchVariant::Production,
+                WINDOWS_NAMED_PIPE_TEST_CHILD_ARGUMENT,
+                None,
+            )
+            .expect("the AppContainer named-pipe test child must launch");
+        pipes.close_worker_endpoints();
+        write_all_handle(pipes.supervisor_stdin, attempt_id.as_bytes())
+            .expect("the exact attempt id must reach the AppContainer test child");
+        pipes.close_supervisor_stdin();
+
+        let mut accepted = pipe_runtime
+            .block_on(accept_runtime_pipe_or_worker_exit(
+                capability_pipe,
+                worker.process_handle(),
+                SupervisorFailureStage::CapabilityPipe,
+            ))
+            .expect("the exact AppContainer SID must connect to the capability pipe");
+        let expected = crate::windows_bridge::encode_json_frame(
+            &serde_json::json!({"contractVersion": 1, "kind": "appcontainer-test"}),
+        )
+        .expect("the AppContainer test frame must encode");
+        let observed = pipe_runtime
+            .block_on(accepted.read_frame())
+            .expect("the Supervisor must read the AppContainer test frame");
+        assert_eq!(observed, expected);
+        pipe_runtime
+            .block_on(accepted.write_frame(&expected))
+            .expect("the Supervisor must reply to the AppContainer test child");
+        drop(accepted);
+        assert_eq!(
+            worker.wait_for_exit(5_000),
+            Ok(0),
+            "the AppContainer named-pipe test child must exit cleanly",
+        );
     }
 
     #[test]
