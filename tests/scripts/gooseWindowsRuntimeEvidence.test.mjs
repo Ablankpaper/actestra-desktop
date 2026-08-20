@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   GOOSE_WINDOWS_RUNTIME_EVIDENCE_KEYS,
+  classifyGooseWindowsCodingSessionOpenError,
   classifyGooseWindowsArtifactAdmissionExecution,
   classifyGooseWindowsArtifactAdmissionFailure,
   classifyGooseWindowsRuntimeFailureEvidence,
@@ -52,6 +53,21 @@ function validEvidence() {
 }
 
 describe("Goose Windows runtime evidence", () => {
+  it("prefers the specific nested coding-session cause over the outer open-failed wrapper", () => {
+    expect(
+      classifyGooseWindowsCodingSessionOpenError({
+        code: "open-failed",
+        cause: new AggregateError([{ code: "repository-invalid" }, { code: "unrelated" }]),
+      }),
+    ).toBe("coding-session-open-repository-invalid");
+    expect(classifyGooseWindowsCodingSessionOpenError({ code: "open-failed" })).toBe(
+      "coding-session-open-persistence-failed",
+    );
+    expect(classifyGooseWindowsCodingSessionOpenError({ code: "unknown" })).toBe(
+      "coding-session-open",
+    );
+  });
+
   it("accepts only the complete verified record bound to one exact Artifact", () => {
     expect(validateGooseWindowsRuntimeEvidence(validEvidence(), binding)).toEqual({ ok: true });
     expect(Object.keys(validEvidence()).sort()).toEqual([...GOOSE_WINDOWS_RUNTIME_EVIDENCE_KEYS]);

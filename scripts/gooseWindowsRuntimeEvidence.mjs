@@ -81,6 +81,13 @@ const EVIDENCE_KEYS = Object.freeze(
   ].sort(),
 );
 const FAILURE_EVIDENCE_KEYS = Object.freeze(["contractVersion", "stage"]);
+const CODING_SESSION_OPEN_ERROR_CODES = new Set([
+  "invalid-options",
+  "repository-invalid",
+  "repository-config-denied",
+  "worktree-create-failed",
+  "cleanup-failed",
+]);
 
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -136,6 +143,26 @@ export function classifyGooseWindowsRuntimeFailureEvidence(value) {
   return Object.hasOwn(FAILURE_STAGE_CODES, value.stage)
     ? FAILURE_STAGE_CODES[value.stage]
     : undefined;
+}
+
+export function classifyGooseWindowsCodingSessionOpenError(error) {
+  const pending = [error];
+  const visited = new Set();
+  let openFailed = false;
+  while (pending.length > 0) {
+    const current = pending.shift();
+    if (!isRecord(current) || visited.has(current)) continue;
+    visited.add(current);
+    if (typeof current.code === "string") {
+      if (CODING_SESSION_OPEN_ERROR_CODES.has(current.code)) {
+        return `coding-session-open-${current.code}`;
+      }
+      if (current.code === "open-failed") openFailed = true;
+    }
+    if (Object.hasOwn(current, "cause")) pending.push(current.cause);
+    if (Array.isArray(current.errors)) pending.push(...current.errors);
+  }
+  return openFailed ? "coding-session-open-persistence-failed" : "coding-session-open";
 }
 
 export function classifyGooseWindowsArtifactAdmissionFailure(value) {

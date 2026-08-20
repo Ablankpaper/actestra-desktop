@@ -8,6 +8,7 @@ import process from "node:process";
 import { promisify } from "node:util";
 import { afterAll, describe, expect, it } from "vitest";
 import sourceContract from "../../apps/desktop/src/shared/gooseRunnerSource.json";
+import { classifyGooseWindowsCodingSessionOpenError } from "../../scripts/gooseWindowsRuntimeEvidence.mjs";
 import {
   CODING_FILE_READ_TOOL_ID,
   CODING_FILE_WRITE_TOOL_ID,
@@ -94,36 +95,6 @@ async function markFailure(stage: string): Promise<void> {
     encoding: "utf8",
     mode: 0o600,
   });
-}
-
-const CODING_SESSION_OPEN_ERROR_CODES = new Set([
-  "invalid-options",
-  "repository-invalid",
-  "repository-config-denied",
-  "worktree-create-failed",
-  "cleanup-failed",
-  "open-failed",
-]);
-
-function codingSessionOpenFailureStage(error: unknown): string {
-  const pending: unknown[] = [error];
-  const visited = new Set<object>();
-  while (pending.length > 0) {
-    const current = pending.shift();
-    if (typeof current !== "object" || current === null || visited.has(current)) continue;
-    visited.add(current);
-    if (
-      "code" in current &&
-      typeof current.code === "string" &&
-      CODING_SESSION_OPEN_ERROR_CODES.has(current.code)
-    ) {
-      if (current.code === "open-failed") return "coding-session-open-persistence-failed";
-      return `coding-session-open-${current.code}`;
-    }
-    if ("cause" in current) pending.push(current.cause);
-    if ("errors" in current && current.errors instanceof Array) pending.push(...current.errors);
-  }
-  return "coding-session-open";
 }
 
 async function runGit(repository: string, ...args: readonly string[]): Promise<string> {
@@ -467,7 +438,7 @@ describe.skipIf(!nativeEnabled)("native Windows Goose authenticated runtime comp
         tests: {},
       });
     } catch (error) {
-      await markFailure(codingSessionOpenFailureStage(error));
+      await markFailure(classifyGooseWindowsCodingSessionOpenError(error));
       throw error;
     }
     const toolInvoker = createGooseCodingToolInvoker({
