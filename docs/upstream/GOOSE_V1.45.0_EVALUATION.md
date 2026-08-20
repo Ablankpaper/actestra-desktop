@@ -147,6 +147,12 @@ the registry query timed out, reports:
 The yanked-package check is incomplete because crates.io queries timed out; it
 is tracked as an environment gap and does not replace the vulnerability result.
 
+For the current P8.2c runner lock, crates.io subsequently marked the selected
+`arrayref 0.3.9` (via `blake3 1.8.5`) as yanked. The runner now uses a temporary
+immutable source pin to the pre-yank `droundy/arrayref` commit
+`f8d0299d863922db6c409d08098941e833b70d69`; no yanked registry package is
+accepted and the audit remains fail-closed.
+
 Static reverse dependency analysis of the exact lock and manifests shows:
 
 - `quick-xml 0.36.2` enters through `docx-rs -> goose-mcp`;

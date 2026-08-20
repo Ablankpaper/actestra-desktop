@@ -30,6 +30,14 @@ Dependency resolution remains Actestra-owned through the committed runner
 `Cargo.lock`. It resolves `event-listener` `5.4.2` and `lru` `0.18.2` to remove
 the reviewed unsound versions without widening the empty Goose feature set.
 
+On 2026-08-20, crates.io yanked `arrayref` `0.3.9`, the version selected by
+`blake3` `1.8.5`, and published `0.3.10` with an unreviewed dependency change.
+The runner therefore pins the pre-yank `arrayref` source at immutable commit
+`f8d0299d863922db6c409d08098941e833b70d69` through Cargo's crates.io patch
+mechanism. This keeps the audit fail-closed without accepting the newly
+published package; the pin is removable once a reviewed non-yanked registry
+release is available.
+
 Rollback restores both Cargo dependencies and the source contract to canonical
 upstream commit `4dc0420f5704a92806c6628c8f0a3497d7a88759`, restores the empty-patch
 digest, and keeps Windows production runtime admission disabled. This record

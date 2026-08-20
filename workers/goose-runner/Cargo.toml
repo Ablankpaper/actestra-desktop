@@ -37,3 +37,10 @@ windows-sys = { version = "0.61.2", features = [
 codegen-units = 1
 lto = "thin"
 strip = false
+
+# crates.io yanked every published arrayref release currently selected by
+# blake3. Keep the pre-yank source pinned by immutable commit until a reviewed
+# non-yanked registry release is available; do not silently accept a new
+# registry package during a security-gated runner build.
+[patch.crates-io]
+arrayref = { git = "https://github.com/droundy/arrayref", rev = "f8d0299d863922db6c409d08098941e833b70d69" }

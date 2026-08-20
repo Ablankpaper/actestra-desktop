@@ -156,6 +156,12 @@ clarified before Actestra distributes AionCore-derived code or binaries.
   `1aa35cfa29a781752f992afa67dc6139f235b3cc662e01d2d556080dabbe8d21`;
   generated remediation artifacts remain local or short-lived CI evidence and
   are rehashed in their immutable manifest.
+- On 2026-08-20, crates.io marked `arrayref 0.3.9` yanked while `blake3 1.8.5`
+  still selected it, and the newly published `arrayref 0.3.10` was not yet a
+  reviewed registry input. The runner's `Cargo.toml` therefore pins the
+  pre-yank source at `droundy/arrayref` commit
+  `f8d0299d863922db6c409d08098941e833b70d69`; this is a temporary fail-closed
+  supply-chain pin, not an audit waiver.
 - The first exact runner lock and embedded-metadata scans both report only
   `RUSTSEC-2023-0071` for `rsa 0.9.10`. ADR-0025 permits that record only as
   `metadata-only-not-compiled`: the active graph excludes RSA and SQLx MySQL,

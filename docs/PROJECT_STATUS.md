@@ -2,6 +2,25 @@
 
 Last updated: 2026-08-20
 
+## 2026-08-20 P8.2c CI follow-up: yanked `arrayref` supply-chain gate
+
+Exact-head CI run `32344480355` for commit `18950d2` did not reach the Windows
+authenticated-runtime integration. Ubuntu build/containment, Windows
+containment, Goose admission, and macOS package trust all stopped at the same
+fail-closed `unsafe-audit` result: the yanked-package audit was non-empty after
+crates.io marked `arrayref 0.3.9` (selected through `blake3 1.8.5`) as yanked.
+The Team mixed-journey timeouts in Goose admission were downstream symptoms of
+that admission failure, not a new Worker or pipe diagnosis.
+
+The runner now temporarily pins the pre-yank `arrayref` source at immutable
+commit `f8d0299d863922db6c409d08098941e833b70d69` through Cargo's crates.io
+patch mechanism. The newly published `arrayref 0.3.10` is not accepted as an
+unreviewed registry input. Local locked metadata/tree checks and the bounded
+audit show no yanked-package warning; the existing RSA metadata-only finding
+remains unchanged. This dependency remediation is uncommitted and has not been
+sent to CI yet. P8.2c remains open until the lock/build/admission gate passes
+and a new exact-head Windows runtime result is obtained.
+
 ## 2026-08-20 P8.2c Batch 4 authenticated-runtime failure diagnostics (local remediation; native rerun pending)
 
 The exact-head `dfee41e` Windows CI run `32340569696` proved the runner build,
