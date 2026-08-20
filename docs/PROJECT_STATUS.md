@@ -1,6 +1,56 @@
 # Project Status
 
-Last updated: 2026-08-20
+Last updated: 2026-08-21
+
+## 2026-08-21 P8.2c Worker exit checking (format blocked; regression tests added)
+
+Commits `f9b8c84` and `4cea96d` completed the Supervisor stage diagnostic chain
+and added Worker exit checking before reporting ready-channel-invalid. CI run
+[`32390536814`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32390536814)
+for head `4cea96d` failed format check (`cargo fmt --all --check` exited 1) in
+three jobs (Goose runner admission, Ubuntu build probe, Ubuntu containment),
+blocking full native verification.
+
+The format issue was two lines around `GetExitCodeProcess` at
+`windows_supervisor.rs:2976-2977` that `rustfmt` reformatted. Local fix applied
+via `cargo fmt --all`. Two regression tests added: 
+`classifies_worker_startup_exit_codes_to_distinct_failure_stages` covers the
+eight Worker exit codes 101/102/103/108/113/114/115/116 plus 0/1/259 (STILL_ACTIVE),
+and `maps_worker_startup_failures_to_distinct_runtime_codes` locks the eight
+runtime code strings. These tests ensure the new Worker-exit-check branch cannot
+regress without breaking the test suite.
+
+CI run `32390536814` did complete Windows authenticated runtime with the exact
+failure stage `windows-runtime-supervisor-ready-channel-invalid-failed` and
+artifact SHA-256 `fbe26b8352d3966e8219ac46a271b9fb0d8c0798c7f1e9e7f2e8e332aaa617bf`,
+proving the Supervisor diagnostic chain works end-to-end. This confirms the
+Worker exits before writing the ready marker, but the Supervisor had not yet
+checked Worker exit status, so it reported the symptom (ready-channel-invalid)
+rather than the cause (a Worker startup stage failure).
+
+Commit `4cea96d` added that Worker-exit check: when ready marker read fails,
+`GetExitCodeProcess` queries the Worker; if it exited with 101-116, the
+Supervisor reports the specific Worker stage via `classify_worker_startup_exit()`;
+only if the Worker is still running (exit code 259 / STILL_ACTIVE) or the query
+fails does it report `ready-channel-invalid`. The implementation preserves
+fail-closed behavior: query failure falls back to `ready-channel-invalid` rather
+than masking the failure entirely.
+
+Native primitives on Windows reached 8/8 for the first time in CI run
+`32381576768` for head `43ced80`, proving the anonymous-pipe test-harness fix
+was effective.
+
+Verification pending: format fix, two new regression tests, duplicate cleanup in
+`gooseContainmentEvidence.mjs` (removed the duplicated
+`windows-worker-ready-signal-failed` entry at lines 119-120). Next exact-head
+Windows CI will report the actual Worker startup failure stage instead of the
+Supervisor-level ready symptom.
+
+P8.2c remains open. The next Windows CI run for the format-fixed head will
+reveal which specific Worker stage fails (control-frame, boundary-verification,
+runtime-creation, capability-bridge, model-bridge, state-directory,
+ready-signal, or acp-handshake) under AppContainer, enabling the final
+behavioral fix.
 
 ## 2026-08-20 P8.2c Windows bridge root-cause correction (pushed transport; harness rerun pending)
 

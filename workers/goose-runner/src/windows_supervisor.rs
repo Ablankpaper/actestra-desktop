@@ -2973,8 +2973,8 @@ fn launch_controlled_worker(control: crate::windows_control::WindowsControlMessa
         && marker == WINDOWS_WORKER_READY_MARKER;
     if !worker_ready {
         let mut exit_code = 0_u32;
-        let worker_exited = unsafe { GetExitCodeProcess(worker.process, &mut exit_code) } != 0
-            && exit_code != 259; // STILL_ACTIVE
+        let worker_exited =
+            unsafe { GetExitCodeProcess(worker.process, &mut exit_code) } != 0 && exit_code != 259; // STILL_ACTIVE
         if worker_exited {
             let failure = classify_worker_startup_exit(exit_code);
             return report_supervisor_failure(
@@ -4672,5 +4672,93 @@ mod windows_native_tests {
             "a private LOCALAPPDATA value must satisfy AppContainer environment creation"
         );
         assert!(restored.is_ok());
+    }
+
+    #[test]
+    fn classifies_worker_startup_exit_codes_to_distinct_failure_stages() {
+        assert_eq!(
+            classify_worker_startup_exit(101),
+            WorkerStartupFailure::ControlFrame
+        );
+        assert_eq!(
+            classify_worker_startup_exit(102),
+            WorkerStartupFailure::BoundaryVerification
+        );
+        assert_eq!(
+            classify_worker_startup_exit(103),
+            WorkerStartupFailure::RuntimeCreation
+        );
+        assert_eq!(
+            classify_worker_startup_exit(108),
+            WorkerStartupFailure::CapabilityBridge
+        );
+        assert_eq!(
+            classify_worker_startup_exit(113),
+            WorkerStartupFailure::ModelBridge
+        );
+        assert_eq!(
+            classify_worker_startup_exit(114),
+            WorkerStartupFailure::StateDirectory
+        );
+        assert_eq!(
+            classify_worker_startup_exit(115),
+            WorkerStartupFailure::ReadySignal
+        );
+        assert_eq!(
+            classify_worker_startup_exit(116),
+            WorkerStartupFailure::AcpHandshake
+        );
+        assert_eq!(
+            classify_worker_startup_exit(0),
+            WorkerStartupFailure::Unknown
+        );
+        assert_eq!(
+            classify_worker_startup_exit(1),
+            WorkerStartupFailure::Unknown
+        );
+        assert_eq!(
+            classify_worker_startup_exit(259),
+            WorkerStartupFailure::Unknown
+        );
+    }
+
+    #[test]
+    fn maps_worker_startup_failures_to_distinct_runtime_codes() {
+        assert_eq!(
+            WorkerStartupFailure::ControlFrame.runtime_code(),
+            "windows-worker-control-frame-invalid"
+        );
+        assert_eq!(
+            WorkerStartupFailure::BoundaryVerification.runtime_code(),
+            "windows-worker-boundary-verification-failed"
+        );
+        assert_eq!(
+            WorkerStartupFailure::RuntimeCreation.runtime_code(),
+            "windows-worker-runtime-creation-failed"
+        );
+        assert_eq!(
+            WorkerStartupFailure::CapabilityBridge.runtime_code(),
+            "windows-worker-capability-bridge-failed"
+        );
+        assert_eq!(
+            WorkerStartupFailure::ModelBridge.runtime_code(),
+            "windows-worker-model-bridge-failed"
+        );
+        assert_eq!(
+            WorkerStartupFailure::StateDirectory.runtime_code(),
+            "windows-worker-state-directory-failed"
+        );
+        assert_eq!(
+            WorkerStartupFailure::ReadySignal.runtime_code(),
+            "windows-worker-ready-signal-failed"
+        );
+        assert_eq!(
+            WorkerStartupFailure::AcpHandshake.runtime_code(),
+            "windows-worker-acp-handshake-failed"
+        );
+        assert_eq!(
+            WorkerStartupFailure::Unknown.runtime_code(),
+            "windows-worker-runtime-failed"
+        );
     }
 }
