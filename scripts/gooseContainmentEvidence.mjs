@@ -117,7 +117,6 @@ export const GOOSE_CONTAINMENT_PROBE_DIAGNOSTIC_CODES = Object.freeze([
   "windows-worker-model-bridge-failed",
   "windows-worker-state-directory-failed",
   "windows-worker-ready-signal-failed",
-  "windows-worker-ready-signal-failed",
   "windows-worker-acp-handshake-failed",
 ]);
 const PROBE_DIAGNOSTIC_CODES = new Set(GOOSE_CONTAINMENT_PROBE_DIAGNOSTIC_CODES);

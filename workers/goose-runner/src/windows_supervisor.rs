@@ -2972,6 +2972,16 @@ fn launch_controlled_worker(control: crate::windows_control::WindowsControlMessa
     let worker_ready = read_exact_handle(pipes.supervisor_ready_read, &mut marker).is_ok()
         && marker == WINDOWS_WORKER_READY_MARKER;
     if !worker_ready {
+        let mut exit_code = 0_u32;
+        let worker_exited = unsafe { GetExitCodeProcess(worker.process, &mut exit_code) } != 0
+            && exit_code != 259; // STILL_ACTIVE
+        if worker_exited {
+            let failure = classify_worker_startup_exit(exit_code);
+            return report_supervisor_failure(
+                SupervisorFailureStage::WorkerStartup(failure),
+                WINDOWS_SETUP_FAILURE_MARKER,
+            );
+        }
         return report_supervisor_failure(
             SupervisorFailureStage::WorkerReady,
             WINDOWS_SETUP_FAILURE_MARKER,

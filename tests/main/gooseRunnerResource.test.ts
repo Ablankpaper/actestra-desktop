@@ -296,7 +296,7 @@ describe("Goose runner native resource boundary", () => {
     const split = Math.floor(marker.length / 2);
 
     expect(matcher.push(Buffer.from(marker.slice(0, split)))).toBeUndefined();
-    expect(matcher.push(Buffer.from(marker.slice(split)))).toBe("windows-runtime");
+    expect(matcher.push(Buffer.from(marker.slice(split)))).toBe(stage);
     expect(Object.keys(matcher)).toEqual(["push"]);
   });
 
