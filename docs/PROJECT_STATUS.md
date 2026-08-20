@@ -2,7 +2,7 @@
 
 Last updated: 2026-08-20
 
-## 2026-08-20 P8.2c Windows bridge root-cause correction (local green; exact-head native evidence pending)
+## 2026-08-20 P8.2c Windows bridge root-cause correction (pushed transport; harness rerun pending)
 
 Exact-head CI run
 [`32374588816`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32374588816)
@@ -39,10 +39,32 @@ the two Supervisor construction failures to
 Rust, Main, containment evidence, authenticated-runtime evidence, and their
 closed-set tests use the same reduced vocabulary.
 
-Fresh local evidence for the current uncommitted bytes passes:
+The transport correction was committed and pushed at
+`078c038eff2adf117eae6b03f104cd2754d76fb7`. Exact-head CI run
+[`32379613719`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32379613719)
+compiled and executed the Windows native matrix. The build-probe job passed
+seven of eight native tests and failed only
+`exact_appcontainer_exchanges_frames_over_allowlisted_inherited_pipes` at the
+bounded token `test-supervisor-frame-read-failed`; the authenticated-runtime
+job independently passed its native-primitives step on the same head.
+
+Source and log review identified a synthetic-test harness race rather than a
+production transport failure. The child is a re-executed Rust libtest process,
+but the test reused that process's `stdout` as the framed protocol channel.
+When libtest text reached `stdout` before the protocol frame, the parent parsed
+the first four text bytes as a length header and rejected the frame. The
+bounded local follow-up leaves production code unchanged: the synthetic child
+now exchanges frames over the already allowlisted capability anonymous-pipe
+pair, receives those two inherited handle values through its one-shot test
+stdin, and leaves `stdout` exclusively to libtest. It adds no retry, handle,
+capability, environment entry, or product authority.
+
+Fresh local evidence for the follow-up bytes passes:
 
 - `cargo fmt --all` and `cargo test --locked`: `82/82` tests passed;
-- the ten affected Main/script files: `147/147` tests passed;
+- the focused Windows Supervisor contract: `10/10` tests passed;
+- the previously pushed transport head also passed the ten affected
+  Main/script files: `147/147` tests;
 - `bun run check`: exit `0`, with `171` test files passed / `3` skipped and
   `1840` tests passed / `10` skipped, plus format, zero-warning lint,
   typecheck, P8 contract, Electron SQLite, P7 abuse, smoke harness, boundary,
@@ -54,13 +76,15 @@ Fresh local evidence for the current uncommitted bytes passes:
 A macOS-hosted `cargo check --locked --target x86_64-pc-windows-msvc --tests`
 cannot supply Windows proof: it exits before project source in
 `libsqlite3-sys` / `zstd-sys` because this Mac has no MSVC CRT headers
-(`stdlib.h` / `string.h`). The correction is not yet committed, pushed, or
-executed on Windows. P8.2c therefore remains open. The next gate is a newly
-pushed exact head that passes the Windows native build probe, Windows
-containment, and Windows authenticated-runtime jobs. Only a successful runtime
-Artifact downloaded and independently revalidated can close P8.2c. Windows
-Electron/package acceptance, P8.2 overall, P8.3, P8.4, release, deployment,
-and user acceptance remain separate and open.
+(`stdlib.h` / `string.h`). The harness follow-up is not yet committed, pushed,
+or executed on Windows, and run `32379613719` as a whole was still in progress
+at this evidence cutoff; no broader result is inferred from it. P8.2c therefore
+remains open. The next gate is a newly pushed exact head that passes the
+Windows native build probe, Windows containment, and Windows
+authenticated-runtime jobs. Only a successful runtime Artifact downloaded and
+independently revalidated can close P8.2c. Windows Electron/package acceptance,
+P8.2 overall, P8.3, P8.4, release, deployment, and user acceptance remain
+separate and open.
 
 ## 2026-08-20 P8.2c Windows named-pipe startup race (native RED; bounded local remediation)
 

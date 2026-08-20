@@ -4169,15 +4169,32 @@ mod windows_native_tests {
 
     fn run_appcontainer_anonymous_pipe_client_child() -> Result<(), AnonymousPipeTestChildFailure> {
         let input = unsafe { GetStdHandle(STD_INPUT_HANDLE) };
-        let output = unsafe { GetStdHandle(STD_OUTPUT_HANDLE) };
+        let mut handle_frame = [0_u8; 16];
+        read_exact_handle(input, &mut handle_frame)
+            .map_err(|_| AnonymousPipeTestChildFailure::Channel)?;
+        // SAFETY: the test child owns its inherited stdin endpoint and no longer needs it after
+        // receiving the two dedicated bridge handles.
+        unsafe { CloseHandle(input) };
+        let capability_read = u64::from_le_bytes(
+            handle_frame[..8]
+                .try_into()
+                .map_err(|_| AnonymousPipeTestChildFailure::Channel)?,
+        ) as usize as HANDLE;
+        let capability_write = u64::from_le_bytes(
+            handle_frame[8..]
+                .try_into()
+                .map_err(|_| AnonymousPipeTestChildFailure::Channel)?,
+        ) as usize as HANDLE;
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .map_err(|_| AnonymousPipeTestChildFailure::Runtime)?;
         runtime.block_on(async {
-            let mut client =
-                crate::windows_bridge::WindowsBridgeChannel::from_raw_handle_pair(input, output)
-                    .map_err(|_| AnonymousPipeTestChildFailure::Channel)?;
+            let mut client = crate::windows_bridge::WindowsBridgeChannel::from_raw_handle_pair(
+                capability_read,
+                capability_write,
+            )
+            .map_err(|_| AnonymousPipeTestChildFailure::Channel)?;
             let frame = crate::windows_bridge::encode_json_frame(
                 &serde_json::json!({"contractVersion": 1, "kind": "appcontainer-test"}),
             )
@@ -4213,7 +4230,12 @@ mod windows_native_tests {
         let current_directory = executable
             .parent()
             .expect("the native test executable must have an absolute parent");
-        let inherited_handles = pipes.probe_inherited_handles();
+        let capability_handle_frame = [
+            (pipes.worker_capability_read as usize as u64).to_le_bytes(),
+            (pipes.worker_capability_write as usize as u64).to_le_bytes(),
+        ]
+        .concat();
+        let inherited_handles = pipes.inherited_handles();
         let worker = job
             .launch_suspended_worker_with_variant_and_stdio_and_argument(
                 &profile,
@@ -4227,13 +4249,19 @@ mod windows_native_tests {
             )
             .expect("the AppContainer anonymous-pipe test child must launch");
         pipes.close_worker_endpoints();
-        let supervisor_read = pipes.take_worker_stdout().expect("supervisor stdout");
-        let supervisor_write = pipes.take_worker_stdin().expect("supervisor stdin");
-        let mut accepted = crate::windows_bridge::WindowsBridgeChannel::from_raw_handle_pair(
-            supervisor_read,
-            supervisor_write,
-        )
-        .expect("the anonymous supervisor channel must open");
+        let supervisor_control = pipes.take_worker_stdin().expect("supervisor control");
+        if write_all_handle(supervisor_control, &capability_handle_frame).is_err() {
+            panic!(
+                "the AppContainer anonymous-pipe test failed at bounded stage {}",
+                "test-supervisor-control-write-failed"
+            );
+        }
+        // SAFETY: ownership was transferred out of the pipe set and the one-shot test control is
+        // complete.
+        unsafe { CloseHandle(supervisor_control) };
+        let mut accepted = pipes
+            .take_capability_worker_channel()
+            .expect("the anonymous supervisor channel must open");
         let expected = crate::windows_bridge::encode_json_frame(
             &serde_json::json!({"contractVersion": 1, "kind": "appcontainer-test"}),
         )
