@@ -131,8 +131,6 @@ describe("Windows Goose runner bridge contract", () => {
       networkPolicy: "deny-all",
       windows: Object.freeze({
         supervisorMode: "--actestra-windows-supervisor-v1",
-        capabilityPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.capability`,
-        modelPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.model`,
         attemptLease: "lease_0123456789abcdef0123456789abcdef",
         modelAttemptLease: "model_0123456789abcdef0123456789abcdef",
         attemptId: "0123456789abcdef0123456789abcdef",
@@ -171,8 +169,7 @@ describe("Windows Goose runner bridge contract", () => {
       targetTriple: WINDOWS_TARGET_TRIPLE,
       worktreeRoot: options.workspaceDirectory,
     });
-    expect(frame.toString("utf8")).not.toContain(options.windows?.capabilityPipeName);
-    expect(frame.toString("utf8")).not.toContain(options.windows?.modelPipeName);
+    expect(frame.toString("utf8")).not.toContain(String.raw`\\.\pipe`);
   });
 
   it("resolves only the admitted executable with the fixed Windows supervisor argument", () => {
@@ -187,8 +184,6 @@ describe("Windows Goose runner bridge contract", () => {
       networkPolicy: "deny-all",
       windows: Object.freeze({
         supervisorMode: "--actestra-windows-supervisor-v1",
-        capabilityPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.capability`,
-        modelPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.model`,
         attemptLease: "lease_0123456789abcdef0123456789abcdef",
         modelAttemptLease: "model_0123456789abcdef0123456789abcdef",
         attemptId: "0123456789abcdef0123456789abcdef",
@@ -243,8 +238,6 @@ describe("Windows Goose runner bridge contract", () => {
         networkPolicy: "deny-all",
         windows: Object.freeze({
           supervisorMode: "--actestra-windows-supervisor-v1",
-          capabilityPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.capability`,
-          modelPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.model`,
           attemptLease: "lease_0123456789abcdef0123456789abcdef",
           modelAttemptLease: "model_0123456789abcdef0123456789abcdef",
           attemptId: "0123456789abcdef0123456789abcdef",
@@ -327,13 +320,13 @@ describe("Windows Goose runner bridge contract", () => {
       ),
     ).rejects.toMatchObject({
       code: "network-policy-unavailable",
-      message: "Windows Goose runtime requires the exact admitted named-pipe bridge contract",
+      message: "Windows Goose runtime requires the exact admitted inherited-handle bridge contract",
     });
     expect(transportFactory).not.toHaveBeenCalled();
     expect(await readdir(fixture.privateRootParent)).toEqual([]);
   });
 
-  it("rejects an old-style prepared bridge without Windows named-pipe metadata", async () => {
+  it("rejects an old-style prepared bridge without Windows inherited-handle metadata", async () => {
     const fixture = await createWindowsArtifact({ containment: true });
     const transportFactory = vi.fn(() => new LoopbackGooseAcpTransport());
 
@@ -361,18 +354,17 @@ describe("Windows Goose runner bridge contract", () => {
       ),
     ).rejects.toMatchObject({
       code: "network-policy-unavailable",
-      message: "Windows Goose runtime requires the exact admitted named-pipe bridge contract",
+      message: "Windows Goose runtime requires the exact admitted inherited-handle bridge contract",
     });
     expect(transportFactory).not.toHaveBeenCalled();
     expect(await readdir(fixture.privateRootParent)).toEqual([]);
   });
 
-  it("hands the Windows supervisor only named-pipe metadata and a deny-all runner environment", async () => {
+  it("hands the Windows supervisor only attempt metadata and a deny-all runner environment", async () => {
     const fixture = await createWindowsArtifact({ containment: true });
     const attemptLease = "lease_0123456789abcdef0123456789abcdef";
     const modelAttemptLease = "model_0123456789abcdef0123456789abcdef";
-    const capabilityPipeName = String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.capability`;
-    const modelPipeName = String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.model`;
+    const attemptId = "0123456789abcdef0123456789abcdef";
     let spawnOptions: GooseAcpSpawnOptions | undefined;
     const transport = new LoopbackGooseAcpTransport();
 
@@ -393,8 +385,7 @@ describe("Windows Goose runner bridge contract", () => {
             capabilitySocketPath: path.join(root.bridgeDirectory, "capability.sock"),
             modelSocketPath: path.join(root.bridgeDirectory, "model.sock"),
             windows: Object.freeze({
-              capabilityPipeName,
-              modelPipeName,
+              attemptId,
               attemptLease,
               modelAttemptLease,
             }),
@@ -413,11 +404,9 @@ describe("Windows Goose runner bridge contract", () => {
     expect(spawnOptions?.networkPolicy).toBe("deny-all");
     expect(spawnOptions?.windows).toEqual({
       supervisorMode: "--actestra-windows-supervisor-v1",
-      capabilityPipeName,
-      modelPipeName,
       attemptLease,
       modelAttemptLease,
-      attemptId: "0123456789abcdef0123456789abcdef",
+      attemptId,
       executableSha256: fixture.artifact.executableSha256,
       modelId: "test-model",
       targetTriple: WINDOWS_TARGET_TRIPLE,
@@ -433,8 +422,7 @@ describe("Windows Goose runner bridge contract", () => {
     }
     expect(Object.values(spawnOptions?.environment ?? {})).not.toContain(attemptLease);
     expect(Object.values(spawnOptions?.environment ?? {})).not.toContain(modelAttemptLease);
-    expect(Object.values(spawnOptions?.environment ?? {})).not.toContain(capabilityPipeName);
-    expect(Object.values(spawnOptions?.environment ?? {})).not.toContain(modelPipeName);
+    expect(JSON.stringify(spawnOptions)).not.toContain(String.raw`\\.\pipe`);
     expect(spawnOptions?.environment.LOCALAPPDATA).toBe(
       path.join(opened.privateRoot, "local-app-data"),
     );

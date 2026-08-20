@@ -13,8 +13,6 @@ mod windows_control;
 #[cfg(any(windows, test))]
 mod windows_model_bridge;
 #[cfg(any(windows, test))]
-mod windows_named_pipe;
-#[cfg(any(windows, test))]
 mod windows_supervisor;
 #[cfg(all(unix, test))]
 use containment::apply_resource_limits_with;
@@ -238,6 +236,10 @@ mod tests {
             "--actestra-windows-worker-v1".to_string(),
             "100".to_string(),
             "101".to_string(),
+            "102".to_string(),
+            "103".to_string(),
+            "104".to_string(),
+            "105".to_string(),
         ];
         let supervisor = vec![
             "actestra-goose-runner.exe".to_string(),

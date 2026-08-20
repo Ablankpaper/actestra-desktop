@@ -2,6 +2,66 @@
 
 Last updated: 2026-08-20
 
+## 2026-08-20 P8.2c Windows bridge root-cause correction (local green; exact-head native evidence pending)
+
+Exact-head CI run
+[`32374588816`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32374588816)
+for source head `ac27c9bc45e323283ac1dfb8700764ed46cc9313` invalidated the
+startup-race conclusion recorded immediately below. The Windows build-probe
+native suite still failed at `test-child-pipe-unavailable` after all `20`
+retries over the bounded `500` ms interval. The repeated native RED means the
+ordinary Supervisor-to-AppContainer named-pipe transport is not a usable
+production boundary under the admitted Windows contract; another timeout,
+retry, DACL widening, namespace change, or network capability would not be an
+evidence-backed fix.
+
+The bounded local correction keeps Main-to-Supervisor fd `5`/`6`, ACP, the
+framed capability/model protocol, AppContainer launch, Job-before-resume,
+single resume, cleaned inherited environment, and the exact handle allowlist.
+It replaces only the Supervisor-to-Worker transport with four unidirectional
+anonymous-pipe endpoints forming two duplex channels. The Supervisor creates
+nine Worker endpoints in total (stdio, control, ready, capability read/write,
+and model read/write), marks their nine matching Supervisor endpoints
+non-inheritable, proves all `18` handles are unique with the expected
+inheritance flags, and admits only the nine Worker endpoints through
+`PROC_THREAD_ATTRIBUTE_HANDLE_LIST`. The Worker receives the six non-stdio
+handle values through one strict bounded argument contract and performs no
+named-pipe lookup. This follows the documented Windows
+[process-handle inheritance](https://learn.microsoft.com/en-us/windows/win32/procthread/inheritance)
+mechanism and does not add network, filesystem, credential, Renderer, or
+preload authority.
+
+Main no longer creates or transmits capability/model pipe names. The Rust
+named-pipe module and its unused Windows IO feature are removed. Diagnostics
+also remove the eight unreachable capability/model pipe-open causes and rename
+the two Supervisor construction failures to
+`windows-capability-channel-invalid` and `windows-model-channel-invalid`.
+Rust, Main, containment evidence, authenticated-runtime evidence, and their
+closed-set tests use the same reduced vocabulary.
+
+Fresh local evidence for the current uncommitted bytes passes:
+
+- `cargo fmt --all` and `cargo test --locked`: `82/82` tests passed;
+- the ten affected Main/script files: `147/147` tests passed;
+- `bun run check`: exit `0`, with `171` test files passed / `3` skipped and
+  `1840` tests passed / `10` skipped, plus format, zero-warning lint,
+  typecheck, P8 contract, Electron SQLite, P7 abuse, smoke harness, boundary,
+  frozen foundation, downstream, and package gates;
+- active production/test source has no remaining pipe-name metadata, old
+  named-pipe startup token, or deleted module reference;
+- `Cargo.lock` is byte-unchanged and `git diff --check` is clean.
+
+A macOS-hosted `cargo check --locked --target x86_64-pc-windows-msvc --tests`
+cannot supply Windows proof: it exits before project source in
+`libsqlite3-sys` / `zstd-sys` because this Mac has no MSVC CRT headers
+(`stdlib.h` / `string.h`). The correction is not yet committed, pushed, or
+executed on Windows. P8.2c therefore remains open. The next gate is a newly
+pushed exact head that passes the Windows native build probe, Windows
+containment, and Windows authenticated-runtime jobs. Only a successful runtime
+Artifact downloaded and independently revalidated can close P8.2c. Windows
+Electron/package acceptance, P8.2 overall, P8.3, P8.4, release, deployment,
+and user acceptance remain separate and open.
+
 ## 2026-08-20 P8.2c Windows named-pipe startup race (native RED; bounded local remediation)
 
 The next exact-head run

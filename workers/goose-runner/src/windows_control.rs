@@ -38,9 +38,17 @@ impl WindowsMode {
         match modes {
             [] => Ok(None),
             [mode] if mode == "--actestra-windows-supervisor-v1" => Ok(Some(Self::Supervisor)),
-            [mode, control, ready]
+            [mode, control, ready, capability_read, capability_write, model_read, model_write]
                 if mode == "--actestra-windows-worker-v1"
-                    && parse_worker_handle_pair(control, ready).is_some() =>
+                    && parse_worker_handle_values([
+                        control,
+                        ready,
+                        capability_read,
+                        capability_write,
+                        model_read,
+                        model_write,
+                    ])
+                    .is_some() =>
             {
                 Ok(Some(Self::Worker))
             }
@@ -51,20 +59,45 @@ impl WindowsMode {
 
 pub(crate) fn parse_worker_handle_arguments(
     arguments: &[String],
-) -> Result<Option<(u64, u64)>, ()> {
+) -> Result<Option<(u64, u64, u64, u64, u64, u64)>, ()> {
     let modes = arguments.get(1..).ok_or(())?;
     match modes {
-        [mode, control, ready] if mode == "--actestra-windows-worker-v1" => {
-            Ok(Some(parse_worker_handle_pair(control, ready).ok_or(())?))
+        [mode, control, ready, capability_read, capability_write, model_read, model_write]
+            if mode == "--actestra-windows-worker-v1" =>
+        {
+            let [control, ready, capability_read, capability_write, model_read, model_write] =
+                parse_worker_handle_values([
+                    control,
+                    ready,
+                    capability_read,
+                    capability_write,
+                    model_read,
+                    model_write,
+                ])
+                .ok_or(())?;
+            Ok(Some((
+                control,
+                ready,
+                capability_read,
+                capability_write,
+                model_read,
+                model_write,
+            )))
         }
         _ => Ok(None),
     }
 }
 
-fn parse_worker_handle_pair(control: &str, ready: &str) -> Option<(u64, u64)> {
-    let control = parse_worker_handle_value(control)?;
-    let ready = parse_worker_handle_value(ready)?;
-    (control != ready).then_some((control, ready))
+fn parse_worker_handle_values(values: [&str; 6]) -> Option<[u64; 6]> {
+    let parsed = values.map(parse_worker_handle_value);
+    let parsed = [
+        parsed[0]?, parsed[1]?, parsed[2]?, parsed[3]?, parsed[4]?, parsed[5]?,
+    ];
+    parsed
+        .iter()
+        .enumerate()
+        .all(|(index, value)| !parsed[..index].contains(value))
+        .then_some(parsed)
 }
 
 fn parse_worker_handle_value(value: &str) -> Option<u64> {
@@ -424,6 +457,10 @@ mod tests {
             "--actestra-windows-worker-v1".to_string(),
             "100".to_string(),
             "101".to_string(),
+            "102".to_string(),
+            "103".to_string(),
+            "104".to_string(),
+            "105".to_string(),
         ];
         assert_eq!(
             WindowsMode::parse(&supervisor).unwrap(),
@@ -435,7 +472,7 @@ mod tests {
         );
         assert_eq!(
             parse_worker_handle_arguments(&worker).unwrap(),
-            Some((100, 101))
+            Some((100, 101, 102, 103, 104, 105))
         );
         assert_eq!(
             WindowsMode::parse(&["actestra-goose-runner.exe".to_string()]).unwrap(),
@@ -475,6 +512,10 @@ mod tests {
             "actestra-goose-runner.exe".to_string(),
             "--actestra-windows-worker-v1".to_string(),
             "101".to_string(),
+            "102".to_string(),
+            "103".to_string(),
+            "104".to_string(),
+            "105".to_string(),
             "101".to_string(),
         ];
         assert!(parse_worker_handle_arguments(&repeated_worker_handle).is_err());

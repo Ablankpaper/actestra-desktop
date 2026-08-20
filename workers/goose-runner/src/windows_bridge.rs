@@ -38,6 +38,32 @@ impl WindowsBridgeChannel {
         Ok(Self::new(tokio::fs::File::from_std(file)))
     }
 
+    #[cfg(windows)]
+    pub(crate) fn from_raw_handle_pair(
+        read_handle: windows_sys::Win32::Foundation::HANDLE,
+        write_handle: windows_sys::Win32::Foundation::HANDLE,
+    ) -> Result<Self, ()> {
+        use std::os::windows::io::{FromRawHandle, RawHandle};
+        use windows_sys::Win32::Foundation::{HANDLE, INVALID_HANDLE_VALUE};
+
+        fn valid(handle: HANDLE) -> bool {
+            !handle.is_null() && handle != INVALID_HANDLE_VALUE
+        }
+
+        if !valid(read_handle) || !valid(write_handle) || read_handle == write_handle {
+            return Err(());
+        }
+        // SAFETY: the caller transfers sole ownership of both live, distinct endpoints. The
+        // resulting joined stream reads from the inbound anonymous pipe and writes to the
+        // outbound anonymous pipe while preserving the existing framed bridge contract.
+        let reader = unsafe { std::fs::File::from_raw_handle(read_handle as RawHandle) };
+        let writer = unsafe { std::fs::File::from_raw_handle(write_handle as RawHandle) };
+        Ok(Self::new(tokio::io::join(
+            tokio::fs::File::from_std(reader),
+            tokio::fs::File::from_std(writer),
+        )))
+    }
+
     #[cfg(test)]
     pub(crate) fn from_duplex(stream: tokio::io::DuplexStream) -> Self {
         Self::new(stream)

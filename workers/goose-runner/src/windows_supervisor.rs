@@ -10,23 +10,7 @@ const EXIT_BOUNDARY_VERIFICATION_FAILED: i32 = 102;
 #[cfg(any(windows, test))]
 const EXIT_RUNTIME_CREATION_FAILED: i32 = 103;
 #[cfg(any(windows, test))]
-const EXIT_CAPABILITY_PIPE_ACCESS_DENIED: i32 = 104;
-#[cfg(any(windows, test))]
-const EXIT_CAPABILITY_PIPE_BUSY: i32 = 105;
-#[cfg(any(windows, test))]
-const EXIT_CAPABILITY_PIPE_UNAVAILABLE: i32 = 106;
-#[cfg(any(windows, test))]
-const EXIT_CAPABILITY_PIPE_UNCLASSIFIED: i32 = 107;
-#[cfg(any(windows, test))]
 const EXIT_CAPABILITY_BRIDGE_FAILED: i32 = 108;
-#[cfg(any(windows, test))]
-const EXIT_MODEL_PIPE_ACCESS_DENIED: i32 = 109;
-#[cfg(any(windows, test))]
-const EXIT_MODEL_PIPE_BUSY: i32 = 110;
-#[cfg(any(windows, test))]
-const EXIT_MODEL_PIPE_UNAVAILABLE: i32 = 111;
-#[cfg(any(windows, test))]
-const EXIT_MODEL_PIPE_UNCLASSIFIED: i32 = 112;
 #[cfg(any(windows, test))]
 const EXIT_MODEL_BRIDGE_FAILED: i32 = 113;
 #[cfg(any(windows, test))]
@@ -49,20 +33,14 @@ use crate::containment::windows_contract::{
 use crate::windows_capability_bridge::WindowsCapabilityClient;
 #[cfg(windows)]
 use crate::windows_model_bridge::WindowsModelProvider;
-#[cfg(any(windows, test))]
-use crate::windows_named_pipe::WindowsNamedPipeConnectFailure;
-#[cfg(windows)]
-use crate::windows_named_pipe::{
-    WindowsNamedPipeClient, WindowsNamedPipeError, WindowsNamedPipeServer,
-};
 #[cfg(windows)]
 const WINDOWS_WORKER_READY_MARKER: &[u8] = b"ACTESTRA_GOOSE_WINDOWS_WORKER_READY\n";
 #[cfg(any(windows, test))]
-const WINDOWS_RUNTIME_FAILURE_CODES: [&str; 26] = [
+const WINDOWS_RUNTIME_FAILURE_CODES: [&str; 18] = [
     "windows-control-channel-invalid",
     "windows-ready-channel-invalid",
-    "windows-capability-pipe-invalid",
-    "windows-model-pipe-invalid",
+    "windows-capability-channel-invalid",
+    "windows-model-channel-invalid",
     "windows-acp-relay-failed",
     "windows-capability-relay-failed",
     "windows-model-relay-failed",
@@ -72,15 +50,7 @@ const WINDOWS_RUNTIME_FAILURE_CODES: [&str; 26] = [
     "windows-worker-control-frame-invalid",
     "windows-worker-boundary-verification-failed",
     "windows-worker-runtime-creation-failed",
-    "windows-worker-capability-pipe-access-denied",
-    "windows-worker-capability-pipe-busy",
-    "windows-worker-capability-pipe-unavailable",
-    "windows-worker-capability-pipe-unclassified",
     "windows-worker-capability-bridge-failed",
-    "windows-worker-model-pipe-access-denied",
-    "windows-worker-model-pipe-busy",
-    "windows-worker-model-pipe-unavailable",
-    "windows-worker-model-pipe-unclassified",
     "windows-worker-model-bridge-failed",
     "windows-worker-state-directory-failed",
     "windows-worker-ready-signal-failed",
@@ -143,9 +113,9 @@ use std::path::Path;
 use std::ptr::{null, null_mut};
 #[cfg(windows)]
 use windows_sys::Win32::Foundation::{
-    CloseHandle, CompareObjectHandles, DuplicateHandle, GetLastError, SetHandleInformation,
-    DUPLICATE_SAME_ACCESS, ERROR_BROKEN_PIPE, ERROR_INSUFFICIENT_BUFFER, HANDLE,
-    HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, WAIT_OBJECT_0, WAIT_TIMEOUT,
+    CloseHandle, CompareObjectHandles, DuplicateHandle, GetHandleInformation, GetLastError,
+    SetHandleInformation, DUPLICATE_SAME_ACCESS, ERROR_BROKEN_PIPE, ERROR_INSUFFICIENT_BUFFER,
+    HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 #[cfg(windows)]
 use windows_sys::Win32::Security::Isolation::{
@@ -216,8 +186,8 @@ const WINDOWS_JOB_USER_TIME_100NS: i64 = 120 * 10_000_000;
 #[cfg(any(windows, test))]
 const WINDOWS_WORKER_MODE_ARGUMENT: &str = "--actestra-windows-worker-v1";
 #[cfg(all(test, windows))]
-const WINDOWS_NAMED_PIPE_TEST_CHILD_ARGUMENT: &str =
-    "windows_supervisor::windows_native_tests::appcontainer_named_pipe_client_child";
+const WINDOWS_ANONYMOUS_PIPE_TEST_CHILD_ARGUMENT: &str =
+    "windows_supervisor::windows_native_tests::appcontainer_anonymous_pipe_client_child";
 #[cfg(any(windows, test))]
 const WINDOWS_WORKER_PROGRAM_NAME: &str = "actestra-goose-runner.exe";
 #[cfg(any(windows, test))]
@@ -309,7 +279,7 @@ fn build_command_line_for_argument(argument: &str) -> Result<Vec<u16>, ()> {
         WINDOWS_WORKER_MODE_ARGUMENT | WINDOWS_PROBE_CHILD_ARGUMENT | WINDOWS_PROBE_PARENT_ARGUMENT
     );
     #[cfg(all(test, windows))]
-    let admitted = admitted || argument == WINDOWS_NAMED_PIPE_TEST_CHILD_ARGUMENT;
+    let admitted = admitted || argument == WINDOWS_ANONYMOUS_PIPE_TEST_CHILD_ARGUMENT;
     if !admitted {
         return Err(());
     }
@@ -324,28 +294,60 @@ fn build_worker_command_line() -> Vec<u16> {
         .expect("the production Windows worker argument must be accepted")
 }
 
+#[cfg(any(windows, test))]
+fn worker_pipe_handle_contract_is_closed(
+    worker_handles: [u64; 9],
+    parent_handles: [u64; 9],
+    worker_inheritable: [bool; 9],
+    parent_inheritable: [bool; 9],
+) -> bool {
+    let handles = worker_handles
+        .into_iter()
+        .chain(parent_handles)
+        .collect::<Vec<_>>();
+    handles.iter().enumerate().all(|(index, handle)| {
+        *handle != 0 && *handle != u64::MAX && !handles[..index].contains(handle)
+    }) && worker_inheritable.into_iter().all(|value| value)
+        && parent_inheritable.into_iter().all(|value| !value)
+}
+
 #[cfg(windows)]
 fn build_worker_command_line_with_handles(
     control_read: HANDLE,
     ready_write: HANDLE,
+    capability_read: HANDLE,
+    capability_write: HANDLE,
+    model_read: HANDLE,
+    model_write: HANDLE,
 ) -> Result<Vec<u16>, ()> {
-    if control_read.is_null()
-        || control_read == INVALID_HANDLE_VALUE
-        || ready_write.is_null()
-        || ready_write == INVALID_HANDLE_VALUE
+    let handles = [
+        control_read,
+        ready_write,
+        capability_read,
+        capability_write,
+        model_read,
+        model_write,
+    ];
+    if handles
+        .iter()
+        .any(|handle| handle.is_null() || *handle == INVALID_HANDLE_VALUE)
+        || handles
+            .iter()
+            .enumerate()
+            .any(|(index, handle)| handles[..index].contains(handle))
     {
         return Err(());
     }
-    let control = control_read as usize as u64;
-    let ready = ready_write as usize as u64;
-    if control == 0 || control == u64::MAX || ready == 0 || ready == u64::MAX || control == ready {
+    let values = handles.map(|handle| handle as usize as u64);
+    if values.iter().any(|value| *value == 0 || *value == u64::MAX) {
         return Err(());
     }
-    Ok(
-        format!("{WINDOWS_WORKER_PROGRAM_NAME} {WINDOWS_WORKER_MODE_ARGUMENT} {control} {ready}\0")
-            .encode_utf16()
-            .collect(),
+    Ok(format!(
+        "{WINDOWS_WORKER_PROGRAM_NAME} {WINDOWS_WORKER_MODE_ARGUMENT} {} {} {} {} {} {}\0",
+        values[0], values[1], values[2], values[3], values[4], values[5]
     )
+    .encode_utf16()
+    .collect())
 }
 
 #[cfg(test)]
@@ -641,21 +643,15 @@ impl WorkerLaunchFailureStage {
     }
 }
 
-/// Exit protocol owned only by the synthetic AppContainer named-pipe child used by the native
+/// Exit protocol owned only by the synthetic AppContainer anonymous-pipe child used by the native
 /// regression test. These values deliberately do not overlap the production Worker's `101..=116`
 /// startup protocol, so a libtest panic or a test-stage failure cannot be misreported as a
 /// production control-frame failure.
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum NamedPipeTestChildFailure {
-    Input,
-    AttemptId,
-    PipeName,
+enum AnonymousPipeTestChildFailure {
     Runtime,
-    PipeAccessDenied,
-    PipeBusy,
-    PipeUnavailable,
-    PipeUnclassified,
+    Channel,
     FrameEncode,
     FrameWrite,
     FrameRead,
@@ -665,35 +661,23 @@ enum NamedPipeTestChildFailure {
 }
 
 #[cfg(test)]
-impl NamedPipeTestChildFailure {
+impl AnonymousPipeTestChildFailure {
     fn exit_code(self) -> i32 {
         match self {
-            Self::Input => 201,
-            Self::AttemptId => 202,
-            Self::PipeName => 203,
-            Self::Runtime => 204,
-            Self::PipeAccessDenied => 205,
-            Self::PipeBusy => 206,
-            Self::PipeUnavailable => 207,
-            Self::PipeUnclassified => 208,
-            Self::FrameEncode => 209,
-            Self::FrameWrite => 210,
-            Self::FrameRead => 211,
-            Self::FrameMismatch => 212,
-            Self::Panic | Self::UnexpectedExit => 213,
+            Self::Runtime => 201,
+            Self::Channel => 202,
+            Self::FrameEncode => 203,
+            Self::FrameWrite => 204,
+            Self::FrameRead => 205,
+            Self::FrameMismatch => 206,
+            Self::Panic | Self::UnexpectedExit => 207,
         }
     }
 
     fn code(self) -> &'static str {
         match self {
-            Self::Input => "test-child-input-failed",
-            Self::AttemptId => "test-child-attempt-id-invalid",
-            Self::PipeName => "test-child-pipe-name-invalid",
             Self::Runtime => "test-child-runtime-failed",
-            Self::PipeAccessDenied => "test-child-pipe-access-denied",
-            Self::PipeBusy => "test-child-pipe-busy",
-            Self::PipeUnavailable => "test-child-pipe-unavailable",
-            Self::PipeUnclassified => "test-child-pipe-unclassified",
+            Self::Channel => "test-child-channel-invalid",
             Self::FrameEncode => "test-child-frame-encode-failed",
             Self::FrameWrite => "test-child-frame-write-failed",
             Self::FrameRead => "test-child-frame-read-failed",
@@ -705,23 +689,17 @@ impl NamedPipeTestChildFailure {
 }
 
 #[cfg(test)]
-fn classify_named_pipe_test_child_exit(exit_code: u32) -> NamedPipeTestChildFailure {
+fn classify_anonymous_pipe_test_child_exit(exit_code: u32) -> AnonymousPipeTestChildFailure {
     match exit_code {
-        201 => NamedPipeTestChildFailure::Input,
-        202 => NamedPipeTestChildFailure::AttemptId,
-        203 => NamedPipeTestChildFailure::PipeName,
-        204 => NamedPipeTestChildFailure::Runtime,
-        205 => NamedPipeTestChildFailure::PipeAccessDenied,
-        206 => NamedPipeTestChildFailure::PipeBusy,
-        207 => NamedPipeTestChildFailure::PipeUnavailable,
-        208 => NamedPipeTestChildFailure::PipeUnclassified,
-        209 => NamedPipeTestChildFailure::FrameEncode,
-        210 => NamedPipeTestChildFailure::FrameWrite,
-        211 => NamedPipeTestChildFailure::FrameRead,
-        212 => NamedPipeTestChildFailure::FrameMismatch,
+        201 => AnonymousPipeTestChildFailure::Runtime,
+        202 => AnonymousPipeTestChildFailure::Channel,
+        203 => AnonymousPipeTestChildFailure::FrameEncode,
+        204 => AnonymousPipeTestChildFailure::FrameWrite,
+        205 => AnonymousPipeTestChildFailure::FrameRead,
+        206 => AnonymousPipeTestChildFailure::FrameMismatch,
         // Rust's libtest harness reserves 101 for a test panic.
-        101 => NamedPipeTestChildFailure::Panic,
-        _ => NamedPipeTestChildFailure::UnexpectedExit,
+        101 => AnonymousPipeTestChildFailure::Panic,
+        _ => AnonymousPipeTestChildFailure::UnexpectedExit,
     }
 }
 
@@ -734,15 +712,7 @@ enum WorkerStartupFailure {
     ControlFrame,
     BoundaryVerification,
     RuntimeCreation,
-    CapabilityPipeAccessDenied,
-    CapabilityPipeBusy,
-    CapabilityPipeUnavailable,
-    CapabilityPipeUnclassified,
     CapabilityBridge,
-    ModelPipeAccessDenied,
-    ModelPipeBusy,
-    ModelPipeUnavailable,
-    ModelPipeUnclassified,
     ModelBridge,
     StateDirectory,
     ReadySignal,
@@ -756,15 +726,7 @@ fn classify_worker_startup_exit(exit_code: u32) -> WorkerStartupFailure {
         101 => WorkerStartupFailure::ControlFrame,
         102 => WorkerStartupFailure::BoundaryVerification,
         103 => WorkerStartupFailure::RuntimeCreation,
-        104 => WorkerStartupFailure::CapabilityPipeAccessDenied,
-        105 => WorkerStartupFailure::CapabilityPipeBusy,
-        106 => WorkerStartupFailure::CapabilityPipeUnavailable,
-        107 => WorkerStartupFailure::CapabilityPipeUnclassified,
         108 => WorkerStartupFailure::CapabilityBridge,
-        109 => WorkerStartupFailure::ModelPipeAccessDenied,
-        110 => WorkerStartupFailure::ModelPipeBusy,
-        111 => WorkerStartupFailure::ModelPipeUnavailable,
-        112 => WorkerStartupFailure::ModelPipeUnclassified,
         113 => WorkerStartupFailure::ModelBridge,
         114 => WorkerStartupFailure::StateDirectory,
         115 => WorkerStartupFailure::ReadySignal,
@@ -780,15 +742,7 @@ impl WorkerStartupFailure {
             Self::ControlFrame => 47,
             Self::BoundaryVerification => 48,
             Self::RuntimeCreation => 49,
-            Self::CapabilityPipeAccessDenied => 50,
-            Self::CapabilityPipeBusy => 51,
-            Self::CapabilityPipeUnavailable => 52,
-            Self::CapabilityPipeUnclassified => 53,
             Self::CapabilityBridge => 54,
-            Self::ModelPipeAccessDenied => 55,
-            Self::ModelPipeBusy => 56,
-            Self::ModelPipeUnavailable => 57,
-            Self::ModelPipeUnclassified => 58,
             Self::ModelBridge => 59,
             Self::StateDirectory => 60,
             Self::ReadySignal => 61,
@@ -802,41 +756,13 @@ impl WorkerStartupFailure {
             Self::ControlFrame => "windows-worker-control-frame-invalid",
             Self::BoundaryVerification => "windows-worker-boundary-verification-failed",
             Self::RuntimeCreation => "windows-worker-runtime-creation-failed",
-            Self::CapabilityPipeAccessDenied => "windows-worker-capability-pipe-access-denied",
-            Self::CapabilityPipeBusy => "windows-worker-capability-pipe-busy",
-            Self::CapabilityPipeUnavailable => "windows-worker-capability-pipe-unavailable",
-            Self::CapabilityPipeUnclassified => "windows-worker-capability-pipe-unclassified",
             Self::CapabilityBridge => "windows-worker-capability-bridge-failed",
-            Self::ModelPipeAccessDenied => "windows-worker-model-pipe-access-denied",
-            Self::ModelPipeBusy => "windows-worker-model-pipe-busy",
-            Self::ModelPipeUnavailable => "windows-worker-model-pipe-unavailable",
-            Self::ModelPipeUnclassified => "windows-worker-model-pipe-unclassified",
             Self::ModelBridge => "windows-worker-model-bridge-failed",
             Self::StateDirectory => "windows-worker-state-directory-failed",
             Self::ReadySignal => "windows-worker-ready-signal-failed",
             Self::AcpHandshake => "windows-worker-acp-handshake-failed",
             Self::Unknown => "windows-worker-runtime-failed",
         }
-    }
-}
-
-#[cfg(any(windows, test))]
-fn capability_pipe_exit_code(failure: WindowsNamedPipeConnectFailure) -> i32 {
-    match failure {
-        WindowsNamedPipeConnectFailure::AccessDenied => EXIT_CAPABILITY_PIPE_ACCESS_DENIED,
-        WindowsNamedPipeConnectFailure::Busy => EXIT_CAPABILITY_PIPE_BUSY,
-        WindowsNamedPipeConnectFailure::Unavailable => EXIT_CAPABILITY_PIPE_UNAVAILABLE,
-        WindowsNamedPipeConnectFailure::Unclassified => EXIT_CAPABILITY_PIPE_UNCLASSIFIED,
-    }
-}
-
-#[cfg(any(windows, test))]
-fn model_pipe_exit_code(failure: WindowsNamedPipeConnectFailure) -> i32 {
-    match failure {
-        WindowsNamedPipeConnectFailure::AccessDenied => EXIT_MODEL_PIPE_ACCESS_DENIED,
-        WindowsNamedPipeConnectFailure::Busy => EXIT_MODEL_PIPE_BUSY,
-        WindowsNamedPipeConnectFailure::Unavailable => EXIT_MODEL_PIPE_UNAVAILABLE,
-        WindowsNamedPipeConnectFailure::Unclassified => EXIT_MODEL_PIPE_UNCLASSIFIED,
     }
 }
 
@@ -852,8 +778,8 @@ enum SupervisorFailureStage {
     ControlSerialization,
     ControlWrite,
     WorkerReady,
-    CapabilityPipe,
-    ModelPipe,
+    CapabilityChannel,
+    ModelChannel,
     WorkerRuntime,
     WorkerStartup(WorkerStartupFailure),
 }
@@ -871,8 +797,8 @@ impl SupervisorFailureStage {
             Self::ControlSerialization => 15,
             Self::ControlWrite => 16,
             Self::WorkerReady => 17,
-            Self::CapabilityPipe => 18,
-            Self::ModelPipe => 19,
+            Self::CapabilityChannel => 18,
+            Self::ModelChannel => 19,
             Self::WorkerRuntime => 46,
             Self::WorkerStartup(failure) => failure.diagnostic_exit_code(),
         }
@@ -886,8 +812,8 @@ fn runtime_code_for_supervisor_failure(stage: SupervisorFailureStage) -> Option<
         | SupervisorFailureStage::ControlSerialization
         | SupervisorFailureStage::ControlWrite => Some("windows-control-channel-invalid"),
         SupervisorFailureStage::WorkerReady => Some("windows-ready-channel-invalid"),
-        SupervisorFailureStage::CapabilityPipe => Some("windows-capability-pipe-invalid"),
-        SupervisorFailureStage::ModelPipe => Some("windows-model-pipe-invalid"),
+        SupervisorFailureStage::CapabilityChannel => Some("windows-capability-channel-invalid"),
+        SupervisorFailureStage::ModelChannel => Some("windows-model-channel-invalid"),
         SupervisorFailureStage::WorkerRuntime => Some("windows-worker-runtime-failed"),
         SupervisorFailureStage::WorkerStartup(failure) => Some(failure.runtime_code()),
         _ => None,
@@ -902,11 +828,6 @@ fn report_supervisor_failure(stage: SupervisorFailureStage, fallback_marker: &st
         eprintln!("{fallback_marker}");
     }
     stage.diagnostic_exit_code()
-}
-
-pub(crate) struct WindowsPipeNames {
-    pub(crate) capability: String,
-    pub(crate) model: String,
 }
 
 fn is_exact_attempt_id(attempt_id: &str) -> bool {
@@ -929,17 +850,6 @@ pub(crate) fn remove_windows_probe_profile(attempt_id: &str) -> Result<(), ()> {
         return Err(());
     }
     Ok(())
-}
-
-pub(crate) fn derive_pipe_names(attempt_id: &str) -> Result<WindowsPipeNames, ()> {
-    if !is_exact_attempt_id(attempt_id) {
-        return Err(());
-    }
-    let prefix = r"\\.\pipe\LOCAL\Actestra.Goose.";
-    Ok(WindowsPipeNames {
-        capability: format!("{prefix}{attempt_id}.capability"),
-        model: format!("{prefix}{attempt_id}.model"),
-    })
 }
 
 #[cfg(windows)]
@@ -1050,88 +960,6 @@ impl Drop for AppContainerProfile {
             }
             FreeSid(self.sid);
         }
-    }
-}
-
-#[cfg(windows)]
-struct CurrentProcessOwnerSid {
-    _storage: Vec<usize>,
-    sid: PSID,
-}
-
-#[cfg(windows)]
-impl CurrentProcessOwnerSid {
-    fn read() -> Result<Self, ()> {
-        let mut token = null_mut();
-        if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) } == 0
-            || token.is_null()
-        {
-            return Err(());
-        }
-        let mut required = 0_u32;
-        let sized = unsafe { GetTokenInformation(token, TokenUser, null_mut(), 0, &mut required) };
-        if sized != 0 || unsafe { GetLastError() } != ERROR_INSUFFICIENT_BUFFER {
-            unsafe { CloseHandle(token) };
-            return Err(());
-        }
-        let words = (required as usize).div_ceil(size_of::<usize>());
-        let mut storage = vec![0_usize; words];
-        let read = unsafe {
-            GetTokenInformation(
-                token,
-                TokenUser,
-                storage.as_mut_ptr().cast::<c_void>(),
-                required,
-                &mut required,
-            )
-        };
-        unsafe { CloseHandle(token) };
-        if read == 0 {
-            return Err(());
-        }
-        let sid = unsafe { (*storage.as_ptr().cast::<TOKEN_USER>()).User.Sid };
-        if sid.is_null() {
-            return Err(());
-        }
-        Ok(Self {
-            _storage: storage,
-            sid,
-        })
-    }
-}
-
-#[cfg(windows)]
-struct WindowsRuntimePipes {
-    capability_pipe: WindowsNamedPipeServer,
-    model_pipe: WindowsNamedPipeServer,
-    _owner: CurrentProcessOwnerSid,
-}
-
-#[cfg(windows)]
-#[derive(Debug)]
-enum WindowsRuntimePipeFailure {
-    Capability,
-    Model,
-}
-
-#[cfg(windows)]
-impl WindowsRuntimePipes {
-    fn create(
-        names: &WindowsPipeNames,
-        profile: &AppContainerProfile,
-    ) -> Result<Self, WindowsRuntimePipeFailure> {
-        let owner =
-            CurrentProcessOwnerSid::read().map_err(|()| WindowsRuntimePipeFailure::Capability)?;
-        let capability_pipe =
-            WindowsNamedPipeServer::create(&names.capability, owner.sid, profile.sid())
-                .map_err(|_| WindowsRuntimePipeFailure::Capability)?;
-        let model_pipe = WindowsNamedPipeServer::create(&names.model, owner.sid, profile.sid())
-            .map_err(|_| WindowsRuntimePipeFailure::Model)?;
-        Ok(Self {
-            capability_pipe,
-            model_pipe,
-            _owner: owner,
-        })
     }
 }
 
@@ -1882,8 +1710,15 @@ impl JobObject {
         // lpApplicationName keeps image resolution bound to the admitted absolute executable.
         // argv[0] is a fixed non-secret basename so WindowsMode still receives the mode at argv[1].
         let mut command_line_wide =
-            if command_argument == WINDOWS_WORKER_MODE_ARGUMENT && inherited_handles.len() == 5 {
-                build_worker_command_line_with_handles(inherited_handles[3], inherited_handles[4])
+            if command_argument == WINDOWS_WORKER_MODE_ARGUMENT && inherited_handles.len() == 9 {
+                build_worker_command_line_with_handles(
+                    inherited_handles[3],
+                    inherited_handles[4],
+                    inherited_handles[5],
+                    inherited_handles[6],
+                    inherited_handles[7],
+                    inherited_handles[8],
+                )
             } else {
                 build_command_line_for_argument(command_argument)
             }
@@ -2045,6 +1880,14 @@ struct WorkerPipeSet {
     worker_control_read: HANDLE,
     supervisor_ready_read: HANDLE,
     worker_ready_write: HANDLE,
+    supervisor_capability_read: HANDLE,
+    supervisor_capability_write: HANDLE,
+    worker_capability_read: HANDLE,
+    worker_capability_write: HANDLE,
+    supervisor_model_read: HANDLE,
+    supervisor_model_write: HANDLE,
+    worker_model_read: HANDLE,
+    worker_model_write: HANDLE,
 }
 
 #[cfg(windows)]
@@ -2065,6 +1908,14 @@ impl WorkerPipeSet {
         let mut worker_control_read = null_mut();
         let mut supervisor_ready_read = null_mut();
         let mut worker_ready_write = null_mut();
+        let mut supervisor_capability_read = null_mut();
+        let mut supervisor_capability_write = null_mut();
+        let mut worker_capability_read = null_mut();
+        let mut worker_capability_write = null_mut();
+        let mut supervisor_model_read = null_mut();
+        let mut supervisor_model_write = null_mut();
+        let mut worker_model_read = null_mut();
+        let mut worker_model_write = null_mut();
         let created = unsafe {
             CreatePipe(
                 &mut worker_stdin,
@@ -2096,6 +1947,30 @@ impl WorkerPipeSet {
                     &raw mut attributes,
                     0,
                 ) != 0
+                && CreatePipe(
+                    &mut worker_capability_read,
+                    &mut supervisor_capability_write,
+                    &raw mut attributes,
+                    0,
+                ) != 0
+                && CreatePipe(
+                    &mut supervisor_capability_read,
+                    &mut worker_capability_write,
+                    &raw mut attributes,
+                    0,
+                ) != 0
+                && CreatePipe(
+                    &mut worker_model_read,
+                    &mut supervisor_model_write,
+                    &raw mut attributes,
+                    0,
+                ) != 0
+                && CreatePipe(
+                    &mut supervisor_model_read,
+                    &mut worker_model_write,
+                    &raw mut attributes,
+                    0,
+                ) != 0
         };
         if !created {
             for handle in [
@@ -2109,6 +1984,14 @@ impl WorkerPipeSet {
                 worker_control_read,
                 supervisor_ready_read,
                 worker_ready_write,
+                supervisor_capability_read,
+                supervisor_capability_write,
+                worker_capability_read,
+                worker_capability_write,
+                supervisor_model_read,
+                supervisor_model_write,
+                worker_model_read,
+                worker_model_write,
             ] {
                 if !handle.is_null() {
                     unsafe { CloseHandle(handle) };
@@ -2122,6 +2005,10 @@ impl WorkerPipeSet {
             supervisor_stderr,
             supervisor_control_write,
             supervisor_ready_read,
+            supervisor_capability_read,
+            supervisor_capability_write,
+            supervisor_model_read,
+            supervisor_model_write,
         ] {
             // SAFETY: each handle is a live parent-side pipe endpoint. Clearing only the inherit
             // bit keeps it private while the child-side endpoints remain explicitly allowlisted.
@@ -2137,6 +2024,14 @@ impl WorkerPipeSet {
                     worker_control_read,
                     supervisor_ready_read,
                     worker_ready_write,
+                    supervisor_capability_read,
+                    supervisor_capability_write,
+                    worker_capability_read,
+                    worker_capability_write,
+                    supervisor_model_read,
+                    supervisor_model_write,
+                    worker_model_read,
+                    worker_model_write,
                 ] {
                     if !owned.is_null() {
                         unsafe { CloseHandle(owned) };
@@ -2145,7 +2040,7 @@ impl WorkerPipeSet {
                 return Err(());
             }
         }
-        Ok(Self {
+        let pipes = Self {
             supervisor_stdin,
             supervisor_stdout,
             supervisor_stderr,
@@ -2156,17 +2051,78 @@ impl WorkerPipeSet {
             worker_control_read,
             supervisor_ready_read,
             worker_ready_write,
-        })
+            supervisor_capability_read,
+            supervisor_capability_write,
+            worker_capability_read,
+            worker_capability_write,
+            supervisor_model_read,
+            supervisor_model_write,
+            worker_model_read,
+            worker_model_write,
+        };
+        if !pipes.handle_contract_is_closed() {
+            return Err(());
+        }
+        Ok(pipes)
     }
 
-    fn inherited_handles(&self) -> [HANDLE; 5] {
+    fn inherited_handles(&self) -> [HANDLE; 9] {
         [
             self.worker_stdin,
             self.worker_stdout,
             self.worker_stderr,
             self.worker_control_read,
             self.worker_ready_write,
+            self.worker_capability_read,
+            self.worker_capability_write,
+            self.worker_model_read,
+            self.worker_model_write,
         ]
+    }
+
+    fn parent_handles(&self) -> [HANDLE; 9] {
+        [
+            self.supervisor_stdin,
+            self.supervisor_stdout,
+            self.supervisor_stderr,
+            self.supervisor_control_write,
+            self.supervisor_ready_read,
+            self.supervisor_capability_read,
+            self.supervisor_capability_write,
+            self.supervisor_model_read,
+            self.supervisor_model_write,
+        ]
+    }
+
+    fn handle_contract_is_closed(&self) -> bool {
+        fn inheritance_flags(handles: [HANDLE; 9]) -> Option<[bool; 9]> {
+            let mut result = [false; 9];
+            for (index, handle) in handles.into_iter().enumerate() {
+                let mut flags = 0_u32;
+                // SAFETY: every handle came from a successful CreatePipe call and remains owned by
+                // this pipe set. GetHandleInformation reads only its inheritance flags.
+                if unsafe { GetHandleInformation(handle, &mut flags) } == 0 {
+                    return None;
+                }
+                result[index] = flags & HANDLE_FLAG_INHERIT != 0;
+            }
+            Some(result)
+        }
+
+        let worker = self.inherited_handles();
+        let parent = self.parent_handles();
+        let Some(worker_inheritable) = inheritance_flags(worker) else {
+            return false;
+        };
+        let Some(parent_inheritable) = inheritance_flags(parent) else {
+            return false;
+        };
+        worker_pipe_handle_contract_is_closed(
+            worker.map(|handle| handle as usize as u64),
+            parent.map(|handle| handle as usize as u64),
+            worker_inheritable,
+            parent_inheritable,
+        )
     }
 
     fn probe_inherited_handles(&self) -> [HANDLE; 3] {
@@ -2184,6 +2140,10 @@ impl WorkerPipeSet {
             &mut self.worker_stderr,
             &mut self.worker_control_read,
             &mut self.worker_ready_write,
+            &mut self.worker_capability_read,
+            &mut self.worker_capability_write,
+            &mut self.worker_model_read,
+            &mut self.worker_model_write,
         ] {
             if !handle.is_null() {
                 unsafe { CloseHandle(*handle) };
@@ -2217,6 +2177,42 @@ impl WorkerPipeSet {
         self.supervisor_stdout = null_mut();
         Ok(handle)
     }
+
+    fn take_capability_worker_channel(
+        &mut self,
+    ) -> Result<crate::windows_bridge::WindowsBridgeChannel, ()> {
+        let read = self.supervisor_capability_read;
+        let write = self.supervisor_capability_write;
+        if read.is_null()
+            || read == INVALID_HANDLE_VALUE
+            || write.is_null()
+            || write == INVALID_HANDLE_VALUE
+            || read == write
+        {
+            return Err(());
+        }
+        self.supervisor_capability_read = null_mut();
+        self.supervisor_capability_write = null_mut();
+        crate::windows_bridge::WindowsBridgeChannel::from_raw_handle_pair(read, write)
+    }
+
+    fn take_model_worker_channel(
+        &mut self,
+    ) -> Result<crate::windows_bridge::WindowsBridgeChannel, ()> {
+        let read = self.supervisor_model_read;
+        let write = self.supervisor_model_write;
+        if read.is_null()
+            || read == INVALID_HANDLE_VALUE
+            || write.is_null()
+            || write == INVALID_HANDLE_VALUE
+            || read == write
+        {
+            return Err(());
+        }
+        self.supervisor_model_read = null_mut();
+        self.supervisor_model_write = null_mut();
+        crate::windows_bridge::WindowsBridgeChannel::from_raw_handle_pair(read, write)
+    }
 }
 
 #[cfg(windows)]
@@ -2233,6 +2229,14 @@ impl Drop for WorkerPipeSet {
             &mut self.worker_control_read,
             &mut self.supervisor_ready_read,
             &mut self.worker_ready_write,
+            &mut self.supervisor_capability_read,
+            &mut self.supervisor_capability_write,
+            &mut self.worker_capability_read,
+            &mut self.worker_capability_write,
+            &mut self.supervisor_model_read,
+            &mut self.supervisor_model_write,
+            &mut self.worker_model_read,
+            &mut self.worker_model_write,
         ] {
             if !handle.is_null() {
                 unsafe { CloseHandle(*handle) };
@@ -2410,77 +2414,6 @@ async fn wait_for_worker_exit_handle(handle: HANDLE) -> Result<u32, ()> {
             _ => return Err(()),
         }
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-    }
-}
-
-#[cfg(windows)]
-async fn accept_runtime_pipe_or_worker_exit(
-    pipe: WindowsNamedPipeServer,
-    worker_handle: HANDLE,
-    pipe_failure: SupervisorFailureStage,
-) -> Result<crate::windows_bridge::WindowsBridgeChannel, SupervisorFailureStage> {
-    tokio::select! {
-        result = pipe.accept_once() => {
-            result.map_err(|_| pipe_failure)
-        }
-        result = wait_for_worker_exit_handle(worker_handle) => {
-            Err(match result {
-                Ok(exit_code) => {
-                    SupervisorFailureStage::WorkerStartup(classify_worker_startup_exit(exit_code))
-                }
-                Err(()) => SupervisorFailureStage::WorkerRuntime,
-            })
-        }
-    }
-}
-
-#[cfg(test)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum NamedPipeTestFailure {
-    ServerAccept,
-    Child(NamedPipeTestChildFailure),
-    SupervisorRead,
-    FrameMismatch,
-    SupervisorWrite,
-    ChildWait,
-    Timeout,
-}
-
-#[cfg(test)]
-impl NamedPipeTestFailure {
-    fn code(self) -> &'static str {
-        match self {
-            Self::ServerAccept => "test-server-accept-failed",
-            Self::Child(failure) => failure.code(),
-            Self::SupervisorRead => "test-supervisor-frame-read-failed",
-            Self::FrameMismatch => "test-supervisor-frame-mismatch",
-            Self::SupervisorWrite => "test-supervisor-frame-write-failed",
-            Self::ChildWait => "test-child-wait-failed",
-            Self::Timeout => "test-child-timeout",
-        }
-    }
-}
-
-#[cfg(all(test, windows))]
-async fn accept_named_pipe_test_client_or_child_exit(
-    pipe: WindowsNamedPipeServer,
-    child_handle: HANDLE,
-) -> Result<crate::windows_bridge::WindowsBridgeChannel, NamedPipeTestFailure> {
-    tokio::select! {
-        result = pipe.accept_once() => {
-            result.map_err(|_| NamedPipeTestFailure::ServerAccept)
-        }
-        result = wait_for_worker_exit_handle(child_handle) => {
-            Err(match result {
-                Ok(exit_code) => NamedPipeTestFailure::Child(
-                    classify_named_pipe_test_child_exit(exit_code)
-                ),
-                Err(()) => NamedPipeTestFailure::ChildWait,
-            })
-        }
-        _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {
-            Err(NamedPipeTestFailure::Timeout)
-        }
     }
 }
 
@@ -2704,14 +2637,20 @@ pub(crate) fn run_worker_with_arguments(_arguments: &[String]) -> i32 {
     #[cfg(windows)]
     {
         let mut startup = WorkerStartupStateMachine::new();
-        let (control_value, ready_value) =
-            match crate::windows_control::parse_worker_handle_arguments(_arguments) {
-                Ok(Some(values)) => values,
-                _ => {
-                    eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-                    return EXIT_CONTROL_FRAME_INVALID;
-                }
-            };
+        let (
+            control_value,
+            ready_value,
+            capability_read_value,
+            capability_write_value,
+            model_read_value,
+            model_write_value,
+        ) = match crate::windows_control::parse_worker_handle_arguments(_arguments) {
+            Ok(Some(values)) => values,
+            _ => {
+                eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+                return EXIT_CONTROL_FRAME_INVALID;
+            }
+        };
         let control_handle = control_value as usize as HANDLE;
         let control_result = read_control_frame_from_handle(control_handle);
         unsafe { CloseHandle(control_handle) };
@@ -2740,14 +2679,7 @@ pub(crate) fn run_worker_with_arguments(_arguments: &[String]) -> i32 {
             eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
             return EXIT_BOUNDARY_VERIFICATION_FAILED;
         }
-        let pipe_names = match derive_pipe_names(&control.attempt_id) {
-            Ok(names) => names,
-            Err(()) => {
-                eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-                return EXIT_CONTROL_FRAME_INVALID;
-            }
-        };
-        let pipe_runtime = match tokio::runtime::Builder::new_current_thread()
+        let bridge_runtime = match tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
         {
@@ -2758,36 +2690,34 @@ pub(crate) fn run_worker_with_arguments(_arguments: &[String]) -> i32 {
             }
         };
         let ready_handle = ready_value as usize as HANDLE;
-        let result = pipe_runtime.block_on(async {
-            let capability_pipe = WindowsNamedPipeClient::connect_once(&pipe_names.capability)
-                .map_err(|error| match error {
-                    WindowsNamedPipeError::ClientConnect(failure) => {
-                        capability_pipe_exit_code(failure)
-                    }
-                    _ => EXIT_CAPABILITY_PIPE_UNCLASSIFIED,
-                })?;
+        let result = bridge_runtime.block_on(async {
+            let capability_channel =
+                crate::windows_bridge::WindowsBridgeChannel::from_raw_handle_pair(
+                    capability_read_value as usize as HANDLE,
+                    capability_write_value as usize as HANDLE,
+                )
+                .map_err(|_| EXIT_CAPABILITY_BRIDGE_FAILED)?;
             startup
                 .advance(WorkerStartupStage::CapabilityConnected)
                 .map_err(|_| EXIT_CAPABILITY_BRIDGE_FAILED)?;
-            let model_pipe = WindowsNamedPipeClient::connect_once(&pipe_names.model).map_err(
-                |error| match error {
-                    WindowsNamedPipeError::ClientConnect(failure) => model_pipe_exit_code(failure),
-                    _ => EXIT_MODEL_PIPE_UNCLASSIFIED,
-                },
-            )?;
+            let model_channel = crate::windows_bridge::WindowsBridgeChannel::from_raw_handle_pair(
+                model_read_value as usize as HANDLE,
+                model_write_value as usize as HANDLE,
+            )
+            .map_err(|_| EXIT_MODEL_BRIDGE_FAILED)?;
             startup
                 .advance(WorkerStartupStage::ModelConnected)
                 .map_err(|_| EXIT_MODEL_BRIDGE_FAILED)?;
 
             let session_id = std::sync::Arc::new(tokio::sync::OnceCell::new());
             let capability_client = WindowsCapabilityClient::new(
-                capability_pipe,
+                capability_channel,
                 control.attempt_lease.clone(),
                 session_id.clone(),
             )
             .map_err(|_| EXIT_CAPABILITY_BRIDGE_FAILED)?;
             let model_provider = WindowsModelProvider::new(
-                model_pipe,
+                model_channel,
                 control.model_attempt_lease.clone(),
                 session_id,
                 control.model_id.clone(),
@@ -2948,43 +2878,16 @@ fn launch_controlled_worker(control: crate::windows_control::WindowsControlMessa
             return SupervisorFailureStage::Profile.diagnostic_exit_code();
         }
     };
-    let pipe_runtime = match tokio::runtime::Builder::new_current_thread()
+    let bridge_runtime = match tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
     {
         Ok(runtime) => runtime,
         Err(_) => {
             return report_supervisor_failure(
-                SupervisorFailureStage::CapabilityPipe,
+                SupervisorFailureStage::CapabilityChannel,
                 WINDOWS_SETUP_FAILURE_MARKER,
             );
-        }
-    };
-    let pipe_names = match derive_pipe_names(&control.attempt_id) {
-        Ok(names) => names,
-        Err(()) => {
-            return report_supervisor_failure(
-                SupervisorFailureStage::CapabilityPipe,
-                WINDOWS_SETUP_FAILURE_MARKER,
-            );
-        }
-    };
-    let runtime_pipes = {
-        let _runtime_guard = pipe_runtime.enter();
-        match WindowsRuntimePipes::create(&pipe_names, &profile) {
-            Ok(pipes) => pipes,
-            Err(WindowsRuntimePipeFailure::Capability) => {
-                return report_supervisor_failure(
-                    SupervisorFailureStage::CapabilityPipe,
-                    WINDOWS_SETUP_FAILURE_MARKER,
-                );
-            }
-            Err(WindowsRuntimePipeFailure::Model) => {
-                return report_supervisor_failure(
-                    SupervisorFailureStage::ModelPipe,
-                    WINDOWS_SETUP_FAILURE_MARKER,
-                );
-            }
         }
     };
     let job = match JobObject::create() {
@@ -3044,32 +2947,27 @@ fn launch_controlled_worker(control: crate::windows_control::WindowsControlMessa
     }
     unsafe { CloseHandle(pipes.supervisor_control_write) };
     pipes.supervisor_control_write = null_mut();
-    let WindowsRuntimePipes {
-        capability_pipe,
-        model_pipe,
-        _owner,
-    } = runtime_pipes;
-    let accepted = pipe_runtime.block_on(async {
-        let capability = accept_runtime_pipe_or_worker_exit(
-            capability_pipe,
-            worker.process_handle(),
-            SupervisorFailureStage::CapabilityPipe,
-        )
-        .await?;
-        let model = accept_runtime_pipe_or_worker_exit(
-            model_pipe,
-            worker.process_handle(),
-            SupervisorFailureStage::ModelPipe,
-        )
-        .await?;
-        Ok::<_, SupervisorFailureStage>((capability, model))
-    });
-    let (capability_worker, model_worker) = match accepted {
-        Ok(pipes) => pipes,
-        Err(stage) => return report_supervisor_failure(stage, WINDOWS_SETUP_FAILURE_MARKER),
+    let capability_worker = match pipes.take_capability_worker_channel() {
+        Ok(channel) => channel,
+        Err(()) => {
+            return report_supervisor_failure(
+                SupervisorFailureStage::CapabilityChannel,
+                WINDOWS_SETUP_FAILURE_MARKER,
+            );
+        }
     };
-    // The Worker writes ready only after both named-pipe client connections succeed. Accepting
-    // the two servers before waiting on the dedicated ready handle avoids a startup deadlock.
+    let model_worker = match pipes.take_model_worker_channel() {
+        Ok(channel) => channel,
+        Err(()) => {
+            return report_supervisor_failure(
+                SupervisorFailureStage::ModelChannel,
+                WINDOWS_SETUP_FAILURE_MARKER,
+            );
+        }
+    };
+    // The Worker receives only the four explicitly allowlisted anonymous-pipe endpoints and writes
+    // ready after constructing both framed clients. No namespace lookup or additional authority is
+    // required across the AppContainer boundary.
     let mut marker = vec![0_u8; WINDOWS_WORKER_READY_MARKER.len()];
     let worker_ready = read_exact_handle(pipes.supervisor_ready_read, &mut marker).is_ok()
         && marker == WINDOWS_WORKER_READY_MARKER;
@@ -3119,7 +3017,7 @@ fn launch_controlled_worker(control: crate::windows_control::WindowsControlMessa
     };
     let worker_process_handle = worker.process_handle();
     let runtime_timeout_ms = control.resource_budget.max_active_duration_ms;
-    let relay_result = pipe_runtime.block_on(async move {
+    let relay_result = bridge_runtime.block_on(async move {
         let acp_in = acp_input.copy_to(worker_stdin);
         let acp_out = worker_stdout.copy_to(acp_output);
         let capability = capability_main.relay_framed_bidirectional(capability_worker);
@@ -3144,7 +3042,7 @@ fn launch_controlled_worker(control: crate::windows_control::WindowsControlMessa
     });
     let cleanup_complete = cleanup_runtime(&job, &worker, &mut profile);
     let diagnostic_codes = runtime_diagnostic_codes(relay_result, cleanup_complete);
-    drop((_owner, worker, pipes, profile, pipe_runtime));
+    drop((worker, pipes, profile, bridge_runtime));
     for code in diagnostic_codes.into_iter().flatten() {
         if WINDOWS_RUNTIME_FAILURE_CODES.contains(&code) {
             eprintln!("Goose windows containment failed at bounded stage {code}");
@@ -3265,6 +3163,51 @@ fn simulate_worker_startup(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn requires_exactly_nine_unique_inheritable_worker_handles_and_private_parent_ends() {
+        let worker = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let parent = [10, 11, 12, 13, 14, 15, 16, 17, 18];
+        assert!(worker_pipe_handle_contract_is_closed(
+            worker, parent, [true; 9], [false; 9]
+        ));
+
+        let mut duplicate_worker = worker;
+        duplicate_worker[8] = duplicate_worker[0];
+        assert!(!worker_pipe_handle_contract_is_closed(
+            duplicate_worker,
+            parent,
+            [true; 9],
+            [false; 9]
+        ));
+
+        let mut colliding_parent = parent;
+        colliding_parent[5] = worker[5];
+        assert!(!worker_pipe_handle_contract_is_closed(
+            worker,
+            colliding_parent,
+            [true; 9],
+            [false; 9]
+        ));
+
+        let mut non_inheritable_worker = [true; 9];
+        non_inheritable_worker[5] = false;
+        assert!(!worker_pipe_handle_contract_is_closed(
+            worker,
+            parent,
+            non_inheritable_worker,
+            [false; 9]
+        ));
+
+        let mut inheritable_parent = [false; 9];
+        inheritable_parent[7] = true;
+        assert!(!worker_pipe_handle_contract_is_closed(
+            worker,
+            parent,
+            [true; 9],
+            inheritable_parent
+        ));
+    }
 
     #[test]
     fn cleanup_receipt_requires_every_observable_cleanup_stage() {
@@ -3560,22 +3503,6 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 
-    #[test]
-    fn derives_exact_attempt_scoped_pipe_names_without_private_text() {
-        let names = derive_pipe_names("0123456789abcdef0123456789abcdef").unwrap();
-        assert!(names
-            .capability
-            .starts_with(r"\\.\pipe\LOCAL\Actestra.Goose."));
-        assert!(names.model.starts_with(r"\\.\pipe\LOCAL\Actestra.Goose."));
-        assert!(names.capability.ends_with(".capability"));
-        assert!(names.model.ends_with(".model"));
-        assert_ne!(names.capability, names.model);
-        for forbidden in ["C:", "prompt", "model text", "lease"] {
-            assert!(!names.capability.contains(forbidden));
-            assert!(!names.model.contains(forbidden));
-        }
-    }
-
     #[cfg(windows)]
     #[test]
     fn production_variant_inherits_supervisor_environment() {
@@ -3595,7 +3522,7 @@ mod tests {
             "0123456789abcdef0123456789abcdeg",
             "0123456789abcdef0123456789abcdef0",
         ] {
-            assert!(derive_pipe_names(value).is_err());
+            assert!(!is_exact_attempt_id(value));
         }
     }
 
@@ -3720,7 +3647,7 @@ mod tests {
 
     #[test]
     fn keeps_runtime_failure_codes_closed_and_sanitized() {
-        assert_eq!(WINDOWS_RUNTIME_FAILURE_CODES.len(), 26);
+        assert_eq!(WINDOWS_RUNTIME_FAILURE_CODES.len(), 18);
         let mut unique = WINDOWS_RUNTIME_FAILURE_CODES.to_vec();
         unique.sort_unstable();
         unique.dedup();
@@ -3736,30 +3663,6 @@ mod tests {
 
     #[test]
     fn maps_each_worker_startup_exit_code_to_a_distinct_closed_runtime_code() {
-        let connect_failures = [
-            WindowsNamedPipeConnectFailure::AccessDenied,
-            WindowsNamedPipeConnectFailure::Busy,
-            WindowsNamedPipeConnectFailure::Unavailable,
-            WindowsNamedPipeConnectFailure::Unclassified,
-        ];
-        assert_eq!(
-            connect_failures.map(capability_pipe_exit_code),
-            [
-                EXIT_CAPABILITY_PIPE_ACCESS_DENIED,
-                EXIT_CAPABILITY_PIPE_BUSY,
-                EXIT_CAPABILITY_PIPE_UNAVAILABLE,
-                EXIT_CAPABILITY_PIPE_UNCLASSIFIED,
-            ]
-        );
-        assert_eq!(
-            connect_failures.map(model_pipe_exit_code),
-            [
-                EXIT_MODEL_PIPE_ACCESS_DENIED,
-                EXIT_MODEL_PIPE_BUSY,
-                EXIT_MODEL_PIPE_UNAVAILABLE,
-                EXIT_MODEL_PIPE_UNCLASSIFIED,
-            ]
-        );
         let expected = [
             (
                 EXIT_CONTROL_FRAME_INVALID,
@@ -3774,37 +3677,8 @@ mod tests {
                 "windows-worker-runtime-creation-failed",
             ),
             (
-                EXIT_CAPABILITY_PIPE_ACCESS_DENIED,
-                "windows-worker-capability-pipe-access-denied",
-            ),
-            (
-                EXIT_CAPABILITY_PIPE_BUSY,
-                "windows-worker-capability-pipe-busy",
-            ),
-            (
-                EXIT_CAPABILITY_PIPE_UNAVAILABLE,
-                "windows-worker-capability-pipe-unavailable",
-            ),
-            (
-                EXIT_CAPABILITY_PIPE_UNCLASSIFIED,
-                "windows-worker-capability-pipe-unclassified",
-            ),
-            (
                 EXIT_CAPABILITY_BRIDGE_FAILED,
                 "windows-worker-capability-bridge-failed",
-            ),
-            (
-                EXIT_MODEL_PIPE_ACCESS_DENIED,
-                "windows-worker-model-pipe-access-denied",
-            ),
-            (EXIT_MODEL_PIPE_BUSY, "windows-worker-model-pipe-busy"),
-            (
-                EXIT_MODEL_PIPE_UNAVAILABLE,
-                "windows-worker-model-pipe-unavailable",
-            ),
-            (
-                EXIT_MODEL_PIPE_UNCLASSIFIED,
-                "windows-worker-model-pipe-unclassified",
             ),
             (
                 EXIT_MODEL_BRIDGE_FAILED,
@@ -3856,24 +3730,18 @@ mod tests {
     }
 
     #[test]
-    fn keeps_the_synthetic_named_pipe_child_protocol_separate_from_production_worker_exits() {
+    fn keeps_the_synthetic_anonymous_pipe_child_protocol_separate_from_production_worker_exits() {
         let expected = [
-            (201, "test-child-input-failed"),
-            (202, "test-child-attempt-id-invalid"),
-            (203, "test-child-pipe-name-invalid"),
-            (204, "test-child-runtime-failed"),
-            (205, "test-child-pipe-access-denied"),
-            (206, "test-child-pipe-busy"),
-            (207, "test-child-pipe-unavailable"),
-            (208, "test-child-pipe-unclassified"),
-            (209, "test-child-frame-encode-failed"),
-            (210, "test-child-frame-write-failed"),
-            (211, "test-child-frame-read-failed"),
-            (212, "test-child-frame-mismatch"),
+            (201, "test-child-runtime-failed"),
+            (202, "test-child-channel-invalid"),
+            (203, "test-child-frame-encode-failed"),
+            (204, "test-child-frame-write-failed"),
+            (205, "test-child-frame-read-failed"),
+            (206, "test-child-frame-mismatch"),
         ];
 
         for (exit_code, code) in expected {
-            let failure = classify_named_pipe_test_child_exit(exit_code);
+            let failure = classify_anonymous_pipe_test_child_exit(exit_code);
             assert_eq!(failure.code(), code);
             assert_eq!(failure.exit_code(), exit_code as i32);
             assert!(!(101..=116).contains(&exit_code));
@@ -3882,33 +3750,30 @@ mod tests {
                 .all(|byte| byte.is_ascii_lowercase() || byte == b'-'));
         }
         assert_eq!(
-            classify_named_pipe_test_child_exit(101).code(),
+            classify_anonymous_pipe_test_child_exit(101).code(),
             "test-child-panic"
         );
         assert_eq!(
-            classify_named_pipe_test_child_exit(u32::MAX).code(),
+            classify_anonymous_pipe_test_child_exit(u32::MAX).code(),
             "test-child-unexpected-exit"
         );
         assert_eq!(
-            NamedPipeTestFailure::Child(NamedPipeTestChildFailure::PipeBusy).code(),
-            "test-child-pipe-busy"
+            classify_anonymous_pipe_test_child_exit(202).code(),
+            "test-child-channel-invalid"
         );
 
         let closed_parent_stages = [
-            NamedPipeTestFailure::ServerAccept,
-            NamedPipeTestFailure::SupervisorRead,
-            NamedPipeTestFailure::FrameMismatch,
-            NamedPipeTestFailure::SupervisorWrite,
-            NamedPipeTestFailure::ChildWait,
-            NamedPipeTestFailure::Timeout,
+            "test-supervisor-frame-read-failed",
+            "test-supervisor-frame-mismatch",
+            "test-supervisor-frame-write-failed",
+            "test-child-wait-failed",
         ];
         for stage in closed_parent_stages {
-            let code = stage.code();
-            assert!(code.starts_with("test-"));
-            assert!(code
+            assert!(stage.starts_with("test-"));
+            assert!(stage
                 .bytes()
                 .all(|byte| byte.is_ascii_lowercase() || byte == b'-'));
-            assert!(!code.contains(['/', '\\', ' ', ':']));
+            assert!(!stage.contains(['/', '\\', ' ', ':']));
         }
     }
 
@@ -3931,12 +3796,12 @@ mod tests {
             Some("windows-ready-channel-invalid")
         );
         assert_eq!(
-            runtime_code_for_supervisor_failure(SupervisorFailureStage::CapabilityPipe),
-            Some("windows-capability-pipe-invalid")
+            runtime_code_for_supervisor_failure(SupervisorFailureStage::CapabilityChannel),
+            Some("windows-capability-channel-invalid")
         );
         assert_eq!(
-            runtime_code_for_supervisor_failure(SupervisorFailureStage::ModelPipe),
-            Some("windows-model-pipe-invalid")
+            runtime_code_for_supervisor_failure(SupervisorFailureStage::ModelChannel),
+            Some("windows-model-channel-invalid")
         );
         assert_eq!(
             runtime_code_for_supervisor_failure(SupervisorFailureStage::WorkerRuntime),
@@ -4090,8 +3955,8 @@ mod tests {
             SupervisorFailureStage::ControlSerialization,
             SupervisorFailureStage::ControlWrite,
             SupervisorFailureStage::WorkerReady,
-            SupervisorFailureStage::CapabilityPipe,
-            SupervisorFailureStage::ModelPipe,
+            SupervisorFailureStage::CapabilityChannel,
+            SupervisorFailureStage::ModelChannel,
             SupervisorFailureStage::WorkerRuntime,
         ];
         assert_eq!(
@@ -4292,89 +4157,55 @@ mod windows_native_tests {
     }
 
     #[test]
-    fn appcontainer_named_pipe_client_child() {
+    fn appcontainer_anonymous_pipe_client_child() {
         if !current_test_process_is_app_container() {
             return;
         }
 
-        if let Err(failure) = run_appcontainer_named_pipe_client_child() {
+        if let Err(failure) = run_appcontainer_anonymous_pipe_client_child() {
             std::process::exit(failure.exit_code());
         }
     }
 
-    fn run_appcontainer_named_pipe_client_child() -> Result<(), NamedPipeTestChildFailure> {
-        use std::io::Read as _;
-
-        let mut attempt_id_bytes = [0_u8; 32];
-        std::io::stdin()
-            .read_exact(&mut attempt_id_bytes)
-            .map_err(|_| NamedPipeTestChildFailure::Input)?;
-        let attempt_id = std::str::from_utf8(&attempt_id_bytes)
-            .map_err(|_| NamedPipeTestChildFailure::AttemptId)?;
-        let names =
-            derive_pipe_names(attempt_id).map_err(|_| NamedPipeTestChildFailure::PipeName)?;
+    fn run_appcontainer_anonymous_pipe_client_child() -> Result<(), AnonymousPipeTestChildFailure> {
+        let input = unsafe { GetStdHandle(STD_INPUT_HANDLE) };
+        let output = unsafe { GetStdHandle(STD_OUTPUT_HANDLE) };
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
-            .map_err(|_| NamedPipeTestChildFailure::Runtime)?;
+            .map_err(|_| AnonymousPipeTestChildFailure::Runtime)?;
         runtime.block_on(async {
-            let mut client = WindowsNamedPipeClient::connect_once(&names.capability).map_err(
-                |error| match error {
-                    WindowsNamedPipeError::ClientConnect(
-                        WindowsNamedPipeConnectFailure::AccessDenied,
-                    ) => NamedPipeTestChildFailure::PipeAccessDenied,
-                    WindowsNamedPipeError::ClientConnect(WindowsNamedPipeConnectFailure::Busy) => {
-                        NamedPipeTestChildFailure::PipeBusy
-                    }
-                    WindowsNamedPipeError::ClientConnect(
-                        WindowsNamedPipeConnectFailure::Unavailable,
-                    ) => NamedPipeTestChildFailure::PipeUnavailable,
-                    WindowsNamedPipeError::ClientConnect(
-                        WindowsNamedPipeConnectFailure::Unclassified,
-                    )
-                    | _ => NamedPipeTestChildFailure::PipeUnclassified,
-                },
-            )?;
+            let mut client =
+                crate::windows_bridge::WindowsBridgeChannel::from_raw_handle_pair(input, output)
+                    .map_err(|_| AnonymousPipeTestChildFailure::Channel)?;
             let frame = crate::windows_bridge::encode_json_frame(
                 &serde_json::json!({"contractVersion": 1, "kind": "appcontainer-test"}),
             )
-            .map_err(|_| NamedPipeTestChildFailure::FrameEncode)?;
+            .map_err(|_| AnonymousPipeTestChildFailure::FrameEncode)?;
             client
                 .write_frame(&frame)
                 .await
-                .map_err(|_| NamedPipeTestChildFailure::FrameWrite)?;
+                .map_err(|_| AnonymousPipeTestChildFailure::FrameWrite)?;
             let observed = client
                 .read_frame()
                 .await
-                .map_err(|_| NamedPipeTestChildFailure::FrameRead)?;
+                .map_err(|_| AnonymousPipeTestChildFailure::FrameRead)?;
             if observed != frame {
-                return Err(NamedPipeTestChildFailure::FrameMismatch);
+                return Err(AnonymousPipeTestChildFailure::FrameMismatch);
             }
             Ok(())
         })
     }
 
     #[test]
-    fn exact_appcontainer_connects_to_the_acl_bound_capability_pipe() {
+    fn exact_appcontainer_exchanges_frames_over_allowlisted_inherited_pipes() {
         let attempt_id = unique_attempt_id();
         let profile = AppContainerProfile::create(&attempt_id)
             .expect("a unique AppContainer profile must be created");
-        let names = derive_pipe_names(&attempt_id).expect("the exact pipe names must derive");
-        let pipe_runtime = tokio::runtime::Builder::new_current_thread()
+        let bridge_runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
-            .expect("the named-pipe test runtime must start");
-        let runtime_pipes = {
-            let _guard = pipe_runtime.enter();
-            WindowsRuntimePipes::create(&names, &profile)
-                .expect("the exact ACL-bound named pipes must be created")
-        };
-        let WindowsRuntimePipes {
-            capability_pipe,
-            model_pipe,
-            _owner,
-        } = runtime_pipes;
-        drop(model_pipe);
+            .expect("the anonymous-pipe test runtime must start");
 
         let job = JobObject::create().expect("the AppContainer test Job must be configured");
         let mut pipes = WorkerPipeSet::create().expect("the AppContainer test pipes must open");
@@ -4391,67 +4222,83 @@ mod windows_native_tests {
                 &inherited_handles,
                 Some(pipes.stdio()),
                 WorkerLaunchVariant::Production,
-                WINDOWS_NAMED_PIPE_TEST_CHILD_ARGUMENT,
+                WINDOWS_ANONYMOUS_PIPE_TEST_CHILD_ARGUMENT,
                 None,
             )
-            .expect("the AppContainer named-pipe test child must launch");
+            .expect("the AppContainer anonymous-pipe test child must launch");
         pipes.close_worker_endpoints();
-        write_all_handle(pipes.supervisor_stdin, attempt_id.as_bytes())
-            .expect("the exact attempt id must reach the AppContainer test child");
-        pipes.close_supervisor_stdin();
-
-        let mut accepted = pipe_runtime
-            .block_on(accept_named_pipe_test_client_or_child_exit(
-                capability_pipe,
-                worker.process_handle(),
-            ))
-            .unwrap_or_else(|failure| {
-                panic!(
-                    "the AppContainer named-pipe test failed at bounded stage {}",
-                    failure.code()
-                )
-            });
+        let supervisor_read = pipes.take_worker_stdout().expect("supervisor stdout");
+        let supervisor_write = pipes.take_worker_stdin().expect("supervisor stdin");
+        let mut accepted = crate::windows_bridge::WindowsBridgeChannel::from_raw_handle_pair(
+            supervisor_read,
+            supervisor_write,
+        )
+        .expect("the anonymous supervisor channel must open");
         let expected = crate::windows_bridge::encode_json_frame(
             &serde_json::json!({"contractVersion": 1, "kind": "appcontainer-test"}),
         )
         .expect("the AppContainer test frame must encode");
-        let observed = pipe_runtime
+        let observed = bridge_runtime
             .block_on(accepted.read_frame())
             .unwrap_or_else(|_| {
                 panic!(
-                    "the AppContainer named-pipe test failed at bounded stage {}",
-                    NamedPipeTestFailure::SupervisorRead.code()
+                    "the AppContainer anonymous-pipe test failed at bounded stage {}",
+                    "test-supervisor-frame-read-failed"
                 )
             });
         if observed != expected {
             panic!(
-                "the AppContainer named-pipe test failed at bounded stage {}",
-                NamedPipeTestFailure::FrameMismatch.code()
+                "the AppContainer anonymous-pipe test failed at bounded stage {}",
+                "test-supervisor-frame-mismatch"
             );
         }
-        pipe_runtime
+        bridge_runtime
             .block_on(accepted.write_frame(&expected))
             .unwrap_or_else(|_| {
                 panic!(
-                    "the AppContainer named-pipe test failed at bounded stage {}",
-                    NamedPipeTestFailure::SupervisorWrite.code()
+                    "the AppContainer anonymous-pipe test failed at bounded stage {}",
+                    "test-supervisor-frame-write-failed"
                 )
             });
         drop(accepted);
         match worker.wait_for_exit(5_000) {
             Ok(0) => {}
             Ok(exit_code) => {
-                let failure =
-                    NamedPipeTestFailure::Child(classify_named_pipe_test_child_exit(exit_code));
+                let failure = classify_anonymous_pipe_test_child_exit(exit_code);
                 panic!(
-                    "the AppContainer named-pipe test failed at bounded stage {}",
+                    "the AppContainer anonymous-pipe test failed at bounded stage {}",
                     failure.code()
                 );
             }
             Err(()) => panic!(
-                "the AppContainer named-pipe test failed at bounded stage {}",
-                NamedPipeTestFailure::ChildWait.code()
+                "the AppContainer anonymous-pipe test failed at bounded stage {}",
+                "test-child-wait-failed"
             ),
+        }
+    }
+
+    #[test]
+    fn production_worker_allowlist_contains_exactly_nine_closed_pipe_endpoints() {
+        let pipes = WorkerPipeSet::create().expect("the production Worker pipes must open");
+        let inherited = pipes.inherited_handles();
+        assert_eq!(inherited.len(), 9);
+        assert_eq!(
+            inherited,
+            [
+                pipes.worker_stdin,
+                pipes.worker_stdout,
+                pipes.worker_stderr,
+                pipes.worker_control_read,
+                pipes.worker_ready_write,
+                pipes.worker_capability_read,
+                pipes.worker_capability_write,
+                pipes.worker_model_read,
+                pipes.worker_model_write,
+            ]
+        );
+        assert!(pipes.handle_contract_is_closed());
+        for worker_handle in inherited {
+            assert!(!pipes.parent_handles().contains(&worker_handle));
         }
     }
 

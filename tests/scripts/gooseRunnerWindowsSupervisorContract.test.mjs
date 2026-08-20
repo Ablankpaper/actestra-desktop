@@ -42,7 +42,9 @@ describe("Windows Goose supervisor source contract", () => {
     );
     expect(supervisor).toContain("ACTESTRA_GOOSE_NETWORK_POLICY_SETUP_FAILED");
     expect(supervisor).toContain("ACTESTRA_GOOSE_RESOURCE_LIMIT_SETUP_FAILED");
-    expect(supervisor).toContain("pub(crate) fn derive_pipe_names");
+    expect(supervisor).toContain("CreatePipe");
+    expect(supervisor).toContain("PROC_THREAD_ATTRIBUTE_HANDLE_LIST");
+    expect(supervisor).not.toContain("derive_pipe_names");
     expect(supervisor).not.toContain("CheckNetIsolation");
     expect(supervisor).not.toContain("privateNetworkClientServer");
     expect(containment).not.toContain('"status":"unsupported-platform"');
@@ -170,7 +172,7 @@ describe("Windows Goose supervisor source contract", () => {
     );
   });
 
-  it("keeps seven Main channels and exactly five inherited Worker handles", () => {
+  it("keeps seven Main channels and exactly nine inherited Worker handles", () => {
     const mainProcess = read("apps/desktop/src/main/workers/gooseRunnerProcess.ts");
     const transport = read("apps/desktop/src/main/workers/gooseSessionTransport.ts");
     const supervisor = read("workers/goose-runner/src/windows_supervisor.rs");
@@ -187,19 +189,22 @@ describe("Windows Goose supervisor source contract", () => {
       "worker_ready_write",
       "supervisor_control_write",
       "supervisor_ready_read",
-      "capability_pipe",
-      "model_pipe",
+      "worker_capability_read",
+      "worker_capability_write",
+      "worker_model_read",
+      "worker_model_write",
     ]) {
       expect(supervisor).toContain(field);
     }
-    expect(supervisor).toContain("fn inherited_handles(&self) -> [HANDLE; 5]");
+    expect(supervisor).toContain("fn inherited_handles(&self) -> [HANDLE; 9]");
+    expect(supervisor).toContain("fn handle_contract_is_closed(&self) -> bool");
     expect(supervisor).toContain("self.worker_control_read");
     expect(supervisor).toContain("self.worker_ready_write");
     expect(control).toContain("parse_worker_handle_arguments");
     expect(control).toContain("bounded decimal");
     expect(supervisor).toContain("CloseHandle(control_handle)");
     expect(supervisor).toContain("CloseHandle(ready_handle)");
-    expect(supervisor.indexOf("let accepted = pipe_runtime.block_on(async")).toBeLessThan(
+    expect(supervisor.indexOf("let capability_worker = match")).toBeLessThan(
       supervisor.indexOf("let mut marker = vec![0_u8; WINDOWS_WORKER_READY_MARKER.len()]"),
     );
   });
@@ -209,8 +214,8 @@ describe("Windows Goose supervisor source contract", () => {
     for (const stage of [
       "windows-control-channel-invalid",
       "windows-ready-channel-invalid",
-      "windows-capability-pipe-invalid",
-      "windows-model-pipe-invalid",
+      "windows-capability-channel-invalid",
+      "windows-model-channel-invalid",
       "windows-acp-relay-failed",
       "windows-capability-relay-failed",
       "windows-model-relay-failed",

@@ -80,13 +80,6 @@ describe("Goose Windows runtime evidence", () => {
     expect(
       classifyGooseWindowsOpeningFailure({
         name: "GooseRunnerProcessError",
-        code: "windows-worker-capability-pipe-busy",
-        message: "Goose Windows worker startup failed",
-      }),
-    ).toBe("windows-worker-capability-pipe-busy");
-    expect(
-      classifyGooseWindowsOpeningFailure({
-        name: "GooseRunnerProcessError",
         code: "windows-worker-control-frame-invalid",
         message: "Goose Windows worker startup failed",
       }),
@@ -174,15 +167,7 @@ describe("Goose Windows runtime evidence", () => {
       "windows-worker-control-frame-invalid",
       "windows-worker-boundary-verification-failed",
       "windows-worker-runtime-creation-failed",
-      "windows-worker-capability-pipe-access-denied",
-      "windows-worker-capability-pipe-busy",
-      "windows-worker-capability-pipe-unavailable",
-      "windows-worker-capability-pipe-unclassified",
       "windows-worker-capability-bridge-failed",
-      "windows-worker-model-pipe-access-denied",
-      "windows-worker-model-pipe-busy",
-      "windows-worker-model-pipe-unavailable",
-      "windows-worker-model-pipe-unclassified",
       "windows-worker-model-bridge-failed",
       "windows-worker-state-directory-failed",
       "windows-worker-ready-signal-failed",
@@ -191,22 +176,14 @@ describe("Goose Windows runtime evidence", () => {
     const tokens = stages.map((stage) =>
       classifyGooseWindowsRuntimeFailureEvidence({ contractVersion: 1, stage }),
     );
-    expect(new Set(tokens).size).toBe(16);
+    expect(new Set(tokens).size).toBe(8);
     expect(tokens.every((token) => typeof token === "string" && token.length > 0)).toBe(true);
     expect(tokens.every((token) => !token.includes("\\") && !token.includes("/"))).toBe(true);
     expect(tokens).toEqual([
       "windows-runtime-worker-control-frame-invalid-failed",
       "windows-runtime-worker-boundary-verification-failed",
       "windows-runtime-worker-runtime-creation-failed",
-      "windows-runtime-worker-capability-pipe-access-denied",
-      "windows-runtime-worker-capability-pipe-busy",
-      "windows-runtime-worker-capability-pipe-unavailable",
-      "windows-runtime-worker-capability-pipe-unclassified",
       "windows-runtime-worker-capability-bridge-failed",
-      "windows-runtime-worker-model-pipe-access-denied",
-      "windows-runtime-worker-model-pipe-busy",
-      "windows-runtime-worker-model-pipe-unavailable",
-      "windows-runtime-worker-model-pipe-unclassified",
       "windows-runtime-worker-model-bridge-failed",
       "windows-runtime-worker-state-directory-failed",
       "windows-runtime-worker-ready-signal-failed",
@@ -220,15 +197,7 @@ describe("Goose Windows runtime evidence", () => {
       "windows-runtime-worker-control-frame-invalid-failed",
       "windows-runtime-worker-boundary-verification-failed",
       "windows-runtime-worker-runtime-creation-failed",
-      "windows-runtime-worker-capability-pipe-access-denied",
-      "windows-runtime-worker-capability-pipe-busy",
-      "windows-runtime-worker-capability-pipe-unavailable",
-      "windows-runtime-worker-capability-pipe-unclassified",
       "windows-runtime-worker-capability-bridge-failed",
-      "windows-runtime-worker-model-pipe-access-denied",
-      "windows-runtime-worker-model-pipe-busy",
-      "windows-runtime-worker-model-pipe-unavailable",
-      "windows-runtime-worker-model-pipe-unclassified",
       "windows-runtime-worker-model-bridge-failed",
       "windows-runtime-worker-state-directory-failed",
       "windows-runtime-worker-ready-signal-failed",
@@ -249,13 +218,13 @@ describe("Goose Windows runtime evidence", () => {
   it("classifies bounded Windows runtime child failures without retaining child output", () => {
     expect(
       classifyGooseWindowsRuntimeChildFailure({
-        failureStage: "windows-worker-capability-pipe-busy",
+        failureStage: "windows-worker-capability-bridge-failed",
         status: 1,
         signal: null,
         stdout: "C:\\Users\\private\\stdout",
         stderr: "C:\\Users\\private\\stderr",
       }),
-    ).toBe("windows-runtime-worker-capability-pipe-busy");
+    ).toBe("windows-runtime-worker-capability-bridge-failed");
     expect(
       classifyGooseWindowsRuntimeChildFailure({
         errorCode: "ETIMEDOUT",

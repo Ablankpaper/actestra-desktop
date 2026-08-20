@@ -58,8 +58,8 @@ function windowsRuntimeStageMarker(stage: string): string {
 const GOOSE_WINDOWS_SUPERVISOR_FAILURE_STAGES = Object.freeze([
   "windows-control-channel-invalid",
   "windows-ready-channel-invalid",
-  "windows-capability-pipe-invalid",
-  "windows-model-pipe-invalid",
+  "windows-capability-channel-invalid",
+  "windows-model-channel-invalid",
   "windows-acp-relay-failed",
   "windows-capability-relay-failed",
   "windows-model-relay-failed",
@@ -70,21 +70,13 @@ const GOOSE_WINDOWS_SUPERVISOR_FAILURE_STAGES = Object.freeze([
 /**
  * Worker startup stages carry their own closed code all the way to CI evidence.
  * Collapsing them into one token would erase the only signal that distinguishes
- * a capability-pipe ACL rejection from a control-frame or runtime fault.
+ * a capability-channel construction failure from a control-frame or runtime fault.
  */
 export const GOOSE_WINDOWS_WORKER_STARTUP_STAGES = Object.freeze([
   "windows-worker-control-frame-invalid",
   "windows-worker-boundary-verification-failed",
   "windows-worker-runtime-creation-failed",
-  "windows-worker-capability-pipe-access-denied",
-  "windows-worker-capability-pipe-busy",
-  "windows-worker-capability-pipe-unavailable",
-  "windows-worker-capability-pipe-unclassified",
   "windows-worker-capability-bridge-failed",
-  "windows-worker-model-pipe-access-denied",
-  "windows-worker-model-pipe-busy",
-  "windows-worker-model-pipe-unavailable",
-  "windows-worker-model-pipe-unclassified",
   "windows-worker-model-bridge-failed",
   "windows-worker-state-directory-failed",
   "windows-worker-ready-signal-failed",
@@ -129,8 +121,6 @@ export interface GooseAcpSpawnOptions {
       };
   readonly windows?: Readonly<{
     readonly supervisorMode: "--actestra-windows-supervisor-v1";
-    readonly capabilityPipeName: string;
-    readonly modelPipeName: string;
     readonly attemptLease: string;
     readonly modelAttemptLease: string;
     readonly attemptId: string;
@@ -209,8 +199,7 @@ export interface GooseRunnerLinuxBridgeEnvironment {
 }
 
 export interface GooseRunnerWindowsBridgeEnvironment {
-  readonly capabilityPipeName: string;
-  readonly modelPipeName: string;
+  readonly attemptId: string;
   readonly attemptLease: string;
   readonly modelAttemptLease: string;
 }
@@ -343,18 +332,16 @@ function hasExactWindowsSupervisorSpawnContract(options: GooseAcpSpawnOptions): 
   if (
     windows === undefined ||
     !Object.isFrozen(windows) ||
-    Reflect.ownKeys(windows).length !== 9 ||
+    Reflect.ownKeys(windows).length !== 7 ||
     Reflect.ownKeys(windows).some(
       (key) =>
         typeof key !== "string" ||
         ![
           "attemptLease",
           "attemptId",
-          "capabilityPipeName",
           "executableSha256",
           "modelAttemptLease",
           "modelId",
-          "modelPipeName",
           "supervisorMode",
           "targetTriple",
         ].includes(key),
@@ -364,13 +351,7 @@ function hasExactWindowsSupervisorSpawnContract(options: GooseAcpSpawnOptions): 
   ) {
     return false;
   }
-  const validPipeName = (pipeName: string): boolean =>
-    /^\\\\\.\\pipe\\LOCAL\\Actestra\.Goose\.[A-Za-z0-9._-]{16,128}$/.test(pipeName) &&
-    Buffer.byteLength(pipeName, "utf8") <= 180;
   if (
-    !validPipeName(windows.capabilityPipeName) ||
-    !validPipeName(windows.modelPipeName) ||
-    windows.capabilityPipeName === windows.modelPipeName ||
     !/^[a-f0-9]{32}$/.test(windows.attemptId) ||
     !/^[a-f0-9]{64}$/.test(windows.executableSha256) ||
     windows.modelId.length < 1 ||
@@ -405,9 +386,7 @@ function hasExactWindowsSupervisorSpawnContract(options: GooseAcpSpawnOptions): 
   const environmentValues = new Set(Object.values(options.environment));
   return (
     !environmentValues.has(windows.attemptLease) &&
-    !environmentValues.has(windows.modelAttemptLease) &&
-    !environmentValues.has(windows.capabilityPipeName) &&
-    !environmentValues.has(windows.modelPipeName)
+    !environmentValues.has(windows.modelAttemptLease)
   );
 }
 
@@ -847,11 +826,11 @@ function validateWindowsBridgeEnvironment(value: unknown): GooseRunnerWindowsBri
   }
   const keys = Reflect.ownKeys(value);
   if (
-    keys.length !== 4 ||
+    keys.length !== 3 ||
     keys.some(
       (key) =>
         typeof key !== "string" ||
-        !["attemptLease", "capabilityPipeName", "modelAttemptLease", "modelPipeName"].includes(key),
+        !["attemptId", "attemptLease", "modelAttemptLease"].includes(key),
     )
   ) {
     throw new GooseRunnerProcessError(
@@ -859,18 +838,10 @@ function validateWindowsBridgeEnvironment(value: unknown): GooseRunnerWindowsBri
       "Goose Windows bridge environment contains unsupported fields",
     );
   }
-  const { capabilityPipeName, modelPipeName, attemptLease, modelAttemptLease } = value;
-  const validPipeName = (pipeName: unknown): pipeName is string =>
-    typeof pipeName === "string" &&
-    /^\\\\\.\\pipe\\LOCAL\\Actestra\.Goose\.[a-f0-9]{32}\.(?:capability|model)$/.test(pipeName) &&
-    Buffer.byteLength(pipeName, "utf8") <= 180;
+  const { attemptId, attemptLease, modelAttemptLease } = value;
   if (
-    !validPipeName(capabilityPipeName) ||
-    !validPipeName(modelPipeName) ||
-    capabilityPipeName === modelPipeName ||
-    !capabilityPipeName.endsWith(".capability") ||
-    !modelPipeName.endsWith(".model") ||
-    capabilityPipeName.slice(0, -"capability".length) !== modelPipeName.slice(0, -"model".length) ||
+    typeof attemptId !== "string" ||
+    !/^[a-f0-9]{32}$/.test(attemptId) ||
     typeof attemptLease !== "string" ||
     attemptLease.length < 32 ||
     attemptLease.length > 256 ||
@@ -886,20 +857,7 @@ function validateWindowsBridgeEnvironment(value: unknown): GooseRunnerWindowsBri
       "Goose Windows bridge environment is invalid",
     );
   }
-  return Object.freeze({ capabilityPipeName, modelPipeName, attemptLease, modelAttemptLease });
-}
-
-function windowsBridgeAttemptId(value: GooseRunnerWindowsBridgeEnvironment): string {
-  const match = value.capabilityPipeName.match(
-    /^\\\\\.\\pipe\\LOCAL\\Actestra\.Goose\.([a-f0-9]{32})\.capability$/,
-  );
-  if (match?.[1] === undefined) {
-    throw new GooseRunnerProcessError(
-      "invalid-options",
-      "Goose Windows bridge attempt identity is invalid",
-    );
-  }
-  return match[1];
+  return Object.freeze({ attemptId, attemptLease, modelAttemptLease });
 }
 
 function validateLinuxBridgeEnvironment(
@@ -1634,7 +1592,7 @@ export async function openGooseRunnerHandshake(
   if (runtimeTarget.platform === "win32" && options.prepareBridge === undefined) {
     throw new GooseRunnerProcessError(
       "network-policy-unavailable",
-      "Windows Goose runtime requires the exact admitted named-pipe bridge contract",
+      "Windows Goose runtime requires the exact admitted inherited-handle bridge contract",
     );
   }
   let prepared: GooseRunnerPreparedRoot | undefined;
@@ -1665,7 +1623,7 @@ export async function openGooseRunnerHandshake(
       if (runtimeTarget.platform === "win32" && bridge.windows === undefined) {
         throw new GooseRunnerProcessError(
           "network-policy-unavailable",
-          "Windows Goose runtime requires the exact admitted named-pipe bridge contract",
+          "Windows Goose runtime requires the exact admitted inherited-handle bridge contract",
         );
       }
     }
@@ -1729,11 +1687,9 @@ export async function openGooseRunnerHandshake(
         : {
             windows: Object.freeze({
               supervisorMode: "--actestra-windows-supervisor-v1" as const,
-              capabilityPipeName: windowsBridgeEnvironment.capabilityPipeName,
-              modelPipeName: windowsBridgeEnvironment.modelPipeName,
               attemptLease: windowsBridgeEnvironment.attemptLease,
               modelAttemptLease: windowsBridgeEnvironment.modelAttemptLease,
-              attemptId: windowsBridgeAttemptId(windowsBridgeEnvironment),
+              attemptId: windowsBridgeEnvironment.attemptId,
               executableSha256: options.artifact.executableSha256,
               modelId: stableModelBinding?.binding.modelId ?? bridge?.modelId ?? "",
               targetTriple: "x86_64-pc-windows-msvc" as const,

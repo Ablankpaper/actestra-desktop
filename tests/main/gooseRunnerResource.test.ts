@@ -166,8 +166,6 @@ describe("Goose runner native resource boundary", () => {
     const modelAttemptLease = "model_0123456789abcdef0123456789abcdef";
     const windows = Object.freeze({
       supervisorMode: "--actestra-windows-supervisor-v1" as const,
-      capabilityPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.capability`,
-      modelPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.model`,
       attemptLease,
       modelAttemptLease,
       attemptId: "0123456789abcdef0123456789abcdef",
@@ -284,8 +282,8 @@ describe("Goose runner native resource boundary", () => {
   it.each([
     "windows-control-channel-invalid",
     "windows-ready-channel-invalid",
-    "windows-capability-pipe-invalid",
-    "windows-model-pipe-invalid",
+    "windows-capability-channel-invalid",
+    "windows-model-channel-invalid",
     "windows-acp-relay-failed",
     "windows-capability-relay-failed",
     "windows-model-relay-failed",

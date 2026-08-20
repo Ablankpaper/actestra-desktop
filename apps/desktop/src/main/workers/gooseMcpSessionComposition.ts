@@ -268,8 +268,6 @@ export async function openGooseMcpSessionComposition(
       ): Promise<GooseRunnerPreparedBridge> => {
         if (windowsAuthenticated) {
           const attemptId = randomBytes(16).toString("hex");
-          const capabilityPipeName = `\\\\.\\pipe\\LOCAL\\Actestra.Goose.${attemptId}.capability`;
-          const modelPipeName = `\\\\.\\pipe\\LOCAL\\Actestra.Goose.${attemptId}.model`;
           let bridgeClosePromise: Promise<void> | undefined;
           let attached = false;
           const attachWindowsChannels = (channels: { capability: Duplex; model: Duplex }): void => {
@@ -300,8 +298,7 @@ export async function openGooseMcpSessionComposition(
           };
           return Object.freeze({
             windows: Object.freeze({
-              capabilityPipeName,
-              modelPipeName,
+              attemptId,
               attemptLease,
               modelAttemptLease,
             }),
