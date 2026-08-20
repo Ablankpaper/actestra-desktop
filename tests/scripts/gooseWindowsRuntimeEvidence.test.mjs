@@ -6,6 +6,7 @@ import path from "node:path";
 import {
   GOOSE_WINDOWS_RUNTIME_EVIDENCE_KEYS,
   classifyGooseWindowsCodingSessionOpenError,
+  classifyGooseWindowsOpeningFailure,
   classifyGooseWindowsArtifactAdmissionExecution,
   classifyGooseWindowsArtifactAdmissionFailure,
   classifyGooseWindowsRuntimeFailureEvidence,
@@ -53,6 +54,49 @@ function validEvidence() {
 }
 
 describe("Goose Windows runtime evidence", () => {
+  it("classifies opening failures by fixed sub-stage without retaining diagnostics", () => {
+    expect(
+      classifyGooseWindowsOpeningFailure({
+        name: "GooseAcpHandshakeError",
+        code: "startup-timeout",
+        message: "fixed internal diagnostic",
+      }),
+    ).toBe("handshake-timeout");
+    expect(
+      classifyGooseWindowsOpeningFailure({
+        name: "GooseAcpSessionError",
+        code: "session-timeout",
+        message: "fixed internal diagnostic",
+      }),
+    ).toBe("session-timeout");
+    expect(
+      classifyGooseWindowsOpeningFailure({
+        name: "GooseRunnerProcessError",
+        code: "spawn-failed",
+        message: "Goose Windows runtime failed",
+      }),
+    ).toBe("windows-runtime");
+    expect(
+      classifyGooseWindowsOpeningFailure({
+        name: "GooseRunnerProcessError",
+        code: "spawn-failed",
+        message: "Goose handshake launch failed",
+        cause: {
+          name: "GooseAcpHandshakeError",
+          code: "transport-error",
+          message: "fixed internal diagnostic",
+          cause: {
+            name: "GooseRunnerProcessError",
+            code: "network-policy-unavailable",
+            message: "C:\\private\\secret",
+          },
+        },
+      }),
+    ).toBe("runtime-network");
+    expect(
+      JSON.stringify(classifyGooseWindowsOpeningFailure({ error: "C:\\private" })),
+    ).not.toContain("private");
+  });
   it("prefers the specific nested coding-session cause over the outer open-failed wrapper", () => {
     expect(
       classifyGooseWindowsCodingSessionOpenError({

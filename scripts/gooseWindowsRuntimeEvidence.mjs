@@ -32,6 +32,28 @@ const FAILURE_STAGE_CODES = Object.freeze({
   "coding-session-open-cleanup-failed": "windows-runtime-coding-session-cleanup-failed",
   "coding-session-open-persistence-failed": "windows-runtime-coding-session-persistence-failed",
   "composition-open": "windows-runtime-composition-open-failed",
+  "runner-open": "windows-runtime-runner-open-failed",
+  "runtime-network": "windows-runtime-network-policy-failed",
+  "runtime-resource": "windows-runtime-resource-enforcement-failed",
+  "launch-contract": "windows-runtime-launch-contract-failed",
+  "runner-process-spawn": "windows-runtime-runner-process-spawn-failed",
+  "runner-stdin": "windows-runtime-runner-stdin-failed",
+  "runner-runtime": "windows-runtime-runner-runtime-failed",
+  "runner-acp": "windows-runtime-runner-acp-failed",
+  "runner-relay": "windows-runtime-runner-relay-failed",
+  "runner-panic": "windows-runtime-runner-panic-failed",
+  "windows-runtime": "windows-runtime-native-setup-failed",
+  "handshake-process-exit": "windows-runtime-handshake-process-exit-failed",
+  "handshake-process-signal": "windows-runtime-handshake-process-signal-failed",
+  "handshake-timeout": "windows-runtime-handshake-timeout-failed",
+  "handshake-transport": "windows-runtime-handshake-transport-failed",
+  "handshake-response": "windows-runtime-handshake-response-failed",
+  "session-open": "windows-runtime-session-open-failed",
+  "session-timeout": "windows-runtime-session-timeout-failed",
+  "session-process-exit": "windows-runtime-session-process-exit-failed",
+  "session-transport": "windows-runtime-session-transport-failed",
+  "tool-discovery": "windows-runtime-tool-discovery-failed",
+  "composition-cleanup": "windows-runtime-composition-cleanup-failed",
   "read-tool": "windows-runtime-read-tool-failed",
   "approved-write-tool": "windows-runtime-approved-write-tool-failed",
   cancellation: "windows-runtime-cancellation-failed",
@@ -87,6 +109,33 @@ const CODING_SESSION_OPEN_ERROR_CODES = new Set([
   "repository-config-denied",
   "worktree-create-failed",
   "cleanup-failed",
+]);
+const WINDOWS_OPEN_FAILURE_STAGES = Object.freeze([
+  "artifact-admission",
+  "artifact-binding-incomplete",
+  "runtime-network",
+  "runtime-resource",
+  "launch-contract",
+  "runner-process-spawn",
+  "runner-open",
+  "runner-stdin",
+  "runner-runtime",
+  "runner-acp",
+  "runner-relay",
+  "runner-panic",
+  "windows-runtime",
+  "handshake-process-exit",
+  "handshake-process-signal",
+  "handshake-timeout",
+  "handshake-transport",
+  "handshake-response",
+  "session-open",
+  "session-timeout",
+  "session-process-exit",
+  "session-transport",
+  "tool-discovery",
+  "composition-cleanup",
+  "composition-open",
 ]);
 
 function isRecord(value) {
@@ -163,6 +212,58 @@ export function classifyGooseWindowsCodingSessionOpenError(error) {
     if (Array.isArray(current.errors)) pending.push(...current.errors);
   }
   return openFailed ? "coding-session-open-persistence-failed" : "coding-session-open";
+}
+
+export function classifyGooseWindowsOpeningFailure(error) {
+  const pending = [error];
+  const visited = new Set();
+  let fallback = "composition-open";
+  while (pending.length > 0) {
+    const current = pending.shift();
+    if (!isRecord(current) || visited.has(current)) continue;
+    visited.add(current);
+    const name = typeof current.name === "string" ? current.name : "";
+    const code = typeof current.code === "string" ? current.code : "";
+    const message = typeof current.message === "string" ? current.message : "";
+    if (name === "GooseRunnerProcessError") {
+      if (code === "artifact-mismatch") return "artifact-admission";
+      if (code === "network-policy-unavailable") return "runtime-network";
+      if (code === "worker-resource-enforcement-unavailable") return "runtime-resource";
+      if (code === "invalid-options") return "launch-contract";
+      if (code === "cleanup-failed") return "composition-cleanup";
+      if (code === "spawn-failed") {
+        if (message === "Failed to launch Goose ACP process") return "runner-process-spawn";
+        if (message === "Goose stdin is not writable") return "runner-stdin";
+        if (message === "Goose async runtime failed") return "runner-runtime";
+        if (message === "Goose ACP server failed") return "runner-acp";
+        if (message === "Goose Linux relay stopped") return "runner-relay";
+        if (message === "Goose runner panicked") return "runner-panic";
+        if (message === "Goose Windows runtime failed") return "windows-runtime";
+        if (message === "Goose handshake launch failed") fallback = "runner-open";
+        else return "runner-process-spawn";
+      }
+    } else if (name === "GooseAcpHandshakeError") {
+      if (code === "process-exit") return "handshake-process-exit";
+      if (code === "process-signal") return "handshake-process-signal";
+      if (code === "startup-timeout") return "handshake-timeout";
+      if (code === "transport-error") fallback = "handshake-transport";
+      else return "handshake-response";
+    } else if (name === "GooseAcpSessionError") {
+      if (code === "session-timeout") return "session-timeout";
+      if (code === "session-process-exit") return "session-process-exit";
+      if (code === "session-transport-error") return "session-transport";
+      if (code.startsWith("tool-discovery")) return "tool-discovery";
+      return "session-open";
+    } else if (name === "GooseMcpSessionCompositionError") {
+      if (code === "cleanup-failed") return "composition-cleanup";
+      if (code === "tool-discovery-mismatch") return "tool-discovery";
+    } else if (code === "network-policy-unavailable") {
+      return "runtime-network";
+    }
+    if (Object.hasOwn(current, "cause")) pending.push(current.cause);
+    if (Array.isArray(current.errors)) pending.push(...current.errors);
+  }
+  return WINDOWS_OPEN_FAILURE_STAGES.includes(fallback) ? fallback : "composition-open";
 }
 
 export function classifyGooseWindowsArtifactAdmissionFailure(value) {

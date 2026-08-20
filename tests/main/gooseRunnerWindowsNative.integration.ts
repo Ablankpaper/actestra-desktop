@@ -8,7 +8,10 @@ import process from "node:process";
 import { promisify } from "node:util";
 import { afterAll, describe, expect, it } from "vitest";
 import sourceContract from "../../apps/desktop/src/shared/gooseRunnerSource.json";
-import { classifyGooseWindowsCodingSessionOpenError } from "../../scripts/gooseWindowsRuntimeEvidence.mjs";
+import {
+  classifyGooseWindowsCodingSessionOpenError,
+  classifyGooseWindowsOpeningFailure,
+} from "../../scripts/gooseWindowsRuntimeEvidence.mjs";
 import {
   CODING_FILE_READ_TOOL_ID,
   CODING_FILE_WRITE_TOOL_ID,
@@ -472,19 +475,23 @@ describe.skipIf(!nativeEnabled)("native Windows Goose authenticated runtime comp
     let acpInitialized = false;
     let exactToolCount = 0;
     try {
-      await markFailure("composition-open");
-      opened = await openGooseMcpSessionComposition({
-        artifact,
-        privateRootParent: fixture.privateRootParent,
-        workspaceDirectory: codingSession.worktreeRoot,
-        modelId: "actestra-windows-runtime-test",
-        modelInvoker,
-        toolInvoker: recordingToolInvoker,
-        commandIds: [],
-        testIds: [],
-        handshakeTimeoutMs: 30_000,
-        sessionTimeoutMs: 60_000,
-      });
+      try {
+        opened = await openGooseMcpSessionComposition({
+          artifact,
+          privateRootParent: fixture.privateRootParent,
+          workspaceDirectory: codingSession.worktreeRoot,
+          modelId: "actestra-windows-runtime-test",
+          modelInvoker,
+          toolInvoker: recordingToolInvoker,
+          commandIds: [],
+          testIds: [],
+          handshakeTimeoutMs: 30_000,
+          sessionTimeoutMs: 60_000,
+        });
+      } catch (error) {
+        await markFailure(classifyGooseWindowsOpeningFailure(error));
+        throw error;
+      }
       acpInitialized =
         opened.info.agentName === "goose" &&
         opened.info.agentVersion === sourceContract.goose.version;
