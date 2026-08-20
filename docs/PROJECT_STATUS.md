@@ -2,6 +2,31 @@
 
 Last updated: 2026-08-20
 
+## 2026-08-20 P8.2c Windows authenticated runtime: diagnostic protocol repair pending
+
+Exact-head CI run
+[`32366032098`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32366032098)
+for `ee24ef1` completed with the Windows build-probe native test failing because
+the synthetic AppContainer named-pipe child used libtest's panic exit `101`,
+which the parent incorrectly reused the production Worker startup classifier
+for and reported as `WorkerStartup(ControlFrame)`. This is a test-harness
+diagnostic collision, not evidence of a production control-frame failure.
+
+The same run independently passed Windows containment acceptance, Windows and
+Ubuntu build probes, Ubuntu containment, macOS foundation/package/smoke, and
+Goose admission. The real Windows authenticated runtime still failed at the
+bounded code `windows-runtime-worker-capability-pipe-failed`; therefore the
+low-integrity pipe label has not yet closed the real Worker capability-pipe
+journey, even though the separate containment probe is green.
+
+The pending local remediation gives the synthetic child a test-only exit
+protocol outside production `101..=108`, maps child and parent stages to closed
+sanitized tokens, and adds a regression test for the non-overlap. Local
+validation passes with `cargo test --locked` (`83/83`), Rust format, and
+`git diff --check`. No Windows authenticated-runtime claim is made until one
+new exact-head run reports the real child stage and, eventually, a successful
+authenticated runtime Artifact is downloaded and independently checked.
+
 ## 2026-08-20 P8.2c Windows AppContainer named-pipe integrity remediation (local green; native rerun pending)
 
 Exact-head CI run

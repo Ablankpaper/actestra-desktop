@@ -613,6 +613,78 @@ impl WorkerLaunchFailureStage {
     }
 }
 
+/// Exit protocol owned only by the synthetic AppContainer named-pipe child used by the native
+/// regression test. These values deliberately do not overlap the production Worker's `101..=108`
+/// startup protocol, so a libtest panic or a test-stage failure cannot be misreported as a
+/// production control-frame failure.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NamedPipeTestChildFailure {
+    Input,
+    AttemptId,
+    PipeName,
+    Runtime,
+    PipeConnect,
+    FrameEncode,
+    FrameWrite,
+    FrameRead,
+    FrameMismatch,
+    Panic,
+    UnexpectedExit,
+}
+
+#[cfg(test)]
+impl NamedPipeTestChildFailure {
+    fn exit_code(self) -> i32 {
+        match self {
+            Self::Input => 201,
+            Self::AttemptId => 202,
+            Self::PipeName => 203,
+            Self::Runtime => 204,
+            Self::PipeConnect => 205,
+            Self::FrameEncode => 206,
+            Self::FrameWrite => 207,
+            Self::FrameRead => 208,
+            Self::FrameMismatch => 209,
+            Self::Panic | Self::UnexpectedExit => 210,
+        }
+    }
+
+    fn code(self) -> &'static str {
+        match self {
+            Self::Input => "test-child-input-failed",
+            Self::AttemptId => "test-child-attempt-id-invalid",
+            Self::PipeName => "test-child-pipe-name-invalid",
+            Self::Runtime => "test-child-runtime-failed",
+            Self::PipeConnect => "test-child-pipe-connect-failed",
+            Self::FrameEncode => "test-child-frame-encode-failed",
+            Self::FrameWrite => "test-child-frame-write-failed",
+            Self::FrameRead => "test-child-frame-read-failed",
+            Self::FrameMismatch => "test-child-frame-mismatch",
+            Self::Panic => "test-child-panic",
+            Self::UnexpectedExit => "test-child-unexpected-exit",
+        }
+    }
+}
+
+#[cfg(test)]
+fn classify_named_pipe_test_child_exit(exit_code: u32) -> NamedPipeTestChildFailure {
+    match exit_code {
+        201 => NamedPipeTestChildFailure::Input,
+        202 => NamedPipeTestChildFailure::AttemptId,
+        203 => NamedPipeTestChildFailure::PipeName,
+        204 => NamedPipeTestChildFailure::Runtime,
+        205 => NamedPipeTestChildFailure::PipeConnect,
+        206 => NamedPipeTestChildFailure::FrameEncode,
+        207 => NamedPipeTestChildFailure::FrameWrite,
+        208 => NamedPipeTestChildFailure::FrameRead,
+        209 => NamedPipeTestChildFailure::FrameMismatch,
+        // Rust's libtest harness reserves 101 for a test panic.
+        101 => NamedPipeTestChildFailure::Panic,
+        _ => NamedPipeTestChildFailure::UnexpectedExit,
+    }
+}
+
 /// Worker startup stage a worker exit code identifies, so a worker that dies
 /// before connecting is attributed to the stage it died in rather than being
 /// collapsed into one opaque runtime failure.
@@ -2270,6 +2342,56 @@ async fn accept_runtime_pipe_or_worker_exit(
     }
 }
 
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NamedPipeTestFailure {
+    ServerAccept,
+    Child(NamedPipeTestChildFailure),
+    SupervisorRead,
+    FrameMismatch,
+    SupervisorWrite,
+    ChildWait,
+    Timeout,
+}
+
+#[cfg(test)]
+impl NamedPipeTestFailure {
+    fn code(self) -> &'static str {
+        match self {
+            Self::ServerAccept => "test-server-accept-failed",
+            Self::Child(failure) => failure.code(),
+            Self::SupervisorRead => "test-supervisor-frame-read-failed",
+            Self::FrameMismatch => "test-supervisor-frame-mismatch",
+            Self::SupervisorWrite => "test-supervisor-frame-write-failed",
+            Self::ChildWait => "test-child-wait-failed",
+            Self::Timeout => "test-child-timeout",
+        }
+    }
+}
+
+#[cfg(all(test, windows))]
+async fn accept_named_pipe_test_client_or_child_exit(
+    pipe: WindowsNamedPipeServer,
+    child_handle: HANDLE,
+) -> Result<crate::windows_bridge::WindowsBridgeChannel, NamedPipeTestFailure> {
+    tokio::select! {
+        result = pipe.accept_once() => {
+            result.map_err(|_| NamedPipeTestFailure::ServerAccept)
+        }
+        result = wait_for_worker_exit_handle(child_handle) => {
+            Err(match result {
+                Ok(exit_code) => NamedPipeTestFailure::Child(
+                    classify_named_pipe_test_child_exit(exit_code)
+                ),
+                Err(()) => NamedPipeTestFailure::ChildWait,
+            })
+        }
+        _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {
+            Err(NamedPipeTestFailure::Timeout)
+        }
+    }
+}
+
 #[cfg(windows)]
 fn cleanup_runtime(
     job: &JobObject,
@@ -3577,6 +3699,60 @@ mod tests {
     }
 
     #[test]
+    fn keeps_the_synthetic_named_pipe_child_protocol_separate_from_production_worker_exits() {
+        let expected = [
+            (201, "test-child-input-failed"),
+            (202, "test-child-attempt-id-invalid"),
+            (203, "test-child-pipe-name-invalid"),
+            (204, "test-child-runtime-failed"),
+            (205, "test-child-pipe-connect-failed"),
+            (206, "test-child-frame-encode-failed"),
+            (207, "test-child-frame-write-failed"),
+            (208, "test-child-frame-read-failed"),
+            (209, "test-child-frame-mismatch"),
+        ];
+
+        for (exit_code, code) in expected {
+            let failure = classify_named_pipe_test_child_exit(exit_code);
+            assert_eq!(failure.code(), code);
+            assert_eq!(failure.exit_code(), exit_code as i32);
+            assert!(!(101..=108).contains(&exit_code));
+            assert!(code
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte == b'-'));
+        }
+        assert_eq!(
+            classify_named_pipe_test_child_exit(101).code(),
+            "test-child-panic"
+        );
+        assert_eq!(
+            classify_named_pipe_test_child_exit(u32::MAX).code(),
+            "test-child-unexpected-exit"
+        );
+        assert_eq!(
+            NamedPipeTestFailure::Child(NamedPipeTestChildFailure::PipeConnect).code(),
+            "test-child-pipe-connect-failed"
+        );
+
+        let closed_parent_stages = [
+            NamedPipeTestFailure::ServerAccept,
+            NamedPipeTestFailure::SupervisorRead,
+            NamedPipeTestFailure::FrameMismatch,
+            NamedPipeTestFailure::SupervisorWrite,
+            NamedPipeTestFailure::ChildWait,
+            NamedPipeTestFailure::Timeout,
+        ];
+        for stage in closed_parent_stages {
+            let code = stage.code();
+            assert!(code.starts_with("test-"));
+            assert!(code
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte == b'-'));
+            assert!(!code.contains(['/', '\\', ' ', ':']));
+        }
+    }
+
+    #[test]
     fn maps_runtime_setup_failures_to_reachable_closed_diagnostics() {
         assert_eq!(
             runtime_code_for_supervisor_failure(SupervisorFailureStage::ControlFrame),
@@ -3961,39 +4137,46 @@ mod windows_native_tests {
             return;
         }
 
+        if let Err(failure) = run_appcontainer_named_pipe_client_child() {
+            std::process::exit(failure.exit_code());
+        }
+    }
+
+    fn run_appcontainer_named_pipe_client_child() -> Result<(), NamedPipeTestChildFailure> {
         use std::io::Read as _;
 
         let mut attempt_id_bytes = [0_u8; 32];
         std::io::stdin()
             .read_exact(&mut attempt_id_bytes)
-            .expect("the AppContainer test child must receive one exact attempt id");
+            .map_err(|_| NamedPipeTestChildFailure::Input)?;
         let attempt_id = std::str::from_utf8(&attempt_id_bytes)
-            .expect("the AppContainer test attempt id must be UTF-8");
-        let names = derive_pipe_names(attempt_id)
-            .expect("the AppContainer test child must derive the exact pipe names");
+            .map_err(|_| NamedPipeTestChildFailure::AttemptId)?;
+        let names =
+            derive_pipe_names(attempt_id).map_err(|_| NamedPipeTestChildFailure::PipeName)?;
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
-            .expect("the AppContainer test child runtime must start");
+            .map_err(|_| NamedPipeTestChildFailure::Runtime)?;
         runtime.block_on(async {
             let mut client = WindowsNamedPipeClient::connect_once(&names.capability)
-                .expect("the exact AppContainer SID must connect to the capability pipe");
+                .map_err(|_| NamedPipeTestChildFailure::PipeConnect)?;
             let frame = crate::windows_bridge::encode_json_frame(
                 &serde_json::json!({"contractVersion": 1, "kind": "appcontainer-test"}),
             )
-            .expect("the AppContainer test frame must encode");
+            .map_err(|_| NamedPipeTestChildFailure::FrameEncode)?;
             client
                 .write_frame(&frame)
                 .await
-                .expect("the AppContainer client must write to the capability pipe");
-            assert_eq!(
-                client
-                    .read_frame()
-                    .await
-                    .expect("the AppContainer client must read from the capability pipe"),
-                frame,
-            );
-        });
+                .map_err(|_| NamedPipeTestChildFailure::FrameWrite)?;
+            let observed = client
+                .read_frame()
+                .await
+                .map_err(|_| NamedPipeTestChildFailure::FrameRead)?;
+            if observed != frame {
+                return Err(NamedPipeTestChildFailure::FrameMismatch);
+            }
+            Ok(())
+        })
     }
 
     #[test]
@@ -4043,29 +4226,58 @@ mod windows_native_tests {
         pipes.close_supervisor_stdin();
 
         let mut accepted = pipe_runtime
-            .block_on(accept_runtime_pipe_or_worker_exit(
+            .block_on(accept_named_pipe_test_client_or_child_exit(
                 capability_pipe,
                 worker.process_handle(),
-                SupervisorFailureStage::CapabilityPipe,
             ))
-            .expect("the exact AppContainer SID must connect to the capability pipe");
+            .unwrap_or_else(|failure| {
+                panic!(
+                    "the AppContainer named-pipe test failed at bounded stage {}",
+                    failure.code()
+                )
+            });
         let expected = crate::windows_bridge::encode_json_frame(
             &serde_json::json!({"contractVersion": 1, "kind": "appcontainer-test"}),
         )
         .expect("the AppContainer test frame must encode");
         let observed = pipe_runtime
             .block_on(accepted.read_frame())
-            .expect("the Supervisor must read the AppContainer test frame");
-        assert_eq!(observed, expected);
+            .unwrap_or_else(|_| {
+                panic!(
+                    "the AppContainer named-pipe test failed at bounded stage {}",
+                    NamedPipeTestFailure::SupervisorRead.code()
+                )
+            });
+        if observed != expected {
+            panic!(
+                "the AppContainer named-pipe test failed at bounded stage {}",
+                NamedPipeTestFailure::FrameMismatch.code()
+            );
+        }
         pipe_runtime
             .block_on(accepted.write_frame(&expected))
-            .expect("the Supervisor must reply to the AppContainer test child");
+            .unwrap_or_else(|_| {
+                panic!(
+                    "the AppContainer named-pipe test failed at bounded stage {}",
+                    NamedPipeTestFailure::SupervisorWrite.code()
+                )
+            });
         drop(accepted);
-        assert_eq!(
-            worker.wait_for_exit(5_000),
-            Ok(0),
-            "the AppContainer named-pipe test child must exit cleanly",
-        );
+        match worker.wait_for_exit(5_000) {
+            Ok(0) => {}
+            Ok(exit_code) => {
+                let failure =
+                    NamedPipeTestFailure::Child(classify_named_pipe_test_child_exit(exit_code));
+                panic!(
+                    "the AppContainer named-pipe test failed at bounded stage {}",
+                    failure.code()
+                );
+            }
+            Err(()) => panic!(
+                "the AppContainer named-pipe test failed at bounded stage {}",
+                NamedPipeTestFailure::ChildWait.code()
+            ),
+        }
     }
 
     #[test]
