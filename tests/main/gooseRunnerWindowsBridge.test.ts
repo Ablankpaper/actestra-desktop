@@ -134,6 +134,7 @@ describe("Windows Goose runner bridge contract", () => {
         capabilityPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.capability`,
         modelPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.model`,
         attemptLease: "lease_0123456789abcdef0123456789abcdef",
+        modelAttemptLease: "model_0123456789abcdef0123456789abcdef",
         attemptId: "0123456789abcdef0123456789abcdef",
         executableSha256: "a".repeat(64),
         modelId: "test-model",
@@ -151,6 +152,7 @@ describe("Windows Goose runner bridge contract", () => {
       "attemptLease",
       "contractVersion",
       "executableSha256",
+      "modelAttemptLease",
       "modelId",
       "privateRoot",
       "resourceBudget",
@@ -162,6 +164,7 @@ describe("Windows Goose runner bridge contract", () => {
       attemptLease: options.windows?.attemptLease,
       contractVersion: 1,
       executableSha256: options.windows?.executableSha256,
+      modelAttemptLease: options.windows?.modelAttemptLease,
       modelId: options.windows?.modelId,
       privateRoot,
       resourceBudget: GOOSE_WORKER_RESOURCE_PROFILE,
@@ -187,6 +190,7 @@ describe("Windows Goose runner bridge contract", () => {
         capabilityPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.capability`,
         modelPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.model`,
         attemptLease: "lease_0123456789abcdef0123456789abcdef",
+        modelAttemptLease: "model_0123456789abcdef0123456789abcdef",
         attemptId: "0123456789abcdef0123456789abcdef",
         executableSha256: "a".repeat(64),
         modelId: "test-model",
@@ -242,6 +246,7 @@ describe("Windows Goose runner bridge contract", () => {
           capabilityPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.capability`,
           modelPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.model`,
           attemptLease: "lease_0123456789abcdef0123456789abcdef",
+          modelAttemptLease: "model_0123456789abcdef0123456789abcdef",
           attemptId: "0123456789abcdef0123456789abcdef",
           executableSha256: "a".repeat(64),
           modelId: "test-model",
@@ -365,6 +370,7 @@ describe("Windows Goose runner bridge contract", () => {
   it("hands the Windows supervisor only named-pipe metadata and a deny-all runner environment", async () => {
     const fixture = await createWindowsArtifact({ containment: true });
     const attemptLease = "lease_0123456789abcdef0123456789abcdef";
+    const modelAttemptLease = "model_0123456789abcdef0123456789abcdef";
     const capabilityPipeName = String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.capability`;
     const modelPipeName = String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.model`;
     let spawnOptions: GooseAcpSpawnOptions | undefined;
@@ -381,12 +387,17 @@ describe("Windows Goose runner bridge contract", () => {
             modelBinding: Object.freeze({
               baseUrl: "http://127.0.0.1:41002/v1",
               modelId: "test-model",
-              attemptLease,
+              attemptLease: modelAttemptLease,
             }),
             modelId: "test-model",
             capabilitySocketPath: path.join(root.bridgeDirectory, "capability.sock"),
             modelSocketPath: path.join(root.bridgeDirectory, "model.sock"),
-            windows: Object.freeze({ capabilityPipeName, modelPipeName, attemptLease }),
+            windows: Object.freeze({
+              capabilityPipeName,
+              modelPipeName,
+              attemptLease,
+              modelAttemptLease,
+            }),
             attachWindowsChannels() {},
             async close() {},
           }),
@@ -405,6 +416,7 @@ describe("Windows Goose runner bridge contract", () => {
       capabilityPipeName,
       modelPipeName,
       attemptLease,
+      modelAttemptLease,
       attemptId: "0123456789abcdef0123456789abcdef",
       executableSha256: fixture.artifact.executableSha256,
       modelId: "test-model",
@@ -420,6 +432,7 @@ describe("Windows Goose runner bridge contract", () => {
       expect(spawnOptions?.environment).not.toHaveProperty(forbiddenKey);
     }
     expect(Object.values(spawnOptions?.environment ?? {})).not.toContain(attemptLease);
+    expect(Object.values(spawnOptions?.environment ?? {})).not.toContain(modelAttemptLease);
     expect(Object.values(spawnOptions?.environment ?? {})).not.toContain(capabilityPipeName);
     expect(Object.values(spawnOptions?.environment ?? {})).not.toContain(modelPipeName);
     expect(spawnOptions?.environment.LOCALAPPDATA).toBe(

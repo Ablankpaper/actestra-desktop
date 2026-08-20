@@ -299,7 +299,12 @@ export async function openGooseMcpSessionComposition(
             return bridgeClosePromise;
           };
           return Object.freeze({
-            windows: Object.freeze({ capabilityPipeName, modelPipeName, attemptLease }),
+            windows: Object.freeze({
+              capabilityPipeName,
+              modelPipeName,
+              attemptLease,
+              modelAttemptLease,
+            }),
             modelId: options.modelId,
             attachWindowsChannels,
             close,

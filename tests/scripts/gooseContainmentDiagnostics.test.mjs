@@ -63,6 +63,22 @@ describe("Goose containment probe diagnostics", () => {
       "windows-worker-runtime-failed",
       "windows-runtime-timeout",
       "windows-runtime-cleanup-failed",
+      "windows-worker-control-frame-invalid",
+      "windows-worker-boundary-verification-failed",
+      "windows-worker-runtime-creation-failed",
+      "windows-worker-capability-pipe-access-denied",
+      "windows-worker-capability-pipe-busy",
+      "windows-worker-capability-pipe-unavailable",
+      "windows-worker-capability-pipe-unclassified",
+      "windows-worker-capability-bridge-failed",
+      "windows-worker-model-pipe-access-denied",
+      "windows-worker-model-pipe-busy",
+      "windows-worker-model-pipe-unavailable",
+      "windows-worker-model-pipe-unclassified",
+      "windows-worker-model-bridge-failed",
+      "windows-worker-state-directory-failed",
+      "windows-worker-ready-signal-failed",
+      "windows-worker-acp-handshake-failed",
     ]) {
       expect(
         classifyGooseContainmentProbeStderr(

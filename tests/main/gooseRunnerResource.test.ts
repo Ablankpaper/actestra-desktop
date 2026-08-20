@@ -163,11 +163,13 @@ describe("Goose runner native resource boundary", () => {
   it("requires the exact immutable Windows supervisor contract before spawn", () => {
     const root = path.resolve(os.tmpdir(), "actestra-goose-windows-options");
     const attemptLease = "lease_0123456789abcdef0123456789abcdef";
+    const modelAttemptLease = "model_0123456789abcdef0123456789abcdef";
     const windows = Object.freeze({
       supervisorMode: "--actestra-windows-supervisor-v1" as const,
       capabilityPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.capability`,
       modelPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.model`,
       attemptLease,
+      modelAttemptLease,
       attemptId: "0123456789abcdef0123456789abcdef",
       executableSha256: "a".repeat(64),
       modelId: "test-model",
@@ -194,7 +196,15 @@ describe("Goose runner native resource boundary", () => {
       Object.freeze({ ...exact, windows: { ...windows } }),
       Object.freeze({
         ...exact,
+        windows: Object.freeze({ ...windows, modelAttemptLease: attemptLease }),
+      }),
+      Object.freeze({
+        ...exact,
         environment: Object.freeze({ ...exact.environment, OPENAI_API_KEY: attemptLease }),
+      }),
+      Object.freeze({
+        ...exact,
+        environment: Object.freeze({ ...exact.environment, OPENAI_API_KEY: modelAttemptLease }),
       }),
     ]) {
       expect(() => assertGooseAcpSpawnOptions(invalid)).toThrowError(

@@ -10,15 +10,31 @@ const EXIT_BOUNDARY_VERIFICATION_FAILED: i32 = 102;
 #[cfg(any(windows, test))]
 const EXIT_RUNTIME_CREATION_FAILED: i32 = 103;
 #[cfg(any(windows, test))]
-const EXIT_CAPABILITY_PIPE_FAILED: i32 = 104;
+const EXIT_CAPABILITY_PIPE_ACCESS_DENIED: i32 = 104;
 #[cfg(any(windows, test))]
-const EXIT_MODEL_PIPE_FAILED: i32 = 105;
+const EXIT_CAPABILITY_PIPE_BUSY: i32 = 105;
 #[cfg(any(windows, test))]
-const EXIT_STATE_DIRECTORY_FAILED: i32 = 106;
+const EXIT_CAPABILITY_PIPE_UNAVAILABLE: i32 = 106;
 #[cfg(any(windows, test))]
-const EXIT_READY_SIGNAL_FAILED: i32 = 107;
+const EXIT_CAPABILITY_PIPE_UNCLASSIFIED: i32 = 107;
 #[cfg(any(windows, test))]
-const EXIT_ACP_HANDSHAKE_FAILED: i32 = 108;
+const EXIT_CAPABILITY_BRIDGE_FAILED: i32 = 108;
+#[cfg(any(windows, test))]
+const EXIT_MODEL_PIPE_ACCESS_DENIED: i32 = 109;
+#[cfg(any(windows, test))]
+const EXIT_MODEL_PIPE_BUSY: i32 = 110;
+#[cfg(any(windows, test))]
+const EXIT_MODEL_PIPE_UNAVAILABLE: i32 = 111;
+#[cfg(any(windows, test))]
+const EXIT_MODEL_PIPE_UNCLASSIFIED: i32 = 112;
+#[cfg(any(windows, test))]
+const EXIT_MODEL_BRIDGE_FAILED: i32 = 113;
+#[cfg(any(windows, test))]
+const EXIT_STATE_DIRECTORY_FAILED: i32 = 114;
+#[cfg(any(windows, test))]
+const EXIT_READY_SIGNAL_FAILED: i32 = 115;
+#[cfg(any(windows, test))]
+const EXIT_ACP_HANDSHAKE_FAILED: i32 = 116;
 
 #[cfg(windows)]
 use crate::containment::windows_contract::{
@@ -33,12 +49,16 @@ use crate::containment::windows_contract::{
 use crate::windows_capability_bridge::WindowsCapabilityClient;
 #[cfg(windows)]
 use crate::windows_model_bridge::WindowsModelProvider;
+#[cfg(any(windows, test))]
+use crate::windows_named_pipe::WindowsNamedPipeConnectFailure;
 #[cfg(windows)]
-use crate::windows_named_pipe::{WindowsNamedPipeClient, WindowsNamedPipeServer};
+use crate::windows_named_pipe::{
+    WindowsNamedPipeClient, WindowsNamedPipeError, WindowsNamedPipeServer,
+};
 #[cfg(windows)]
 const WINDOWS_WORKER_READY_MARKER: &[u8] = b"ACTESTRA_GOOSE_WINDOWS_WORKER_READY\n";
 #[cfg(any(windows, test))]
-const WINDOWS_RUNTIME_FAILURE_CODES: [&str; 18] = [
+const WINDOWS_RUNTIME_FAILURE_CODES: [&str; 26] = [
     "windows-control-channel-invalid",
     "windows-ready-channel-invalid",
     "windows-capability-pipe-invalid",
@@ -52,8 +72,16 @@ const WINDOWS_RUNTIME_FAILURE_CODES: [&str; 18] = [
     "windows-worker-control-frame-invalid",
     "windows-worker-boundary-verification-failed",
     "windows-worker-runtime-creation-failed",
-    "windows-worker-capability-pipe-failed",
-    "windows-worker-model-pipe-failed",
+    "windows-worker-capability-pipe-access-denied",
+    "windows-worker-capability-pipe-busy",
+    "windows-worker-capability-pipe-unavailable",
+    "windows-worker-capability-pipe-unclassified",
+    "windows-worker-capability-bridge-failed",
+    "windows-worker-model-pipe-access-denied",
+    "windows-worker-model-pipe-busy",
+    "windows-worker-model-pipe-unavailable",
+    "windows-worker-model-pipe-unclassified",
+    "windows-worker-model-bridge-failed",
     "windows-worker-state-directory-failed",
     "windows-worker-ready-signal-failed",
     "windows-worker-acp-handshake-failed",
@@ -614,7 +642,7 @@ impl WorkerLaunchFailureStage {
 }
 
 /// Exit protocol owned only by the synthetic AppContainer named-pipe child used by the native
-/// regression test. These values deliberately do not overlap the production Worker's `101..=108`
+/// regression test. These values deliberately do not overlap the production Worker's `101..=116`
 /// startup protocol, so a libtest panic or a test-stage failure cannot be misreported as a
 /// production control-frame failure.
 #[cfg(test)]
@@ -624,7 +652,10 @@ enum NamedPipeTestChildFailure {
     AttemptId,
     PipeName,
     Runtime,
-    PipeConnect,
+    PipeAccessDenied,
+    PipeBusy,
+    PipeUnavailable,
+    PipeUnclassified,
     FrameEncode,
     FrameWrite,
     FrameRead,
@@ -641,12 +672,15 @@ impl NamedPipeTestChildFailure {
             Self::AttemptId => 202,
             Self::PipeName => 203,
             Self::Runtime => 204,
-            Self::PipeConnect => 205,
-            Self::FrameEncode => 206,
-            Self::FrameWrite => 207,
-            Self::FrameRead => 208,
-            Self::FrameMismatch => 209,
-            Self::Panic | Self::UnexpectedExit => 210,
+            Self::PipeAccessDenied => 205,
+            Self::PipeBusy => 206,
+            Self::PipeUnavailable => 207,
+            Self::PipeUnclassified => 208,
+            Self::FrameEncode => 209,
+            Self::FrameWrite => 210,
+            Self::FrameRead => 211,
+            Self::FrameMismatch => 212,
+            Self::Panic | Self::UnexpectedExit => 213,
         }
     }
 
@@ -656,7 +690,10 @@ impl NamedPipeTestChildFailure {
             Self::AttemptId => "test-child-attempt-id-invalid",
             Self::PipeName => "test-child-pipe-name-invalid",
             Self::Runtime => "test-child-runtime-failed",
-            Self::PipeConnect => "test-child-pipe-connect-failed",
+            Self::PipeAccessDenied => "test-child-pipe-access-denied",
+            Self::PipeBusy => "test-child-pipe-busy",
+            Self::PipeUnavailable => "test-child-pipe-unavailable",
+            Self::PipeUnclassified => "test-child-pipe-unclassified",
             Self::FrameEncode => "test-child-frame-encode-failed",
             Self::FrameWrite => "test-child-frame-write-failed",
             Self::FrameRead => "test-child-frame-read-failed",
@@ -674,11 +711,14 @@ fn classify_named_pipe_test_child_exit(exit_code: u32) -> NamedPipeTestChildFail
         202 => NamedPipeTestChildFailure::AttemptId,
         203 => NamedPipeTestChildFailure::PipeName,
         204 => NamedPipeTestChildFailure::Runtime,
-        205 => NamedPipeTestChildFailure::PipeConnect,
-        206 => NamedPipeTestChildFailure::FrameEncode,
-        207 => NamedPipeTestChildFailure::FrameWrite,
-        208 => NamedPipeTestChildFailure::FrameRead,
-        209 => NamedPipeTestChildFailure::FrameMismatch,
+        205 => NamedPipeTestChildFailure::PipeAccessDenied,
+        206 => NamedPipeTestChildFailure::PipeBusy,
+        207 => NamedPipeTestChildFailure::PipeUnavailable,
+        208 => NamedPipeTestChildFailure::PipeUnclassified,
+        209 => NamedPipeTestChildFailure::FrameEncode,
+        210 => NamedPipeTestChildFailure::FrameWrite,
+        211 => NamedPipeTestChildFailure::FrameRead,
+        212 => NamedPipeTestChildFailure::FrameMismatch,
         // Rust's libtest harness reserves 101 for a test panic.
         101 => NamedPipeTestChildFailure::Panic,
         _ => NamedPipeTestChildFailure::UnexpectedExit,
@@ -694,8 +734,16 @@ enum WorkerStartupFailure {
     ControlFrame,
     BoundaryVerification,
     RuntimeCreation,
-    CapabilityPipe,
-    ModelPipe,
+    CapabilityPipeAccessDenied,
+    CapabilityPipeBusy,
+    CapabilityPipeUnavailable,
+    CapabilityPipeUnclassified,
+    CapabilityBridge,
+    ModelPipeAccessDenied,
+    ModelPipeBusy,
+    ModelPipeUnavailable,
+    ModelPipeUnclassified,
+    ModelBridge,
     StateDirectory,
     ReadySignal,
     AcpHandshake,
@@ -708,11 +756,19 @@ fn classify_worker_startup_exit(exit_code: u32) -> WorkerStartupFailure {
         101 => WorkerStartupFailure::ControlFrame,
         102 => WorkerStartupFailure::BoundaryVerification,
         103 => WorkerStartupFailure::RuntimeCreation,
-        104 => WorkerStartupFailure::CapabilityPipe,
-        105 => WorkerStartupFailure::ModelPipe,
-        106 => WorkerStartupFailure::StateDirectory,
-        107 => WorkerStartupFailure::ReadySignal,
-        108 => WorkerStartupFailure::AcpHandshake,
+        104 => WorkerStartupFailure::CapabilityPipeAccessDenied,
+        105 => WorkerStartupFailure::CapabilityPipeBusy,
+        106 => WorkerStartupFailure::CapabilityPipeUnavailable,
+        107 => WorkerStartupFailure::CapabilityPipeUnclassified,
+        108 => WorkerStartupFailure::CapabilityBridge,
+        109 => WorkerStartupFailure::ModelPipeAccessDenied,
+        110 => WorkerStartupFailure::ModelPipeBusy,
+        111 => WorkerStartupFailure::ModelPipeUnavailable,
+        112 => WorkerStartupFailure::ModelPipeUnclassified,
+        113 => WorkerStartupFailure::ModelBridge,
+        114 => WorkerStartupFailure::StateDirectory,
+        115 => WorkerStartupFailure::ReadySignal,
+        116 => WorkerStartupFailure::AcpHandshake,
         _ => WorkerStartupFailure::Unknown,
     }
 }
@@ -724,11 +780,19 @@ impl WorkerStartupFailure {
             Self::ControlFrame => 47,
             Self::BoundaryVerification => 48,
             Self::RuntimeCreation => 49,
-            Self::CapabilityPipe => 50,
-            Self::ModelPipe => 51,
-            Self::StateDirectory => 52,
-            Self::ReadySignal => 53,
-            Self::AcpHandshake => 54,
+            Self::CapabilityPipeAccessDenied => 50,
+            Self::CapabilityPipeBusy => 51,
+            Self::CapabilityPipeUnavailable => 52,
+            Self::CapabilityPipeUnclassified => 53,
+            Self::CapabilityBridge => 54,
+            Self::ModelPipeAccessDenied => 55,
+            Self::ModelPipeBusy => 56,
+            Self::ModelPipeUnavailable => 57,
+            Self::ModelPipeUnclassified => 58,
+            Self::ModelBridge => 59,
+            Self::StateDirectory => 60,
+            Self::ReadySignal => 61,
+            Self::AcpHandshake => 62,
             Self::Unknown => 46,
         }
     }
@@ -738,13 +802,41 @@ impl WorkerStartupFailure {
             Self::ControlFrame => "windows-worker-control-frame-invalid",
             Self::BoundaryVerification => "windows-worker-boundary-verification-failed",
             Self::RuntimeCreation => "windows-worker-runtime-creation-failed",
-            Self::CapabilityPipe => "windows-worker-capability-pipe-failed",
-            Self::ModelPipe => "windows-worker-model-pipe-failed",
+            Self::CapabilityPipeAccessDenied => "windows-worker-capability-pipe-access-denied",
+            Self::CapabilityPipeBusy => "windows-worker-capability-pipe-busy",
+            Self::CapabilityPipeUnavailable => "windows-worker-capability-pipe-unavailable",
+            Self::CapabilityPipeUnclassified => "windows-worker-capability-pipe-unclassified",
+            Self::CapabilityBridge => "windows-worker-capability-bridge-failed",
+            Self::ModelPipeAccessDenied => "windows-worker-model-pipe-access-denied",
+            Self::ModelPipeBusy => "windows-worker-model-pipe-busy",
+            Self::ModelPipeUnavailable => "windows-worker-model-pipe-unavailable",
+            Self::ModelPipeUnclassified => "windows-worker-model-pipe-unclassified",
+            Self::ModelBridge => "windows-worker-model-bridge-failed",
             Self::StateDirectory => "windows-worker-state-directory-failed",
             Self::ReadySignal => "windows-worker-ready-signal-failed",
             Self::AcpHandshake => "windows-worker-acp-handshake-failed",
             Self::Unknown => "windows-worker-runtime-failed",
         }
+    }
+}
+
+#[cfg(any(windows, test))]
+fn capability_pipe_exit_code(failure: WindowsNamedPipeConnectFailure) -> i32 {
+    match failure {
+        WindowsNamedPipeConnectFailure::AccessDenied => EXIT_CAPABILITY_PIPE_ACCESS_DENIED,
+        WindowsNamedPipeConnectFailure::Busy => EXIT_CAPABILITY_PIPE_BUSY,
+        WindowsNamedPipeConnectFailure::Unavailable => EXIT_CAPABILITY_PIPE_UNAVAILABLE,
+        WindowsNamedPipeConnectFailure::Unclassified => EXIT_CAPABILITY_PIPE_UNCLASSIFIED,
+    }
+}
+
+#[cfg(any(windows, test))]
+fn model_pipe_exit_code(failure: WindowsNamedPipeConnectFailure) -> i32 {
+    match failure {
+        WindowsNamedPipeConnectFailure::AccessDenied => EXIT_MODEL_PIPE_ACCESS_DENIED,
+        WindowsNamedPipeConnectFailure::Busy => EXIT_MODEL_PIPE_BUSY,
+        WindowsNamedPipeConnectFailure::Unavailable => EXIT_MODEL_PIPE_UNAVAILABLE,
+        WindowsNamedPipeConnectFailure::Unclassified => EXIT_MODEL_PIPE_UNCLASSIFIED,
     }
 }
 
@@ -2668,15 +2760,24 @@ pub(crate) fn run_worker_with_arguments(_arguments: &[String]) -> i32 {
         let ready_handle = ready_value as usize as HANDLE;
         let result = pipe_runtime.block_on(async {
             let capability_pipe = WindowsNamedPipeClient::connect_once(&pipe_names.capability)
-                .map_err(|_| EXIT_CAPABILITY_PIPE_FAILED)?;
+                .map_err(|error| match error {
+                    WindowsNamedPipeError::ClientConnect(failure) => {
+                        capability_pipe_exit_code(failure)
+                    }
+                    _ => EXIT_CAPABILITY_PIPE_UNCLASSIFIED,
+                })?;
             startup
                 .advance(WorkerStartupStage::CapabilityConnected)
-                .map_err(|_| EXIT_CAPABILITY_PIPE_FAILED)?;
-            let model_pipe = WindowsNamedPipeClient::connect_once(&pipe_names.model)
-                .map_err(|_| EXIT_MODEL_PIPE_FAILED)?;
+                .map_err(|_| EXIT_CAPABILITY_BRIDGE_FAILED)?;
+            let model_pipe = WindowsNamedPipeClient::connect_once(&pipe_names.model).map_err(
+                |error| match error {
+                    WindowsNamedPipeError::ClientConnect(failure) => model_pipe_exit_code(failure),
+                    _ => EXIT_MODEL_PIPE_UNCLASSIFIED,
+                },
+            )?;
             startup
                 .advance(WorkerStartupStage::ModelConnected)
-                .map_err(|_| EXIT_MODEL_PIPE_FAILED)?;
+                .map_err(|_| EXIT_MODEL_BRIDGE_FAILED)?;
 
             let session_id = std::sync::Arc::new(tokio::sync::OnceCell::new());
             let capability_client = WindowsCapabilityClient::new(
@@ -2684,14 +2785,14 @@ pub(crate) fn run_worker_with_arguments(_arguments: &[String]) -> i32 {
                 control.attempt_lease.clone(),
                 session_id.clone(),
             )
-            .map_err(|_| EXIT_CAPABILITY_PIPE_FAILED)?;
+            .map_err(|_| EXIT_CAPABILITY_BRIDGE_FAILED)?;
             let model_provider = WindowsModelProvider::new(
                 model_pipe,
-                control.attempt_lease.clone(),
+                control.model_attempt_lease.clone(),
                 session_id,
                 control.model_id.clone(),
             )
-            .map_err(|_| EXIT_MODEL_PIPE_FAILED)?;
+            .map_err(|_| EXIT_MODEL_BRIDGE_FAILED)?;
             let (data_dir, config_dir) = prepare_goose_state_directories(&control.private_root)
                 .map_err(|_| EXIT_STATE_DIRECTORY_FAILED)?;
             let adapter = goose::acp::server::AcpRuntimeAdapter {
@@ -2713,7 +2814,7 @@ pub(crate) fn run_worker_with_arguments(_arguments: &[String]) -> i32 {
             };
             startup
                 .advance(WorkerStartupStage::AdaptersConstructed)
-                .map_err(|_| EXIT_STATE_DIRECTORY_FAILED)?;
+                .map_err(|_| EXIT_MODEL_BRIDGE_FAILED)?;
             let ready_result = write_all_handle(ready_handle, WINDOWS_WORKER_READY_MARKER);
             unsafe { CloseHandle(ready_handle) };
             if ready_result.is_err() {
@@ -3619,7 +3720,7 @@ mod tests {
 
     #[test]
     fn keeps_runtime_failure_codes_closed_and_sanitized() {
-        assert_eq!(WINDOWS_RUNTIME_FAILURE_CODES.len(), 18);
+        assert_eq!(WINDOWS_RUNTIME_FAILURE_CODES.len(), 26);
         let mut unique = WINDOWS_RUNTIME_FAILURE_CODES.to_vec();
         unique.sort_unstable();
         unique.dedup();
@@ -3635,6 +3736,30 @@ mod tests {
 
     #[test]
     fn maps_each_worker_startup_exit_code_to_a_distinct_closed_runtime_code() {
+        let connect_failures = [
+            WindowsNamedPipeConnectFailure::AccessDenied,
+            WindowsNamedPipeConnectFailure::Busy,
+            WindowsNamedPipeConnectFailure::Unavailable,
+            WindowsNamedPipeConnectFailure::Unclassified,
+        ];
+        assert_eq!(
+            connect_failures.map(capability_pipe_exit_code),
+            [
+                EXIT_CAPABILITY_PIPE_ACCESS_DENIED,
+                EXIT_CAPABILITY_PIPE_BUSY,
+                EXIT_CAPABILITY_PIPE_UNAVAILABLE,
+                EXIT_CAPABILITY_PIPE_UNCLASSIFIED,
+            ]
+        );
+        assert_eq!(
+            connect_failures.map(model_pipe_exit_code),
+            [
+                EXIT_MODEL_PIPE_ACCESS_DENIED,
+                EXIT_MODEL_PIPE_BUSY,
+                EXIT_MODEL_PIPE_UNAVAILABLE,
+                EXIT_MODEL_PIPE_UNCLASSIFIED,
+            ]
+        );
         let expected = [
             (
                 EXIT_CONTROL_FRAME_INVALID,
@@ -3649,10 +3774,42 @@ mod tests {
                 "windows-worker-runtime-creation-failed",
             ),
             (
-                EXIT_CAPABILITY_PIPE_FAILED,
-                "windows-worker-capability-pipe-failed",
+                EXIT_CAPABILITY_PIPE_ACCESS_DENIED,
+                "windows-worker-capability-pipe-access-denied",
             ),
-            (EXIT_MODEL_PIPE_FAILED, "windows-worker-model-pipe-failed"),
+            (
+                EXIT_CAPABILITY_PIPE_BUSY,
+                "windows-worker-capability-pipe-busy",
+            ),
+            (
+                EXIT_CAPABILITY_PIPE_UNAVAILABLE,
+                "windows-worker-capability-pipe-unavailable",
+            ),
+            (
+                EXIT_CAPABILITY_PIPE_UNCLASSIFIED,
+                "windows-worker-capability-pipe-unclassified",
+            ),
+            (
+                EXIT_CAPABILITY_BRIDGE_FAILED,
+                "windows-worker-capability-bridge-failed",
+            ),
+            (
+                EXIT_MODEL_PIPE_ACCESS_DENIED,
+                "windows-worker-model-pipe-access-denied",
+            ),
+            (EXIT_MODEL_PIPE_BUSY, "windows-worker-model-pipe-busy"),
+            (
+                EXIT_MODEL_PIPE_UNAVAILABLE,
+                "windows-worker-model-pipe-unavailable",
+            ),
+            (
+                EXIT_MODEL_PIPE_UNCLASSIFIED,
+                "windows-worker-model-pipe-unclassified",
+            ),
+            (
+                EXIT_MODEL_BRIDGE_FAILED,
+                "windows-worker-model-bridge-failed",
+            ),
             (
                 EXIT_STATE_DIRECTORY_FAILED,
                 "windows-worker-state-directory-failed",
@@ -3705,18 +3862,21 @@ mod tests {
             (202, "test-child-attempt-id-invalid"),
             (203, "test-child-pipe-name-invalid"),
             (204, "test-child-runtime-failed"),
-            (205, "test-child-pipe-connect-failed"),
-            (206, "test-child-frame-encode-failed"),
-            (207, "test-child-frame-write-failed"),
-            (208, "test-child-frame-read-failed"),
-            (209, "test-child-frame-mismatch"),
+            (205, "test-child-pipe-access-denied"),
+            (206, "test-child-pipe-busy"),
+            (207, "test-child-pipe-unavailable"),
+            (208, "test-child-pipe-unclassified"),
+            (209, "test-child-frame-encode-failed"),
+            (210, "test-child-frame-write-failed"),
+            (211, "test-child-frame-read-failed"),
+            (212, "test-child-frame-mismatch"),
         ];
 
         for (exit_code, code) in expected {
             let failure = classify_named_pipe_test_child_exit(exit_code);
             assert_eq!(failure.code(), code);
             assert_eq!(failure.exit_code(), exit_code as i32);
-            assert!(!(101..=108).contains(&exit_code));
+            assert!(!(101..=116).contains(&exit_code));
             assert!(code
                 .bytes()
                 .all(|byte| byte.is_ascii_lowercase() || byte == b'-'));
@@ -3730,8 +3890,8 @@ mod tests {
             "test-child-unexpected-exit"
         );
         assert_eq!(
-            NamedPipeTestFailure::Child(NamedPipeTestChildFailure::PipeConnect).code(),
-            "test-child-pipe-connect-failed"
+            NamedPipeTestFailure::Child(NamedPipeTestChildFailure::PipeBusy).code(),
+            "test-child-pipe-busy"
         );
 
         let closed_parent_stages = [
@@ -4158,8 +4318,23 @@ mod windows_native_tests {
             .build()
             .map_err(|_| NamedPipeTestChildFailure::Runtime)?;
         runtime.block_on(async {
-            let mut client = WindowsNamedPipeClient::connect_once(&names.capability)
-                .map_err(|_| NamedPipeTestChildFailure::PipeConnect)?;
+            let mut client = WindowsNamedPipeClient::connect_once(&names.capability).map_err(
+                |error| match error {
+                    WindowsNamedPipeError::ClientConnect(
+                        WindowsNamedPipeConnectFailure::AccessDenied,
+                    ) => NamedPipeTestChildFailure::PipeAccessDenied,
+                    WindowsNamedPipeError::ClientConnect(WindowsNamedPipeConnectFailure::Busy) => {
+                        NamedPipeTestChildFailure::PipeBusy
+                    }
+                    WindowsNamedPipeError::ClientConnect(
+                        WindowsNamedPipeConnectFailure::Unavailable,
+                    ) => NamedPipeTestChildFailure::PipeUnavailable,
+                    WindowsNamedPipeError::ClientConnect(
+                        WindowsNamedPipeConnectFailure::Unclassified,
+                    )
+                    | _ => NamedPipeTestChildFailure::PipeUnclassified,
+                },
+            )?;
             let frame = crate::windows_bridge::encode_json_frame(
                 &serde_json::json!({"contractVersion": 1, "kind": "appcontainer-test"}),
             )

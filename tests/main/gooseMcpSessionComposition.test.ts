@@ -98,6 +98,8 @@ describe("Goose MCP session composition", () => {
     Object.defineProperty(process, "platform", { ...originalPlatform, value: "win32" });
     const events: string[] = [];
     let attached = false;
+    let capabilityHostLease: string | undefined;
+    let modelHostLease: string | undefined;
     const modelHost = modelServerDouble({
       bindSession(sessionId: string) {
         events.push(`model:bind:${sessionId}`);
@@ -121,8 +123,14 @@ describe("Goose MCP session composition", () => {
       startModelServer: async () => {
         throw new Error("Windows must not start loopback model server");
       },
-      startWindowsCapabilityHost: () => capabilityHost,
-      startWindowsModelHost: () => modelHost,
+      startWindowsCapabilityHost: (options) => {
+        capabilityHostLease = options.attemptLease;
+        return capabilityHost;
+      },
+      startWindowsModelHost: (options) => {
+        modelHostLease = options.attemptLease;
+        return modelHost;
+      },
       async openRunnerHandshake(options) {
         const bridge = await options.prepareBridge!(
           Object.freeze({
@@ -133,6 +141,13 @@ describe("Goose MCP session composition", () => {
           }),
         );
         bridge.attachWindowsChannels?.({ capability: {} as never, model: {} as never });
+        expect(capabilityHostLease).toBeDefined();
+        expect(modelHostLease).toBeDefined();
+        expect(modelHostLease).not.toBe(capabilityHostLease);
+        expect(bridge.windows).toMatchObject({
+          attemptLease: capabilityHostLease,
+          modelAttemptLease: modelHostLease,
+        });
         attached = true;
         return Object.freeze({
           info: runnerInfo,

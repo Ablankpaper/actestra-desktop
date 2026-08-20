@@ -2,6 +2,69 @@
 
 Last updated: 2026-08-20
 
+## 2026-08-20 P8.2c Windows authenticated runtime: dual-lease and pipe-open diagnosis (local green; exact-head native rerun pending)
+
+Exact-head pull-request CI run
+[`32368899818`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32368899818)
+for source head `f8241f2d78b9982c5111bc016f8d028b2019e5e2` independently
+passed Windows containment, both Ubuntu jobs, Goose admission, and the macOS
+foundation/package/smoke job. The Windows build-probe native suite alone failed
+its synthetic AppContainer pipe exchange at the old bounded token
+`test-child-pipe-connect-failed`; the authenticated-runtime job separately
+failed at the old broad token
+`windows-runtime-worker-capability-pipe-failed`. The downloaded Windows
+containment record is `verified` and has SHA-256
+`61a97510d03268514a438eee967922bae3f143f5b4b96ecaaf61fcf9aa2b4a91`.
+The downloaded runtime failure record has SHA-256
+`445ea7f6ad9b63d1560f3a4e29b198ec3f27fb11c4f7d9795410d7db8ad8edec`.
+Because the authenticated-runtime job's production runner and the build-probe
+job's synthetic child disagreed on the same head, this evidence does not prove
+a stable ACL denial and does not authorize a wider SID, network capability,
+namespace, or unconditional retry.
+
+Review of the production composition found one independent static protocol
+defect. Main already created separate capability and model attempt leases, but
+the Windows control frame carried only the capability lease and the Worker
+reused it for both bridge clients. The local remediation carries a distinct
+`modelAttemptLease` through the immutable Main spawn contract and one-shot
+control frame, requires both opaque leases to be valid and unequal, keeps both
+out of the Worker environment, and gives the model provider only the model
+lease. Capability and model host tests lock the two independent values.
+
+The same remediation replaces both broad Worker pipe-open stages with closed,
+sanitized cause classes: access denied, busy, unavailable, unclassified, and a
+separate post-open bridge-construction failure for each of capability and model.
+The synthetic AppContainer child uses the same four open-failure classes. The
+classification includes Windows file/path-not-found, semaphore timeout, bad
+pipe, no data, pipe-not-connected, and pipe-listening outcomes as unavailable;
+no raw Win32 code, path, pipe name, SID, PID, lease, or child output crosses the
+diagnostic boundary. Rust, Main, containment evidence, and final runtime
+evidence share regression-locked closed tokens. No retry is implemented; only
+new native evidence of `busy` or `unavailable` may justify a bounded retry,
+while access denied remains immediate fail-closed.
+
+Fresh local evidence passes: runner Rust formatting and `cargo test --locked`
+(`84/84`), the affected five Bun files (`74/74`), `git diff --check`, and the
+complete `bun run check` gate at exit `0` with `171` test files passed / `3`
+platform files skipped and `1840` tests passed / `10` skipped. That gate also
+passes format, zero-warning lint, typecheck, P8 contract, Electron SQLite, P7
+abuse cases, smoke harness, product boundary, frozen foundation, downstream
+materialization, and package build. A full macOS-hosted
+`cargo check --locked --target x86_64-pc-windows-msvc --tests` still stops in
+the existing native C dependency layer because `libsqlite3-sys` and `zstd-sys`
+cannot find the Windows MSVC CRT headers on this Mac; it is not Windows compile
+or runtime evidence.
+
+P8.2c remains open. The next gate is one newly pushed exact-head run that
+compiles and executes the expanded Windows diagnostics. A `busy` or
+`unavailable` result requires a RED test before any bounded retry; an
+access-denied result requires security-descriptor investigation without wider
+authority; a bridge result requires lease/adapter composition investigation.
+Only a successful Windows authenticated-runtime Artifact downloaded and
+independently revalidated can close P8.2c. Windows Electron/package acceptance,
+P8.2 overall, P8.3, P8.4, release, deployment, and user acceptance remain
+separate and open.
+
 ## 2026-08-20 P8.2c Windows authenticated runtime: diagnostic protocol repair pending
 
 Exact-head CI run

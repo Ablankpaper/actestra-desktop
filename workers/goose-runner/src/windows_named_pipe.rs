@@ -18,6 +18,40 @@ pub(crate) enum WindowsNamedPipeError {
     SecurityPolicyUnavailable,
     #[cfg(windows)]
     EndpointUnavailable,
+    #[cfg(windows)]
+    ClientConnect(WindowsNamedPipeConnectFailure),
+}
+
+#[cfg(any(windows, test))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum WindowsNamedPipeConnectFailure {
+    AccessDenied,
+    Busy,
+    Unavailable,
+    Unclassified,
+}
+
+#[cfg(any(windows, test))]
+impl WindowsNamedPipeConnectFailure {
+    #[cfg(test)]
+    pub(crate) fn code(self) -> &'static str {
+        match self {
+            Self::AccessDenied => "access-denied",
+            Self::Busy => "busy",
+            Self::Unavailable => "unavailable",
+            Self::Unclassified => "unclassified",
+        }
+    }
+}
+
+#[cfg(any(windows, test))]
+fn classify_client_open_failure(raw_code: Option<i32>) -> WindowsNamedPipeConnectFailure {
+    match raw_code {
+        Some(5) => WindowsNamedPipeConnectFailure::AccessDenied,
+        Some(231) => WindowsNamedPipeConnectFailure::Busy,
+        Some(2 | 3 | 121 | 230 | 232 | 233 | 536) => WindowsNamedPipeConnectFailure::Unavailable,
+        Some(_) | None => WindowsNamedPipeConnectFailure::Unclassified,
+    }
 }
 
 pub(crate) fn validate_pipe_name(name: &str) -> Result<WindowsPipeEndpoint, WindowsNamedPipeError> {
@@ -347,7 +381,11 @@ impl WindowsNamedPipeClient {
         let client = ClientOptions::new()
             .pipe_mode(PipeMode::Byte)
             .open(name)
-            .map_err(|_| WindowsNamedPipeError::EndpointUnavailable)?;
+            .map_err(|error| {
+                WindowsNamedPipeError::ClientConnect(classify_client_open_failure(
+                    error.raw_os_error(),
+                ))
+            })?;
         Ok(WindowsBridgeChannel::new(client))
     }
 }
@@ -355,6 +393,40 @@ impl WindowsNamedPipeClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn classifies_client_open_failures_into_a_closed_sanitized_set() {
+        assert_eq!(
+            classify_client_open_failure(Some(5)),
+            WindowsNamedPipeConnectFailure::AccessDenied
+        );
+        assert_eq!(
+            classify_client_open_failure(Some(231)),
+            WindowsNamedPipeConnectFailure::Busy
+        );
+        for raw_code in [2, 3, 121, 230, 232, 233, 536] {
+            assert_eq!(
+                classify_client_open_failure(Some(raw_code)),
+                WindowsNamedPipeConnectFailure::Unavailable
+            );
+        }
+        for raw_code in [None, Some(1), Some(i32::MAX)] {
+            assert_eq!(
+                classify_client_open_failure(raw_code),
+                WindowsNamedPipeConnectFailure::Unclassified
+            );
+        }
+        let failures = [
+            WindowsNamedPipeConnectFailure::AccessDenied,
+            WindowsNamedPipeConnectFailure::Busy,
+            WindowsNamedPipeConnectFailure::Unavailable,
+            WindowsNamedPipeConnectFailure::Unclassified,
+        ];
+        assert_eq!(
+            failures.map(WindowsNamedPipeConnectFailure::code),
+            ["access-denied", "busy", "unavailable", "unclassified"]
+        );
+    }
 
     #[test]
     fn accepts_only_exact_attempt_scoped_pipe_names() {

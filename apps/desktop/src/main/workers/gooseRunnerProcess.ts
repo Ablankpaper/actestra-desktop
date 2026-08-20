@@ -76,8 +76,16 @@ export const GOOSE_WINDOWS_WORKER_STARTUP_STAGES = Object.freeze([
   "windows-worker-control-frame-invalid",
   "windows-worker-boundary-verification-failed",
   "windows-worker-runtime-creation-failed",
-  "windows-worker-capability-pipe-failed",
-  "windows-worker-model-pipe-failed",
+  "windows-worker-capability-pipe-access-denied",
+  "windows-worker-capability-pipe-busy",
+  "windows-worker-capability-pipe-unavailable",
+  "windows-worker-capability-pipe-unclassified",
+  "windows-worker-capability-bridge-failed",
+  "windows-worker-model-pipe-access-denied",
+  "windows-worker-model-pipe-busy",
+  "windows-worker-model-pipe-unavailable",
+  "windows-worker-model-pipe-unclassified",
+  "windows-worker-model-bridge-failed",
   "windows-worker-state-directory-failed",
   "windows-worker-ready-signal-failed",
   "windows-worker-acp-handshake-failed",
@@ -124,6 +132,7 @@ export interface GooseAcpSpawnOptions {
     readonly capabilityPipeName: string;
     readonly modelPipeName: string;
     readonly attemptLease: string;
+    readonly modelAttemptLease: string;
     readonly attemptId: string;
     readonly executableSha256: string;
     readonly modelId: string;
@@ -203,6 +212,7 @@ export interface GooseRunnerWindowsBridgeEnvironment {
   readonly capabilityPipeName: string;
   readonly modelPipeName: string;
   readonly attemptLease: string;
+  readonly modelAttemptLease: string;
 }
 
 export type GooseRunnerBridgeFactory = (
@@ -333,7 +343,7 @@ function hasExactWindowsSupervisorSpawnContract(options: GooseAcpSpawnOptions): 
   if (
     windows === undefined ||
     !Object.isFrozen(windows) ||
-    Reflect.ownKeys(windows).length !== 8 ||
+    Reflect.ownKeys(windows).length !== 9 ||
     Reflect.ownKeys(windows).some(
       (key) =>
         typeof key !== "string" ||
@@ -342,6 +352,7 @@ function hasExactWindowsSupervisorSpawnContract(options: GooseAcpSpawnOptions): 
           "attemptId",
           "capabilityPipeName",
           "executableSha256",
+          "modelAttemptLease",
           "modelId",
           "modelPipeName",
           "supervisorMode",
@@ -368,7 +379,11 @@ function hasExactWindowsSupervisorSpawnContract(options: GooseAcpSpawnOptions): 
     windows.targetTriple !== "x86_64-pc-windows-msvc" ||
     windows.attemptLease.length < 32 ||
     windows.attemptLease.length > 256 ||
-    !/^[A-Za-z0-9._~-]+$/.test(windows.attemptLease)
+    !/^[A-Za-z0-9._~-]+$/.test(windows.attemptLease) ||
+    windows.modelAttemptLease.length < 32 ||
+    windows.modelAttemptLease.length > 256 ||
+    !/^[A-Za-z0-9._~-]+$/.test(windows.modelAttemptLease) ||
+    windows.modelAttemptLease === windows.attemptLease
   ) {
     return false;
   }
@@ -390,6 +405,7 @@ function hasExactWindowsSupervisorSpawnContract(options: GooseAcpSpawnOptions): 
   const environmentValues = new Set(Object.values(options.environment));
   return (
     !environmentValues.has(windows.attemptLease) &&
+    !environmentValues.has(windows.modelAttemptLease) &&
     !environmentValues.has(windows.capabilityPipeName) &&
     !environmentValues.has(windows.modelPipeName)
   );
@@ -831,11 +847,11 @@ function validateWindowsBridgeEnvironment(value: unknown): GooseRunnerWindowsBri
   }
   const keys = Reflect.ownKeys(value);
   if (
-    keys.length !== 3 ||
+    keys.length !== 4 ||
     keys.some(
       (key) =>
         typeof key !== "string" ||
-        !["attemptLease", "capabilityPipeName", "modelPipeName"].includes(key),
+        !["attemptLease", "capabilityPipeName", "modelAttemptLease", "modelPipeName"].includes(key),
     )
   ) {
     throw new GooseRunnerProcessError(
@@ -843,7 +859,7 @@ function validateWindowsBridgeEnvironment(value: unknown): GooseRunnerWindowsBri
       "Goose Windows bridge environment contains unsupported fields",
     );
   }
-  const { capabilityPipeName, modelPipeName, attemptLease } = value;
+  const { capabilityPipeName, modelPipeName, attemptLease, modelAttemptLease } = value;
   const validPipeName = (pipeName: unknown): pipeName is string =>
     typeof pipeName === "string" &&
     /^\\\\\.\\pipe\\LOCAL\\Actestra\.Goose\.[a-f0-9]{32}\.(?:capability|model)$/.test(pipeName) &&
@@ -858,14 +874,19 @@ function validateWindowsBridgeEnvironment(value: unknown): GooseRunnerWindowsBri
     typeof attemptLease !== "string" ||
     attemptLease.length < 32 ||
     attemptLease.length > 256 ||
-    !/^[A-Za-z0-9._~-]+$/.test(attemptLease)
+    !/^[A-Za-z0-9._~-]+$/.test(attemptLease) ||
+    typeof modelAttemptLease !== "string" ||
+    modelAttemptLease.length < 32 ||
+    modelAttemptLease.length > 256 ||
+    !/^[A-Za-z0-9._~-]+$/.test(modelAttemptLease) ||
+    modelAttemptLease === attemptLease
   ) {
     throw new GooseRunnerProcessError(
       "invalid-options",
       "Goose Windows bridge environment is invalid",
     );
   }
-  return Object.freeze({ capabilityPipeName, modelPipeName, attemptLease });
+  return Object.freeze({ capabilityPipeName, modelPipeName, attemptLease, modelAttemptLease });
 }
 
 function windowsBridgeAttemptId(value: GooseRunnerWindowsBridgeEnvironment): string {
@@ -1183,6 +1204,7 @@ export function encodeWindowsSupervisorControlFrame(options: GooseAcpSpawnOption
       attemptLease: windows.attemptLease,
       contractVersion: 1,
       executableSha256: windows.executableSha256,
+      modelAttemptLease: windows.modelAttemptLease,
       modelId: windows.modelId,
       privateRoot: path.dirname(options.workingDirectory),
       resourceBudget: options.resourceBudget,
@@ -1710,6 +1732,7 @@ export async function openGooseRunnerHandshake(
               capabilityPipeName: windowsBridgeEnvironment.capabilityPipeName,
               modelPipeName: windowsBridgeEnvironment.modelPipeName,
               attemptLease: windowsBridgeEnvironment.attemptLease,
+              modelAttemptLease: windowsBridgeEnvironment.modelAttemptLease,
               attemptId: windowsBridgeAttemptId(windowsBridgeEnvironment),
               executableSha256: options.artifact.executableSha256,
               modelId: stableModelBinding?.binding.modelId ?? bridge?.modelId ?? "",

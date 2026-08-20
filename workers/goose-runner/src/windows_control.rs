@@ -5,11 +5,12 @@ use std::fmt;
 
 pub(crate) const WINDOWS_CONTROL_MAX_BYTES: usize = 32 * 1024;
 
-const CONTROL_KEYS: [&str; 9] = [
+const CONTROL_KEYS: [&str; 10] = [
     "attemptId",
     "attemptLease",
     "contractVersion",
     "executableSha256",
+    "modelAttemptLease",
     "modelId",
     "privateRoot",
     "resourceBudget",
@@ -91,6 +92,7 @@ pub(crate) struct WindowsControlMessage {
     pub(crate) attempt_id: String,
     pub(crate) attempt_lease: String,
     pub(crate) executable_sha256: String,
+    pub(crate) model_attempt_lease: String,
     pub(crate) model_id: String,
     pub(crate) private_root: String,
     pub(crate) resource_budget: WindowsResourceBudget,
@@ -300,6 +302,7 @@ pub(crate) fn parse_control_message(input: &[u8]) -> Result<WindowsControlMessag
     let attempt_id = exact_string(object, "attemptId", 32)?;
     let attempt_lease = exact_string(object, "attemptLease", 256)?;
     let executable_sha256 = exact_string(object, "executableSha256", 64)?;
+    let model_attempt_lease = exact_string(object, "modelAttemptLease", 256)?;
     let model_id = exact_string(object, "modelId", 256)?;
     let private_root = exact_string(object, "privateRoot", 4096)?;
     let target_triple = exact_string(object, "targetTriple", 64)?;
@@ -307,6 +310,8 @@ pub(crate) fn parse_control_message(input: &[u8]) -> Result<WindowsControlMessag
     if !is_lower_hex(&attempt_id, 32)
         || !is_opaque_token(&attempt_lease)
         || !is_lower_hex(&executable_sha256, 64)
+        || !is_opaque_token(&model_attempt_lease)
+        || model_attempt_lease == attempt_lease
         || model_id.chars().any(char::is_control)
         || !is_windows_drive_path(&private_root)
         || target_triple != "x86_64-pc-windows-msvc"
@@ -319,6 +324,7 @@ pub(crate) fn parse_control_message(input: &[u8]) -> Result<WindowsControlMessag
         attempt_id,
         attempt_lease,
         executable_sha256,
+        model_attempt_lease,
         model_id,
         private_root,
         resource_budget: parse_resource_budget(object.get("resourceBudget").ok_or(())?)?,
@@ -345,6 +351,7 @@ pub(crate) fn serialize_control_message(message: &WindowsControlMessage) -> Resu
         "attemptLease": message.attempt_lease,
         "contractVersion": 1,
         "executableSha256": message.executable_sha256,
+        "modelAttemptLease": message.model_attempt_lease,
         "modelId": message.model_id,
         "privateRoot": message.private_root,
         "resourceBudget": {
@@ -389,6 +396,7 @@ mod tests {
             "attemptLease": "lease_0123456789abcdef0123456789abcdef",
             "contractVersion": 1,
             "executableSha256": "a".repeat(64),
+            "modelAttemptLease": "model_0123456789abcdef0123456789abcdef",
             "modelId": "test-model",
             "privateRoot": "C:\\Actestra\\attempts\\one",
             "resourceBudget": {
@@ -476,6 +484,11 @@ mod tests {
     fn parses_only_the_bounded_exact_control_contract() {
         let parsed = parse_control_message(&exact_control_message()).unwrap();
         assert_eq!(parsed.attempt_id, "0123456789abcdef0123456789abcdef");
+        assert_eq!(
+            parsed.model_attempt_lease,
+            "model_0123456789abcdef0123456789abcdef"
+        );
+        assert_ne!(parsed.model_attempt_lease, parsed.attempt_lease);
         assert_eq!(parsed.resource_budget.max_cpu_seconds, 120);
         assert!(
             parse_control_message(&serialize_control_message(&parsed).unwrap()).unwrap() == parsed
@@ -507,6 +520,7 @@ mod tests {
             "C:\\Actestra",
             "D:\\worktrees",
             "lease_0123456789abcdef0123456789abcdef",
+            "model_0123456789abcdef0123456789abcdef",
             "test-model",
             "pipe",
             "prompt",
