@@ -10,6 +10,7 @@ import {
   classifyGooseWindowsArtifactAdmissionExecution,
   classifyGooseWindowsArtifactAdmissionFailure,
   classifyGooseWindowsRuntimeFailureEvidence,
+  classifyGooseWindowsRuntimeChildFailure,
   validateGooseWindowsRuntimeEvidence,
 } from "../../scripts/gooseWindowsRuntimeEvidence.mjs";
 
@@ -195,6 +196,86 @@ describe("Goose Windows runtime evidence", () => {
       "windows-runtime-worker-ready-signal-failed",
       "windows-runtime-worker-acp-handshake-failed",
     ]);
+  });
+
+  it("classifies bounded Windows runtime child failures without retaining child output", () => {
+    expect(
+      classifyGooseWindowsRuntimeChildFailure({
+        failureStage: "windows-worker-capability-pipe-failed",
+        status: 1,
+        signal: null,
+        stdout: "C:\\Users\\private\\stdout",
+        stderr: "C:\\Users\\private\\stderr",
+      }),
+    ).toBe("windows-runtime-worker-capability-pipe-failed");
+    expect(
+      classifyGooseWindowsRuntimeChildFailure({
+        errorCode: "ETIMEDOUT",
+        status: null,
+        signal: null,
+        stdout: "",
+        stderr: "",
+      }),
+    ).toBe("windows-runtime-test-child-timeout-failed");
+    expect(
+      classifyGooseWindowsRuntimeChildFailure({
+        errorCode: "ENOENT",
+        status: null,
+        signal: null,
+        stdout: "",
+        stderr: "",
+      }),
+    ).toBe("windows-runtime-test-child-spawn-failed");
+    expect(
+      classifyGooseWindowsRuntimeChildFailure({
+        status: 1,
+        signal: null,
+        stdout: "",
+        stderr: "No test files found",
+      }),
+    ).toBe("windows-runtime-test-collection-empty-failed");
+    expect(
+      classifyGooseWindowsRuntimeChildFailure({
+        status: 1,
+        signal: null,
+        stdout: "",
+        stderr: "Failed to load url ./native.integration.ts",
+      }),
+    ).toBe("windows-runtime-test-module-load-failed");
+    expect(
+      classifyGooseWindowsRuntimeChildFailure({
+        status: 1,
+        signal: null,
+        stdout: "FAIL tests/main/gooseRunnerWindowsNative.integration.ts",
+        stderr: "Tests failed",
+      }),
+    ).toBe("windows-runtime-test-assertion-failed");
+    expect(
+      classifyGooseWindowsRuntimeChildFailure({
+        status: 1,
+        signal: null,
+        stdout: "",
+        stderr: "",
+      }),
+    ).toBe("windows-runtime-test-child-exited-failed");
+    expect(
+      classifyGooseWindowsRuntimeChildFailure({
+        status: 1,
+        signal: null,
+        stdout: "x".repeat(65 * 1024),
+        stderr: "",
+      }),
+    ).toBe("windows-runtime-test-output-too-large-failed");
+    expect(
+      JSON.stringify(
+        classifyGooseWindowsRuntimeChildFailure({
+          status: 1,
+          signal: null,
+          stdout: "C:\\Users\\private\\stdout",
+          stderr: "C:\\Users\\private\\stderr",
+        }),
+      ),
+    ).not.toContain("private");
   });
 
   it("accepts only the complete verified record bound to one exact Artifact", () => {

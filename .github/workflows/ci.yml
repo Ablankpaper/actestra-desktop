@@ -427,6 +427,7 @@ jobs:
           $env:ACTESTRA_GOOSE_RUNNER_MANIFEST_SHA256 = $manifest
           $env:ACTESTRA_GOOSE_CONTAINMENT_EVIDENCE_PATH = "$pwd/containment-evidence.json"
           $env:ACTESTRA_GOOSE_CONTAINMENT_EVIDENCE_SHA256 = $containment
+          $env:ACTESTRA_GOOSE_WINDOWS_RUNTIME_FAILURE_OUTPUT_PATH = "$pwd/windows-runtime-failure.json"
           bun run goose:runner:integration:windows | Tee-Object -FilePath windows-runtime-evidence.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -440,6 +441,16 @@ jobs:
           name: p8-goose-runtime-windows-${{ github.sha }}
           path: windows-runtime-evidence.json
           if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+      - name: Preserve bounded Windows authenticated runtime failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: p8-goose-runtime-windows-failure-${{ github.sha }}
+          path: windows-runtime-failure.json
+          if-no-files-found: warn
           retention-days: 3
           compression-level: 0
 

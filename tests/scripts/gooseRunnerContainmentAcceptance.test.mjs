@@ -219,7 +219,7 @@ describe("P8 native Goose containment acceptance gate", () => {
     const actionReferences = [...workflow.matchAll(/^\s+uses:\s+([^\s#]+)\s*(?:#.*)?$/gmu)].map(
       (match) => match[1],
     );
-    expect(actionReferences).toHaveLength(25);
+    expect(actionReferences).toHaveLength(26);
     for (const reference of actionReferences) {
       expect(reference).toMatch(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+@[a-f0-9]{40}$/u);
     }

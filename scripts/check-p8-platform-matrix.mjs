@@ -57,6 +57,14 @@ export function validateP8WindowsRuntimeCiContract(workflow) {
   ) {
     reasons.push("windows-runtime-evidence-upload");
   }
+  if (
+    !job.includes("ACTESTRA_GOOSE_WINDOWS_RUNTIME_FAILURE_OUTPUT_PATH") ||
+    !job.includes("name: Preserve bounded Windows authenticated runtime failure") ||
+    !job.includes("if: failure()") ||
+    !job.includes("path: windows-runtime-failure.json")
+  ) {
+    reasons.push("windows-runtime-failure-evidence-upload");
+  }
   if (job.includes("OPENAI_API_KEY") || job.includes("ANTHROPIC_API_KEY")) {
     reasons.push("windows-runtime-credential");
   }

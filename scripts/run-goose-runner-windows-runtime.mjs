@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { lstat, mkdtemp, readFile, realpath, rm } from "node:fs/promises";
+import { lstat, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import {
   GOOSE_WINDOWS_ARTIFACT_ADMISSION_FAILURE_CODES,
   classifyGooseWindowsArtifactAdmissionExecution,
+  classifyGooseWindowsRuntimeChildFailure,
   classifyGooseWindowsRuntimeFailureEvidence,
   validateGooseWindowsRuntimeEvidence,
 } from "./gooseWindowsRuntimeEvidence.mjs";
@@ -78,6 +79,18 @@ const FAILURE_CODES = new Set([
   "windows-runtime-fixture-persistence-open-failed",
   "windows-runtime-fixture-setup-failed",
   "windows-runtime-test-failed",
+  "windows-runtime-test-child-spawn-failed",
+  "windows-runtime-test-child-timeout-failed",
+  "windows-runtime-test-child-signal-failed",
+  "windows-runtime-test-collection-empty-failed",
+  "windows-runtime-test-module-load-failed",
+  "windows-runtime-test-assertion-failed",
+  "windows-runtime-test-child-exited-failed",
+  "windows-runtime-test-output-too-large-failed",
+  "windows-runtime-test-stage-unknown-failed",
+  "windows-runtime-test-failure-evidence-missing-failed",
+  "windows-runtime-test-failure-evidence-invalid-failed",
+  "windows-runtime-test-failure-evidence-too-large-failed",
   "windows-runtime-target-unsupported",
 ]);
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -159,16 +172,43 @@ function parseSingleJsonLine(value, code) {
 
 async function readFailureCode(failureEvidencePath) {
   const bytes = await readFile(failureEvidencePath).catch(() => undefined);
-  if (bytes === undefined || bytes.byteLength > MAX_FAILURE_EVIDENCE_BYTES) {
-    return "windows-runtime-test-failed";
+  if (bytes === undefined) return "windows-runtime-test-failure-evidence-missing-failed";
+  if (bytes.byteLength > MAX_FAILURE_EVIDENCE_BYTES) {
+    return "windows-runtime-test-failure-evidence-too-large-failed";
   }
   let evidence;
   try {
     evidence = JSON.parse(bytes.toString("utf8"));
   } catch {
-    return "windows-runtime-test-failed";
+    return "windows-runtime-test-failure-evidence-invalid-failed";
   }
-  return classifyGooseWindowsRuntimeFailureEvidence(evidence) ?? "windows-runtime-test-failed";
+  return (
+    classifyGooseWindowsRuntimeFailureEvidence(evidence) ??
+    "windows-runtime-test-stage-unknown-failed"
+  );
+}
+
+function safeFailureCode(value) {
+  return typeof value === "string" && FAILURE_CODES.has(value)
+    ? value
+    : "windows-runtime-test-failed";
+}
+
+async function writeFailureOutput(code) {
+  const outputPath = process.env.ACTESTRA_GOOSE_WINDOWS_RUNTIME_FAILURE_OUTPUT_PATH;
+  if (
+    typeof outputPath !== "string" ||
+    !path.isAbsolute(outputPath) ||
+    path.dirname(path.resolve(outputPath)) !== repositoryRoot ||
+    path.basename(outputPath) !== "windows-runtime-failure.json"
+  ) {
+    return;
+  }
+  await writeFile(
+    outputPath,
+    `${JSON.stringify({ contractVersion: 1, code: safeFailureCode(code) })}\n`,
+    { encoding: "utf8", mode: 0o600 },
+  ).catch(() => undefined);
 }
 
 function currentHead() {
@@ -357,7 +397,27 @@ async function main() {
       Buffer.byteLength(child.stdout ?? "", "utf8") > MAX_OUTPUT_BYTES ||
       Buffer.byteLength(child.stderr ?? "", "utf8") > MAX_OUTPUT_BYTES
     ) {
-      throw new Error(await readFailureCode(failureEvidencePath));
+      const evidenceCode = await readFailureCode(failureEvidencePath);
+      const childCode = classifyGooseWindowsRuntimeChildFailure({
+        errorCode:
+          child.error === undefined
+            ? undefined
+            : typeof child.error.code === "string"
+              ? child.error.code
+              : "spawn-error",
+        status: child.status,
+        signal: child.signal,
+        stdout: child.stdout ?? "",
+        stderr: child.stderr ?? "",
+      });
+      if (
+        evidenceCode === "windows-runtime-test-failure-evidence-missing-failed" ||
+        evidenceCode === "windows-runtime-test-failure-evidence-invalid-failed" ||
+        evidenceCode === "windows-runtime-test-stage-unknown-failed"
+      ) {
+        throw new Error(childCode);
+      }
+      throw new Error(evidenceCode);
     }
     const evidenceBytes = await readFile(evidencePath).catch(() => {
       throw new Error("windows-runtime-evidence-missing");
@@ -395,5 +455,7 @@ async function main() {
 try {
   await main();
 } catch (error) {
-  fail(error instanceof Error ? error.message : "windows-runtime-test-failed");
+  const code = safeFailureCode(error instanceof Error ? error.message : undefined);
+  await writeFailureOutput(code);
+  fail(code);
 }

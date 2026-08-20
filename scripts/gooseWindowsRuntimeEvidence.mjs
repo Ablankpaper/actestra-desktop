@@ -52,6 +52,18 @@ const FAILURE_STAGE_CODES = Object.freeze({
   "windows-worker-state-directory-failed": "windows-runtime-worker-state-directory-failed",
   "windows-worker-ready-signal-failed": "windows-runtime-worker-ready-signal-failed",
   "windows-worker-acp-handshake-failed": "windows-runtime-worker-acp-handshake-failed",
+  "test-child-spawn": "windows-runtime-test-child-spawn-failed",
+  "test-child-timeout": "windows-runtime-test-child-timeout-failed",
+  "test-child-signal": "windows-runtime-test-child-signal-failed",
+  "test-collection-empty": "windows-runtime-test-collection-empty-failed",
+  "test-module-load": "windows-runtime-test-module-load-failed",
+  "test-assertion": "windows-runtime-test-assertion-failed",
+  "test-child-exited": "windows-runtime-test-child-exited-failed",
+  "test-output-too-large": "windows-runtime-test-output-too-large-failed",
+  "test-stage-unknown": "windows-runtime-test-stage-unknown-failed",
+  "test-failure-evidence-missing": "windows-runtime-test-failure-evidence-missing-failed",
+  "test-failure-evidence-invalid": "windows-runtime-test-failure-evidence-invalid-failed",
+  "test-failure-evidence-too-large": "windows-runtime-test-failure-evidence-too-large-failed",
   "handshake-process-exit": "windows-runtime-handshake-process-exit-failed",
   "handshake-process-signal": "windows-runtime-handshake-process-signal-failed",
   "handshake-timeout": "windows-runtime-handshake-timeout-failed",
@@ -157,6 +169,7 @@ const WINDOWS_OPEN_FAILURE_STAGES = Object.freeze([
   "composition-cleanup",
   "composition-open",
 ]);
+const MAX_CHILD_OUTPUT_BYTES = 64 * 1024;
 
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -212,6 +225,48 @@ export function classifyGooseWindowsRuntimeFailureEvidence(value) {
   return Object.hasOwn(FAILURE_STAGE_CODES, value.stage)
     ? FAILURE_STAGE_CODES[value.stage]
     : undefined;
+}
+
+/**
+ * Classify a failed Windows integration child using bounded metadata and fixed
+ * output signatures. Raw child output is never returned or persisted here.
+ */
+export function classifyGooseWindowsRuntimeChildFailure(value) {
+  if (!isRecord(value)) return FAILURE_STAGE_CODES["test-child-exited"];
+  const failureStage = typeof value.failureStage === "string" ? value.failureStage : undefined;
+  if (failureStage !== undefined) {
+    const stageCode = classifyGooseWindowsRuntimeFailureEvidence({
+      contractVersion: 1,
+      stage: failureStage,
+    });
+    return stageCode ?? FAILURE_STAGE_CODES["test-stage-unknown"];
+  }
+
+  const stdout = typeof value.stdout === "string" ? value.stdout : "";
+  const stderr = typeof value.stderr === "string" ? value.stderr : "";
+  if (
+    Buffer.byteLength(stdout, "utf8") > MAX_CHILD_OUTPUT_BYTES ||
+    Buffer.byteLength(stderr, "utf8") > MAX_CHILD_OUTPUT_BYTES
+  ) {
+    return FAILURE_STAGE_CODES["test-output-too-large"];
+  }
+  if (value.errorCode === "ETIMEDOUT") return FAILURE_STAGE_CODES["test-child-timeout"];
+  if (value.signal !== undefined && value.signal !== null) {
+    return FAILURE_STAGE_CODES["test-child-signal"];
+  }
+  if (typeof value.errorCode === "string") return FAILURE_STAGE_CODES["test-child-spawn"];
+
+  const output = `${stdout}\n${stderr}`;
+  if (output.includes("No test files found")) {
+    return FAILURE_STAGE_CODES["test-collection-empty"];
+  }
+  if (/Failed to load|Transform failed|Cannot find module|SyntaxError/u.test(output)) {
+    return FAILURE_STAGE_CODES["test-module-load"];
+  }
+  if (/Test Files.*failed|Tests.*failed|^\s*FAIL\s/msu.test(output)) {
+    return FAILURE_STAGE_CODES["test-assertion"];
+  }
+  return FAILURE_STAGE_CODES["test-child-exited"];
 }
 
 export function classifyGooseWindowsCodingSessionOpenError(error) {

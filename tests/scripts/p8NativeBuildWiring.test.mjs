@@ -217,6 +217,10 @@ describe("P8 native Goose build wiring", () => {
     expect(job).toContain("if: success()");
     expect(job).toContain("name: p8-goose-runtime-windows-${{ github.sha }}");
     expect(job).toContain("path: windows-runtime-evidence.json");
+    expect(job).toContain("ACTESTRA_GOOSE_WINDOWS_RUNTIME_FAILURE_OUTPUT_PATH");
+    expect(job).toContain("name: Preserve bounded Windows authenticated runtime failure");
+    expect(job).toContain("if: failure()");
+    expect(job).toContain("path: windows-runtime-failure.json");
     expect(job).toContain("retention-days: 3");
     expect(job).toContain("compression-level: 0");
     expect(job).not.toContain("OPENAI_API_KEY");

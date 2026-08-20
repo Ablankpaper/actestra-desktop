@@ -2,6 +2,32 @@
 
 Last updated: 2026-08-20
 
+## 2026-08-20 P8.2c Batch 4 authenticated-runtime failure diagnostics (local remediation; native rerun pending)
+
+The exact-head `dfee41e` Windows CI run `32340569696` proved the runner build,
+artifact admission, and Windows containment acceptance, but the authenticated
+runtime integration ended with `windows-runtime-test-failed`. The failure was
+in the test wrapper's evidence path rather than evidence of a Worker pipe or
+AppContainer ACL defect: child stdout/stderr were captured and discarded,
+unknown or missing failure-stage records collapsed to one token, and the CI
+workflow uploaded runtime evidence only on success.
+
+The local remediation adds a closed, sanitized classifier for child spawn,
+timeout, signal, empty collection, module-load, assertion, generic exit, and
+output-limit failures; distinguishes missing, invalid, oversized, and unknown
+failure-stage records; writes a bounded code-only failure record; and uploads
+that record under `if: failure()` without exporting raw child output. Regression
+coverage now locks the closed mappings, no-path guarantee, and CI wiring. Local
+evidence for this remediation is green: the focused evidence/wiring suite is
+`32/32`, P8 contract passes, typecheck/lint pass, and the script syntax and
+`git diff --check` are clean.
+
+This does not close P8.2c. The remediation is not yet pushed or exercised by a
+new exact-head Windows CI run. The next gate is to push this change, inspect the
+failure artifact from the new run, and only then decide whether a concrete
+Worker/AppContainer/named-pipe fix is required. Windows Electron/provider
+acceptance, P8.3, P8.4, release, deployment, and user acceptance remain open.
+
 ## 2026-08-20 P8.2c Batch 4 Task 13 Windows authenticated-runtime CI wiring (local contract green; exact-head native evidence pending)
 
 Task 13 is implemented locally on branch
