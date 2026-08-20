@@ -2,6 +2,34 @@
 
 Last updated: 2026-08-20
 
+## 2026-08-20 P8.2c Windows named-pipe startup race (native RED; bounded local remediation)
+
+The next exact-head run
+[`32372856650`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32372856650)
+for source head `7ba0a2d96c12e21bd04d75aecb86f928a87831ba` compiled and
+executed the expanded Windows native diagnostic protocol. Its build-probe
+native suite failed at the newly distinct token `test-child-pipe-unavailable`,
+not `test-child-pipe-access-denied`. This is the required native RED evidence
+for a transient pipe-open race: the AppContainer client can run before the
+parent has entered `ConnectNamedPipe`, and a one-shot client open can therefore
+observe an unavailable server despite the exact-SID security descriptor. It is
+not evidence for widening the DACL, AppContainer capabilities, namespace, or
+network authority. The run's remaining jobs are still in progress and no
+authenticated-runtime outcome is claimed from it yet.
+
+The local remediation retries only the already closed `busy` and `unavailable`
+client-open classes, at `25` ms intervals with at most `20` retries (`500` ms
+total). Access denied and unclassified failures still return immediately and
+fail closed. A test was observed RED before the retry predicate existed and
+GREEN afterward, locking all four outcomes. Fresh runner validation passes
+Rust formatting, `cargo test --locked` (`85/85`), and `git diff --check`.
+
+This change is not yet pushed or Windows-verified. P8.2c remains open until one
+new exact-head run passes the native AppContainer pipe exchange and emits a
+successful authenticated-runtime Artifact that is downloaded and independently
+revalidated. All broader P8.2, P8.3, P8.4, release, deployment, and acceptance
+non-claims remain unchanged.
+
 ## 2026-08-20 P8.2c Windows authenticated runtime: dual-lease and pipe-open diagnosis (local green; exact-head native rerun pending)
 
 Exact-head pull-request CI run

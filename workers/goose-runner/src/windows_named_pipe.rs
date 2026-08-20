@@ -54,6 +54,21 @@ fn classify_client_open_failure(raw_code: Option<i32>) -> WindowsNamedPipeConnec
     }
 }
 
+#[cfg(any(windows, test))]
+const WINDOWS_NAMED_PIPE_CONNECT_RETRIES: usize = 20;
+
+#[cfg(any(windows, test))]
+fn should_retry_client_open_failure(
+    failure: WindowsNamedPipeConnectFailure,
+    retries: usize,
+) -> bool {
+    retries < WINDOWS_NAMED_PIPE_CONNECT_RETRIES
+        && matches!(
+            failure,
+            WindowsNamedPipeConnectFailure::Busy | WindowsNamedPipeConnectFailure::Unavailable
+        )
+}
+
 pub(crate) fn validate_pipe_name(name: &str) -> Result<WindowsPipeEndpoint, WindowsNamedPipeError> {
     let remainder = name
         .strip_prefix(WINDOWS_PIPE_PREFIX)
@@ -378,15 +393,23 @@ pub(crate) struct WindowsNamedPipeClient;
 impl WindowsNamedPipeClient {
     pub(crate) fn connect_once(name: &str) -> Result<WindowsBridgeChannel, WindowsNamedPipeError> {
         validate_pipe_name(name)?;
-        let client = ClientOptions::new()
-            .pipe_mode(PipeMode::Byte)
-            .open(name)
-            .map_err(|error| {
-                WindowsNamedPipeError::ClientConnect(classify_client_open_failure(
-                    error.raw_os_error(),
-                ))
-            })?;
-        Ok(WindowsBridgeChannel::new(client))
+        let mut retry = 0;
+        loop {
+            match ClientOptions::new().pipe_mode(PipeMode::Byte).open(name) {
+                Ok(client) => return Ok(WindowsBridgeChannel::new(client)),
+                Err(error) => {
+                    let failure = classify_client_open_failure(error.raw_os_error());
+                    if retry < WINDOWS_NAMED_PIPE_CONNECT_RETRIES
+                        && should_retry_client_open_failure(failure, retry)
+                    {
+                        retry += 1;
+                        std::thread::sleep(std::time::Duration::from_millis(25));
+                        continue;
+                    }
+                    return Err(WindowsNamedPipeError::ClientConnect(failure));
+                }
+            }
+        }
     }
 }
 
@@ -426,6 +449,32 @@ mod tests {
             failures.map(WindowsNamedPipeConnectFailure::code),
             ["access-denied", "busy", "unavailable", "unclassified"]
         );
+    }
+
+    #[test]
+    fn retries_only_transient_client_open_failures() {
+        for retries in [0, 19] {
+            assert!(should_retry_client_open_failure(
+                WindowsNamedPipeConnectFailure::Busy,
+                retries
+            ));
+            assert!(should_retry_client_open_failure(
+                WindowsNamedPipeConnectFailure::Unavailable,
+                retries
+            ));
+        }
+        for failure in [
+            WindowsNamedPipeConnectFailure::AccessDenied,
+            WindowsNamedPipeConnectFailure::Unclassified,
+        ] {
+            assert!(!should_retry_client_open_failure(failure, 0));
+        }
+        for failure in [
+            WindowsNamedPipeConnectFailure::Busy,
+            WindowsNamedPipeConnectFailure::Unavailable,
+        ] {
+            assert!(!should_retry_client_open_failure(failure, 20));
+        }
     }
 
     #[test]
