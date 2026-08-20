@@ -1,6 +1,25 @@
 pub(crate) const WINDOWS_SETUP_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_NETWORK_POLICY_SETUP_FAILED";
 pub(crate) const WINDOWS_RESOURCE_FAILURE_MARKER: &str =
     "ACTESTRA_GOOSE_RESOURCE_LIMIT_SETUP_FAILED";
+
+// Worker exit codes for structured startup failure diagnosis
+#[cfg(any(windows, test))]
+const EXIT_CONTROL_FRAME_INVALID: i32 = 101;
+#[cfg(any(windows, test))]
+const EXIT_BOUNDARY_VERIFICATION_FAILED: i32 = 102;
+#[cfg(any(windows, test))]
+const EXIT_RUNTIME_CREATION_FAILED: i32 = 103;
+#[cfg(any(windows, test))]
+const EXIT_CAPABILITY_PIPE_FAILED: i32 = 104;
+#[cfg(any(windows, test))]
+const EXIT_MODEL_PIPE_FAILED: i32 = 105;
+#[cfg(any(windows, test))]
+const EXIT_STATE_DIRECTORY_FAILED: i32 = 106;
+#[cfg(any(windows, test))]
+const EXIT_READY_SIGNAL_FAILED: i32 = 107;
+#[cfg(any(windows, test))]
+const EXIT_ACP_HANDSHAKE_FAILED: i32 = 108;
+
 #[cfg(windows)]
 use crate::containment::windows_contract::{
     decode_request_frame, decode_result, encode_request_frame, encode_result, WindowsProbeRequest,
@@ -19,7 +38,7 @@ use crate::windows_named_pipe::{WindowsNamedPipeClient, WindowsNamedPipeServer};
 #[cfg(windows)]
 const WINDOWS_WORKER_READY_MARKER: &[u8] = b"ACTESTRA_GOOSE_WINDOWS_WORKER_READY\n";
 #[cfg(any(windows, test))]
-const WINDOWS_RUNTIME_FAILURE_CODES: [&str; 10] = [
+const WINDOWS_RUNTIME_FAILURE_CODES: [&str; 18] = [
     "windows-control-channel-invalid",
     "windows-ready-channel-invalid",
     "windows-capability-pipe-invalid",
@@ -30,6 +49,14 @@ const WINDOWS_RUNTIME_FAILURE_CODES: [&str; 10] = [
     "windows-worker-runtime-failed",
     "windows-runtime-timeout",
     "windows-runtime-cleanup-failed",
+    "windows-worker-control-frame-invalid",
+    "windows-worker-boundary-verification-failed",
+    "windows-worker-runtime-creation-failed",
+    "windows-worker-capability-pipe-failed",
+    "windows-worker-model-pipe-failed",
+    "windows-worker-state-directory-failed",
+    "windows-worker-ready-signal-failed",
+    "windows-worker-acp-handshake-failed",
 ];
 
 #[cfg(any(windows, test))]
@@ -53,9 +80,12 @@ fn classify_runtime_event(event: WindowsRuntimeEvent) -> Result<(), &'static str
         WindowsRuntimeEvent::AcpRelay(_) => Err("windows-acp-relay-failed"),
         WindowsRuntimeEvent::CapabilityRelay(_) => Err("windows-capability-relay-failed"),
         WindowsRuntimeEvent::ModelRelay(_) => Err("windows-model-relay-failed"),
-        WindowsRuntimeEvent::ParentLiveness(Err(()))
-        | WindowsRuntimeEvent::WorkerExit(Ok(_))
-        | WindowsRuntimeEvent::WorkerExit(Err(())) => Err("windows-worker-runtime-failed"),
+        WindowsRuntimeEvent::WorkerExit(Ok(exit_code)) => {
+            Err(classify_worker_startup_exit(exit_code).runtime_code())
+        }
+        WindowsRuntimeEvent::ParentLiveness(Err(())) | WindowsRuntimeEvent::WorkerExit(Err(())) => {
+            Err("windows-worker-runtime-failed")
+        }
     }
 }
 
@@ -577,6 +607,69 @@ impl WorkerLaunchFailureStage {
     }
 }
 
+/// Worker startup stage a worker exit code identifies, so a worker that dies
+/// before connecting is attributed to the stage it died in rather than being
+/// collapsed into one opaque runtime failure.
+#[cfg(any(windows, test))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WorkerStartupFailure {
+    ControlFrame,
+    BoundaryVerification,
+    RuntimeCreation,
+    CapabilityPipe,
+    ModelPipe,
+    StateDirectory,
+    ReadySignal,
+    AcpHandshake,
+    Unknown,
+}
+
+#[cfg(any(windows, test))]
+fn classify_worker_startup_exit(exit_code: u32) -> WorkerStartupFailure {
+    match exit_code {
+        101 => WorkerStartupFailure::ControlFrame,
+        102 => WorkerStartupFailure::BoundaryVerification,
+        103 => WorkerStartupFailure::RuntimeCreation,
+        104 => WorkerStartupFailure::CapabilityPipe,
+        105 => WorkerStartupFailure::ModelPipe,
+        106 => WorkerStartupFailure::StateDirectory,
+        107 => WorkerStartupFailure::ReadySignal,
+        108 => WorkerStartupFailure::AcpHandshake,
+        _ => WorkerStartupFailure::Unknown,
+    }
+}
+
+#[cfg(any(windows, test))]
+impl WorkerStartupFailure {
+    fn diagnostic_exit_code(self) -> i32 {
+        match self {
+            Self::ControlFrame => 47,
+            Self::BoundaryVerification => 48,
+            Self::RuntimeCreation => 49,
+            Self::CapabilityPipe => 50,
+            Self::ModelPipe => 51,
+            Self::StateDirectory => 52,
+            Self::ReadySignal => 53,
+            Self::AcpHandshake => 54,
+            Self::Unknown => 46,
+        }
+    }
+
+    fn runtime_code(self) -> &'static str {
+        match self {
+            Self::ControlFrame => "windows-worker-control-frame-invalid",
+            Self::BoundaryVerification => "windows-worker-boundary-verification-failed",
+            Self::RuntimeCreation => "windows-worker-runtime-creation-failed",
+            Self::CapabilityPipe => "windows-worker-capability-pipe-failed",
+            Self::ModelPipe => "windows-worker-model-pipe-failed",
+            Self::StateDirectory => "windows-worker-state-directory-failed",
+            Self::ReadySignal => "windows-worker-ready-signal-failed",
+            Self::AcpHandshake => "windows-worker-acp-handshake-failed",
+            Self::Unknown => "windows-worker-runtime-failed",
+        }
+    }
+}
+
 #[cfg(any(windows, test))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SupervisorFailureStage {
@@ -592,6 +685,7 @@ enum SupervisorFailureStage {
     CapabilityPipe,
     ModelPipe,
     WorkerRuntime,
+    WorkerStartup(WorkerStartupFailure),
 }
 
 #[cfg(any(windows, test))]
@@ -610,6 +704,7 @@ impl SupervisorFailureStage {
             Self::CapabilityPipe => 18,
             Self::ModelPipe => 19,
             Self::WorkerRuntime => 46,
+            Self::WorkerStartup(failure) => failure.diagnostic_exit_code(),
         }
     }
 }
@@ -624,6 +719,7 @@ fn runtime_code_for_supervisor_failure(stage: SupervisorFailureStage) -> Option<
         SupervisorFailureStage::CapabilityPipe => Some("windows-capability-pipe-invalid"),
         SupervisorFailureStage::ModelPipe => Some("windows-model-pipe-invalid"),
         SupervisorFailureStage::WorkerRuntime => Some("windows-worker-runtime-failed"),
+        SupervisorFailureStage::WorkerStartup(failure) => Some(failure.runtime_code()),
         _ => None,
     }
 }
@@ -2158,8 +2254,12 @@ async fn accept_runtime_pipe_or_worker_exit(
             result.map_err(|_| pipe_failure)
         }
         result = wait_for_worker_exit_handle(worker_handle) => {
-            let _ = result;
-            Err(SupervisorFailureStage::WorkerRuntime)
+            Err(match result {
+                Ok(exit_code) => {
+                    SupervisorFailureStage::WorkerStartup(classify_worker_startup_exit(exit_code))
+                }
+                Err(()) => SupervisorFailureStage::WorkerRuntime,
+            })
         }
     }
 }
@@ -2389,7 +2489,7 @@ pub(crate) fn run_worker_with_arguments(_arguments: &[String]) -> i32 {
                 Ok(Some(values)) => values,
                 _ => {
                     eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-                    return 1;
+                    return EXIT_CONTROL_FRAME_INVALID;
                 }
             };
         let control_handle = control_value as usize as HANDLE;
@@ -2399,7 +2499,7 @@ pub(crate) fn run_worker_with_arguments(_arguments: &[String]) -> i32 {
             Ok(control) => control,
             Err(()) => {
                 eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-                return 1;
+                return EXIT_CONTROL_FRAME_INVALID;
             }
         };
         if startup
@@ -2407,24 +2507,24 @@ pub(crate) fn run_worker_with_arguments(_arguments: &[String]) -> i32 {
             .is_err()
         {
             eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-            return 1;
+            return EXIT_CONTROL_FRAME_INVALID;
         }
         if !verify_worker_boundary() {
             eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-            return 1;
+            return EXIT_BOUNDARY_VERIFICATION_FAILED;
         }
         if startup
             .advance(WorkerStartupStage::BoundaryVerified)
             .is_err()
         {
             eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-            return 1;
+            return EXIT_BOUNDARY_VERIFICATION_FAILED;
         }
         let pipe_names = match derive_pipe_names(&control.attempt_id) {
             Ok(names) => names,
             Err(()) => {
                 eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-                return 1;
+                return EXIT_CONTROL_FRAME_INVALID;
             }
         };
         let pipe_runtime = match tokio::runtime::Builder::new_current_thread()
@@ -2434,21 +2534,21 @@ pub(crate) fn run_worker_with_arguments(_arguments: &[String]) -> i32 {
             Ok(runtime) => runtime,
             Err(_) => {
                 eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-                return 1;
+                return EXIT_RUNTIME_CREATION_FAILED;
             }
         };
         let ready_handle = ready_value as usize as HANDLE;
         let result = pipe_runtime.block_on(async {
-            let capability_pipe =
-                WindowsNamedPipeClient::connect_once(&pipe_names.capability).map_err(|_| ())?;
+            let capability_pipe = WindowsNamedPipeClient::connect_once(&pipe_names.capability)
+                .map_err(|_| EXIT_CAPABILITY_PIPE_FAILED)?;
             startup
                 .advance(WorkerStartupStage::CapabilityConnected)
-                .map_err(|_| ())?;
-            let model_pipe =
-                WindowsNamedPipeClient::connect_once(&pipe_names.model).map_err(|_| ())?;
+                .map_err(|_| EXIT_CAPABILITY_PIPE_FAILED)?;
+            let model_pipe = WindowsNamedPipeClient::connect_once(&pipe_names.model)
+                .map_err(|_| EXIT_MODEL_PIPE_FAILED)?;
             startup
                 .advance(WorkerStartupStage::ModelConnected)
-                .map_err(|_| ())?;
+                .map_err(|_| EXIT_MODEL_PIPE_FAILED)?;
 
             let session_id = std::sync::Arc::new(tokio::sync::OnceCell::new());
             let capability_client = WindowsCapabilityClient::new(
@@ -2456,15 +2556,16 @@ pub(crate) fn run_worker_with_arguments(_arguments: &[String]) -> i32 {
                 control.attempt_lease.clone(),
                 session_id.clone(),
             )
-            .map_err(|_| ())?;
+            .map_err(|_| EXIT_CAPABILITY_PIPE_FAILED)?;
             let model_provider = WindowsModelProvider::new(
                 model_pipe,
                 control.attempt_lease.clone(),
                 session_id,
                 control.model_id.clone(),
             )
-            .map_err(|_| ())?;
-            let (data_dir, config_dir) = prepare_goose_state_directories(&control.private_root)?;
+            .map_err(|_| EXIT_MODEL_PIPE_FAILED)?;
+            let (data_dir, config_dir) = prepare_goose_state_directories(&control.private_root)
+                .map_err(|_| EXIT_STATE_DIRECTORY_FAILED)?;
             let adapter = goose::acp::server::AcpRuntimeAdapter {
                 provider_id: "actestra".to_string(),
                 model_config: goose_providers::model::ModelConfig::new(&control.model_id),
@@ -2484,27 +2585,29 @@ pub(crate) fn run_worker_with_arguments(_arguments: &[String]) -> i32 {
             };
             startup
                 .advance(WorkerStartupStage::AdaptersConstructed)
-                .map_err(|_| ())?;
+                .map_err(|_| EXIT_STATE_DIRECTORY_FAILED)?;
             let ready_result = write_all_handle(ready_handle, WINDOWS_WORKER_READY_MARKER);
             unsafe { CloseHandle(ready_handle) };
             if ready_result.is_err() {
-                return Err(());
+                return Err(EXIT_READY_SIGNAL_FAILED);
             }
             startup
                 .advance(WorkerStartupStage::ReadyWritten)
-                .map_err(|_| ())?;
+                .map_err(|_| EXIT_READY_SIGNAL_FAILED)?;
             startup
                 .advance(WorkerStartupStage::AcpServing)
-                .map_err(|_| ())?;
+                .map_err(|_| EXIT_ACP_HANDSHAKE_FAILED)?;
             goose::acp::server::run_with_runtime_adapter(adapter)
                 .await
-                .map_err(|_| ())
+                .map_err(|_| EXIT_ACP_HANDSHAKE_FAILED)
         });
-        if result.is_err() {
-            eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-            return 1;
+        match result {
+            Ok(()) => 0,
+            Err(code) => {
+                eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+                code
+            }
         }
-        0
     }
     #[cfg(not(windows))]
     {
@@ -3388,7 +3491,11 @@ mod tests {
 
     #[test]
     fn keeps_runtime_failure_codes_closed_and_sanitized() {
-        assert_eq!(WINDOWS_RUNTIME_FAILURE_CODES.len(), 10);
+        assert_eq!(WINDOWS_RUNTIME_FAILURE_CODES.len(), 18);
+        let mut unique = WINDOWS_RUNTIME_FAILURE_CODES.to_vec();
+        unique.sort_unstable();
+        unique.dedup();
+        assert_eq!(unique.len(), WINDOWS_RUNTIME_FAILURE_CODES.len());
         for code in WINDOWS_RUNTIME_FAILURE_CODES {
             assert!(code.starts_with("windows-"));
             assert!(code
@@ -3396,6 +3503,71 @@ mod tests {
                 .all(|byte| byte.is_ascii_lowercase() || byte == b'-'));
             assert!(!code.contains(['/', '\\', ' ', ':']));
         }
+    }
+
+    #[test]
+    fn maps_each_worker_startup_exit_code_to_a_distinct_closed_runtime_code() {
+        let expected = [
+            (
+                EXIT_CONTROL_FRAME_INVALID,
+                "windows-worker-control-frame-invalid",
+            ),
+            (
+                EXIT_BOUNDARY_VERIFICATION_FAILED,
+                "windows-worker-boundary-verification-failed",
+            ),
+            (
+                EXIT_RUNTIME_CREATION_FAILED,
+                "windows-worker-runtime-creation-failed",
+            ),
+            (
+                EXIT_CAPABILITY_PIPE_FAILED,
+                "windows-worker-capability-pipe-failed",
+            ),
+            (EXIT_MODEL_PIPE_FAILED, "windows-worker-model-pipe-failed"),
+            (
+                EXIT_STATE_DIRECTORY_FAILED,
+                "windows-worker-state-directory-failed",
+            ),
+            (
+                EXIT_READY_SIGNAL_FAILED,
+                "windows-worker-ready-signal-failed",
+            ),
+            (
+                EXIT_ACP_HANDSHAKE_FAILED,
+                "windows-worker-acp-handshake-failed",
+            ),
+        ];
+
+        let mut diagnostics = Vec::new();
+        for (exit_code, runtime_code) in expected {
+            let failure = classify_worker_startup_exit(exit_code as u32);
+            assert_eq!(failure.runtime_code(), runtime_code);
+            assert!(WINDOWS_RUNTIME_FAILURE_CODES.contains(&runtime_code));
+            assert_eq!(
+                runtime_code_for_supervisor_failure(SupervisorFailureStage::WorkerStartup(failure)),
+                Some(runtime_code)
+            );
+            assert_eq!(
+                runtime_diagnostic_codes(
+                    classify_runtime_event(WindowsRuntimeEvent::WorkerExit(Ok(exit_code as u32))),
+                    true
+                ),
+                [Some(runtime_code), None]
+            );
+            diagnostics.push(failure.diagnostic_exit_code());
+        }
+
+        diagnostics.sort_unstable();
+        diagnostics.dedup();
+        assert_eq!(diagnostics.len(), expected.len());
+
+        let unknown = classify_worker_startup_exit(1);
+        assert_eq!(unknown.runtime_code(), "windows-worker-runtime-failed");
+        assert_eq!(
+            classify_runtime_event(WindowsRuntimeEvent::WorkerExit(Ok(0))),
+            Ok(())
+        );
     }
 
     #[test]

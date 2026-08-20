@@ -110,6 +110,15 @@ export const GOOSE_CONTAINMENT_PROBE_DIAGNOSTIC_CODES = Object.freeze([
   "windows-worker-runtime-failed",
   "windows-runtime-timeout",
   "windows-runtime-cleanup-failed",
+  "windows-worker-control-frame-invalid",
+  "windows-worker-boundary-verification-failed",
+  "windows-worker-runtime-creation-failed",
+  "windows-worker-capability-pipe-failed",
+  "windows-worker-model-pipe-failed",
+  "windows-worker-state-directory-failed",
+  "windows-worker-ready-signal-failed",
+  "windows-worker-ready-signal-failed",
+  "windows-worker-acp-handshake-failed",
 ]);
 const PROBE_DIAGNOSTIC_CODES = new Set(GOOSE_CONTAINMENT_PROBE_DIAGNOSTIC_CODES);
 

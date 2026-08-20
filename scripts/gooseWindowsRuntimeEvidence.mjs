@@ -43,6 +43,15 @@ const FAILURE_STAGE_CODES = Object.freeze({
   "runner-relay": "windows-runtime-runner-relay-failed",
   "runner-panic": "windows-runtime-runner-panic-failed",
   "windows-runtime": "windows-runtime-native-setup-failed",
+  "windows-worker-control-frame-invalid": "windows-runtime-worker-control-frame-invalid-failed",
+  "windows-worker-boundary-verification-failed":
+    "windows-runtime-worker-boundary-verification-failed",
+  "windows-worker-runtime-creation-failed": "windows-runtime-worker-runtime-creation-failed",
+  "windows-worker-capability-pipe-failed": "windows-runtime-worker-capability-pipe-failed",
+  "windows-worker-model-pipe-failed": "windows-runtime-worker-model-pipe-failed",
+  "windows-worker-state-directory-failed": "windows-runtime-worker-state-directory-failed",
+  "windows-worker-ready-signal-failed": "windows-runtime-worker-ready-signal-failed",
+  "windows-worker-acp-handshake-failed": "windows-runtime-worker-acp-handshake-failed",
   "handshake-process-exit": "windows-runtime-handshake-process-exit-failed",
   "handshake-process-signal": "windows-runtime-handshake-process-signal-failed",
   "handshake-timeout": "windows-runtime-handshake-timeout-failed",
@@ -110,6 +119,16 @@ const CODING_SESSION_OPEN_ERROR_CODES = new Set([
   "worktree-create-failed",
   "cleanup-failed",
 ]);
+const WINDOWS_WORKER_STARTUP_STAGES = Object.freeze([
+  "windows-worker-control-frame-invalid",
+  "windows-worker-boundary-verification-failed",
+  "windows-worker-runtime-creation-failed",
+  "windows-worker-capability-pipe-failed",
+  "windows-worker-model-pipe-failed",
+  "windows-worker-state-directory-failed",
+  "windows-worker-ready-signal-failed",
+  "windows-worker-acp-handshake-failed",
+]);
 const WINDOWS_OPEN_FAILURE_STAGES = Object.freeze([
   "artifact-admission",
   "artifact-binding-incomplete",
@@ -124,6 +143,7 @@ const WINDOWS_OPEN_FAILURE_STAGES = Object.freeze([
   "runner-relay",
   "runner-panic",
   "windows-runtime",
+  ...WINDOWS_WORKER_STARTUP_STAGES,
   "handshake-process-exit",
   "handshake-process-signal",
   "handshake-timeout",
@@ -231,6 +251,7 @@ export function classifyGooseWindowsOpeningFailure(error) {
       if (code === "worker-resource-enforcement-unavailable") return "runtime-resource";
       if (code === "invalid-options") return "launch-contract";
       if (code === "cleanup-failed") return "composition-cleanup";
+      if (WINDOWS_WORKER_STARTUP_STAGES.includes(code)) return code;
       if (code === "spawn-failed") {
         if (message === "Failed to launch Goose ACP process") return "runner-process-spawn";
         if (message === "Goose stdin is not writable") return "runner-stdin";

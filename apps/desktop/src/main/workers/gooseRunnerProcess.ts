@@ -52,27 +52,46 @@ export const GOOSE_NATIVE_ASYNC_RUNTIME_FAILURE_MARKER =
 export const GOOSE_NATIVE_ACP_SERVER_FAILURE_MARKER = "ACTESTRA_GOOSE_ACP_SERVER_FAILED";
 export const GOOSE_NATIVE_RELAY_FAILURE_MARKER = "ACTESTRA_GOOSE_LINUX_RELAY_STOPPED";
 export const GOOSE_NATIVE_PANIC_FAILURE_MARKER = "ACTESTRA_GOOSE_RUNNER_PANICKED";
-const GOOSE_WINDOWS_RUNTIME_FAILURE_MARKERS = Object.freeze(
-  [
-    "windows-control-channel-invalid",
-    "windows-ready-channel-invalid",
-    "windows-capability-pipe-invalid",
-    "windows-model-pipe-invalid",
-    "windows-acp-relay-failed",
-    "windows-capability-relay-failed",
-    "windows-model-relay-failed",
-    "windows-worker-runtime-failed",
-    "windows-runtime-timeout",
-    "windows-runtime-cleanup-failed",
-  ].map((stage) => `Goose windows containment failed at bounded stage ${stage}`),
-);
+function windowsRuntimeStageMarker(stage: string): string {
+  return `Goose windows containment failed at bounded stage ${stage}`;
+}
+const GOOSE_WINDOWS_SUPERVISOR_FAILURE_STAGES = Object.freeze([
+  "windows-control-channel-invalid",
+  "windows-ready-channel-invalid",
+  "windows-capability-pipe-invalid",
+  "windows-model-pipe-invalid",
+  "windows-acp-relay-failed",
+  "windows-capability-relay-failed",
+  "windows-model-relay-failed",
+  "windows-worker-runtime-failed",
+  "windows-runtime-timeout",
+  "windows-runtime-cleanup-failed",
+]);
+/**
+ * Worker startup stages carry their own closed code all the way to CI evidence.
+ * Collapsing them into one token would erase the only signal that distinguishes
+ * a capability-pipe ACL rejection from a control-frame or runtime fault.
+ */
+export const GOOSE_WINDOWS_WORKER_STARTUP_STAGES = Object.freeze([
+  "windows-worker-control-frame-invalid",
+  "windows-worker-boundary-verification-failed",
+  "windows-worker-runtime-creation-failed",
+  "windows-worker-capability-pipe-failed",
+  "windows-worker-model-pipe-failed",
+  "windows-worker-state-directory-failed",
+  "windows-worker-ready-signal-failed",
+  "windows-worker-acp-handshake-failed",
+] as const);
+export type GooseRunnerWindowsWorkerStartupFailure =
+  (typeof GOOSE_WINDOWS_WORKER_STARTUP_STAGES)[number];
 export type GooseRunnerProcessErrorCode =
   | "invalid-options"
   | "artifact-mismatch"
   | "network-policy-unavailable"
   | "worker-resource-enforcement-unavailable"
   | "spawn-failed"
-  | "cleanup-failed";
+  | "cleanup-failed"
+  | GooseRunnerWindowsWorkerStartupFailure;
 
 export class GooseRunnerProcessError extends Error {
   constructor(
@@ -130,7 +149,8 @@ export type GooseRunnerSetupFailure =
   | "runner-acp"
   | "runner-relay"
   | "runner-panic"
-  | "windows-runtime";
+  | "windows-runtime"
+  | GooseRunnerWindowsWorkerStartupFailure;
 
 type GooseChildProcess = ChildProcessByStdio<Writable, Readable, Readable>;
 
@@ -490,8 +510,12 @@ export function createGooseRunnerSetupFailureMatcher(): GooseRunnerSetupFailureM
   const acp = createGooseRunnerFixedMarkerMatcher(GOOSE_NATIVE_ACP_SERVER_FAILURE_MARKER);
   const relay = createGooseRunnerFixedMarkerMatcher(GOOSE_NATIVE_RELAY_FAILURE_MARKER);
   const panic = createGooseRunnerFixedMarkerMatcher(GOOSE_NATIVE_PANIC_FAILURE_MARKER);
-  const windowsRuntime = GOOSE_WINDOWS_RUNTIME_FAILURE_MARKERS.map((marker) =>
-    createGooseRunnerFixedMarkerMatcher(marker),
+  const windowsRuntime = GOOSE_WINDOWS_SUPERVISOR_FAILURE_STAGES.map((stage) =>
+    createGooseRunnerFixedMarkerMatcher(windowsRuntimeStageMarker(stage)),
+  );
+  const windowsWorkerStartup = GOOSE_WINDOWS_WORKER_STARTUP_STAGES.map(
+    (stage) =>
+      [stage, createGooseRunnerFixedMarkerMatcher(windowsRuntimeStageMarker(stage))] as const,
   );
   let detected: GooseRunnerSetupFailure | undefined;
   return Object.freeze({
@@ -509,8 +533,20 @@ export function createGooseRunnerSetupFailureMatcher(): GooseRunnerSetupFailureM
         detected = "runner-relay";
       } else if (panic.push(chunk)) {
         detected = "runner-panic";
-      } else if (windowsRuntime.some((matcher) => matcher.push(chunk))) {
-        detected = "windows-runtime";
+      } else {
+        let workerStartup: GooseRunnerWindowsWorkerStartupFailure | undefined;
+        for (const [stage, matcher] of windowsWorkerStartup) {
+          if (matcher.push(chunk)) workerStartup ??= stage;
+        }
+        const supervisorRuntime = windowsRuntime.reduce(
+          (seen, matcher) => matcher.push(chunk) || seen,
+          false,
+        );
+        if (workerStartup !== undefined) {
+          detected = workerStartup;
+        } else if (supervisorRuntime) {
+          detected = "windows-runtime";
+        }
       }
       return detected;
     },
@@ -523,6 +559,15 @@ function setupFailureError(failure: GooseRunnerSetupFailure): GooseRunnerProcess
   }
   if (failure === "worker-resource-enforcement-unavailable") {
     return new GooseRunnerProcessError(failure, "Goose native resource enforcement is unavailable");
+  }
+  if (
+    (GOOSE_WINDOWS_WORKER_STARTUP_STAGES as readonly string[]).includes(failure) &&
+    failure !== "windows-runtime"
+  ) {
+    return new GooseRunnerProcessError(
+      failure as GooseRunnerWindowsWorkerStartupFailure,
+      "Goose Windows worker startup failed",
+    );
   }
   const message =
     failure === "runner-runtime"

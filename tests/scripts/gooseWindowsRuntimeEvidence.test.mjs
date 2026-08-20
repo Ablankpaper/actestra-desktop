@@ -79,6 +79,62 @@ describe("Goose Windows runtime evidence", () => {
     expect(
       classifyGooseWindowsOpeningFailure({
         name: "GooseRunnerProcessError",
+        code: "windows-worker-capability-pipe-failed",
+        message: "Goose Windows worker startup failed",
+      }),
+    ).toBe("windows-worker-capability-pipe-failed");
+    expect(
+      classifyGooseWindowsOpeningFailure({
+        name: "GooseRunnerProcessError",
+        code: "windows-worker-control-frame-invalid",
+        message: "Goose Windows worker startup failed",
+      }),
+    ).toBe("windows-worker-control-frame-invalid");
+    expect(
+      classifyGooseWindowsOpeningFailure({
+        name: "GooseRunnerProcessError",
+        code: "windows-worker-boundary-verification-failed",
+        message: "Goose Windows worker startup failed",
+      }),
+    ).toBe("windows-worker-boundary-verification-failed");
+    expect(
+      classifyGooseWindowsOpeningFailure({
+        name: "GooseRunnerProcessError",
+        code: "windows-worker-runtime-creation-failed",
+        message: "Goose Windows worker startup failed",
+      }),
+    ).toBe("windows-worker-runtime-creation-failed");
+    expect(
+      classifyGooseWindowsOpeningFailure({
+        name: "GooseRunnerProcessError",
+        code: "windows-worker-model-pipe-failed",
+        message: "Goose Windows worker startup failed",
+      }),
+    ).toBe("windows-worker-model-pipe-failed");
+    expect(
+      classifyGooseWindowsOpeningFailure({
+        name: "GooseRunnerProcessError",
+        code: "windows-worker-state-directory-failed",
+        message: "Goose Windows worker startup failed",
+      }),
+    ).toBe("windows-worker-state-directory-failed");
+    expect(
+      classifyGooseWindowsOpeningFailure({
+        name: "GooseRunnerProcessError",
+        code: "windows-worker-ready-signal-failed",
+        message: "Goose Windows worker startup failed",
+      }),
+    ).toBe("windows-worker-ready-signal-failed");
+    expect(
+      classifyGooseWindowsOpeningFailure({
+        name: "GooseRunnerProcessError",
+        code: "windows-worker-acp-handshake-failed",
+        message: "Goose Windows worker startup failed",
+      }),
+    ).toBe("windows-worker-acp-handshake-failed");
+    expect(
+      classifyGooseWindowsOpeningFailure({
+        name: "GooseRunnerProcessError",
         code: "spawn-failed",
         message: "Goose handshake launch failed",
         cause: {
@@ -110,6 +166,35 @@ describe("Goose Windows runtime evidence", () => {
     expect(classifyGooseWindowsCodingSessionOpenError({ code: "unknown" })).toBe(
       "coding-session-open",
     );
+  });
+
+  it("maps each worker startup stage to a distinct final evidence token", () => {
+    const stages = [
+      "windows-worker-control-frame-invalid",
+      "windows-worker-boundary-verification-failed",
+      "windows-worker-runtime-creation-failed",
+      "windows-worker-capability-pipe-failed",
+      "windows-worker-model-pipe-failed",
+      "windows-worker-state-directory-failed",
+      "windows-worker-ready-signal-failed",
+      "windows-worker-acp-handshake-failed",
+    ];
+    const tokens = stages.map((stage) =>
+      classifyGooseWindowsRuntimeFailureEvidence({ contractVersion: 1, stage }),
+    );
+    expect(new Set(tokens).size).toBe(8);
+    expect(tokens.every((token) => typeof token === "string" && token.length > 0)).toBe(true);
+    expect(tokens.every((token) => !token.includes("\\") && !token.includes("/"))).toBe(true);
+    expect(tokens).toEqual([
+      "windows-runtime-worker-control-frame-invalid-failed",
+      "windows-runtime-worker-boundary-verification-failed",
+      "windows-runtime-worker-runtime-creation-failed",
+      "windows-runtime-worker-capability-pipe-failed",
+      "windows-runtime-worker-model-pipe-failed",
+      "windows-runtime-worker-state-directory-failed",
+      "windows-runtime-worker-ready-signal-failed",
+      "windows-runtime-worker-acp-handshake-failed",
+    ]);
   });
 
   it("accepts only the complete verified record bound to one exact Artifact", () => {
