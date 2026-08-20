@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { execFile, spawn } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -223,7 +223,9 @@ function graph(fixture: {
 
 async function createFixture(suffix: string): Promise<CodingFixture> {
   await markFailure("fixture-filesystem");
-  const root = await mkdtemp(path.join(os.tmpdir(), "actestra-goose-windows-runtime-"));
+  const root = await realpath(
+    await mkdtemp(path.join(os.tmpdir(), "actestra-goose-windows-runtime-")),
+  );
   fixtureRoots.push(root);
   const sourceRoot = path.join(root, "source");
   const sourceFile = path.join(sourceRoot, "answer.txt");

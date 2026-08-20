@@ -311,5 +311,8 @@ describe("Goose Windows runtime evidence", () => {
     expect(integration).toContain('markFailure("fixture-persistence-open")');
     expect(integration).toContain('markFailure("fixture-domain-state")');
     expect(integration).toContain('markFailure("coding-session-open")');
+    expect(integration).toMatch(
+      /const root = await realpath\(\s*await mkdtemp\(path\.join\(os\.tmpdir\(\), "actestra-goose-windows-runtime-"\)\),?\s*\);/u,
+    );
   });
 });
