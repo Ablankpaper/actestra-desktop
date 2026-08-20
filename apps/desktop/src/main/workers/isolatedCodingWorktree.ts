@@ -272,7 +272,9 @@ export async function createIsolatedCodingWorktree(
   try {
     [reportedRoot, insideWorktree, commit, repositoryGitCommonDirectory, repositoryGitDirectory] =
       await Promise.all([
-        runGit(repositoryRoot, environment, "rev-parse", "--show-toplevel"),
+        runGit(repositoryRoot, environment, "rev-parse", "--show-toplevel").then((directory) =>
+          realpath(directory),
+        ),
         runGit(repositoryRoot, environment, "rev-parse", "--is-inside-work-tree"),
         runGit(repositoryRoot, environment, "rev-parse", "--verify", "HEAD^{commit}"),
         runGit(
@@ -349,16 +351,20 @@ export async function createIsolatedCodingWorktree(
             "--git-common-dir",
           )
         ).split("\n");
-        if (values.length !== 3 || values[0] !== canonicalWorktreeRoot) {
+        if (values.length !== 3) {
           throw new IsolatedCodingWorktreeError(
             "worktree-create-failed",
             "Created coding worktree reported an incompatible Git binding",
           );
         }
-        const [canonicalGitDirectory, canonicalGitCommonDirectory] = await Promise.all([
-          realpath(values[1]!),
-          realpath(values[2]!),
-        ]);
+        const [reportedWorktreeRoot, canonicalGitDirectory, canonicalGitCommonDirectory] =
+          await Promise.all([realpath(values[0]!), realpath(values[1]!), realpath(values[2]!)]);
+        if (reportedWorktreeRoot !== canonicalWorktreeRoot) {
+          throw new IsolatedCodingWorktreeError(
+            "worktree-create-failed",
+            "Created coding worktree reported an incompatible Git binding",
+          );
+        }
         if (
           canonicalGitCommonDirectory !== repositoryGitCommonDirectory ||
           !isInside(canonicalGitCommonDirectory, canonicalGitDirectory)

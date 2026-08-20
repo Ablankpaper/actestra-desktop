@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -8,6 +9,22 @@ import {
 } from "../../apps/desktop/src/main/workers/workspaceGitBinding";
 
 describe("secure coding Git runtime", () => {
+  it("canonicalizes Git-reported worktree roots before comparing platform spellings", () => {
+    const source = fs.readFileSync(
+      path.resolve(
+        import.meta.dirname,
+        "../../apps/desktop/src/main/workers/isolatedCodingWorktree.ts",
+      ),
+      "utf8",
+    );
+    expect(source).toContain(
+      'runGit(repositoryRoot, environment, "rev-parse", "--show-toplevel").then(',
+    );
+    expect(source).toContain("realpath(directory)");
+    expect(source).toContain("realpath(values[0]!)");
+    expect(source).not.toContain("values[0] !== canonicalWorktreeRoot");
+  });
+
   it("uses an absolute admitted executable and platform null device", () => {
     expect(path.isAbsolute(GIT_EXECUTABLE)).toBe(true);
     expect(GIT_NULL_DEVICE).toBe(process.platform === "win32" ? "NUL" : "/dev/null");
