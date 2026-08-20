@@ -2,6 +2,44 @@
 
 Last updated: 2026-08-20
 
+## 2026-08-20 P8.2c Windows authenticated-runtime outer-code closure remediation
+
+Exact-head CI run `32354734352` for source head `16d55da` crossed the vendored
+dependency fetch, Windows release build, lock freeze, Artifact admission, and
+exact Windows containment acceptance. Windows and Ubuntu build probes, both
+containment jobs, Ubuntu authenticated integration, Goose admission, and the
+macOS foundation/package-trust job passed. The sole failure was the real
+Windows authenticated-runtime integration. Its bounded failure Artifact
+contained only
+`{"contractVersion":1,"code":"windows-runtime-test-stage-unknown-failed"}`.
+
+The unknown result came from a cross-layer closed-set defect in the diagnostic
+wrapper. The stage classifier already mapped each of the eight native Worker
+startup stages to a distinct `windows-runtime-worker-*` code, but the outer
+runtime runner's final-output allowlist omitted all eight mapped values. A
+specific Worker startup result was therefore classified and then overwritten
+with the unknown fallback while producing the CI Artifact. This result does
+not identify or authorize a native ACL, named-pipe, AppContainer, or Worker
+behavior change.
+
+The local remediation exports the complete stage-code set from the classifier
+and has the outer runner consume that exact set instead of maintaining an
+incomplete parallel list. A regression test locks all eight Worker startup
+codes through that boundary. The test was observed RED before the change and
+GREEN afterward; the focused Windows evidence, native wiring, platform matrix,
+and containment-diagnostics suite passes `48/48`. Typecheck, lint with zero
+warnings/errors, format, and `git diff --check` also pass. The complete
+`bun run check` gate exits `0` with `171` test files passed, `3` platform files
+skipped, `1840` tests passed, and `10` skipped; security, boundary, frozen
+foundation, downstream materialization/package, and smoke-harness gates pass in
+the same run.
+
+P8.2c remains open. One new exact-head Windows authenticated-runtime run must
+now preserve the concrete native Worker stage. Only that sanitized stage may
+drive the next native repair; no CI rerun or ACL/pipe change has yet been made
+from the unknown result. P8.3, P8.4, release, deployment, and user acceptance
+remain separate and open.
+
 ## 2026-08-20 P8.2c CI follow-up: unavailable `arrayref` remote blocked all jobs
 
 Exact-head CI run `32352605516` for commit `55734a6` did not execute any

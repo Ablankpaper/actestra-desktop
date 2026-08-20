@@ -198,6 +198,30 @@ describe("Goose Windows runtime evidence", () => {
     ]);
   });
 
+  it("keeps every classified worker startup token admitted by the outer runtime runner", async () => {
+    const evidenceModule = await import("../../scripts/gooseWindowsRuntimeEvidence.mjs");
+    const workerStartupTokens = [
+      "windows-runtime-worker-control-frame-invalid-failed",
+      "windows-runtime-worker-boundary-verification-failed",
+      "windows-runtime-worker-runtime-creation-failed",
+      "windows-runtime-worker-capability-pipe-failed",
+      "windows-runtime-worker-model-pipe-failed",
+      "windows-runtime-worker-state-directory-failed",
+      "windows-runtime-worker-ready-signal-failed",
+      "windows-runtime-worker-acp-handshake-failed",
+    ];
+    const runner = fs.readFileSync(
+      path.join(repositoryRoot, "scripts/run-goose-runner-windows-runtime.mjs"),
+      "utf8",
+    );
+
+    expect(evidenceModule.GOOSE_WINDOWS_RUNTIME_STAGE_FAILURE_CODES).toEqual(
+      expect.arrayContaining(workerStartupTokens),
+    );
+    expect(runner).toContain("GOOSE_WINDOWS_RUNTIME_STAGE_FAILURE_CODES");
+    expect(runner).toContain("...GOOSE_WINDOWS_RUNTIME_STAGE_FAILURE_CODES");
+  });
+
   it("classifies bounded Windows runtime child failures without retaining child output", () => {
     expect(
       classifyGooseWindowsRuntimeChildFailure({

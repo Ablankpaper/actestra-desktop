@@ -7,6 +7,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import {
   GOOSE_WINDOWS_ARTIFACT_ADMISSION_FAILURE_CODES,
+  GOOSE_WINDOWS_RUNTIME_STAGE_FAILURE_CODES,
   classifyGooseWindowsArtifactAdmissionExecution,
   classifyGooseWindowsRuntimeChildFailure,
   classifyGooseWindowsRuntimeFailureEvidence,
@@ -24,6 +25,7 @@ const CONTAINMENT_KEYS = Object.freeze(
 );
 const FAILURE_CODES = new Set([
   ...GOOSE_WINDOWS_ARTIFACT_ADMISSION_FAILURE_CODES,
+  ...GOOSE_WINDOWS_RUNTIME_STAGE_FAILURE_CODES,
   "windows-runtime-artifact-admission-failed",
   "windows-runtime-artifact-admission-output-invalid",
   "windows-runtime-artifact-admission-output-too-large",

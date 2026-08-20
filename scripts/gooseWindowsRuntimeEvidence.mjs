@@ -405,6 +405,9 @@ export function classifyGooseWindowsArtifactAdmissionExecution(value) {
 }
 
 export const GOOSE_WINDOWS_RUNTIME_EVIDENCE_KEYS = EVIDENCE_KEYS;
+export const GOOSE_WINDOWS_RUNTIME_STAGE_FAILURE_CODES = Object.freeze(
+  Object.values(FAILURE_STAGE_CODES),
+);
 export const GOOSE_WINDOWS_ARTIFACT_ADMISSION_FAILURE_CODES = Object.freeze(
   Object.values(ARTIFACT_ADMISSION_FAILURE_CODES),
 );
