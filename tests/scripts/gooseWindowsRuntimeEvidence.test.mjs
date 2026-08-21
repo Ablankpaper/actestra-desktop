@@ -72,6 +72,20 @@ describe("Goose Windows runtime evidence", () => {
     ).toBe("session-timeout");
     expect(
       classifyGooseWindowsOpeningFailure({
+        name: "GooseAcpSessionError",
+        code: "session-rejected",
+        message: "fixed internal diagnostic",
+      }),
+    ).toBe("session-rejected");
+    expect(
+      classifyGooseWindowsOpeningFailure({
+        name: "GooseAcpSessionError",
+        code: "invalid-session-message",
+        message: "fixed internal diagnostic",
+      }),
+    ).toBe("session-message-invalid");
+    expect(
+      classifyGooseWindowsOpeningFailure({
         name: "GooseRunnerProcessError",
         code: "windows-worker-control-frame-invalid",
         message: "Goose Windows worker startup failed",
@@ -548,6 +562,13 @@ describe("Goose Windows runtime evidence", () => {
         stage: "coding-session-open",
       }),
     ).toBe("windows-runtime-coding-session-open-failed");
+    for (const [stage, code] of [
+      ["session-open", "windows-runtime-session-open-failed"],
+      ["session-rejected", "windows-runtime-session-rejected-failed"],
+      ["session-message-invalid", "windows-runtime-session-message-invalid-failed"],
+    ]) {
+      expect(classifyGooseWindowsRuntimeFailureEvidence({ contractVersion: 1, stage })).toBe(code);
+    }
     for (const [stage, code] of [
       [
         "coding-session-open-invalid-options",

@@ -2,6 +2,63 @@
 
 Last updated: 2026-08-21
 
+## 2026-08-21 P8.2c first tool-call diagnostic rerun (Windows runtime still open)
+
+Exact-head CI run
+[`32480303614`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32480303614)
+for head `83ef390dc880671004f7aeefb9713c6b0e69d803` passed Goose runner
+admission, the Windows build probe, Windows containment, both Ubuntu jobs, and
+the macOS foundation/package job. The Windows authenticated-runtime job also
+completed the exact runner build and admission and passed its containment
+acceptance. Its only failure occurred in `Run authenticated Windows Goose
+runtime`, which emitted the bounded code
+`windows-runtime-session-open-failed`.
+
+The failure Artifact was independently downloaded as
+`p8-goose-runtime-windows-failure-df9b993da2844ee95eda5bdf3f366f11dcb26c15`
+(Artifact `9446776680`; uploaded ZIP SHA-256
+`01deeb321d2db290b585ae03ee0210004f2dd9237a47e2fa32c1058bf077962e`). Its
+single file `windows-runtime-failure.json` has SHA-256
+`38d6c40631d5a0cdea587f7dd253f68b6eade948d38b9b287bd9e156bd85baf9` and
+contains exactly:
+
+```json
+{"contractVersion":1,"code":"windows-runtime-session-open-failed"}
+```
+
+The CI log proves the runner executable was built and admitted
+(`manifestSha256=0ec764f9634555f4c4ac6d0fa3487d5d10d3734e4c50bfbfab6b9960a29870dd`,
+`executableSha256=a782b287810d72971456508d7a0db8d100aef30930607f5e138689c0a6b33961`)
+and that containment was verified before the runtime step. The new
+first-tool-call markers were therefore not reached: the outer harness caught a
+`GooseAcpSessionError` during composition opening and the classifier retained
+the coarse `session-open` token. This run does not prove whether the first
+failure is in ACP `session/new`, explicit tool discovery, or cleanup, and does
+not justify an ACL, permission, protocol, network, credential, or Renderer
+change.
+
+The diagnostic patch is locally green, but P8.2c remains open. No new CI run
+was triggered after this failure. The next action must first make the existing
+session-opening failure distinguishable (without changing authority or retry
+behavior), then use one exact-head Windows run to obtain the first real stage.
+Only a successful authenticated-runtime evidence Artifact whose digest,
+content, and source head are independently revalidated can close P8.2c.
+
+The follow-up diagnostic is now implemented locally: the evidence mapper keeps
+`GooseAcpSessionError` codes `session-rejected` and `invalid-session-message`
+separate as `windows-runtime-session-rejected-failed` and
+`windows-runtime-session-message-invalid-failed`. This changes only bounded
+failure classification and outer closed-set admission; it does not alter ACP
+messages, permissions, retries, or cleanup. Focused cross-layer tests pass
+(`112/112`), and format, lint, typecheck, and the P8 contract check are green.
+The change is not yet pushed or Windows-verified.
+
+The complete local `bun run check` for this diagnostic batch exits `0`:
+`171` test files passed / `3` skipped, `1855` tests passed / `10` skipped,
+P7 abuse, smoke harness, product boundary, foundation, downstream, and package
+checks all passed. The remaining bundler notices are pre-existing frozen
+foundation warnings.
+
 ## 2026-08-21 P8.2c first tool-call diagnostic split (local; CI pending)
 
 The exact-head Windows authenticated-runtime run

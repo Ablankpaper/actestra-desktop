@@ -165,6 +165,8 @@ const FAILURE_STAGE_CODES = Object.freeze({
   "handshake-transport": "windows-runtime-handshake-transport-failed",
   "handshake-response": "windows-runtime-handshake-response-failed",
   "session-open": "windows-runtime-session-open-failed",
+  "session-rejected": "windows-runtime-session-rejected-failed",
+  "session-message-invalid": "windows-runtime-session-message-invalid-failed",
   "session-timeout": "windows-runtime-session-timeout-failed",
   "session-process-exit": "windows-runtime-session-process-exit-failed",
   "session-transport": "windows-runtime-session-transport-failed",
@@ -321,6 +323,8 @@ const WINDOWS_OPEN_FAILURE_STAGES = Object.freeze([
   "handshake-transport",
   "handshake-response",
   "session-open",
+  "session-rejected",
+  "session-message-invalid",
   "session-timeout",
   "session-process-exit",
   "session-transport",
@@ -484,6 +488,8 @@ export function classifyGooseWindowsOpeningFailure(error) {
       if (code === "transport-error") fallback = "handshake-transport";
       else return "handshake-response";
     } else if (name === "GooseAcpSessionError") {
+      if (code === "session-rejected") return "session-rejected";
+      if (code === "invalid-session-message") return "session-message-invalid";
       if (code === "session-timeout") return "session-timeout";
       if (code === "session-process-exit") return "session-process-exit";
       if (code === "session-transport-error") return "session-transport";
