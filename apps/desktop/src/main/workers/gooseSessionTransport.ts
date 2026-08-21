@@ -19,6 +19,41 @@ export const GOOSE_WINDOWS_STDIO_CHANNELS = Object.freeze([
   "model",
 ] as const);
 
+export const GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES = Object.freeze([
+  "windows-capability-worker-request-written",
+  "windows-capability-supervisor-request-read",
+  "windows-capability-supervisor-request-forwarded",
+  "windows-capability-main-request-decoded",
+  "windows-capability-main-response-written",
+  "windows-capability-supervisor-response-read",
+  "windows-capability-supervisor-response-forwarded",
+  "windows-capability-worker-response-decoded",
+] as const);
+
+export type GooseWindowsCapabilityProgressStage =
+  (typeof GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES)[number];
+
+export interface GooseWindowsCapabilityProgress {
+  record(stage: GooseWindowsCapabilityProgressStage): void;
+  snapshot(): readonly GooseWindowsCapabilityProgressStage[];
+}
+
+export function createGooseWindowsCapabilityProgress(): GooseWindowsCapabilityProgress {
+  const observed = new Set<GooseWindowsCapabilityProgressStage>();
+  return Object.freeze({
+    record(stage: GooseWindowsCapabilityProgressStage): void {
+      if ((GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES as readonly string[]).includes(stage)) {
+        observed.add(stage);
+      }
+    },
+    snapshot(): readonly GooseWindowsCapabilityProgressStage[] {
+      return Object.freeze(
+        GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES.filter((stage) => observed.has(stage)),
+      );
+    },
+  });
+}
+
 export interface GooseCapabilityBoundary {
   readonly sessionEndpoint?: Readonly<{ readonly url: string; readonly attemptLease: string }>;
   bindSession(sessionId: string): void;

@@ -2,6 +2,49 @@
 
 Last updated: 2026-08-21
 
+## 2026-08-21 P8.2c Windows capability round-trip diagnostics (local; CI pending)
+
+Exact-head CI run
+[`32463207473`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32463207473)
+for Actestra head `9bdc606f1cab811c96ea37bdfe23ce26a82003fc` completed with
+six of seven jobs green. The Windows and Ubuntu build/containment jobs, Goose
+admission, and macOS foundation/package job passed. Windows authenticated
+runtime crossed session creation but timed out during the first capability
+`list_tools()` round trip; the previous evidence still collapsed that gap to
+`windows-runtime-composition-open-failed`.
+
+The independently downloaded failure Artifact is
+`p8-goose-runtime-windows-failure-c30a68b012021ba43306b800a5ec29971550d1a7`
+(Artifact `9440508742`; uploaded ZIP SHA-256
+`e4015e0e69a29dd0adb48f363aa3d21c2ab5ec3c0dfefa0718a60bc772d187fb`).
+Its single JSON file has SHA-256
+`48e374b468548e544228e9e7a62d7edd975089f380248b33bcbc0f9900a10a56`
+and contains only the bounded composition-open failure code.
+
+This diagnostic-only follow-up closes the previously silent capability path
+with eight ordered stages: Worker request write, Supervisor request read and
+forward, Main request decode and response write, Supervisor response read and
+forward, and Worker response decode. Worker stderr is filtered in Supervisor
+and only the two exact fixed Worker markers can cross into Main. Supervisor
+relay markers are emitted once for the first request/response pair, so later
+tool calls cannot grow the diagnostic stream. Main retains only a frozen
+closed-stage snapshot, and composition converts the first missing stage into
+one of eight distinct failure codes only for a bounded capability-discovery
+timeout. Session, relay, cleanup, and other unrelated failures retain their
+original classification. The outer Windows evidence layer maps the eight codes
+to eight independent bounded Failure Artifact tokens.
+
+No AppContainer ACL, network, credential, Renderer, workspace, handle
+allowlist, retry, fallback, or `foundation/` authority changed. Focused local
+evidence passes `68/68` TypeScript/JavaScript tests and `88/88` Goose runner
+tests. The complete `bun run check` gate exits zero: `171` test files passed /
+`3` skipped; `1849` tests passed / `10` skipped; P7 abuse cases, boundaries,
+frozen AionUI foundation, downstream materialization, and package build all
+passed. Rust formatting and `git diff --check` are clean. P8.2c is not closed
+until exact-head Windows CI either produces a verified successful runtime
+Artifact or identifies one first missing capability stage for a separate
+minimal behavior repair.
+
 ## 2026-08-21 P8.2c adapted-workspace admission fix (local; CI pending)
 
 Exact-head CI run

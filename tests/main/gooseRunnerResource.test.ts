@@ -8,14 +8,17 @@ import type { AdmittedGooseRunnerArtifact } from "../../apps/desktop/src/main/wo
 import {
   GOOSE_NATIVE_NETWORK_POLICY_FAILURE_MARKER,
   GOOSE_NATIVE_RESOURCE_LIMIT_FAILURE_MARKER,
+  GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
   GooseRunnerProcessError,
   assertGooseAcpSpawnOptions,
+  createGooseWindowsCapabilityProgressMatcher,
   createGooseRunnerEnvironment,
   createGooseRunnerSetupFailureMatcher,
   createGooseRunnerResourceFailureMatcher,
   openGooseRunnerHandshake,
   type GooseAcpSpawnOptions,
 } from "../../apps/desktop/src/main/workers/gooseRunnerProcess";
+import { createGooseWindowsCapabilityProgress } from "../../apps/desktop/src/main/workers/gooseSessionTransport";
 import { createGooseRunnerSandboxLaunch } from "../../apps/desktop/src/main/workers/gooseRunnerSandbox";
 import { LoopbackGooseAcpTransport } from "../fixtures/gooseAcp";
 
@@ -277,6 +280,37 @@ describe("Goose runner native resource boundary", () => {
     expect(matcher.push(Buffer.from(`ignored:${marker.slice(0, split)}`))).toBeUndefined();
     expect(matcher.push(Buffer.from(`${marker.slice(split)}:ignored`))).toBe(expected);
     expect(Object.keys(matcher)).toEqual(["push"]);
+  });
+
+  it("extracts only the eight bounded Windows capability progress stages across stderr chunks", () => {
+    const progress = createGooseWindowsCapabilityProgress();
+    const matcher = createGooseWindowsCapabilityProgressMatcher();
+    const marker = (stage: string): string =>
+      `Goose windows capability progress at bounded stage ${stage}`;
+
+    expect(
+      matcher.push(
+        Buffer.from(`ignored:${marker(GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES[0]).slice(0, 31)}`),
+      ),
+    ).toEqual([]);
+    for (const stage of matcher.push(
+      Buffer.from(
+        `${marker(GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES[0]).slice(31)}\n` +
+          `${marker(GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES[3])}\nC:\\private\\ignored`,
+      ),
+    )) {
+      progress.record(stage);
+    }
+    progress.record(GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES[0]);
+
+    expect(progress.snapshot()).toEqual([
+      GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES[0],
+      GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES[3],
+    ]);
+    expect(Object.isFrozen(progress.snapshot())).toBe(true);
+    expect(JSON.stringify(progress.snapshot())).not.toContain("private");
+    expect(Object.keys(matcher)).toEqual(["push"]);
+    expect(Object.keys(progress)).toEqual(["record", "snapshot"]);
   });
 
   it.each([

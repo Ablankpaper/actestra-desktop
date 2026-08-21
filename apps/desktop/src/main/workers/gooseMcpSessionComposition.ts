@@ -10,11 +10,13 @@ import {
 } from "./gooseMcpCapabilityServer";
 import {
   ACTESTRA_GOOSE_MCP_EXTENSION_NAME,
+  GooseAcpSessionError,
   type GooseAcpHumanDecisionGate,
   type GooseAcpInfo,
   type GooseAcpPromptResult,
   type GooseAcpSession,
 } from "./gooseAcpHandshake";
+import { GooseAuthenticatedBridgeProtocolError } from "./gooseAuthenticatedBridgeProtocol";
 import {
   startGooseLoopbackModelServer,
   type GooseLoopbackModelServer,
@@ -31,7 +33,10 @@ import {
   type OpenGooseRunnerHandshakeResult,
 } from "./gooseRunnerProcess";
 import {
+  GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
   resolveGooseSessionTransportMode,
+  type GooseWindowsCapabilityProgress,
+  type GooseWindowsCapabilityProgressStage,
   type GooseCapabilityBoundary,
   type GooseModelBoundary,
 } from "./gooseSessionTransport";
@@ -48,6 +53,7 @@ import {
 import type { Duplex } from "node:stream";
 
 const DEFAULT_TOOLS_LIST_WAIT_MS = 30_000;
+const WINDOWS_CAPABILITY_TOOLS_LIST_TIMEOUT_MESSAGE = "Windows capability tools/list timed out";
 const EXPECTED_GOOSE_TOOL_NAMES = Object.freeze(
   CODING_TOOL_IDS.map((toolId) => `${ACTESTRA_GOOSE_MCP_EXTENSION_NAME}__${toolId}`),
 );
@@ -84,7 +90,42 @@ export type GooseMcpSessionCompositionErrorCode =
   | "cleanup-failed"
   | "model-completion-refused"
   | "model-request-rejected"
-  | "tool-discovery-mismatch";
+  | "tool-discovery-mismatch"
+  | GooseWindowsCapabilityProgressFailureCode;
+
+export const GOOSE_WINDOWS_CAPABILITY_PROGRESS_FAILURE_CODES = Object.freeze([
+  "windows-capability-worker-request-write-failed",
+  "windows-capability-supervisor-request-read-failed",
+  "windows-capability-supervisor-request-forward-failed",
+  "windows-capability-main-request-decode-failed",
+  "windows-capability-main-response-write-failed",
+  "windows-capability-supervisor-response-read-failed",
+  "windows-capability-supervisor-response-forward-failed",
+  "windows-capability-worker-response-decode-failed",
+] as const);
+
+export type GooseWindowsCapabilityProgressFailureCode =
+  (typeof GOOSE_WINDOWS_CAPABILITY_PROGRESS_FAILURE_CODES)[number];
+
+export function classifyGooseWindowsCapabilityProgressFailure(
+  observed: readonly GooseWindowsCapabilityProgressStage[],
+): GooseWindowsCapabilityProgressFailureCode | undefined {
+  const stages = new Set(observed);
+  const firstMissing = GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES.findIndex(
+    (stage) => !stages.has(stage),
+  );
+  return firstMissing < 0
+    ? undefined
+    : GOOSE_WINDOWS_CAPABILITY_PROGRESS_FAILURE_CODES[firstMissing];
+}
+
+function isGooseWindowsCapabilityDiscoveryTimeout(error: unknown): boolean {
+  return (
+    (error instanceof GooseAcpSessionError && error.code === "tool-discovery-timeout") ||
+    (error instanceof GooseAuthenticatedBridgeProtocolError &&
+      error.message === WINDOWS_CAPABILITY_TOOLS_LIST_TIMEOUT_MESSAGE)
+  );
+}
 
 export class GooseMcpSessionCompositionError extends Error {
   constructor(
@@ -257,6 +298,8 @@ export async function openGooseMcpSessionComposition(
   let capabilityServer: CapabilityServer | undefined;
   let modelServer: ModelServer | undefined;
   let runner: OpenGooseRunnerHandshakeResult | undefined;
+  let windowsCapabilityProgress: GooseWindowsCapabilityProgress | undefined;
+  let capabilityDiscoveryStarted = false;
   const runnerOwnsBridgeServers = transportMode === "linux-relay" || windowsAuthenticated;
   let session: GooseAcpSession;
   let toolNames: readonly string[];
@@ -270,13 +313,18 @@ export async function openGooseMcpSessionComposition(
           const attemptId = randomBytes(16).toString("hex");
           let bridgeClosePromise: Promise<void> | undefined;
           let attached = false;
-          const attachWindowsChannels = (channels: { capability: Duplex; model: Duplex }): void => {
+          const attachWindowsChannels = (channels: {
+            capability: Duplex;
+            model: Duplex;
+            capabilityProgress: GooseWindowsCapabilityProgress;
+          }): void => {
             if (attached)
               throw new GooseRunnerProcessError(
                 "invalid-options",
                 "Windows Goose bridge channels were attached twice",
               );
             attached = true;
+            windowsCapabilityProgress = channels.capabilityProgress;
             capabilityServer = (
               dependencies.startWindowsCapabilityHost ?? startGooseWindowsCapabilityBridgeHost
             )({
@@ -285,6 +333,7 @@ export async function openGooseMcpSessionComposition(
               commandIds: options.commandIds,
               testIds: options.testIds,
               invokeTool: options.toolInvoker,
+              capabilityProgress: channels.capabilityProgress,
             });
             modelServer = (dependencies.startWindowsModelHost ?? startGooseWindowsModelBridgeHost)({
               stream: channels.model,
@@ -435,6 +484,7 @@ export async function openGooseMcpSessionComposition(
     if (windowsAuthenticated) {
       (capabilityServer as GooseCapabilityBoundary).bindSession(session.sessionId);
     }
+    capabilityDiscoveryStarted = true;
     const toolsListed = capabilityServer.waitForToolsList(
       options.sessionTimeoutMs ?? DEFAULT_TOOLS_LIST_WAIT_MS,
     );
@@ -448,6 +498,21 @@ export async function openGooseMcpSessionComposition(
     ]);
     toolNames = normalizeDiscoveredToolNames(discovery.toolNames);
   } catch (error) {
+    const progressFailure =
+      windowsAuthenticated &&
+      capabilityDiscoveryStarted &&
+      windowsCapabilityProgress !== undefined &&
+      isGooseWindowsCapabilityDiscoveryTimeout(error)
+        ? classifyGooseWindowsCapabilityProgressFailure(windowsCapabilityProgress.snapshot())
+        : undefined;
+    const openingError =
+      progressFailure === undefined
+        ? error
+        : new GooseMcpSessionCompositionError(
+            progressFailure,
+            "Windows capability round trip stopped before a bounded stage",
+            { cause: error },
+          );
     const cleanupFailures = await collectCleanupFailures(
       runner,
       capabilityServer,
@@ -460,13 +525,13 @@ export async function openGooseMcpSessionComposition(
         "Goose session opening failed and cleanup did not complete",
         {
           cause: new AggregateError(
-            [error, ...cleanupFailures],
+            [openingError, ...cleanupFailures],
             "Goose session opening and cleanup failed",
           ),
         },
       );
     }
-    throw error;
+    throw openingError;
   }
 
   let closePromise: Promise<void> | undefined;

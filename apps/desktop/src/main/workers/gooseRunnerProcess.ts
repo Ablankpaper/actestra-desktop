@@ -36,7 +36,15 @@ import {
   resolveGooseRunnerRuntimeTarget,
   type GooseExecutableAuthority,
 } from "./gooseRunnerTarget";
-import { GOOSE_WINDOWS_STDIO_CHANNELS } from "./gooseSessionTransport";
+import {
+  GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
+  GOOSE_WINDOWS_STDIO_CHANNELS,
+  createGooseWindowsCapabilityProgress,
+  type GooseWindowsCapabilityProgress,
+  type GooseWindowsCapabilityProgressStage,
+} from "./gooseSessionTransport";
+
+export { GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES } from "./gooseSessionTransport";
 
 const MAX_STDOUT_LINE_BYTES = 64 * 1024;
 const MAX_STDERR_BYTES = 256 * 1024;
@@ -54,6 +62,10 @@ export const GOOSE_NATIVE_RELAY_FAILURE_MARKER = "ACTESTRA_GOOSE_LINUX_RELAY_STO
 export const GOOSE_NATIVE_PANIC_FAILURE_MARKER = "ACTESTRA_GOOSE_RUNNER_PANICKED";
 function windowsRuntimeStageMarker(stage: string): string {
   return `Goose windows containment failed at bounded stage ${stage}`;
+}
+
+function windowsCapabilityProgressMarker(stage: GooseWindowsCapabilityProgressStage): string {
+  return `Goose windows capability progress at bounded stage ${stage}`;
 }
 /**
  * Supervisor runtime stages carry their own closed code all the way to CI evidence.
@@ -173,6 +185,10 @@ export interface GooseRunnerSetupFailureMatcher {
   push(chunk: Uint8Array): GooseRunnerSetupFailure | undefined;
 }
 
+export interface GooseWindowsCapabilityProgressMatcher {
+  push(chunk: Uint8Array): readonly GooseWindowsCapabilityProgressStage[];
+}
+
 export type GooseRunnerSetupFailure =
   | "network-policy-unavailable"
   | "worker-resource-enforcement-unavailable"
@@ -188,6 +204,7 @@ type GooseChildProcess = ChildProcessByStdio<Writable, Readable, Readable>;
 export interface GooseWindowsSupervisorChannels {
   readonly capability: Duplex;
   readonly model: Duplex;
+  readonly capabilityProgress: GooseWindowsCapabilityProgress;
 }
 
 export interface GooseAcpLaunchCommand {
@@ -528,6 +545,26 @@ function createGooseRunnerFixedMarkerMatcher(
 
 export function createGooseRunnerResourceFailureMatcher(): GooseRunnerResourceFailureMatcher {
   return createGooseRunnerFixedMarkerMatcher(GOOSE_NATIVE_RESOURCE_LIMIT_FAILURE_MARKER);
+}
+
+export function createGooseWindowsCapabilityProgressMatcher(): GooseWindowsCapabilityProgressMatcher {
+  const matchers = GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES.map(
+    (stage) =>
+      [stage, createGooseRunnerFixedMarkerMatcher(windowsCapabilityProgressMarker(stage))] as const,
+  );
+  const emitted = new Set<GooseWindowsCapabilityProgressStage>();
+  return Object.freeze({
+    push(chunk: Uint8Array): readonly GooseWindowsCapabilityProgressStage[] {
+      const detected: GooseWindowsCapabilityProgressStage[] = [];
+      for (const [stage, matcher] of matchers) {
+        if (!emitted.has(stage) && matcher.push(chunk)) {
+          emitted.add(stage);
+          detected.push(stage);
+        }
+      }
+      return Object.freeze(detected);
+    },
+  });
 }
 
 export function createGooseRunnerSetupFailureMatcher(): GooseRunnerSetupFailureMatcher {
@@ -1023,6 +1060,7 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
   private readonly exitListeners = new Set<(code: number | null, signal: string | null) => void>();
   private readonly exitPromise: Promise<void>;
   private readonly nativeSetupFailureMatcher = createGooseRunnerSetupFailureMatcher();
+  private readonly windowsCapabilityProgressMatcher = createGooseWindowsCapabilityProgressMatcher();
   private stdoutBuffer = "";
   private stderrBytes = 0;
   private exited = false;
@@ -1054,6 +1092,9 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
       }
     });
     child.stderr.on("data", (chunk: Buffer) => {
+      for (const stage of this.windowsCapabilityProgressMatcher.push(chunk)) {
+        this.windowsChannels?.capabilityProgress.record(stage);
+      }
       const setupFailure = this.nativeSetupFailureMatcher.push(chunk);
       if (setupFailure !== undefined) {
         this.failTransport(setupFailureError(setupFailure));
@@ -1388,11 +1429,14 @@ export function createNodeGooseAcpTransport(
   const controlWriter = control as Writable;
   controlWriter.once("error", () => child.kill());
   controlWriter.end(Buffer.from(encodeWindowsSupervisorControlFrame(options)));
-  options.attachWindowsChannels?.({ capability: capability as Duplex, model: model as Duplex });
-  return new NodeGooseAcpTransport(child, parentLiveness as Writable, {
+  const windowsChannels: GooseWindowsSupervisorChannels = Object.freeze({
     capability: capability as Duplex,
     model: model as Duplex,
+    capabilityProgress: createGooseWindowsCapabilityProgress(),
   });
+  const transport = new NodeGooseAcpTransport(child, parentLiveness as Writable, windowsChannels);
+  options.attachWindowsChannels?.(windowsChannels);
+  return transport;
 }
 
 async function preparePrivateRoot(

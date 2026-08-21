@@ -10,6 +10,10 @@ import {
   type GooseWindowsCapabilityFrame,
 } from "./gooseAuthenticatedBridgeProtocol";
 import { toolList } from "./gooseMcpCapabilityServer";
+import {
+  GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
+  type GooseWindowsCapabilityProgress,
+} from "./gooseSessionTransport";
 
 const MAX_FRAME_BYTES = GOOSE_AUTHENTICATED_BRIDGE_MAX_FRAME_BYTES;
 const MAX_WAIT_MS = 120_000;
@@ -21,6 +25,7 @@ export interface StartGooseWindowsCapabilityBridgeHostOptions {
   readonly invokeTool: GooseMcpToolInvoker;
   readonly commandIds: readonly string[];
   readonly testIds: readonly string[];
+  readonly capabilityProgress: GooseWindowsCapabilityProgress;
 }
 
 export interface GooseWindowsCapabilityBridgeHost {
@@ -46,9 +51,15 @@ function validLease(value: unknown): value is string {
   return typeof value === "string" && /^[A-Za-z0-9._~-]{32,256}$/.test(value);
 }
 
-function writeFrame(stream: Duplex, frame: GooseWindowsCapabilityFrame): void {
+function writeFrame(
+  stream: Duplex,
+  frame: GooseWindowsCapabilityFrame,
+  onWritten?: () => void,
+): void {
   if (!stream.destroyed && !stream.writableEnded) {
-    stream.write(encodeGooseWindowsCapabilityFrame(frame));
+    stream.write(encodeGooseWindowsCapabilityFrame(frame), (error?: Error | null) => {
+      if (error === undefined || error === null) onWritten?.();
+    });
   }
 }
 
@@ -71,7 +82,10 @@ export function startGooseWindowsCapabilityBridgeHost(
     typeof options.stream.on !== "function" ||
     typeof options.stream.write !== "function" ||
     !validLease(options.attemptLease) ||
-    typeof options.invokeTool !== "function"
+    typeof options.invokeTool !== "function" ||
+    !isRecord(options.capabilityProgress) ||
+    typeof options.capabilityProgress.record !== "function" ||
+    typeof options.capabilityProgress.snapshot !== "function"
   ) {
     throw new GooseAuthenticatedBridgeProtocolError(
       "Invalid Windows capability bridge host options",
@@ -145,18 +159,23 @@ export function startGooseWindowsCapabilityBridgeHost(
     }
     if (frame.kind === "list-request") {
       if (sessionId === undefined || toolsListed) return;
+      options.capabilityProgress.record(GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES[3]);
       toolsListed = true;
       for (const waiter of waiters) {
         clearTimeout(waiter.timeout);
         waiter.resolve();
       }
       waiters.clear();
-      writeFrame(stream, {
-        contractVersion: 1,
-        kind: "list-response",
-        requestId: frame.requestId,
-        tools,
-      });
+      writeFrame(
+        stream,
+        {
+          contractVersion: 1,
+          kind: "list-response",
+          requestId: frame.requestId,
+          tools,
+        },
+        () => options.capabilityProgress.record(GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES[4]),
+      );
       return;
     }
     if (

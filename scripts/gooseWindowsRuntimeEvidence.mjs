@@ -32,6 +32,22 @@ const FAILURE_STAGE_CODES = Object.freeze({
   "coding-session-open-cleanup-failed": "windows-runtime-coding-session-cleanup-failed",
   "coding-session-open-persistence-failed": "windows-runtime-coding-session-persistence-failed",
   "composition-open": "windows-runtime-composition-open-failed",
+  "windows-capability-worker-request-write-failed":
+    "windows-runtime-capability-worker-request-write-failed",
+  "windows-capability-supervisor-request-read-failed":
+    "windows-runtime-capability-supervisor-request-read-failed",
+  "windows-capability-supervisor-request-forward-failed":
+    "windows-runtime-capability-supervisor-request-forward-failed",
+  "windows-capability-main-request-decode-failed":
+    "windows-runtime-capability-main-request-decode-failed",
+  "windows-capability-main-response-write-failed":
+    "windows-runtime-capability-main-response-write-failed",
+  "windows-capability-supervisor-response-read-failed":
+    "windows-runtime-capability-supervisor-response-read-failed",
+  "windows-capability-supervisor-response-forward-failed":
+    "windows-runtime-capability-supervisor-response-forward-failed",
+  "windows-capability-worker-response-decode-failed":
+    "windows-runtime-capability-worker-response-decode-failed",
   "runner-open": "windows-runtime-runner-open-failed",
   "runtime-network": "windows-runtime-network-policy-failed",
   "runtime-resource": "windows-runtime-resource-enforcement-failed",
@@ -234,6 +250,16 @@ const WINDOWS_WORKER_STARTUP_STAGES = Object.freeze([
   "windows-worker-ready-signal-failed",
   "windows-worker-acp-handshake-failed",
 ]);
+const WINDOWS_CAPABILITY_PROGRESS_FAILURE_STAGES = Object.freeze([
+  "windows-capability-worker-request-write-failed",
+  "windows-capability-supervisor-request-read-failed",
+  "windows-capability-supervisor-request-forward-failed",
+  "windows-capability-main-request-decode-failed",
+  "windows-capability-main-response-write-failed",
+  "windows-capability-supervisor-response-read-failed",
+  "windows-capability-supervisor-response-forward-failed",
+  "windows-capability-worker-response-decode-failed",
+]);
 const WINDOWS_OPEN_FAILURE_STAGES = Object.freeze([
   "artifact-admission",
   "artifact-binding-incomplete",
@@ -249,6 +275,7 @@ const WINDOWS_OPEN_FAILURE_STAGES = Object.freeze([
   "runner-panic",
   ...WINDOWS_SUPERVISOR_FAILURE_STAGES,
   ...WINDOWS_WORKER_STARTUP_STAGES,
+  ...WINDOWS_CAPABILITY_PROGRESS_FAILURE_STAGES,
   "handshake-process-exit",
   "handshake-process-signal",
   "handshake-timeout",
@@ -426,6 +453,7 @@ export function classifyGooseWindowsOpeningFailure(error) {
     } else if (name === "GooseMcpSessionCompositionError") {
       if (code === "cleanup-failed") return "composition-cleanup";
       if (code === "tool-discovery-mismatch") return "tool-discovery";
+      if (WINDOWS_CAPABILITY_PROGRESS_FAILURE_STAGES.includes(code)) return code;
     } else if (code === "network-policy-unavailable") {
       return "runtime-network";
     }

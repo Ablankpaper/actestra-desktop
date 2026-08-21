@@ -1,6 +1,7 @@
 use crate::windows_control::parse_strict_json;
 use serde_json::{Map, Value};
 use std::collections::HashSet;
+use std::sync::Arc;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 pub(crate) const WINDOWS_BRIDGE_CONTRACT_VERSION: u64 = 1;
@@ -108,8 +109,37 @@ impl WindowsBridgeChannel {
         let (left_reader, left_writer) = tokio::io::split(self.stream);
         let (right_reader, right_writer) = tokio::io::split(other.stream);
         tokio::select! {
-            result = relay_framed_direction(left_reader, right_writer) => result,
-            result = relay_framed_direction(right_reader, left_writer) => result,
+            result = relay_framed_direction(left_reader, right_writer, None) => result,
+            result = relay_framed_direction(right_reader, left_writer, None) => result,
+        }
+    }
+
+    pub(crate) async fn relay_capability_framed_bidirectional(
+        self,
+        other: Self,
+        reporter: Arc<dyn Fn(&'static str) + Send + Sync>,
+    ) -> Result<(), ()> {
+        let (main_reader, main_writer) = tokio::io::split(self.stream);
+        let (worker_reader, worker_writer) = tokio::io::split(other.stream);
+        tokio::select! {
+            result = relay_framed_direction(
+                main_reader,
+                worker_writer,
+                Some(RelayProgress {
+                    reporter: reporter.clone(),
+                    read_stage: "windows-capability-supervisor-response-read",
+                    forwarded_stage: "windows-capability-supervisor-response-forwarded",
+                }),
+            ) => result,
+            result = relay_framed_direction(
+                worker_reader,
+                main_writer,
+                Some(RelayProgress {
+                    reporter,
+                    read_stage: "windows-capability-supervisor-request-read",
+                    forwarded_stage: "windows-capability-supervisor-request-forwarded",
+                }),
+            ) => result,
         }
     }
 
@@ -119,11 +149,23 @@ impl WindowsBridgeChannel {
     }
 }
 
-async fn relay_framed_direction<R, W>(mut source: R, mut destination: W) -> Result<(), ()>
+struct RelayProgress {
+    reporter: Arc<dyn Fn(&'static str) + Send + Sync>,
+    read_stage: &'static str,
+    forwarded_stage: &'static str,
+}
+
+async fn relay_framed_direction<R, W>(
+    mut source: R,
+    mut destination: W,
+    progress: Option<RelayProgress>,
+) -> Result<(), ()>
 where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
+    let mut read_reported = false;
+    let mut forwarded_reported = false;
     loop {
         let mut length_bytes = [0_u8; 4];
         if source.read(&mut length_bytes[..1]).await.map_err(|_| ())? == 0 {
@@ -139,9 +181,21 @@ where
         }
         let mut payload = vec![0_u8; payload_length];
         source.read_exact(&mut payload).await.map_err(|_| ())?;
+        if !read_reported {
+            if let Some(progress) = &progress {
+                (progress.reporter)(progress.read_stage);
+                read_reported = true;
+            }
+        }
         destination.write_all(&length_bytes).await.map_err(|_| ())?;
         destination.write_all(&payload).await.map_err(|_| ())?;
         destination.flush().await.map_err(|_| ())?;
+        if !forwarded_reported {
+            if let Some(progress) = &progress {
+                (progress.reporter)(progress.forwarded_stage);
+                forwarded_reported = true;
+            }
+        }
     }
 }
 
@@ -301,6 +355,51 @@ mod tests {
             .await
             .unwrap();
         assert!(relay.await.unwrap().is_err());
+    }
+
+    #[tokio::test]
+    async fn capability_relay_reports_request_and_response_boundaries_in_order() {
+        let (main_side, relay_main) = tokio::io::duplex(4096);
+        let (worker_side, relay_worker) = tokio::io::duplex(4096);
+        let mut main_side = WindowsBridgeChannel::from_duplex(main_side);
+        let mut worker_side = WindowsBridgeChannel::from_duplex(worker_side);
+        let observed = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let reporter_observed = observed.clone();
+        let reporter: std::sync::Arc<dyn Fn(&'static str) + Send + Sync> =
+            std::sync::Arc::new(move |stage| reporter_observed.lock().unwrap().push(stage));
+        let relay = tokio::spawn(
+            WindowsBridgeChannel::from_duplex(relay_main).relay_capability_framed_bidirectional(
+                WindowsBridgeChannel::from_duplex(relay_worker),
+                reporter,
+            ),
+        );
+
+        let request = encode_json_frame(&json!({"contractVersion": 1, "kind": "request"})).unwrap();
+        worker_side.write_frame(&request).await.unwrap();
+        assert_eq!(main_side.read_frame().await.unwrap(), request);
+        let response =
+            encode_json_frame(&json!({"contractVersion": 1, "kind": "response"})).unwrap();
+        main_side.write_frame(&response).await.unwrap();
+        assert_eq!(worker_side.read_frame().await.unwrap(), response);
+        let later_request =
+            encode_json_frame(&json!({"contractVersion": 1, "kind": "later-request"})).unwrap();
+        worker_side.write_frame(&later_request).await.unwrap();
+        assert_eq!(main_side.read_frame().await.unwrap(), later_request);
+        let later_response =
+            encode_json_frame(&json!({"contractVersion": 1, "kind": "later-response"})).unwrap();
+        main_side.write_frame(&later_response).await.unwrap();
+        assert_eq!(worker_side.read_frame().await.unwrap(), later_response);
+        drop((main_side, worker_side));
+        assert!(relay.await.unwrap().is_ok());
+        assert_eq!(
+            *observed.lock().unwrap(),
+            vec![
+                "windows-capability-supervisor-request-read",
+                "windows-capability-supervisor-request-forwarded",
+                "windows-capability-supervisor-response-read",
+                "windows-capability-supervisor-response-forwarded",
+            ]
+        );
     }
 
     #[tokio::test]

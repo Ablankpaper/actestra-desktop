@@ -226,6 +226,41 @@ describe("Goose Windows runtime evidence", () => {
     });
   });
 
+  it("maps all eight capability round-trip gaps through composition into distinct final tokens", () => {
+    const stages = [
+      "windows-capability-worker-request-write-failed",
+      "windows-capability-supervisor-request-read-failed",
+      "windows-capability-supervisor-request-forward-failed",
+      "windows-capability-main-request-decode-failed",
+      "windows-capability-main-response-write-failed",
+      "windows-capability-supervisor-response-read-failed",
+      "windows-capability-supervisor-response-forward-failed",
+      "windows-capability-worker-response-decode-failed",
+    ];
+    const tokens = stages.map((code) => {
+      expect(
+        classifyGooseWindowsOpeningFailure({
+          name: "GooseMcpSessionCompositionError",
+          code,
+          message: "Windows capability round trip stopped before a bounded stage",
+        }),
+      ).toBe(code);
+      return classifyGooseWindowsRuntimeFailureEvidence({ contractVersion: 1, stage: code });
+    });
+
+    expect(tokens).toEqual([
+      "windows-runtime-capability-worker-request-write-failed",
+      "windows-runtime-capability-supervisor-request-read-failed",
+      "windows-runtime-capability-supervisor-request-forward-failed",
+      "windows-runtime-capability-main-request-decode-failed",
+      "windows-runtime-capability-main-response-write-failed",
+      "windows-runtime-capability-supervisor-response-read-failed",
+      "windows-runtime-capability-supervisor-response-forward-failed",
+      "windows-runtime-capability-worker-response-decode-failed",
+    ]);
+    expect(new Set(tokens).size).toBe(8);
+  });
+
   it("keeps each pre-launch state-directory admission stage distinct from Worker access", () => {
     const stages = [
       "windows-state-directory-layout-failed",
@@ -627,6 +662,8 @@ describe("Goose Windows runtime evidence", () => {
     expect(integration).toContain('markFailure("fixture-persistence-open")');
     expect(integration).toContain('markFailure("fixture-domain-state")');
     expect(integration).toContain('markFailure("coding-session-open")');
+    expect(integration).toContain("openGooseMcpSessionComposition({");
+    expect(integration).toContain("await markFailure(classifyGooseWindowsOpeningFailure(error));");
     expect(integration).toMatch(
       /const root = await realpath\(\s*await mkdtemp\(path\.join\(os\.tmpdir\(\), "actestra-goose-windows-runtime-"\)\),?\s*\);/u,
     );

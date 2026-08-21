@@ -357,6 +357,26 @@ pub(crate) struct WindowsCapabilityClient {
     next_request_id: AtomicU64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CapabilityClientProgress {
+    RequestWritten,
+    ResponseDecoded,
+}
+
+fn capability_client_progress_code(stage: CapabilityClientProgress) -> &'static str {
+    match stage {
+        CapabilityClientProgress::RequestWritten => "windows-capability-worker-request-written",
+        CapabilityClientProgress::ResponseDecoded => "windows-capability-worker-response-decoded",
+    }
+}
+
+fn report_capability_client_progress(stage: CapabilityClientProgress) {
+    eprintln!(
+        "Goose windows capability progress at bounded stage {}",
+        capability_client_progress_code(stage)
+    );
+}
+
 impl WindowsCapabilityClient {
     pub(crate) fn new(
         channel: WindowsBridgeChannel,
@@ -424,6 +444,7 @@ impl WindowsCapabilityClient {
         request: CapabilityFrame,
         cancel_token: CancellationToken,
     ) -> Result<CapabilityFrame, ServiceError> {
+        let reports_list_progress = matches!(&request, CapabilityFrame::ListRequest { .. });
         let encoded =
             encode_capability_frame(&request).map_err(|_| ServiceError::TransportClosed)?;
         let session_id = self
@@ -445,6 +466,9 @@ impl WindowsCapabilityClient {
             let _ = state.pending.cancel(request_id);
             cancellation.disarm();
             return Err(ServiceError::TransportClosed);
+        }
+        if reports_list_progress {
+            report_capability_client_progress(CapabilityClientProgress::RequestWritten);
         }
         let read_result = tokio::select! {
             _ = cancel_token.cancelled() => {
@@ -480,6 +504,9 @@ impl WindowsCapabilityClient {
             let _ = state.pending.cancel(request_id);
             cancellation.disarm();
             return Err(ServiceError::TransportClosed);
+        }
+        if reports_list_progress && matches!(&response, CapabilityFrame::ListResponse { .. }) {
+            report_capability_client_progress(CapabilityClientProgress::ResponseDecoded);
         }
         cancellation.disarm();
         match response {
@@ -824,6 +851,18 @@ mod tests {
         assert!(info.capabilities.resources.is_none());
         assert!(info.capabilities.prompts.is_none());
         main.await.unwrap();
+    }
+
+    #[test]
+    fn capability_client_progress_vocabulary_is_fixed_and_bounded() {
+        assert_eq!(
+            capability_client_progress_code(CapabilityClientProgress::RequestWritten),
+            "windows-capability-worker-request-written"
+        );
+        assert_eq!(
+            capability_client_progress_code(CapabilityClientProgress::ResponseDecoded),
+            "windows-capability-worker-response-decoded"
+        );
     }
 
     #[tokio::test]

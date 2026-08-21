@@ -10,6 +10,10 @@ import {
   startGooseWindowsCapabilityBridgeHost,
   type GooseWindowsCapabilityBridgeHost,
 } from "../../apps/desktop/src/main/workers/gooseWindowsCapabilityBridgeHost";
+import {
+  GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
+  createGooseWindowsCapabilityProgress,
+} from "../../apps/desktop/src/main/workers/gooseSessionTransport";
 
 const LEASE = "lease_0123456789abcdef0123456789abcdef";
 const SESSION = "session_0123456789abcdef";
@@ -66,6 +70,7 @@ async function closeHost(host: GooseWindowsCapabilityBridgeHost, worker: Duplex)
 describe("Goose Windows Main capability bridge host", () => {
   it("lists exactly the six coding tools and completes one real invoker call", async () => {
     const [main, worker] = linkedDuplexPair();
+    const capabilityProgress = createGooseWindowsCapabilityProgress();
     const invokeTool = vi.fn(async (call) => ({
       isError: false,
       content: `${call.toolId}:${call.input.relativePath}`,
@@ -76,6 +81,7 @@ describe("Goose Windows Main capability bridge host", () => {
       invokeTool,
       commandIds: ["command.test"],
       testIds: ["test.unit"],
+      capabilityProgress,
     });
     host.bindSession(SESSION);
     const listed = host.waitForToolsList();
@@ -84,6 +90,10 @@ describe("Goose Windows Main capability bridge host", () => {
       expectedRequestId: "capability-request-1",
     });
     await listed;
+    expect(capabilityProgress.snapshot()).toEqual([
+      GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES[3],
+      GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES[4],
+    ]);
     expect(listResponse.kind).toBe("list-response");
     if (listResponse.kind === "list-response") {
       expect(listResponse.tools.map((tool) => tool.name).sort()).toEqual(
@@ -117,6 +127,7 @@ describe("Goose Windows Main capability bridge host", () => {
       invokeTool: async () => ({ isError: false, content: "unused" }),
       commandIds: [],
       testIds: [],
+      capabilityProgress: createGooseWindowsCapabilityProgress(),
     });
     host.bindSession(SESSION);
     worker.write(encodeGooseWindowsCapabilityFrame(listRequest()));
@@ -155,6 +166,7 @@ describe("Goose Windows Main capability bridge host", () => {
       invokeTool,
       commandIds: [],
       testIds: [],
+      capabilityProgress: createGooseWindowsCapabilityProgress(),
     });
     host.bindSession(SESSION);
     worker.write(encodeGooseWindowsCapabilityFrame(listRequest()));
@@ -199,6 +211,7 @@ describe("Goose Windows Main capability bridge host", () => {
         }),
       commandIds: [],
       testIds: [],
+      capabilityProgress: createGooseWindowsCapabilityProgress(),
     });
     host.bindSession(SESSION);
     worker.write(encodeGooseWindowsCapabilityFrame(listRequest()));

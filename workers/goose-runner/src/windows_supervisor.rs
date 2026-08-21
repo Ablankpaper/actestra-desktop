@@ -3570,6 +3570,80 @@ fn verify_worker_boundary() -> bool {
     queried && is_app_container == 1
 }
 
+const WORKER_REQUEST_WRITTEN_PROGRESS: &[u8] =
+    b"Goose windows capability progress at bounded stage windows-capability-worker-request-written";
+const WORKER_RESPONSE_DECODED_PROGRESS: &[u8] = b"Goose windows capability progress at bounded stage windows-capability-worker-response-decoded";
+
+fn worker_capability_progress_line(line: &[u8]) -> Option<&'static str> {
+    match line {
+        value if value == WORKER_REQUEST_WRITTEN_PROGRESS => {
+            Some("windows-capability-worker-request-written")
+        }
+        value if value == WORKER_RESPONSE_DECODED_PROGRESS => {
+            Some("windows-capability-worker-response-decoded")
+        }
+        _ => None,
+    }
+}
+
+struct WorkerCapabilityProgressLineFilter {
+    line: Vec<u8>,
+    overflowed: bool,
+}
+
+impl WorkerCapabilityProgressLineFilter {
+    fn new() -> Self {
+        Self {
+            line: Vec::with_capacity(128),
+            overflowed: false,
+        }
+    }
+
+    fn push(&mut self, byte: u8) -> Option<&'static str> {
+        if byte == b'\n' {
+            if self.overflowed {
+                self.line.clear();
+                self.overflowed = false;
+                return None;
+            }
+            if self.line.last() == Some(&b'\r') {
+                self.line.pop();
+            }
+            let result = worker_capability_progress_line(&self.line);
+            self.line.clear();
+            return result;
+        }
+        if self.overflowed {
+            return None;
+        }
+        if self.line.len() >= 256 {
+            self.line.clear();
+            self.overflowed = true;
+            return None;
+        }
+        self.line.push(byte);
+        None
+    }
+}
+
+#[cfg(windows)]
+async fn relay_worker_stderr_progress(handle: HANDLE) -> Result<(), ()> {
+    let mut channel = crate::windows_bridge::WindowsBridgeChannel::from_raw_handle(handle)?;
+    let mut filter = WorkerCapabilityProgressLineFilter::new();
+    let mut byte = [0_u8; 1];
+    loop {
+        match channel.read_once(&mut byte).await? {
+            0 => return Ok(()),
+            1 => {
+                if let Some(stage) = filter.push(byte[0]) {
+                    eprintln!("Goose windows capability progress at bounded stage {stage}");
+                }
+            }
+            _ => return Err(()),
+        }
+    }
+}
+
 #[cfg(windows)]
 fn launch_controlled_worker(control: crate::windows_control::WindowsControlMessage) -> i32 {
     let mut profile = match AppContainerProfile::create(&control.attempt_id) {
@@ -3712,6 +3786,12 @@ fn launch_controlled_worker(control: crate::windows_control::WindowsControlMessa
             return SupervisorFailureStage::Pipes.diagnostic_exit_code();
         }
     };
+    let worker_stderr = pipes.supervisor_stderr;
+    if worker_stderr.is_null() || worker_stderr == INVALID_HANDLE_VALUE {
+        eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+        return SupervisorFailureStage::Pipes.diagnostic_exit_code();
+    }
+    pipes.supervisor_stderr = null_mut();
     let acp_input =
         handle_from_fd(0).and_then(crate::windows_bridge::WindowsBridgeChannel::from_raw_handle);
     let acp_output =
@@ -3739,13 +3819,22 @@ fn launch_controlled_worker(control: crate::windows_control::WindowsControlMessa
     let relay_result = bridge_runtime.block_on(async move {
         let acp_in = acp_input.copy_to(worker_stdin);
         let acp_out = worker_stdout.copy_to(acp_output);
-        let capability = capability_main.relay_framed_bidirectional(capability_worker);
+        let progress_reporter: std::sync::Arc<dyn Fn(&'static str) + Send + Sync> =
+            std::sync::Arc::new(|stage| {
+                eprintln!("Goose windows capability progress at bounded stage {stage}");
+            });
+        let capability = capability_main
+            .relay_capability_framed_bidirectional(capability_worker, progress_reporter);
         let model = model_main.relay_framed_bidirectional(model_worker);
+        let worker_exit = async move {
+            let _ = relay_worker_stderr_progress(worker_stderr).await;
+            wait_for_worker_exit_handle(worker_process_handle).await
+        };
         tokio::select! {
             result = wait_for_parent_liveness() => {
                 classify_runtime_event(WindowsRuntimeEvent::ParentLiveness(result))
             },
-            result = wait_for_worker_exit_handle(worker_process_handle) => {
+            result = worker_exit => {
                 classify_runtime_event(WindowsRuntimeEvent::WorkerExit(result))
             },
             _ = tokio::time::sleep(std::time::Duration::from_millis(runtime_timeout_ms)) => {
@@ -4012,6 +4101,48 @@ mod tests {
                 WorkerStartupStage::AcpServing,
             ]
         );
+    }
+
+    #[test]
+    fn worker_stderr_progress_filter_admits_only_exact_capability_markers() {
+        assert_eq!(
+            worker_capability_progress_line(
+                b"Goose windows capability progress at bounded stage windows-capability-worker-request-written"
+            ),
+            Some("windows-capability-worker-request-written")
+        );
+        assert_eq!(
+            worker_capability_progress_line(
+                b"Goose windows capability progress at bounded stage windows-capability-worker-response-decoded"
+            ),
+            Some("windows-capability-worker-response-decoded")
+        );
+        assert_eq!(
+            worker_capability_progress_line(b"C:\\private\\secret"),
+            None
+        );
+        assert_eq!(
+            worker_capability_progress_line(
+                b"Goose windows capability progress at bounded stage windows-capability-worker-request-written extra"
+            ),
+            None
+        );
+
+        let marker = b"Goose windows capability progress at bounded stage windows-capability-worker-request-written";
+        let mut filter = WorkerCapabilityProgressLineFilter::new();
+        let mut observed = Vec::new();
+        for byte in [vec![b'x'; 257], marker.to_vec(), vec![b'\n']].concat() {
+            if let Some(stage) = filter.push(byte) {
+                observed.push(stage);
+            }
+        }
+        assert!(observed.is_empty());
+        for byte in [marker.to_vec(), vec![b'\n']].concat() {
+            if let Some(stage) = filter.push(byte) {
+                observed.push(stage);
+            }
+        }
+        assert_eq!(observed, vec!["windows-capability-worker-request-written"]);
     }
 
     #[test]
