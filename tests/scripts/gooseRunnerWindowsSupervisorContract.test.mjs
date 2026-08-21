@@ -47,6 +47,13 @@ describe("Windows Goose supervisor source contract", () => {
       expect(supervisor).toContain(api);
     }
     expect(supervisor).toContain("prepare_appcontainer_goose_state_directories");
+    expect(supervisor).toContain("load_prepared_goose_state_directories");
+    const workerRuntime = supervisor.slice(
+      supervisor.indexOf("pub(crate) fn run_worker_with_arguments"),
+      supervisor.indexOf("enum StateDirectoryPrepareFailure"),
+    );
+    expect(workerRuntime).toContain("load_prepared_goose_state_directories");
+    expect(workerRuntime).not.toContain("prepare_goose_state_directories(&control.private_root)");
     expect(supervisor).toContain("profile.sid()");
     expect(supervisor.indexOf("prepare_appcontainer_goose_state_directories")).toBeLessThan(
       supervisor.indexOf("job.launch_suspended_worker_with_stdio"),

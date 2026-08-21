@@ -272,11 +272,7 @@ const STATE_ROOT_FORBIDDEN_ACCESS_MASK: u32 = STATE_FORBIDDEN_ACCESS_MASK
     | FILE_WRITE_EA
     | DELETE;
 #[cfg(windows)]
-// `canonicalize` on Windows uses GetFinalPathNameByHandle with normalized names. That API
-// resolves each path component and requires metadata access on the ancestor directories as well
-// as traverse access. Keep this metadata-only: ancestors still cannot be listed, created, written,
-// deleted, or have their ACL/owner changed.
-const STATE_ANCESTOR_TRAVERSE_ACCESS_MASK: u32 = FILE_TRAVERSE | FILE_READ_ATTRIBUTES;
+const STATE_ANCESTOR_TRAVERSE_ACCESS_MASK: u32 = FILE_TRAVERSE;
 #[cfg(windows)]
 const STATE_ANCESTOR_FORBIDDEN_ACCESS_MASK: u32 =
     STATE_ROOT_FORBIDDEN_ACCESS_MASK | FILE_LIST_DIRECTORY;
@@ -2993,14 +2989,16 @@ pub(crate) fn run_worker_with_arguments(_arguments: &[String]) -> i32 {
                 control.model_id.clone(),
             )
             .map_err(|_| EXIT_MODEL_BRIDGE_FAILED)?;
-            let (data_dir, config_dir) = prepare_goose_state_directories(&control.private_root)
-                .map_err(|failure| {
-                    eprintln!(
-                        "Goose windows containment failed at bounded stage {}",
-                        failure.code()
-                    );
-                    failure.worker_exit_code()
-                })?;
+            let (data_dir, config_dir) = load_prepared_goose_state_directories(
+                &control.private_root,
+            )
+            .map_err(|failure| {
+                eprintln!(
+                    "Goose windows containment failed at bounded stage {}",
+                    failure.code()
+                );
+                failure.worker_exit_code()
+            })?;
             let adapter = goose::acp::server::AcpRuntimeAdapter {
                 provider_id: "actestra".to_string(),
                 model_config: goose_providers::model::ModelConfig::new(&control.model_id),
@@ -3180,6 +3178,36 @@ fn prepare_goose_state_directories(
         .map_err(|_| StateDirectoryPrepareFailure::ConfigCanonicalize)?;
     if canonical_config.parent() != Some(canonical_root.as_path()) {
         return Err(StateDirectoryPrepareFailure::TraversalShape);
+    }
+
+    Ok((data_dir, config_dir))
+}
+
+fn load_prepared_goose_state_directories(
+    private_root: &str,
+) -> Result<(std::path::PathBuf, std::path::PathBuf), StateDirectoryPrepareFailure> {
+    let root = std::path::Path::new(private_root);
+    if !root.is_absolute() {
+        return Err(StateDirectoryPrepareFailure::Layout);
+    }
+    let root_metadata =
+        std::fs::symlink_metadata(root).map_err(|_| StateDirectoryPrepareFailure::RootMetadata)?;
+    if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
+        return Err(StateDirectoryPrepareFailure::Layout);
+    }
+
+    let data_dir = root.join("goose-data");
+    let data_metadata = std::fs::symlink_metadata(&data_dir)
+        .map_err(|_| StateDirectoryPrepareFailure::DataMetadata)?;
+    if data_metadata.file_type().is_symlink() || !data_metadata.is_dir() {
+        return Err(StateDirectoryPrepareFailure::Layout);
+    }
+
+    let config_dir = root.join("goose-config");
+    let config_metadata = std::fs::symlink_metadata(&config_dir)
+        .map_err(|_| StateDirectoryPrepareFailure::ConfigMetadata)?;
+    if config_metadata.file_type().is_symlink() || !config_metadata.is_dir() {
+        return Err(StateDirectoryPrepareFailure::Layout);
     }
 
     Ok((data_dir, config_dir))
@@ -3899,6 +3927,23 @@ mod tests {
         std::fs::remove_dir_all(&data_dir).unwrap();
         std::fs::create_dir(&data_dir).unwrap();
         assert!(prepare_goose_state_directories(root.to_str().unwrap()).is_ok());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn worker_loads_only_supervisor_prepared_goose_state_directories() {
+        let root = test_private_root("prepared-directories");
+        let expected = prepare_goose_state_directories(root.to_str().unwrap()).unwrap();
+        assert_eq!(
+            load_prepared_goose_state_directories(root.to_str().unwrap()).unwrap(),
+            expected
+        );
+
+        std::fs::remove_dir_all(&expected.0).unwrap();
+        assert_eq!(
+            load_prepared_goose_state_directories(root.to_str().unwrap()),
+            Err(StateDirectoryPrepareFailure::DataMetadata)
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -5035,7 +5080,7 @@ mod windows_native_tests {
         unsafe { CloseHandle(input) };
         let private_root = String::from_utf8(root_bytes)
             .map_err(|_| AnonymousPipeTestChildFailure::StateDirectory)?;
-        let (data_dir, config_dir) = match prepare_goose_state_directories(&private_root) {
+        let (data_dir, config_dir) = match load_prepared_goose_state_directories(&private_root) {
             Ok(result) => result,
             Err(failure) => {
                 eprintln!(
