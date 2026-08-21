@@ -357,6 +357,45 @@ describe("Goose Windows runtime evidence", () => {
     ).toBe("windows-capability-call-main-tool-invocation-failed");
   });
 
+  it("maps all ten Windows model round-trip gaps through composition into distinct final tokens", () => {
+    const stages = [
+      "windows-model-worker-request-write-failed",
+      "windows-model-supervisor-request-read-failed",
+      "windows-model-supervisor-request-forward-failed",
+      "windows-model-main-request-decode-failed",
+      "windows-model-main-invocation-start-failed",
+      "windows-model-main-invocation-complete-failed",
+      "windows-model-main-response-write-failed",
+      "windows-model-supervisor-response-read-failed",
+      "windows-model-supervisor-response-forward-failed",
+      "windows-model-worker-response-decode-failed",
+    ];
+    const tokens = stages.map((code) => {
+      expect(
+        classifyGooseWindowsOpeningFailure({
+          name: "GooseMcpSessionCompositionError",
+          code,
+          message: "Windows model round trip stopped before a bounded stage",
+        }),
+      ).toBe(code);
+      return classifyGooseWindowsRuntimeFailureEvidence({ contractVersion: 1, stage: code });
+    });
+
+    expect(tokens).toEqual([
+      "windows-runtime-model-worker-request-write-failed",
+      "windows-runtime-model-supervisor-request-read-failed",
+      "windows-runtime-model-supervisor-request-forward-failed",
+      "windows-runtime-model-main-request-decode-failed",
+      "windows-runtime-model-main-invocation-start-failed",
+      "windows-runtime-model-main-invocation-complete-failed",
+      "windows-runtime-model-main-response-write-failed",
+      "windows-runtime-model-supervisor-response-read-failed",
+      "windows-runtime-model-supervisor-response-forward-failed",
+      "windows-runtime-model-worker-response-decode-failed",
+    ]);
+    expect(new Set(tokens).size).toBe(10);
+  });
+
   it("keeps each pre-launch state-directory admission stage distinct from Worker access", () => {
     const stages = [
       "windows-state-directory-layout-failed",

@@ -60,6 +60,19 @@ export const GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES = Object.freeze([
   "windows-capability-call-main-tool-invocation-failed",
 ] as const);
 
+export const GOOSE_WINDOWS_MODEL_PROGRESS_STAGES = Object.freeze([
+  "windows-model-worker-request-written",
+  "windows-model-supervisor-request-read",
+  "windows-model-supervisor-request-forwarded",
+  "windows-model-main-request-decoded",
+  "windows-model-main-invocation-started",
+  "windows-model-main-invocation-completed",
+  "windows-model-main-response-written",
+  "windows-model-supervisor-response-read",
+  "windows-model-supervisor-response-forwarded",
+  "windows-model-worker-response-decoded",
+] as const);
+
 export type GooseWindowsCapabilityProgressStage =
   | (typeof GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES)[number]
   | (typeof GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES)[number]
@@ -93,6 +106,29 @@ export function createGooseWindowsCapabilityProgress(): GooseWindowsCapabilityPr
           ...GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
           ...GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES,
         ].filter((stage) => observed.has(stage)),
+      );
+    },
+  });
+}
+
+export type GooseWindowsModelProgressStage = (typeof GOOSE_WINDOWS_MODEL_PROGRESS_STAGES)[number];
+
+export interface GooseWindowsModelProgress {
+  record(stage: GooseWindowsModelProgressStage): void;
+  snapshot(): readonly GooseWindowsModelProgressStage[];
+}
+
+export function createGooseWindowsModelProgress(): GooseWindowsModelProgress {
+  const observed = new Set<GooseWindowsModelProgressStage>();
+  return Object.freeze({
+    record(stage: GooseWindowsModelProgressStage): void {
+      if ((GOOSE_WINDOWS_MODEL_PROGRESS_STAGES as readonly string[]).includes(stage)) {
+        observed.add(stage);
+      }
+    },
+    snapshot(): readonly GooseWindowsModelProgressStage[] {
+      return Object.freeze(
+        GOOSE_WINDOWS_MODEL_PROGRESS_STAGES.filter((stage) => observed.has(stage)),
       );
     },
   });

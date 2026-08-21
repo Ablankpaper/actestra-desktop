@@ -70,6 +70,23 @@ const FAILURE_STAGE_CODES = Object.freeze({
     "windows-runtime-capability-call-supervisor-response-forward-failed",
   "windows-capability-call-worker-response-decode-failed":
     "windows-runtime-capability-call-worker-response-decode-failed",
+  "windows-model-worker-request-write-failed": "windows-runtime-model-worker-request-write-failed",
+  "windows-model-supervisor-request-read-failed":
+    "windows-runtime-model-supervisor-request-read-failed",
+  "windows-model-supervisor-request-forward-failed":
+    "windows-runtime-model-supervisor-request-forward-failed",
+  "windows-model-main-request-decode-failed": "windows-runtime-model-main-request-decode-failed",
+  "windows-model-main-invocation-start-failed":
+    "windows-runtime-model-main-invocation-start-failed",
+  "windows-model-main-invocation-complete-failed":
+    "windows-runtime-model-main-invocation-complete-failed",
+  "windows-model-main-response-write-failed": "windows-runtime-model-main-response-write-failed",
+  "windows-model-supervisor-response-read-failed":
+    "windows-runtime-model-supervisor-response-read-failed",
+  "windows-model-supervisor-response-forward-failed":
+    "windows-runtime-model-supervisor-response-forward-failed",
+  "windows-model-worker-response-decode-failed":
+    "windows-runtime-model-worker-response-decode-failed",
   "runner-open": "windows-runtime-runner-open-failed",
   "runtime-network": "windows-runtime-network-policy-failed",
   "runtime-resource": "windows-runtime-resource-enforcement-failed",
@@ -305,6 +322,18 @@ const WINDOWS_CAPABILITY_CALL_PROGRESS_FAILURE_STAGES = Object.freeze([
 const WINDOWS_CAPABILITY_CALL_FAILURE_STAGES = Object.freeze([
   "windows-capability-call-main-tool-invocation-failed",
 ]);
+const WINDOWS_MODEL_PROGRESS_FAILURE_STAGES = Object.freeze([
+  "windows-model-worker-request-write-failed",
+  "windows-model-supervisor-request-read-failed",
+  "windows-model-supervisor-request-forward-failed",
+  "windows-model-main-request-decode-failed",
+  "windows-model-main-invocation-start-failed",
+  "windows-model-main-invocation-complete-failed",
+  "windows-model-main-response-write-failed",
+  "windows-model-supervisor-response-read-failed",
+  "windows-model-supervisor-response-forward-failed",
+  "windows-model-worker-response-decode-failed",
+]);
 const WINDOWS_OPEN_FAILURE_STAGES = Object.freeze([
   "artifact-admission",
   "artifact-binding-incomplete",
@@ -323,6 +352,7 @@ const WINDOWS_OPEN_FAILURE_STAGES = Object.freeze([
   ...WINDOWS_CAPABILITY_PROGRESS_FAILURE_STAGES,
   ...WINDOWS_CAPABILITY_CALL_PROGRESS_FAILURE_STAGES,
   ...WINDOWS_CAPABILITY_CALL_FAILURE_STAGES,
+  ...WINDOWS_MODEL_PROGRESS_FAILURE_STAGES,
   "handshake-process-exit",
   "handshake-process-signal",
   "handshake-timeout",
@@ -519,6 +549,7 @@ export function classifyGooseWindowsOpeningFailure(error) {
       if (WINDOWS_CAPABILITY_PROGRESS_FAILURE_STAGES.includes(code)) return code;
       if (WINDOWS_CAPABILITY_CALL_PROGRESS_FAILURE_STAGES.includes(code)) return code;
       if (WINDOWS_CAPABILITY_CALL_FAILURE_STAGES.includes(code)) return code;
+      if (WINDOWS_MODEL_PROGRESS_FAILURE_STAGES.includes(code)) return code;
     } else if (code === "network-policy-unavailable") {
       return "runtime-network";
     }

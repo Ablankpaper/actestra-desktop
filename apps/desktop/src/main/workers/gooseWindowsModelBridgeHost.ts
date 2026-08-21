@@ -10,6 +10,10 @@ import {
   GOOSE_AUTHENTICATED_BRIDGE_MAX_FRAME_BYTES,
   type GooseWindowsModelFrame,
 } from "./gooseAuthenticatedBridgeProtocol";
+import {
+  GOOSE_WINDOWS_MODEL_PROGRESS_STAGES,
+  type GooseWindowsModelProgress,
+} from "./gooseSessionTransport";
 
 const MAX_FRAME_BYTES = GOOSE_AUTHENTICATED_BRIDGE_MAX_FRAME_BYTES;
 
@@ -17,6 +21,7 @@ export interface StartGooseWindowsModelBridgeHostOptions {
   readonly stream: Duplex;
   readonly attemptLease: string;
   readonly invokeModel: ActestraMainModelInvoker;
+  readonly modelProgress: GooseWindowsModelProgress;
 }
 
 export interface GooseWindowsModelBridgeHost {
@@ -44,9 +49,11 @@ function validLease(value: unknown): value is string {
   return typeof value === "string" && /^[A-Za-z0-9._~-]{32,256}$/.test(value);
 }
 
-function writeFrame(stream: Duplex, frame: GooseWindowsModelFrame): void {
+function writeFrame(stream: Duplex, frame: GooseWindowsModelFrame, onWritten?: () => void): void {
   if (!stream.destroyed && !stream.writableEnded) {
-    stream.write(encodeGooseWindowsModelFrame(frame));
+    stream.write(encodeGooseWindowsModelFrame(frame), (error?: Error | null) => {
+      if (error === undefined || error === null) onWritten?.();
+    });
   }
 }
 
@@ -59,7 +66,10 @@ export function startGooseWindowsModelBridgeHost(
     typeof options.stream.on !== "function" ||
     typeof options.stream.write !== "function" ||
     !validLease(options.attemptLease) ||
-    typeof options.invokeModel !== "function"
+    typeof options.invokeModel !== "function" ||
+    !isRecord(options.modelProgress) ||
+    typeof options.modelProgress.record !== "function" ||
+    typeof options.modelProgress.snapshot !== "function"
   ) {
     throw new GooseAuthenticatedBridgeProtocolError("Invalid Windows model bridge host options");
   }
@@ -98,7 +108,9 @@ export function startGooseWindowsModelBridgeHost(
     requestId: string,
     code: "cancelled" | "model-completion-refused" | "model-request-rejected",
   ): void => {
-    writeFrame(stream, { contractVersion: 1, kind: "model-error", requestId, code });
+    writeFrame(stream, { contractVersion: 1, kind: "model-error", requestId, code }, () =>
+      options.modelProgress.record(GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[6]),
+    );
   };
 
   const serve = async (frameBytes: Buffer): Promise<void> => {
@@ -141,11 +153,14 @@ export function startGooseWindowsModelBridgeHost(
       if (frame.kind === "completion-request") emitError(frame.requestId, "model-request-rejected");
       return;
     }
+    options.modelProgress.record(GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[3]);
 
     const request: PendingRequest = { controller: new AbortController(), cancelled: false };
     pending.set(frame.requestId, request);
+    options.modelProgress.record(GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[4]);
     try {
       const completion = await options.invokeModel(frame.invocation, request.controller.signal);
+      options.modelProgress.record(GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[5]);
       if (request.cancelled || closed) return;
       try {
         assertActestraMainModelCompletion(completion);
@@ -163,7 +178,13 @@ export function startGooseWindowsModelBridgeHost(
       });
       pending.delete(frame.requestId);
       servedInferenceCount += 1;
-      if (!stream.destroyed && !stream.writableEnded) stream.write(response);
+      if (!stream.destroyed && !stream.writableEnded) {
+        stream.write(response, (error?: Error | null) => {
+          if (error === undefined || error === null) {
+            options.modelProgress.record(GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[6]);
+          }
+        });
+      }
     } catch {
       if (request.cancelled || closed) return;
       pending.delete(frame.requestId);

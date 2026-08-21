@@ -11,16 +11,21 @@ import {
   GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES,
   GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
   GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
+  GOOSE_WINDOWS_MODEL_PROGRESS_STAGES,
   GooseRunnerProcessError,
   assertGooseAcpSpawnOptions,
   createGooseWindowsCapabilityProgressMatcher,
+  createGooseWindowsModelProgressMatcher,
   createGooseRunnerEnvironment,
   createGooseRunnerSetupFailureMatcher,
   createGooseRunnerResourceFailureMatcher,
   openGooseRunnerHandshake,
   type GooseAcpSpawnOptions,
 } from "../../apps/desktop/src/main/workers/gooseRunnerProcess";
-import { createGooseWindowsCapabilityProgress } from "../../apps/desktop/src/main/workers/gooseSessionTransport";
+import {
+  createGooseWindowsCapabilityProgress,
+  createGooseWindowsModelProgress,
+} from "../../apps/desktop/src/main/workers/gooseSessionTransport";
 import { createGooseRunnerSandboxLaunch } from "../../apps/desktop/src/main/workers/gooseRunnerSandbox";
 import { LoopbackGooseAcpTransport } from "../fixtures/gooseAcp";
 
@@ -313,6 +318,33 @@ describe("Goose runner native resource boundary", () => {
     expect(JSON.stringify(progress.snapshot())).not.toContain("private");
     expect(Object.keys(matcher)).toEqual(["push"]);
     expect(Object.keys(progress)).toEqual(["record", "snapshot"]);
+  });
+
+  it("extracts only the ten bounded Windows model progress stages across stderr chunks", () => {
+    const progress = createGooseWindowsModelProgress();
+    const matcher = createGooseWindowsModelProgressMatcher();
+    const marker = (stage: string): string =>
+      `Goose windows model progress at bounded stage ${stage}`;
+
+    expect(
+      matcher.push(
+        Buffer.from(`ignored:${marker(GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[0]).slice(0, 27)}`),
+      ),
+    ).toEqual([]);
+    for (const stage of matcher.push(
+      Buffer.from(
+        `${marker(GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[0]).slice(27)}\n` +
+          `${marker(GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[6])}\nC:\\private\\ignored`,
+      ),
+    )) {
+      progress.record(stage);
+    }
+
+    expect(progress.snapshot()).toEqual([
+      GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[0],
+      GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[6],
+    ]);
+    expect(matcher.push(Buffer.from("windows-model-unbounded-private-stage"))).toEqual([]);
   });
 
   it("extracts bounded tool-call progress and Main invocation failure stages", () => {

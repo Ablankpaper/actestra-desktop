@@ -408,6 +408,26 @@ struct ModelBridgeState {
     pending: PendingRequests,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ModelClientProgress {
+    RequestWritten,
+    ResponseDecoded,
+}
+
+fn model_client_progress_code(stage: ModelClientProgress) -> &'static str {
+    match stage {
+        ModelClientProgress::RequestWritten => "windows-model-worker-request-written",
+        ModelClientProgress::ResponseDecoded => "windows-model-worker-response-decoded",
+    }
+}
+
+fn report_model_client_progress(stage: ModelClientProgress) {
+    eprintln!(
+        "Goose windows model progress at bounded stage {}",
+        model_client_progress_code(stage)
+    );
+}
+
 pub(crate) struct WindowsModelProvider {
     state: Arc<Mutex<ModelBridgeState>>,
     lease: String,
@@ -493,12 +513,16 @@ impl WindowsModelProvider {
             cancellation.disarm();
             return Err(model_bridge_unavailable());
         }
+        report_model_client_progress(ModelClientProgress::RequestWritten);
         let response = match state.channel.read_frame().await {
             Ok(frame) => decode_model_frame(&frame, &self.lease, &session_id),
             Err(()) => Err(()),
         };
         let response = match response {
-            Ok(response) => response,
+            Ok(response) => {
+                report_model_client_progress(ModelClientProgress::ResponseDecoded);
+                response
+            }
             Err(()) => {
                 cancel_model_request(&mut state, &request_id, &self.lease).await;
                 cancellation.disarm();
@@ -971,6 +995,18 @@ mod tests {
             "actestra-fixed-model".to_string(),
         )
         .unwrap()
+    }
+
+    #[test]
+    fn model_provider_progress_vocabulary_is_fixed_and_bounded() {
+        assert_eq!(
+            model_client_progress_code(ModelClientProgress::RequestWritten),
+            "windows-model-worker-request-written"
+        );
+        assert_eq!(
+            model_client_progress_code(ModelClientProgress::ResponseDecoded),
+            "windows-model-worker-response-decoded"
+        );
     }
 
     async fn next_stream_item(

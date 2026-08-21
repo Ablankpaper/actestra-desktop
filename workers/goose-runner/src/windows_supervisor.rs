@@ -3557,8 +3557,12 @@ const WORKER_REQUEST_WRITTEN_PROGRESS: &[u8] =
 const WORKER_RESPONSE_DECODED_PROGRESS: &[u8] = b"Goose windows capability progress at bounded stage windows-capability-worker-response-decoded";
 const WORKER_CALL_REQUEST_WRITTEN_PROGRESS: &[u8] = b"Goose windows capability progress at bounded stage windows-capability-call-worker-request-written";
 const WORKER_CALL_RESPONSE_DECODED_PROGRESS: &[u8] = b"Goose windows capability progress at bounded stage windows-capability-call-worker-response-decoded";
+const WORKER_MODEL_REQUEST_WRITTEN_PROGRESS: &[u8] =
+    b"Goose windows model progress at bounded stage windows-model-worker-request-written";
+const WORKER_MODEL_RESPONSE_DECODED_PROGRESS: &[u8] =
+    b"Goose windows model progress at bounded stage windows-model-worker-response-decoded";
 
-fn worker_capability_progress_line(line: &[u8]) -> Option<&'static str> {
+fn worker_progress_line(line: &[u8]) -> Option<&'static str> {
     match line {
         value if value == WORKER_REQUEST_WRITTEN_PROGRESS => {
             Some("windows-capability-worker-request-written")
@@ -3572,7 +3576,22 @@ fn worker_capability_progress_line(line: &[u8]) -> Option<&'static str> {
         value if value == WORKER_CALL_RESPONSE_DECODED_PROGRESS => {
             Some("windows-capability-call-worker-response-decoded")
         }
+        value if value == WORKER_MODEL_REQUEST_WRITTEN_PROGRESS => {
+            Some("windows-model-worker-request-written")
+        }
+        value if value == WORKER_MODEL_RESPONSE_DECODED_PROGRESS => {
+            Some("windows-model-worker-response-decoded")
+        }
         _ => None,
+    }
+}
+
+#[cfg(windows)]
+fn report_windows_bridge_progress(stage: &'static str) {
+    if stage.starts_with("windows-model-") {
+        eprintln!("Goose windows model progress at bounded stage {stage}");
+    } else {
+        eprintln!("Goose windows capability progress at bounded stage {stage}");
     }
 }
 
@@ -3599,7 +3618,7 @@ impl WorkerCapabilityProgressLineFilter {
             if self.line.last() == Some(&b'\r') {
                 self.line.pop();
             }
-            let result = worker_capability_progress_line(&self.line);
+            let result = worker_progress_line(&self.line);
             self.line.clear();
             return result;
         }
@@ -3626,7 +3645,7 @@ async fn relay_worker_stderr_progress(handle: HANDLE) -> Result<(), ()> {
             0 => return Ok(()),
             1 => {
                 if let Some(stage) = filter.push(byte[0]) {
-                    eprintln!("Goose windows capability progress at bounded stage {stage}");
+                    report_windows_bridge_progress(stage);
                 }
             }
             _ => return Err(()),
@@ -3813,12 +3832,10 @@ fn launch_controlled_worker(control: crate::windows_control::WindowsControlMessa
         let acp_in = acp_input.copy_to(worker_stdin);
         let acp_out = worker_stdout.copy_to(acp_output);
         let progress_reporter: std::sync::Arc<dyn Fn(&'static str) + Send + Sync> =
-            std::sync::Arc::new(|stage| {
-                eprintln!("Goose windows capability progress at bounded stage {stage}");
-            });
+            std::sync::Arc::new(report_windows_bridge_progress);
         let capability = capability_main
-            .relay_capability_framed_bidirectional(capability_worker, progress_reporter);
-        let model = model_main.relay_framed_bidirectional(model_worker);
+            .relay_capability_framed_bidirectional(capability_worker, progress_reporter.clone());
+        let model = model_main.relay_model_framed_bidirectional(model_worker, progress_reporter);
         let worker_exit = async move {
             let _ = relay_worker_stderr_progress(worker_stderr).await;
             wait_for_worker_exit_handle(worker_process_handle).await
@@ -4099,35 +4116,44 @@ mod tests {
     #[test]
     fn worker_stderr_progress_filter_admits_only_exact_capability_markers() {
         assert_eq!(
-            worker_capability_progress_line(
+            worker_progress_line(
                 b"Goose windows capability progress at bounded stage windows-capability-worker-request-written"
             ),
             Some("windows-capability-worker-request-written")
         );
         assert_eq!(
-            worker_capability_progress_line(
+            worker_progress_line(
                 b"Goose windows capability progress at bounded stage windows-capability-worker-response-decoded"
             ),
             Some("windows-capability-worker-response-decoded")
         );
         assert_eq!(
-            worker_capability_progress_line(
+            worker_progress_line(
                 b"Goose windows capability progress at bounded stage windows-capability-call-worker-request-written"
             ),
             Some("windows-capability-call-worker-request-written")
         );
         assert_eq!(
-            worker_capability_progress_line(
+            worker_progress_line(
                 b"Goose windows capability progress at bounded stage windows-capability-call-worker-response-decoded"
             ),
             Some("windows-capability-call-worker-response-decoded")
         );
         assert_eq!(
-            worker_capability_progress_line(b"C:\\private\\secret"),
-            None
+            worker_progress_line(
+                b"Goose windows model progress at bounded stage windows-model-worker-request-written"
+            ),
+            Some("windows-model-worker-request-written")
         );
         assert_eq!(
-            worker_capability_progress_line(
+            worker_progress_line(
+                b"Goose windows model progress at bounded stage windows-model-worker-response-decoded"
+            ),
+            Some("windows-model-worker-response-decoded")
+        );
+        assert_eq!(worker_progress_line(b"C:\\private\\secret"), None);
+        assert_eq!(
+            worker_progress_line(
                 b"Goose windows capability progress at bounded stage windows-capability-worker-request-written extra"
             ),
             None

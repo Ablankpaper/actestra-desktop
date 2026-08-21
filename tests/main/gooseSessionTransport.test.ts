@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES,
   GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
+  GOOSE_WINDOWS_MODEL_PROGRESS_STAGES,
   GOOSE_WINDOWS_STDIO_CHANNELS,
   GOOSE_WINDOWS_STDIO_CONFIGURATION,
+  createGooseWindowsModelProgress,
   resolveGooseSessionTransportMode,
 } from "../../apps/desktop/src/main/workers/gooseSessionTransport";
 
@@ -62,5 +64,31 @@ describe("Goose session transport selection", () => {
     expect(GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES).toEqual([
       "windows-capability-call-main-tool-invocation-failed",
     ]);
+  });
+
+  it("locks one closed Windows model request-response progress vocabulary", () => {
+    expect(GOOSE_WINDOWS_MODEL_PROGRESS_STAGES).toEqual([
+      "windows-model-worker-request-written",
+      "windows-model-supervisor-request-read",
+      "windows-model-supervisor-request-forwarded",
+      "windows-model-main-request-decoded",
+      "windows-model-main-invocation-started",
+      "windows-model-main-invocation-completed",
+      "windows-model-main-response-written",
+      "windows-model-supervisor-response-read",
+      "windows-model-supervisor-response-forwarded",
+      "windows-model-worker-response-decoded",
+    ]);
+    expect(Object.isFrozen(GOOSE_WINDOWS_MODEL_PROGRESS_STAGES)).toBe(true);
+
+    const progress = createGooseWindowsModelProgress();
+    progress.record(GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[7]);
+    progress.record(GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[0]);
+    progress.record(GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[0]);
+    expect(progress.snapshot()).toEqual([
+      GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[0],
+      GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[7],
+    ]);
+    expect(Object.isFrozen(progress.snapshot())).toBe(true);
   });
 });

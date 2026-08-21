@@ -10,6 +10,10 @@ import {
   startGooseWindowsModelBridgeHost,
   type GooseWindowsModelBridgeHost,
 } from "../../apps/desktop/src/main/workers/gooseWindowsModelBridgeHost";
+import {
+  GOOSE_WINDOWS_MODEL_PROGRESS_STAGES,
+  createGooseWindowsModelProgress,
+} from "../../apps/desktop/src/main/workers/gooseSessionTransport";
 
 const LEASE = "lease_0123456789abcdef0123456789abcdef";
 const SESSION = "session_0123456789abcdef";
@@ -90,9 +94,11 @@ async function closeHost(host: GooseWindowsModelBridgeHost, worker: Duplex): Pro
 describe("Goose Windows Main model bridge host", () => {
   it("serves a validated completion and tracks exact counters", async () => {
     const [main, worker] = linkedDuplexPair();
+    const modelProgress = createGooseWindowsModelProgress();
     const host = startGooseWindowsModelBridgeHost({
       stream: main,
       attemptLease: LEASE,
+      modelProgress,
       invokeModel: async () => ({
         type: "message",
         text: "bounded completion",
@@ -109,6 +115,7 @@ describe("Goose Windows Main model bridge host", () => {
     expect(host.servedInferenceCount).toBe(1);
     expect(host.refusedInferenceCount).toBe(0);
     expect(host.rejectedRequestCount).toBe(0);
+    expect(modelProgress.snapshot()).toEqual(GOOSE_WINDOWS_MODEL_PROGRESS_STAGES.slice(3, 7));
     await closeHost(host, worker);
   });
 
@@ -125,10 +132,12 @@ describe("Goose Windows Main model bridge host", () => {
     ];
     for (const invokeModel of invokers) {
       const [main, worker] = linkedDuplexPair();
+      const modelProgress = createGooseWindowsModelProgress();
       const host = startGooseWindowsModelBridgeHost({
         stream: main,
         attemptLease: LEASE,
         invokeModel,
+        modelProgress,
       });
       host.bindSession(SESSION);
       worker.write(encodeGooseWindowsModelFrame(request()));
@@ -139,6 +148,20 @@ describe("Goose Windows Main model bridge host", () => {
       expect(host.servedInferenceCount).toBe(0);
       expect(host.refusedInferenceCount).toBe(1);
       expect(host.rejectedRequestCount).toBe(0);
+      expect(modelProgress.snapshot()).toEqual(
+        invokeModel === invokers[0]
+          ? [
+              GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[3],
+              GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[4],
+              GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[6],
+            ]
+          : [
+              GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[3],
+              GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[4],
+              GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[5],
+              GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[6],
+            ],
+      );
       await closeHost(host, worker);
     }
   });
@@ -148,6 +171,7 @@ describe("Goose Windows Main model bridge host", () => {
     const host = startGooseWindowsModelBridgeHost({
       stream: main,
       attemptLease: LEASE,
+      modelProgress: createGooseWindowsModelProgress(),
       invokeModel: async () => ({
         type: "tool-call",
         callId: "call-1",
@@ -173,6 +197,7 @@ describe("Goose Windows Main model bridge host", () => {
     const host = startGooseWindowsModelBridgeHost({
       stream: main,
       attemptLease: LEASE,
+      modelProgress: createGooseWindowsModelProgress(),
       invokeModel: async () => ({
         type: "message",
         text: "unused",
@@ -206,6 +231,7 @@ describe("Goose Windows Main model bridge host", () => {
     const host = startGooseWindowsModelBridgeHost({
       stream: main,
       attemptLease: LEASE,
+      modelProgress: createGooseWindowsModelProgress(),
       invokeModel: async (_invocation, signal) =>
         new Promise((_resolve, reject) => {
           signal.addEventListener("abort", () => {

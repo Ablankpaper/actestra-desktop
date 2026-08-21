@@ -163,6 +163,39 @@ impl WindowsBridgeChannel {
         }
     }
 
+    pub(crate) async fn relay_model_framed_bidirectional(
+        self,
+        other: Self,
+        reporter: Arc<dyn Fn(&'static str) + Send + Sync>,
+    ) -> Result<(), ()> {
+        let (main_reader, main_writer) = tokio::io::split(self.stream);
+        let (worker_reader, worker_writer) = tokio::io::split(other.stream);
+        tokio::select! {
+            result = relay_framed_direction(
+                main_reader,
+                worker_writer,
+                Some(RelayProgress {
+                    reporter: reporter.clone(),
+                    read_stage: "windows-model-supervisor-response-read",
+                    forwarded_stage: "windows-model-supervisor-response-forwarded",
+                    call_read_stage: "windows-model-supervisor-response-read",
+                    call_forwarded_stage: "windows-model-supervisor-response-forwarded",
+                }),
+            ) => result,
+            result = relay_framed_direction(
+                worker_reader,
+                main_writer,
+                Some(RelayProgress {
+                    reporter,
+                    read_stage: "windows-model-supervisor-request-read",
+                    forwarded_stage: "windows-model-supervisor-request-forwarded",
+                    call_read_stage: "windows-model-supervisor-request-read",
+                    call_forwarded_stage: "windows-model-supervisor-request-forwarded",
+                }),
+            ) => result,
+        }
+    }
+
     #[cfg(windows)]
     pub(crate) async fn read_once(&mut self, target: &mut [u8]) -> Result<usize, ()> {
         self.stream.read(target).await.map_err(|_| ())
@@ -475,6 +508,46 @@ mod tests {
                 "windows-capability-call-supervisor-request-forwarded",
                 "windows-capability-call-supervisor-response-read",
                 "windows-capability-call-supervisor-response-forwarded",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn model_relay_reports_request_and_response_boundaries_in_order() {
+        let (main_side, relay_main) = tokio::io::duplex(4096);
+        let (worker_side, relay_worker) = tokio::io::duplex(4096);
+        let mut main_side = WindowsBridgeChannel::from_duplex(main_side);
+        let mut worker_side = WindowsBridgeChannel::from_duplex(worker_side);
+        let observed = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let reporter_observed = observed.clone();
+        let reporter: std::sync::Arc<dyn Fn(&'static str) + Send + Sync> =
+            std::sync::Arc::new(move |stage| reporter_observed.lock().unwrap().push(stage));
+        let relay = tokio::spawn(
+            WindowsBridgeChannel::from_duplex(relay_main).relay_model_framed_bidirectional(
+                WindowsBridgeChannel::from_duplex(relay_worker),
+                reporter,
+            ),
+        );
+
+        let request =
+            encode_json_frame(&json!({"contractVersion": 1, "kind": "completion-request"}))
+                .unwrap();
+        worker_side.write_frame(&request).await.unwrap();
+        assert_eq!(main_side.read_frame().await.unwrap(), request);
+        let response =
+            encode_json_frame(&json!({"contractVersion": 1, "kind": "completion-response"}))
+                .unwrap();
+        main_side.write_frame(&response).await.unwrap();
+        assert_eq!(worker_side.read_frame().await.unwrap(), response);
+        drop((main_side, worker_side));
+        assert!(relay.await.unwrap().is_ok());
+        assert_eq!(
+            *observed.lock().unwrap(),
+            vec![
+                "windows-model-supervisor-request-read",
+                "windows-model-supervisor-request-forwarded",
+                "windows-model-supervisor-response-read",
+                "windows-model-supervisor-response-forwarded",
             ]
         );
     }

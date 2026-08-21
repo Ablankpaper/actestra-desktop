@@ -2,6 +2,50 @@
 
 Last updated: 2026-08-21
 
+## 2026-08-21 P8.2c first-prompt model round-trip diagnostics (local; CI pending)
+
+Exact-head CI run
+[`32490455614`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32490455614)
+for branch head `7b847a254372e3adb69513869d61f3c5b00fa5e5` passed Goose runner
+admission, both Windows build and containment jobs, both Ubuntu jobs, and the
+macOS foundation/package job. The Windows authenticated-runtime job also passed
+its exact runner build/admission and containment steps. Its only failure was the
+first real read prompt, after about 36 seconds, with the newly separated bounded
+code `windows-runtime-prompt-timeout-failed`. This proves session creation and
+authenticated tool discovery completed, but no ACP prompt activity returned
+within the 30-second deadline.
+
+The failure Artifact is
+`p8-goose-runtime-windows-failure-37e3e4215070ed7f7eeb382e7a3a182216675fbf`
+(Artifact `9450557253`; uploaded ZIP SHA-256
+`dba1cb3a99da1cb71a41935a5b2705e4e5d5baf646917f9dcce4256ab9fe3ead`). Its
+single `windows-runtime-failure.json` has SHA-256
+`99665b1ba7c1181b89120e807af93def43af2f683fe9f6fc8599c9d7084198e3` and
+contains exactly:
+
+```json
+{"contractVersion":1,"code":"windows-runtime-prompt-timeout-failed"}
+```
+
+The existing evidence chain had no model-channel equivalent of its closed
+capability progress vocabulary, so this result cannot yet distinguish Worker
+request creation, Supervisor relay, Main decoding/invocation/response, or the
+return relay. The local diagnostic follow-up now records exactly ten fixed
+model request/response boundaries across the admitted Worker, Supervisor, Main,
+composition error classifier, and outer CI evidence mapper. It admits only
+fixed stage tokens and does not change model input, timeout, retry, ACL,
+permission, network, credential, tool, or cleanup behavior.
+
+The model diagnostic tests were observed RED before implementation. The local
+focused gate now passes `94/94` TypeScript/JavaScript tests and `91/91` Goose
+runner Rust tests; Rust format, repository format/lint/typecheck, the P8
+contract, and `git diff --check` are clean. A macOS cross-check of the Windows
+target remains unavailable because compiled SQLite and tree-sitter dependencies
+require Windows SDK C headers; exact Windows compilation and execution remain
+the next CI gate. P8.2c is still open. The next exact-head Windows run must be
+used once to identify the first missing model stage before any behavioral
+repair is attempted.
+
 ## 2026-08-21 P8.2c third diagnostic rerun (first prompt classification gap)
 
 Exact-head CI run
