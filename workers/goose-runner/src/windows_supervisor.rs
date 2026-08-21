@@ -272,7 +272,11 @@ const STATE_ROOT_FORBIDDEN_ACCESS_MASK: u32 = STATE_FORBIDDEN_ACCESS_MASK
     | FILE_WRITE_EA
     | DELETE;
 #[cfg(windows)]
-const STATE_ANCESTOR_TRAVERSE_ACCESS_MASK: u32 = FILE_TRAVERSE;
+// `canonicalize` on Windows uses GetFinalPathNameByHandle with normalized names. That API
+// resolves each path component and requires metadata access on the ancestor directories as well
+// as traverse access. Keep this metadata-only: ancestors still cannot be listed, created, written,
+// deleted, or have their ACL/owner changed.
+const STATE_ANCESTOR_TRAVERSE_ACCESS_MASK: u32 = FILE_TRAVERSE | FILE_READ_ATTRIBUTES;
 #[cfg(windows)]
 const STATE_ANCESTOR_FORBIDDEN_ACCESS_MASK: u32 =
     STATE_ROOT_FORBIDDEN_ACCESS_MASK | FILE_LIST_DIRECTORY;
