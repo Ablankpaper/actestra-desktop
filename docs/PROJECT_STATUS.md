@@ -2,6 +2,40 @@
 
 Last updated: 2026-08-21
 
+## 2026-08-21 P8.2c per-operation prepare-stage exit codes (local; CI pending)
+
+The latest exact-head CI evidence is run
+[`32445677074`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32445677074).
+The Worker succeeded at control-frame, boundary-check, pipes, and control-message
+stages but failed inside `prepare_goose_state_directories()`, reported as
+`test-child-state-directory-prepare-failed`. This narrowed the failure to one
+of the nine filesystem operations inside that function but did not identify which
+one.
+
+This follow-up maps each of those operations to a distinct bounded exit code and
+runtime diagnostic string so the next Windows CI run reports the exact operation
+that fails under AppContainer. The new codes are:
+`windows-state-directory-root-metadata-failed`,
+`windows-state-directory-root-canonicalize-failed`,
+`windows-state-directory-data-metadata-failed`,
+`windows-state-directory-data-create-failed`,
+`windows-state-directory-data-canonicalize-failed`,
+`windows-state-directory-config-metadata-failed`,
+`windows-state-directory-config-create-failed`, and
+`windows-state-directory-config-canonicalize-failed`.
+The `StateDirectoryPrepareFailure` enum carries all ten prepare variants
+(including the existing `Layout` and `TraversalShape`). No ACL scope,
+workspace, network, credential, capability, retry, or Renderer authority was
+added.
+
+Fresh local evidence passes `cargo fmt --all --check`, all `84` Goose runner
+tests, the focused JS evidence tests (`58/58`), and the complete `bun run check`
+gate. The new codes are present in both `WINDOWS_RUNTIME_FAILURE_CODES`,
+`GOOSE_CONTAINMENT_PROBE_DIAGNOSTIC_CODES`, `FAILURE_STAGE_CODES`, and
+`WINDOWS_SUPERVISOR_FAILURE_STAGES`. A new exact-head CI run is required to
+identify the specific prepare operation that fails before any behavioral change
+is considered. P8.2c remains open.
+
 ## 2026-08-21 P8.2c state-directory admission diagnosis (local; CI pending)
 
 The latest exact-head CI evidence is run

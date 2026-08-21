@@ -54,6 +54,22 @@ const FAILURE_STAGE_CODES = Object.freeze({
   "windows-runtime-timeout": "windows-runtime-supervisor-timeout-failed",
   "windows-runtime-cleanup-failed": "windows-runtime-supervisor-cleanup-failed",
   "windows-state-directory-layout-failed": "windows-runtime-state-directory-layout-failed",
+  "windows-state-directory-root-metadata-failed":
+    "windows-runtime-state-directory-root-metadata-failed",
+  "windows-state-directory-root-canonicalize-failed":
+    "windows-runtime-state-directory-root-canonicalize-failed",
+  "windows-state-directory-data-metadata-failed":
+    "windows-runtime-state-directory-data-metadata-failed",
+  "windows-state-directory-data-create-failed":
+    "windows-runtime-state-directory-data-create-failed",
+  "windows-state-directory-data-canonicalize-failed":
+    "windows-runtime-state-directory-data-canonicalize-failed",
+  "windows-state-directory-config-metadata-failed":
+    "windows-runtime-state-directory-config-metadata-failed",
+  "windows-state-directory-config-create-failed":
+    "windows-runtime-state-directory-config-create-failed",
+  "windows-state-directory-config-canonicalize-failed":
+    "windows-runtime-state-directory-config-canonicalize-failed",
   "windows-state-directory-traversal-shape-invalid":
     "windows-runtime-state-directory-traversal-shape-invalid",
   "windows-state-directory-ancestor-access-failed":
@@ -164,6 +180,14 @@ const WINDOWS_SUPERVISOR_FAILURE_STAGES = Object.freeze([
   "windows-runtime-timeout",
   "windows-runtime-cleanup-failed",
   "windows-state-directory-layout-failed",
+  "windows-state-directory-root-metadata-failed",
+  "windows-state-directory-root-canonicalize-failed",
+  "windows-state-directory-data-metadata-failed",
+  "windows-state-directory-data-create-failed",
+  "windows-state-directory-data-canonicalize-failed",
+  "windows-state-directory-config-metadata-failed",
+  "windows-state-directory-config-create-failed",
+  "windows-state-directory-config-canonicalize-failed",
   "windows-state-directory-traversal-shape-invalid",
   "windows-state-directory-ancestor-access-failed",
   "windows-state-directory-root-access-failed",

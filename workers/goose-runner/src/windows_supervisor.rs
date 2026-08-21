@@ -36,7 +36,7 @@ use crate::windows_model_bridge::WindowsModelProvider;
 #[cfg(windows)]
 const WINDOWS_WORKER_READY_MARKER: &[u8] = b"ACTESTRA_GOOSE_WINDOWS_WORKER_READY\n";
 #[cfg(any(windows, test))]
-const WINDOWS_RUNTIME_FAILURE_CODES: [&str; 24] = [
+const WINDOWS_RUNTIME_FAILURE_CODES: [&str; 32] = [
     "windows-control-channel-invalid",
     "windows-ready-channel-invalid",
     "windows-capability-channel-invalid",
@@ -48,6 +48,14 @@ const WINDOWS_RUNTIME_FAILURE_CODES: [&str; 24] = [
     "windows-runtime-timeout",
     "windows-runtime-cleanup-failed",
     "windows-state-directory-layout-failed",
+    "windows-state-directory-root-metadata-failed",
+    "windows-state-directory-root-canonicalize-failed",
+    "windows-state-directory-data-metadata-failed",
+    "windows-state-directory-data-create-failed",
+    "windows-state-directory-data-canonicalize-failed",
+    "windows-state-directory-config-metadata-failed",
+    "windows-state-directory-config-create-failed",
+    "windows-state-directory-config-canonicalize-failed",
     "windows-state-directory-traversal-shape-invalid",
     "windows-state-directory-ancestor-access-failed",
     "windows-state-directory-root-access-failed",
@@ -813,7 +821,7 @@ enum WorkerStartupFailure {
 #[cfg(any(windows, test))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum StateDirectoryAdmissionFailure {
-    Layout,
+    Prepare(StateDirectoryPrepareFailure),
     TraversalShape,
     AncestorAccess,
     RootAccess,
@@ -825,7 +833,18 @@ enum StateDirectoryAdmissionFailure {
 impl StateDirectoryAdmissionFailure {
     fn diagnostic_exit_code(self) -> i32 {
         match self {
-            Self::Layout => 63,
+            Self::Prepare(failure) => match failure {
+                StateDirectoryPrepareFailure::Layout => 63,
+                StateDirectoryPrepareFailure::RootMetadata => 69,
+                StateDirectoryPrepareFailure::RootCanonicalize => 70,
+                StateDirectoryPrepareFailure::DataMetadata => 71,
+                StateDirectoryPrepareFailure::DataCreate => 72,
+                StateDirectoryPrepareFailure::DataCanonicalize => 73,
+                StateDirectoryPrepareFailure::ConfigMetadata => 74,
+                StateDirectoryPrepareFailure::ConfigCreate => 75,
+                StateDirectoryPrepareFailure::ConfigCanonicalize => 76,
+                StateDirectoryPrepareFailure::TraversalShape => 64,
+            },
             Self::TraversalShape => 64,
             Self::AncestorAccess => 65,
             Self::RootAccess => 66,
@@ -836,7 +855,7 @@ impl StateDirectoryAdmissionFailure {
 
     fn runtime_code(self) -> &'static str {
         match self {
-            Self::Layout => "windows-state-directory-layout-failed",
+            Self::Prepare(failure) => failure.code(),
             Self::TraversalShape => "windows-state-directory-traversal-shape-invalid",
             Self::AncestorAccess => "windows-state-directory-ancestor-access-failed",
             Self::RootAccess => "windows-state-directory-root-access-failed",
@@ -2863,7 +2882,13 @@ pub(crate) fn run_worker_with_arguments(_arguments: &[String]) -> i32 {
             )
             .map_err(|_| EXIT_MODEL_BRIDGE_FAILED)?;
             let (data_dir, config_dir) = prepare_goose_state_directories(&control.private_root)
-                .map_err(|_| EXIT_STATE_DIRECTORY_FAILED)?;
+                .map_err(|failure| {
+                    eprintln!(
+                        "Goose windows containment failed at bounded stage {}",
+                        failure.code()
+                    );
+                    EXIT_STATE_DIRECTORY_FAILED
+                })?;
             let adapter = goose::acp::server::AcpRuntimeAdapter {
                 provider_id: "actestra".to_string(),
                 model_config: goose_providers::model::ModelConfig::new(&control.model_id),
@@ -2914,37 +2939,91 @@ pub(crate) fn run_worker_with_arguments(_arguments: &[String]) -> i32 {
     }
 }
 
+#[cfg(any(windows, test))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum StateDirectoryPrepareFailure {
+    Layout,
+    RootMetadata,
+    RootCanonicalize,
+    DataMetadata,
+    DataCreate,
+    DataCanonicalize,
+    ConfigMetadata,
+    ConfigCreate,
+    ConfigCanonicalize,
+    TraversalShape,
+}
+
+#[cfg(any(windows, test))]
+impl StateDirectoryPrepareFailure {
+    fn code(self) -> &'static str {
+        match self {
+            Self::Layout => "windows-state-directory-layout-failed",
+            Self::RootMetadata => "windows-state-directory-root-metadata-failed",
+            Self::RootCanonicalize => "windows-state-directory-root-canonicalize-failed",
+            Self::DataMetadata => "windows-state-directory-data-metadata-failed",
+            Self::DataCreate => "windows-state-directory-data-create-failed",
+            Self::DataCanonicalize => "windows-state-directory-data-canonicalize-failed",
+            Self::ConfigMetadata => "windows-state-directory-config-metadata-failed",
+            Self::ConfigCreate => "windows-state-directory-config-create-failed",
+            Self::ConfigCanonicalize => "windows-state-directory-config-canonicalize-failed",
+            Self::TraversalShape => "windows-state-directory-traversal-shape-invalid",
+        }
+    }
+}
+
 fn prepare_goose_state_directories(
     private_root: &str,
-) -> Result<(std::path::PathBuf, std::path::PathBuf), ()> {
+) -> Result<(std::path::PathBuf, std::path::PathBuf), StateDirectoryPrepareFailure> {
     let root = std::path::Path::new(private_root);
     if !root.is_absolute() {
-        return Err(());
+        return Err(StateDirectoryPrepareFailure::Layout);
     }
-    let root_metadata = std::fs::symlink_metadata(root).map_err(|_| ())?;
+    let root_metadata =
+        std::fs::symlink_metadata(root).map_err(|_| StateDirectoryPrepareFailure::RootMetadata)?;
     if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
-        return Err(());
+        return Err(StateDirectoryPrepareFailure::Layout);
     }
-    let canonical_root = std::fs::canonicalize(root).map_err(|_| ())?;
+    let canonical_root =
+        std::fs::canonicalize(root).map_err(|_| StateDirectoryPrepareFailure::RootCanonicalize)?;
     let data_dir = root.join("goose-data");
     let config_dir = root.join("goose-config");
-    for directory in [&data_dir, &config_dir] {
-        match std::fs::symlink_metadata(directory) {
-            Ok(metadata) => {
-                if metadata.file_type().is_symlink() || !metadata.is_dir() {
-                    return Err(());
-                }
+
+    match std::fs::symlink_metadata(&data_dir) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                return Err(StateDirectoryPrepareFailure::Layout);
             }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                std::fs::create_dir(directory).map_err(|_| ())?;
-            }
-            Err(_) => return Err(()),
         }
-        let canonical_directory = std::fs::canonicalize(directory).map_err(|_| ())?;
-        if canonical_directory.parent() != Some(canonical_root.as_path()) {
-            return Err(());
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            std::fs::create_dir(&data_dir).map_err(|_| StateDirectoryPrepareFailure::DataCreate)?;
         }
+        Err(_) => return Err(StateDirectoryPrepareFailure::DataMetadata),
     }
+    let canonical_data = std::fs::canonicalize(&data_dir)
+        .map_err(|_| StateDirectoryPrepareFailure::DataCanonicalize)?;
+    if canonical_data.parent() != Some(canonical_root.as_path()) {
+        return Err(StateDirectoryPrepareFailure::TraversalShape);
+    }
+
+    match std::fs::symlink_metadata(&config_dir) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                return Err(StateDirectoryPrepareFailure::Layout);
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            std::fs::create_dir(&config_dir)
+                .map_err(|_| StateDirectoryPrepareFailure::ConfigCreate)?;
+        }
+        Err(_) => return Err(StateDirectoryPrepareFailure::ConfigMetadata),
+    }
+    let canonical_config = std::fs::canonicalize(&config_dir)
+        .map_err(|_| StateDirectoryPrepareFailure::ConfigCanonicalize)?;
+    if canonical_config.parent() != Some(canonical_root.as_path()) {
+        return Err(StateDirectoryPrepareFailure::TraversalShape);
+    }
+
     Ok((data_dir, config_dir))
 }
 
@@ -3181,7 +3260,7 @@ fn prepare_appcontainer_goose_state_directories(
 ) -> Result<(), StateDirectoryAdmissionFailure> {
     let root = Path::new(private_root);
     let (data_dir, config_dir) = prepare_goose_state_directories(private_root)
-        .map_err(|_| StateDirectoryAdmissionFailure::Layout)?;
+        .map_err(StateDirectoryAdmissionFailure::Prepare)?;
     let ancestors = private_root_traversal_paths(private_root_traversal_root, private_root)
         .map_err(|_| StateDirectoryAdmissionFailure::TraversalShape)?;
     for ancestor in ancestors {
@@ -4075,7 +4154,7 @@ mod tests {
 
     #[test]
     fn keeps_runtime_failure_codes_closed_and_sanitized() {
-        assert_eq!(WINDOWS_RUNTIME_FAILURE_CODES.len(), 24);
+        assert_eq!(WINDOWS_RUNTIME_FAILURE_CODES.len(), 32);
         let mut unique = WINDOWS_RUNTIME_FAILURE_CODES.to_vec();
         unique.sort_unstable();
         unique.dedup();
@@ -4161,11 +4240,53 @@ mod tests {
     fn maps_each_state_directory_admission_failure_to_a_distinct_closed_runtime_code() {
         let failures = [
             (
-                StateDirectoryAdmissionFailure::Layout,
+                StateDirectoryAdmissionFailure::Prepare(StateDirectoryPrepareFailure::Layout),
                 "windows-state-directory-layout-failed",
             ),
             (
-                StateDirectoryAdmissionFailure::TraversalShape,
+                StateDirectoryAdmissionFailure::Prepare(StateDirectoryPrepareFailure::RootMetadata),
+                "windows-state-directory-root-metadata-failed",
+            ),
+            (
+                StateDirectoryAdmissionFailure::Prepare(
+                    StateDirectoryPrepareFailure::RootCanonicalize,
+                ),
+                "windows-state-directory-root-canonicalize-failed",
+            ),
+            (
+                StateDirectoryAdmissionFailure::Prepare(StateDirectoryPrepareFailure::DataMetadata),
+                "windows-state-directory-data-metadata-failed",
+            ),
+            (
+                StateDirectoryAdmissionFailure::Prepare(StateDirectoryPrepareFailure::DataCreate),
+                "windows-state-directory-data-create-failed",
+            ),
+            (
+                StateDirectoryAdmissionFailure::Prepare(
+                    StateDirectoryPrepareFailure::DataCanonicalize,
+                ),
+                "windows-state-directory-data-canonicalize-failed",
+            ),
+            (
+                StateDirectoryAdmissionFailure::Prepare(
+                    StateDirectoryPrepareFailure::ConfigMetadata,
+                ),
+                "windows-state-directory-config-metadata-failed",
+            ),
+            (
+                StateDirectoryAdmissionFailure::Prepare(StateDirectoryPrepareFailure::ConfigCreate),
+                "windows-state-directory-config-create-failed",
+            ),
+            (
+                StateDirectoryAdmissionFailure::Prepare(
+                    StateDirectoryPrepareFailure::ConfigCanonicalize,
+                ),
+                "windows-state-directory-config-canonicalize-failed",
+            ),
+            (
+                StateDirectoryAdmissionFailure::Prepare(
+                    StateDirectoryPrepareFailure::TraversalShape,
+                ),
                 "windows-state-directory-traversal-shape-invalid",
             ),
             (
@@ -4442,7 +4563,9 @@ mod tests {
             SupervisorFailureStage::CapabilityChannel,
             SupervisorFailureStage::ModelChannel,
             SupervisorFailureStage::WorkerRuntime,
-            SupervisorFailureStage::StateDirectoryAdmission(StateDirectoryAdmissionFailure::Layout),
+            SupervisorFailureStage::StateDirectoryAdmission(
+                StateDirectoryAdmissionFailure::Prepare(StateDirectoryPrepareFailure::Layout),
+            ),
             SupervisorFailureStage::StateDirectoryAdmission(
                 StateDirectoryAdmissionFailure::TraversalShape,
             ),
@@ -4702,8 +4825,16 @@ mod windows_native_tests {
         unsafe { CloseHandle(input) };
         let private_root = String::from_utf8(root_bytes)
             .map_err(|_| AnonymousPipeTestChildFailure::StateDirectory)?;
-        let (data_dir, config_dir) = prepare_goose_state_directories(&private_root)
-            .map_err(|_| AnonymousPipeTestChildFailure::StateDirectoryPrepare)?;
+        let (data_dir, config_dir) = match prepare_goose_state_directories(&private_root) {
+            Ok(result) => result,
+            Err(failure) => {
+                eprintln!(
+                    "Goose windows containment failed at bounded stage {}",
+                    failure.code()
+                );
+                return Err(AnonymousPipeTestChildFailure::StateDirectoryPrepare);
+            }
+        };
         let data_probe = data_dir.join("appcontainer-state-data.txt");
         std::fs::write(&data_probe, b"state")
             .map_err(|_| AnonymousPipeTestChildFailure::StateDirectoryDataWrite)?;
