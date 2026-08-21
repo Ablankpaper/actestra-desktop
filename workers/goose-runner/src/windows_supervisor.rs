@@ -134,9 +134,11 @@ use windows_sys::Win32::Security::Isolation::{
 use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
 #[cfg(windows)]
 use windows_sys::Win32::Security::{
-    EqualSid, FreeSid, GetTokenInformation, TokenIsAppContainer, TokenUser, ACL,
-    DACL_SECURITY_INFORMATION, NO_INHERITANCE, PSECURITY_DESCRIPTOR, PSID, SECURITY_CAPABILITIES,
-    SUB_CONTAINERS_AND_OBJECTS_INHERIT, TOKEN_QUERY, TOKEN_USER,
+    AddMandatoryAce, AllocateAndInitializeSid, EqualSid, FreeSid, GetTokenInformation,
+    InitializeAcl, TokenIsAppContainer, TokenUser, ACL, ACL_REVISION, DACL_SECURITY_INFORMATION,
+    LABEL_SECURITY_INFORMATION, NO_INHERITANCE, PSECURITY_DESCRIPTOR, PSID, SECURITY_CAPABILITIES,
+    SECURITY_MANDATORY_LABEL_AUTHORITY, SUB_CONTAINERS_AND_OBJECTS_INHERIT, TOKEN_QUERY,
+    TOKEN_USER,
 };
 #[cfg(windows)]
 use windows_sys::Win32::Storage::FileSystem::{
@@ -166,6 +168,10 @@ use windows_sys::Win32::System::JobObjects::{
 use windows_sys::Win32::System::Pipes::CreatePipe;
 #[cfg(windows)]
 use windows_sys::Win32::System::SystemInformation::GetWindowsDirectoryW;
+#[cfg(windows)]
+use windows_sys::Win32::System::SystemServices::{
+    SECURITY_MANDATORY_LOW_RID, SYSTEM_MANDATORY_LABEL_NO_WRITE_UP,
+};
 #[cfg(windows)]
 use windows_sys::Win32::System::Threading::{
     CreateEventW, CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcess,
@@ -214,6 +220,9 @@ const STATE_ROOT_FORBIDDEN_ACCESS_MASK: u32 = STATE_FORBIDDEN_ACCESS_MASK
     | FILE_WRITE_ATTRIBUTES
     | FILE_WRITE_EA
     | DELETE;
+#[cfg(windows)]
+const STATE_LOW_INTEGRITY_ACE_FLAGS: u32 = windows_sys::Win32::Security::CONTAINER_INHERIT_ACE
+    | windows_sys::Win32::Security::OBJECT_INHERIT_ACE;
 #[cfg(any(windows, test))]
 const WINDOWS_WORKER_MODE_ARGUMENT: &str = "--actestra-windows-worker-v1";
 #[cfg(all(test, windows))]
@@ -2989,6 +2998,76 @@ fn grant_exact_appcontainer_directory_access(
 }
 
 #[cfg(windows)]
+fn grant_low_integrity_directory_label(path: &Path) -> Result<(), ()> {
+    let wide = wide_path(path)?;
+    let mut low_sid: PSID = null_mut();
+    // SAFETY: SECURITY_MANDATORY_LABEL_AUTHORITY is the documented authority for integrity SIDs;
+    // the one subauthority is SECURITY_MANDATORY_LOW_RID.
+    if unsafe {
+        AllocateAndInitializeSid(
+            &SECURITY_MANDATORY_LABEL_AUTHORITY,
+            1,
+            SECURITY_MANDATORY_LOW_RID as u32,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            &mut low_sid,
+        )
+    } == 0
+        || low_sid.is_null()
+    {
+        return Err(());
+    }
+
+    // A mandatory-label ACE for one integrity SID is bounded well below this fixed ACL buffer.
+    // LABEL_SECURITY_INFORMATION updates only the integrity label and preserves audit SACL ACEs;
+    // requesting SACL_SECURITY_INFORMATION here would incorrectly require SeSecurityPrivilege.
+    let acl_size = 256_u32;
+    let mut replacement = vec![0_u8; acl_size as usize];
+    let replacement_acl = replacement.as_mut_ptr().cast::<ACL>();
+    // SAFETY: replacement is a writable buffer larger than the one-label ACL we append.
+    if unsafe { InitializeAcl(replacement_acl, acl_size, ACL_REVISION) } == 0 {
+        unsafe { FreeSid(low_sid) };
+        return Err(());
+    }
+    // SAFETY: low_sid is a valid integrity SID and replacement_acl has room for its ACE.
+    if unsafe {
+        AddMandatoryAce(
+            replacement_acl,
+            ACL_REVISION,
+            STATE_LOW_INTEGRITY_ACE_FLAGS,
+            SYSTEM_MANDATORY_LABEL_NO_WRITE_UP,
+            low_sid,
+        )
+    } == 0
+    {
+        unsafe { FreeSid(low_sid) };
+        return Err(());
+    }
+    // SAFETY: replacement_acl remains alive for the synchronous SetNamedSecurityInfoW call.
+    let write_result = unsafe {
+        SetNamedSecurityInfoW(
+            wide.as_ptr() as *mut u16,
+            SE_FILE_OBJECT,
+            LABEL_SECURITY_INFORMATION,
+            null_mut(),
+            null_mut(),
+            null_mut(),
+            replacement_acl,
+        )
+    };
+    unsafe { FreeSid(low_sid) };
+    if write_result != ERROR_SUCCESS {
+        return Err(());
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
 fn prepare_appcontainer_goose_state_directories(private_root: &str, sid: PSID) -> Result<(), ()> {
     let root = Path::new(private_root);
     let (data_dir, config_dir) = prepare_goose_state_directories(private_root)?;
@@ -3007,6 +3086,7 @@ fn prepare_appcontainer_goose_state_directories(private_root: &str, sid: PSID) -
             STATE_FORBIDDEN_ACCESS_MASK,
             SUB_CONTAINERS_AND_OBJECTS_INHERIT,
         )?;
+        grant_low_integrity_directory_label(directory)?;
     }
     Ok(())
 }

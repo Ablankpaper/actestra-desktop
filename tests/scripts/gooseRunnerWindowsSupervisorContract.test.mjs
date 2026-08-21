@@ -40,6 +40,9 @@ describe("Windows Goose supervisor source contract", () => {
       "SetEntriesInAclW",
       "SetNamedSecurityInfoW",
       "GetEffectiveRightsFromAclW",
+      "InitializeAcl",
+      "AddMandatoryAce",
+      "AllocateAndInitializeSid",
     ]) {
       expect(supervisor).toContain(api);
     }
@@ -50,6 +53,10 @@ describe("Windows Goose supervisor source contract", () => {
     );
     expect(supervisor).toContain("STATE_ROOT_ACCESS_MASK");
     expect(supervisor).toContain("STATE_DIRECTORY_ACCESS_MASK");
+    expect(supervisor).toContain("grant_low_integrity_directory_label");
+    expect(supervisor).toContain("LABEL_SECURITY_INFORMATION");
+    expect(supervisor).toContain("SECURITY_MANDATORY_LOW_RID");
+    expect(supervisor).toContain("SYSTEM_MANDATORY_LABEL_NO_WRITE_UP");
     expect(supervisor).toContain("NO_INHERITANCE");
     expect(supervisor).toContain("SUB_CONTAINERS_AND_OBJECTS_INHERIT");
     expect(supervisor).not.toContain("ALL APPLICATION PACKAGES");
