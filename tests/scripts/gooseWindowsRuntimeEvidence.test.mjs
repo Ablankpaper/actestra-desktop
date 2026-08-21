@@ -94,6 +94,27 @@ describe("Goose Windows runtime evidence", () => {
     expect(
       classifyGooseWindowsOpeningFailure({
         name: "GooseAcpSessionError",
+        code: "prompt-rejected",
+        message: "fixed internal diagnostic",
+      }),
+    ).toBe("prompt-rejected");
+    expect(
+      classifyGooseWindowsOpeningFailure({
+        name: "GooseAcpSessionError",
+        code: "prompt-timeout",
+        message: "fixed internal diagnostic",
+      }),
+    ).toBe("prompt-timeout");
+    expect(
+      classifyGooseWindowsOpeningFailure({
+        name: "GooseAcpSessionError",
+        code: "prompt-already-requested",
+        message: "fixed internal diagnostic",
+      }),
+    ).toBe("prompt-already-requested");
+    expect(
+      classifyGooseWindowsOpeningFailure({
+        name: "GooseAcpSessionError",
         code: "session-rejected",
         message: "fixed internal diagnostic",
       }),
@@ -590,6 +611,9 @@ describe("Goose Windows runtime evidence", () => {
       ["session-closed", "windows-runtime-session-closed-failed"],
       ["session-rejected", "windows-runtime-session-rejected-failed"],
       ["session-message-invalid", "windows-runtime-session-message-invalid-failed"],
+      ["prompt-rejected", "windows-runtime-prompt-rejected-failed"],
+      ["prompt-timeout", "windows-runtime-prompt-timeout-failed"],
+      ["prompt-already-requested", "windows-runtime-prompt-already-requested-failed"],
     ]) {
       expect(classifyGooseWindowsRuntimeFailureEvidence({ contractVersion: 1, stage })).toBe(code);
     }

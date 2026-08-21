@@ -173,6 +173,9 @@ const FAILURE_STAGE_CODES = Object.freeze({
   "session-timeout": "windows-runtime-session-timeout-failed",
   "session-process-exit": "windows-runtime-session-process-exit-failed",
   "session-transport": "windows-runtime-session-transport-failed",
+  "prompt-rejected": "windows-runtime-prompt-rejected-failed",
+  "prompt-timeout": "windows-runtime-prompt-timeout-failed",
+  "prompt-already-requested": "windows-runtime-prompt-already-requested-failed",
   "tool-discovery": "windows-runtime-tool-discovery-failed",
   "composition-cleanup": "windows-runtime-composition-cleanup-failed",
   "read-tool": "windows-runtime-read-tool-failed",
@@ -334,6 +337,9 @@ const WINDOWS_OPEN_FAILURE_STAGES = Object.freeze([
   "session-timeout",
   "session-process-exit",
   "session-transport",
+  "prompt-rejected",
+  "prompt-timeout",
+  "prompt-already-requested",
   "tool-discovery",
   "composition-cleanup",
   "composition-open",
@@ -502,6 +508,9 @@ export function classifyGooseWindowsOpeningFailure(error) {
       if (code === "session-timeout") return "session-timeout";
       if (code === "session-process-exit") return "session-process-exit";
       if (code === "session-transport-error") return "session-transport";
+      if (code === "prompt-rejected") return "prompt-rejected";
+      if (code === "prompt-timeout") return "prompt-timeout";
+      if (code === "prompt-already-requested") return "prompt-already-requested";
       if (code.startsWith("tool-discovery")) return "tool-discovery";
       return "session-open";
     } else if (name === "GooseMcpSessionCompositionError") {

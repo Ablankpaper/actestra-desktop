@@ -2,6 +2,42 @@
 
 Last updated: 2026-08-21
 
+## 2026-08-21 P8.2c third diagnostic rerun (first prompt classification gap)
+
+Exact-head CI run
+[`32487434198`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32487434198)
+for branch head `18c960a70a71b7331030450a3c0b7aacf2ffa504` checked out pull-request
+merge `0b206dbc66d6458a3ac8bcffa5f6e45a9466643c`. Windows build and
+containment succeeded. The authenticated-runtime job also passed exact runner
+build/admission and containment before failing in the runtime step after about
+35 seconds with `windows-runtime-session-open-failed`.
+
+The failure Artifact was independently downloaded as
+`p8-goose-runtime-windows-failure-0b206dbc66d6458a3ac8bcffa5f6e45a9466643c`
+(Artifact `9449334195`; uploaded ZIP SHA-256
+`5835d54458558a104a5ae1c4fceaa58173dc6bdcb390c1513716298499fd92ff`). Its
+single file `windows-runtime-failure.json` has SHA-256
+`38d6c40631d5a0cdea587f7dd253f68b6eade948d38b9b287bd9e156bd85baf9` and
+contains exactly:
+
+```json
+{"contractVersion":1,"code":"windows-runtime-session-open-failed"}
+```
+
+The checked-out merge contains the new mappings for every ACP session-opening
+code, so this repeated token is not evidence of another session/new failure.
+The integration test reuses `classifyGooseWindowsOpeningFailure()` when its
+first read prompt fails; that classifier still collapsed `prompt-rejected`,
+`prompt-timeout`, and `prompt-already-requested` into `session-open`. The roughly
+30-second runtime interval is consistent with the admitted first-prompt
+deadline, but the exact prompt code remains unproven until another bounded run.
+
+The follow-up diagnostic maps those three closed ACP prompt codes to distinct
+runtime evidence tokens. It does not change the prompt, timeout, tool,
+permission, network, credential, retry, or cleanup behavior. P8.2c remains open
+until Windows evidence identifies and fixes the real first-prompt stop and a
+successful Artifact is independently revalidated.
+
 ## 2026-08-21 P8.2c second diagnostic rerun (Windows session error still unclassified)
 
 Exact-head CI run
