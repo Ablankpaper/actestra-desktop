@@ -704,6 +704,13 @@ enum AnonymousPipeTestChildFailure {
     Runtime,
     Channel,
     StateDirectory,
+    StateDirectoryPrepare,
+    StateDirectoryDataWrite,
+    StateDirectoryDataRead,
+    StateDirectoryDataRemove,
+    StateDirectoryConfigWrite,
+    StateDirectoryConfigRead,
+    StateDirectoryConfigRemove,
     RootWriteAllowed,
     FrameEncode,
     FrameWrite,
@@ -721,6 +728,13 @@ impl AnonymousPipeTestChildFailure {
             Self::Channel => 202,
             Self::StateDirectory => 208,
             Self::RootWriteAllowed => 209,
+            Self::StateDirectoryPrepare => 210,
+            Self::StateDirectoryDataWrite => 211,
+            Self::StateDirectoryDataRead => 212,
+            Self::StateDirectoryDataRemove => 213,
+            Self::StateDirectoryConfigWrite => 214,
+            Self::StateDirectoryConfigRead => 215,
+            Self::StateDirectoryConfigRemove => 216,
             Self::FrameEncode => 203,
             Self::FrameWrite => 204,
             Self::FrameRead => 205,
@@ -734,6 +748,13 @@ impl AnonymousPipeTestChildFailure {
             Self::Runtime => "test-child-runtime-failed",
             Self::Channel => "test-child-channel-invalid",
             Self::StateDirectory => "test-child-state-directory-failed",
+            Self::StateDirectoryPrepare => "test-child-state-directory-prepare-failed",
+            Self::StateDirectoryDataWrite => "test-child-state-directory-data-write-failed",
+            Self::StateDirectoryDataRead => "test-child-state-directory-data-read-failed",
+            Self::StateDirectoryDataRemove => "test-child-state-directory-data-remove-failed",
+            Self::StateDirectoryConfigWrite => "test-child-state-directory-config-write-failed",
+            Self::StateDirectoryConfigRead => "test-child-state-directory-config-read-failed",
+            Self::StateDirectoryConfigRemove => "test-child-state-directory-config-remove-failed",
             Self::RootWriteAllowed => "test-child-root-write-allowed",
             Self::FrameEncode => "test-child-frame-encode-failed",
             Self::FrameWrite => "test-child-frame-write-failed",
@@ -752,6 +773,13 @@ fn classify_anonymous_pipe_test_child_exit(exit_code: u32) -> AnonymousPipeTestC
         202 => AnonymousPipeTestChildFailure::Channel,
         208 => AnonymousPipeTestChildFailure::StateDirectory,
         209 => AnonymousPipeTestChildFailure::RootWriteAllowed,
+        210 => AnonymousPipeTestChildFailure::StateDirectoryPrepare,
+        211 => AnonymousPipeTestChildFailure::StateDirectoryDataWrite,
+        212 => AnonymousPipeTestChildFailure::StateDirectoryDataRead,
+        213 => AnonymousPipeTestChildFailure::StateDirectoryDataRemove,
+        214 => AnonymousPipeTestChildFailure::StateDirectoryConfigWrite,
+        215 => AnonymousPipeTestChildFailure::StateDirectoryConfigRead,
+        216 => AnonymousPipeTestChildFailure::StateDirectoryConfigRemove,
         203 => AnonymousPipeTestChildFailure::FrameEncode,
         204 => AnonymousPipeTestChildFailure::FrameWrite,
         205 => AnonymousPipeTestChildFailure::FrameRead,
@@ -4182,6 +4210,14 @@ mod tests {
         let expected = [
             (201, "test-child-runtime-failed"),
             (202, "test-child-channel-invalid"),
+            (208, "test-child-state-directory-failed"),
+            (210, "test-child-state-directory-prepare-failed"),
+            (211, "test-child-state-directory-data-write-failed"),
+            (212, "test-child-state-directory-data-read-failed"),
+            (213, "test-child-state-directory-data-remove-failed"),
+            (214, "test-child-state-directory-config-write-failed"),
+            (215, "test-child-state-directory-config-read-failed"),
+            (216, "test-child-state-directory-config-remove-failed"),
             (203, "test-child-frame-encode-failed"),
             (204, "test-child-frame-write-failed"),
             (205, "test-child-frame-read-failed"),
@@ -4667,19 +4703,29 @@ mod windows_native_tests {
         let private_root = String::from_utf8(root_bytes)
             .map_err(|_| AnonymousPipeTestChildFailure::StateDirectory)?;
         let (data_dir, config_dir) = prepare_goose_state_directories(&private_root)
-            .map_err(|_| AnonymousPipeTestChildFailure::StateDirectory)?;
-        for (index, directory) in [&data_dir, &config_dir].into_iter().enumerate() {
-            let probe = directory.join(format!("appcontainer-state-{index}.txt"));
-            std::fs::write(&probe, b"state")
-                .map_err(|_| AnonymousPipeTestChildFailure::StateDirectory)?;
-            if std::fs::read(&probe).map_err(|_| AnonymousPipeTestChildFailure::StateDirectory)?
-                != b"state"
-            {
-                return Err(AnonymousPipeTestChildFailure::StateDirectory);
-            }
-            std::fs::remove_file(probe)
-                .map_err(|_| AnonymousPipeTestChildFailure::StateDirectory)?;
+            .map_err(|_| AnonymousPipeTestChildFailure::StateDirectoryPrepare)?;
+        let data_probe = data_dir.join("appcontainer-state-data.txt");
+        std::fs::write(&data_probe, b"state")
+            .map_err(|_| AnonymousPipeTestChildFailure::StateDirectoryDataWrite)?;
+        if std::fs::read(&data_probe)
+            .map_err(|_| AnonymousPipeTestChildFailure::StateDirectoryDataRead)?
+            != b"state"
+        {
+            return Err(AnonymousPipeTestChildFailure::StateDirectoryDataRead);
         }
+        std::fs::remove_file(data_probe)
+            .map_err(|_| AnonymousPipeTestChildFailure::StateDirectoryDataRemove)?;
+        let config_probe = config_dir.join("appcontainer-state-config.txt");
+        std::fs::write(&config_probe, b"state")
+            .map_err(|_| AnonymousPipeTestChildFailure::StateDirectoryConfigWrite)?;
+        if std::fs::read(&config_probe)
+            .map_err(|_| AnonymousPipeTestChildFailure::StateDirectoryConfigRead)?
+            != b"state"
+        {
+            return Err(AnonymousPipeTestChildFailure::StateDirectoryConfigRead);
+        }
+        std::fs::remove_file(config_probe)
+            .map_err(|_| AnonymousPipeTestChildFailure::StateDirectoryConfigRemove)?;
         let root_probe = std::path::Path::new(&private_root).join("appcontainer-root-write.txt");
         if std::fs::write(&root_probe, b"forbidden").is_ok() {
             let _ = std::fs::remove_file(root_probe);

@@ -33,6 +33,12 @@ behavior. A new exact-head CI run must still identify whether the real failure
 is Supervisor admission or Worker access before a behavioral ACL change is
 considered. P8.2c remains open.
 
+The following bounded diagnostic-only follow-up further separates the native
+synthetic child stages: state-directory preparation, data/config write, read,
+and delete. It does not change the production Worker protocol or ACL scope.
+Fresh Windows CI is still required to identify the first failing child
+operation before any behavioral ACL change is considered.
+
 ## 2026-08-21 P8.2c nested private-root traversal remediation (local; CI pending)
 
 Exact-head CI run
