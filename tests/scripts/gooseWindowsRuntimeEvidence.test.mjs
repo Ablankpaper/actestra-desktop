@@ -73,6 +73,27 @@ describe("Goose Windows runtime evidence", () => {
     expect(
       classifyGooseWindowsOpeningFailure({
         name: "GooseAcpSessionError",
+        code: "invalid-session-options",
+        message: "fixed internal diagnostic",
+      }),
+    ).toBe("session-invalid-options");
+    expect(
+      classifyGooseWindowsOpeningFailure({
+        name: "GooseAcpSessionError",
+        code: "session-already-open",
+        message: "fixed internal diagnostic",
+      }),
+    ).toBe("session-already-open");
+    expect(
+      classifyGooseWindowsOpeningFailure({
+        name: "GooseAcpSessionError",
+        code: "session-closed",
+        message: "fixed internal diagnostic",
+      }),
+    ).toBe("session-closed");
+    expect(
+      classifyGooseWindowsOpeningFailure({
+        name: "GooseAcpSessionError",
         code: "session-rejected",
         message: "fixed internal diagnostic",
       }),
@@ -564,6 +585,9 @@ describe("Goose Windows runtime evidence", () => {
     ).toBe("windows-runtime-coding-session-open-failed");
     for (const [stage, code] of [
       ["session-open", "windows-runtime-session-open-failed"],
+      ["session-invalid-options", "windows-runtime-session-invalid-options-failed"],
+      ["session-already-open", "windows-runtime-session-already-open-failed"],
+      ["session-closed", "windows-runtime-session-closed-failed"],
       ["session-rejected", "windows-runtime-session-rejected-failed"],
       ["session-message-invalid", "windows-runtime-session-message-invalid-failed"],
     ]) {

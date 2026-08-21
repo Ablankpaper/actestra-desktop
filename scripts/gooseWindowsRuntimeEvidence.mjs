@@ -165,6 +165,9 @@ const FAILURE_STAGE_CODES = Object.freeze({
   "handshake-transport": "windows-runtime-handshake-transport-failed",
   "handshake-response": "windows-runtime-handshake-response-failed",
   "session-open": "windows-runtime-session-open-failed",
+  "session-invalid-options": "windows-runtime-session-invalid-options-failed",
+  "session-already-open": "windows-runtime-session-already-open-failed",
+  "session-closed": "windows-runtime-session-closed-failed",
   "session-rejected": "windows-runtime-session-rejected-failed",
   "session-message-invalid": "windows-runtime-session-message-invalid-failed",
   "session-timeout": "windows-runtime-session-timeout-failed",
@@ -323,6 +326,9 @@ const WINDOWS_OPEN_FAILURE_STAGES = Object.freeze([
   "handshake-transport",
   "handshake-response",
   "session-open",
+  "session-invalid-options",
+  "session-already-open",
+  "session-closed",
   "session-rejected",
   "session-message-invalid",
   "session-timeout",
@@ -488,6 +494,9 @@ export function classifyGooseWindowsOpeningFailure(error) {
       if (code === "transport-error") fallback = "handshake-transport";
       else return "handshake-response";
     } else if (name === "GooseAcpSessionError") {
+      if (code === "invalid-session-options") return "session-invalid-options";
+      if (code === "session-already-open") return "session-already-open";
+      if (code === "session-closed") return "session-closed";
       if (code === "session-rejected") return "session-rejected";
       if (code === "invalid-session-message") return "session-message-invalid";
       if (code === "session-timeout") return "session-timeout";

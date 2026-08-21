@@ -2,6 +2,43 @@
 
 Last updated: 2026-08-21
 
+## 2026-08-21 P8.2c second diagnostic rerun (Windows session error still unclassified)
+
+Exact-head CI run
+[`32485210487`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32485210487)
+for head `f139198df2034309e64a5192a3a2fd992e474a9c` again passed Goose runner
+admission, Windows build, Windows containment, and the authenticated runtime's
+exact artifact build/admission/containment steps. The only authenticated-runtime
+failure remained in `Run authenticated Windows Goose runtime`, which emitted
+the coarse bounded code `windows-runtime-session-open-failed`.
+
+The failure Artifact was independently downloaded as
+`p8-goose-runtime-windows-failure-ad828c35b4ba6b914a236aff8a65260e15bf5659`
+(Artifact `9448191744`; uploaded ZIP SHA-256
+`17b356b5972b59f4ddf35f62c85a315af8761a47491917d9774b86a9c9ef8ea0`). Its
+single file `windows-runtime-failure.json` has SHA-256
+`38d6c40631d5a0cdea587f7dd253f68b6eade948d38b9b287bd9e156bd85baf9` and
+contains exactly:
+
+```json
+{"contractVersion":1,"code":"windows-runtime-session-open-failed"}
+```
+
+The completed job log confirms the exact Windows runner artifact and
+containment acceptance succeeded before the runtime step. The second diagnostic
+mapping therefore did not observe `session-rejected` or
+`invalid-session-message`; the failure was a `GooseAcpSessionError` path that
+was still classified by the generic `session-open` fallback (or an equivalent
+outer error without one of the two mapped codes). No ACL, permission, ACP
+request, network, credential, retry, or Renderer behavior was changed.
+
+The next diagnostic patch adds closed mappings for the remaining session-open
+codes that can be raised by the admitted client (`invalid-session-options`,
+`session-already-open`, and `session-closed`) and admits their corresponding
+outer failure tokens. It is covered by focused classifier and closed-set tests;
+this is diagnostic-only and P8.2c remains open pending one new exact-head
+Windows run.
+
 ## 2026-08-21 P8.2c first tool-call diagnostic rerun (Windows runtime still open)
 
 Exact-head CI run
