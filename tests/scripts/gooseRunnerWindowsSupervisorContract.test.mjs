@@ -254,6 +254,30 @@ describe("Windows Goose supervisor source contract", () => {
     );
   });
 
+  it("duplicates each Main duplex bridge into independent relay read and write handles", () => {
+    const supervisor = read("workers/goose-runner/src/windows_supervisor.rs");
+    const helperStart = supervisor.indexOf("fn bidirectional_channel_from_fd");
+    const helperEnd = supervisor.indexOf("async fn wait_for_parent_liveness", helperStart);
+    const runtimeStart = supervisor.indexOf("let acp_input =");
+    const runtimeEnd = supervisor.indexOf("let worker_process_handle", runtimeStart);
+
+    expect(helperStart).toBeGreaterThan(-1);
+    expect(helperEnd).toBeGreaterThan(helperStart);
+    const helper = supervisor.slice(helperStart, helperEnd);
+    expect(helper.match(/handle_from_fd\(fd\)/gu)).toHaveLength(2);
+    expect(helper).toContain("WindowsBridgeChannel::from_raw_handle_pair(read, write)");
+
+    const runtime = supervisor.slice(runtimeStart, runtimeEnd);
+    expect(runtime).toContain("bidirectional_channel_from_fd(5)");
+    expect(runtime).toContain("bidirectional_channel_from_fd(6)");
+    expect(runtime).not.toContain(
+      "handle_from_fd(5).and_then(crate::windows_bridge::WindowsBridgeChannel::from_raw_handle)",
+    );
+    expect(runtime).not.toContain(
+      "handle_from_fd(6).and_then(crate::windows_bridge::WindowsBridgeChannel::from_raw_handle)",
+    );
+  });
+
   it("declares closed supervisor relay failure stages", () => {
     const supervisor = read("workers/goose-runner/src/windows_supervisor.rs");
     for (const stage of [

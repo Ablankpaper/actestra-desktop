@@ -2655,6 +2655,34 @@ fn handle_from_fd(fd: i32) -> Result<HANDLE, ()> {
 }
 
 #[cfg(windows)]
+fn bidirectional_channel_from_fd(
+    fd: i32,
+) -> Result<crate::windows_bridge::WindowsBridgeChannel, ()> {
+    // A Tokio File serializes an outstanding blocking read with later writes. The Main-owned
+    // fd5/fd6 endpoints are duplex Windows pipes, so each relay direction needs its own duplicate
+    // of the same underlying pipe handle or a pending read can indefinitely block the reverse
+    // write. The two duplicates retain the exact access of the admitted Node stdio endpoint.
+    let read = handle_from_fd(fd)?;
+    let write = match handle_from_fd(fd) {
+        Ok(write) => write,
+        Err(()) => {
+            unsafe { CloseHandle(read) };
+            return Err(());
+        }
+    };
+    match crate::windows_bridge::WindowsBridgeChannel::from_raw_handle_pair(read, write) {
+        Ok(channel) => Ok(channel),
+        Err(()) => {
+            unsafe {
+                CloseHandle(read);
+                CloseHandle(write);
+            }
+            Err(())
+        }
+    }
+}
+
+#[cfg(windows)]
 async fn wait_for_parent_liveness() -> Result<(), ()> {
     let handle = handle_from_fd(4)?;
     let mut channel = crate::windows_bridge::WindowsBridgeChannel::from_raw_handle(handle)?;
@@ -3688,10 +3716,8 @@ fn launch_controlled_worker(control: crate::windows_control::WindowsControlMessa
         handle_from_fd(0).and_then(crate::windows_bridge::WindowsBridgeChannel::from_raw_handle);
     let acp_output =
         handle_from_fd(1).and_then(crate::windows_bridge::WindowsBridgeChannel::from_raw_handle);
-    let capability_main =
-        handle_from_fd(5).and_then(crate::windows_bridge::WindowsBridgeChannel::from_raw_handle);
-    let model_main =
-        handle_from_fd(6).and_then(crate::windows_bridge::WindowsBridgeChannel::from_raw_handle);
+    let capability_main = bidirectional_channel_from_fd(5);
+    let model_main = bidirectional_channel_from_fd(6);
     let worker_stdin = crate::windows_bridge::WindowsBridgeChannel::from_raw_handle(worker_stdin);
     let worker_stdout = crate::windows_bridge::WindowsBridgeChannel::from_raw_handle(worker_stdout);
     let (acp_input, acp_output, capability_main, model_main, worker_stdin, worker_stdout) = match (
