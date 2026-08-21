@@ -2,6 +2,56 @@
 
 Last updated: 2026-08-21
 
+## 2026-08-21 P8.2c adapted-workspace admission fix (local; CI pending)
+
+Exact-head CI run
+[`32456441519`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32456441519)
+for Actestra head `6978e49c85369d308099f2c7dd039bdd6c2efce2` completed with
+six of seven jobs green. Windows build probe, Windows containment, both Ubuntu
+jobs, Goose admission, and macOS foundation/package passed. The Windows
+authenticated runtime crossed Worker startup, state-directory loading, and
+exact containment, then failed at ACP `session/new` with bounded code
+`windows-runtime-session-open-failed`.
+
+The preserved failure Artifact is
+`p8-goose-runtime-windows-failure-57ca92b5f688262c7c4ff37dea5a2e8bf20ec94a`
+(Artifact `9437974708`; uploaded ZIP SHA-256
+`503f2b2704b6329570be15dddfada2998bf189952c7d7f30f02f0e3d777665f6`).
+Its single JSON file has SHA-256
+`38d6c40631d5a0cdea587f7dd253f68b6eade948d38b9b287bd9e156bd85baf9`
+and contains only the bounded failure code. The same run's Windows containment
+Artifact is verified and has uploaded ZIP SHA-256
+`69e393a4caf78fe35853cdf1fb6a1c02b99989803d8110be0729bd810f886e90`;
+its JSON file SHA-256 is
+`10449a2ae97b0d79cc184116bb8b03250ffd767508588b30da6d7700597894ac`.
+
+Root cause was the private Goose adapter seam calling upstream
+`validate_absolute_cwd()` before selecting adapted behavior. That upstream
+helper checks `cwd.exists()` and `cwd.is_dir()` inside Goose. The Windows
+AppContainer intentionally has no direct isolated-worktree filesystem
+authority, so the check rejected the Main-admitted absolute workspace path
+before Goose could use the Main-owned capability bridge. Granting worktree ACL
+access would violate the accepted Tool Gateway boundary.
+
+The private runtime fix at immutable commit
+`81bb2c1428d11e41e7934f4569eb7dda3fb55b81` keeps the upstream path unchanged
+and gives adapted sessions a narrower check: the workspace path must be
+absolute, while its existence and ownership remain Main/Supervisor admission
+facts. It adds both helper-level and real ACP `session/new` regressions for an
+absolute path that the Worker cannot enumerate. The declared changed-path set
+remains the same three ACP server files and its new binary full-index diff
+SHA-256 is
+`975d31ebbabce450a66455ec55e0ecaddeaa3c558e62a0a559a810ad03194a18`.
+No AppContainer ACL, Renderer, credential, network, workspace, retry, or
+fallback authority changed.
+
+Fresh local evidence passes the private runtime adapter tests (`18/18`), Goose
+runner tests (`85/85`), focused provenance/admission/security tests (`91/91`),
+and the full `bun run check` gate (`171` test files passed / `3` skipped;
+`1843` tests passed / `10` skipped). This does not yet prove Windows behavior.
+P8.2c remains open pending exact-head Windows authenticated-runtime CI and
+success Artifact verification.
+
 ## 2026-08-21 P8.2c per-operation Worker-side prepare exit codes (local; CI pending)
 
 The CI run for `2db6192` confirmed the diagnostic chain was not closed end-to-end. The Worker returned `EXIT_STATE_DIRECTORY_FAILED` (114) for all 10 `StateDirectoryPrepareFailure` variants, so the Supervisor could only report `windows-worker-state-directory-failed` regardless of which operation failed. The test child also exited with the single code 210 for all prepare failures. The JS closed-set lists in `gooseRunnerProcess.ts`, `gooseWindowsRuntimeEvidence.mjs`, and `gooseContainmentDiagnostics.test.mjs` were not updated.
@@ -909,11 +959,11 @@ and user acceptance remain open.
 
 The P8.2c source boundary now pins the standalone private
 `Ablankpaper/actestra-goose-runtime` repository at immutable commit
-`e246f395592b01995cd34faf5e3ce1ed5444a41a`, descending from canonical Goose
+`81bb2c1428d11e41e7934f4569eb7dda3fb55b81`, descending from canonical Goose
 `v1.45.0` commit `4dc0420f5704a92806c6628c8f0a3497d7a88759`. The admitted
 binary full-index diff changes exactly the three declared ACP server files and
 has SHA-256
-`a5f2df85313dbbd1ac20bef3fafba4e40e32e2ffa0c76ad5a5d62414d1eae1f4`.
+`975d31ebbabce450a66455ec55e0ecaddeaa3c558e62a0a559a810ad03194a18`.
 The private runtime is Apache-2.0, upstream has no root `NOTICE`, its adapter
 seam is default-off, and the admitted Goose Cargo feature set remains empty.
 

@@ -55,7 +55,7 @@ No second UI is involved.
 
 Actestra now resolves the `goose` and `goose-providers` crates from the
 standalone private repository `Ablankpaper/actestra-goose-runtime` at immutable
-commit `e246f395592b01995cd34faf5e3ce1ed5444a41a`. That commit descends from
+commit `81bb2c1428d11e41e7934f4569eb7dda3fb55b81`. That commit descends from
 the exact upstream base and changes only:
 
 - `crates/goose/src/acp/server.rs`;
@@ -63,11 +63,13 @@ the exact upstream base and changes only:
 - `crates/goose/src/acp/server/new_session.rs`.
 
 The binary full-index Git diff for the three declared paths has SHA-256
-`a5f2df85313dbbd1ac20bef3fafba4e40e32e2ffa0c76ad5a5d62414d1eae1f4`.
+`975d31ebbabce450a66455ec55e0ecaddeaa3c558e62a0a559a810ad03194a18`.
 It adds a default-off ACP adapter seam that binds one fixed Provider, model,
-MCP client, and active session. The ordinary upstream entry point remains the
-default; no separate Goose UI is imported, and the admitted Goose feature set
-remains empty.
+MCP client, and active session. The adapted path accepts only the absolute
+workspace path already admitted by Main without requiring AppContainer
+enumeration; the ordinary upstream entry point retains its accessible-directory
+validation. No separate Goose UI is imported, and the admitted Goose feature
+set remains empty.
 
 The private repository is not a GitHub Fork. Its default branch remains the
 exact upstream base, GitHub Actions are disabled, and there is no webhook or

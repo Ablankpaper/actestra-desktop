@@ -5,7 +5,7 @@ commit `4dc0420f5704a92806c6628c8f0a3497d7a88759`. For the P8.2c Windows
 authenticated-runtime work, Actestra resolves the `goose` and
 `goose-providers` crates from the standalone private repository
 `Ablankpaper/actestra-goose-runtime` at immutable commit
-`e246f395592b01995cd34faf5e3ce1ed5444a41a`. That repository is not a GitHub
+`81bb2c1428d11e41e7934f4569eb7dda3fb55b81`. That repository is not a GitHub
 Fork and has no automatic upstream synchronization.
 
 The runtime commit descends from the exact upstream commit and changes only:
@@ -15,10 +15,12 @@ The runtime commit descends from the exact upstream commit and changes only:
 - `crates/goose/src/acp/server/new_session.rs`.
 
 The binary, full-index Git diff for those three files has SHA-256
-`a5f2df85313dbbd1ac20bef3fafba4e40e32e2ffa0c76ad5a5d62414d1eae1f4`.
+`975d31ebbabce450a66455ec55e0ecaddeaa3c558e62a0a559a810ad03194a18`.
 The patch adds a default-off ACP runtime-adapter seam that fixes one Provider,
-model, and MCP client for one active session. The ordinary upstream entry point
-remains the default. The Actestra source contract rejects a different base,
+model, and MCP client for one active session. In adapted mode the absolute
+workspace path is trusted only after Main admission and is not enumerated by
+the AppContainer; the ordinary upstream entry point retains its accessible
+directory check. The Actestra source contract rejects a different base,
 runtime commit, repository, changed-path set, patch digest, or non-empty Goose
 feature set.
 
