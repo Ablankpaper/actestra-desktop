@@ -10,6 +10,7 @@ import {
 } from "./gooseMcpCapabilityServer";
 import {
   ACTESTRA_GOOSE_MCP_EXTENSION_NAME,
+  GooseAcpHandshakeError,
   GooseAcpSessionError,
   type GooseAcpHumanDecisionGate,
   type GooseAcpInfo,
@@ -93,6 +94,12 @@ export interface GooseMcpSessionComposition {
 
 export type GooseMcpSessionCompositionErrorCode =
   | "cleanup-failed"
+  | "windows-composition-runner-open-failed"
+  | "windows-composition-session-open-failed"
+  | "windows-composition-session-bind-failed"
+  | "windows-composition-capability-tools-list-failed"
+  | "windows-composition-tool-discovery-failed"
+  | "windows-composition-tool-normalization-failed"
   | "model-completion-refused"
   | "model-request-rejected"
   | "tool-discovery-mismatch"
@@ -199,6 +206,25 @@ export class GooseMcpSessionCompositionError extends Error {
     super(message, options);
     this.name = "GooseMcpSessionCompositionError";
   }
+}
+
+function windowsCompositionStageError(
+  code: Extract<GooseMcpSessionCompositionErrorCode, `windows-composition-${string}`>,
+  message: string,
+  cause: unknown,
+): Error {
+  if (
+    process.platform !== "win32" ||
+    cause instanceof GooseAcpHandshakeError ||
+    cause instanceof GooseAcpSessionError ||
+    cause instanceof GooseMcpSessionCompositionError ||
+    cause instanceof GooseRunnerProcessError ||
+    (cause instanceof GooseAuthenticatedBridgeProtocolError &&
+      cause.message === WINDOWS_CAPABILITY_TOOLS_LIST_TIMEOUT_MESSAGE)
+  ) {
+    return cause instanceof Error ? cause : new Error(message, { cause });
+  }
+  return new GooseMcpSessionCompositionError(code, message, { cause });
 }
 
 export interface GooseMcpSessionCompositionDependencies {
@@ -485,15 +511,23 @@ export async function openGooseMcpSessionComposition(
           close,
         });
       };
-      runner = await dependencies.openRunnerHandshake({
-        artifact: options.artifact,
-        privateRootParent: options.privateRootParent,
-        workspaceDirectory: options.workspaceDirectory,
-        prepareBridge,
-        ...(options.handshakeTimeoutMs === undefined
-          ? {}
-          : { handshakeTimeoutMs: options.handshakeTimeoutMs }),
-      });
+      try {
+        runner = await dependencies.openRunnerHandshake({
+          artifact: options.artifact,
+          privateRootParent: options.privateRootParent,
+          workspaceDirectory: options.workspaceDirectory,
+          prepareBridge,
+          ...(options.handshakeTimeoutMs === undefined
+            ? {}
+            : { handshakeTimeoutMs: options.handshakeTimeoutMs }),
+        });
+      } catch (error) {
+        throw windowsCompositionStageError(
+          "windows-composition-runner-open-failed",
+          "Windows Goose runner opening failed",
+          error,
+        );
+      }
     } else {
       capabilityServer = await dependencies.startCapabilityServer({
         attemptLease,
@@ -528,42 +562,82 @@ export async function openGooseMcpSessionComposition(
         "Goose bridge composition did not produce all required runtime resources",
       );
     }
-    session = await runner.openSession(
-      windowsAuthenticated
-        ? {
-            transport: "injected",
-            workspaceDirectory: options.workspaceDirectory,
-            ...(options.sessionTimeoutMs === undefined
-              ? {}
-              : { timeoutMs: options.sessionTimeoutMs }),
-          }
-        : {
-            transport: "mcp-http",
-            workspaceDirectory: options.workspaceDirectory,
-            capabilityProxyUrl: (capabilityServer as GooseMcpCapabilityServer).url,
-            attemptLease,
-            ...(options.sessionTimeoutMs === undefined
-              ? {}
-              : { timeoutMs: options.sessionTimeoutMs }),
-          },
-    );
-    modelServer.bindSession(session.sessionId);
-    if (windowsAuthenticated) {
-      (capabilityServer as GooseCapabilityBoundary).bindSession(session.sessionId);
+    try {
+      session = await runner.openSession(
+        windowsAuthenticated
+          ? {
+              transport: "injected",
+              workspaceDirectory: options.workspaceDirectory,
+              ...(options.sessionTimeoutMs === undefined
+                ? {}
+                : { timeoutMs: options.sessionTimeoutMs }),
+            }
+          : {
+              transport: "mcp-http",
+              workspaceDirectory: options.workspaceDirectory,
+              capabilityProxyUrl: (capabilityServer as GooseMcpCapabilityServer).url,
+              attemptLease,
+              ...(options.sessionTimeoutMs === undefined
+                ? {}
+                : { timeoutMs: options.sessionTimeoutMs }),
+            },
+      );
+    } catch (error) {
+      throw windowsCompositionStageError(
+        "windows-composition-session-open-failed",
+        "Windows Goose session opening failed",
+        error,
+      );
+    }
+    try {
+      modelServer.bindSession(session.sessionId);
+      if (windowsAuthenticated) {
+        (capabilityServer as GooseCapabilityBoundary).bindSession(session.sessionId);
+      }
+    } catch (error) {
+      throw windowsCompositionStageError(
+        "windows-composition-session-bind-failed",
+        "Windows Goose session binding failed",
+        error,
+      );
     }
     capabilityDiscoveryStarted = true;
     const toolsListed = capabilityServer.waitForToolsList(
       options.sessionTimeoutMs ?? DEFAULT_TOOLS_LIST_WAIT_MS,
     );
     const [discovery] = await Promise.all([
-      runner.discoverTools({
-        sessionId: session.sessionId,
-        extensionName: ACTESTRA_GOOSE_MCP_EXTENSION_NAME,
-        ...(options.sessionTimeoutMs === undefined ? {} : { timeoutMs: options.sessionTimeoutMs }),
+      runner
+        .discoverTools({
+          sessionId: session.sessionId,
+          extensionName: ACTESTRA_GOOSE_MCP_EXTENSION_NAME,
+          ...(options.sessionTimeoutMs === undefined
+            ? {}
+            : { timeoutMs: options.sessionTimeoutMs }),
+        })
+        .catch((error) => {
+          throw windowsCompositionStageError(
+            "windows-composition-tool-discovery-failed",
+            "Windows Goose tool discovery failed",
+            error,
+          );
+        }),
+      toolsListed.catch((error) => {
+        throw windowsCompositionStageError(
+          "windows-composition-capability-tools-list-failed",
+          "Windows Goose capability tools/list failed",
+          error,
+        );
       }),
-      toolsListed,
     ]);
-    toolNames = normalizeDiscoveredToolNames(discovery.toolNames);
+    try {
+      toolNames = normalizeDiscoveredToolNames(discovery.toolNames);
+    } catch (error) {
+      throw windowsCompositionStageError(
+        "windows-composition-tool-normalization-failed",
+        "Windows Goose tool discovery shape was invalid",
+        error,
+      );
+    }
   } catch (error) {
     const progressFailure =
       windowsAuthenticated &&

@@ -1,6 +1,49 @@
 # Project Status
 
-Last updated: 2026-08-21
+Last updated: 2026-08-22
+
+## 2026-08-22 P8.2c Windows composition-open stage split (local; exact-head CI pending)
+
+Exact-head CI run
+[`32499418503`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32499418503)
+for head `0f9c14a7300562c3593619784de2ec64f785e4f9` passed the Windows build
+probe, exact Windows containment, both Ubuntu jobs, Goose admission, and the
+macOS foundation/package job. The Windows authenticated-runtime job also passed
+exact runner build, lock, admission, and containment. Its only failure was the
+real runtime step, which produced the preserved Artifact
+`9453875922` containing only:
+
+```json
+{"contractVersion":1,"code":"windows-runtime-composition-open-failed"}
+```
+
+This did not reproduce the earlier model tool-name rejection, but the existing
+composition boundary still collapsed an unknown error during opening to the
+generic `composition-open` stage. No behavior failure can be inferred from that
+token alone.
+
+The bounded follow-up adds six Windows-only composition sub-stages around the
+existing opening boundaries: runner opening, ACP session opening, session
+binding, capability `tools/list`, ACP tool discovery, and discovered-tool shape
+normalization. Known ACP, runner, capability-timeout, and existing composition
+errors retain their prior classifiers; only an otherwise unknown Windows error
+is wrapped in a fixed composition-stage error. The outer evidence mapper and
+failure Artifact allowlist now admit the six corresponding tokens. No ACL,
+AppContainer, relay, timeout, retry, permission, credential, tool registry, or
+`foundation/` behavior changed.
+
+Fresh local evidence:
+
+- focused composition/evidence tests: `47/47` passed;
+- full `bun run check`: exit `0`, `171` test files passed / `3` skipped,
+  `1860` tests passed / `10` skipped;
+- format, lint, typecheck, P8 contract, security, smoke, boundary, foundation,
+  downstream, package, and `git diff --check` passed.
+
+P8.2c remains open. The next exact-head Windows run has one purpose: identify
+which composition-open sub-stage actually fails. Only after that concrete stage
+is known may a minimal behavior repair be attempted; a successful authenticated
+runtime Artifact is still required for closure.
 
 ## 2026-08-21 P8.2c Windows model-tool name adaptation (local; exact-head CI pending)
 

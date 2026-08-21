@@ -126,6 +126,28 @@ describe("Goose Windows runtime evidence", () => {
         message: "fixed internal diagnostic",
       }),
     ).toBe("session-message-invalid");
+    for (const [code, stage] of [
+      ["windows-composition-runner-open-failed", "windows-composition-runner-open-failed"],
+      ["windows-composition-session-open-failed", "windows-composition-session-open-failed"],
+      ["windows-composition-session-bind-failed", "windows-composition-session-bind-failed"],
+      [
+        "windows-composition-capability-tools-list-failed",
+        "windows-composition-capability-tools-list-failed",
+      ],
+      ["windows-composition-tool-discovery-failed", "windows-composition-tool-discovery-failed"],
+      [
+        "windows-composition-tool-normalization-failed",
+        "windows-composition-tool-normalization-failed",
+      ],
+    ]) {
+      expect(
+        classifyGooseWindowsOpeningFailure({
+          name: "GooseMcpSessionCompositionError",
+          code,
+          message: "fixed internal diagnostic",
+        }),
+      ).toBe(stage);
+    }
     expect(
       classifyGooseWindowsOpeningFailure({
         name: "GooseRunnerProcessError",

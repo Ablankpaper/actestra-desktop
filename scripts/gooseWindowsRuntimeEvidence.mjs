@@ -32,6 +32,14 @@ const FAILURE_STAGE_CODES = Object.freeze({
   "coding-session-open-cleanup-failed": "windows-runtime-coding-session-cleanup-failed",
   "coding-session-open-persistence-failed": "windows-runtime-coding-session-persistence-failed",
   "composition-open": "windows-runtime-composition-open-failed",
+  "windows-composition-runner-open-failed": "windows-runtime-composition-runner-open-failed",
+  "windows-composition-session-open-failed": "windows-runtime-composition-session-open-failed",
+  "windows-composition-session-bind-failed": "windows-runtime-composition-session-bind-failed",
+  "windows-composition-capability-tools-list-failed":
+    "windows-runtime-composition-capability-tools-list-failed",
+  "windows-composition-tool-discovery-failed": "windows-runtime-composition-tool-discovery-failed",
+  "windows-composition-tool-normalization-failed":
+    "windows-runtime-composition-tool-normalization-failed",
   "windows-capability-worker-request-write-failed":
     "windows-runtime-capability-worker-request-write-failed",
   "windows-capability-supervisor-request-read-failed":
@@ -372,6 +380,12 @@ const WINDOWS_OPEN_FAILURE_STAGES = Object.freeze([
   "prompt-already-requested",
   "tool-discovery",
   "composition-cleanup",
+  "windows-composition-runner-open-failed",
+  "windows-composition-session-open-failed",
+  "windows-composition-session-bind-failed",
+  "windows-composition-capability-tools-list-failed",
+  "windows-composition-tool-discovery-failed",
+  "windows-composition-tool-normalization-failed",
   "composition-open",
 ]);
 const MAX_CHILD_OUTPUT_BYTES = 64 * 1024;
@@ -550,6 +564,7 @@ export function classifyGooseWindowsOpeningFailure(error) {
       if (WINDOWS_CAPABILITY_CALL_PROGRESS_FAILURE_STAGES.includes(code)) return code;
       if (WINDOWS_CAPABILITY_CALL_FAILURE_STAGES.includes(code)) return code;
       if (WINDOWS_MODEL_PROGRESS_FAILURE_STAGES.includes(code)) return code;
+      if (Object.hasOwn(FAILURE_STAGE_CODES, code)) return code;
     } else if (code === "network-policy-unavailable") {
       return "runtime-network";
     }
