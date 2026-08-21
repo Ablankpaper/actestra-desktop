@@ -71,6 +71,12 @@ describe("Goose containment probe diagnostics", () => {
       "windows-worker-state-directory-failed",
       "windows-worker-ready-signal-failed",
       "windows-worker-acp-handshake-failed",
+      "windows-state-directory-layout-failed",
+      "windows-state-directory-traversal-shape-invalid",
+      "windows-state-directory-ancestor-access-failed",
+      "windows-state-directory-root-access-failed",
+      "windows-state-directory-child-access-failed",
+      "windows-state-directory-integrity-label-failed",
     ]) {
       expect(
         classifyGooseContainmentProbeStderr(

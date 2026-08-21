@@ -2,6 +2,37 @@
 
 Last updated: 2026-08-21
 
+## 2026-08-21 P8.2c state-directory admission diagnosis (local; CI pending)
+
+The latest exact-head CI evidence is run
+[`32440652281`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32440652281)
+for head `5ec05514064aba91dda1aa11196b17308450741c`. Windows containment,
+Ubuntu build/containment, Goose admission, and the macOS foundation/package
+jobs passed. Windows authenticated runtime still failed with the Worker-side
+`windows-runtime-worker-state-directory-failed` token. The Windows build probe
+also reported the synthetic-only `test-supervisor-frame-read-failed`; this is
+not treated as production evidence.
+
+The bounded local follow-up keeps the existing permission and process
+boundaries but separates Supervisor-side state-directory admission failures
+into layout, traversal-shape, ancestor-access, root-access, child-access, and
+integrity-label stages. The Supervisor now reports these stages through the
+closed diagnostic vocabulary instead of collapsing them into the Worker
+state-directory token. The synthetic AppContainer pipe fixture also checks the
+child exit code after a frame-read failure, so a child-side state-directory
+exit is not reported as a parent frame-read symptom when the exit is observable.
+No ACL scope, workspace, network, credential, capability, retry, or Renderer
+authority was added.
+
+Fresh local evidence for this unpushed diagnosis passes `cargo fmt --all
+--check`, all `84` Goose runner tests, the focused Windows evidence tests
+(`36/36`), the complete `bun run check` gate (`171` test files passed / `3`
+skipped; `1843` tests passed / `10` skipped), and `git diff --check`. This is
+portable/macOS and closed-set evidence only; it does not prove Windows native
+behavior. A new exact-head CI run must still identify whether the real failure
+is Supervisor admission or Worker access before a behavioral ACL change is
+considered. P8.2c remains open.
+
 ## 2026-08-21 P8.2c nested private-root traversal remediation (local; CI pending)
 
 Exact-head CI run

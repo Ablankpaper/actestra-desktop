@@ -53,6 +53,17 @@ const FAILURE_STAGE_CODES = Object.freeze({
   "windows-worker-runtime-failed": "windows-runtime-supervisor-worker-runtime-failed",
   "windows-runtime-timeout": "windows-runtime-supervisor-timeout-failed",
   "windows-runtime-cleanup-failed": "windows-runtime-supervisor-cleanup-failed",
+  "windows-state-directory-layout-failed": "windows-runtime-state-directory-layout-failed",
+  "windows-state-directory-traversal-shape-invalid":
+    "windows-runtime-state-directory-traversal-shape-invalid",
+  "windows-state-directory-ancestor-access-failed":
+    "windows-runtime-state-directory-ancestor-access-failed",
+  "windows-state-directory-root-access-failed":
+    "windows-runtime-state-directory-root-access-failed",
+  "windows-state-directory-child-access-failed":
+    "windows-runtime-state-directory-child-access-failed",
+  "windows-state-directory-integrity-label-failed":
+    "windows-runtime-state-directory-integrity-label-failed",
   "windows-worker-control-frame-invalid": "windows-runtime-worker-control-frame-invalid-failed",
   "windows-worker-boundary-verification-failed":
     "windows-runtime-worker-boundary-verification-failed",
@@ -152,6 +163,12 @@ const WINDOWS_SUPERVISOR_FAILURE_STAGES = Object.freeze([
   "windows-worker-runtime-failed",
   "windows-runtime-timeout",
   "windows-runtime-cleanup-failed",
+  "windows-state-directory-layout-failed",
+  "windows-state-directory-traversal-shape-invalid",
+  "windows-state-directory-ancestor-access-failed",
+  "windows-state-directory-root-access-failed",
+  "windows-state-directory-child-access-failed",
+  "windows-state-directory-integrity-label-failed",
 ]);
 const WINDOWS_WORKER_STARTUP_STAGES = Object.freeze([
   "windows-worker-control-frame-invalid",

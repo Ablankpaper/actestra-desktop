@@ -226,6 +226,39 @@ describe("Goose Windows runtime evidence", () => {
     });
   });
 
+  it("keeps each pre-launch state-directory admission stage distinct from Worker access", () => {
+    const stages = [
+      "windows-state-directory-layout-failed",
+      "windows-state-directory-traversal-shape-invalid",
+      "windows-state-directory-ancestor-access-failed",
+      "windows-state-directory-root-access-failed",
+      "windows-state-directory-child-access-failed",
+      "windows-state-directory-integrity-label-failed",
+    ];
+    const tokens = stages.map((stage) =>
+      classifyGooseWindowsRuntimeFailureEvidence({ contractVersion: 1, stage }),
+    );
+
+    expect(tokens).toEqual([
+      "windows-runtime-state-directory-layout-failed",
+      "windows-runtime-state-directory-traversal-shape-invalid",
+      "windows-runtime-state-directory-ancestor-access-failed",
+      "windows-runtime-state-directory-root-access-failed",
+      "windows-runtime-state-directory-child-access-failed",
+      "windows-runtime-state-directory-integrity-label-failed",
+    ]);
+    expect(new Set(tokens).size).toBe(stages.length);
+    stages.forEach((stage) => {
+      expect(
+        classifyGooseWindowsOpeningFailure({
+          name: "GooseRunnerProcessError",
+          code: stage,
+          message: "Goose Windows state-directory admission failed",
+        }),
+      ).toBe(stage);
+    });
+  });
+
   it("keeps every classified worker startup token admitted by the outer runtime runner", async () => {
     const evidenceModule = await import("../../scripts/gooseWindowsRuntimeEvidence.mjs");
     const workerStartupTokens = [

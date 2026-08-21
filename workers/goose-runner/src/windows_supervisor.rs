@@ -36,7 +36,7 @@ use crate::windows_model_bridge::WindowsModelProvider;
 #[cfg(windows)]
 const WINDOWS_WORKER_READY_MARKER: &[u8] = b"ACTESTRA_GOOSE_WINDOWS_WORKER_READY\n";
 #[cfg(any(windows, test))]
-const WINDOWS_RUNTIME_FAILURE_CODES: [&str; 18] = [
+const WINDOWS_RUNTIME_FAILURE_CODES: [&str; 24] = [
     "windows-control-channel-invalid",
     "windows-ready-channel-invalid",
     "windows-capability-channel-invalid",
@@ -47,6 +47,12 @@ const WINDOWS_RUNTIME_FAILURE_CODES: [&str; 18] = [
     "windows-worker-runtime-failed",
     "windows-runtime-timeout",
     "windows-runtime-cleanup-failed",
+    "windows-state-directory-layout-failed",
+    "windows-state-directory-traversal-shape-invalid",
+    "windows-state-directory-ancestor-access-failed",
+    "windows-state-directory-root-access-failed",
+    "windows-state-directory-child-access-failed",
+    "windows-state-directory-integrity-label-failed",
     "windows-worker-control-frame-invalid",
     "windows-worker-boundary-verification-failed",
     "windows-worker-runtime-creation-failed",
@@ -773,6 +779,45 @@ enum WorkerStartupFailure {
     Unknown,
 }
 
+/// Supervisor-side state-directory admission failures are kept distinct from a Worker failing
+/// to use an already-admitted directory. This boundary is required to diagnose ACL preparation
+/// without widening the persisted failure vocabulary or exposing raw Win32 paths/codes.
+#[cfg(any(windows, test))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum StateDirectoryAdmissionFailure {
+    Layout,
+    TraversalShape,
+    AncestorAccess,
+    RootAccess,
+    ChildAccess,
+    IntegrityLabel,
+}
+
+#[cfg(any(windows, test))]
+impl StateDirectoryAdmissionFailure {
+    fn diagnostic_exit_code(self) -> i32 {
+        match self {
+            Self::Layout => 63,
+            Self::TraversalShape => 64,
+            Self::AncestorAccess => 65,
+            Self::RootAccess => 66,
+            Self::ChildAccess => 67,
+            Self::IntegrityLabel => 68,
+        }
+    }
+
+    fn runtime_code(self) -> &'static str {
+        match self {
+            Self::Layout => "windows-state-directory-layout-failed",
+            Self::TraversalShape => "windows-state-directory-traversal-shape-invalid",
+            Self::AncestorAccess => "windows-state-directory-ancestor-access-failed",
+            Self::RootAccess => "windows-state-directory-root-access-failed",
+            Self::ChildAccess => "windows-state-directory-child-access-failed",
+            Self::IntegrityLabel => "windows-state-directory-integrity-label-failed",
+        }
+    }
+}
+
 #[cfg(any(windows, test))]
 fn classify_worker_startup_exit(exit_code: u32) -> WorkerStartupFailure {
     match exit_code {
@@ -834,6 +879,7 @@ enum SupervisorFailureStage {
     CapabilityChannel,
     ModelChannel,
     WorkerRuntime,
+    StateDirectoryAdmission(StateDirectoryAdmissionFailure),
     WorkerStartup(WorkerStartupFailure),
 }
 
@@ -853,6 +899,7 @@ impl SupervisorFailureStage {
             Self::CapabilityChannel => 18,
             Self::ModelChannel => 19,
             Self::WorkerRuntime => 46,
+            Self::StateDirectoryAdmission(failure) => failure.diagnostic_exit_code(),
             Self::WorkerStartup(failure) => failure.diagnostic_exit_code(),
         }
     }
@@ -868,6 +915,7 @@ fn runtime_code_for_supervisor_failure(stage: SupervisorFailureStage) -> Option<
         SupervisorFailureStage::CapabilityChannel => Some("windows-capability-channel-invalid"),
         SupervisorFailureStage::ModelChannel => Some("windows-model-channel-invalid"),
         SupervisorFailureStage::WorkerRuntime => Some("windows-worker-runtime-failed"),
+        SupervisorFailureStage::StateDirectoryAdmission(failure) => Some(failure.runtime_code()),
         SupervisorFailureStage::WorkerStartup(failure) => Some(failure.runtime_code()),
         _ => None,
     }
@@ -1147,6 +1195,16 @@ impl WorkerProcess {
             return Err(());
         }
         Ok(exit_code)
+    }
+
+    fn exit_code_if_exited(&self) -> Result<Option<u32>, ()> {
+        let mut exit_code = 0_u32;
+        // SAFETY: process is a live process handle owned by this wrapper and exit_code is a
+        // valid out pointer. STILL_ACTIVE means the process has not exited yet.
+        if unsafe { GetExitCodeProcess(self.process, &mut exit_code) } == 0 {
+            return Err(());
+        }
+        Ok((exit_code != 259).then_some(exit_code))
     }
 }
 
@@ -3092,17 +3150,21 @@ fn prepare_appcontainer_goose_state_directories(
     private_root_traversal_root: &str,
     private_root: &str,
     sid: PSID,
-) -> Result<(), ()> {
+) -> Result<(), StateDirectoryAdmissionFailure> {
     let root = Path::new(private_root);
-    let (data_dir, config_dir) = prepare_goose_state_directories(private_root)?;
-    for ancestor in private_root_traversal_paths(private_root_traversal_root, private_root)? {
+    let (data_dir, config_dir) = prepare_goose_state_directories(private_root)
+        .map_err(|_| StateDirectoryAdmissionFailure::Layout)?;
+    let ancestors = private_root_traversal_paths(private_root_traversal_root, private_root)
+        .map_err(|_| StateDirectoryAdmissionFailure::TraversalShape)?;
+    for ancestor in ancestors {
         grant_exact_appcontainer_directory_access(
             &ancestor,
             sid,
             STATE_ANCESTOR_TRAVERSE_ACCESS_MASK,
             STATE_ANCESTOR_FORBIDDEN_ACCESS_MASK,
             NO_INHERITANCE,
-        )?;
+        )
+        .map_err(|_| StateDirectoryAdmissionFailure::AncestorAccess)?;
     }
     grant_exact_appcontainer_directory_access(
         root,
@@ -3110,7 +3172,8 @@ fn prepare_appcontainer_goose_state_directories(
         STATE_ROOT_ACCESS_MASK,
         STATE_ROOT_FORBIDDEN_ACCESS_MASK,
         NO_INHERITANCE,
-    )?;
+    )
+    .map_err(|_| StateDirectoryAdmissionFailure::RootAccess)?;
     for directory in [&data_dir, &config_dir] {
         grant_exact_appcontainer_directory_access(
             directory,
@@ -3118,8 +3181,10 @@ fn prepare_appcontainer_goose_state_directories(
             STATE_DIRECTORY_ACCESS_MASK,
             STATE_FORBIDDEN_ACCESS_MASK,
             SUB_CONTAINERS_AND_OBJECTS_INHERIT,
-        )?;
-        grant_low_integrity_directory_label(directory)?;
+        )
+        .map_err(|_| StateDirectoryAdmissionFailure::ChildAccess)?;
+        grant_low_integrity_directory_label(directory)
+            .map_err(|_| StateDirectoryAdmissionFailure::IntegrityLabel)?;
     }
     Ok(())
 }
@@ -3193,15 +3258,13 @@ fn launch_controlled_worker(control: crate::windows_control::WindowsControlMessa
             return SupervisorFailureStage::Profile.diagnostic_exit_code();
         }
     };
-    if prepare_appcontainer_goose_state_directories(
+    if let Err(failure) = prepare_appcontainer_goose_state_directories(
         &control.private_root_traversal_root,
         &control.private_root,
         profile.sid(),
-    )
-    .is_err()
-    {
+    ) {
         return report_supervisor_failure(
-            SupervisorFailureStage::WorkerStartup(WorkerStartupFailure::StateDirectory),
+            SupervisorFailureStage::StateDirectoryAdmission(failure),
             WINDOWS_SETUP_FAILURE_MARKER,
         );
     }
@@ -3984,7 +4047,7 @@ mod tests {
 
     #[test]
     fn keeps_runtime_failure_codes_closed_and_sanitized() {
-        assert_eq!(WINDOWS_RUNTIME_FAILURE_CODES.len(), 18);
+        assert_eq!(WINDOWS_RUNTIME_FAILURE_CODES.len(), 24);
         let mut unique = WINDOWS_RUNTIME_FAILURE_CODES.to_vec();
         unique.sort_unstable();
         unique.dedup();
@@ -4064,6 +4127,54 @@ mod tests {
             classify_runtime_event(WindowsRuntimeEvent::WorkerExit(Ok(0))),
             Ok(())
         );
+    }
+
+    #[test]
+    fn maps_each_state_directory_admission_failure_to_a_distinct_closed_runtime_code() {
+        let failures = [
+            (
+                StateDirectoryAdmissionFailure::Layout,
+                "windows-state-directory-layout-failed",
+            ),
+            (
+                StateDirectoryAdmissionFailure::TraversalShape,
+                "windows-state-directory-traversal-shape-invalid",
+            ),
+            (
+                StateDirectoryAdmissionFailure::AncestorAccess,
+                "windows-state-directory-ancestor-access-failed",
+            ),
+            (
+                StateDirectoryAdmissionFailure::RootAccess,
+                "windows-state-directory-root-access-failed",
+            ),
+            (
+                StateDirectoryAdmissionFailure::ChildAccess,
+                "windows-state-directory-child-access-failed",
+            ),
+            (
+                StateDirectoryAdmissionFailure::IntegrityLabel,
+                "windows-state-directory-integrity-label-failed",
+            ),
+        ];
+        let diagnostics: Vec<_> = failures
+            .iter()
+            .map(|(failure, _)| failure.diagnostic_exit_code())
+            .collect();
+        let mut unique = diagnostics.clone();
+        unique.sort_unstable();
+        unique.dedup();
+        assert_eq!(unique.len(), failures.len());
+        for (failure, runtime_code) in failures {
+            assert_eq!(failure.runtime_code(), runtime_code);
+            assert!(WINDOWS_RUNTIME_FAILURE_CODES.contains(&runtime_code));
+            assert_eq!(
+                runtime_code_for_supervisor_failure(
+                    SupervisorFailureStage::StateDirectoryAdmission(failure)
+                ),
+                Some(runtime_code)
+            );
+        }
     }
 
     #[test]
@@ -4295,10 +4406,26 @@ mod tests {
             SupervisorFailureStage::CapabilityChannel,
             SupervisorFailureStage::ModelChannel,
             SupervisorFailureStage::WorkerRuntime,
+            SupervisorFailureStage::StateDirectoryAdmission(StateDirectoryAdmissionFailure::Layout),
+            SupervisorFailureStage::StateDirectoryAdmission(
+                StateDirectoryAdmissionFailure::TraversalShape,
+            ),
+            SupervisorFailureStage::StateDirectoryAdmission(
+                StateDirectoryAdmissionFailure::AncestorAccess,
+            ),
+            SupervisorFailureStage::StateDirectoryAdmission(
+                StateDirectoryAdmissionFailure::RootAccess,
+            ),
+            SupervisorFailureStage::StateDirectoryAdmission(
+                StateDirectoryAdmissionFailure::ChildAccess,
+            ),
+            SupervisorFailureStage::StateDirectoryAdmission(
+                StateDirectoryAdmissionFailure::IntegrityLabel,
+            ),
         ];
         assert_eq!(
             stages.map(SupervisorFailureStage::diagnostic_exit_code),
-            [10, 11, 12, 13, 14, 32, 15, 16, 17, 18, 19, 46]
+            [10, 11, 12, 13, 14, 32, 15, 16, 17, 18, 19, 46, 63, 64, 65, 66, 67, 68]
         );
     }
 
@@ -4672,14 +4799,24 @@ mod windows_native_tests {
             &serde_json::json!({"contractVersion": 1, "kind": "appcontainer-test"}),
         )
         .expect("the AppContainer test frame must encode");
-        let observed = bridge_runtime
-            .block_on(accepted.read_frame())
-            .unwrap_or_else(|_| {
-                panic!(
-                    "the AppContainer anonymous-pipe test failed at bounded stage {}",
-                    "test-supervisor-frame-read-failed"
-                )
-            });
+        let observed = match bridge_runtime.block_on(accepted.read_frame()) {
+            Ok(observed) => observed,
+            Err(()) => match worker.exit_code_if_exited() {
+                Ok(Some(exit_code)) => {
+                    let failure = classify_anonymous_pipe_test_child_exit(exit_code);
+                    panic!(
+                        "the AppContainer anonymous-pipe test failed at bounded stage {}",
+                        failure.code()
+                    );
+                }
+                Ok(None) | Err(()) => {
+                    panic!(
+                        "the AppContainer anonymous-pipe test failed at bounded stage {}",
+                        "test-supervisor-frame-read-failed"
+                    );
+                }
+            },
+        };
         if observed != expected {
             panic!(
                 "the AppContainer anonymous-pipe test failed at bounded stage {}",

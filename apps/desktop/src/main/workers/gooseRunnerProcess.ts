@@ -71,6 +71,12 @@ export const GOOSE_WINDOWS_SUPERVISOR_FAILURE_STAGES = Object.freeze([
   "windows-worker-runtime-failed",
   "windows-runtime-timeout",
   "windows-runtime-cleanup-failed",
+  "windows-state-directory-layout-failed",
+  "windows-state-directory-traversal-shape-invalid",
+  "windows-state-directory-ancestor-access-failed",
+  "windows-state-directory-root-access-failed",
+  "windows-state-directory-child-access-failed",
+  "windows-state-directory-integrity-label-failed",
 ] as const);
 /**
  * Worker startup stages carry their own closed code all the way to CI evidence.
