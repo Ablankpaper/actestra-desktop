@@ -29,6 +29,15 @@ const INVOCATION_KEYS: [&str; 5] = ["messages", "purpose", "responseMode", "sess
 const MAX_MESSAGES: usize = 512;
 const MAX_TOOLS: usize = 128;
 const MAX_TEXT_BYTES: usize = 256 * 1024;
+const ACTESTRA_CAPABILITY_TOOL_PREFIX: &str = "actestra-capability-proxy__";
+const ACTESTRA_CAPABILITY_TOOL_NAMES: [&str; 6] = [
+    "actestra.coding.file.read-text",
+    "actestra.coding.file.write-text",
+    "actestra.coding.terminal.run",
+    "actestra.coding.git.inspect",
+    "actestra.coding.diff.inspect",
+    "actestra.coding.test.run",
+];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ModelBridgeErrorCode {
@@ -669,12 +678,14 @@ fn project_message(message: &Message, output: &mut Vec<Value>) -> Result<(), Pro
                     .tool_call
                     .as_ref()
                     .map_err(|_| model_request_rejected())?;
+                let name = actestra_capability_tool_name(&call.name)
+                    .map_err(|_| model_request_rejected())?;
                 output.push(json!({
                     "role": "assistant",
                     "toolCalls": [{
                         "arguments": call.arguments.clone().unwrap_or_default(),
                         "callId": request.id,
-                        "name": call.name,
+                        "name": name,
                     }]
                 }));
             }
@@ -707,8 +718,9 @@ fn project_message(message: &Message, output: &mut Vec<Value>) -> Result<(), Pro
 }
 
 fn project_tool(tool: &Tool) -> Result<Value, ProviderError> {
+    let name = actestra_capability_tool_name(&tool.name).map_err(|_| model_request_rejected())?;
     let mut projected = Map::new();
-    projected.insert("name".to_string(), Value::String(tool.name.to_string()));
+    projected.insert("name".to_string(), Value::String(name.to_string()));
     projected.insert(
         "inputSchema".to_string(),
         Value::Object((*tool.input_schema).clone()),
@@ -753,9 +765,15 @@ fn completion_to_goose(
                 .get("name")
                 .and_then(Value::as_str)
                 .ok_or_else(model_bridge_unavailable)?;
-            if !declared_tools.iter().any(|tool| tool.name == name) {
-                return Err(model_completion_refused());
-            }
+            let declared_name = declared_tools
+                .iter()
+                .find_map(|tool| {
+                    actestra_capability_tool_name(&tool.name)
+                        .ok()
+                        .filter(|candidate| *candidate == name)
+                        .map(|_| tool.name.to_string())
+                })
+                .ok_or_else(model_completion_refused)?;
             let call_id = object
                 .get("callId")
                 .and_then(Value::as_str)
@@ -768,13 +786,23 @@ fn completion_to_goose(
             Ok((
                 Message::assistant().with_tool_request(
                     call_id,
-                    Ok(CallToolRequestParams::new(name.to_string()).with_arguments(arguments)),
+                    Ok(CallToolRequestParams::new(declared_name).with_arguments(arguments)),
                 ),
                 usage,
             ))
         }
         _ => Err(model_bridge_unavailable()),
     }
+}
+
+fn actestra_capability_tool_name(value: &str) -> Result<&str, ()> {
+    let name = value
+        .strip_prefix(ACTESTRA_CAPABILITY_TOOL_PREFIX)
+        .ok_or(())?;
+    ACTESTRA_CAPABILITY_TOOL_NAMES
+        .contains(&name)
+        .then_some(name)
+        .ok_or(())
 }
 
 fn usage_i32(object: &Map<String, Value>, key: &str) -> Result<i32, ProviderError> {
@@ -1009,6 +1037,59 @@ mod tests {
         );
     }
 
+    #[test]
+    fn windows_model_bridge_accepts_only_the_exact_capability_prefix_and_closed_tool_ids() {
+        let mut schema = JsonObject::new();
+        schema.insert("type".to_string(), json!("object"));
+
+        for name in ACTESTRA_CAPABILITY_TOOL_NAMES {
+            let goose_name = format!("{ACTESTRA_CAPABILITY_TOOL_PREFIX}{name}");
+            let tool = Tool::new(goose_name, "bounded tool", schema.clone());
+            assert_eq!(project_tool(&tool).unwrap()["name"], json!(name));
+        }
+
+        for name in [
+            "actestra.coding.file.read-text",
+            "other-extension__actestra.coding.file.read-text",
+            "actestra-capability-proxy__actestra.coding.artifact.publish",
+        ] {
+            let tool = Tool::new(name, "unadmitted tool", schema.clone());
+            assert_eq!(project_tool(&tool).unwrap_err(), model_request_rejected());
+        }
+    }
+
+    #[test]
+    fn windows_model_bridge_refuses_an_undeclared_or_unknown_completion_tool() {
+        let mut schema = JsonObject::new();
+        schema.insert("type".to_string(), json!("object"));
+        let declared = [Tool::new(
+            "actestra-capability-proxy__actestra.coding.file.read-text",
+            "Read one bounded text file",
+            schema,
+        )];
+        let completion = |name: &str| {
+            json!({
+                "arguments": {},
+                "callId": "call-1",
+                "name": name,
+                "type": "tool-call",
+                "usage": {"completionTokens": 1, "promptTokens": 1}
+            })
+        };
+
+        for name in [
+            "actestra.coding.file.write-text",
+            "actestra-capability-proxy__actestra.coding.file.read-text",
+            "actestra.coding.artifact.publish",
+        ] {
+            assert_eq!(
+                completion_to_goose(completion(name), "actestra-fixed-model", &declared)
+                    .unwrap_err(),
+                model_completion_refused()
+            );
+        }
+    }
+
     async fn next_stream_item(
         mut stream: goose_providers::base::MessageStream,
     ) -> (
@@ -1085,6 +1166,7 @@ mod tests {
 
     #[tokio::test]
     async fn windows_model_bridge_streams_one_declared_tool_call() {
+        const GOOSE_TOOL_NAME: &str = "actestra-capability-proxy__actestra.coding.file.read-text";
         let (worker, main) = tokio::io::duplex(64 * 1024);
         let provider = model_provider(worker);
         let main = tokio::spawn(async move {
@@ -1127,7 +1209,7 @@ mod tests {
         let mut schema = JsonObject::new();
         schema.insert("type".to_string(), json!("object"));
         let tools = [Tool::new(
-            "actestra.coding.file.read-text",
+            GOOSE_TOOL_NAME,
             "Read one bounded text file",
             schema,
         )];
@@ -1148,7 +1230,7 @@ mod tests {
         };
         assert_eq!(tool_request.id, "call-1");
         let call = tool_request.tool_call.as_ref().unwrap();
-        assert_eq!(call.name, "actestra.coding.file.read-text");
+        assert_eq!(call.name, GOOSE_TOOL_NAME);
         assert_eq!(
             call.arguments.as_ref().unwrap().get("relativePath"),
             Some(&json!("README.md"))

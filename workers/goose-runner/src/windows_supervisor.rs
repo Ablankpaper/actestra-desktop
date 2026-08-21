@@ -4214,7 +4214,9 @@ mod tests {
             decode_capability_frame, encode_capability_frame, CapabilityFrame,
             WindowsCapabilityClient,
         };
-        use crate::windows_model_bridge::WindowsModelProvider;
+        use crate::windows_model_bridge::{
+            decode_model_frame, encode_model_frame, ModelFrame, WindowsModelProvider,
+        };
         use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
         use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
@@ -4242,7 +4244,7 @@ mod tests {
             session_id.clone(),
         )
         .unwrap();
-        let (model_worker, _model_main) = tokio::io::duplex(64 * 1024);
+        let (model_worker, model_main) = tokio::io::duplex(64 * 1024);
         let model_provider = WindowsModelProvider::new(
             crate::windows_bridge::WindowsBridgeChannel::from_duplex(model_worker),
             LEASE.to_string(),
@@ -4347,18 +4349,32 @@ mod tests {
             .to_string();
         assert!(session_id.get().is_none());
 
+        let capability_session = acp_session.clone();
         let capability_task = tokio::spawn(async move {
             let mut main =
                 crate::windows_bridge::WindowsBridgeChannel::from_duplex(capability_main);
-            let request =
-                decode_capability_frame(&main.read_frame().await.unwrap(), LEASE, &acp_session)
-                    .unwrap();
+            let request = decode_capability_frame(
+                &main.read_frame().await.unwrap(),
+                LEASE,
+                &capability_session,
+            )
+            .unwrap();
             let CapabilityFrame::ListRequest { request_id, .. } = request else {
                 panic!("expected injected extension list request");
             };
             let tools = TOOLS
                 .iter()
-                .map(|name| serde_json::json!({"inputSchema": {}, "name": name}))
+                .map(|name| {
+                    let input_schema = if *name == TOOLS[0] {
+                        serde_json::json!({
+                            "properties": {"relativePath": {"type": "string"}},
+                            "type": "object"
+                        })
+                    } else {
+                        serde_json::json!({})
+                    };
+                    serde_json::json!({"inputSchema": input_schema, "name": name})
+                })
                 .collect();
             main.write_frame(
                 &encode_capability_frame(&CapabilityFrame::ListResponse { request_id, tools })
@@ -4366,7 +4382,35 @@ mod tests {
             )
             .await
             .unwrap();
-            acp_session
+
+            let request = decode_capability_frame(
+                &main.read_frame().await.unwrap(),
+                LEASE,
+                &capability_session,
+            )
+            .unwrap();
+            let CapabilityFrame::CallRequest {
+                request_id,
+                tool_name,
+                arguments,
+                ..
+            } = request
+            else {
+                panic!("expected injected extension tool call");
+            };
+            assert_eq!(tool_name, TOOLS[0]);
+            assert_eq!(arguments, serde_json::json!({"relativePath": "README.md"}));
+            main.write_frame(
+                &encode_capability_frame(&CapabilityFrame::CallResponse {
+                    request_id,
+                    is_error: false,
+                    content: "bounded README contents".to_string(),
+                })
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+            capability_session
         });
         send(
             &mut client_write,
@@ -4392,8 +4436,122 @@ mod tests {
         assert!(names
             .iter()
             .all(|name| name.starts_with("actestra-capability-proxy__actestra.coding.")));
+        assert_eq!(
+            session_id.get().map(String::as_str),
+            Some(acp_session.as_str())
+        );
+
+        let model_session = acp_session.clone();
+        let model_task = tokio::spawn(async move {
+            let mut main = crate::windows_bridge::WindowsBridgeChannel::from_duplex(model_main);
+            let first =
+                decode_model_frame(&main.read_frame().await.unwrap(), LEASE, &model_session)
+                    .unwrap();
+            let ModelFrame::CompletionRequest {
+                request_id,
+                invocation,
+                ..
+            } = first
+            else {
+                panic!("expected first model completion request");
+            };
+            let mut tool_names = invocation["tools"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|tool| tool["name"].as_str().unwrap())
+                .collect::<Vec<_>>();
+            tool_names.sort_unstable();
+            let mut expected_tools = TOOLS.to_vec();
+            expected_tools.sort_unstable();
+            assert_eq!(tool_names, expected_tools);
+            assert!(invocation["messages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|message| {
+                    message["role"] == serde_json::json!("user")
+                        && message["content"] == serde_json::json!("Read README.md")
+                }));
+            main.write_frame(
+                &encode_model_frame(&ModelFrame::CompletionResponse {
+                    request_id,
+                    completion: serde_json::json!({
+                        "arguments": {"relativePath": "README.md"},
+                        "callId": "call-1",
+                        "name": TOOLS[0],
+                        "type": "tool-call",
+                        "usage": {"completionTokens": 4, "promptTokens": 7}
+                    }),
+                })
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+
+            let second =
+                decode_model_frame(&main.read_frame().await.unwrap(), LEASE, &model_session)
+                    .unwrap();
+            let ModelFrame::CompletionRequest {
+                request_id,
+                invocation,
+                ..
+            } = second
+            else {
+                panic!("expected follow-up model completion request");
+            };
+            assert!(invocation["messages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|message| {
+                    message["role"] == serde_json::json!("assistant")
+                        && message["toolCalls"][0]["name"] == serde_json::json!(TOOLS[0])
+                }));
+            assert!(invocation["messages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|message| {
+                    message["role"] == serde_json::json!("tool")
+                        && message["content"] == serde_json::json!("bounded README contents")
+                }));
+            main.write_frame(
+                &encode_model_frame(&ModelFrame::CompletionResponse {
+                    request_id,
+                    completion: serde_json::json!({
+                        "text": "README inspected",
+                        "type": "message",
+                        "usage": {"completionTokens": 2, "promptTokens": 9}
+                    }),
+                })
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        });
+
+        send(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": "prompt-1",
+                "method": "session/prompt",
+                "params": {
+                    "sessionId": acp_session,
+                    "prompt": [{"type": "text", "text": "Read README.md"}]
+                }
+            }),
+        )
+        .await;
+        let prompted = response(&mut client_read, "prompt-1").await;
+        assert_eq!(
+            prompted["result"]["stopReason"],
+            serde_json::json!("end_turn")
+        );
         let bound_session = capability_task.await.unwrap();
         assert_eq!(session_id.get(), Some(&bound_session));
+        model_task.await.unwrap();
 
         drop(client_write);
         serve_task.abort();

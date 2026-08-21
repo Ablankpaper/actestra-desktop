@@ -2,6 +2,58 @@
 
 Last updated: 2026-08-21
 
+## 2026-08-21 P8.2c Windows model-tool name adaptation (local; exact-head CI pending)
+
+The exact-head Windows authenticated-runtime run
+[`32495480074`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32495480074)
+reached the first real model request and failed closed at
+`windows-runtime-model-main-request-decode-failed`. Its independently downloaded
+failure Artifact contained only:
+
+```json
+{"contractVersion":1,"code":"windows-runtime-model-main-request-decode-failed"}
+```
+
+The preceding native evidence proves this was not a Worker launch, AppContainer,
+ACL, or capability-relay failure. Goose's ExtensionManager names the six admitted
+tools with the fixed prefix
+`actestra-capability-proxy__`, while the Main-owned authenticated model bridge
+accepts only the six unprefixed Actestra tool IDs. The Windows Worker adapter was
+therefore sending a valid Goose name into a deliberately stricter Main protocol.
+
+The bounded repair is confined to
+`workers/goose-runner/src/windows_model_bridge.rs`: the adapter accepts only the
+exact `actestra-capability-proxy__` prefix plus the six closed coding IDs, strips
+that prefix for Worker-to-Main invocation and historical assistant tool-call
+messages, and restores the exact declared Goose name for Main-to-Worker model
+tool-call responses. Bare IDs, another extension prefix, unknown IDs, and
+undeclared model completions remain fail-closed. Main's whitelist, the capability
+bridge, permissions, network, credentials, timeout, retry, cleanup, and Goose's
+upstream framework were not widened or changed.
+
+Regression evidence is now local and fresh:
+
+- the target model bridge test is GREEN;
+- two negative tests reject the wrong prefix, bare names, unknown IDs, and
+  undeclared completions;
+- the real Goose ACP composition test is GREEN through `initialize`,
+  `session/new`, `_goose/unstable/tools/list`, `session/prompt`, the first model
+  tool-call, one capability-proxy call, a second model request, and final
+  `end_turn`; it verifies Main sees the six unprefixed IDs and Goose receives the
+  prefixed name again;
+- Goose Rust tests: `93/93` passed;
+- `bun run check`: exit `0`, `171` test files passed / `3` skipped,
+  `1860` tests passed / `10` skipped, with format, lint, typecheck, P8 contract,
+  security, smoke, boundary, foundation, downstream, and package gates green;
+- `git diff --check`: clean.
+
+This is still uncommitted local work on branch
+`codex/p8-2c-windows-runtime-composition`, based on source HEAD `397cd7b`. It is
+not yet Windows-compiled or Windows-executed after the repair. P8.2c remains
+open. The next and only justified native gate is one newly pushed exact-head
+Windows authenticated-runtime run; only its successful Artifact, independently
+checked against the source head and contents, can close this blocker.
+
 ## 2026-08-21 P8.2c first-prompt model round-trip diagnostics (local; CI pending)
 
 Exact-head CI run
