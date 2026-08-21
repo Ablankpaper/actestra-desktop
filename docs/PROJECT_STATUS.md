@@ -2,6 +2,54 @@
 
 Last updated: 2026-08-21
 
+## 2026-08-21 P8.2c Windows overlapped bridge repair (local; CI pending)
+
+Exact-head CI run
+[`32470992247`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32470992247)
+for Actestra head `37d533b288930c945f37527ce9e71b0f2065c49e` completed with
+six of seven jobs green. Windows and Ubuntu build/containment, Goose admission,
+and macOS foundation/package passed. The Windows authenticated-runtime job
+failed at the first exact missing capability stage:
+`windows-runtime-capability-supervisor-request-forward-failed`. Worker request
+write and Supervisor request read were observed; Supervisor request forwarding
+to Main did not complete.
+
+The independently downloaded failure Artifact is
+`p8-goose-runtime-windows-failure-64d785866f71062ab7fb9f32cbe6d892d338fec0`
+(Artifact `9443409418`; uploaded ZIP SHA-256
+`87a48c708daf9be764786765ae300de8b6c699e8b29486fb1fd145ac09e41f46`).
+Its single JSON file has SHA-256
+`1b6f37aa1f6871cffd21d8427e86c5d2018715aa7b4c837805efed31334aa0c4`
+and contains only the bounded failure code above.
+
+The transport defect is now repaired locally. Node's ordinary Windows
+`"pipe"` stdio creates an asynchronous parent endpoint but a synchronous child
+endpoint. fd 5/fd 6 are the Supervisor endpoints and carry concurrent request
+and response traffic. Duplicating either inherited handle did not create two
+independent pipe file objects, so Tokio's blocking-file wrapper could keep one
+direction occupied by a pending read and prevent the reverse write that CI
+identified. Main now creates only fd 5/fd 6 as Node `"overlapped"` stdio, and
+Supervisor wraps each exact inherited client handle in one Tokio
+`NamedPipeClient` inside the relay runtime. The seven-channel topology,
+protocol, cancellation path, Worker nine-handle allowlist, AppContainer, Job,
+credential and workspace boundaries remain unchanged.
+
+The behavior contract was written and observed RED before implementation. It
+now locks the exact five ordinary plus two overlapped stdio configuration, the
+real Windows duplex/isolated channel probe, one handle duplication, Tokio
+named-pipe ownership, and runtime registration. Focused local evidence passes
+`98` TypeScript/JavaScript tests with the Windows-native test skipped on macOS,
+plus `88/88` Goose runner tests. Rust format, TypeScript typecheck, repository
+format/lint, and `git diff --check` are clean.
+The Windows API slice also cross-compiles with Tokio `1.53.1` and
+`windows-sys 0.61.2`; a full macOS-to-Windows cross-build remains unavailable
+because the existing C dependencies require Windows SDK headers. The complete
+`bun run check` gate exits zero: `171` test files passed / `3` skipped; `1849`
+tests passed / `10` skipped; P7 abuse cases, boundaries, frozen AionUI
+foundation, downstream materialization, and package build all passed. P8.2c
+remains open until one new exact-head Windows CI run verifies the real runtime
+and its success Artifact.
+
 ## 2026-08-21 P8.2c Windows capability round-trip diagnostics (local; CI pending)
 
 Exact-head CI run

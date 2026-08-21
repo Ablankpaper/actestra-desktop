@@ -19,6 +19,19 @@ export const GOOSE_WINDOWS_STDIO_CHANNELS = Object.freeze([
   "model",
 ] as const);
 
+// Node keeps its parent endpoints asynchronous on Windows in both modes. The two
+// Supervisor endpoints must also be overlapped because each carries concurrent
+// request and response traffic through one duplex named-pipe client handle.
+export const GOOSE_WINDOWS_STDIO_CONFIGURATION = Object.freeze([
+  "pipe",
+  "pipe",
+  "pipe",
+  "pipe",
+  "pipe",
+  "overlapped",
+  "overlapped",
+] as const);
+
 export const GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES = Object.freeze([
   "windows-capability-worker-request-written",
   "windows-capability-supervisor-request-read",

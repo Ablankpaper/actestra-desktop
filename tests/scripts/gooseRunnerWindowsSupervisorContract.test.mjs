@@ -222,7 +222,11 @@ describe("Windows Goose supervisor source contract", () => {
     const transport = read("apps/desktop/src/main/workers/gooseSessionTransport.ts");
     const supervisor = read("workers/goose-runner/src/windows_supervisor.rs");
     const control = read("workers/goose-runner/src/windows_control.rs");
-    expect(mainProcess).toContain('GOOSE_WINDOWS_STDIO_CHANNELS.map(() => "pipe" as const)');
+    expect(mainProcess).toContain("stdio: windowsSupervisor");
+    expect(mainProcess).toContain("? [...GOOSE_WINDOWS_STDIO_CONFIGURATION]");
+    expect(transport).toContain("GOOSE_WINDOWS_STDIO_CONFIGURATION");
+    expect(transport.match(/"overlapped"/gu)).toHaveLength(2);
+    expect(transport.match(/"pipe"/gu)).toHaveLength(5);
     expect(transport).toContain('"parent-liveness"');
     expect(transport).toContain('"capability"');
     expect(transport).toContain('"model"');
@@ -254,9 +258,10 @@ describe("Windows Goose supervisor source contract", () => {
     );
   });
 
-  it("duplicates each Main duplex bridge into independent relay read and write handles", () => {
+  it("wraps each overlapped Main duplex bridge in one Tokio named-pipe client", () => {
+    const bridge = read("workers/goose-runner/src/windows_bridge.rs");
     const supervisor = read("workers/goose-runner/src/windows_supervisor.rs");
-    const helperStart = supervisor.indexOf("fn bidirectional_channel_from_fd");
+    const helperStart = supervisor.indexOf("fn overlapped_channel_from_fd");
     const helperEnd = supervisor.indexOf("async fn wait_for_parent_liveness", helperStart);
     const runtimeStart = supervisor.indexOf("let acp_input =");
     const runtimeEnd = supervisor.indexOf("let worker_process_handle", runtimeStart);
@@ -264,12 +269,14 @@ describe("Windows Goose supervisor source contract", () => {
     expect(helperStart).toBeGreaterThan(-1);
     expect(helperEnd).toBeGreaterThan(helperStart);
     const helper = supervisor.slice(helperStart, helperEnd);
-    expect(helper.match(/handle_from_fd\(fd\)/gu)).toHaveLength(2);
-    expect(helper).toContain("WindowsBridgeChannel::from_raw_handle_pair(read, write)");
-
     const runtime = supervisor.slice(runtimeStart, runtimeEnd);
-    expect(runtime).toContain("bidirectional_channel_from_fd(5)");
-    expect(runtime).toContain("bidirectional_channel_from_fd(6)");
+    expect(helper.match(/handle_from_fd\(fd\)/gu)).toHaveLength(1);
+    expect(helper).toContain("WindowsBridgeChannel::from_overlapped_raw_handle(handle)");
+    expect(bridge).toContain("tokio::net::windows::named_pipe::NamedPipeClient");
+    expect(runtime).toContain("let _runtime_guard = bridge_runtime.enter()");
+
+    expect(runtime).toContain("overlapped_channel_from_fd(5)");
+    expect(runtime).toContain("overlapped_channel_from_fd(6)");
     expect(runtime).not.toContain(
       "handle_from_fd(5).and_then(crate::windows_bridge::WindowsBridgeChannel::from_raw_handle)",
     );

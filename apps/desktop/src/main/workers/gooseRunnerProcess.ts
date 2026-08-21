@@ -38,7 +38,7 @@ import {
 } from "./gooseRunnerTarget";
 import {
   GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
-  GOOSE_WINDOWS_STDIO_CHANNELS,
+  GOOSE_WINDOWS_STDIO_CONFIGURATION,
   createGooseWindowsCapabilityProgress,
   type GooseWindowsCapabilityProgress,
   type GooseWindowsCapabilityProgressStage,
@@ -1381,9 +1381,10 @@ export function createNodeGooseAcpTransport(
       detached: true,
       // Windows reserves fd 3 for the one-shot control frame, fd 4 for parent liveness,
       // and fd 5/fd 6 for the duplex capability/model supervisor channels. Other hosts
-      // retain the existing fd 3 liveness pipe.
+      // retain the existing fd 3 liveness pipe. The last two child endpoints use
+      // overlapped I/O so the Rust Supervisor can relay both directions concurrently.
       stdio: windowsSupervisor
-        ? GOOSE_WINDOWS_STDIO_CHANNELS.map(() => "pipe" as const)
+        ? [...GOOSE_WINDOWS_STDIO_CONFIGURATION]
         : ["pipe", "pipe", "pipe", "pipe"],
       windowsHide: true,
     });

@@ -35,7 +35,9 @@ describe("Windows Goose authenticated channel primitives", () => {
             "}",
           ].join(""),
         ],
-        { stdio: ["ignore", "pipe", "pipe", "ignore", "ignore", "pipe", "pipe"] },
+        {
+          stdio: ["ignore", "pipe", "pipe", "ignore", "ignore", "overlapped", "overlapped"],
+        },
       );
       children.add(child);
       const extendedStdio = child.stdio as unknown as readonly (Duplex | null | undefined)[];

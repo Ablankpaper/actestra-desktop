@@ -2655,31 +2655,13 @@ fn handle_from_fd(fd: i32) -> Result<HANDLE, ()> {
 }
 
 #[cfg(windows)]
-fn bidirectional_channel_from_fd(
-    fd: i32,
-) -> Result<crate::windows_bridge::WindowsBridgeChannel, ()> {
-    // A Tokio File serializes an outstanding blocking read with later writes. The Main-owned
-    // fd5/fd6 endpoints are duplex Windows pipes, so each relay direction needs its own duplicate
-    // of the same underlying pipe handle or a pending read can indefinitely block the reverse
-    // write. The two duplicates retain the exact access of the admitted Node stdio endpoint.
-    let read = handle_from_fd(fd)?;
-    let write = match handle_from_fd(fd) {
-        Ok(write) => write,
-        Err(()) => {
-            unsafe { CloseHandle(read) };
-            return Err(());
-        }
-    };
-    match crate::windows_bridge::WindowsBridgeChannel::from_raw_handle_pair(read, write) {
-        Ok(channel) => Ok(channel),
-        Err(()) => {
-            unsafe {
-                CloseHandle(read);
-                CloseHandle(write);
-            }
-            Err(())
-        }
-    }
+fn overlapped_channel_from_fd(fd: i32) -> Result<crate::windows_bridge::WindowsBridgeChannel, ()> {
+    // DuplicateHandle cannot turn a synchronous duplex pipe into independent read/write file
+    // objects: both duplicates still serialize I/O through the same underlying object. Node
+    // therefore creates fd 5/fd 6 with FILE_FLAG_OVERLAPPED, and Tokio owns one asynchronous
+    // named-pipe client per bridge.
+    let handle = handle_from_fd(fd)?;
+    crate::windows_bridge::WindowsBridgeChannel::from_overlapped_raw_handle(handle)
 }
 
 #[cfg(windows)]
@@ -3796,8 +3778,11 @@ fn launch_controlled_worker(control: crate::windows_control::WindowsControlMessa
         handle_from_fd(0).and_then(crate::windows_bridge::WindowsBridgeChannel::from_raw_handle);
     let acp_output =
         handle_from_fd(1).and_then(crate::windows_bridge::WindowsBridgeChannel::from_raw_handle);
-    let capability_main = bidirectional_channel_from_fd(5);
-    let model_main = bidirectional_channel_from_fd(6);
+    let (capability_main, model_main) = {
+        // NamedPipeClient registration must occur inside the runtime that drives the relays.
+        let _runtime_guard = bridge_runtime.enter();
+        (overlapped_channel_from_fd(5), overlapped_channel_from_fd(6))
+    };
     let worker_stdin = crate::windows_bridge::WindowsBridgeChannel::from_raw_handle(worker_stdin);
     let worker_stdout = crate::windows_bridge::WindowsBridgeChannel::from_raw_handle(worker_stdout);
     let (acp_input, acp_output, capability_main, model_main, worker_stdin, worker_stdout) = match (

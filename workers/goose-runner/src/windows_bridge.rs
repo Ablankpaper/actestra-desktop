@@ -40,6 +40,22 @@ impl WindowsBridgeChannel {
     }
 
     #[cfg(windows)]
+    pub(crate) fn from_overlapped_raw_handle(
+        handle: windows_sys::Win32::Foundation::HANDLE,
+    ) -> Result<Self, ()> {
+        use std::os::windows::io::RawHandle;
+        use tokio::net::windows::named_pipe::NamedPipeClient;
+        if handle.is_null() || handle == windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
+            return Err(());
+        }
+        // SAFETY: Node creates fd 5/fd 6 as inherited named-pipe client handles with
+        // FILE_FLAG_OVERLAPPED and the caller transfers sole ownership of the duplicate.
+        let pipe =
+            unsafe { NamedPipeClient::from_raw_handle(handle as RawHandle) }.map_err(|_| ())?;
+        Ok(Self::new(pipe))
+    }
+
+    #[cfg(windows)]
     pub(crate) fn from_raw_handle_pair(
         read_handle: windows_sys::Win32::Foundation::HANDLE,
         write_handle: windows_sys::Win32::Foundation::HANDLE,
