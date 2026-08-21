@@ -4305,6 +4305,7 @@ mod tests {
 #[cfg(all(test, windows))]
 mod windows_native_tests {
     use super::*;
+    use crate::windows_control::WINDOWS_CONTROL_MAX_BYTES;
     use std::ffi::OsString;
     use std::mem::size_of;
     use std::os::windows::ffi::OsStringExt;
@@ -4338,6 +4339,20 @@ mod windows_native_tests {
             "{:032x}",
             elapsed ^ sequence ^ u128::from(std::process::id())
         )
+    }
+
+    fn windows_test_private_root(label: &str) -> std::path::PathBuf {
+        let unique = format!(
+            "actestra-goose-{label}-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock must be after the Unix epoch")
+                .as_nanos()
+        );
+        let root = std::env::temp_dir().join(unique);
+        std::fs::create_dir(&root).expect("the Windows native test root must be created");
+        root
     }
 
     struct TestHandle(HANDLE);
@@ -4479,7 +4494,7 @@ mod windows_native_tests {
         let current_directory = executable
             .parent()
             .expect("the native test executable must have an absolute parent");
-        let private_root = test_private_root("appcontainer-state");
+        let private_root = windows_test_private_root("appcontainer-state");
         let private_root_text = private_root.to_str().expect("the test path must be UTF-8");
         prepare_appcontainer_goose_state_directories(private_root_text, profile.sid())
             .expect("the exact AppContainer SID must receive bounded state-directory access");

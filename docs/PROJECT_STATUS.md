@@ -49,6 +49,19 @@ product boundary, frozen AionUI foundation, downstream materialization and
 package build all passed. Its remaining Vite `use client`, circular-chunk, and
 large-chunk notices are pre-existing frozen-foundation build warnings.
 
+The first pushed remediation head
+`c415178db9800168737c6e75b224639fb848d0a9` exposed one Windows-only test
+compile gap in CI run
+[`32398878358`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32398878358):
+the build-probe native-primitives step could not see
+`WINDOWS_CONTROL_MAX_BYTES` or the private-root helper from its sibling test
+module. This failure occurred before the new AppContainer ACL behavior ran; it
+does not establish either a successful or failed ACL result. The bounded local
+follow-up imports the existing closed frame limit into `windows_native_tests`
+and gives that module its own private-root fixture helper. It changes no
+production permission, process, handle, network, or cleanup behavior and awaits
+a new exact-head Windows compile and runtime result.
+
 P8.2c remains open. The next accepted evidence must come from one newly pushed
 exact head and must pass the Windows build probe, Windows containment, and
 Windows authenticated-runtime jobs. Only a successful runtime Artifact whose
