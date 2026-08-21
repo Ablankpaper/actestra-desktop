@@ -145,6 +145,8 @@ impl WindowsBridgeChannel {
                     reporter: reporter.clone(),
                     read_stage: "windows-capability-supervisor-response-read",
                     forwarded_stage: "windows-capability-supervisor-response-forwarded",
+                    call_read_stage: "windows-capability-call-supervisor-response-read",
+                    call_forwarded_stage: "windows-capability-call-supervisor-response-forwarded",
                 }),
             ) => result,
             result = relay_framed_direction(
@@ -154,6 +156,8 @@ impl WindowsBridgeChannel {
                     reporter,
                     read_stage: "windows-capability-supervisor-request-read",
                     forwarded_stage: "windows-capability-supervisor-request-forwarded",
+                    call_read_stage: "windows-capability-call-supervisor-request-read",
+                    call_forwarded_stage: "windows-capability-call-supervisor-request-forwarded",
                 }),
             ) => result,
         }
@@ -169,6 +173,8 @@ struct RelayProgress {
     reporter: Arc<dyn Fn(&'static str) + Send + Sync>,
     read_stage: &'static str,
     forwarded_stage: &'static str,
+    call_read_stage: &'static str,
+    call_forwarded_stage: &'static str,
 }
 
 async fn relay_framed_direction<R, W>(
@@ -182,6 +188,8 @@ where
 {
     let mut read_reported = false;
     let mut forwarded_reported = false;
+    let mut call_read_reported = false;
+    let mut call_forwarded_reported = false;
     loop {
         let mut length_bytes = [0_u8; 4];
         if source.read(&mut length_bytes[..1]).await.map_err(|_| ())? == 0 {
@@ -197,8 +205,21 @@ where
         }
         let mut payload = vec![0_u8; payload_length];
         source.read_exact(&mut payload).await.map_err(|_| ())?;
-        if !read_reported {
-            if let Some(progress) = &progress {
+        let is_call_frame = progress.is_some()
+            && serde_json::from_slice::<serde_json::Value>(&payload)
+                .ok()
+                .and_then(|value| {
+                    value
+                        .get("kind")
+                        .and_then(serde_json::Value::as_str)
+                        .map(|kind| kind == "call-request" || kind == "call-response")
+                })
+                .unwrap_or(false);
+        if let Some(progress) = &progress {
+            if is_call_frame && !call_read_reported {
+                (progress.reporter)(progress.call_read_stage);
+                call_read_reported = true;
+            } else if !is_call_frame && !read_reported {
                 (progress.reporter)(progress.read_stage);
                 read_reported = true;
             }
@@ -206,8 +227,11 @@ where
         destination.write_all(&length_bytes).await.map_err(|_| ())?;
         destination.write_all(&payload).await.map_err(|_| ())?;
         destination.flush().await.map_err(|_| ())?;
-        if !forwarded_reported {
-            if let Some(progress) = &progress {
+        if let Some(progress) = &progress {
+            if is_call_frame && !call_forwarded_reported {
+                (progress.reporter)(progress.call_forwarded_stage);
+                call_forwarded_reported = true;
+            } else if !is_call_frame && !forwarded_reported {
                 (progress.reporter)(progress.forwarded_stage);
                 forwarded_reported = true;
             }
@@ -414,6 +438,43 @@ mod tests {
                 "windows-capability-supervisor-request-forwarded",
                 "windows-capability-supervisor-response-read",
                 "windows-capability-supervisor-response-forwarded",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn capability_relay_reports_tool_call_boundaries_separately() {
+        let (main_side, relay_main) = tokio::io::duplex(4096);
+        let (worker_side, relay_worker) = tokio::io::duplex(4096);
+        let mut main_side = WindowsBridgeChannel::from_duplex(main_side);
+        let mut worker_side = WindowsBridgeChannel::from_duplex(worker_side);
+        let observed = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let reporter_observed = observed.clone();
+        let reporter: std::sync::Arc<dyn Fn(&'static str) + Send + Sync> =
+            std::sync::Arc::new(move |stage| reporter_observed.lock().unwrap().push(stage));
+        let relay = tokio::spawn(
+            WindowsBridgeChannel::from_duplex(relay_main).relay_capability_framed_bidirectional(
+                WindowsBridgeChannel::from_duplex(relay_worker),
+                reporter,
+            ),
+        );
+        let request =
+            encode_json_frame(&json!({"contractVersion": 1, "kind": "call-request"})).unwrap();
+        worker_side.write_frame(&request).await.unwrap();
+        assert_eq!(main_side.read_frame().await.unwrap(), request);
+        let response =
+            encode_json_frame(&json!({"contractVersion": 1, "kind": "call-response"})).unwrap();
+        main_side.write_frame(&response).await.unwrap();
+        assert_eq!(worker_side.read_frame().await.unwrap(), response);
+        drop((main_side, worker_side));
+        assert!(relay.await.unwrap().is_ok());
+        assert_eq!(
+            *observed.lock().unwrap(),
+            vec![
+                "windows-capability-call-supervisor-request-read",
+                "windows-capability-call-supervisor-request-forwarded",
+                "windows-capability-call-supervisor-response-read",
+                "windows-capability-call-supervisor-response-forwarded",
             ]
         );
     }

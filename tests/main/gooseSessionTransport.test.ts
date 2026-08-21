@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES,
+  GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
   GOOSE_WINDOWS_STDIO_CHANNELS,
   GOOSE_WINDOWS_STDIO_CONFIGURATION,
   resolveGooseSessionTransportMode,
@@ -42,5 +44,23 @@ describe("Goose session transport selection", () => {
       "overlapped",
     ]);
     expect(Object.isFrozen(GOOSE_WINDOWS_STDIO_CONFIGURATION)).toBe(true);
+  });
+
+  it("keeps first tool-call progress separate from tools/list discovery", () => {
+    expect(GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES).toEqual([
+      "windows-capability-call-worker-request-written",
+      "windows-capability-call-supervisor-request-read",
+      "windows-capability-call-supervisor-request-forwarded",
+      "windows-capability-call-main-request-decoded",
+      "windows-capability-call-main-tool-invocation-started",
+      "windows-capability-call-main-tool-invocation-completed",
+      "windows-capability-call-main-response-written",
+      "windows-capability-call-supervisor-response-read",
+      "windows-capability-call-supervisor-response-forwarded",
+      "windows-capability-call-worker-response-decoded",
+    ]);
+    expect(GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES).toEqual([
+      "windows-capability-call-main-tool-invocation-failed",
+    ]);
   });
 });

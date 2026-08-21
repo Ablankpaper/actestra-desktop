@@ -6,11 +6,13 @@ import type { AdmittedGooseRunnerArtifact } from "../../apps/desktop/src/main/wo
 import { GooseRunnerProcessError } from "../../apps/desktop/src/main/workers/gooseRunnerProcess";
 import {
   GooseMcpSessionCompositionError,
+  classifyGooseWindowsCapabilityCallProgressFailure,
   classifyGooseWindowsCapabilityProgressFailure,
   openGooseMcpSessionComposition,
   type GooseMcpSessionCompositionDependencies,
 } from "../../apps/desktop/src/main/workers/gooseMcpSessionComposition";
 import {
+  GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
   GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
   createGooseWindowsCapabilityProgress,
 } from "../../apps/desktop/src/main/workers/gooseSessionTransport";
@@ -123,6 +125,33 @@ describe("Goose MCP session composition", () => {
       classifyGooseWindowsCapabilityProgressFailure(GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES),
     ).toBeUndefined();
     expect(new Set(expected).size).toBe(8);
+  });
+
+  it("maps the first missing Windows tool-call round-trip stage to a distinct closed failure", () => {
+    expect(
+      GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES.map((_, index) =>
+        classifyGooseWindowsCapabilityCallProgressFailure(
+          GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES.slice(0, index),
+        ),
+      ),
+    ).toEqual([
+      "windows-capability-call-worker-request-write-failed",
+      "windows-capability-call-supervisor-request-read-failed",
+      "windows-capability-call-supervisor-request-forward-failed",
+      "windows-capability-call-main-request-decode-failed",
+      "windows-capability-call-main-tool-invocation-start-failed",
+      "windows-capability-call-main-tool-invocation-complete-failed",
+      "windows-capability-call-main-response-write-failed",
+      "windows-capability-call-supervisor-response-read-failed",
+      "windows-capability-call-supervisor-response-forward-failed",
+      "windows-capability-call-worker-response-decode-failed",
+    ]);
+    expect(
+      classifyGooseWindowsCapabilityCallProgressFailure([
+        ...GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES.slice(0, 5),
+        "windows-capability-call-main-tool-invocation-failed",
+      ]),
+    ).toBe("windows-capability-call-main-tool-invocation-failed");
   });
 
   it("turns a Windows tool-discovery timeout into the first missing capability stage", async () => {
@@ -276,6 +305,80 @@ describe("Goose MCP session composition", () => {
           dependencies,
         ),
       ).rejects.toBe(runtimeFailure);
+    } finally {
+      Object.defineProperty(process, "platform", originalPlatform);
+    }
+  });
+
+  it("preserves a prompt transport failure as the first missing Windows tool-call stage", async () => {
+    const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { ...originalPlatform, value: "win32" });
+    const capabilityProgress = createGooseWindowsCapabilityProgress();
+    const promptFailure = new Error("bounded prompt transport failure");
+    const capabilityHost = Object.freeze({
+      bindSession() {},
+      async waitForToolsList() {},
+      async close() {},
+    });
+    const dependencies: GooseMcpSessionCompositionDependencies = {
+      async startCapabilityServer() {
+        throw new Error("Windows must not start loopback capability server");
+      },
+      async startModelServer() {
+        throw new Error("Windows must not start loopback model server");
+      },
+      startWindowsCapabilityHost: () => capabilityHost,
+      startWindowsModelHost: () => modelServerDouble(),
+      async openRunnerHandshake(options) {
+        const bridge = await options.prepareBridge!({
+          root: "/tmp/actestra-goose-attempt",
+          bridgeDirectory: "/tmp/actestra-goose-attempt/bridge",
+          executablePath: "/tmp/actestra-goose-attempt/bin/runner.exe",
+          workingDirectory: "/tmp/actestra-goose-attempt/work",
+        });
+        bridge.attachWindowsChannels?.({
+          capability: {} as never,
+          model: {} as never,
+          capabilityProgress,
+        });
+        return Object.freeze({
+          info: runnerInfo,
+          privateRoot: "/tmp/actestra-goose-attempt",
+          async openSession() {
+            return runnerSession;
+          },
+          async discoverTools() {
+            return runnerDiscovery;
+          },
+          async prompt() {
+            throw promptFailure;
+          },
+          async close() {
+            await bridge.close();
+          },
+        });
+      },
+    };
+    try {
+      const opened = await openGooseMcpSessionComposition(
+        {
+          artifact: Object.freeze({ ...artifact, targetTriple: "x86_64-pc-windows-msvc" }),
+          privateRootParent: "/tmp/actestra-goose-attempts",
+          workspaceDirectory: "/tmp/actestra-worktree",
+          modelId: "actestra-caller-model",
+          modelInvoker,
+          toolInvoker,
+          commandIds: [],
+          testIds: [],
+        },
+        dependencies,
+      );
+      capabilityProgress.record(GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES[0]);
+      await expect(opened.prompt({ text: "Read answer.txt" })).rejects.toMatchObject({
+        code: "windows-capability-call-supervisor-request-read-failed",
+        cause: promptFailure,
+      });
+      await opened.close();
     } finally {
       Object.defineProperty(process, "platform", originalPlatform);
     }

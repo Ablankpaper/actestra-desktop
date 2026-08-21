@@ -8,6 +8,8 @@ import type { AdmittedGooseRunnerArtifact } from "../../apps/desktop/src/main/wo
 import {
   GOOSE_NATIVE_NETWORK_POLICY_FAILURE_MARKER,
   GOOSE_NATIVE_RESOURCE_LIMIT_FAILURE_MARKER,
+  GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES,
+  GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
   GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
   GooseRunnerProcessError,
   assertGooseAcpSpawnOptions,
@@ -311,6 +313,23 @@ describe("Goose runner native resource boundary", () => {
     expect(JSON.stringify(progress.snapshot())).not.toContain("private");
     expect(Object.keys(matcher)).toEqual(["push"]);
     expect(Object.keys(progress)).toEqual(["record", "snapshot"]);
+  });
+
+  it("extracts bounded tool-call progress and Main invocation failure stages", () => {
+    const matcher = createGooseWindowsCapabilityProgressMatcher();
+    const marker = (stage: string): string =>
+      `Goose windows capability progress at bounded stage ${stage}`;
+    const observed = matcher.push(
+      Buffer.from(
+        `${marker(GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES[0])}\n` +
+          `${marker(GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES[0])}\n`,
+      ),
+    );
+    expect(observed).toEqual([
+      GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES[0],
+      GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES[0],
+    ]);
+    expect(JSON.stringify(observed)).not.toContain("private");
   });
 
   it.each([

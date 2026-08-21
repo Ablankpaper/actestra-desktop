@@ -2,6 +2,33 @@
 
 Last updated: 2026-08-21
 
+## 2026-08-21 P8.2c first tool-call diagnostic split (local; CI pending)
+
+The exact-head Windows authenticated-runtime run
+[`32474910533`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32474910533)
+for head `7620b90d2b4910ae955bc62a0ddc4ddc2d77cbb7` passed build, admission,
+containment, and ACP/session/tools-list setup, then failed during the first real
+`read-tool` prompt. Its bounded failure Artifact reported only
+`windows-runtime-read-tool-failed` because the integration harness wrote that
+stage before the prompt and never replaced it after the prompt exception.
+
+The local follow-up does not change ACLs, authority, protocol permissions,
+workspace scope, credentials, network policy, or `foundation/`. It adds a
+closed first-tool-call diagnostic vocabulary across the Worker capability
+client, Supervisor relay, Main capability host, composition classifier, and
+outer Windows evidence mapper. The call path now distinguishes request write,
+Supervisor read/forward, Main decode, Main invocation start/complete/failure,
+Main response write, Supervisor response read/forward, and Worker response
+decode. The integration harness now classifies a prompt exception before
+persisting the failure stage, so a new Windows run can identify the first
+missing call boundary rather than retaining the prewritten `read-tool` label.
+
+Local evidence is green: 77 focused TypeScript/JavaScript tests, 89 Goose
+runner Rust tests, format, lint, typecheck, and `git diff --check`. This is
+diagnostic evidence only; P8.2c remains open until one exact-head Windows CI
+run reports either a verified successful runtime Artifact or the first missing
+tool-call stage for a separate minimal behavior repair.
+
 ## 2026-08-21 P8.2c Windows overlapped bridge repair (local; CI pending)
 
 Exact-head CI run

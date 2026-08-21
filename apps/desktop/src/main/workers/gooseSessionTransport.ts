@@ -43,8 +43,27 @@ export const GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES = Object.freeze([
   "windows-capability-worker-response-decoded",
 ] as const);
 
+export const GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES = Object.freeze([
+  "windows-capability-call-worker-request-written",
+  "windows-capability-call-supervisor-request-read",
+  "windows-capability-call-supervisor-request-forwarded",
+  "windows-capability-call-main-request-decoded",
+  "windows-capability-call-main-tool-invocation-started",
+  "windows-capability-call-main-tool-invocation-completed",
+  "windows-capability-call-main-response-written",
+  "windows-capability-call-supervisor-response-read",
+  "windows-capability-call-supervisor-response-forwarded",
+  "windows-capability-call-worker-response-decoded",
+] as const);
+
+export const GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES = Object.freeze([
+  "windows-capability-call-main-tool-invocation-failed",
+] as const);
+
 export type GooseWindowsCapabilityProgressStage =
-  (typeof GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES)[number];
+  | (typeof GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES)[number]
+  | (typeof GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES)[number]
+  | (typeof GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES)[number];
 
 export interface GooseWindowsCapabilityProgress {
   record(stage: GooseWindowsCapabilityProgressStage): void;
@@ -55,13 +74,25 @@ export function createGooseWindowsCapabilityProgress(): GooseWindowsCapabilityPr
   const observed = new Set<GooseWindowsCapabilityProgressStage>();
   return Object.freeze({
     record(stage: GooseWindowsCapabilityProgressStage): void {
-      if ((GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES as readonly string[]).includes(stage)) {
+      if (
+        (
+          [
+            ...GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
+            ...GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
+            ...GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES,
+          ] as readonly string[]
+        ).includes(stage)
+      ) {
         observed.add(stage);
       }
     },
     snapshot(): readonly GooseWindowsCapabilityProgressStage[] {
       return Object.freeze(
-        GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES.filter((stage) => observed.has(stage)),
+        [
+          ...GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
+          ...GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
+          ...GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES,
+        ].filter((stage) => observed.has(stage)),
       );
     },
   });

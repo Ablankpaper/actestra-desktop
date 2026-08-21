@@ -11,6 +11,8 @@ import {
 } from "./gooseAuthenticatedBridgeProtocol";
 import { toolList } from "./gooseMcpCapabilityServer";
 import {
+  GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES,
+  GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
   GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
   type GooseWindowsCapabilityProgress,
 } from "./gooseSessionTransport";
@@ -188,6 +190,7 @@ export function startGooseWindowsCapabilityBridgeHost(
       if (frame.kind === "call-request") emitError(frame.requestId, "capability-request-rejected");
       return;
     }
+    options.capabilityProgress.record(GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES[3]);
 
     let inputValue: ReturnType<typeof parseCodingToolInput>;
     try {
@@ -199,6 +202,7 @@ export function startGooseWindowsCapabilityBridgeHost(
     seenToolCallRequestIds.add(frame.requestId);
     const request: PendingRequest = { controller: new AbortController(), cancelled: false };
     pending.set(frame.requestId, request);
+    options.capabilityProgress.record(GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES[4]);
     try {
       const result: GooseMcpToolInvocationResult = await options.invokeTool({
         sessionId,
@@ -215,18 +219,33 @@ export function startGooseWindowsCapabilityBridgeHost(
       ) {
         throw new Error("invalid-tool-result");
       }
+      options.capabilityProgress.record(GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES[5]);
       pending.delete(frame.requestId);
-      writeFrame(stream, {
-        contractVersion: 1,
-        kind: "call-response",
-        requestId: frame.requestId,
-        isError: result.isError,
-        content: result.content,
-      });
+      writeFrame(
+        stream,
+        {
+          contractVersion: 1,
+          kind: "call-response",
+          requestId: frame.requestId,
+          isError: result.isError,
+          content: result.content,
+        },
+        () => options.capabilityProgress.record(GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES[6]),
+      );
     } catch {
       if (request.cancelled || closed) return;
+      options.capabilityProgress.record(GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES[0]);
       pending.delete(frame.requestId);
-      emitError(frame.requestId, "tool-execution-failed");
+      writeFrame(
+        stream,
+        {
+          contractVersion: 1,
+          kind: "capability-error",
+          requestId: frame.requestId,
+          code: "tool-execution-failed",
+        },
+        () => options.capabilityProgress.record(GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES[6]),
+      );
     }
   };
 

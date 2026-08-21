@@ -261,6 +261,46 @@ describe("Goose Windows runtime evidence", () => {
     expect(new Set(tokens).size).toBe(8);
   });
 
+  it("maps the first Windows tool-call failure stages into closed runtime tokens", () => {
+    const stages = [
+      "windows-capability-call-worker-request-write-failed",
+      "windows-capability-call-supervisor-request-read-failed",
+      "windows-capability-call-supervisor-request-forward-failed",
+      "windows-capability-call-main-request-decode-failed",
+      "windows-capability-call-main-tool-invocation-start-failed",
+      "windows-capability-call-main-tool-invocation-complete-failed",
+      "windows-capability-call-main-tool-invocation-failed",
+      "windows-capability-call-main-response-write-failed",
+      "windows-capability-call-supervisor-response-read-failed",
+      "windows-capability-call-supervisor-response-forward-failed",
+      "windows-capability-call-worker-response-decode-failed",
+    ];
+    const tokens = stages.map((stage) =>
+      classifyGooseWindowsRuntimeFailureEvidence({ contractVersion: 1, stage }),
+    );
+    expect(tokens).toEqual([
+      "windows-runtime-capability-call-worker-request-write-failed",
+      "windows-runtime-capability-call-supervisor-request-read-failed",
+      "windows-runtime-capability-call-supervisor-request-forward-failed",
+      "windows-runtime-capability-call-main-request-decode-failed",
+      "windows-runtime-capability-call-main-tool-invocation-start-failed",
+      "windows-runtime-capability-call-main-tool-invocation-complete-failed",
+      "windows-runtime-capability-call-main-tool-invocation-failed",
+      "windows-runtime-capability-call-main-response-write-failed",
+      "windows-runtime-capability-call-supervisor-response-read-failed",
+      "windows-runtime-capability-call-supervisor-response-forward-failed",
+      "windows-runtime-capability-call-worker-response-decode-failed",
+    ]);
+    expect(new Set(tokens).size).toBe(stages.length);
+    expect(
+      classifyGooseWindowsOpeningFailure({
+        name: "GooseMcpSessionCompositionError",
+        code: "windows-capability-call-main-tool-invocation-failed",
+        message: "Windows capability tool-call round trip stopped before a bounded stage",
+      }),
+    ).toBe("windows-capability-call-main-tool-invocation-failed");
+  });
+
   it("keeps each pre-launch state-directory admission stage distinct from Worker access", () => {
     const stages = [
       "windows-state-directory-layout-failed",

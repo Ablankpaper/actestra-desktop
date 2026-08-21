@@ -11,6 +11,7 @@ import {
   type GooseWindowsCapabilityBridgeHost,
 } from "../../apps/desktop/src/main/workers/gooseWindowsCapabilityBridgeHost";
 import {
+  GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
   GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
   createGooseWindowsCapabilityProgress,
 } from "../../apps/desktop/src/main/workers/gooseSessionTransport";
@@ -116,6 +117,14 @@ describe("Goose Windows Main capability bridge host", () => {
     });
     expect(callResponse).toMatchObject({ kind: "call-response", isError: false });
     expect(invokeTool).toHaveBeenCalledTimes(1);
+    expect(capabilityProgress.snapshot()).toEqual([
+      GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES[3],
+      GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES[4],
+      GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES[3],
+      GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES[4],
+      GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES[5],
+      GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES[6],
+    ]);
     await closeHost(host, worker);
   });
 
@@ -193,6 +202,44 @@ describe("Goose Windows Main capability bridge host", () => {
       }),
     ).toMatchObject({ kind: "capability-error", code: "capability-request-rejected" });
     expect(invokeTool).toHaveBeenCalledTimes(1);
+    await closeHost(host, worker);
+  });
+
+  it("records a bounded Main invocation failure before writing the error response", async () => {
+    const [main, worker] = linkedDuplexPair();
+    const capabilityProgress = createGooseWindowsCapabilityProgress();
+    const host = startGooseWindowsCapabilityBridgeHost({
+      stream: main,
+      attemptLease: LEASE,
+      invokeTool: async () => {
+        throw new Error("fixture tool failure");
+      },
+      commandIds: [],
+      testIds: [],
+      capabilityProgress,
+    });
+    host.bindSession(SESSION);
+    worker.write(encodeGooseWindowsCapabilityFrame(listRequest()));
+    await readFrame(worker);
+    worker.write(
+      encodeGooseWindowsCapabilityFrame({
+        contractVersion: 1,
+        kind: "call-request",
+        requestId: "capability-call-failed",
+        lease: LEASE,
+        sessionId: SESSION,
+        toolName: CODING_TOOL_IDS[0],
+        arguments: { contractVersion: 1, relativePath: "README.md" },
+      }),
+    );
+    expect(
+      decodeGooseWindowsCapabilityFrame(await readFrame(worker), {
+        expectedRequestId: "capability-call-failed",
+      }),
+    ).toMatchObject({ kind: "capability-error", code: "tool-execution-failed" });
+    expect(capabilityProgress.snapshot()).toContain(
+      "windows-capability-call-main-tool-invocation-failed",
+    );
     await closeHost(host, worker);
   });
 

@@ -33,6 +33,8 @@ import {
   type OpenGooseRunnerHandshakeResult,
 } from "./gooseRunnerProcess";
 import {
+  GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES,
+  GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
   GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
   resolveGooseSessionTransportMode,
   type GooseWindowsCapabilityProgress,
@@ -91,7 +93,25 @@ export type GooseMcpSessionCompositionErrorCode =
   | "model-completion-refused"
   | "model-request-rejected"
   | "tool-discovery-mismatch"
-  | GooseWindowsCapabilityProgressFailureCode;
+  | GooseWindowsCapabilityProgressFailureCode
+  | GooseWindowsCapabilityCallProgressFailureCode;
+
+export const GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_FAILURE_CODES = Object.freeze([
+  "windows-capability-call-worker-request-write-failed",
+  "windows-capability-call-supervisor-request-read-failed",
+  "windows-capability-call-supervisor-request-forward-failed",
+  "windows-capability-call-main-request-decode-failed",
+  "windows-capability-call-main-tool-invocation-start-failed",
+  "windows-capability-call-main-tool-invocation-complete-failed",
+  "windows-capability-call-main-response-write-failed",
+  "windows-capability-call-supervisor-response-read-failed",
+  "windows-capability-call-supervisor-response-forward-failed",
+  "windows-capability-call-worker-response-decode-failed",
+  "windows-capability-call-main-tool-invocation-failed",
+] as const);
+
+export type GooseWindowsCapabilityCallProgressFailureCode =
+  (typeof GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_FAILURE_CODES)[number];
 
 export const GOOSE_WINDOWS_CAPABILITY_PROGRESS_FAILURE_CODES = Object.freeze([
   "windows-capability-worker-request-write-failed",
@@ -106,6 +126,21 @@ export const GOOSE_WINDOWS_CAPABILITY_PROGRESS_FAILURE_CODES = Object.freeze([
 
 export type GooseWindowsCapabilityProgressFailureCode =
   (typeof GOOSE_WINDOWS_CAPABILITY_PROGRESS_FAILURE_CODES)[number];
+
+export function classifyGooseWindowsCapabilityCallProgressFailure(
+  observed: readonly GooseWindowsCapabilityProgressStage[],
+): GooseWindowsCapabilityCallProgressFailureCode | undefined {
+  const stages = new Set(observed);
+  if (stages.has(GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES[0])) {
+    return "windows-capability-call-main-tool-invocation-failed";
+  }
+  const firstMissing = GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES.findIndex(
+    (stage) => !stages.has(stage),
+  );
+  return firstMissing < 0
+    ? undefined
+    : GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_FAILURE_CODES[firstMissing];
+}
 
 export function classifyGooseWindowsCapabilityProgressFailure(
   observed: readonly GooseWindowsCapabilityProgressStage[],
@@ -547,14 +582,39 @@ export async function openGooseMcpSessionComposition(
       const refusedBefore = stableModelServer.refusedInferenceCount;
       const rejectedBefore = stableModelServer.rejectedRequestCount;
       const servedBefore = stableModelServer.servedInferenceCount;
-      const result = await stableRunner.prompt({
-        sessionId: session.sessionId,
-        text: promptOptions.text,
-        ...(promptOptions.timeoutMs === undefined ? {} : { timeoutMs: promptOptions.timeoutMs }),
-        ...(promptOptions.humanDecisionGate === undefined
-          ? {}
-          : { humanDecisionGate: promptOptions.humanDecisionGate }),
-      });
+      let result: GooseAcpPromptResult;
+      try {
+        result = await stableRunner.prompt({
+          sessionId: session.sessionId,
+          text: promptOptions.text,
+          ...(promptOptions.timeoutMs === undefined ? {} : { timeoutMs: promptOptions.timeoutMs }),
+          ...(promptOptions.humanDecisionGate === undefined
+            ? {}
+            : { humanDecisionGate: promptOptions.humanDecisionGate }),
+        });
+      } catch (error) {
+        if (windowsAuthenticated && windowsCapabilityProgress !== undefined) {
+          const observed = windowsCapabilityProgress.snapshot();
+          const callActivity = observed.some(
+            (stage) =>
+              (GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES as readonly string[]).includes(
+                stage,
+              ) ||
+              (GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES as readonly string[]).includes(stage),
+          );
+          const callFailure = callActivity
+            ? classifyGooseWindowsCapabilityCallProgressFailure(observed)
+            : undefined;
+          if (callFailure !== undefined) {
+            throw new GooseMcpSessionCompositionError(
+              callFailure,
+              "Windows capability tool-call round trip stopped before a bounded stage",
+              { cause: error },
+            );
+          }
+        }
+        throw error;
+      }
       // Goose reports a content-free 400 as an ordinary assistant turn, which
       // would otherwise publish as an unchanged read-only attempt. Only a turn
       // that failed without ever serving a completion is a failure; a 400 the

@@ -37,6 +37,8 @@ import {
   type GooseExecutableAuthority,
 } from "./gooseRunnerTarget";
 import {
+  GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES,
+  GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
   GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
   GOOSE_WINDOWS_STDIO_CONFIGURATION,
   createGooseWindowsCapabilityProgress,
@@ -45,6 +47,10 @@ import {
 } from "./gooseSessionTransport";
 
 export { GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES } from "./gooseSessionTransport";
+export {
+  GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES,
+  GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
+} from "./gooseSessionTransport";
 
 const MAX_STDOUT_LINE_BYTES = 64 * 1024;
 const MAX_STDERR_BYTES = 256 * 1024;
@@ -548,7 +554,11 @@ export function createGooseRunnerResourceFailureMatcher(): GooseRunnerResourceFa
 }
 
 export function createGooseWindowsCapabilityProgressMatcher(): GooseWindowsCapabilityProgressMatcher {
-  const matchers = GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES.map(
+  const matchers = [
+    ...GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
+    ...GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
+    ...GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES,
+  ].map(
     (stage) =>
       [stage, createGooseRunnerFixedMarkerMatcher(windowsCapabilityProgressMarker(stage))] as const,
   );

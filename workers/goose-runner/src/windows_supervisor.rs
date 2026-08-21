@@ -3555,6 +3555,8 @@ fn verify_worker_boundary() -> bool {
 const WORKER_REQUEST_WRITTEN_PROGRESS: &[u8] =
     b"Goose windows capability progress at bounded stage windows-capability-worker-request-written";
 const WORKER_RESPONSE_DECODED_PROGRESS: &[u8] = b"Goose windows capability progress at bounded stage windows-capability-worker-response-decoded";
+const WORKER_CALL_REQUEST_WRITTEN_PROGRESS: &[u8] = b"Goose windows capability progress at bounded stage windows-capability-call-worker-request-written";
+const WORKER_CALL_RESPONSE_DECODED_PROGRESS: &[u8] = b"Goose windows capability progress at bounded stage windows-capability-call-worker-response-decoded";
 
 fn worker_capability_progress_line(line: &[u8]) -> Option<&'static str> {
     match line {
@@ -3563,6 +3565,12 @@ fn worker_capability_progress_line(line: &[u8]) -> Option<&'static str> {
         }
         value if value == WORKER_RESPONSE_DECODED_PROGRESS => {
             Some("windows-capability-worker-response-decoded")
+        }
+        value if value == WORKER_CALL_REQUEST_WRITTEN_PROGRESS => {
+            Some("windows-capability-call-worker-request-written")
+        }
+        value if value == WORKER_CALL_RESPONSE_DECODED_PROGRESS => {
+            Some("windows-capability-call-worker-response-decoded")
         }
         _ => None,
     }
@@ -4101,6 +4109,18 @@ mod tests {
                 b"Goose windows capability progress at bounded stage windows-capability-worker-response-decoded"
             ),
             Some("windows-capability-worker-response-decoded")
+        );
+        assert_eq!(
+            worker_capability_progress_line(
+                b"Goose windows capability progress at bounded stage windows-capability-call-worker-request-written"
+            ),
+            Some("windows-capability-call-worker-request-written")
+        );
+        assert_eq!(
+            worker_capability_progress_line(
+                b"Goose windows capability progress at bounded stage windows-capability-call-worker-response-decoded"
+            ),
+            Some("windows-capability-call-worker-response-decoded")
         );
         assert_eq!(
             worker_capability_progress_line(b"C:\\private\\secret"),

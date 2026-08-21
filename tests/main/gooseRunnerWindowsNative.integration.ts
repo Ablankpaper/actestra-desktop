@@ -497,9 +497,16 @@ describe.skipIf(!nativeEnabled)("native Windows Goose authenticated runtime comp
         opened.info.agentVersion === sourceContract.goose.version;
       exactToolCount = opened.toolNames.length;
       await markFailure("read-tool");
-      await expect(
-        opened.prompt({ text: "Read answer.txt and acknowledge the result.", timeoutMs: 30_000 }),
-      ).resolves.toMatchObject({ stopReason: "end_turn" });
+      try {
+        const result = await opened.prompt({
+          text: "Read answer.txt and acknowledge the result.",
+          timeoutMs: 30_000,
+        });
+        expect(result).toMatchObject({ stopReason: "end_turn" });
+      } catch (error) {
+        await markFailure(classifyGooseWindowsOpeningFailure(error));
+        throw error;
+      }
       await markFailure("approved-write-tool");
       await expect(
         opened.prompt({ text: "Write the approved acceptance file.", timeoutMs: 30_000 }),

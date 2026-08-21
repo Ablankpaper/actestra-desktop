@@ -359,14 +359,24 @@ pub(crate) struct WindowsCapabilityClient {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum CapabilityClientProgress {
-    RequestWritten,
-    ResponseDecoded,
+    ListRequestWritten,
+    ListResponseDecoded,
+    CallRequestWritten,
+    CallResponseDecoded,
 }
 
 fn capability_client_progress_code(stage: CapabilityClientProgress) -> &'static str {
     match stage {
-        CapabilityClientProgress::RequestWritten => "windows-capability-worker-request-written",
-        CapabilityClientProgress::ResponseDecoded => "windows-capability-worker-response-decoded",
+        CapabilityClientProgress::ListRequestWritten => "windows-capability-worker-request-written",
+        CapabilityClientProgress::ListResponseDecoded => {
+            "windows-capability-worker-response-decoded"
+        }
+        CapabilityClientProgress::CallRequestWritten => {
+            "windows-capability-call-worker-request-written"
+        }
+        CapabilityClientProgress::CallResponseDecoded => {
+            "windows-capability-call-worker-response-decoded"
+        }
     }
 }
 
@@ -444,7 +454,17 @@ impl WindowsCapabilityClient {
         request: CapabilityFrame,
         cancel_token: CancellationToken,
     ) -> Result<CapabilityFrame, ServiceError> {
-        let reports_list_progress = matches!(&request, CapabilityFrame::ListRequest { .. });
+        let progress = match &request {
+            CapabilityFrame::ListRequest { .. } => (
+                CapabilityClientProgress::ListRequestWritten,
+                CapabilityClientProgress::ListResponseDecoded,
+            ),
+            CapabilityFrame::CallRequest { .. } => (
+                CapabilityClientProgress::CallRequestWritten,
+                CapabilityClientProgress::CallResponseDecoded,
+            ),
+            _ => return Err(ServiceError::TransportClosed),
+        };
         let encoded =
             encode_capability_frame(&request).map_err(|_| ServiceError::TransportClosed)?;
         let session_id = self
@@ -467,9 +487,7 @@ impl WindowsCapabilityClient {
             cancellation.disarm();
             return Err(ServiceError::TransportClosed);
         }
-        if reports_list_progress {
-            report_capability_client_progress(CapabilityClientProgress::RequestWritten);
-        }
+        report_capability_client_progress(progress.0);
         let read_result = tokio::select! {
             _ = cancel_token.cancelled() => {
                 cancel_capability_request(&mut state, request_id, &self.lease).await;
@@ -505,8 +523,17 @@ impl WindowsCapabilityClient {
             cancellation.disarm();
             return Err(ServiceError::TransportClosed);
         }
-        if reports_list_progress && matches!(&response, CapabilityFrame::ListResponse { .. }) {
-            report_capability_client_progress(CapabilityClientProgress::ResponseDecoded);
+        if matches!(
+            (&progress.1, &response),
+            (
+                CapabilityClientProgress::ListResponseDecoded,
+                CapabilityFrame::ListResponse { .. }
+            ) | (
+                CapabilityClientProgress::CallResponseDecoded,
+                CapabilityFrame::CallResponse { .. }
+            )
+        ) {
+            report_capability_client_progress(progress.1);
         }
         cancellation.disarm();
         match response {
@@ -856,12 +883,20 @@ mod tests {
     #[test]
     fn capability_client_progress_vocabulary_is_fixed_and_bounded() {
         assert_eq!(
-            capability_client_progress_code(CapabilityClientProgress::RequestWritten),
+            capability_client_progress_code(CapabilityClientProgress::ListRequestWritten),
             "windows-capability-worker-request-written"
         );
         assert_eq!(
-            capability_client_progress_code(CapabilityClientProgress::ResponseDecoded),
+            capability_client_progress_code(CapabilityClientProgress::ListResponseDecoded),
             "windows-capability-worker-response-decoded"
+        );
+        assert_eq!(
+            capability_client_progress_code(CapabilityClientProgress::CallRequestWritten),
+            "windows-capability-call-worker-request-written"
+        );
+        assert_eq!(
+            capability_client_progress_code(CapabilityClientProgress::CallResponseDecoded),
+            "windows-capability-call-worker-response-decoded"
         );
     }
 
