@@ -87,6 +87,26 @@ const FAILURE_STAGE_CODES = Object.freeze({
   "windows-worker-capability-bridge-failed": "windows-runtime-worker-capability-bridge-failed",
   "windows-worker-model-bridge-failed": "windows-runtime-worker-model-bridge-failed",
   "windows-worker-state-directory-failed": "windows-runtime-worker-state-directory-failed",
+  "windows-worker-state-directory-layout-failed":
+    "windows-runtime-worker-state-directory-layout-failed",
+  "windows-worker-state-directory-root-metadata-failed":
+    "windows-runtime-worker-state-directory-root-metadata-failed",
+  "windows-worker-state-directory-root-canonicalize-failed":
+    "windows-runtime-worker-state-directory-root-canonicalize-failed",
+  "windows-worker-state-directory-data-metadata-failed":
+    "windows-runtime-worker-state-directory-data-metadata-failed",
+  "windows-worker-state-directory-data-create-failed":
+    "windows-runtime-worker-state-directory-data-create-failed",
+  "windows-worker-state-directory-data-canonicalize-failed":
+    "windows-runtime-worker-state-directory-data-canonicalize-failed",
+  "windows-worker-state-directory-config-metadata-failed":
+    "windows-runtime-worker-state-directory-config-metadata-failed",
+  "windows-worker-state-directory-config-create-failed":
+    "windows-runtime-worker-state-directory-config-create-failed",
+  "windows-worker-state-directory-config-canonicalize-failed":
+    "windows-runtime-worker-state-directory-config-canonicalize-failed",
+  "windows-worker-state-directory-traversal-shape-invalid":
+    "windows-runtime-worker-state-directory-traversal-shape-invalid",
   "windows-worker-ready-signal-failed": "windows-runtime-worker-ready-signal-failed",
   "windows-worker-acp-handshake-failed": "windows-runtime-worker-acp-handshake-failed",
   "test-child-spawn": "windows-runtime-test-child-spawn-failed",
@@ -201,6 +221,16 @@ const WINDOWS_WORKER_STARTUP_STAGES = Object.freeze([
   "windows-worker-capability-bridge-failed",
   "windows-worker-model-bridge-failed",
   "windows-worker-state-directory-failed",
+  "windows-worker-state-directory-layout-failed",
+  "windows-worker-state-directory-root-metadata-failed",
+  "windows-worker-state-directory-root-canonicalize-failed",
+  "windows-worker-state-directory-data-metadata-failed",
+  "windows-worker-state-directory-data-create-failed",
+  "windows-worker-state-directory-data-canonicalize-failed",
+  "windows-worker-state-directory-config-metadata-failed",
+  "windows-worker-state-directory-config-create-failed",
+  "windows-worker-state-directory-config-canonicalize-failed",
+  "windows-worker-state-directory-traversal-shape-invalid",
   "windows-worker-ready-signal-failed",
   "windows-worker-acp-handshake-failed",
 ]);

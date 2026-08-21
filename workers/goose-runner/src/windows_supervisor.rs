@@ -19,6 +19,29 @@ const EXIT_STATE_DIRECTORY_FAILED: i32 = 114;
 const EXIT_READY_SIGNAL_FAILED: i32 = 115;
 #[cfg(any(windows, test))]
 const EXIT_ACP_HANDSHAKE_FAILED: i32 = 116;
+// Per-operation state-directory prepare exit codes; each maps to a distinct
+// WorkerStartupFailure::StateDirectoryPrepare variant so CI can pinpoint the
+// exact filesystem call that fails under AppContainer.
+#[cfg(any(windows, test))]
+const EXIT_STATE_DIRECTORY_LAYOUT_FAILED: i32 = 117;
+#[cfg(any(windows, test))]
+const EXIT_STATE_DIRECTORY_ROOT_METADATA_FAILED: i32 = 118;
+#[cfg(any(windows, test))]
+const EXIT_STATE_DIRECTORY_ROOT_CANONICALIZE_FAILED: i32 = 119;
+#[cfg(any(windows, test))]
+const EXIT_STATE_DIRECTORY_DATA_METADATA_FAILED: i32 = 120;
+#[cfg(any(windows, test))]
+const EXIT_STATE_DIRECTORY_DATA_CREATE_FAILED: i32 = 121;
+#[cfg(any(windows, test))]
+const EXIT_STATE_DIRECTORY_DATA_CANONICALIZE_FAILED: i32 = 122;
+#[cfg(any(windows, test))]
+const EXIT_STATE_DIRECTORY_CONFIG_METADATA_FAILED: i32 = 123;
+#[cfg(any(windows, test))]
+const EXIT_STATE_DIRECTORY_CONFIG_CREATE_FAILED: i32 = 124;
+#[cfg(any(windows, test))]
+const EXIT_STATE_DIRECTORY_CONFIG_CANONICALIZE_FAILED: i32 = 125;
+#[cfg(any(windows, test))]
+const EXIT_STATE_DIRECTORY_TRAVERSAL_SHAPE_FAILED: i32 = 126;
 
 #[cfg(windows)]
 use crate::containment::windows_contract::{
@@ -36,7 +59,7 @@ use crate::windows_model_bridge::WindowsModelProvider;
 #[cfg(windows)]
 const WINDOWS_WORKER_READY_MARKER: &[u8] = b"ACTESTRA_GOOSE_WINDOWS_WORKER_READY\n";
 #[cfg(any(windows, test))]
-const WINDOWS_RUNTIME_FAILURE_CODES: [&str; 32] = [
+const WINDOWS_RUNTIME_FAILURE_CODES: [&str; 42] = [
     "windows-control-channel-invalid",
     "windows-ready-channel-invalid",
     "windows-capability-channel-invalid",
@@ -67,6 +90,16 @@ const WINDOWS_RUNTIME_FAILURE_CODES: [&str; 32] = [
     "windows-worker-capability-bridge-failed",
     "windows-worker-model-bridge-failed",
     "windows-worker-state-directory-failed",
+    "windows-worker-state-directory-layout-failed",
+    "windows-worker-state-directory-root-metadata-failed",
+    "windows-worker-state-directory-root-canonicalize-failed",
+    "windows-worker-state-directory-data-metadata-failed",
+    "windows-worker-state-directory-data-create-failed",
+    "windows-worker-state-directory-data-canonicalize-failed",
+    "windows-worker-state-directory-config-metadata-failed",
+    "windows-worker-state-directory-config-create-failed",
+    "windows-worker-state-directory-config-canonicalize-failed",
+    "windows-worker-state-directory-traversal-shape-invalid",
     "windows-worker-ready-signal-failed",
     "windows-worker-acp-handshake-failed",
 ];
@@ -712,7 +745,7 @@ enum AnonymousPipeTestChildFailure {
     Runtime,
     Channel,
     StateDirectory,
-    StateDirectoryPrepare,
+    StateDirectoryPrepare(StateDirectoryPrepareFailure),
     StateDirectoryDataWrite,
     StateDirectoryDataRead,
     StateDirectoryDataRemove,
@@ -736,7 +769,7 @@ impl AnonymousPipeTestChildFailure {
             Self::Channel => 202,
             Self::StateDirectory => 208,
             Self::RootWriteAllowed => 209,
-            Self::StateDirectoryPrepare => 210,
+            Self::StateDirectoryPrepare(variant) => variant.test_child_exit_code(),
             Self::StateDirectoryDataWrite => 211,
             Self::StateDirectoryDataRead => 212,
             Self::StateDirectoryDataRemove => 213,
@@ -756,7 +789,7 @@ impl AnonymousPipeTestChildFailure {
             Self::Runtime => "test-child-runtime-failed",
             Self::Channel => "test-child-channel-invalid",
             Self::StateDirectory => "test-child-state-directory-failed",
-            Self::StateDirectoryPrepare => "test-child-state-directory-prepare-failed",
+            Self::StateDirectoryPrepare(variant) => variant.code(),
             Self::StateDirectoryDataWrite => "test-child-state-directory-data-write-failed",
             Self::StateDirectoryDataRead => "test-child-state-directory-data-read-failed",
             Self::StateDirectoryDataRemove => "test-child-state-directory-data-remove-failed",
@@ -781,7 +814,36 @@ fn classify_anonymous_pipe_test_child_exit(exit_code: u32) -> AnonymousPipeTestC
         202 => AnonymousPipeTestChildFailure::Channel,
         208 => AnonymousPipeTestChildFailure::StateDirectory,
         209 => AnonymousPipeTestChildFailure::RootWriteAllowed,
-        210 => AnonymousPipeTestChildFailure::StateDirectoryPrepare,
+        220 => AnonymousPipeTestChildFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::Layout,
+        ),
+        221 => AnonymousPipeTestChildFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::RootMetadata,
+        ),
+        222 => AnonymousPipeTestChildFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::RootCanonicalize,
+        ),
+        223 => AnonymousPipeTestChildFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::DataMetadata,
+        ),
+        224 => AnonymousPipeTestChildFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::DataCreate,
+        ),
+        225 => AnonymousPipeTestChildFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::DataCanonicalize,
+        ),
+        226 => AnonymousPipeTestChildFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::ConfigMetadata,
+        ),
+        227 => AnonymousPipeTestChildFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::ConfigCreate,
+        ),
+        228 => AnonymousPipeTestChildFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::ConfigCanonicalize,
+        ),
+        229 => AnonymousPipeTestChildFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::TraversalShape,
+        ),
         211 => AnonymousPipeTestChildFailure::StateDirectoryDataWrite,
         212 => AnonymousPipeTestChildFailure::StateDirectoryDataRead,
         213 => AnonymousPipeTestChildFailure::StateDirectoryDataRemove,
@@ -810,6 +872,7 @@ enum WorkerStartupFailure {
     CapabilityBridge,
     ModelBridge,
     StateDirectory,
+    StateDirectoryPrepare(StateDirectoryPrepareFailure),
     ReadySignal,
     AcpHandshake,
     Unknown,
@@ -874,6 +937,34 @@ fn classify_worker_startup_exit(exit_code: u32) -> WorkerStartupFailure {
         108 => WorkerStartupFailure::CapabilityBridge,
         113 => WorkerStartupFailure::ModelBridge,
         114 => WorkerStartupFailure::StateDirectory,
+        117 => WorkerStartupFailure::StateDirectoryPrepare(StateDirectoryPrepareFailure::Layout),
+        118 => {
+            WorkerStartupFailure::StateDirectoryPrepare(StateDirectoryPrepareFailure::RootMetadata)
+        }
+        119 => WorkerStartupFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::RootCanonicalize,
+        ),
+        120 => {
+            WorkerStartupFailure::StateDirectoryPrepare(StateDirectoryPrepareFailure::DataMetadata)
+        }
+        121 => {
+            WorkerStartupFailure::StateDirectoryPrepare(StateDirectoryPrepareFailure::DataCreate)
+        }
+        122 => WorkerStartupFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::DataCanonicalize,
+        ),
+        123 => WorkerStartupFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::ConfigMetadata,
+        ),
+        124 => {
+            WorkerStartupFailure::StateDirectoryPrepare(StateDirectoryPrepareFailure::ConfigCreate)
+        }
+        125 => WorkerStartupFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::ConfigCanonicalize,
+        ),
+        126 => WorkerStartupFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::TraversalShape,
+        ),
         115 => WorkerStartupFailure::ReadySignal,
         116 => WorkerStartupFailure::AcpHandshake,
         _ => WorkerStartupFailure::Unknown,
@@ -890,6 +981,18 @@ impl WorkerStartupFailure {
             Self::CapabilityBridge => 54,
             Self::ModelBridge => 59,
             Self::StateDirectory => 60,
+            Self::StateDirectoryPrepare(variant) => match variant {
+                StateDirectoryPrepareFailure::Layout => 77,
+                StateDirectoryPrepareFailure::RootMetadata => 78,
+                StateDirectoryPrepareFailure::RootCanonicalize => 79,
+                StateDirectoryPrepareFailure::DataMetadata => 80,
+                StateDirectoryPrepareFailure::DataCreate => 81,
+                StateDirectoryPrepareFailure::DataCanonicalize => 82,
+                StateDirectoryPrepareFailure::ConfigMetadata => 83,
+                StateDirectoryPrepareFailure::ConfigCreate => 84,
+                StateDirectoryPrepareFailure::ConfigCanonicalize => 85,
+                StateDirectoryPrepareFailure::TraversalShape => 86,
+            },
             Self::ReadySignal => 61,
             Self::AcpHandshake => 62,
             Self::Unknown => 46,
@@ -904,6 +1007,7 @@ impl WorkerStartupFailure {
             Self::CapabilityBridge => "windows-worker-capability-bridge-failed",
             Self::ModelBridge => "windows-worker-model-bridge-failed",
             Self::StateDirectory => "windows-worker-state-directory-failed",
+            Self::StateDirectoryPrepare(variant) => variant.worker_runtime_code(),
             Self::ReadySignal => "windows-worker-ready-signal-failed",
             Self::AcpHandshake => "windows-worker-acp-handshake-failed",
             Self::Unknown => "windows-worker-runtime-failed",
@@ -2887,7 +2991,7 @@ pub(crate) fn run_worker_with_arguments(_arguments: &[String]) -> i32 {
                         "Goose windows containment failed at bounded stage {}",
                         failure.code()
                     );
-                    EXIT_STATE_DIRECTORY_FAILED
+                    failure.worker_exit_code()
                 })?;
             let adapter = goose::acp::server::AcpRuntimeAdapter {
                 provider_id: "actestra".to_string(),
@@ -2968,6 +3072,52 @@ impl StateDirectoryPrepareFailure {
             Self::ConfigCreate => "windows-state-directory-config-create-failed",
             Self::ConfigCanonicalize => "windows-state-directory-config-canonicalize-failed",
             Self::TraversalShape => "windows-state-directory-traversal-shape-invalid",
+        }
+    }
+
+    fn worker_exit_code(self) -> i32 {
+        match self {
+            Self::Layout => EXIT_STATE_DIRECTORY_LAYOUT_FAILED,
+            Self::RootMetadata => EXIT_STATE_DIRECTORY_ROOT_METADATA_FAILED,
+            Self::RootCanonicalize => EXIT_STATE_DIRECTORY_ROOT_CANONICALIZE_FAILED,
+            Self::DataMetadata => EXIT_STATE_DIRECTORY_DATA_METADATA_FAILED,
+            Self::DataCreate => EXIT_STATE_DIRECTORY_DATA_CREATE_FAILED,
+            Self::DataCanonicalize => EXIT_STATE_DIRECTORY_DATA_CANONICALIZE_FAILED,
+            Self::ConfigMetadata => EXIT_STATE_DIRECTORY_CONFIG_METADATA_FAILED,
+            Self::ConfigCreate => EXIT_STATE_DIRECTORY_CONFIG_CREATE_FAILED,
+            Self::ConfigCanonicalize => EXIT_STATE_DIRECTORY_CONFIG_CANONICALIZE_FAILED,
+            Self::TraversalShape => EXIT_STATE_DIRECTORY_TRAVERSAL_SHAPE_FAILED,
+        }
+    }
+
+    fn worker_runtime_code(self) -> &'static str {
+        match self {
+            Self::Layout => "windows-worker-state-directory-layout-failed",
+            Self::RootMetadata => "windows-worker-state-directory-root-metadata-failed",
+            Self::RootCanonicalize => "windows-worker-state-directory-root-canonicalize-failed",
+            Self::DataMetadata => "windows-worker-state-directory-data-metadata-failed",
+            Self::DataCreate => "windows-worker-state-directory-data-create-failed",
+            Self::DataCanonicalize => "windows-worker-state-directory-data-canonicalize-failed",
+            Self::ConfigMetadata => "windows-worker-state-directory-config-metadata-failed",
+            Self::ConfigCreate => "windows-worker-state-directory-config-create-failed",
+            Self::ConfigCanonicalize => "windows-worker-state-directory-config-canonicalize-failed",
+            Self::TraversalShape => "windows-worker-state-directory-traversal-shape-invalid",
+        }
+    }
+
+    #[cfg(test)]
+    fn test_child_exit_code(self) -> i32 {
+        match self {
+            Self::Layout => 220,
+            Self::RootMetadata => 221,
+            Self::RootCanonicalize => 222,
+            Self::DataMetadata => 223,
+            Self::DataCreate => 224,
+            Self::DataCanonicalize => 225,
+            Self::ConfigMetadata => 226,
+            Self::ConfigCreate => 227,
+            Self::ConfigCanonicalize => 228,
+            Self::TraversalShape => 229,
         }
     }
 }
@@ -4154,7 +4304,7 @@ mod tests {
 
     #[test]
     fn keeps_runtime_failure_codes_closed_and_sanitized() {
-        assert_eq!(WINDOWS_RUNTIME_FAILURE_CODES.len(), 32);
+        assert_eq!(WINDOWS_RUNTIME_FAILURE_CODES.len(), 42);
         let mut unique = WINDOWS_RUNTIME_FAILURE_CODES.to_vec();
         unique.sort_unstable();
         unique.dedup();
@@ -4194,6 +4344,46 @@ mod tests {
             (
                 EXIT_STATE_DIRECTORY_FAILED,
                 "windows-worker-state-directory-failed",
+            ),
+            (
+                EXIT_STATE_DIRECTORY_LAYOUT_FAILED,
+                "windows-worker-state-directory-layout-failed",
+            ),
+            (
+                EXIT_STATE_DIRECTORY_ROOT_METADATA_FAILED,
+                "windows-worker-state-directory-root-metadata-failed",
+            ),
+            (
+                EXIT_STATE_DIRECTORY_ROOT_CANONICALIZE_FAILED,
+                "windows-worker-state-directory-root-canonicalize-failed",
+            ),
+            (
+                EXIT_STATE_DIRECTORY_DATA_METADATA_FAILED,
+                "windows-worker-state-directory-data-metadata-failed",
+            ),
+            (
+                EXIT_STATE_DIRECTORY_DATA_CREATE_FAILED,
+                "windows-worker-state-directory-data-create-failed",
+            ),
+            (
+                EXIT_STATE_DIRECTORY_DATA_CANONICALIZE_FAILED,
+                "windows-worker-state-directory-data-canonicalize-failed",
+            ),
+            (
+                EXIT_STATE_DIRECTORY_CONFIG_METADATA_FAILED,
+                "windows-worker-state-directory-config-metadata-failed",
+            ),
+            (
+                EXIT_STATE_DIRECTORY_CONFIG_CREATE_FAILED,
+                "windows-worker-state-directory-config-create-failed",
+            ),
+            (
+                EXIT_STATE_DIRECTORY_CONFIG_CANONICALIZE_FAILED,
+                "windows-worker-state-directory-config-canonicalize-failed",
+            ),
+            (
+                EXIT_STATE_DIRECTORY_TRAVERSAL_SHAPE_FAILED,
+                "windows-worker-state-directory-traversal-shape-invalid",
             ),
             (
                 EXIT_READY_SIGNAL_FAILED,
@@ -4332,7 +4522,16 @@ mod tests {
             (201, "test-child-runtime-failed"),
             (202, "test-child-channel-invalid"),
             (208, "test-child-state-directory-failed"),
-            (210, "test-child-state-directory-prepare-failed"),
+            (220, "windows-state-directory-layout-failed"),
+            (221, "windows-state-directory-root-metadata-failed"),
+            (222, "windows-state-directory-root-canonicalize-failed"),
+            (223, "windows-state-directory-data-metadata-failed"),
+            (224, "windows-state-directory-data-create-failed"),
+            (225, "windows-state-directory-data-canonicalize-failed"),
+            (226, "windows-state-directory-config-metadata-failed"),
+            (227, "windows-state-directory-config-create-failed"),
+            (228, "windows-state-directory-config-canonicalize-failed"),
+            (229, "windows-state-directory-traversal-shape-invalid"),
             (211, "test-child-state-directory-data-write-failed"),
             (212, "test-child-state-directory-data-read-failed"),
             (213, "test-child-state-directory-data-remove-failed"),
@@ -4581,10 +4780,13 @@ mod tests {
             SupervisorFailureStage::StateDirectoryAdmission(
                 StateDirectoryAdmissionFailure::IntegrityLabel,
             ),
+            SupervisorFailureStage::WorkerStartup(WorkerStartupFailure::StateDirectoryPrepare(
+                StateDirectoryPrepareFailure::RootMetadata,
+            )),
         ];
         assert_eq!(
             stages.map(SupervisorFailureStage::diagnostic_exit_code),
-            [10, 11, 12, 13, 14, 32, 15, 16, 17, 18, 19, 46, 63, 64, 65, 66, 67, 68]
+            [10, 11, 12, 13, 14, 32, 15, 16, 17, 18, 19, 46, 63, 64, 65, 66, 67, 68, 78]
         );
     }
 
@@ -4832,7 +5034,9 @@ mod windows_native_tests {
                     "Goose windows containment failed at bounded stage {}",
                     failure.code()
                 );
-                return Err(AnonymousPipeTestChildFailure::StateDirectoryPrepare);
+                return Err(AnonymousPipeTestChildFailure::StateDirectoryPrepare(
+                    failure,
+                ));
             }
         };
         let data_probe = data_dir.join("appcontainer-state-data.txt");

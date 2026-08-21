@@ -2,6 +2,23 @@
 
 Last updated: 2026-08-21
 
+## 2026-08-21 P8.2c per-operation Worker-side prepare exit codes (local; CI pending)
+
+The CI run for `2db6192` confirmed the diagnostic chain was not closed end-to-end. The Worker returned `EXIT_STATE_DIRECTORY_FAILED` (114) for all 10 `StateDirectoryPrepareFailure` variants, so the Supervisor could only report `windows-worker-state-directory-failed` regardless of which operation failed. The test child also exited with the single code 210 for all prepare failures. The JS closed-set lists in `gooseRunnerProcess.ts`, `gooseWindowsRuntimeEvidence.mjs`, and `gooseContainmentDiagnostics.test.mjs` were not updated.
+
+This follow-up closes the full cross-layer chain:
+
+- `StateDirectoryPrepareFailure` gains `worker_exit_code()` (117–126), `worker_runtime_code()` (10 distinct `windows-worker-state-directory-*` codes), and `test_child_exit_code()` (220–229).
+- `WorkerStartupFailure` gains `StateDirectoryPrepare(StateDirectoryPrepareFailure)`. Worker now exits with the per-variant code via `failure.worker_exit_code()`.
+- `classify_worker_startup_exit` decodes Worker exit codes 117–126 to the correct `StateDirectoryPrepare` variant.
+- `WINDOWS_RUNTIME_FAILURE_CODES` expanded from 32 → 42 entries.
+- `AnonymousPipeTestChildFailure::StateDirectoryPrepare` now carries the variant; test child exits with codes 220–229; `classify_anonymous_pipe_test_child_exit` decodes all 10.
+- `GOOSE_WINDOWS_SUPERVISOR_FAILURE_STAGES` and `GOOSE_WINDOWS_WORKER_STARTUP_STAGES` in `gooseRunnerProcess.ts`, `WINDOWS_WORKER_STARTUP_STAGES` in `gooseWindowsRuntimeEvidence.mjs`, `FAILURE_STAGE_CODES`, `GOOSE_CONTAINMENT_PROBE_DIAGNOSTIC_CODES`, and the explicit test list in `gooseContainmentDiagnostics.test.mjs` all updated.
+
+No ACL scope, workspace, network, credential, capability, retry, or Renderer authority changed.
+
+Local evidence: `cargo fmt --all --check` clean, 84/84 Rust tests, 58/58 JS evidence tests, `bun run check` gate passes. The next Windows CI run will emit one of the 10 `windows-worker-state-directory-*-failed` tokens identifying the exact filesystem call that fails under AppContainer. P8.2c remains open pending that CI result.
+
 ## 2026-08-21 P8.2c per-operation prepare-stage exit codes (local; CI pending)
 
 The latest exact-head CI evidence is run
