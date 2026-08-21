@@ -5,7 +5,7 @@ use std::fmt;
 
 pub(crate) const WINDOWS_CONTROL_MAX_BYTES: usize = 32 * 1024;
 
-const CONTROL_KEYS: [&str; 10] = [
+const CONTROL_KEYS: [&str; 11] = [
     "attemptId",
     "attemptLease",
     "contractVersion",
@@ -13,6 +13,7 @@ const CONTROL_KEYS: [&str; 10] = [
     "modelAttemptLease",
     "modelId",
     "privateRoot",
+    "privateRootTraversalRoot",
     "resourceBudget",
     "targetTriple",
     "worktreeRoot",
@@ -128,6 +129,7 @@ pub(crate) struct WindowsControlMessage {
     pub(crate) model_attempt_lease: String,
     pub(crate) model_id: String,
     pub(crate) private_root: String,
+    pub(crate) private_root_traversal_root: String,
     pub(crate) resource_budget: WindowsResourceBudget,
     pub(crate) target_triple: String,
     pub(crate) worktree_root: String,
@@ -275,6 +277,23 @@ fn is_windows_drive_path(value: &str) -> bool {
     })
 }
 
+fn has_exact_two_descendant_components(root: &str, candidate: &str) -> bool {
+    if root.len() >= candidate.len()
+        || !candidate
+            .get(..root.len())
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case(root))
+        || candidate.as_bytes().get(root.len()) != Some(&b'\\')
+    {
+        return false;
+    }
+    let relative = &candidate[root.len() + 1..];
+    let mut components = relative.split('\\');
+    matches!(
+        (components.next(), components.next(), components.next()),
+        (Some(first), Some(second), None) if !first.is_empty() && !second.is_empty()
+    )
+}
+
 fn parse_resource_budget(value: &Value) -> Result<WindowsResourceBudget, ()> {
     let object = value.as_object().ok_or(())?;
     if !has_exact_keys(object, &RESOURCE_BUDGET_KEYS) {
@@ -338,6 +357,7 @@ pub(crate) fn parse_control_message(input: &[u8]) -> Result<WindowsControlMessag
     let model_attempt_lease = exact_string(object, "modelAttemptLease", 256)?;
     let model_id = exact_string(object, "modelId", 256)?;
     let private_root = exact_string(object, "privateRoot", 4096)?;
+    let private_root_traversal_root = exact_string(object, "privateRootTraversalRoot", 4096)?;
     let target_triple = exact_string(object, "targetTriple", 64)?;
     let worktree_root = exact_string(object, "worktreeRoot", 4096)?;
     if !is_lower_hex(&attempt_id, 32)
@@ -347,6 +367,8 @@ pub(crate) fn parse_control_message(input: &[u8]) -> Result<WindowsControlMessag
         || model_attempt_lease == attempt_lease
         || model_id.chars().any(char::is_control)
         || !is_windows_drive_path(&private_root)
+        || !is_windows_drive_path(&private_root_traversal_root)
+        || !has_exact_two_descendant_components(&private_root_traversal_root, &private_root)
         || target_triple != "x86_64-pc-windows-msvc"
         || !is_windows_drive_path(&worktree_root)
         || private_root.eq_ignore_ascii_case(&worktree_root)
@@ -360,6 +382,7 @@ pub(crate) fn parse_control_message(input: &[u8]) -> Result<WindowsControlMessag
         model_attempt_lease,
         model_id,
         private_root,
+        private_root_traversal_root,
         resource_budget: parse_resource_budget(object.get("resourceBudget").ok_or(())?)?,
         target_triple,
         worktree_root,
@@ -387,6 +410,7 @@ pub(crate) fn serialize_control_message(message: &WindowsControlMessage) -> Resu
         "modelAttemptLease": message.model_attempt_lease,
         "modelId": message.model_id,
         "privateRoot": message.private_root,
+        "privateRootTraversalRoot": message.private_root_traversal_root,
         "resourceBudget": {
             "maxActiveDurationMs": message.resource_budget.max_active_duration_ms,
             "maxChildProcesses": message.resource_budget.max_child_processes,
@@ -432,6 +456,7 @@ mod tests {
             "modelAttemptLease": "model_0123456789abcdef0123456789abcdef",
             "modelId": "test-model",
             "privateRoot": "C:\\Actestra\\attempts\\one",
+            "privateRootTraversalRoot": "C:\\Actestra",
             "resourceBudget": {
                 "maxActiveDurationMs": 1_800_000,
                 "maxChildProcesses": 0,
@@ -548,6 +573,26 @@ mod tests {
             br#"{"attemptId":"0123456789abcdef0123456789abcdef","attemptId":"fedcba9876543210fedcba9876543210"}"#
         )
         .is_err());
+    }
+
+    #[test]
+    fn requires_the_private_root_to_have_exactly_two_admitted_ancestor_components() {
+        assert!(has_exact_two_descendant_components(
+            r"C:\Actestra",
+            r"C:\Actestra\goose-private\goose-attempt"
+        ));
+        assert!(!has_exact_two_descendant_components(
+            r"C:\Actestra",
+            r"C:\Actestra\goose-attempt"
+        ));
+        assert!(!has_exact_two_descendant_components(
+            r"C:\Actestra",
+            r"C:\Actestra\goose-private\nested\goose-attempt"
+        ));
+        assert!(!has_exact_two_descendant_components(
+            r"D:\Actestra",
+            r"C:\Actestra\goose-private\goose-attempt"
+        ));
     }
 
     #[test]

@@ -120,7 +120,11 @@ describe("Windows Goose runner bridge contract", () => {
     expect(typeof encode).toBe("function");
     if (encode === undefined) return;
 
-    const privateRoot = path.resolve("/tmp/actestra-goose-windows-control");
+    const privateRoot = path.resolve(
+      "/tmp/actestra-goose-windows-control",
+      "goose-private",
+      "goose-attempt",
+    );
     const options: GooseAcpSpawnOptions = Object.freeze({
       executablePath: path.join(privateRoot, "bin", "actestra-goose-runner.exe"),
       executableAuthority: "windows-supervisor",
@@ -153,6 +157,7 @@ describe("Windows Goose runner bridge contract", () => {
       "modelAttemptLease",
       "modelId",
       "privateRoot",
+      "privateRootTraversalRoot",
       "resourceBudget",
       "targetTriple",
       "worktreeRoot",
@@ -165,6 +170,7 @@ describe("Windows Goose runner bridge contract", () => {
       modelAttemptLease: options.windows?.modelAttemptLease,
       modelId: options.windows?.modelId,
       privateRoot,
+      privateRootTraversalRoot: path.dirname(path.dirname(privateRoot)),
       resourceBudget: GOOSE_WORKER_RESOURCE_PROFILE,
       targetTriple: WINDOWS_TARGET_TRIPLE,
       worktreeRoot: options.workspaceDirectory,

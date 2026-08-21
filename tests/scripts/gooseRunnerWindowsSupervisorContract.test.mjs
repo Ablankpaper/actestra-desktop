@@ -52,7 +52,10 @@ describe("Windows Goose supervisor source contract", () => {
       supervisor.indexOf("job.launch_suspended_worker_with_stdio"),
     );
     expect(supervisor).toContain("STATE_ROOT_ACCESS_MASK");
+    expect(supervisor).toContain("STATE_ANCESTOR_TRAVERSE_ACCESS_MASK");
     expect(supervisor).toContain("STATE_DIRECTORY_ACCESS_MASK");
+    expect(supervisor).toContain("private_root_traversal_paths");
+    expect(supervisor).toContain("control.private_root_traversal_root");
     expect(supervisor).toContain("grant_low_integrity_directory_label");
     expect(supervisor).toContain("LABEL_SECURITY_INFORMATION");
     expect(supervisor).toContain("SECURITY_MANDATORY_LOW_RID");

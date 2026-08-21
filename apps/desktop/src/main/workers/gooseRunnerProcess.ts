@@ -1175,6 +1175,7 @@ export function encodeWindowsSupervisorControlFrame(options: GooseAcpSpawnOption
       modelAttemptLease: windows.modelAttemptLease,
       modelId: windows.modelId,
       privateRoot: path.dirname(options.workingDirectory),
+      privateRootTraversalRoot: path.dirname(path.dirname(path.dirname(options.workingDirectory))),
       resourceBudget: options.resourceBudget,
       targetTriple: windows.targetTriple,
       worktreeRoot: workspaceDirectory,

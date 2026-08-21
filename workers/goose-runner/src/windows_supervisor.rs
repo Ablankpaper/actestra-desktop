@@ -110,7 +110,7 @@ use std::mem::{size_of, size_of_val, zeroed};
 #[cfg(windows)]
 use std::os::windows::ffi::OsStrExt;
 #[cfg(windows)]
-use std::path::Path;
+use std::path::{Path, PathBuf};
 #[cfg(windows)]
 use std::ptr::{null, null_mut};
 #[cfg(windows)]
@@ -143,9 +143,9 @@ use windows_sys::Win32::Security::{
 #[cfg(windows)]
 use windows_sys::Win32::Storage::FileSystem::{
     ReadFile, WriteFile, DELETE, FILE_ADD_FILE, FILE_ADD_SUBDIRECTORY, FILE_DELETE_CHILD,
-    FILE_GENERIC_EXECUTE, FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_READ_ATTRIBUTES,
-    FILE_READ_EA, FILE_TRAVERSE, FILE_WRITE_ATTRIBUTES, FILE_WRITE_EA, READ_CONTROL, SYNCHRONIZE,
-    WRITE_DAC, WRITE_OWNER,
+    FILE_GENERIC_EXECUTE, FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_LIST_DIRECTORY,
+    FILE_READ_ATTRIBUTES, FILE_READ_EA, FILE_TRAVERSE, FILE_WRITE_ATTRIBUTES, FILE_WRITE_EA,
+    READ_CONTROL, SYNCHRONIZE, WRITE_DAC, WRITE_OWNER,
 };
 #[cfg(windows)]
 use windows_sys::Win32::System::Console::{
@@ -220,6 +220,11 @@ const STATE_ROOT_FORBIDDEN_ACCESS_MASK: u32 = STATE_FORBIDDEN_ACCESS_MASK
     | FILE_WRITE_ATTRIBUTES
     | FILE_WRITE_EA
     | DELETE;
+#[cfg(windows)]
+const STATE_ANCESTOR_TRAVERSE_ACCESS_MASK: u32 = FILE_TRAVERSE;
+#[cfg(windows)]
+const STATE_ANCESTOR_FORBIDDEN_ACCESS_MASK: u32 =
+    STATE_ROOT_FORBIDDEN_ACCESS_MASK | FILE_LIST_DIRECTORY;
 #[cfg(windows)]
 const STATE_LOW_INTEGRITY_ACE_FLAGS: u32 = windows_sys::Win32::Security::CONTAINER_INHERIT_ACE
     | windows_sys::Win32::Security::OBJECT_INHERIT_ACE;
@@ -3068,9 +3073,37 @@ fn grant_low_integrity_directory_label(path: &Path) -> Result<(), ()> {
 }
 
 #[cfg(windows)]
-fn prepare_appcontainer_goose_state_directories(private_root: &str, sid: PSID) -> Result<(), ()> {
+fn private_root_traversal_paths(
+    private_root_traversal_root: &str,
+    private_root: &str,
+) -> Result<[PathBuf; 2], ()> {
+    let traversal_root = std::fs::canonicalize(private_root_traversal_root).map_err(|_| ())?;
+    let private_root = std::fs::canonicalize(private_root).map_err(|_| ())?;
+    let private_parent = private_root.parent().ok_or(())?.to_path_buf();
+    let private_grandparent = private_parent.parent().ok_or(())?;
+    if private_grandparent != traversal_root || private_parent == traversal_root {
+        return Err(());
+    }
+    Ok([traversal_root, private_parent])
+}
+
+#[cfg(windows)]
+fn prepare_appcontainer_goose_state_directories(
+    private_root_traversal_root: &str,
+    private_root: &str,
+    sid: PSID,
+) -> Result<(), ()> {
     let root = Path::new(private_root);
     let (data_dir, config_dir) = prepare_goose_state_directories(private_root)?;
+    for ancestor in private_root_traversal_paths(private_root_traversal_root, private_root)? {
+        grant_exact_appcontainer_directory_access(
+            &ancestor,
+            sid,
+            STATE_ANCESTOR_TRAVERSE_ACCESS_MASK,
+            STATE_ANCESTOR_FORBIDDEN_ACCESS_MASK,
+            NO_INHERITANCE,
+        )?;
+    }
     grant_exact_appcontainer_directory_access(
         root,
         sid,
@@ -3160,7 +3193,13 @@ fn launch_controlled_worker(control: crate::windows_control::WindowsControlMessa
             return SupervisorFailureStage::Profile.diagnostic_exit_code();
         }
     };
-    if prepare_appcontainer_goose_state_directories(&control.private_root, profile.sid()).is_err() {
+    if prepare_appcontainer_goose_state_directories(
+        &control.private_root_traversal_root,
+        &control.private_root,
+        profile.sid(),
+    )
+    .is_err()
+    {
         return report_supervisor_failure(
             SupervisorFailureStage::WorkerStartup(WorkerStartupFailure::StateDirectory),
             WINDOWS_SETUP_FAILURE_MARKER,
@@ -4574,10 +4613,22 @@ mod windows_native_tests {
         let current_directory = executable
             .parent()
             .expect("the native test executable must have an absolute parent");
-        let private_root = windows_test_private_root("appcontainer-state");
+        let traversal_root = windows_test_private_root("appcontainer-state");
+        let private_root_parent = traversal_root.join("goose-private");
+        let private_root = private_root_parent.join("goose-attempt");
+        std::fs::create_dir(&private_root_parent)
+            .expect("the Windows native test parent must be created");
+        std::fs::create_dir(&private_root).expect("the Windows native test root must be created");
+        let traversal_root_text = traversal_root
+            .to_str()
+            .expect("the test traversal path must be UTF-8");
         let private_root_text = private_root.to_str().expect("the test path must be UTF-8");
-        prepare_appcontainer_goose_state_directories(private_root_text, profile.sid())
-            .expect("the exact AppContainer SID must receive bounded state-directory access");
+        prepare_appcontainer_goose_state_directories(
+            traversal_root_text,
+            private_root_text,
+            profile.sid(),
+        )
+        .expect("the exact AppContainer SID must receive bounded state-directory access");
         let private_root_bytes = private_root_text.as_bytes();
         let capability_handle_frame = [
             (pipes.worker_capability_read as usize as u64).to_le_bytes(),
@@ -4658,7 +4709,7 @@ mod windows_native_tests {
                 "test-child-wait-failed"
             ),
         }
-        std::fs::remove_dir_all(private_root)
+        std::fs::remove_dir_all(traversal_root)
             .expect("the AppContainer state test root must be removable after exit");
     }
 

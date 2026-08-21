@@ -2,6 +2,39 @@
 
 Last updated: 2026-08-21
 
+## 2026-08-21 P8.2c nested private-root traversal remediation (local; CI pending)
+
+Exact-head CI run
+[`32437731730`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32437731730)
+for head `fe82d2dfcd89f95e69417e593df8d13b46cdc334` passed Windows containment,
+Ubuntu build/containment, Goose admission, and macOS foundation. Windows
+authenticated runtime still failed with the independently downloaded bounded
+Artifact `{"contractVersion":1,"code":"windows-runtime-worker-state-directory-failed"}`
+(SHA-256
+`38a4c736fd7c33bd703aedef9fdf4210f0828fb271f5a47c8bc09dc45253c71a`). The
+Windows build probe also retained the synthetic-only
+`test-supervisor-frame-read-failed`; the authenticated job's native primitives
+passed, so that synthetic failure is not treated as production evidence.
+
+The failure-path comparison found that the real Main launch nests the attempt
+root as `userData/goose-private/goose-attempt`, while the supervisor only
+authorized the attempt root and its two Goose state directories. The bounded
+follow-up adds an exact `privateRootTraversalRoot` to the one-shot control
+frame, validates that the private root has exactly two descendant components,
+and grants the retained AppContainer SID only `FILE_TRAVERSE` on the two
+ancestor directories. It forbids directory listing, creation, deletion,
+attribute changes, DACL/owner changes, and all writes on those ancestors. The
+existing low-integrity labels and state-directory write rights remain narrow;
+no workspace, network, credential, capability, retry, or renderer authority is
+added. The native state-directory fixture now uses the same nested shape.
+
+Local evidence for this unpushed remediation passes `cargo fmt`, all `82`
+portable Rust tests, the new exact ancestor-shape test, the Windows bridge and
+supervisor contract tests (`18/18`), and `git diff --check`. P8.2c remains open
+until a newly pushed exact-head CI run passes Windows build probe, containment,
+and authenticated runtime and its successful runtime Artifact is independently
+revalidated.
+
 ## 2026-08-21 P8.2c Windows Goose state-directory ACL remediation (local; exact-head CI pending)
 
 Exact-head CI run
