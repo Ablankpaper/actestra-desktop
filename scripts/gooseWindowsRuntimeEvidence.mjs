@@ -72,6 +72,15 @@ const FAILURE_STAGE_CODES = Object.freeze({
     "windows-runtime-capability-call-main-tool-invocation-complete-failed",
   "windows-capability-call-main-tool-invocation-failed":
     "windows-runtime-capability-call-main-tool-invocation-failed",
+  "windows-capability-call-main-contract-failed":
+    "windows-runtime-capability-call-main-contract-failed",
+  "windows-capability-call-main-approval-failed":
+    "windows-runtime-capability-call-main-approval-failed",
+  "windows-capability-call-main-gateway-failed":
+    "windows-runtime-capability-call-main-gateway-failed",
+  "windows-capability-call-main-output-failed":
+    "windows-runtime-capability-call-main-output-failed",
+  "windows-prompt-unclassified-failed": "windows-runtime-prompt-unclassified-failed",
   "windows-capability-call-main-response-write-failed":
     "windows-runtime-capability-call-main-response-write-failed",
   "windows-capability-call-supervisor-response-read-failed":
@@ -331,6 +340,10 @@ const WINDOWS_CAPABILITY_CALL_PROGRESS_FAILURE_STAGES = Object.freeze([
 ]);
 const WINDOWS_CAPABILITY_CALL_FAILURE_STAGES = Object.freeze([
   "windows-capability-call-main-tool-invocation-failed",
+  "windows-capability-call-main-contract-failed",
+  "windows-capability-call-main-approval-failed",
+  "windows-capability-call-main-gateway-failed",
+  "windows-capability-call-main-output-failed",
 ]);
 const WINDOWS_MODEL_PROGRESS_FAILURE_STAGES = Object.freeze([
   "windows-model-worker-request-write-failed",
@@ -363,6 +376,7 @@ const WINDOWS_OPEN_FAILURE_STAGES = Object.freeze([
   ...WINDOWS_CAPABILITY_CALL_PROGRESS_FAILURE_STAGES,
   ...WINDOWS_CAPABILITY_CALL_FAILURE_STAGES,
   ...WINDOWS_MODEL_PROGRESS_FAILURE_STAGES,
+  "windows-prompt-unclassified-failed",
   "handshake-process-exit",
   "handshake-process-signal",
   "handshake-timeout",
@@ -566,6 +580,7 @@ export function classifyGooseWindowsOpeningFailure(error) {
       if (WINDOWS_CAPABILITY_CALL_PROGRESS_FAILURE_STAGES.includes(code)) return code;
       if (WINDOWS_CAPABILITY_CALL_FAILURE_STAGES.includes(code)) return code;
       if (WINDOWS_MODEL_PROGRESS_FAILURE_STAGES.includes(code)) return code;
+      if (code === "windows-prompt-unclassified-failed") return code;
       if (Object.hasOwn(FAILURE_STAGE_CODES, code)) return code;
     } else if (code === "network-policy-unavailable") {
       return "runtime-network";

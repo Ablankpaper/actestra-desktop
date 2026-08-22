@@ -317,7 +317,12 @@ describe("Goose runner native resource boundary", () => {
     expect(Object.isFrozen(progress.snapshot())).toBe(true);
     expect(JSON.stringify(progress.snapshot())).not.toContain("private");
     expect(Object.keys(matcher)).toEqual(["push"]);
-    expect(Object.keys(progress)).toEqual(["record", "snapshot"]);
+    expect(Object.keys(progress)).toEqual([
+      "record",
+      "snapshot",
+      "beginAttempt",
+      "attemptSnapshot",
+    ]);
   });
 
   it("extracts only the ten bounded Windows model progress stages across stderr chunks", () => {

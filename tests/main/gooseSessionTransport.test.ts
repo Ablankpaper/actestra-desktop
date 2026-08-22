@@ -5,6 +5,7 @@ import {
   GOOSE_WINDOWS_MODEL_PROGRESS_STAGES,
   GOOSE_WINDOWS_STDIO_CHANNELS,
   GOOSE_WINDOWS_STDIO_CONFIGURATION,
+  createGooseWindowsCapabilityProgress,
   createGooseWindowsModelProgress,
   resolveGooseSessionTransportMode,
 } from "../../apps/desktop/src/main/workers/gooseSessionTransport";
@@ -63,6 +64,10 @@ describe("Goose session transport selection", () => {
     ]);
     expect(GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES).toEqual([
       "windows-capability-call-main-tool-invocation-failed",
+      "windows-capability-call-main-contract-failed",
+      "windows-capability-call-main-approval-failed",
+      "windows-capability-call-main-gateway-failed",
+      "windows-capability-call-main-output-failed",
     ]);
   });
 
@@ -90,5 +95,33 @@ describe("Goose session transport selection", () => {
       GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[7],
     ]);
     expect(Object.isFrozen(progress.snapshot())).toBe(true);
+  });
+
+  it("scopes each attempt's progress separately from the session total", () => {
+    // Reproduces the second-prompt diagnostic dead end: a first prompt that
+    // completes every stage must not make a later prompt's stages look present.
+    const capability = createGooseWindowsCapabilityProgress();
+    for (const stage of GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES) capability.record(stage);
+    expect(capability.attemptSnapshot()).toEqual([
+      ...GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
+    ]);
+
+    capability.beginAttempt();
+    expect(capability.attemptSnapshot()).toEqual([]);
+    expect(capability.snapshot()).toEqual([...GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES]);
+
+    capability.record(GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES[0]);
+    capability.record(GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES[2]);
+    expect(capability.attemptSnapshot()).toEqual([
+      GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES[0],
+      GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES[2],
+    ]);
+
+    const model = createGooseWindowsModelProgress();
+    for (const stage of GOOSE_WINDOWS_MODEL_PROGRESS_STAGES) model.record(stage);
+    model.beginAttempt();
+    model.record(GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[0]);
+    expect(model.attemptSnapshot()).toEqual([GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[0]]);
+    expect(model.snapshot()).toEqual([...GOOSE_WINDOWS_MODEL_PROGRESS_STAGES]);
   });
 });

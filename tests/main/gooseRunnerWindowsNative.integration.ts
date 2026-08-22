@@ -512,13 +512,25 @@ describe.skipIf(!nativeEnabled)("native Windows Goose authenticated runtime comp
         throw error;
       }
       await markFailure("approved-write-tool");
-      await expect(
-        opened.prompt({ text: "Write the approved acceptance file.", timeoutMs: 30_000 }),
-      ).resolves.toMatchObject({ stopReason: "end_turn" });
-      acceptanceBytes = await readFile(
-        path.join(codingSession.worktreeRoot, "windows-runtime-acceptance.txt"),
-        "utf8",
-      );
+      try {
+        const result = await opened.prompt({
+          text: "Write the approved acceptance file.",
+          timeoutMs: 30_000,
+        });
+        expect(result).toMatchObject({ stopReason: "end_turn" });
+      } catch (error) {
+        await markFailure(classifyGooseWindowsOpeningFailure(error));
+        throw error;
+      }
+      try {
+        acceptanceBytes = await readFile(
+          path.join(codingSession.worktreeRoot, "windows-runtime-acceptance.txt"),
+          "utf8",
+        );
+      } catch (error) {
+        await markFailure("approved-write-verification");
+        throw error;
+      }
       await markFailure("cancellation");
       const prompting = opened.prompt({ text: "Wait for cancellation.", timeoutMs: 30_000 });
       await cancellationStarted.promise;

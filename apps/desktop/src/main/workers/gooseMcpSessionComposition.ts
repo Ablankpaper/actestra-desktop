@@ -110,6 +110,7 @@ export type GooseMcpSessionCompositionErrorCode =
   | "model-completion-refused"
   | "model-request-rejected"
   | "tool-discovery-mismatch"
+  | "windows-prompt-unclassified-failed"
   | GooseWindowsCapabilityProgressFailureCode
   | GooseWindowsCapabilityCallProgressFailureCode
   | GooseWindowsModelProgressFailureCode;
@@ -126,6 +127,10 @@ export const GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_FAILURE_CODES = Object.freez
   "windows-capability-call-supervisor-response-forward-failed",
   "windows-capability-call-worker-response-decode-failed",
   "windows-capability-call-main-tool-invocation-failed",
+  "windows-capability-call-main-contract-failed",
+  "windows-capability-call-main-approval-failed",
+  "windows-capability-call-main-gateway-failed",
+  "windows-capability-call-main-output-failed",
 ] as const);
 
 export type GooseWindowsCapabilityCallProgressFailureCode =
@@ -173,8 +178,15 @@ export function classifyGooseWindowsCapabilityCallProgressFailure(
   observed: readonly GooseWindowsCapabilityProgressStage[],
 ): GooseWindowsCapabilityCallProgressFailureCode | undefined {
   const stages = new Set(observed);
-  if (stages.has(GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES[0])) {
-    return "windows-capability-call-main-tool-invocation-failed";
+  // A recorded Main failure stage is evidence, not an absence, so it outranks
+  // the first-missing scan: the round trip did reach Main and was refused there.
+  const failureStage = GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES.findIndex((stage) =>
+    stages.has(stage),
+  );
+  if (failureStage >= 0) {
+    return GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_FAILURE_CODES[
+      GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES.length + failureStage
+    ];
   }
   const firstMissing = GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES.findIndex(
     (stage) => !stages.has(stage),
@@ -194,6 +206,20 @@ export function classifyGooseWindowsCapabilityProgressFailure(
   return firstMissing < 0
     ? undefined
     : GOOSE_WINDOWS_CAPABILITY_PROGRESS_FAILURE_CODES[firstMissing];
+}
+
+/**
+ * A prompt failure that already names its own boundary is left alone. Only an
+ * error that would otherwise reach CI as an unnamed cause gets the bounded
+ * unclassified token.
+ */
+function isAlreadyClassifiedPromptFailure(error: unknown): boolean {
+  return (
+    error instanceof GooseAcpSessionError ||
+    error instanceof GooseAcpHandshakeError ||
+    error instanceof GooseRunnerProcessError ||
+    error instanceof GooseMcpSessionCompositionError
+  );
 }
 
 function isGooseWindowsCapabilityDiscoveryTimeout(error: unknown): boolean {
@@ -732,6 +758,11 @@ export async function openGooseMcpSessionComposition(
       const refusedBefore = stableModelServer.refusedInferenceCount;
       const rejectedBefore = stableModelServer.rejectedRequestCount;
       const servedBefore = stableModelServer.servedInferenceCount;
+      // Each prompt is classified on its own round trips. Carrying the session's
+      // accumulated stages forward would leave nothing missing after the first
+      // successful prompt, and every later failure would escape unclassified.
+      windowsCapabilityProgress?.beginAttempt();
+      windowsModelProgress?.beginAttempt();
       let result: GooseAcpPromptResult;
       try {
         result = await stableRunner.prompt({
@@ -744,7 +775,7 @@ export async function openGooseMcpSessionComposition(
         });
       } catch (error) {
         if (windowsAuthenticated && windowsCapabilityProgress !== undefined) {
-          const observed = windowsCapabilityProgress.snapshot();
+          const observed = windowsCapabilityProgress.attemptSnapshot();
           const callActivity = observed.some(
             (stage) =>
               (GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES as readonly string[]).includes(
@@ -764,7 +795,7 @@ export async function openGooseMcpSessionComposition(
           }
         }
         if (windowsAuthenticated && windowsModelProgress !== undefined) {
-          const observed = windowsModelProgress.snapshot();
+          const observed = windowsModelProgress.attemptSnapshot();
           const modelActivity = observed.some((stage) =>
             (GOOSE_WINDOWS_MODEL_PROGRESS_STAGES as readonly string[]).includes(stage),
           );
@@ -778,6 +809,16 @@ export async function openGooseMcpSessionComposition(
               );
             }
           }
+        }
+        // A Windows prompt that reached neither bridge leaves no stage to scan.
+        // Without a token of its own it would surface as the generic outer
+        // stage marker, which is exactly the diagnostic dead end this replaces.
+        if (windowsAuthenticated && !isAlreadyClassifiedPromptFailure(error)) {
+          throw new GooseMcpSessionCompositionError(
+            "windows-prompt-unclassified-failed",
+            "Windows Goose prompt failed before any bounded bridge stage was observed",
+            { cause: error },
+          );
         }
         throw error;
       }

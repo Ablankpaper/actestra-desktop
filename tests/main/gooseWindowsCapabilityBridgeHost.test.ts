@@ -243,6 +243,80 @@ describe("Goose Windows Main capability bridge host", () => {
     await closeHost(host, worker);
   });
 
+  it("separates contract, approval, gateway, and output failures into distinct stages", async () => {
+    const cases = [
+      {
+        error: Object.assign(new Error("bad call"), {
+          name: "GooseCodingToolInvokerError",
+          code: "invalid-call",
+        }),
+        stage: "windows-capability-call-main-contract-failed",
+      },
+      {
+        error: Object.assign(new Error("gateway refused"), {
+          name: "GooseCodingToolInvokerError",
+          code: "gateway-failed",
+          cause: { code: "approval-not-granted" },
+        }),
+        stage: "windows-capability-call-main-approval-failed",
+      },
+      {
+        error: Object.assign(new Error("gateway refused"), {
+          name: "GooseCodingToolInvokerError",
+          code: "gateway-failed",
+        }),
+        stage: "windows-capability-call-main-gateway-failed",
+      },
+      {
+        error: Object.assign(new Error("write journal failed"), {
+          name: "GooseCodingToolInvokerError",
+          code: "persistence-failed",
+        }),
+        stage: "windows-capability-call-main-output-failed",
+      },
+    ] as const;
+
+    for (const [index, { error, stage }] of cases.entries()) {
+      const [main, worker] = linkedDuplexPair();
+      const capabilityProgress = createGooseWindowsCapabilityProgress();
+      const host = startGooseWindowsCapabilityBridgeHost({
+        stream: main,
+        attemptLease: LEASE,
+        invokeTool: async () => {
+          throw error;
+        },
+        commandIds: [],
+        testIds: [],
+        capabilityProgress,
+      });
+      host.bindSession(SESSION);
+      worker.write(encodeGooseWindowsCapabilityFrame(listRequest()));
+      await readFrame(worker);
+      const requestId = `capability-call-layer-${index}`;
+      worker.write(
+        encodeGooseWindowsCapabilityFrame({
+          contractVersion: 1,
+          kind: "call-request",
+          requestId,
+          lease: LEASE,
+          sessionId: SESSION,
+          toolName: CODING_TOOL_IDS[0],
+          arguments: { contractVersion: 1, relativePath: "README.md" },
+        }),
+      );
+      expect(
+        decodeGooseWindowsCapabilityFrame(await readFrame(worker), {
+          expectedRequestId: requestId,
+        }),
+      ).toMatchObject({ kind: "capability-error" });
+      expect(capabilityProgress.snapshot()).toContain(stage);
+      expect(capabilityProgress.snapshot()).not.toContain(
+        "windows-capability-call-main-tool-invocation-failed",
+      );
+      await closeHost(host, worker);
+    }
+  });
+
   it("cancels an in-flight tool and closes idempotently", async () => {
     const [main, worker] = linkedDuplexPair();
     let aborted = false;

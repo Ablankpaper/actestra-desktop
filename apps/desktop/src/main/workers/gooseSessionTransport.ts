@@ -56,8 +56,15 @@ export const GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES = Object.freeze([
   "windows-capability-call-worker-response-decoded",
 ] as const);
 
+// Main records exactly one of these when a capability call fails inside the
+// Tool Gateway. They name the layer that refused, so a durable token separates
+// an approval refusal from a gateway, output, or contract failure.
 export const GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES = Object.freeze([
   "windows-capability-call-main-tool-invocation-failed",
+  "windows-capability-call-main-contract-failed",
+  "windows-capability-call-main-approval-failed",
+  "windows-capability-call-main-gateway-failed",
+  "windows-capability-call-main-output-failed",
 ] as const);
 
 export const GOOSE_WINDOWS_MODEL_PROGRESS_STAGES = Object.freeze([
@@ -78,58 +85,84 @@ export type GooseWindowsCapabilityProgressStage =
   | (typeof GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES)[number]
   | (typeof GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES)[number];
 
+/**
+ * Progress is recorded twice: once for the whole session, and once for the
+ * current attempt. A session-wide set cannot classify the second prompt in a
+ * session, because every stage the first prompt completed is already present
+ * and no stage looks missing. `beginAttempt` opens a fresh attempt window so
+ * each prompt is classified on its own round trips.
+ */
 export interface GooseWindowsCapabilityProgress {
   record(stage: GooseWindowsCapabilityProgressStage): void;
   snapshot(): readonly GooseWindowsCapabilityProgressStage[];
+  beginAttempt(): void;
+  attemptSnapshot(): readonly GooseWindowsCapabilityProgressStage[];
 }
+
+const GOOSE_WINDOWS_CAPABILITY_ALL_STAGES = Object.freeze([
+  ...GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
+  ...GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
+  ...GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES,
+] as const);
 
 export function createGooseWindowsCapabilityProgress(): GooseWindowsCapabilityProgress {
   const observed = new Set<GooseWindowsCapabilityProgressStage>();
+  let attempt = new Set<GooseWindowsCapabilityProgressStage>();
+  const ordered = (
+    stages: ReadonlySet<GooseWindowsCapabilityProgressStage>,
+  ): readonly GooseWindowsCapabilityProgressStage[] =>
+    Object.freeze(GOOSE_WINDOWS_CAPABILITY_ALL_STAGES.filter((stage) => stages.has(stage)));
   return Object.freeze({
     record(stage: GooseWindowsCapabilityProgressStage): void {
-      if (
-        (
-          [
-            ...GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
-            ...GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
-            ...GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES,
-          ] as readonly string[]
-        ).includes(stage)
-      ) {
+      if ((GOOSE_WINDOWS_CAPABILITY_ALL_STAGES as readonly string[]).includes(stage)) {
         observed.add(stage);
+        attempt.add(stage);
       }
     },
     snapshot(): readonly GooseWindowsCapabilityProgressStage[] {
-      return Object.freeze(
-        [
-          ...GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
-          ...GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
-          ...GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES,
-        ].filter((stage) => observed.has(stage)),
-      );
+      return ordered(observed);
+    },
+    beginAttempt(): void {
+      attempt = new Set<GooseWindowsCapabilityProgressStage>();
+    },
+    attemptSnapshot(): readonly GooseWindowsCapabilityProgressStage[] {
+      return ordered(attempt);
     },
   });
 }
 
 export type GooseWindowsModelProgressStage = (typeof GOOSE_WINDOWS_MODEL_PROGRESS_STAGES)[number];
 
+/** Attempt-scoped for the same reason as {@link GooseWindowsCapabilityProgress}. */
 export interface GooseWindowsModelProgress {
   record(stage: GooseWindowsModelProgressStage): void;
   snapshot(): readonly GooseWindowsModelProgressStage[];
+  beginAttempt(): void;
+  attemptSnapshot(): readonly GooseWindowsModelProgressStage[];
 }
 
 export function createGooseWindowsModelProgress(): GooseWindowsModelProgress {
   const observed = new Set<GooseWindowsModelProgressStage>();
+  let attempt = new Set<GooseWindowsModelProgressStage>();
+  const ordered = (
+    stages: ReadonlySet<GooseWindowsModelProgressStage>,
+  ): readonly GooseWindowsModelProgressStage[] =>
+    Object.freeze(GOOSE_WINDOWS_MODEL_PROGRESS_STAGES.filter((stage) => stages.has(stage)));
   return Object.freeze({
     record(stage: GooseWindowsModelProgressStage): void {
       if ((GOOSE_WINDOWS_MODEL_PROGRESS_STAGES as readonly string[]).includes(stage)) {
         observed.add(stage);
+        attempt.add(stage);
       }
     },
     snapshot(): readonly GooseWindowsModelProgressStage[] {
-      return Object.freeze(
-        GOOSE_WINDOWS_MODEL_PROGRESS_STAGES.filter((stage) => observed.has(stage)),
-      );
+      return ordered(observed);
+    },
+    beginAttempt(): void {
+      attempt = new Set<GooseWindowsModelProgressStage>();
+    },
+    attemptSnapshot(): readonly GooseWindowsModelProgressStage[] {
+      return ordered(attempt);
     },
   });
 }

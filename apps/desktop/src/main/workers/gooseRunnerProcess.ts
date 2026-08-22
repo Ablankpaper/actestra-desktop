@@ -521,14 +521,7 @@ export function assertGooseAcpSpawnOptions(
   }
 }
 
-/**
- * Recognizes only the runner's fixed setup marker. Its state retains no stderr
- * content, so native diagnostic text never crosses the process boundary.
- */
-function createGooseRunnerFixedMarkerMatcher(
-  markerText: string,
-): GooseRunnerResourceFailureMatcher {
-  const marker = Buffer.from(markerText, "utf8");
+function markerFallbackTable(marker: Buffer): Uint8Array {
   const fallback = new Uint8Array(marker.length);
   for (let index = 1, prefixLength = 0; index < marker.length; ) {
     if (marker[index] === marker[prefixLength]) {
@@ -541,6 +534,18 @@ function createGooseRunnerFixedMarkerMatcher(
       index += 1;
     }
   }
+  return fallback;
+}
+
+/**
+ * Recognizes only the runner's fixed setup marker. Its state retains no stderr
+ * content, so native diagnostic text never crosses the process boundary.
+ */
+function createGooseRunnerFixedMarkerMatcher(
+  markerText: string,
+): GooseRunnerResourceFailureMatcher {
+  const marker = Buffer.from(markerText, "utf8");
+  const fallback = markerFallbackTable(marker);
   let matched = 0;
   let detected = false;
   return Object.freeze({
@@ -563,6 +568,38 @@ function createGooseRunnerFixedMarkerMatcher(
   });
 }
 
+/**
+ * Like {@link createGooseRunnerFixedMarkerMatcher}, but re-arms after each hit
+ * so a stage that recurs on a later prompt is reported again. A latching
+ * matcher would leave every attempt after the first with no observable stage,
+ * which is what made a failing second prompt unclassifiable.
+ */
+function createGooseRunnerRepeatingMarkerMatcher(
+  markerText: string,
+): GooseRunnerResourceFailureMatcher {
+  const marker = Buffer.from(markerText, "utf8");
+  const fallback = markerFallbackTable(marker);
+  let matched = 0;
+  return Object.freeze({
+    push(chunk: Uint8Array): boolean {
+      let seen = false;
+      for (const byte of chunk) {
+        while (matched > 0 && byte !== marker[matched]) {
+          matched = fallback[matched - 1] ?? 0;
+        }
+        if (byte === marker[matched]) {
+          matched += 1;
+          if (matched === marker.length) {
+            seen = true;
+            matched = fallback[matched - 1] ?? 0;
+          }
+        }
+      }
+      return seen;
+    },
+  });
+}
+
 export function createGooseRunnerResourceFailureMatcher(): GooseRunnerResourceFailureMatcher {
   return createGooseRunnerFixedMarkerMatcher(GOOSE_NATIVE_RESOURCE_LIMIT_FAILURE_MARKER);
 }
@@ -574,17 +611,16 @@ export function createGooseWindowsCapabilityProgressMatcher(): GooseWindowsCapab
     ...GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES,
   ].map(
     (stage) =>
-      [stage, createGooseRunnerFixedMarkerMatcher(windowsCapabilityProgressMarker(stage))] as const,
+      [
+        stage,
+        createGooseRunnerRepeatingMarkerMatcher(windowsCapabilityProgressMarker(stage)),
+      ] as const,
   );
-  const emitted = new Set<GooseWindowsCapabilityProgressStage>();
   return Object.freeze({
     push(chunk: Uint8Array): readonly GooseWindowsCapabilityProgressStage[] {
       const detected: GooseWindowsCapabilityProgressStage[] = [];
       for (const [stage, matcher] of matchers) {
-        if (!emitted.has(stage) && matcher.push(chunk)) {
-          emitted.add(stage);
-          detected.push(stage);
-        }
+        if (matcher.push(chunk)) detected.push(stage);
       }
       return Object.freeze(detected);
     },
@@ -594,17 +630,13 @@ export function createGooseWindowsCapabilityProgressMatcher(): GooseWindowsCapab
 export function createGooseWindowsModelProgressMatcher(): GooseWindowsModelProgressMatcher {
   const matchers = GOOSE_WINDOWS_MODEL_PROGRESS_STAGES.map(
     (stage) =>
-      [stage, createGooseRunnerFixedMarkerMatcher(windowsModelProgressMarker(stage))] as const,
+      [stage, createGooseRunnerRepeatingMarkerMatcher(windowsModelProgressMarker(stage))] as const,
   );
-  const emitted = new Set<GooseWindowsModelProgressStage>();
   return Object.freeze({
     push(chunk: Uint8Array): readonly GooseWindowsModelProgressStage[] {
       const detected: GooseWindowsModelProgressStage[] = [];
       for (const [stage, matcher] of matchers) {
-        if (!emitted.has(stage) && matcher.push(chunk)) {
-          emitted.add(stage);
-          detected.push(stage);
-        }
+        if (matcher.push(chunk)) detected.push(stage);
       }
       return Object.freeze(detected);
     },

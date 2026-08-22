@@ -5,6 +5,7 @@ import { GooseAuthenticatedBridgeProtocolError } from "../../apps/desktop/src/ma
 import type { AdmittedGooseRunnerArtifact } from "../../apps/desktop/src/main/workers/gooseRunnerArtifact";
 import { GooseRunnerProcessError } from "../../apps/desktop/src/main/workers/gooseRunnerProcess";
 import {
+  GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_FAILURE_CODES,
   GooseMcpSessionCompositionError,
   classifyGooseWindowsCapabilityCallProgressFailure,
   classifyGooseWindowsCapabilityProgressFailure,
@@ -13,6 +14,7 @@ import {
   type GooseMcpSessionCompositionDependencies,
 } from "../../apps/desktop/src/main/workers/gooseMcpSessionComposition";
 import {
+  GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES,
   GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
   GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
   GOOSE_WINDOWS_MODEL_PROGRESS_STAGES,
@@ -156,6 +158,41 @@ describe("Goose MCP session composition", () => {
         "windows-capability-call-main-tool-invocation-failed",
       ]),
     ).toBe("windows-capability-call-main-tool-invocation-failed");
+  });
+
+  it("names the refusing Main layer even when every round-trip stage completed", () => {
+    // The second prompt in a session reaches Main and is refused there, so no
+    // stage is missing. A first-missing scan alone returns undefined and the
+    // real cause escapes unclassified.
+    expect(
+      (
+        [
+          ["windows-capability-call-main-contract-failed", "main-contract-failed"],
+          ["windows-capability-call-main-approval-failed", "main-approval-failed"],
+          ["windows-capability-call-main-gateway-failed", "main-gateway-failed"],
+          ["windows-capability-call-main-output-failed", "main-output-failed"],
+        ] as const
+      ).map(([stage]) =>
+        classifyGooseWindowsCapabilityCallProgressFailure([
+          ...GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
+          stage,
+        ]),
+      ),
+    ).toEqual([
+      "windows-capability-call-main-contract-failed",
+      "windows-capability-call-main-approval-failed",
+      "windows-capability-call-main-gateway-failed",
+      "windows-capability-call-main-output-failed",
+    ]);
+  });
+
+  it("keeps every Windows capability-call failure token distinct", () => {
+    const codes = new Set(GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_FAILURE_CODES);
+    expect(codes.size).toBe(GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_FAILURE_CODES.length);
+    expect(GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_FAILURE_CODES.length).toBe(
+      GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES.length +
+        GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES.length,
+    );
   });
 
   it("maps the first missing Windows model round-trip stage to a distinct closed failure", () => {
@@ -617,6 +654,7 @@ describe("Goose MCP session composition", () => {
             return runnerDiscovery;
           },
           async prompt() {
+            capabilityProgress.record(GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES[0]);
             throw promptFailure;
           },
           async close() {
@@ -639,7 +677,6 @@ describe("Goose MCP session composition", () => {
         },
         dependencies,
       );
-      capabilityProgress.record(GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES[0]);
       await expect(opened.prompt({ text: "Read answer.txt" })).rejects.toMatchObject({
         code: "windows-capability-call-supervisor-request-read-failed",
         cause: promptFailure,
@@ -703,6 +740,7 @@ describe("Goose MCP session composition", () => {
               return runnerDiscovery;
             },
             async prompt() {
+              modelProgress.record(GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[0]);
               throw promptFailure;
             },
             async close() {
@@ -726,7 +764,6 @@ describe("Goose MCP session composition", () => {
           },
           dependencies,
         );
-        modelProgress.record(GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[0]);
         await expect(opened.prompt({ text: "Read answer.txt" })).rejects.toMatchObject({
           name: "GooseMcpSessionCompositionError",
           code: "windows-model-supervisor-request-read-failed",

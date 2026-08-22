@@ -15,6 +15,7 @@ import {
   GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
   GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
   type GooseWindowsCapabilityProgress,
+  type GooseWindowsCapabilityProgressStage,
 } from "./gooseSessionTransport";
 
 const MAX_FRAME_BYTES = GOOSE_AUTHENTICATED_BRIDGE_MAX_FRAME_BYTES;
@@ -63,6 +64,62 @@ function writeFrame(
       if (error === undefined || error === null) onWritten?.();
     });
   }
+}
+
+/**
+ * Names the Main-side layer that refused a capability call. The generic
+ * invocation-failed stage stays for anything that does not carry one of the
+ * invoker's own codes, so an unrecognised failure is never mislabelled as a
+ * specific layer.
+ */
+function capabilityCallFailureStage(error: unknown): GooseWindowsCapabilityProgressStage {
+  if (
+    error instanceof GooseAuthenticatedBridgeProtocolError &&
+    error.message === "invalid-tool-result"
+  ) {
+    return GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES[4];
+  }
+  const code =
+    isRecord(error) &&
+    typeof error.code === "string" &&
+    error.name === "GooseCodingToolInvokerError"
+      ? error.code
+      : undefined;
+  switch (code) {
+    case "invalid-call":
+    case "invalid-config":
+      return GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES[1];
+    case "gateway-failed":
+      return approvalFailure(error)
+        ? GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES[2]
+        : GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES[3];
+    case "persistence-failed":
+      return GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES[4];
+    default:
+      return GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES[0];
+  }
+}
+
+const APPROVAL_FAILURE_CODES: ReadonlySet<string> = new Set([
+  "approval-not-found",
+  "approval-mismatch",
+  "approval-expired",
+  "approval-not-granted",
+  "approval-replayed",
+]);
+
+function approvalFailure(error: unknown): boolean {
+  const pending: unknown[] = [error];
+  const visited = new Set<unknown>();
+  while (pending.length > 0) {
+    const current = pending.shift();
+    if (!isRecord(current) || visited.has(current)) continue;
+    visited.add(current);
+    if (typeof current.code === "string" && APPROVAL_FAILURE_CODES.has(current.code)) return true;
+    if (Object.hasOwn(current, "cause")) pending.push(current.cause);
+    if (Array.isArray(current.errors)) pending.push(...current.errors);
+  }
+  return false;
 }
 
 function snapshotRegistryIds(value: unknown): readonly string[] {
@@ -217,7 +274,7 @@ export function startGooseWindowsCapabilityBridgeHost(
         typeof result.isError !== "boolean" ||
         typeof result.content !== "string"
       ) {
-        throw new Error("invalid-tool-result");
+        throw new GooseAuthenticatedBridgeProtocolError("invalid-tool-result");
       }
       options.capabilityProgress.record(GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES[5]);
       pending.delete(frame.requestId);
@@ -232,9 +289,9 @@ export function startGooseWindowsCapabilityBridgeHost(
         },
         () => options.capabilityProgress.record(GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES[6]),
       );
-    } catch {
+    } catch (error) {
       if (request.cancelled || closed) return;
-      options.capabilityProgress.record(GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES[0]);
+      options.capabilityProgress.record(capabilityCallFailureStage(error));
       pending.delete(frame.requestId);
       writeFrame(
         stream,
