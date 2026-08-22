@@ -12,16 +12,19 @@ the macOS foundation/package job. The only failure was the real Windows
 authenticated-runtime step. Its bounded failure Artifact `9468408066` contains
 only `windows-runtime-composition-open-failed`.
 
-The generic code was caused by a real classification gap: a non-timeout
-`GooseAuthenticatedBridgeProtocolError` was explicitly excluded from the
-Windows opening-phase wrapper, while the opening classifier has no independent
-mapping for that raw protocol error. It therefore fell through to the generic
-composition-open fallback. The fix keeps the existing timeout/progress path
-unchanged and wraps only non-timeout authenticated bridge errors at the current
-opening phase. A synchronous tools/list bridge-error regression covers the
-cross-layer behavior; focused composition tests are `21/21` passed. P8.2c
-remains open until a new exact-head Windows authenticated-runtime Artifact
-reports a concrete stage or verifies the complete journey.
+The generic code exposed two unclassified paths. A non-timeout
+`GooseAuthenticatedBridgeProtocolError` during opening was excluded from the
+Windows opening-phase wrapper. In addition, a prompt failure after opening
+could be a non-timeout bridge error while the Main-side model classifier only
+consulted model progress for `prompt-timeout`; the integration test then used
+the opening classifier and fell through to generic `composition-open`. The
+current fix preserves the timeout/progress behavior, wraps non-timeout bridge
+errors at the current opening phase, and classifies any prompt error after
+model-round-trip activity by its first missing model stage. Regressions cover
+the synchronous tools/list bridge error and the non-timeout prompt bridge
+error; focused composition tests are `22/22` passed. P8.2c remains open until
+a new exact-head Windows authenticated-runtime Artifact reports a concrete
+stage or verifies the complete journey.
 
 ## 2026-08-22 P8.2c Windows composition unknown-boundary diagnostic (local; CI pending)
 

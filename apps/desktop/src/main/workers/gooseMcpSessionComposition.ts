@@ -763,21 +763,20 @@ export async function openGooseMcpSessionComposition(
             );
           }
         }
-        if (
-          windowsAuthenticated &&
-          windowsModelProgress !== undefined &&
-          error instanceof GooseAcpSessionError &&
-          error.code === "prompt-timeout"
-        ) {
-          const modelFailure = classifyGooseWindowsModelProgressFailure(
-            windowsModelProgress.snapshot(),
+        if (windowsAuthenticated && windowsModelProgress !== undefined) {
+          const observed = windowsModelProgress.snapshot();
+          const modelActivity = observed.some((stage) =>
+            (GOOSE_WINDOWS_MODEL_PROGRESS_STAGES as readonly string[]).includes(stage),
           );
-          if (modelFailure !== undefined) {
-            throw new GooseMcpSessionCompositionError(
-              modelFailure,
-              "Windows model round trip stopped before a bounded stage",
-              { cause: error },
-            );
+          if (modelActivity) {
+            const modelFailure = classifyGooseWindowsModelProgressFailure(observed);
+            if (modelFailure !== undefined) {
+              throw new GooseMcpSessionCompositionError(
+                modelFailure,
+                "Windows model round trip stopped before a bounded stage",
+                { cause: error },
+              );
+            }
           }
         }
         throw error;
