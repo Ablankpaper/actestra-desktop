@@ -92,6 +92,18 @@ export const GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES = Object.freeze([
   "windows-worker-serve-entered",
 ] as const);
 
+/**
+ * Positive observations for the Worker stderr relay. These are deliberately
+ * separate from ACP startup markers: a missing ACP marker is otherwise
+ * ambiguous between a Worker that never wrote stderr and a Supervisor/Main
+ * relay that never delivered it.
+ */
+export const GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES = Object.freeze([
+  "windows-worker-stderr-relay-started",
+  "windows-worker-stderr-byte-read",
+  "windows-worker-stderr-marker-forwarded",
+] as const);
+
 export type GooseWindowsCapabilityProgressStage =
   | (typeof GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES)[number]
   | (typeof GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES)[number]
@@ -169,6 +181,32 @@ export function createGooseWindowsWorkerAcpProgress(): GooseWindowsWorkerAcpProg
       const stages = snapshot();
       return stages.length === 0 ? undefined : stages[stages.length - 1];
     },
+  });
+}
+
+export type GooseWindowsWorkerStderrRelayProgressStage =
+  (typeof GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES)[number];
+
+export interface GooseWindowsWorkerStderrRelayProgress {
+  record(stage: GooseWindowsWorkerStderrRelayProgressStage): void;
+  snapshot(): readonly GooseWindowsWorkerStderrRelayProgressStage[];
+}
+
+export function createGooseWindowsWorkerStderrRelayProgress(): GooseWindowsWorkerStderrRelayProgress {
+  const observed = new Set<GooseWindowsWorkerStderrRelayProgressStage>();
+  const snapshot = (): readonly GooseWindowsWorkerStderrRelayProgressStage[] =>
+    Object.freeze(
+      GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES.filter((stage) => observed.has(stage)),
+    );
+  return Object.freeze({
+    record(stage: GooseWindowsWorkerStderrRelayProgressStage): void {
+      if (
+        (GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES as readonly string[]).includes(stage)
+      ) {
+        observed.add(stage);
+      }
+    },
+    snapshot,
   });
 }
 

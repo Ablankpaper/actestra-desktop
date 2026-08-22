@@ -187,6 +187,10 @@ const FAILURE_STAGE_CODES = Object.freeze({
   "windows-worker-agent-creation-failed": "windows-runtime-worker-agent-creation-failed",
   "windows-worker-serve-failed": "windows-runtime-worker-serve-failed",
   "windows-worker-acp-connect-failed": "windows-runtime-worker-acp-connect-failed",
+  "windows-worker-stderr-relay-start-failed": "windows-runtime-worker-stderr-relay-start-failed",
+  "windows-worker-stderr-byte-read-failed": "windows-runtime-worker-stderr-byte-read-failed",
+  "windows-worker-stderr-marker-forward-failed":
+    "windows-runtime-worker-stderr-marker-forward-failed",
   "test-child-spawn": "windows-runtime-test-child-spawn-failed",
   "test-child-timeout": "windows-runtime-test-child-timeout-failed",
   "test-child-signal": "windows-runtime-test-child-signal-failed",
@@ -381,6 +385,11 @@ const WINDOWS_MODEL_PROGRESS_FAILURE_STAGES = Object.freeze([
   "windows-model-supervisor-response-forward-failed",
   "windows-model-worker-response-decode-failed",
 ]);
+const WINDOWS_WORKER_STDERR_RELAY_PROGRESS_FAILURE_STAGES = Object.freeze([
+  "windows-worker-stderr-relay-start-failed",
+  "windows-worker-stderr-byte-read-failed",
+  "windows-worker-stderr-marker-forward-failed",
+]);
 const WINDOWS_OPEN_FAILURE_STAGES = Object.freeze([
   "artifact-admission",
   "artifact-binding-incomplete",
@@ -400,6 +409,7 @@ const WINDOWS_OPEN_FAILURE_STAGES = Object.freeze([
   ...WINDOWS_CAPABILITY_CALL_PROGRESS_FAILURE_STAGES,
   ...WINDOWS_CAPABILITY_CALL_FAILURE_STAGES,
   ...WINDOWS_MODEL_PROGRESS_FAILURE_STAGES,
+  ...WINDOWS_WORKER_STDERR_RELAY_PROGRESS_FAILURE_STAGES,
   "windows-prompt-unclassified-failed",
   "handshake-process-exit",
   "handshake-process-signal",

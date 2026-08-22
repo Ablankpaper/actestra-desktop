@@ -3567,6 +3567,12 @@ const WORKER_AGENT_CREATED_PROGRESS: &[u8] =
     b"Goose windows worker progress at bounded stage windows-worker-agent-created";
 const WORKER_SERVE_ENTERED_PROGRESS: &[u8] =
     b"Goose windows worker progress at bounded stage windows-worker-serve-entered";
+const WORKER_STDERR_RELAY_STARTED_PROGRESS: &[u8] =
+    b"Goose windows worker stderr progress at bounded stage windows-worker-stderr-relay-started";
+const WORKER_STDERR_BYTE_READ_PROGRESS: &[u8] =
+    b"Goose windows worker stderr progress at bounded stage windows-worker-stderr-byte-read";
+const WORKER_STDERR_MARKER_FORWARDED_PROGRESS: &[u8] =
+    b"Goose windows worker stderr progress at bounded stage windows-worker-stderr-marker-forwarded";
 
 fn worker_progress_line(line: &[u8]) -> Option<&'static str> {
     match line {
@@ -3591,6 +3597,15 @@ fn worker_progress_line(line: &[u8]) -> Option<&'static str> {
         value if value == WORKER_ACP_ENTRY_PROGRESS => Some("windows-worker-acp-entry"),
         value if value == WORKER_AGENT_CREATED_PROGRESS => Some("windows-worker-agent-created"),
         value if value == WORKER_SERVE_ENTERED_PROGRESS => Some("windows-worker-serve-entered"),
+        value if value == WORKER_STDERR_RELAY_STARTED_PROGRESS => {
+            Some("windows-worker-stderr-relay-started")
+        }
+        value if value == WORKER_STDERR_BYTE_READ_PROGRESS => {
+            Some("windows-worker-stderr-byte-read")
+        }
+        value if value == WORKER_STDERR_MARKER_FORWARDED_PROGRESS => {
+            Some("windows-worker-stderr-marker-forwarded")
+        }
         _ => None,
     }
 }
@@ -3599,6 +3614,8 @@ fn worker_progress_line(line: &[u8]) -> Option<&'static str> {
 fn report_windows_bridge_progress(stage: &'static str) {
     if stage.starts_with("windows-model-") {
         eprintln!("Goose windows model progress at bounded stage {stage}");
+    } else if stage.starts_with("windows-worker-stderr-") {
+        eprintln!("Goose windows worker stderr progress at bounded stage {stage}");
     } else if stage.starts_with("windows-worker-") {
         eprintln!("Goose windows worker progress at bounded stage {stage}");
     } else {
@@ -3649,13 +3666,16 @@ impl WorkerCapabilityProgressLineFilter {
 #[cfg(windows)]
 async fn relay_worker_stderr_progress(handle: HANDLE) -> Result<(), ()> {
     let mut channel = crate::windows_bridge::WindowsBridgeChannel::from_raw_handle(handle)?;
+    report_windows_bridge_progress("windows-worker-stderr-relay-started");
     let mut filter = WorkerCapabilityProgressLineFilter::new();
     let mut byte = [0_u8; 1];
     loop {
         match channel.read_once(&mut byte).await? {
             0 => return Ok(()),
             1 => {
+                report_windows_bridge_progress("windows-worker-stderr-byte-read");
                 if let Some(stage) = filter.push(byte[0]) {
+                    report_windows_bridge_progress("windows-worker-stderr-marker-forwarded");
                     report_windows_bridge_progress(stage);
                 }
             }
@@ -4179,6 +4199,24 @@ mod tests {
                 b"Goose windows worker progress at bounded stage windows-worker-serve-entered"
             ),
             Some("windows-worker-serve-entered")
+        );
+        assert_eq!(
+            worker_progress_line(
+                b"Goose windows worker stderr progress at bounded stage windows-worker-stderr-relay-started"
+            ),
+            Some("windows-worker-stderr-relay-started")
+        );
+        assert_eq!(
+            worker_progress_line(
+                b"Goose windows worker stderr progress at bounded stage windows-worker-stderr-byte-read"
+            ),
+            Some("windows-worker-stderr-byte-read")
+        );
+        assert_eq!(
+            worker_progress_line(
+                b"Goose windows worker stderr progress at bounded stage windows-worker-stderr-marker-forwarded"
+            ),
+            Some("windows-worker-stderr-marker-forwarded")
         );
         assert_eq!(worker_progress_line(b"C:\\private\\secret"), None);
         assert_eq!(

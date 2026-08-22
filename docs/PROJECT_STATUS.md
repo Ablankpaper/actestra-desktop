@@ -1,6 +1,35 @@
 # Project Status
 
-Last updated: 2026-08-22
+Last updated: 2026-08-23
+
+## 2026-08-23 P8.2c nested Windows ACP stderr-relay boundary diagnostics (local; Windows verification pending)
+
+The latest exact-head Windows run `32582272702` passed the Windows build and
+containment jobs, both Ubuntu jobs, Goose admission, and the macOS
+foundation/package job. The authenticated runtime failed only in the separate
+parent-death fixture's second Goose session, with
+`windows-runtime-parent-death-fixture-session-open-failed`; the fixture's
+bounded nested classifier was `windows-worker-acp-entry-failed`.
+
+That token means Main did not observe the first adapted Worker ACP marker before
+the `initialize` deadline. It does not identify whether the Worker failed to
+write stderr, the Supervisor failed to relay it, or Main failed to receive it.
+The current diagnostic slice changes no Worker, ACP, ACL, AppContainer, handle,
+capability, model, approval, or cleanup behavior. It adds a closed three-stage
+positive observation across that boundary:
+`windows-worker-stderr-relay-started`,
+`windows-worker-stderr-byte-read`, and
+`windows-worker-stderr-marker-forwarded`. Main classifies an initialize timeout
+against the first missing relay stage before falling back to the Worker ACP
+startup stages. The markers carry no raw stderr, paths, handles, or credentials.
+
+Fresh local evidence for this unpushed diagnostic slice: focused transport,
+composition, resource, and Windows evidence tests `95/95` passed; Rust
+`cargo test --locked` passed `93/93`; `cargo fmt --all --check` and
+`git diff --check` are clean. Full `bun run check` and a Windows CI run have
+not yet been executed for this slice. P8.2c remains open until one exact-head
+Windows authenticated-runtime Artifact identifies the first failing boundary or
+verifies the complete journey.
 
 ## 2026-08-22 P8.2c adapted ACP startup boundary diagnostics (local; Windows verification pending)
 

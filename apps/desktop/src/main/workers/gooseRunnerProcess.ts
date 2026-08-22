@@ -42,16 +42,20 @@ import {
   GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
   GOOSE_WINDOWS_MODEL_PROGRESS_STAGES,
   GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES,
+  GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES,
   GOOSE_WINDOWS_STDIO_CONFIGURATION,
   createGooseWindowsCapabilityProgress,
   createGooseWindowsModelProgress,
   createGooseWindowsWorkerAcpProgress,
+  createGooseWindowsWorkerStderrRelayProgress,
   type GooseWindowsCapabilityProgress,
   type GooseWindowsCapabilityProgressStage,
   type GooseWindowsModelProgress,
   type GooseWindowsModelProgressStage,
   type GooseWindowsWorkerAcpProgress,
   type GooseWindowsWorkerAcpProgressStage,
+  type GooseWindowsWorkerStderrRelayProgress,
+  type GooseWindowsWorkerStderrRelayProgressStage,
 } from "./gooseSessionTransport";
 
 export { GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES } from "./gooseSessionTransport";
@@ -60,6 +64,7 @@ export {
   GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
   GOOSE_WINDOWS_MODEL_PROGRESS_STAGES,
   GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES,
+  GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES,
 } from "./gooseSessionTransport";
 
 const MAX_STDOUT_LINE_BYTES = 64 * 1024;
@@ -90,6 +95,12 @@ function windowsModelProgressMarker(stage: GooseWindowsModelProgressStage): stri
 
 function windowsWorkerAcpProgressMarker(stage: GooseWindowsWorkerAcpProgressStage): string {
   return `Goose windows worker progress at bounded stage ${stage}`;
+}
+
+function windowsWorkerStderrRelayProgressMarker(
+  stage: GooseWindowsWorkerStderrRelayProgressStage,
+): string {
+  return `Goose windows worker stderr progress at bounded stage ${stage}`;
 }
 /**
  * Supervisor runtime stages carry their own closed code all the way to CI evidence.
@@ -221,6 +232,10 @@ export interface GooseWindowsWorkerAcpProgressMatcher {
   push(chunk: Uint8Array): readonly GooseWindowsWorkerAcpProgressStage[];
 }
 
+export interface GooseWindowsWorkerStderrRelayProgressMatcher {
+  push(chunk: Uint8Array): readonly GooseWindowsWorkerStderrRelayProgressStage[];
+}
+
 export type GooseRunnerSetupFailure =
   | "network-policy-unavailable"
   | "worker-resource-enforcement-unavailable"
@@ -239,6 +254,7 @@ export interface GooseWindowsSupervisorChannels {
   readonly capabilityProgress: GooseWindowsCapabilityProgress;
   readonly modelProgress: GooseWindowsModelProgress;
   readonly workerAcpProgress?: GooseWindowsWorkerAcpProgress;
+  readonly workerStderrRelayProgress?: GooseWindowsWorkerStderrRelayProgress;
 }
 
 export interface GooseAcpLaunchCommand {
@@ -668,6 +684,25 @@ export function createGooseWindowsWorkerAcpProgressMatcher(): GooseWindowsWorker
   return Object.freeze({
     push(chunk: Uint8Array): readonly GooseWindowsWorkerAcpProgressStage[] {
       const detected: GooseWindowsWorkerAcpProgressStage[] = [];
+      for (const [stage, matcher] of matchers) {
+        if (matcher.push(chunk)) detected.push(stage);
+      }
+      return Object.freeze(detected);
+    },
+  });
+}
+
+export function createGooseWindowsWorkerStderrRelayProgressMatcher(): GooseWindowsWorkerStderrRelayProgressMatcher {
+  const matchers = GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES.map(
+    (stage) =>
+      [
+        stage,
+        createGooseRunnerRepeatingMarkerMatcher(windowsWorkerStderrRelayProgressMarker(stage)),
+      ] as const,
+  );
+  return Object.freeze({
+    push(chunk: Uint8Array): readonly GooseWindowsWorkerStderrRelayProgressStage[] {
+      const detected: GooseWindowsWorkerStderrRelayProgressStage[] = [];
       for (const [stage, matcher] of matchers) {
         if (matcher.push(chunk)) detected.push(stage);
       }
@@ -1172,6 +1207,8 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
   private readonly windowsCapabilityProgressMatcher = createGooseWindowsCapabilityProgressMatcher();
   private readonly windowsModelProgressMatcher = createGooseWindowsModelProgressMatcher();
   private readonly windowsWorkerAcpProgressMatcher = createGooseWindowsWorkerAcpProgressMatcher();
+  private readonly windowsWorkerStderrRelayProgressMatcher =
+    createGooseWindowsWorkerStderrRelayProgressMatcher();
   private stdoutBuffer = "";
   private stderrBytes = 0;
   private exited = false;
@@ -1203,6 +1240,9 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
       }
     });
     child.stderr.on("data", (chunk: Buffer) => {
+      for (const stage of this.windowsWorkerStderrRelayProgressMatcher.push(chunk)) {
+        this.windowsChannels?.workerStderrRelayProgress?.record(stage);
+      }
       for (const stage of this.windowsCapabilityProgressMatcher.push(chunk)) {
         this.windowsChannels?.capabilityProgress.record(stage);
       }
@@ -1553,6 +1593,7 @@ export function createNodeGooseAcpTransport(
     capabilityProgress: createGooseWindowsCapabilityProgress(),
     modelProgress: createGooseWindowsModelProgress(),
     workerAcpProgress: createGooseWindowsWorkerAcpProgress(),
+    workerStderrRelayProgress: createGooseWindowsWorkerStderrRelayProgress(),
   });
   const transport = new NodeGooseAcpTransport(child, parentLiveness as Writable, windowsChannels);
   options.attachWindowsChannels?.(windowsChannels);

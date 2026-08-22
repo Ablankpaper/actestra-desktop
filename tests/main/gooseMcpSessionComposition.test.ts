@@ -11,6 +11,7 @@ import {
   classifyGooseWindowsCapabilityProgressFailure,
   classifyGooseWindowsModelProgressFailure,
   classifyGooseWindowsWorkerAcpProgressFailure,
+  classifyGooseWindowsWorkerStderrRelayProgressFailure,
   openGooseMcpSessionComposition,
   type GooseMcpSessionCompositionDependencies,
 } from "../../apps/desktop/src/main/workers/gooseMcpSessionComposition";
@@ -19,10 +20,12 @@ import {
   GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
   GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
   GOOSE_WINDOWS_MODEL_PROGRESS_STAGES,
+  GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES,
   GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES,
   createGooseWindowsCapabilityProgress,
   createGooseWindowsModelProgress,
   createGooseWindowsWorkerAcpProgress,
+  createGooseWindowsWorkerStderrRelayProgress,
 } from "../../apps/desktop/src/main/workers/gooseSessionTransport";
 import type {
   GooseAcpPromptOptions,
@@ -240,6 +243,93 @@ describe("Goose MCP session composition", () => {
     expect(
       classifyGooseWindowsWorkerAcpProgressFailure(GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES),
     ).toBe("windows-worker-acp-connect-failed");
+  });
+
+  it("maps Worker stderr relay progress to a bounded opening failure", () => {
+    expect(
+      GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES.map((_, index) =>
+        classifyGooseWindowsWorkerStderrRelayProgressFailure(
+          GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES.slice(0, index),
+        ),
+      ),
+    ).toEqual([
+      "windows-worker-stderr-relay-start-failed",
+      "windows-worker-stderr-byte-read-failed",
+      "windows-worker-stderr-marker-forward-failed",
+    ]);
+    expect(
+      classifyGooseWindowsWorkerStderrRelayProgressFailure(
+        GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES,
+      ),
+    ).toBeUndefined();
+  });
+
+  it("prefers stderr relay boundary over absent Worker ACP marker", async () => {
+    const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { ...originalPlatform, value: "win32" });
+    const relayProgress = createGooseWindowsWorkerStderrRelayProgress();
+    relayProgress.record(GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES[0]);
+    const startupTimeout = new GooseAcpHandshakeError(
+      "startup-timeout",
+      "bounded initialize timeout",
+    );
+    const workerProgress = createGooseWindowsWorkerAcpProgress();
+    const dependencies: GooseMcpSessionCompositionDependencies = {
+      async startCapabilityServer() {
+        throw new Error("Windows must not start loopback capability server");
+      },
+      async startModelServer() {
+        throw new Error("Windows must not start loopback model server");
+      },
+      startWindowsCapabilityHost: () =>
+        Object.freeze({
+          bindSession() {},
+          async waitForToolsList() {},
+          async close() {},
+        }),
+      startWindowsModelHost: () => modelServerDouble(),
+      async openRunnerHandshake(options) {
+        const bridge = await options.prepareBridge!({
+          root: "/tmp/actestra-goose-attempt",
+          bridgeDirectory: "/tmp/actestra-goose-attempt/bridge",
+          executablePath: "/tmp/actestra-goose-attempt/bin/runner.exe",
+          workingDirectory: "/tmp/actestra-goose-attempt/work",
+        });
+        bridge.attachWindowsChannels?.({
+          capability: {} as never,
+          model: {} as never,
+          capabilityProgress: createGooseWindowsCapabilityProgress(),
+          modelProgress: createGooseWindowsModelProgress(),
+          workerAcpProgress: workerProgress,
+          workerStderrRelayProgress: relayProgress,
+        });
+        throw startupTimeout;
+      },
+    };
+
+    try {
+      await expect(
+        openGooseMcpSessionComposition(
+          {
+            artifact: Object.freeze({ ...artifact, targetTriple: "x86_64-pc-windows-msvc" }),
+            privateRootParent: "/tmp/actestra-goose-attempts",
+            workspaceDirectory: "/tmp/actestra-worktree",
+            modelId: "actestra-caller-model",
+            modelInvoker,
+            toolInvoker,
+            commandIds: [],
+            testIds: [],
+          },
+          dependencies,
+        ),
+      ).rejects.toMatchObject({
+        name: "GooseMcpSessionCompositionError",
+        code: "windows-worker-stderr-byte-read-failed",
+        cause: startupTimeout,
+      });
+    } finally {
+      Object.defineProperty(process, "platform", originalPlatform);
+    }
   });
 
   it("classifies an initialize timeout from Worker ACP startup progress", async () => {

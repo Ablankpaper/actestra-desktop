@@ -3,12 +3,14 @@ import {
   GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES,
   GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
   GOOSE_WINDOWS_MODEL_PROGRESS_STAGES,
+  GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES,
   GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES,
   GOOSE_WINDOWS_STDIO_CHANNELS,
   GOOSE_WINDOWS_STDIO_CONFIGURATION,
   createGooseWindowsCapabilityProgress,
   createGooseWindowsModelProgress,
   createGooseWindowsWorkerAcpProgress,
+  createGooseWindowsWorkerStderrRelayProgress,
   resolveGooseSessionTransportMode,
 } from "../../apps/desktop/src/main/workers/gooseSessionTransport";
 
@@ -116,6 +118,24 @@ describe("Goose session transport selection", () => {
       GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES[2],
     ]);
     expect(progress.deepest()).toBe(GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES[2]);
+    expect(Object.isFrozen(progress.snapshot())).toBe(true);
+  });
+
+  it("locks Worker stderr relay progress as a separate bounded prefix", () => {
+    expect(GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES).toEqual([
+      "windows-worker-stderr-relay-started",
+      "windows-worker-stderr-byte-read",
+      "windows-worker-stderr-marker-forwarded",
+    ]);
+    expect(Object.isFrozen(GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES)).toBe(true);
+
+    const progress = createGooseWindowsWorkerStderrRelayProgress();
+    progress.record(GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES[2]);
+    progress.record(GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES[0]);
+    expect(progress.snapshot()).toEqual([
+      GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES[0],
+      GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES[2],
+    ]);
     expect(Object.isFrozen(progress.snapshot())).toBe(true);
   });
 

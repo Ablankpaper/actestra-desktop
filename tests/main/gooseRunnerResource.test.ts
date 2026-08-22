@@ -12,12 +12,14 @@ import {
   GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
   GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
   GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES,
+  GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES,
   GOOSE_WINDOWS_MODEL_PROGRESS_STAGES,
   GooseRunnerProcessError,
   assertGooseAcpSpawnOptions,
   createGooseWindowsCapabilityProgressMatcher,
   createGooseWindowsModelProgressMatcher,
   createGooseWindowsWorkerAcpProgressMatcher,
+  createGooseWindowsWorkerStderrRelayProgressMatcher,
   createGooseRunnerEnvironment,
   createGooseRunnerSetupFailureMatcher,
   createGooseRunnerResourceFailureMatcher,
@@ -28,6 +30,7 @@ import {
   createGooseWindowsCapabilityProgress,
   createGooseWindowsModelProgress,
   createGooseWindowsWorkerAcpProgress,
+  createGooseWindowsWorkerStderrRelayProgress,
 } from "../../apps/desktop/src/main/workers/gooseSessionTransport";
 import { createGooseRunnerSandboxLaunch } from "../../apps/desktop/src/main/workers/gooseRunnerSandbox";
 import { LoopbackGooseAcpTransport } from "../fixtures/gooseAcp";
@@ -378,6 +381,32 @@ describe("Goose runner native resource boundary", () => {
 
     expect(progress.snapshot()).toEqual(GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES);
     expect(progress.deepest()).toBe(GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES[2]);
+    expect(JSON.stringify(progress.snapshot())).not.toContain("private");
+    expect(Object.keys(matcher)).toEqual(["push"]);
+  });
+
+  it("extracts bounded Worker stderr relay progress without retaining raw stderr", () => {
+    const progress = createGooseWindowsWorkerStderrRelayProgress();
+    const matcher = createGooseWindowsWorkerStderrRelayProgressMatcher();
+    const marker = (stage: string): string =>
+      `Goose windows worker stderr progress at bounded stage ${stage}`;
+
+    expect(
+      matcher.push(
+        Buffer.from(`${marker(GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES[0]).slice(0, 23)}`),
+      ),
+    ).toEqual([]);
+    for (const stage of matcher.push(
+      Buffer.from(
+        `${marker(GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES[0]).slice(23)}\n` +
+          `${marker(GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES[1])}\n` +
+          `${marker(GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES[2])}\nC:\\private\\ignored`,
+      ),
+    )) {
+      progress.record(stage);
+    }
+
+    expect(progress.snapshot()).toEqual(GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES);
     expect(JSON.stringify(progress.snapshot())).not.toContain("private");
     expect(Object.keys(matcher)).toEqual(["push"]);
   });
