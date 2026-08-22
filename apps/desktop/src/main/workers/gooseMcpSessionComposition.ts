@@ -63,6 +63,13 @@ const WINDOWS_CAPABILITY_TOOLS_LIST_TIMEOUT_MESSAGE = "Windows capability tools/
 const EXPECTED_GOOSE_TOOL_NAMES = Object.freeze(
   CODING_TOOL_IDS.map((toolId) => `${ACTESTRA_GOOSE_MCP_EXTENSION_NAME}__${toolId}`),
 );
+type WindowsCompositionOpeningPhase =
+  | "windows-composition-runner-open-failed"
+  | "windows-composition-session-open-failed"
+  | "windows-composition-session-bind-failed"
+  | "windows-composition-capability-tools-list-failed"
+  | "windows-composition-tool-discovery-failed"
+  | "windows-composition-tool-normalization-failed";
 
 export interface OpenGooseMcpSessionCompositionOptions {
   readonly artifact: AdmittedGooseRunnerArtifact;
@@ -390,6 +397,7 @@ export async function openGooseMcpSessionComposition(
   let windowsCapabilityProgress: GooseWindowsCapabilityProgress | undefined;
   let windowsModelProgress: GooseWindowsModelProgress | undefined;
   let capabilityDiscoveryStarted = false;
+  let openingPhase: WindowsCompositionOpeningPhase = "windows-composition-runner-open-failed";
   const runnerOwnsBridgeServers = transportMode === "linux-relay" || windowsAuthenticated;
   let session: GooseAcpSession;
   let toolNames: readonly string[];
@@ -528,6 +536,7 @@ export async function openGooseMcpSessionComposition(
           error,
         );
       }
+      openingPhase = "windows-composition-session-open-failed";
     } else {
       capabilityServer = await dependencies.startCapabilityServer({
         attemptLease,
@@ -589,6 +598,7 @@ export async function openGooseMcpSessionComposition(
         error,
       );
     }
+    openingPhase = "windows-composition-session-bind-failed";
     try {
       modelServer.bindSession(session.sessionId);
       if (windowsAuthenticated) {
@@ -601,6 +611,7 @@ export async function openGooseMcpSessionComposition(
         error,
       );
     }
+    openingPhase = "windows-composition-capability-tools-list-failed";
     capabilityDiscoveryStarted = true;
     let toolsListed: Promise<void>;
     try {
@@ -614,6 +625,7 @@ export async function openGooseMcpSessionComposition(
         error,
       );
     }
+    openingPhase = "windows-composition-tool-discovery-failed";
     const [discovery] = await Promise.all([
       runner
         .discoverTools({
@@ -638,6 +650,7 @@ export async function openGooseMcpSessionComposition(
         );
       }),
     ]);
+    openingPhase = "windows-composition-tool-normalization-failed";
     try {
       toolNames = normalizeDiscoveredToolNames(discovery.toolNames);
     } catch (error) {
@@ -668,7 +681,20 @@ export async function openGooseMcpSessionComposition(
               "Windows capability tools/list failed after every relay stage completed",
               { cause: error },
             )
-          : error;
+          : windowsAuthenticated &&
+              process.platform === "win32" &&
+              error instanceof Error &&
+              !(error instanceof GooseAcpHandshakeError) &&
+              !(error instanceof GooseAcpSessionError) &&
+              !(error instanceof GooseRunnerProcessError) &&
+              !(error instanceof GooseMcpSessionCompositionError) &&
+              !(error instanceof GooseAuthenticatedBridgeProtocolError)
+            ? new GooseMcpSessionCompositionError(
+                openingPhase,
+                "Windows Goose composition opening failed at an unclassified boundary",
+                { cause: error },
+              )
+            : error;
     const cleanupFailures = await collectCleanupFailures(
       runner,
       capabilityServer,

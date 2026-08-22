@@ -425,6 +425,79 @@ describe("Goose MCP session composition", () => {
     }
   });
 
+  it("classifies an unexpected tool discovery result at normalization", async () => {
+    const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { ...originalPlatform, value: "win32" });
+    const dependencies: GooseMcpSessionCompositionDependencies = {
+      async startCapabilityServer() {
+        throw new Error("Windows must not start loopback capability server");
+      },
+      async startModelServer() {
+        throw new Error("Windows must not start loopback model server");
+      },
+      startWindowsCapabilityHost: () =>
+        Object.freeze({
+          bindSession() {},
+          async waitForToolsList() {},
+          async close() {},
+        }),
+      startWindowsModelHost: () => modelServerDouble(),
+      async openRunnerHandshake(options) {
+        const bridge = await options.prepareBridge!({
+          root: "/tmp/actestra-goose-attempt",
+          bridgeDirectory: "/tmp/actestra-goose-attempt/bridge",
+          executablePath: "/tmp/actestra-goose-attempt/bin/runner.exe",
+          workingDirectory: "/tmp/actestra-goose-attempt/work",
+        });
+        bridge.attachWindowsChannels?.({
+          capability: {} as never,
+          model: {} as never,
+          capabilityProgress: createGooseWindowsCapabilityProgress(),
+          modelProgress: createGooseWindowsModelProgress(),
+        });
+        return Object.freeze({
+          info: runnerInfo,
+          privateRoot: "/tmp/actestra-goose-attempt",
+          async openSession() {
+            return runnerSession;
+          },
+          async discoverTools() {
+            return undefined as never;
+          },
+          async prompt() {
+            return runnerPromptResult;
+          },
+          async close() {
+            await bridge.close();
+          },
+        });
+      },
+    };
+
+    try {
+      await expect(
+        openGooseMcpSessionComposition(
+          {
+            artifact: Object.freeze({ ...artifact, targetTriple: "x86_64-pc-windows-msvc" }),
+            privateRootParent: "/tmp/actestra-goose-attempts",
+            workspaceDirectory: "/tmp/actestra-worktree",
+            modelId: "actestra-caller-model",
+            modelInvoker,
+            toolInvoker,
+            commandIds: [],
+            testIds: [],
+          },
+          dependencies,
+        ),
+      ).rejects.toMatchObject({
+        name: "GooseMcpSessionCompositionError",
+        code: "windows-composition-tool-normalization-failed",
+      });
+    } finally {
+      Object.defineProperty(process, "platform", originalPlatform);
+    }
+  });
+
   it("does not replace an unrelated Windows runtime failure with capability progress", async () => {
     const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform")!;
     Object.defineProperty(process, "platform", { ...originalPlatform, value: "win32" });
