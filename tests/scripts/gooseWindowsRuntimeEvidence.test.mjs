@@ -669,8 +669,8 @@ describe("Goose Windows runtime evidence", () => {
   });
 
   it("carries each fixture-side parent-death step into its own bounded token", async () => {
-    // The fixture runs with every stdio stream ignored, so an early exit only
-    // stays diagnosable if its own last step reaches the evidence vocabulary.
+    // The fixture drains its own stdout/stderr pipes; an early exit still only
+    // reaches the bounded evidence vocabulary through its last published step.
     const steps = [
       "fixture-artifact-admission",
       "fixture-session-open",
@@ -702,6 +702,13 @@ describe("Goose Windows runtime evidence", () => {
     expect(fixture).toContain("ACTESTRA_GOOSE_WINDOWS_RUNTIME_WORKSPACE");
     expect(fixture).toContain("workspaceDirectory,");
     expect(fixture).toContain("classifyGooseWindowsOpeningFailure(error)");
+    const integration = fs.readFileSync(
+      path.join(repositoryRoot, "tests/main/gooseRunnerWindowsNative.integration.ts"),
+      "utf8",
+    );
+    expect(integration).toContain('stdio: ["ignore", "pipe", "pipe"]');
+    expect(integration).toContain("child.stdout?.resume()");
+    expect(integration).toContain("child.stderr?.resume()");
     expect(
       classifyGooseWindowsRuntimeFailureEvidence({
         contractVersion: 1,

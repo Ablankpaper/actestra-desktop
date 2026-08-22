@@ -355,10 +355,18 @@ async function parentDeathProbe(
         ACTESTRA_GOOSE_WINDOWS_RUNTIME_SUPERVISOR_STATE: statePath,
         ACTESTRA_GOOSE_WINDOWS_RUNTIME_WORKSPACE: workspaceDirectory,
       },
-      stdio: ["ignore", "ignore", "ignore"],
+      // Keep the fixture's own standard handles as readable pipes. On Windows
+      // Bun uses the parent's stdio-handle topology while creating the nested
+      // overlapped capability/model channels for the admitted Goose runner;
+      // closing stdout/stderr as NUL handles changes that topology and can
+      // leave ACP initialize waiting forever. Drain both streams locally so
+      // fixture diagnostics never cross into the bounded runtime artifact.
+      stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
     },
   );
+  child.stdout?.resume();
+  child.stderr?.resume();
   let state: { readonly privateRoot: string; readonly processIds: readonly number[] } | undefined;
   let fixtureExited = false;
   child.once("exit", () => {

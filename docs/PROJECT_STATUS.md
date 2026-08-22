@@ -2,6 +2,31 @@
 
 Last updated: 2026-08-22
 
+## 2026-08-22 P8.2c Windows parent-death fixture stdio topology correction (local; Windows verification pending)
+
+The exact-head run `32570214374` reached the parent-death fixture and reported
+`windows-runtime-parent-death-fixture-session-open-failed` with the nested
+classifier `handshake-timeout`. Windows build, containment, Ubuntu
+build/containment, Goose admission, and macOS foundation/package all passed.
+The failure was therefore before `initialize` in the fixture's nested Goose
+session, not in parent-death cleanup.
+
+The fixture was the only Windows runtime child launched with both stdout and
+stderr set to ignored handles; the production journey and the native channel
+probe use readable pipes. The fixture now uses pipe-backed stdout/stderr and
+drains them immediately, preserving bounded failure files without exposing raw
+diagnostics. No runner, ACL, AppContainer, relay, model, capability, approval,
+kill, Job Object, or cleanup logic changed.
+
+Fresh local evidence: Windows evidence tests `32/32`, channel test skipped on
+macOS as expected, format check, lint, typecheck, full Vitest `1873 passed / 10
+skipped`, P7 abuse gate, smoke harness, boundary, foundation, and downstream
+checks passed. The composite `bun run check` reached the downstream frozen
+AionUi install but was stopped after more than five minutes with no output; its
+exit was `130`, so the package portion is not claimed green. No Windows-native
+verification has run locally. P8.2c remains open pending one exact-head Windows
+run at this correction.
+
 ## 2026-08-22 P8.2c parent-death fixture session/new classifier added (local; Windows verification pending)
 
 The exact-head Windows authenticated-runtime run at `6f6389b` still failed before
