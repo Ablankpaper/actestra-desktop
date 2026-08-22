@@ -307,6 +307,23 @@ async function fixtureExitStage(statePath: string): Promise<string> {
   }
 }
 
+async function fixtureExitDetail(statePath: string): Promise<string | undefined> {
+  const bytes = await readFile(`${statePath}.failure-detail`, "utf8").catch(
+    (): undefined => undefined,
+  );
+  if (bytes === undefined || bytes.length > 256) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(bytes);
+    const detail =
+      typeof parsed === "object" && parsed !== null
+        ? (parsed as { readonly detail?: unknown }).detail
+        : undefined;
+    return typeof detail === "string" && /^[a-z0-9-]{1,128}$/u.test(detail) ? detail : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function parentDeathProbe(
   artifact: AdmittedGooseRunnerArtifact,
   workspaceDirectory: string,
@@ -358,6 +375,10 @@ async function parentDeathProbe(
     await waitFor(async () => {
       if (fixtureExited) {
         await markFailure(await fixtureExitStage(statePath));
+        const detail = await fixtureExitDetail(statePath);
+        if (detail !== undefined) {
+          process.stderr.write(`Goose Windows parent-death fixture session-open ${detail}\n`);
+        }
         throw new Error("Windows runtime parent-death fixture exited before publishing its state");
       }
       const bytes = await readFile(statePath).catch((): undefined => undefined);

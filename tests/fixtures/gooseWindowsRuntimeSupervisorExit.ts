@@ -3,6 +3,7 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
+import { classifyGooseWindowsOpeningFailure } from "../../scripts/gooseWindowsRuntimeEvidence.mjs";
 import { openGooseMcpSessionComposition } from "../../apps/desktop/src/main/workers/gooseMcpSessionComposition";
 import { admitGooseRunnerArtifact } from "../../apps/desktop/src/main/workers/gooseRunnerArtifact";
 
@@ -68,6 +69,15 @@ async function publishFailureStage(statePath: string, stage: string): Promise<vo
   }).catch((): undefined => undefined);
 }
 
+async function publishFailureDetail(statePath: string, detail: string): Promise<void> {
+  if (!/^[a-z0-9-]{1,128}$/u.test(detail)) return;
+  await writeFile(
+    `${statePath}.failure-detail`,
+    `${JSON.stringify({ contractVersion: 1, detail })}\n`,
+    { encoding: "utf8", mode: 0o600 },
+  ).catch((): undefined => undefined);
+}
+
 async function main(): Promise<never> {
   if (
     process.platform !== "win32" ||
@@ -99,27 +109,33 @@ async function main(): Promise<never> {
     throw new Error("Windows runtime supervisor fixture lacks containment evidence");
   }
   await publishFailureStage(statePath, "fixture-session-open");
-  const opened = await openGooseMcpSessionComposition({
-    artifact,
-    privateRootParent: path.join(fixtureRoot, "attempts"),
-    // Keep the fixture on the same admitted isolated coding worktree contract
-    // as the main journey; the parent-death probe must not invent a bare cwd.
-    workspaceDirectory,
-    modelId: "actestra-windows-runtime-parent-death",
-    modelInvoker: async () =>
-      Object.freeze({
-        type: "message" as const,
-        text: "supervisor fixture",
-        usage: Object.freeze({ promptTokens: 1, completionTokens: 1 }),
-      }),
-    toolInvoker: async () => {
-      throw new Error("Windows runtime supervisor fixture does not invoke tools");
-    },
-    commandIds: [],
-    testIds: [],
-    handshakeTimeoutMs: 30_000,
-    sessionTimeoutMs: 60_000,
-  });
+  let opened;
+  try {
+    opened = await openGooseMcpSessionComposition({
+      artifact,
+      privateRootParent: path.join(fixtureRoot, "attempts"),
+      // Keep the fixture on the same admitted isolated coding worktree contract
+      // as the main journey; the parent-death probe must not invent a bare cwd.
+      workspaceDirectory,
+      modelId: "actestra-windows-runtime-parent-death",
+      modelInvoker: async () =>
+        Object.freeze({
+          type: "message" as const,
+          text: "supervisor fixture",
+          usage: Object.freeze({ promptTokens: 1, completionTokens: 1 }),
+        }),
+      toolInvoker: async () => {
+        throw new Error("Windows runtime supervisor fixture does not invoke tools");
+      },
+      commandIds: [],
+      testIds: [],
+      handshakeTimeoutMs: 30_000,
+      sessionTimeoutMs: 60_000,
+    });
+  } catch (error) {
+    await publishFailureDetail(statePath, classifyGooseWindowsOpeningFailure(error));
+    throw error;
+  }
   await publishFailureStage(statePath, "fixture-process-tree");
   const stagedExecutable = path.join(opened.privateRoot, "bin", "actestra-goose-runner.exe");
   const processIds = await waitForRuntimeProcesses(stagedExecutable);

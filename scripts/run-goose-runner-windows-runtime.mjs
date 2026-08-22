@@ -446,6 +446,10 @@ async function main() {
       ) {
         throw new Error(childCode);
       }
+      const fixtureDiagnostic = `${child.stdout ?? ""}\n${child.stderr ?? ""}`.match(
+        /Goose Windows parent-death fixture session-open [a-z0-9-]{1,128}/u,
+      );
+      if (fixtureDiagnostic !== null) process.stderr.write(`${fixtureDiagnostic[0]}\n`);
       throw new Error(evidenceCode);
     }
     const evidenceBytes = await readFile(evidencePath).catch(() => {

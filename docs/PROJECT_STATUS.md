@@ -2,6 +2,30 @@
 
 Last updated: 2026-08-22
 
+## 2026-08-22 P8.2c parent-death fixture session/new classifier added (local; Windows verification pending)
+
+The exact-head Windows authenticated-runtime run at `6f6389b` still failed before
+the parent-death operation with
+`windows-runtime-parent-death-fixture-session-open-failed`, even after the
+fixture was aligned with the Main-owned isolated coding worktree. The remaining
+failure is therefore the fixture's Goose ACP `session/new` opening boundary;
+the worktree hypothesis is not sufficient evidence for a behavior repair.
+
+The follow-up diagnostic slice records a bounded opening classifier in a private
+sibling file when the fixture's `openGooseMcpSessionComposition` rejects, then
+prints only that closed token through the Windows runtime wrapper. It changes no
+runner, ACL, AppContainer, relay, approval, kill, Job Object, or cleanup logic.
+
+Fresh local evidence: format check, typecheck, lint, Windows evidence tests
+(`32/32`), Goose lifecycle tests (`17/17`), and the sequential/concurrent ACP
+regression (`1/1`) pass. The full ACP file is not used as a gate here because a
+pre-existing silent-transport test leaves Bun/Vitest open on this macOS host;
+the targeted regression and all affected tests pass. The Windows-native
+integration remains platform-gated and has not run locally. This diagnostic
+slice is committed locally as `c46128c` and remains unpushed; P8.2c remains
+open pending one exact-head Windows run that reports the underlying
+`session/new` classifier.
+
 ## 2026-08-22 P8.2c parent-death fixture aligned with the production coding workspace contract (local; Windows verification pending)
 
 Exact-head CI run
