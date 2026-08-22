@@ -602,9 +602,18 @@ export async function openGooseMcpSessionComposition(
       );
     }
     capabilityDiscoveryStarted = true;
-    const toolsListed = capabilityServer.waitForToolsList(
-      options.sessionTimeoutMs ?? DEFAULT_TOOLS_LIST_WAIT_MS,
-    );
+    let toolsListed: Promise<void>;
+    try {
+      toolsListed = capabilityServer.waitForToolsList(
+        options.sessionTimeoutMs ?? DEFAULT_TOOLS_LIST_WAIT_MS,
+      );
+    } catch (error) {
+      throw windowsCompositionStageError(
+        "windows-composition-capability-tools-list-failed",
+        "Windows Goose capability tools/list failed",
+        error,
+      );
+    }
     const [discovery] = await Promise.all([
       runner
         .discoverTools({
@@ -647,13 +656,19 @@ export async function openGooseMcpSessionComposition(
         ? classifyGooseWindowsCapabilityProgressFailure(windowsCapabilityProgress.snapshot())
         : undefined;
     const openingError =
-      progressFailure === undefined
-        ? error
-        : new GooseMcpSessionCompositionError(
+      progressFailure !== undefined
+        ? new GooseMcpSessionCompositionError(
             progressFailure,
             "Windows capability round trip stopped before a bounded stage",
             { cause: error },
-          );
+          )
+        : windowsAuthenticated && isGooseWindowsCapabilityDiscoveryTimeout(error)
+          ? new GooseMcpSessionCompositionError(
+              "windows-composition-capability-tools-list-failed",
+              "Windows capability tools/list failed after every relay stage completed",
+              { cause: error },
+            )
+          : error;
     const cleanupFailures = await collectCleanupFailures(
       runner,
       capabilityServer,

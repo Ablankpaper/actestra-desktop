@@ -2,6 +2,48 @@
 
 Last updated: 2026-08-22
 
+## 2026-08-22 P8.2c Windows composition classification closure (local; CI pending)
+
+Exact-head CI run
+[`32503393885`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32503393885)
+for source head `3f9917b1fa2571c9ed5f580bfa0324d190eeb9bb` checked out merge
+`7019e826cb65937db8478fb70b3493115bfe2b54`; both commits have the exact
+same source tree `654fafba3c8134911a9d7ee049bedd5ff3731e12`. Windows build and
+containment, both Ubuntu jobs, Goose admission, and the macOS
+foundation/package job passed. The sole failure remained the real Windows
+authenticated-runtime step.
+
+Failure Artifact `9455246014` has uploaded ZIP SHA-256
+`41561ebf24d5b6d3a745e535e601b0590a2bbcca9bf509b53cbeac4bf2185137`.
+Its only file has SHA-256
+`48e374b468548e544228e9e7a62d7edd975089f380248b33bcbc0f9900a10a56`
+and contains exactly:
+
+```json
+{"contractVersion":1,"code":"windows-runtime-composition-open-failed"}
+```
+
+The six-stage split was present in the checked-out merge, but its classification
+was not closed. A synchronous `waitForToolsList()` failure could occur before
+its promise-level handler existed. Separately, the exact tools/list timeout was
+preserved for capability progress classification, but when all eight relay
+stages were present there was no missing stage; the raw protocol error then fell
+through to generic `composition-open`. The bounded Artifact cannot distinguish
+which of these two uncovered paths occurred. Both were reproduced RED before
+implementation and now map to the existing fixed
+`windows-composition-capability-tools-list-failed` stage. No timeout, retry,
+ACL, AppContainer, relay, permission, credential, tool, or `foundation/`
+behavior changed.
+
+Fresh local evidence:
+
+- focused composition/evidence tests: `49/49` passed;
+- typecheck, format, lint, and `git diff --check` passed.
+
+P8.2c remains open until the full local gate passes and one exact-head Windows
+run produces a successful authenticated-runtime Artifact that is independently
+validated.
+
 ## 2026-08-22 P8.2c Windows composition-open stage split (local; exact-head CI pending)
 
 Exact-head CI run

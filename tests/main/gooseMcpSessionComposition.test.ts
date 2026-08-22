@@ -265,6 +265,166 @@ describe("Goose MCP session composition", () => {
     }
   });
 
+  it("classifies a synchronous capability tools/list failure at its opening boundary", async () => {
+    const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { ...originalPlatform, value: "win32" });
+    const capabilityFailure = new Error("capability tools/list setup failed");
+    const capabilityHost = Object.freeze({
+      bindSession() {},
+      waitForToolsList() {
+        throw capabilityFailure;
+      },
+      async close() {},
+    });
+    const dependencies: GooseMcpSessionCompositionDependencies = {
+      async startCapabilityServer() {
+        throw new Error("Windows must not start loopback capability server");
+      },
+      async startModelServer() {
+        throw new Error("Windows must not start loopback model server");
+      },
+      startWindowsCapabilityHost: () => capabilityHost,
+      startWindowsModelHost: () => modelServerDouble(),
+      async openRunnerHandshake(options) {
+        const bridge = await options.prepareBridge!({
+          root: "/tmp/actestra-goose-attempt",
+          bridgeDirectory: "/tmp/actestra-goose-attempt/bridge",
+          executablePath: "/tmp/actestra-goose-attempt/bin/runner.exe",
+          workingDirectory: "/tmp/actestra-goose-attempt/work",
+        });
+        bridge.attachWindowsChannels?.({
+          capability: {} as never,
+          model: {} as never,
+          capabilityProgress: createGooseWindowsCapabilityProgress(),
+          modelProgress: createGooseWindowsModelProgress(),
+        });
+        return Object.freeze({
+          info: runnerInfo,
+          privateRoot: "/tmp/actestra-goose-attempt",
+          async openSession() {
+            return runnerSession;
+          },
+          async discoverTools() {
+            throw new Error("tool discovery must not start after tools/list setup failure");
+          },
+          async prompt() {
+            return runnerPromptResult;
+          },
+          async close() {
+            await bridge.close();
+          },
+        });
+      },
+    };
+
+    try {
+      await expect(
+        openGooseMcpSessionComposition(
+          {
+            artifact: Object.freeze({ ...artifact, targetTriple: "x86_64-pc-windows-msvc" }),
+            privateRootParent: "/tmp/actestra-goose-attempts",
+            workspaceDirectory: "/tmp/actestra-worktree",
+            modelId: "actestra-caller-model",
+            modelInvoker,
+            toolInvoker,
+            commandIds: [],
+            testIds: [],
+          },
+          dependencies,
+        ),
+      ).rejects.toMatchObject({
+        name: "GooseMcpSessionCompositionError",
+        code: "windows-composition-capability-tools-list-failed",
+        cause: capabilityFailure,
+      });
+    } finally {
+      Object.defineProperty(process, "platform", originalPlatform);
+    }
+  });
+
+  it("keeps a tools/list timeout specific when every capability progress stage was observed", async () => {
+    const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { ...originalPlatform, value: "win32" });
+    const capabilityProgress = createGooseWindowsCapabilityProgress();
+    for (const stage of GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES) {
+      capabilityProgress.record(stage);
+    }
+    const timeout = new GooseAuthenticatedBridgeProtocolError(
+      "Windows capability tools/list timed out",
+    );
+    const capabilityHost = Object.freeze({
+      bindSession() {},
+      async waitForToolsList() {
+        throw timeout;
+      },
+      async close() {},
+    });
+    const dependencies: GooseMcpSessionCompositionDependencies = {
+      async startCapabilityServer() {
+        throw new Error("Windows must not start loopback capability server");
+      },
+      async startModelServer() {
+        throw new Error("Windows must not start loopback model server");
+      },
+      startWindowsCapabilityHost: () => capabilityHost,
+      startWindowsModelHost: () => modelServerDouble(),
+      async openRunnerHandshake(options) {
+        const bridge = await options.prepareBridge!({
+          root: "/tmp/actestra-goose-attempt",
+          bridgeDirectory: "/tmp/actestra-goose-attempt/bridge",
+          executablePath: "/tmp/actestra-goose-attempt/bin/runner.exe",
+          workingDirectory: "/tmp/actestra-goose-attempt/work",
+        });
+        bridge.attachWindowsChannels?.({
+          capability: {} as never,
+          model: {} as never,
+          capabilityProgress,
+          modelProgress: createGooseWindowsModelProgress(),
+        });
+        return Object.freeze({
+          info: runnerInfo,
+          privateRoot: "/tmp/actestra-goose-attempt",
+          async openSession() {
+            return runnerSession;
+          },
+          async discoverTools() {
+            return new Promise<never>(() => undefined);
+          },
+          async prompt() {
+            return runnerPromptResult;
+          },
+          async close() {
+            await bridge.close();
+          },
+        });
+      },
+    };
+
+    try {
+      await expect(
+        openGooseMcpSessionComposition(
+          {
+            artifact: Object.freeze({ ...artifact, targetTriple: "x86_64-pc-windows-msvc" }),
+            privateRootParent: "/tmp/actestra-goose-attempts",
+            workspaceDirectory: "/tmp/actestra-worktree",
+            modelId: "actestra-caller-model",
+            modelInvoker,
+            toolInvoker,
+            commandIds: [],
+            testIds: [],
+          },
+          dependencies,
+        ),
+      ).rejects.toMatchObject({
+        name: "GooseMcpSessionCompositionError",
+        code: "windows-composition-capability-tools-list-failed",
+        cause: timeout,
+      });
+    } finally {
+      Object.defineProperty(process, "platform", originalPlatform);
+    }
+  });
+
   it("does not replace an unrelated Windows runtime failure with capability progress", async () => {
     const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform")!;
     Object.defineProperty(process, "platform", { ...originalPlatform, value: "win32" });
