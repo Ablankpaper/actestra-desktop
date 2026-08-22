@@ -80,11 +80,13 @@ async function main(): Promise<never> {
   const manifestSha256 = process.env.ACTESTRA_GOOSE_RUNNER_MANIFEST_SHA256;
   const fixtureRoot = process.env.ACTESTRA_GOOSE_WINDOWS_RUNTIME_SUPERVISOR_ROOT;
   const statePath = process.env.ACTESTRA_GOOSE_WINDOWS_RUNTIME_SUPERVISOR_STATE;
+  const workspaceDirectory = process.env.ACTESTRA_GOOSE_WINDOWS_RUNTIME_WORKSPACE;
   if (
     artifactDirectory === undefined ||
     manifestSha256 === undefined ||
     fixtureRoot === undefined ||
-    statePath === undefined
+    statePath === undefined ||
+    workspaceDirectory === undefined
   ) {
     throw new Error("Windows runtime supervisor fixture configuration is invalid");
   }
@@ -100,7 +102,9 @@ async function main(): Promise<never> {
   const opened = await openGooseMcpSessionComposition({
     artifact,
     privateRootParent: path.join(fixtureRoot, "attempts"),
-    workspaceDirectory: path.join(fixtureRoot, "workspace"),
+    // Keep the fixture on the same admitted isolated coding worktree contract
+    // as the main journey; the parent-death probe must not invent a bare cwd.
+    workspaceDirectory,
     modelId: "actestra-windows-runtime-parent-death",
     modelInvoker: async () =>
       Object.freeze({

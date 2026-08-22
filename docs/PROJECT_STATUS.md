@@ -2,6 +2,29 @@
 
 Last updated: 2026-08-22
 
+## 2026-08-22 P8.2c parent-death fixture aligned with the production coding workspace contract (local; Windows verification pending)
+
+Exact-head CI run
+[`32565519668`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32565519668)
+passed the Windows build and containment jobs, both Ubuntu jobs, Goose admission,
+and the macOS foundation/package job. The authenticated Windows runtime failed
+before any parent-death operation with the bounded code
+`windows-runtime-parent-death-fixture-session-open-failed`.
+
+The failure was isolated to the parent-death fixture's `session/new` setup. Its
+fixture used a newly-created bare directory as `cwd`, while the successful
+authenticated journey passes the Main-owned isolated coding worktree. The
+fixture now receives that already-admitted worktree path from the parent and
+uses it for `openGooseMcpSessionComposition`; no Windows supervisor, ACL,
+handle, Job Object, relay, or cleanup behavior changed. A source regression
+asserts that the fixture cannot silently return to the bare-cwd setup.
+
+Fresh local evidence: format check, typecheck, the focused ACP/lifecycle/
+Windows-evidence suite (`85/85`), and `git diff --check` pass. This macOS
+checkout cannot execute the Windows-native integration, so the change is not
+yet proof of the root cause or of parent-death cleanup. It is not committed or
+pushed; P8.2c remains open pending one exact-head Windows run.
+
 ## 2026-08-22 P8.2c parent-death cleanup diagnostics prepared; Windows evidence pending
 
 The exact-head Windows authenticated-runtime run

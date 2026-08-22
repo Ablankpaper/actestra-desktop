@@ -307,14 +307,15 @@ async function fixtureExitStage(statePath: string): Promise<string> {
   }
 }
 
-async function parentDeathProbe(artifact: AdmittedGooseRunnerArtifact): Promise<number> {
+async function parentDeathProbe(
+  artifact: AdmittedGooseRunnerArtifact,
+  workspaceDirectory: string,
+): Promise<number> {
   const root = await mkdtemp(path.join(os.tmpdir(), "actestra-goose-windows-parent-death-"));
   fixtureRoots.push(root);
-  const workspace = path.join(root, "workspace");
   const privateRootParent = path.join(root, "attempts");
   const statePath = path.join(root, "state.json");
-  await Promise.all([mkdir(workspace), mkdir(privateRootParent)]);
-  await writeFile(path.join(workspace, "answer.txt"), "before\n", "utf8");
+  await mkdir(privateRootParent);
   const child = spawn(
     "bun",
     [path.join(repositoryRoot, "tests/fixtures/gooseWindowsRuntimeSupervisorExit.ts")],
@@ -335,6 +336,7 @@ async function parentDeathProbe(artifact: AdmittedGooseRunnerArtifact): Promise<
         ACTESTRA_GOOSE_RUNNER_MANIFEST_SHA256: artifact.manifestSha256,
         ACTESTRA_GOOSE_WINDOWS_RUNTIME_SUPERVISOR_ROOT: root,
         ACTESTRA_GOOSE_WINDOWS_RUNTIME_SUPERVISOR_STATE: statePath,
+        ACTESTRA_GOOSE_WINDOWS_RUNTIME_WORKSPACE: workspaceDirectory,
       },
       stdio: ["ignore", "ignore", "ignore"],
       windowsHide: true,
@@ -549,6 +551,7 @@ describe.skipIf(!nativeEnabled)("native Windows Goose authenticated runtime comp
     let acceptanceBytes = "";
     let acpInitialized = false;
     let exactToolCount = 0;
+    let preserveCodingSessionForParentDeath = false;
     try {
       try {
         opened = await openGooseMcpSessionComposition({
@@ -609,8 +612,14 @@ describe.skipIf(!nativeEnabled)("native Windows Goose authenticated runtime comp
       await expect(prompting).rejects.toEqual(expect.any(Error));
       await closing;
       opened = undefined;
+      // Keep the admitted worktree alive while the separate parent-death fixture
+      // opens its own Goose session against the same production-shaped cwd.
+      preserveCodingSessionForParentDeath = true;
     } finally {
-      await closeComposition(opened, () => codingSession.close());
+      await closeComposition(
+        opened,
+        preserveCodingSessionForParentDeath ? undefined : () => codingSession.close(),
+      );
     }
     expect(acceptanceBytes).toBe("Windows authenticated runtime accepted.\n");
     expect(cancellationSignalAborted).toBe(true);
@@ -625,8 +634,9 @@ describe.skipIf(!nativeEnabled)("native Windows Goose authenticated runtime comp
     assertClosedEnvironmentCanaries(path.join(fixture.root, "closed-environment"));
 
     await markFailure("parent-death");
-    const residualProcessCount = await parentDeathProbe(artifact);
+    const residualProcessCount = await parentDeathProbe(artifact, codingSession.worktreeRoot);
     expect(residualProcessCount).toBe(0);
+    await codingSession.close();
 
     const runtimeEvidence = Object.freeze({
       schemaVersion: 1,

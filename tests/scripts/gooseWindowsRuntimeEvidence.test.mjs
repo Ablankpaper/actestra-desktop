@@ -699,6 +699,8 @@ describe("Goose Windows runtime evidence", () => {
     );
     for (const step of steps)
       expect(fixture).toContain(`publishFailureStage(statePath, "${step}")`);
+    expect(fixture).toContain("ACTESTRA_GOOSE_WINDOWS_RUNTIME_WORKSPACE");
+    expect(fixture).toContain("workspaceDirectory,");
     expect(
       classifyGooseWindowsRuntimeFailureEvidence({
         contractVersion: 1,
