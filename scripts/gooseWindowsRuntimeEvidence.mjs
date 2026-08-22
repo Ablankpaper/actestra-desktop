@@ -183,6 +183,10 @@ const FAILURE_STAGE_CODES = Object.freeze({
     "windows-runtime-worker-state-directory-traversal-shape-invalid",
   "windows-worker-ready-signal-failed": "windows-runtime-worker-ready-signal-failed",
   "windows-worker-acp-handshake-failed": "windows-runtime-worker-acp-handshake-failed",
+  "windows-worker-acp-entry-failed": "windows-runtime-worker-acp-entry-failed",
+  "windows-worker-agent-creation-failed": "windows-runtime-worker-agent-creation-failed",
+  "windows-worker-serve-failed": "windows-runtime-worker-serve-failed",
+  "windows-worker-acp-connect-failed": "windows-runtime-worker-acp-connect-failed",
   "test-child-spawn": "windows-runtime-test-child-spawn-failed",
   "test-child-timeout": "windows-runtime-test-child-timeout-failed",
   "test-child-signal": "windows-runtime-test-child-signal-failed",
@@ -331,6 +335,10 @@ const WINDOWS_WORKER_STARTUP_STAGES = Object.freeze([
   "windows-worker-state-directory-traversal-shape-invalid",
   "windows-worker-ready-signal-failed",
   "windows-worker-acp-handshake-failed",
+  "windows-worker-acp-entry-failed",
+  "windows-worker-agent-creation-failed",
+  "windows-worker-serve-failed",
+  "windows-worker-acp-connect-failed",
 ]);
 const WINDOWS_CAPABILITY_PROGRESS_FAILURE_STAGES = Object.freeze([
   "windows-capability-worker-request-write-failed",

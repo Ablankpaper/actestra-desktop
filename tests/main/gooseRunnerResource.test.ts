@@ -11,11 +11,13 @@ import {
   GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES,
   GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
   GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
+  GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES,
   GOOSE_WINDOWS_MODEL_PROGRESS_STAGES,
   GooseRunnerProcessError,
   assertGooseAcpSpawnOptions,
   createGooseWindowsCapabilityProgressMatcher,
   createGooseWindowsModelProgressMatcher,
+  createGooseWindowsWorkerAcpProgressMatcher,
   createGooseRunnerEnvironment,
   createGooseRunnerSetupFailureMatcher,
   createGooseRunnerResourceFailureMatcher,
@@ -25,6 +27,7 @@ import {
 import {
   createGooseWindowsCapabilityProgress,
   createGooseWindowsModelProgress,
+  createGooseWindowsWorkerAcpProgress,
 } from "../../apps/desktop/src/main/workers/gooseSessionTransport";
 import { createGooseRunnerSandboxLaunch } from "../../apps/desktop/src/main/workers/gooseRunnerSandbox";
 import { LoopbackGooseAcpTransport } from "../fixtures/gooseAcp";
@@ -350,6 +353,33 @@ describe("Goose runner native resource boundary", () => {
       GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[6],
     ]);
     expect(matcher.push(Buffer.from("windows-model-unbounded-private-stage"))).toEqual([]);
+  });
+
+  it("extracts bounded Worker ACP startup progress and keeps only the deepest stage", () => {
+    const progress = createGooseWindowsWorkerAcpProgress();
+    const matcher = createGooseWindowsWorkerAcpProgressMatcher();
+    const marker = (stage: string): string =>
+      `Goose windows worker progress at bounded stage ${stage}`;
+
+    expect(
+      matcher.push(
+        Buffer.from(`${marker(GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES[0]).slice(0, 19)}`),
+      ),
+    ).toEqual([]);
+    for (const stage of matcher.push(
+      Buffer.from(
+        `${marker(GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES[0]).slice(19)}\n` +
+          `${marker(GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES[1])}\n` +
+          `${marker(GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES[2])}\nC:\\private\\ignored`,
+      ),
+    )) {
+      progress.record(stage);
+    }
+
+    expect(progress.snapshot()).toEqual(GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES);
+    expect(progress.deepest()).toBe(GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES[2]);
+    expect(JSON.stringify(progress.snapshot())).not.toContain("private");
+    expect(Object.keys(matcher)).toEqual(["push"]);
   });
 
   it("extracts bounded tool-call progress and Main invocation failure stages", () => {

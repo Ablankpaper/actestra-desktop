@@ -41,13 +41,17 @@ import {
   GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
   GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
   GOOSE_WINDOWS_MODEL_PROGRESS_STAGES,
+  GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES,
   GOOSE_WINDOWS_STDIO_CONFIGURATION,
   createGooseWindowsCapabilityProgress,
   createGooseWindowsModelProgress,
+  createGooseWindowsWorkerAcpProgress,
   type GooseWindowsCapabilityProgress,
   type GooseWindowsCapabilityProgressStage,
   type GooseWindowsModelProgress,
   type GooseWindowsModelProgressStage,
+  type GooseWindowsWorkerAcpProgress,
+  type GooseWindowsWorkerAcpProgressStage,
 } from "./gooseSessionTransport";
 
 export { GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES } from "./gooseSessionTransport";
@@ -55,6 +59,7 @@ export {
   GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES,
   GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
   GOOSE_WINDOWS_MODEL_PROGRESS_STAGES,
+  GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES,
 } from "./gooseSessionTransport";
 
 const MAX_STDOUT_LINE_BYTES = 64 * 1024;
@@ -81,6 +86,10 @@ function windowsCapabilityProgressMarker(stage: GooseWindowsCapabilityProgressSt
 
 function windowsModelProgressMarker(stage: GooseWindowsModelProgressStage): string {
   return `Goose windows model progress at bounded stage ${stage}`;
+}
+
+function windowsWorkerAcpProgressMarker(stage: GooseWindowsWorkerAcpProgressStage): string {
+  return `Goose windows worker progress at bounded stage ${stage}`;
 }
 /**
  * Supervisor runtime stages carry their own closed code all the way to CI evidence.
@@ -208,6 +217,10 @@ export interface GooseWindowsModelProgressMatcher {
   push(chunk: Uint8Array): readonly GooseWindowsModelProgressStage[];
 }
 
+export interface GooseWindowsWorkerAcpProgressMatcher {
+  push(chunk: Uint8Array): readonly GooseWindowsWorkerAcpProgressStage[];
+}
+
 export type GooseRunnerSetupFailure =
   | "network-policy-unavailable"
   | "worker-resource-enforcement-unavailable"
@@ -225,6 +238,7 @@ export interface GooseWindowsSupervisorChannels {
   readonly model: Duplex;
   readonly capabilityProgress: GooseWindowsCapabilityProgress;
   readonly modelProgress: GooseWindowsModelProgress;
+  readonly workerAcpProgress?: GooseWindowsWorkerAcpProgress;
 }
 
 export interface GooseAcpLaunchCommand {
@@ -635,6 +649,25 @@ export function createGooseWindowsModelProgressMatcher(): GooseWindowsModelProgr
   return Object.freeze({
     push(chunk: Uint8Array): readonly GooseWindowsModelProgressStage[] {
       const detected: GooseWindowsModelProgressStage[] = [];
+      for (const [stage, matcher] of matchers) {
+        if (matcher.push(chunk)) detected.push(stage);
+      }
+      return Object.freeze(detected);
+    },
+  });
+}
+
+export function createGooseWindowsWorkerAcpProgressMatcher(): GooseWindowsWorkerAcpProgressMatcher {
+  const matchers = GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES.map(
+    (stage) =>
+      [
+        stage,
+        createGooseRunnerRepeatingMarkerMatcher(windowsWorkerAcpProgressMarker(stage)),
+      ] as const,
+  );
+  return Object.freeze({
+    push(chunk: Uint8Array): readonly GooseWindowsWorkerAcpProgressStage[] {
+      const detected: GooseWindowsWorkerAcpProgressStage[] = [];
       for (const [stage, matcher] of matchers) {
         if (matcher.push(chunk)) detected.push(stage);
       }
@@ -1138,6 +1171,7 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
   private readonly nativeSetupFailureMatcher = createGooseRunnerSetupFailureMatcher();
   private readonly windowsCapabilityProgressMatcher = createGooseWindowsCapabilityProgressMatcher();
   private readonly windowsModelProgressMatcher = createGooseWindowsModelProgressMatcher();
+  private readonly windowsWorkerAcpProgressMatcher = createGooseWindowsWorkerAcpProgressMatcher();
   private stdoutBuffer = "";
   private stderrBytes = 0;
   private exited = false;
@@ -1174,6 +1208,9 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
       }
       for (const stage of this.windowsModelProgressMatcher.push(chunk)) {
         this.windowsChannels?.modelProgress.record(stage);
+      }
+      for (const stage of this.windowsWorkerAcpProgressMatcher.push(chunk)) {
+        this.windowsChannels?.workerAcpProgress?.record(stage);
       }
       const setupFailure = this.nativeSetupFailureMatcher.push(chunk);
       if (setupFailure !== undefined) {
@@ -1515,6 +1552,7 @@ export function createNodeGooseAcpTransport(
     model: model as Duplex,
     capabilityProgress: createGooseWindowsCapabilityProgress(),
     modelProgress: createGooseWindowsModelProgress(),
+    workerAcpProgress: createGooseWindowsWorkerAcpProgress(),
   });
   const transport = new NodeGooseAcpTransport(child, parentLiveness as Writable, windowsChannels);
   options.attachWindowsChannels?.(windowsChannels);

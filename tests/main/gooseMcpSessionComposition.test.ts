@@ -10,6 +10,7 @@ import {
   classifyGooseWindowsCapabilityCallProgressFailure,
   classifyGooseWindowsCapabilityProgressFailure,
   classifyGooseWindowsModelProgressFailure,
+  classifyGooseWindowsWorkerAcpProgressFailure,
   openGooseMcpSessionComposition,
   type GooseMcpSessionCompositionDependencies,
 } from "../../apps/desktop/src/main/workers/gooseMcpSessionComposition";
@@ -18,8 +19,10 @@ import {
   GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
   GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
   GOOSE_WINDOWS_MODEL_PROGRESS_STAGES,
+  GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES,
   createGooseWindowsCapabilityProgress,
   createGooseWindowsModelProgress,
+  createGooseWindowsWorkerAcpProgress,
 } from "../../apps/desktop/src/main/workers/gooseSessionTransport";
 import type {
   GooseAcpPromptOptions,
@@ -28,7 +31,10 @@ import type {
   GooseAcpSessionOptions,
   GooseAcpToolDiscoveryOptions,
 } from "../../apps/desktop/src/main/workers/gooseAcpHandshake";
-import { GooseAcpSessionError } from "../../apps/desktop/src/main/workers/gooseAcpHandshake";
+import {
+  GooseAcpHandshakeError,
+  GooseAcpSessionError,
+} from "../../apps/desktop/src/main/workers/gooseAcpHandshake";
 import type { GooseMcpToolInvoker } from "../../apps/desktop/src/main/workers/gooseMcpCapabilityServer";
 import {
   startGooseLoopbackModelServer,
@@ -217,6 +223,90 @@ describe("Goose MCP session composition", () => {
     expect(
       classifyGooseWindowsModelProgressFailure(GOOSE_WINDOWS_MODEL_PROGRESS_STAGES),
     ).toBeUndefined();
+  });
+
+  it("maps Worker ACP startup progress to a bounded opening failure", () => {
+    expect(
+      GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES.map((_, index) =>
+        classifyGooseWindowsWorkerAcpProgressFailure(
+          GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES.slice(0, index),
+        ),
+      ),
+    ).toEqual([
+      "windows-worker-acp-entry-failed",
+      "windows-worker-agent-creation-failed",
+      "windows-worker-serve-failed",
+    ]);
+    expect(
+      classifyGooseWindowsWorkerAcpProgressFailure(GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES),
+    ).toBe("windows-worker-acp-connect-failed");
+  });
+
+  it("classifies an initialize timeout from Worker ACP startup progress", async () => {
+    const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { ...originalPlatform, value: "win32" });
+    const workerProgress = createGooseWindowsWorkerAcpProgress();
+    workerProgress.record(GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES[0]);
+    workerProgress.record(GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES[1]);
+    const startupTimeout = new GooseAcpHandshakeError(
+      "startup-timeout",
+      "bounded initialize timeout",
+    );
+    const dependencies: GooseMcpSessionCompositionDependencies = {
+      async startCapabilityServer() {
+        throw new Error("Windows must not start loopback capability server");
+      },
+      async startModelServer() {
+        throw new Error("Windows must not start loopback model server");
+      },
+      startWindowsCapabilityHost: () =>
+        Object.freeze({
+          bindSession() {},
+          async waitForToolsList() {},
+          async close() {},
+        }),
+      startWindowsModelHost: () => modelServerDouble(),
+      async openRunnerHandshake(options) {
+        const bridge = await options.prepareBridge!({
+          root: "/tmp/actestra-goose-attempt",
+          bridgeDirectory: "/tmp/actestra-goose-attempt/bridge",
+          executablePath: "/tmp/actestra-goose-attempt/bin/runner.exe",
+          workingDirectory: "/tmp/actestra-goose-attempt/work",
+        });
+        bridge.attachWindowsChannels?.({
+          capability: {} as never,
+          model: {} as never,
+          capabilityProgress: createGooseWindowsCapabilityProgress(),
+          modelProgress: createGooseWindowsModelProgress(),
+          workerAcpProgress: workerProgress,
+        });
+        throw startupTimeout;
+      },
+    };
+
+    try {
+      await expect(
+        openGooseMcpSessionComposition(
+          {
+            artifact: Object.freeze({ ...artifact, targetTriple: "x86_64-pc-windows-msvc" }),
+            privateRootParent: "/tmp/actestra-goose-attempts",
+            workspaceDirectory: "/tmp/actestra-worktree",
+            modelId: "actestra-caller-model",
+            modelInvoker,
+            toolInvoker,
+            commandIds: [],
+            testIds: [],
+          },
+          dependencies,
+        ),
+      ).rejects.toMatchObject({
+        name: "GooseMcpSessionCompositionError",
+        code: "windows-worker-serve-failed",
+        cause: startupTimeout,
+      });
+    } finally {
+      Object.defineProperty(process, "platform", originalPlatform);
+    }
   });
 
   it("turns a Windows tool-discovery timeout into the first missing capability stage", async () => {

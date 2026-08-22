@@ -38,11 +38,14 @@ import {
   GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
   GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
   GOOSE_WINDOWS_MODEL_PROGRESS_STAGES,
+  GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES,
   resolveGooseSessionTransportMode,
   type GooseWindowsCapabilityProgress,
   type GooseWindowsCapabilityProgressStage,
   type GooseWindowsModelProgress,
   type GooseWindowsModelProgressStage,
+  type GooseWindowsWorkerAcpProgress,
+  type GooseWindowsWorkerAcpProgressStage,
   type GooseCapabilityBoundary,
   type GooseModelBoundary,
 } from "./gooseSessionTransport";
@@ -111,6 +114,10 @@ export type GooseMcpSessionCompositionErrorCode =
   | "model-request-rejected"
   | "tool-discovery-mismatch"
   | "windows-prompt-unclassified-failed"
+  | "windows-worker-acp-entry-failed"
+  | "windows-worker-agent-creation-failed"
+  | "windows-worker-serve-failed"
+  | "windows-worker-acp-connect-failed"
   | GooseWindowsCapabilityProgressFailureCode
   | GooseWindowsCapabilityCallProgressFailureCode
   | GooseWindowsModelProgressFailureCode;
@@ -166,12 +173,32 @@ export const GOOSE_WINDOWS_MODEL_PROGRESS_FAILURE_CODES = Object.freeze([
 export type GooseWindowsModelProgressFailureCode =
   (typeof GOOSE_WINDOWS_MODEL_PROGRESS_FAILURE_CODES)[number];
 
+export const GOOSE_WINDOWS_WORKER_ACP_PROGRESS_FAILURE_CODES = Object.freeze([
+  "windows-worker-acp-entry-failed",
+  "windows-worker-agent-creation-failed",
+  "windows-worker-serve-failed",
+  "windows-worker-acp-connect-failed",
+] as const);
+
+export type GooseWindowsWorkerAcpProgressFailureCode =
+  (typeof GOOSE_WINDOWS_WORKER_ACP_PROGRESS_FAILURE_CODES)[number];
+
 export function classifyGooseWindowsModelProgressFailure(
   observed: readonly GooseWindowsModelProgressStage[],
 ): GooseWindowsModelProgressFailureCode | undefined {
   const stages = new Set(observed);
   const firstMissing = GOOSE_WINDOWS_MODEL_PROGRESS_STAGES.findIndex((stage) => !stages.has(stage));
   return firstMissing < 0 ? undefined : GOOSE_WINDOWS_MODEL_PROGRESS_FAILURE_CODES[firstMissing];
+}
+
+export function classifyGooseWindowsWorkerAcpProgressFailure(
+  observed: readonly GooseWindowsWorkerAcpProgressStage[],
+): GooseWindowsWorkerAcpProgressFailureCode {
+  const stages = new Set(observed);
+  const firstMissing = GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES.findIndex(
+    (stage) => !stages.has(stage),
+  );
+  return GOOSE_WINDOWS_WORKER_ACP_PROGRESS_FAILURE_CODES[firstMissing < 0 ? 3 : firstMissing];
 }
 
 export function classifyGooseWindowsCapabilityCallProgressFailure(
@@ -422,6 +449,7 @@ export async function openGooseMcpSessionComposition(
   let runner: OpenGooseRunnerHandshakeResult | undefined;
   let windowsCapabilityProgress: GooseWindowsCapabilityProgress | undefined;
   let windowsModelProgress: GooseWindowsModelProgress | undefined;
+  let windowsWorkerAcpProgress: GooseWindowsWorkerAcpProgress | undefined;
   let capabilityDiscoveryStarted = false;
   let openingPhase: WindowsCompositionOpeningPhase = "windows-composition-runner-open-failed";
   const runnerOwnsBridgeServers = transportMode === "linux-relay" || windowsAuthenticated;
@@ -442,6 +470,7 @@ export async function openGooseMcpSessionComposition(
             model: Duplex;
             capabilityProgress: GooseWindowsCapabilityProgress;
             modelProgress: GooseWindowsModelProgress;
+            workerAcpProgress?: GooseWindowsWorkerAcpProgress;
           }): void => {
             if (attached)
               throw new GooseRunnerProcessError(
@@ -451,6 +480,7 @@ export async function openGooseMcpSessionComposition(
             attached = true;
             windowsCapabilityProgress = channels.capabilityProgress;
             windowsModelProgress = channels.modelProgress;
+            windowsWorkerAcpProgress = channels.workerAcpProgress;
             capabilityServer = (
               dependencies.startWindowsCapabilityHost ?? startGooseWindowsCapabilityBridgeHost
             )({
@@ -687,6 +717,13 @@ export async function openGooseMcpSessionComposition(
       );
     }
   } catch (error) {
+    const workerAcpProgressFailure =
+      windowsAuthenticated &&
+      windowsWorkerAcpProgress !== undefined &&
+      error instanceof GooseAcpHandshakeError &&
+      error.code === "startup-timeout"
+        ? classifyGooseWindowsWorkerAcpProgressFailure(windowsWorkerAcpProgress.snapshot())
+        : undefined;
     const progressFailure =
       windowsAuthenticated &&
       capabilityDiscoveryStarted &&
@@ -695,35 +732,41 @@ export async function openGooseMcpSessionComposition(
         ? classifyGooseWindowsCapabilityProgressFailure(windowsCapabilityProgress.snapshot())
         : undefined;
     const openingError =
-      progressFailure !== undefined
+      workerAcpProgressFailure !== undefined
         ? new GooseMcpSessionCompositionError(
-            progressFailure,
-            "Windows capability round trip stopped before a bounded stage",
+            workerAcpProgressFailure,
+            "Windows Worker ACP startup stopped before a bounded stage",
             { cause: error },
           )
-        : windowsAuthenticated && isGooseWindowsCapabilityDiscoveryTimeout(error)
+        : progressFailure !== undefined
           ? new GooseMcpSessionCompositionError(
-              "windows-composition-capability-tools-list-failed",
-              "Windows capability tools/list failed after every relay stage completed",
+              progressFailure,
+              "Windows capability round trip stopped before a bounded stage",
               { cause: error },
             )
-          : windowsAuthenticated &&
-              process.platform === "win32" &&
-              error instanceof Error &&
-              !(error instanceof GooseAcpHandshakeError) &&
-              !(error instanceof GooseAcpSessionError) &&
-              !(error instanceof GooseRunnerProcessError) &&
-              !(error instanceof GooseMcpSessionCompositionError) &&
-              !(
-                error instanceof GooseAuthenticatedBridgeProtocolError &&
-                error.message === WINDOWS_CAPABILITY_TOOLS_LIST_TIMEOUT_MESSAGE
-              )
+          : windowsAuthenticated && isGooseWindowsCapabilityDiscoveryTimeout(error)
             ? new GooseMcpSessionCompositionError(
-                openingPhase,
-                "Windows Goose composition opening failed at an unclassified boundary",
+                "windows-composition-capability-tools-list-failed",
+                "Windows capability tools/list failed after every relay stage completed",
                 { cause: error },
               )
-            : error;
+            : windowsAuthenticated &&
+                process.platform === "win32" &&
+                error instanceof Error &&
+                !(error instanceof GooseAcpHandshakeError) &&
+                !(error instanceof GooseAcpSessionError) &&
+                !(error instanceof GooseRunnerProcessError) &&
+                !(error instanceof GooseMcpSessionCompositionError) &&
+                !(
+                  error instanceof GooseAuthenticatedBridgeProtocolError &&
+                  error.message === WINDOWS_CAPABILITY_TOOLS_LIST_TIMEOUT_MESSAGE
+                )
+              ? new GooseMcpSessionCompositionError(
+                  openingPhase,
+                  "Windows Goose composition opening failed at an unclassified boundary",
+                  { cause: error },
+                )
+              : error;
     const cleanupFailures = await collectCleanupFailures(
       runner,
       capabilityServer,

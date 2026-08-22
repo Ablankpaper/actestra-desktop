@@ -80,6 +80,18 @@ export const GOOSE_WINDOWS_MODEL_PROGRESS_STAGES = Object.freeze([
   "windows-model-worker-response-decoded",
 ] as const);
 
+/**
+ * Positive startup markers emitted by the adapted Goose Worker before ACP
+ * initialize can complete. These are progress observations, not failure
+ * codes: the composition layer turns the deepest observed prefix into a
+ * bounded failure only when the handshake times out.
+ */
+export const GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES = Object.freeze([
+  "windows-worker-acp-entry",
+  "windows-worker-agent-created",
+  "windows-worker-serve-entered",
+] as const);
+
 export type GooseWindowsCapabilityProgressStage =
   | (typeof GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES)[number]
   | (typeof GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES)[number]
@@ -132,6 +144,33 @@ export function createGooseWindowsCapabilityProgress(): GooseWindowsCapabilityPr
 }
 
 export type GooseWindowsModelProgressStage = (typeof GOOSE_WINDOWS_MODEL_PROGRESS_STAGES)[number];
+
+export type GooseWindowsWorkerAcpProgressStage =
+  (typeof GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES)[number];
+
+export interface GooseWindowsWorkerAcpProgress {
+  record(stage: GooseWindowsWorkerAcpProgressStage): void;
+  snapshot(): readonly GooseWindowsWorkerAcpProgressStage[];
+  deepest(): GooseWindowsWorkerAcpProgressStage | undefined;
+}
+
+export function createGooseWindowsWorkerAcpProgress(): GooseWindowsWorkerAcpProgress {
+  const observed = new Set<GooseWindowsWorkerAcpProgressStage>();
+  const snapshot = (): readonly GooseWindowsWorkerAcpProgressStage[] =>
+    Object.freeze(GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES.filter((stage) => observed.has(stage)));
+  return Object.freeze({
+    record(stage: GooseWindowsWorkerAcpProgressStage): void {
+      if ((GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES as readonly string[]).includes(stage)) {
+        observed.add(stage);
+      }
+    },
+    snapshot,
+    deepest(): GooseWindowsWorkerAcpProgressStage | undefined {
+      const stages = snapshot();
+      return stages.length === 0 ? undefined : stages[stages.length - 1];
+    },
+  });
+}
 
 /** Attempt-scoped for the same reason as {@link GooseWindowsCapabilityProgress}. */
 export interface GooseWindowsModelProgress {

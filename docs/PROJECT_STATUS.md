@@ -2,6 +2,32 @@
 
 Last updated: 2026-08-22
 
+## 2026-08-22 P8.2c adapted ACP startup boundary diagnostics (local; Windows verification pending)
+
+The latest exact-head Windows run `32572788943` still failed at the nested
+fixture ACP `initialize` handshake with `handshake-timeout`, before `session/new`
+and before any capability/model round trip. The existing `AcpServing` marker was
+written before Goose entered its adapted ACP server and therefore could not
+distinguish the remaining boundary.
+
+The diagnostic slice now records three bounded positive Worker markers through
+the private Goose runtime and Supervisor stderr relay: `windows-worker-acp-entry`,
+`windows-worker-agent-created`, and `windows-worker-serve-entered`. Main keeps a
+closed progress snapshot and classifies an initialize timeout as one of
+`windows-worker-acp-entry-failed`, `windows-worker-agent-creation-failed`,
+`windows-worker-serve-failed`, or `windows-worker-acp-connect-failed`. No ACL,
+AppContainer, handle, environment, relay, model, capability, approval, or
+cleanup behavior changed.
+
+Private Goose runtime commit `5d66f81a3a992b063ff6f22663789fbe7be42b48` is
+pushed to `Ablankpaper/actestra-goose-runtime`; its declared three-file patch
+digest is `7e848a929788d1c9fcfa55e85620a1359688386d3c52978b5f4074f0367ea205`.
+Focused local evidence is green: 97 affected Vitest tests, Goose ACP startup
+unit test, Rust formatting, source-contract metadata, foundation check, and diff
+checks. The Actestra source contract and Cargo.lock have been updated locally
+but are not yet pushed. P8.2c remains open until one exact-head Windows run
+reports a concrete startup boundary; only then will a behavior fix be selected.
+
 ## 2026-08-22 P8.2c Windows parent-death fixture stdio topology correction (local; Windows verification pending)
 
 The exact-head run `32570214374` reached the parent-death fixture and reported

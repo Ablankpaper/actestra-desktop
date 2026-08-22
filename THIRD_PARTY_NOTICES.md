@@ -51,10 +51,10 @@ The minimal `actestra-goose-runner` keeps Goose `v1.45.0` at canonical upstream
 base `4dc0420f5704a92806c6628c8f0a3497d7a88759`. For the P8.2c Windows runtime
 composition it resolves `goose` and `goose-providers` from the standalone
 private `Ablankpaper/actestra-goose-runtime` repository at immutable commit
-`81bb2c1428d11e41e7934f4569eb7dda3fb55b81`. That commit modifies only the
+`5d66f81a3a992b063ff6f22663789fbe7be42b48`. That commit modifies only the
 three ACP server files recorded in `workers/goose-runner/PATCHES.md`; their
 binary full-index diff SHA-256 is
-`975d31ebbabce450a66455ec55e0ecaddeaa3c558e62a0a559a810ad03194a18`.
+`7e848a929788d1c9fcfa55e85620a1359688386d3c52978b5f4074f0367ea205`.
 The adapter is default-off, and Goose default features remain disabled with no
 enabled Goose feature.
 

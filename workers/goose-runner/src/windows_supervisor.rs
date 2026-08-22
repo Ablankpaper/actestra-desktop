@@ -3561,6 +3561,12 @@ const WORKER_MODEL_REQUEST_WRITTEN_PROGRESS: &[u8] =
     b"Goose windows model progress at bounded stage windows-model-worker-request-written";
 const WORKER_MODEL_RESPONSE_DECODED_PROGRESS: &[u8] =
     b"Goose windows model progress at bounded stage windows-model-worker-response-decoded";
+const WORKER_ACP_ENTRY_PROGRESS: &[u8] =
+    b"Goose windows worker progress at bounded stage windows-worker-acp-entry";
+const WORKER_AGENT_CREATED_PROGRESS: &[u8] =
+    b"Goose windows worker progress at bounded stage windows-worker-agent-created";
+const WORKER_SERVE_ENTERED_PROGRESS: &[u8] =
+    b"Goose windows worker progress at bounded stage windows-worker-serve-entered";
 
 fn worker_progress_line(line: &[u8]) -> Option<&'static str> {
     match line {
@@ -3582,6 +3588,9 @@ fn worker_progress_line(line: &[u8]) -> Option<&'static str> {
         value if value == WORKER_MODEL_RESPONSE_DECODED_PROGRESS => {
             Some("windows-model-worker-response-decoded")
         }
+        value if value == WORKER_ACP_ENTRY_PROGRESS => Some("windows-worker-acp-entry"),
+        value if value == WORKER_AGENT_CREATED_PROGRESS => Some("windows-worker-agent-created"),
+        value if value == WORKER_SERVE_ENTERED_PROGRESS => Some("windows-worker-serve-entered"),
         _ => None,
     }
 }
@@ -3590,6 +3599,8 @@ fn worker_progress_line(line: &[u8]) -> Option<&'static str> {
 fn report_windows_bridge_progress(stage: &'static str) {
     if stage.starts_with("windows-model-") {
         eprintln!("Goose windows model progress at bounded stage {stage}");
+    } else if stage.starts_with("windows-worker-") {
+        eprintln!("Goose windows worker progress at bounded stage {stage}");
     } else {
         eprintln!("Goose windows capability progress at bounded stage {stage}");
     }
@@ -4150,6 +4161,24 @@ mod tests {
                 b"Goose windows model progress at bounded stage windows-model-worker-response-decoded"
             ),
             Some("windows-model-worker-response-decoded")
+        );
+        assert_eq!(
+            worker_progress_line(
+                b"Goose windows worker progress at bounded stage windows-worker-acp-entry"
+            ),
+            Some("windows-worker-acp-entry")
+        );
+        assert_eq!(
+            worker_progress_line(
+                b"Goose windows worker progress at bounded stage windows-worker-agent-created"
+            ),
+            Some("windows-worker-agent-created")
+        );
+        assert_eq!(
+            worker_progress_line(
+                b"Goose windows worker progress at bounded stage windows-worker-serve-entered"
+            ),
+            Some("windows-worker-serve-entered")
         );
         assert_eq!(worker_progress_line(b"C:\\private\\secret"), None);
         assert_eq!(

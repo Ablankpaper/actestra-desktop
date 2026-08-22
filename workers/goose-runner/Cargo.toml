@@ -8,8 +8,8 @@ publish = false
 [dependencies]
 async-trait = "=0.1.91"
 futures = "=0.3.33"
-goose = { git = "ssh://git@github.com/Ablankpaper/actestra-goose-runtime.git", rev = "81bb2c1428d11e41e7934f4569eb7dda3fb55b81", default-features = false }
-goose-providers = { git = "ssh://git@github.com/Ablankpaper/actestra-goose-runtime.git", rev = "81bb2c1428d11e41e7934f4569eb7dda3fb55b81", default-features = false }
+goose = { git = "ssh://git@github.com/Ablankpaper/actestra-goose-runtime.git", rev = "5d66f81a3a992b063ff6f22663789fbe7be42b48", default-features = false }
+goose-providers = { git = "ssh://git@github.com/Ablankpaper/actestra-goose-runtime.git", rev = "5d66f81a3a992b063ff6f22663789fbe7be42b48", default-features = false }
 libc = "0.2"
 rmcp = { version = "=2.2.0", default-features = false }
 serde = "1.0.229"

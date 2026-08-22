@@ -14,7 +14,7 @@ ADR-0010.
 | AionUi | `iOfficeAI/AionUi` | `v2.1.41` | `2d8925fc67a97a20996fadcd2a0862b778b572ba` | Product UI and general-work foundation | P1 reproduced; exact 1,766-file runnable desktop snapshot imported and manifest-verified |
 | AionCore | `iOfficeAI/AionCore` | `v0.1.52` | `76f5554286ba0b6d33fb74d5c2bb2b3b0b83100d` | Initial native compatibility runtime/general worker | P1 locally built; ignored local bundle used for F0 launch; not committed or approved for distribution |
 | Croner | `Hexagon/croner` | `9.1.0` | `364a3074c2642b903eaf26e96f4bc197e3eaa6bc` | Main-owned schedule validation and occurrence calculation | Exact npm and downstream-native pin; MIT notice retained and package-verified |
-| Goose | `aaif-goose/goose`; private runtime source `Ablankpaper/actestra-goose-runtime` | `v1.45.0` source/ACP target | upstream base `4dc0420f5704a92806c6628c8f0a3497d7a88759`; runtime `81bb2c1428d11e41e7934f4569eb7dda3fb55b81` | Minimal Actestra-built stdio ACP coding Worker under ADR-0024 | P5.1 runner admitted; P8.2c source contract pins a default-off three-file adapter seam; Windows adapted execution is not yet verified; upstream binary rejected |
+| Goose | `aaif-goose/goose`; private runtime source `Ablankpaper/actestra-goose-runtime` | `v1.45.0` source/ACP target | upstream base `4dc0420f5704a92806c6628c8f0a3497d7a88759`; runtime `5d66f81a3a992b063ff6f22663789fbe7be42b48` | Minimal Actestra-built stdio ACP coding Worker under ADR-0024 | P5.1 runner admitted; P8.2c source contract pins a default-off three-file adapter seam plus bounded ACP startup diagnostics; Windows adapted execution is not yet verified; upstream binary rejected |
 | CrewAI | `crewAIInc/crewAI` | `1.15.8` evaluation snapshot | `e9caf1e1b89343bb833b5da6660faa91804a9dce` | First supervised planner-sidecar candidate | Metadata and license verified; local generic supervisor is Actestra-owned test infrastructure, not CrewAI; no source/package is imported, installed, bundled, or selected as the production P6 pin |
 | Eigent | `eigent-ai/eigent` | `v1.0.2` reference snapshot | `e478094a9ff433132b3cf1928e4143338ddaab20` | Team product and acceptance reference | Metadata inspected; not imported, installed, bundled, or selected as a runtime |
 
@@ -100,7 +100,7 @@ clarified before Actestra distributes AionCore-derived code or binaries.
   not selected as a runtime artifact.
 - P8.2c private runtime source: standalone private repository
   `Ablankpaper/actestra-goose-runtime` at exact commit
-  `81bb2c1428d11e41e7934f4569eb7dda3fb55b81`. It is not a GitHub Fork, its
+  `5d66f81a3a992b063ff6f22663789fbe7be42b48`. It is not a GitHub Fork, its
   default branch remains the exact upstream base, GitHub Actions are disabled,
   it has no webhook, and no automatic upstream synchronization moves the
   admitted commit. Actestra CI receives repository-scoped read-only access;
@@ -110,7 +110,7 @@ clarified before Actestra distributes AionCore-derived code or binaries.
   `crates/goose/src/acp/server_factory.rs`, and
   `crates/goose/src/acp/server/new_session.rs`. Their binary full-index diff
   SHA-256 is
-  `975d31ebbabce450a66455ec55e0ecaddeaa3c558e62a0a559a810ad03194a18`.
+  `7e848a929788d1c9fcfa55e85620a1359688386d3c52978b5f4074f0367ea205`.
   The change adds a default-off adapter seam for one fixed Provider, model, MCP
   client, and active session. Adapted sessions accept only a Main-admitted
   absolute workspace path without enumerating that directory from the

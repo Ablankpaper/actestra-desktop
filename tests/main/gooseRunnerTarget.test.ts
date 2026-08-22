@@ -21,14 +21,14 @@ const expectedGooseSource = {
   version: "1.45.0",
   baseCommit: "4dc0420f5704a92806c6628c8f0a3497d7a88759",
   runtimeRepository: "ssh://git@github.com/Ablankpaper/actestra-goose-runtime.git",
-  runtimeCommit: "81bb2c1428d11e41e7934f4569eb7dda3fb55b81",
+  runtimeCommit: "5d66f81a3a992b063ff6f22663789fbe7be42b48",
   changedPaths: [
     "crates/goose/src/acp/server.rs",
     "crates/goose/src/acp/server_factory.rs",
     "crates/goose/src/acp/server/new_session.rs",
   ],
   cargoFeatures: [],
-  patchSetSha256: "975d31ebbabce450a66455ec55e0ecaddeaa3c558e62a0a559a810ad03194a18",
+  patchSetSha256: "7e848a929788d1c9fcfa55e85620a1359688386d3c52978b5f4074f0367ea205",
 } as const;
 
 const expectedBuildTargets = [

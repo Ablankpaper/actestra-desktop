@@ -211,6 +211,20 @@ describe("Goose Windows runtime evidence", () => {
         message: "Goose Windows worker startup failed",
       }),
     ).toBe("windows-worker-acp-handshake-failed");
+    for (const [code, stage] of [
+      ["windows-worker-acp-entry-failed", "windows-worker-acp-entry-failed"],
+      ["windows-worker-agent-creation-failed", "windows-worker-agent-creation-failed"],
+      ["windows-worker-serve-failed", "windows-worker-serve-failed"],
+      ["windows-worker-acp-connect-failed", "windows-worker-acp-connect-failed"],
+    ]) {
+      expect(
+        classifyGooseWindowsOpeningFailure({
+          name: "GooseMcpSessionCompositionError",
+          code,
+          message: "fixed internal diagnostic",
+        }),
+      ).toBe(stage);
+    }
     expect(
       classifyGooseWindowsOpeningFailure({
         name: "GooseRunnerProcessError",
