@@ -192,6 +192,37 @@ describe("Goose Windows Main model bridge host", () => {
     await closeHost(host, worker);
   });
 
+  it("serves a canonical Actestra tool completion across the authenticated bridge", async () => {
+    const [main, worker] = linkedDuplexPair();
+    const host = startGooseWindowsModelBridgeHost({
+      stream: main,
+      attemptLease: LEASE,
+      modelProgress: createGooseWindowsModelProgress(),
+      invokeModel: async () => ({
+        type: "tool-call",
+        callId: "call-1",
+        name: "actestra.coding.file.read-text",
+        arguments: { contractVersion: 1, relativePath: "README.md" },
+        usage: { promptTokens: 1, completionTokens: 1 },
+      }),
+    });
+    host.bindSession(SESSION);
+    worker.write(encodeGooseWindowsModelFrame(request()));
+    const response = decodeGooseWindowsModelFrame(await readFrame(worker), {
+      expectedRequestId: "model-request-1",
+    });
+    expect(response).toMatchObject({
+      kind: "completion-response",
+      completion: {
+        type: "tool-call",
+        name: "actestra.coding.file.read-text",
+      },
+    });
+    expect(host.servedInferenceCount).toBe(1);
+    expect(host.refusedInferenceCount).toBe(0);
+    await closeHost(host, worker);
+  });
+
   it("rejects malformed, wrong-scope, duplicate, and non-request frames", async () => {
     const [main, worker] = linkedDuplexPair();
     const host = startGooseWindowsModelBridgeHost({

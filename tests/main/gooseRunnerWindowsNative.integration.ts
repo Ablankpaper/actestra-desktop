@@ -250,8 +250,12 @@ async function createFixture(suffix: string): Promise<CodingFixture> {
   return fixture;
 }
 
-function toolName(toolId: string): string {
-  return `actestra-capability-proxy__${toolId}`;
+function completionToolName(invocation: GooseLoopbackModelInvocation, toolId: string): string {
+  const matches = invocation.tools.filter((tool) => tool.name === toolId);
+  if (matches.length !== 1) {
+    throw new Error(`Windows runtime invocation did not declare exactly one ${toolId} tool`);
+  }
+  return toolId;
 }
 
 async function processExists(processId: number): Promise<boolean> {
@@ -387,7 +391,7 @@ describe.skipIf(!nativeEnabled)("native Windows Goose authenticated runtime comp
           return Object.freeze({
             type: "tool-call" as const,
             callId: "windows-runtime-read",
-            name: toolName(CODING_FILE_READ_TOOL_ID),
+            name: completionToolName(invocation, CODING_FILE_READ_TOOL_ID),
             arguments: Object.freeze({ contractVersion: 1, relativePath: "answer.txt" }),
             usage: Object.freeze({ promptTokens: 1, completionTokens: 1 }),
           });
@@ -401,7 +405,7 @@ describe.skipIf(!nativeEnabled)("native Windows Goose authenticated runtime comp
           return Object.freeze({
             type: "tool-call" as const,
             callId: "windows-runtime-write",
-            name: toolName(CODING_FILE_WRITE_TOOL_ID),
+            name: completionToolName(invocation, CODING_FILE_WRITE_TOOL_ID),
             arguments: Object.freeze({
               contractVersion: 1,
               relativePath: "windows-runtime-acceptance.txt",

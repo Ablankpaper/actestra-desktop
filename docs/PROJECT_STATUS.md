@@ -2,6 +2,40 @@
 
 Last updated: 2026-08-22
 
+## 2026-08-22 P8.2c Windows authenticated-runtime refusal traced to fixture tool vocabulary
+
+The exact-head Windows authenticated-runtime run
+[`32550668930`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32550668930)
+passed the Windows build and containment probes, both Ubuntu jobs, Goose
+admission, and the macOS foundation/package job. The authenticated runtime
+failed with the bounded Artifact code
+`windows-runtime-model-completion-refused-failed`; the job log confirms that
+this was emitted by the runtime integration test, without exposing Provider
+content.
+
+The failure was traced through the checked-in Windows model path. Goose declares
+the six tools with the `actestra-capability-proxy__` prefix, but the Windows
+Rust adapter strips that prefix before sending the Main-owned invocation. The
+Main model contract therefore returns the canonical Actestra tool ID. The
+runtime fixture returned the Goose-prefixed name directly, so the Main Windows
+bridge rejected the completion while encoding the authenticated response and
+counted it as `model-completion-refused`. This is a fixture/contract mismatch,
+not evidence of an ACL, AppContainer, pipe, or Provider transport failure.
+
+The local follow-up keeps the production protocol unchanged, pins the fixture
+to the canonical tool names actually declared in the Main invocation, and adds
+a regression for a canonical tool completion crossing the Windows model host.
+The authenticated protocol continues to accept only the six canonical Actestra
+tool IDs and rejects prefixed, unknown, and undeclared completion names at its
+existing boundary.
+
+Fresh local evidence: format check, typecheck, and the focused authenticated
+protocol/model-host suite passed (`10/10` tests); `git diff --check` is clean.
+The Windows-native integration remains platform-gated and has not run on this
+macOS checkout. The change is not yet pushed, and P8.2c remains open until one
+exact-head Windows run produces a successful authenticated-runtime Artifact
+whose full evidence is independently validated.
+
 ## 2026-08-22 P8.2c authenticated-runtime model-cause mapping still inconclusive
 
 Exact-head CI run
