@@ -309,6 +309,71 @@ describe("Goose ACP handshake", () => {
     await connection.close();
   });
 
+  it("admits sequential turns on one session while rejecting a concurrent prompt", async () => {
+    // Reproduces the Windows read-then-approved-write dead end: the second
+    // sequential turn must reach Goose with its own correlation id instead of
+    // being refused as an already-requested prompt.
+    const transport = new LoopbackGooseAcpTransport({
+      promptMessages: (request) => [
+        { jsonrpc: "2.0", id: request.id, result: { stopReason: "end_turn" } },
+      ],
+    });
+    const connection = await connectGooseAcp(transport);
+    const session = await connection.openSession({
+      workspaceDirectory: "/private/tmp/actestra-worktree",
+      capabilityProxyUrl: "http://127.0.0.1:43123/mcp",
+      attemptLease: "attempt-lease-0123456789abcdef0123456789abcdef",
+    });
+    await connection.discoverTools({
+      sessionId: session.sessionId,
+      extensionName: "actestra-capability-proxy",
+    });
+
+    await expect(
+      connection.prompt({ sessionId: session.sessionId, text: "Read answer.txt." }),
+    ).resolves.toMatchObject({ stopReason: "end_turn" });
+    await expect(
+      connection.prompt({ sessionId: session.sessionId, text: "Write the approved file." }),
+    ).resolves.toMatchObject({ stopReason: "end_turn" });
+
+    expect(
+      transport.sentLines.map((line) => JSON.parse(line) as { id?: unknown; method?: unknown }),
+    ).toMatchObject([
+      { method: "initialize" },
+      { method: "session/new" },
+      { method: "_goose/unstable/tools/list" },
+      { id: "actestra-goose-session-prompt-1", method: "session/prompt" },
+      { id: "actestra-goose-session-prompt-2", method: "session/prompt" },
+    ]);
+
+    const silent = new LoopbackGooseAcpTransport({ silentPrompt: true });
+    const concurrent = await connectGooseAcp(silent);
+    const concurrentSession = await concurrent.openSession({
+      workspaceDirectory: "/private/tmp/actestra-worktree",
+      capabilityProxyUrl: "http://127.0.0.1:43123/mcp",
+      attemptLease: "attempt-lease-0123456789abcdef0123456789abcdef",
+    });
+    await concurrent.discoverTools({
+      sessionId: concurrentSession.sessionId,
+      extensionName: "actestra-capability-proxy",
+    });
+    const inFlight = concurrent.prompt({
+      sessionId: concurrentSession.sessionId,
+      text: "Hold the turn open.",
+      timeoutMs: 50,
+    });
+    await expect(
+      concurrent.prompt({ sessionId: concurrentSession.sessionId, text: "Interleave a turn." }),
+    ).rejects.toMatchObject({
+      name: "GooseAcpSessionError",
+      code: "prompt-already-requested",
+    });
+    await expect(inFlight).rejects.toMatchObject({ code: "prompt-timeout" });
+
+    await connection.close();
+    await concurrent.close();
+  });
+
   it("closes when Goose expands the admitted tool-discovery response", async () => {
     const transport = new LoopbackGooseAcpTransport({
       toolDiscoveryMessages: (request) => [

@@ -11,7 +11,14 @@ export const ACTESTRA_GOOSE_MCP_EXTENSION_NAME = "actestra-capability-proxy" as 
 const INITIALIZE_REQUEST_ID = "actestra-goose-initialize-1";
 const SESSION_NEW_REQUEST_ID = "actestra-goose-session-new-1";
 const TOOLS_LIST_REQUEST_ID = "actestra-goose-tools-list-1";
-const SESSION_PROMPT_REQUEST_ID = "actestra-goose-session-prompt-1";
+/**
+ * Each admitted turn correlates on its own fixed id. A session may issue many
+ * sequential prompts, so a single shared id would let a late update or response
+ * from an earlier turn be mis-attributed to the current one.
+ */
+const sessionPromptRequestId = (turn: number): string =>
+  `actestra-goose-session-prompt-${String(turn)}`;
+const MAX_SESSION_PROMPT_TURNS = 512;
 const DEFAULT_HANDSHAKE_TIMEOUT_MS = 10_000;
 const DEFAULT_SESSION_TIMEOUT_MS = 30_000;
 const MAX_SESSION_TIMEOUT_MS = 120_000;
@@ -1339,6 +1346,7 @@ function parsePromptMessage(
   line: string,
   options: GooseAcpPromptOptions,
   updates: GooseAcpPromptUpdate[],
+  requestId: string,
 ): GooseAcpPromptResult | undefined {
   if (Buffer.byteLength(line, "utf8") > MAX_SESSION_LINE_BYTES) {
     throw invalidSessionMessage("Goose prompt message is too large");
@@ -1368,7 +1376,7 @@ function parsePromptMessage(
   }
   if (Object.hasOwn(message, "error")) {
     assertSessionExactKeys(message, ["jsonrpc", "id", "error"], "Goose prompt error");
-    if (message.jsonrpc !== "2.0" || message.id !== SESSION_PROMPT_REQUEST_ID) {
+    if (message.jsonrpc !== "2.0" || message.id !== requestId) {
       throw invalidSessionMessage("Goose prompt error correlation is incompatible");
     }
     const error = assertSessionRecord(message.error, "Goose prompt error payload");
@@ -1392,7 +1400,7 @@ function parsePromptMessage(
     );
   }
   assertSessionExactKeys(message, ["jsonrpc", "id", "result"], "Goose prompt response");
-  if (message.jsonrpc !== "2.0" || message.id !== SESSION_PROMPT_REQUEST_ID) {
+  if (message.jsonrpc !== "2.0" || message.id !== requestId) {
     throw invalidSessionMessage("Goose prompt response correlation is incompatible");
   }
   const result = assertSessionRecord(message.result, "Goose prompt result");
@@ -1496,7 +1504,9 @@ function assertPromptOptions(options: GooseAcpPromptOptions, expectedSessionId: 
 async function promptGooseAcp(
   transport: GooseAcpTransport,
   options: GooseAcpPromptOptions,
+  turn = 1,
 ): Promise<GooseAcpPromptResult> {
+  const requestId = sessionPromptRequestId(turn);
   const timeoutMs = options.timeoutMs ?? DEFAULT_SESSION_TIMEOUT_MS;
   const updates: GooseAcpPromptUpdate[] = [];
   let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -1553,7 +1563,7 @@ async function promptGooseAcp(
           }
           arm();
           try {
-            const result = parsePromptMessage(line, options, updates);
+            const result = parsePromptMessage(line, options, updates, requestId);
             if (result !== undefined) {
               settle(() => resolve(result));
             }
@@ -1587,7 +1597,7 @@ async function promptGooseAcp(
       transport.sendLine(
         JSON.stringify({
           jsonrpc: "2.0",
-          id: SESSION_PROMPT_REQUEST_ID,
+          id: requestId,
           method: "session/prompt",
           params: {
             sessionId: options.sessionId,
@@ -1770,7 +1780,8 @@ export async function connectGooseAcp(
     let activeSessionId: string | undefined;
     let toolDiscoveryRequested = false;
     let toolDiscoveryCompleted = false;
-    let promptRequested = false;
+    let promptInFlight = false;
+    let promptTurns = 0;
     return Object.freeze({
       info,
       async openSession(options: GooseAcpSessionOptions): Promise<GooseAcpSession> {
@@ -1831,14 +1842,25 @@ export async function connectGooseAcp(
           );
         }
         assertPromptOptions(options, activeSessionId);
-        if (promptRequested) {
+        if (promptInFlight) {
           throw new GooseAcpSessionError(
             "prompt-already-requested",
-            "Goose process already received its single admitted session/prompt request",
+            "Goose process already has an in-flight session/prompt request",
           );
         }
-        promptRequested = true;
-        return promptGooseAcp(transport, options);
+        if (promptTurns >= MAX_SESSION_PROMPT_TURNS) {
+          throw new GooseAcpSessionError(
+            "prompt-rejected",
+            "Goose session exceeded the admitted session/prompt turn count",
+          );
+        }
+        promptInFlight = true;
+        promptTurns += 1;
+        try {
+          return await promptGooseAcp(transport, options, promptTurns);
+        } finally {
+          promptInFlight = false;
+        }
       },
       async close(): Promise<void> {
         if (closed) {

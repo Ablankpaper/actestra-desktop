@@ -2,6 +2,31 @@
 
 Last updated: 2026-08-22
 
+## 2026-08-22 P8.2c ACP session prompt guard fixed locally; Windows verification pending
+
+The exact-head Windows authenticated-runtime run
+[`32559110450`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32559110450)
+passed the runner admission and build/containment prerequisites, then failed in
+the authenticated runtime with the bounded code
+`windows-runtime-prompt-already-requested-failed`. The failure occurred on the
+second prompt of the same ACP session, before model, capability, approval, or
+Tool Gateway progress could be recorded.
+
+The cause was a one-shot `promptRequested` guard in the Main ACP handshake. It
+correctly prevented concurrent prompts but incorrectly rejected every
+sequential prompt after the first. The local fix changes this to an
+in-flight-only guard, clears it in `finally`, correlates each turn with a
+distinct request id, and bounds a session to 512 turns. The ACP regression
+covers two sequential turns and rejects a concurrent second turn.
+
+Fresh local evidence: the focused ACP suite passed (`36/36`), typecheck,
+lint, format check, and `git diff --check` passed. The full suite observed
+`1870` passed / `10` skipped with one pre-existing P7.4 subprocess `SIGKILL`
+flake; the isolated P7.4 file passed (`12/12`). The Windows-native integration
+has not run on this macOS checkout. The fix is prepared for one new exact-head
+Windows CI run; P8.2c remains open until its authenticated-runtime Artifact
+verifies the complete journey.
+
 ## 2026-08-22 P8.2c Windows authenticated-runtime refusal traced to fixture tool vocabulary
 
 The exact-head Windows authenticated-runtime run
