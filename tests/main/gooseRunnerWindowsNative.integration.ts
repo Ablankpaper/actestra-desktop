@@ -278,6 +278,35 @@ async function processExists(processId: number): Promise<boolean> {
   }
 }
 
+const PARENT_DEATH_FIXTURE_STAGES: ReadonlySet<string> = new Set([
+  "fixture-artifact-admission",
+  "fixture-session-open",
+  "fixture-process-tree",
+  "fixture-state-publish",
+]);
+
+/**
+ * Maps the fixture's own last-reached step onto a parent-death token. An
+ * unreadable or unknown step stays the generic early-exit stage so a mangled
+ * sibling file can never widen the bounded vocabulary.
+ */
+async function fixtureExitStage(statePath: string): Promise<string> {
+  const bytes = await readFile(`${statePath}.failure`, "utf8").catch((): undefined => undefined);
+  if (bytes === undefined) return "parent-death-fixture-exited";
+  try {
+    const published: unknown = JSON.parse(bytes);
+    const stage =
+      typeof published === "object" && published !== null
+        ? (published as { readonly stage?: unknown }).stage
+        : undefined;
+    return typeof stage === "string" && PARENT_DEATH_FIXTURE_STAGES.has(stage)
+      ? `parent-death-${stage}`
+      : "parent-death-fixture-exited";
+  } catch {
+    return "parent-death-fixture-exited";
+  }
+}
+
 async function parentDeathProbe(artifact: AdmittedGooseRunnerArtifact): Promise<number> {
   const root = await mkdtemp(path.join(os.tmpdir(), "actestra-goose-windows-parent-death-"));
   fixtureRoots.push(root);
@@ -312,28 +341,70 @@ async function parentDeathProbe(artifact: AdmittedGooseRunnerArtifact): Promise<
     },
   );
   let state: { readonly privateRoot: string; readonly processIds: readonly number[] } | undefined;
+  let fixtureExited = false;
+  child.once("exit", () => {
+    fixtureExited = true;
+  });
   try {
+    await markFailure("parent-death-fixture-spawn");
+    if (child.pid === undefined) {
+      throw new Error("Windows runtime parent-death fixture never spawned");
+    }
+
+    await markFailure("parent-death-state-timeout");
+    let rawState: string | undefined;
     await waitFor(async () => {
+      if (fixtureExited) {
+        await markFailure(await fixtureExitStage(statePath));
+        throw new Error("Windows runtime parent-death fixture exited before publishing its state");
+      }
       const bytes = await readFile(statePath).catch((): undefined => undefined);
       if (bytes === undefined) return false;
-      state = JSON.parse(bytes.toString("utf8"));
-      return Array.isArray(state?.processIds) && state.processIds.length >= 2;
+      rawState = bytes.toString("utf8");
+      return rawState.endsWith("\n");
     }, 45_000);
-    const stableState = state;
-    if (stableState === undefined) throw new Error("Windows runtime parent-death state is missing");
-    child.kill();
-    const observedProcessIds = [
-      ...(child.pid === undefined ? [] : [child.pid]),
-      ...stableState.processIds,
-    ];
-    await waitFor(async () =>
-      (await Promise.all(observedProcessIds.map((processId) => processExists(processId)))).every(
-        (alive) => !alive,
-      ),
-    );
-    return (
-      await Promise.all(observedProcessIds.map((processId) => processExists(processId)))
-    ).filter(Boolean).length;
+
+    await markFailure("parent-death-state-malformed");
+    state = JSON.parse(rawState!);
+    const workerProcessIds = state?.processIds;
+    if (
+      !Array.isArray(workerProcessIds) ||
+      workerProcessIds.length < 2 ||
+      workerProcessIds.some((value) => !Number.isSafeInteger(value) || value <= 0)
+    ) {
+      throw new Error("Windows runtime parent-death state does not name its runtime process tree");
+    }
+
+    await markFailure("parent-death-supervisor-pid-missing");
+    const supervisorProcessId = child.pid;
+
+    await markFailure("parent-death-kill-failed");
+    if (!child.kill()) {
+      throw new Error("Windows runtime parent-death fixture refused its termination signal");
+    }
+
+    const residual = async (processIds: readonly number[]): Promise<readonly number[]> => {
+      const alive = await Promise.all(
+        processIds.map(async (id) => {
+          try {
+            return await processExists(id);
+          } catch (error) {
+            await markFailure("parent-death-probe-inaccessible");
+            throw error;
+          }
+        }),
+      );
+      return processIds.filter((_id, index) => alive[index] === true);
+    };
+
+    await markFailure("parent-death-supervisor-not-exited");
+    await waitFor(async () => (await residual([supervisorProcessId])).length === 0);
+
+    await markFailure("parent-death-worker-not-exited");
+    await waitFor(async () => (await residual(workerProcessIds)).length === 0);
+
+    await markFailure("parent-death-residual-processes");
+    return (await residual([supervisorProcessId, ...workerProcessIds])).length;
   } finally {
     if (child.pid !== undefined && (await processExists(child.pid))) child.kill();
   }

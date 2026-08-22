@@ -629,6 +629,84 @@ describe("Goose Windows runtime evidence", () => {
     ).toEqual({ ok: false, code: "windows-runtime-artifact-mismatch" });
   });
 
+  it("separates each Windows parent-death cleanup step into its own bounded token", async () => {
+    const stages = [
+      "parent-death-fixture-spawn",
+      "parent-death-fixture-exited",
+      "parent-death-state-timeout",
+      "parent-death-state-malformed",
+      "parent-death-supervisor-pid-missing",
+      "parent-death-kill-failed",
+      "parent-death-supervisor-not-exited",
+      "parent-death-worker-not-exited",
+      "parent-death-probe-inaccessible",
+      "parent-death-residual-processes",
+    ];
+    const tokens = stages.map((stage) =>
+      classifyGooseWindowsRuntimeFailureEvidence({ contractVersion: 1, stage }),
+    );
+
+    expect(tokens.every((token) => typeof token === "string" && token.length > 0)).toBe(true);
+    expect(new Set(tokens).size).toBe(stages.length);
+    expect(tokens).not.toContain("windows-runtime-parent-death-failed");
+    const evidenceModule = await import("../../scripts/gooseWindowsRuntimeEvidence.mjs");
+    expect(evidenceModule.GOOSE_WINDOWS_RUNTIME_STAGE_FAILURE_CODES).toEqual(
+      expect.arrayContaining(tokens),
+    );
+    expect(JSON.stringify(tokens)).not.toContain("private");
+
+    const probe = fs.readFileSync(
+      path.join(repositoryRoot, "tests/main/gooseRunnerWindowsNative.integration.ts"),
+      "utf8",
+    );
+    for (const stage of stages) {
+      // The early-exit stage is returned by the fixture-exit resolver rather
+      // than marked inline, so every stage is asserted as a reachable literal.
+      expect(probe).toContain(
+        stage === "parent-death-fixture-exited" ? `"${stage}"` : `markFailure("${stage}")`,
+      );
+    }
+  });
+
+  it("carries each fixture-side parent-death step into its own bounded token", async () => {
+    // The fixture runs with every stdio stream ignored, so an early exit only
+    // stays diagnosable if its own last step reaches the evidence vocabulary.
+    const steps = [
+      "fixture-artifact-admission",
+      "fixture-session-open",
+      "fixture-process-tree",
+      "fixture-state-publish",
+    ];
+    const tokens = steps.map((step) =>
+      classifyGooseWindowsRuntimeFailureEvidence({
+        contractVersion: 1,
+        stage: `parent-death-${step}`,
+      }),
+    );
+
+    expect(tokens.every((token) => typeof token === "string" && token.length > 0)).toBe(true);
+    expect(new Set(tokens).size).toBe(steps.length);
+    expect(tokens).not.toContain("windows-runtime-parent-death-failed");
+    expect(tokens).not.toContain("windows-runtime-parent-death-fixture-exited-failed");
+    const evidenceModule = await import("../../scripts/gooseWindowsRuntimeEvidence.mjs");
+    expect(evidenceModule.GOOSE_WINDOWS_RUNTIME_STAGE_FAILURE_CODES).toEqual(
+      expect.arrayContaining(tokens),
+    );
+
+    const fixture = fs.readFileSync(
+      path.join(repositoryRoot, "tests/fixtures/gooseWindowsRuntimeSupervisorExit.ts"),
+      "utf8",
+    );
+    for (const step of steps)
+      expect(fixture).toContain(`publishFailureStage(statePath, "${step}")`);
+    expect(
+      classifyGooseWindowsRuntimeFailureEvidence({
+        contractVersion: 1,
+        stage: "parent-death-fixture-unbounded-step",
+      }),
+    ).toBeUndefined();
+  });
+
   it("maps only closed Windows runtime failure stages", () => {
     expect(
       classifyGooseWindowsRuntimeFailureEvidence({ contractVersion: 1, stage: "composition-open" }),

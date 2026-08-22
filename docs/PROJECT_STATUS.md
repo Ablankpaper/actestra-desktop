@@ -2,6 +2,33 @@
 
 Last updated: 2026-08-22
 
+## 2026-08-22 P8.2c parent-death cleanup diagnostics prepared; Windows evidence pending
+
+The exact-head Windows authenticated-runtime run
+[`32562178879`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32562178879)
+passed Windows build and containment, Ubuntu build/containment, Goose admission,
+and the macOS foundation/package job, but its authenticated runtime still failed
+with the generic `windows-runtime-parent-death-failed` Artifact code. The
+sequential ACP prompt fix is therefore effective through read, approved write,
+cancellation, and workspace-integrity checks; the remaining boundary is the
+parent-death cleanup probe.
+
+The follow-up diagnostic slice adds bounded stages for fixture startup and early
+exit, state publication and validation, supervisor and worker termination waits,
+PID probing, and residual-process detection. The fixture also publishes its own
+last reached step when it exits before state publication. These changes do not
+alter kill, Job Object, handle inheritance, or parent-liveness behavior; they
+only make the next Windows Artifact identify the first cleanup boundary that
+fails.
+
+Fresh local evidence: the focused Windows evidence suite passed (`32/32`),
+format, lint, typecheck, P8 contract, product boundary, foundation, downstream,
+documentation-link, and `git diff --check` gates passed. The full parallel suite
+observed one known P7 subprocess timeout (`1872` passed / `1` failed / `10`
+skipped); the failing test passed when rerun in isolation. No Windows-native
+integration has run for this diagnostic slice yet. P8.2c remains open pending
+one exact-head Windows run and a concrete cleanup token.
+
 ## 2026-08-22 P8.2c ACP session prompt guard fixed locally; Windows verification pending
 
 The exact-head Windows authenticated-runtime run

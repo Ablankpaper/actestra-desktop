@@ -218,6 +218,22 @@ const FAILURE_STAGE_CODES = Object.freeze({
   "approved-write-tool": "windows-runtime-approved-write-tool-failed",
   cancellation: "windows-runtime-cancellation-failed",
   "parent-death": "windows-runtime-parent-death-failed",
+  "parent-death-fixture-spawn": "windows-runtime-parent-death-fixture-spawn-failed",
+  "parent-death-fixture-exited": "windows-runtime-parent-death-fixture-exited-failed",
+  "parent-death-fixture-artifact-admission":
+    "windows-runtime-parent-death-fixture-artifact-admission-failed",
+  "parent-death-fixture-session-open": "windows-runtime-parent-death-fixture-session-open-failed",
+  "parent-death-fixture-process-tree": "windows-runtime-parent-death-fixture-process-tree-failed",
+  "parent-death-fixture-state-publish": "windows-runtime-parent-death-fixture-state-publish-failed",
+  "parent-death-state-timeout": "windows-runtime-parent-death-state-timeout-failed",
+  "parent-death-state-malformed": "windows-runtime-parent-death-state-malformed-failed",
+  "parent-death-supervisor-pid-missing":
+    "windows-runtime-parent-death-supervisor-pid-missing-failed",
+  "parent-death-kill-failed": "windows-runtime-parent-death-kill-failed",
+  "parent-death-supervisor-not-exited": "windows-runtime-parent-death-supervisor-not-exited-failed",
+  "parent-death-worker-not-exited": "windows-runtime-parent-death-worker-not-exited-failed",
+  "parent-death-probe-inaccessible": "windows-runtime-parent-death-probe-inaccessible-failed",
+  "parent-death-residual-processes": "windows-runtime-parent-death-residual-processes-failed",
 });
 const ARTIFACT_ADMISSION_FAILURE_CODES = Object.freeze({
   "missing-artifact": "windows-runtime-artifact-admission-missing-artifact",

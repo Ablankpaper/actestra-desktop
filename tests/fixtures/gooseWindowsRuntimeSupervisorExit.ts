@@ -44,12 +44,28 @@ async function findRuntimeProcessIds(executablePath: string): Promise<readonly n
 
 async function waitForRuntimeProcesses(executablePath: string): Promise<readonly number[]> {
   const deadline = Date.now() + 10_000;
+  let observed: readonly number[] = [];
   while (Date.now() < deadline) {
-    const processIds = await findRuntimeProcessIds(executablePath);
-    if (processIds.length >= 2) return processIds;
+    observed = await findRuntimeProcessIds(executablePath);
+    if (observed.length >= 2) return observed;
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
-  throw new Error("Windows runtime supervisor fixture could not resolve its process tree");
+  throw new Error(
+    `Windows runtime supervisor fixture resolved ${String(observed.length)} of 2 runtime processes`,
+  );
+}
+
+/**
+ * The probe spawns this fixture with every stdio stream ignored, so an
+ * unpublished failure would reach CI as an unexplained early exit. Naming the
+ * step in a bounded sibling file keeps the reason legible without carrying any
+ * private path into the evidence artifact.
+ */
+async function publishFailureStage(statePath: string, stage: string): Promise<void> {
+  await writeFile(`${statePath}.failure`, `${JSON.stringify({ contractVersion: 1, stage })}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+  }).catch((): undefined => undefined);
 }
 
 async function main(): Promise<never> {
@@ -72,6 +88,7 @@ async function main(): Promise<never> {
   ) {
     throw new Error("Windows runtime supervisor fixture configuration is invalid");
   }
+  await publishFailureStage(statePath, "fixture-artifact-admission");
   const artifact = await admitGooseRunnerArtifact(artifactDirectory, {
     expectedTargetTriple: "x86_64-pc-windows-msvc",
     trustedManifestSha256: manifestSha256,
@@ -79,6 +96,7 @@ async function main(): Promise<never> {
   if (artifact.containment === undefined) {
     throw new Error("Windows runtime supervisor fixture lacks containment evidence");
   }
+  await publishFailureStage(statePath, "fixture-session-open");
   const opened = await openGooseMcpSessionComposition({
     artifact,
     privateRootParent: path.join(fixtureRoot, "attempts"),
@@ -98,8 +116,10 @@ async function main(): Promise<never> {
     handshakeTimeoutMs: 30_000,
     sessionTimeoutMs: 60_000,
   });
+  await publishFailureStage(statePath, "fixture-process-tree");
   const stagedExecutable = path.join(opened.privateRoot, "bin", "actestra-goose-runner.exe");
   const processIds = await waitForRuntimeProcesses(stagedExecutable);
+  await publishFailureStage(statePath, "fixture-state-publish");
   await writeFile(
     statePath,
     `${JSON.stringify({ privateRoot: opened.privateRoot, processIds })}\n`,
