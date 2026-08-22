@@ -14,6 +14,22 @@ const processModulePath = path.join(
   repositoryRoot,
   "apps/desktop/src/main/workers/gooseRunnerProcess.ts",
 );
+const runnerLockPath = path.join(repositoryRoot, "workers/goose-runner/Cargo.lock");
+
+const expectedGooseSource = {
+  repository: "https://github.com/aaif-goose/goose.git",
+  version: "1.45.0",
+  baseCommit: "4dc0420f5704a92806c6628c8f0a3497d7a88759",
+  runtimeRepository: "ssh://git@github.com/Ablankpaper/actestra-goose-runtime.git",
+  runtimeCommit: "5d66f81a3a992b063ff6f22663789fbe7be42b48",
+  changedPaths: [
+    "crates/goose/src/acp/server.rs",
+    "crates/goose/src/acp/server_factory.rs",
+    "crates/goose/src/acp/server/new_session.rs",
+  ],
+  cargoFeatures: [],
+  patchSetSha256: "7e848a929788d1c9fcfa55e85620a1359688386d3c52978b5f4074f0367ea205",
+} as const;
 
 const expectedBuildTargets = [
   {
@@ -98,6 +114,26 @@ const expectedP8BuildToolAssets = {
 } as const;
 
 describe("Goose runner native build targets", () => {
+  it("pins the exact private Goose runtime source and patch contract", () => {
+    expect(sourceContract.goose).toEqual(expectedGooseSource);
+  });
+
+  it("locks every Goose workspace package to the admitted private runtime revision", () => {
+    const lockfile = readFileSync(runnerLockPath, "utf8");
+    const expectedSource =
+      `git+ssh://git@github.com/Ablankpaper/actestra-goose-runtime.git?rev=${expectedGooseSource.runtimeCommit}` +
+      `#${expectedGooseSource.runtimeCommit}`;
+    const gooseSources = [
+      ...lockfile.matchAll(
+        /name = "(?:goose|goose-acp-macros|goose-download-manager|goose-provider-types|goose-providers|goose-sdk-types)"\nversion = "[^"]+"\nsource = "([^"]+)"/g,
+      ),
+    ].map((match) => match[1]);
+
+    expect(gooseSources).toHaveLength(6);
+    expect(new Set(gooseSources)).toEqual(new Set([expectedSource]));
+    expect(lockfile).not.toContain("git+https://github.com/aaif-goose/goose");
+  });
+
   it("publishes only the exact native host and target records", () => {
     const contract = sourceContract as typeof sourceContract & {
       readonly buildTargets?: unknown;
@@ -183,7 +219,7 @@ describe("Goose runner native build targets", () => {
         "Goose runner build target identities are ambiguous",
       ],
     });
-  });
+  }, 20_000);
 
   it("uses the shared runtime ceiling before any private-root or transport side effect", () => {
     const source = readFileSync(processModulePath, "utf8");

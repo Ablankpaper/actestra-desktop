@@ -1,8 +1,1731 @@
 # Project Status
 
-Last updated: 2026-08-19
+Last updated: 2026-08-23
+
+## 2026-08-23 P8.2c nested Windows ACP stderr-relay boundary diagnostics (local; Windows verification pending)
+
+The latest exact-head Windows run `32582272702` passed the Windows build and
+containment jobs, both Ubuntu jobs, Goose admission, and the macOS
+foundation/package job. The authenticated runtime failed only in the separate
+parent-death fixture's second Goose session, with
+`windows-runtime-parent-death-fixture-session-open-failed`; the fixture's
+bounded nested classifier was `windows-worker-acp-entry-failed`.
+
+That token means Main did not observe the first adapted Worker ACP marker before
+the `initialize` deadline. It does not identify whether the Worker failed to
+write stderr, the Supervisor failed to relay it, or Main failed to receive it.
+The current diagnostic slice changes no Worker, ACP, ACL, AppContainer, handle,
+capability, model, approval, or cleanup behavior. It adds a closed three-stage
+positive observation across that boundary:
+`windows-worker-stderr-relay-started`,
+`windows-worker-stderr-byte-read`, and
+`windows-worker-stderr-marker-forwarded`. Main classifies an initialize timeout
+against the first missing relay stage before falling back to the Worker ACP
+startup stages. The markers carry no raw stderr, paths, handles, or credentials.
+
+Fresh local evidence for this unpushed diagnostic slice: focused transport,
+composition, resource, and Windows evidence tests `95/95` passed; Rust
+`cargo test --locked` passed `93/93`; `cargo fmt --all --check` and
+`git diff --check` are clean. Full `bun run check` and a Windows CI run have
+not yet been executed for this slice. P8.2c remains open until one exact-head
+Windows authenticated-runtime Artifact identifies the first failing boundary or
+verifies the complete journey.
+
+## 2026-08-22 P8.2c adapted ACP startup boundary diagnostics (local; Windows verification pending)
+
+The latest exact-head Windows run `32572788943` still failed at the nested
+fixture ACP `initialize` handshake with `handshake-timeout`, before `session/new`
+and before any capability/model round trip. The existing `AcpServing` marker was
+written before Goose entered its adapted ACP server and therefore could not
+distinguish the remaining boundary.
+
+The diagnostic slice now records three bounded positive Worker markers through
+the private Goose runtime and Supervisor stderr relay: `windows-worker-acp-entry`,
+`windows-worker-agent-created`, and `windows-worker-serve-entered`. Main keeps a
+closed progress snapshot and classifies an initialize timeout as one of
+`windows-worker-acp-entry-failed`, `windows-worker-agent-creation-failed`,
+`windows-worker-serve-failed`, or `windows-worker-acp-connect-failed`. No ACL,
+AppContainer, handle, environment, relay, model, capability, approval, or
+cleanup behavior changed.
+
+Private Goose runtime commit `5d66f81a3a992b063ff6f22663789fbe7be42b48` is
+pushed to `Ablankpaper/actestra-goose-runtime`; its declared three-file patch
+digest is `7e848a929788d1c9fcfa55e85620a1359688386d3c52978b5f4074f0367ea205`.
+Focused local evidence is green: 97 affected Vitest tests, Goose ACP startup
+unit test, Rust formatting, source-contract metadata, foundation check, and diff
+checks. The Actestra source contract and Cargo.lock have been updated locally
+but are not yet pushed. P8.2c remains open until one exact-head Windows run
+reports a concrete startup boundary; only then will a behavior fix be selected.
+
+## 2026-08-22 P8.2c Windows parent-death fixture stdio topology correction (local; Windows verification pending)
+
+The exact-head run `32570214374` reached the parent-death fixture and reported
+`windows-runtime-parent-death-fixture-session-open-failed` with the nested
+classifier `handshake-timeout`. Windows build, containment, Ubuntu
+build/containment, Goose admission, and macOS foundation/package all passed.
+The failure was therefore before `initialize` in the fixture's nested Goose
+session, not in parent-death cleanup.
+
+The fixture was the only Windows runtime child launched with both stdout and
+stderr set to ignored handles; the production journey and the native channel
+probe use readable pipes. The fixture now uses pipe-backed stdout/stderr and
+drains them immediately, preserving bounded failure files without exposing raw
+diagnostics. No runner, ACL, AppContainer, relay, model, capability, approval,
+kill, Job Object, or cleanup logic changed.
+
+Fresh local evidence: Windows evidence tests `32/32`, channel test skipped on
+macOS as expected, format check, lint, typecheck, full Vitest `1873 passed / 10
+skipped`, P7 abuse gate, smoke harness, boundary, foundation, and downstream
+checks passed. The composite `bun run check` reached the downstream frozen
+AionUi install but was stopped after more than five minutes with no output; its
+exit was `130`, so the package portion is not claimed green. No Windows-native
+verification has run locally. P8.2c remains open pending one exact-head Windows
+run at this correction.
+
+## 2026-08-22 P8.2c parent-death fixture session/new classifier added (local; Windows verification pending)
+
+The exact-head Windows authenticated-runtime run at `6f6389b` still failed before
+the parent-death operation with
+`windows-runtime-parent-death-fixture-session-open-failed`, even after the
+fixture was aligned with the Main-owned isolated coding worktree. The remaining
+failure is therefore the fixture's Goose ACP `session/new` opening boundary;
+the worktree hypothesis is not sufficient evidence for a behavior repair.
+
+The follow-up diagnostic slice records a bounded opening classifier in a private
+sibling file when the fixture's `openGooseMcpSessionComposition` rejects, then
+prints only that closed token through the Windows runtime wrapper. It changes no
+runner, ACL, AppContainer, relay, approval, kill, Job Object, or cleanup logic.
+
+Fresh local evidence: format check, typecheck, lint, Windows evidence tests
+(`32/32`), Goose lifecycle tests (`17/17`), and the sequential/concurrent ACP
+regression (`1/1`) pass. The full ACP file is not used as a gate here because a
+pre-existing silent-transport test leaves Bun/Vitest open on this macOS host;
+the targeted regression and all affected tests pass. The Windows-native
+integration remains platform-gated and has not run locally. This diagnostic
+slice is committed locally as `c46128c` and remains unpushed; P8.2c remains
+open pending one exact-head Windows run that reports the underlying
+`session/new` classifier.
+
+## 2026-08-22 P8.2c parent-death fixture aligned with the production coding workspace contract (local; Windows verification pending)
+
+Exact-head CI run
+[`32565519668`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32565519668)
+passed the Windows build and containment jobs, both Ubuntu jobs, Goose admission,
+and the macOS foundation/package job. The authenticated Windows runtime failed
+before any parent-death operation with the bounded code
+`windows-runtime-parent-death-fixture-session-open-failed`.
+
+The failure was isolated to the parent-death fixture's `session/new` setup. Its
+fixture used a newly-created bare directory as `cwd`, while the successful
+authenticated journey passes the Main-owned isolated coding worktree. The
+fixture now receives that already-admitted worktree path from the parent and
+uses it for `openGooseMcpSessionComposition`; no Windows supervisor, ACL,
+handle, Job Object, relay, or cleanup behavior changed. A source regression
+asserts that the fixture cannot silently return to the bare-cwd setup.
+
+Fresh local evidence: format check, typecheck, the focused ACP/lifecycle/
+Windows-evidence suite (`85/85`), and `git diff --check` pass. This macOS
+checkout cannot execute the Windows-native integration, so the change is not
+yet proof of the root cause or of parent-death cleanup. It is not committed or
+pushed; P8.2c remains open pending one exact-head Windows run.
+
+## 2026-08-22 P8.2c parent-death cleanup diagnostics prepared; Windows evidence pending
+
+The exact-head Windows authenticated-runtime run
+[`32562178879`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32562178879)
+passed Windows build and containment, Ubuntu build/containment, Goose admission,
+and the macOS foundation/package job, but its authenticated runtime still failed
+with the generic `windows-runtime-parent-death-failed` Artifact code. The
+sequential ACP prompt fix is therefore effective through read, approved write,
+cancellation, and workspace-integrity checks; the remaining boundary is the
+parent-death cleanup probe.
+
+The follow-up diagnostic slice adds bounded stages for fixture startup and early
+exit, state publication and validation, supervisor and worker termination waits,
+PID probing, and residual-process detection. The fixture also publishes its own
+last reached step when it exits before state publication. These changes do not
+alter kill, Job Object, handle inheritance, or parent-liveness behavior; they
+only make the next Windows Artifact identify the first cleanup boundary that
+fails.
+
+Fresh local evidence: the focused Windows evidence suite passed (`32/32`),
+format, lint, typecheck, P8 contract, product boundary, foundation, downstream,
+documentation-link, and `git diff --check` gates passed. The full parallel suite
+observed one known P7 subprocess timeout (`1872` passed / `1` failed / `10`
+skipped); the failing test passed when rerun in isolation. No Windows-native
+integration has run for this diagnostic slice yet. P8.2c remains open pending
+one exact-head Windows run and a concrete cleanup token.
+
+## 2026-08-22 P8.2c ACP session prompt guard fixed locally; Windows verification pending
+
+The exact-head Windows authenticated-runtime run
+[`32559110450`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32559110450)
+passed the runner admission and build/containment prerequisites, then failed in
+the authenticated runtime with the bounded code
+`windows-runtime-prompt-already-requested-failed`. The failure occurred on the
+second prompt of the same ACP session, before model, capability, approval, or
+Tool Gateway progress could be recorded.
+
+The cause was a one-shot `promptRequested` guard in the Main ACP handshake. It
+correctly prevented concurrent prompts but incorrectly rejected every
+sequential prompt after the first. The local fix changes this to an
+in-flight-only guard, clears it in `finally`, correlates each turn with a
+distinct request id, and bounds a session to 512 turns. The ACP regression
+covers two sequential turns and rejects a concurrent second turn.
+
+Fresh local evidence: the focused ACP suite passed (`36/36`), typecheck,
+lint, format check, and `git diff --check` passed. The full suite observed
+`1870` passed / `10` skipped with one pre-existing P7.4 subprocess `SIGKILL`
+flake; the isolated P7.4 file passed (`12/12`). The Windows-native integration
+has not run on this macOS checkout. The fix is prepared for one new exact-head
+Windows CI run; P8.2c remains open until its authenticated-runtime Artifact
+verifies the complete journey.
+
+## 2026-08-22 P8.2c Windows authenticated-runtime refusal traced to fixture tool vocabulary
+
+The exact-head Windows authenticated-runtime run
+[`32550668930`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32550668930)
+passed the Windows build and containment probes, both Ubuntu jobs, Goose
+admission, and the macOS foundation/package job. The authenticated runtime
+failed with the bounded Artifact code
+`windows-runtime-model-completion-refused-failed`; the job log confirms that
+this was emitted by the runtime integration test, without exposing Provider
+content.
+
+The failure was traced through the checked-in Windows model path. Goose declares
+the six tools with the `actestra-capability-proxy__` prefix, but the Windows
+Rust adapter strips that prefix before sending the Main-owned invocation. The
+Main model contract therefore returns the canonical Actestra tool ID. The
+runtime fixture returned the Goose-prefixed name directly, so the Main Windows
+bridge rejected the completion while encoding the authenticated response and
+counted it as `model-completion-refused`. This is a fixture/contract mismatch,
+not evidence of an ACL, AppContainer, pipe, or Provider transport failure.
+
+The local follow-up keeps the production protocol unchanged, pins the fixture
+to the canonical tool names actually declared in the Main invocation, and adds
+a regression for a canonical tool completion crossing the Windows model host.
+The authenticated protocol continues to accept only the six canonical Actestra
+tool IDs and rejects prefixed, unknown, and undeclared completion names at its
+existing boundary.
+
+Fresh local evidence: format check, typecheck, and the focused authenticated
+protocol/model-host suite passed (`10/10` tests); `git diff --check` is clean.
+The Windows-native integration remains platform-gated and has not run on this
+macOS checkout. The change is not yet pushed, and P8.2c remains open until one
+exact-head Windows run produces a successful authenticated-runtime Artifact
+whose full evidence is independently validated.
+
+## 2026-08-22 P8.2c authenticated-runtime model-cause mapping still inconclusive
+
+Exact-head CI run
+[`32548007680`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32548007680)
+for source head `a90c2d399535414d8b737516f6a68aa8b25a0aee` passed the Windows
+build probe, Windows containment, Ubuntu build/containment, Goose admission, and
+the macOS foundation/package job. The only failure was the real Windows
+authenticated-runtime step. Its independently downloaded failure Artifact
+`9469583698` contains exactly:
+
+```json
+{"contractVersion":1,"code":"windows-runtime-composition-open-failed"}
+```
+
+The local diagnostic change preserves the two already-defined model-layer causes
+through the Windows evidence mapper: `model-completion-refused` maps to
+`windows-runtime-model-completion-refused-failed`, and `model-request-rejected`
+maps to `windows-runtime-model-request-rejected-failed`. Regressions cover both
+the mapper and the composition-to-evidence path; the focused composition,
+resource, and evidence suite is `77/77` passed. Because the exact-head Artifact
+still contains the generic composition-open code, the authenticated runtime's
+actual failing boundary remains unclassified. No ACL, AppContainer, pipe,
+protocol, credential, retry, or `foundation/` behavior was changed. P8.2c
+remains open; the next change requires new evidence that distinguishes the
+remaining composition boundary before any behavior repair is attempted.
+
+## 2026-08-22 P8.2c authenticated-runtime generic opening failure (diagnosed; CI pending)
+
+Exact-head CI run
+[`32544229824`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32544229824)
+for source head `e3ac0a7630b81690f1e76eb7ded97fe1392c6cb0` passed the Windows
+build probe, Windows containment, Ubuntu build/containment, Goose admission, and
+the macOS foundation/package job. The only failure was the real Windows
+authenticated-runtime step. Its bounded failure Artifact `9468408066` contains
+only `windows-runtime-composition-open-failed`.
+
+The generic code exposed two unclassified paths. A non-timeout
+`GooseAuthenticatedBridgeProtocolError` during opening was excluded from the
+Windows opening-phase wrapper. In addition, a prompt failure after opening
+could be a non-timeout bridge error while the Main-side model classifier only
+consulted model progress for `prompt-timeout`; the integration test then used
+the opening classifier and fell through to generic `composition-open`. The
+current fix preserves the timeout/progress behavior, wraps non-timeout bridge
+errors at the current opening phase, and classifies any prompt error after
+model-round-trip activity by its first missing model stage. Regressions cover
+the synchronous tools/list bridge error and the non-timeout prompt bridge
+error; focused composition tests are `22/22` passed. P8.2c remains open until
+a new exact-head Windows authenticated-runtime Artifact reports a concrete
+stage or verifies the complete journey.
+
+## 2026-08-22 P8.2c Windows composition unknown-boundary diagnostic (local; CI pending)
+
+Exact-head CI run
+[`32541671015`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32541671015)
+for source head `7cb76e93cafa9fc482edc0b15075e9a5ddcc412f` passed Windows
+build probe, Windows containment, both Ubuntu jobs, Goose admission, and the
+macOS foundation/package job. The only failure remained the authenticated
+runtime step. Its failure Artifact `9467661475` retained the same generic
+`windows-runtime-composition-open-failed` code, proving that the previous
+tools/list classification fix was present but was not the escaping boundary.
+
+The next diagnostic closes that remaining observability gap without changing
+runtime behavior: composition opening now tracks the last completed boundary
+and wraps only an otherwise unknown Windows `Error` at that fixed phase. Known
+ACP, runner, protocol, progress, and composition errors remain unchanged. The
+phase advances through runner open, session open, session bind, capability
+tools/list, tool discovery, and tool normalization. A regression test covers an
+unexpected discovery result shape; the focused composition suite is `21/21`
+passed. P8.2c remains open until a new Windows authenticated-runtime Artifact
+reports a concrete phase or verifies the complete journey.
+
+## 2026-08-22 P8.2c Windows composition classification closure (local; CI pending)
+
+Exact-head CI run
+[`32503393885`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32503393885)
+for source head `3f9917b1fa2571c9ed5f580bfa0324d190eeb9bb` checked out merge
+`7019e826cb65937db8478fb70b3493115bfe2b54`; both commits have the exact
+same source tree `654fafba3c8134911a9d7ee049bedd5ff3731e12`. Windows build and
+containment, both Ubuntu jobs, Goose admission, and the macOS
+foundation/package job passed. The sole failure remained the real Windows
+authenticated-runtime step.
+
+Failure Artifact `9455246014` has uploaded ZIP SHA-256
+`41561ebf24d5b6d3a745e535e601b0590a2bbcca9bf509b53cbeac4bf2185137`.
+Its only file has SHA-256
+`48e374b468548e544228e9e7a62d7edd975089f380248b33bcbc0f9900a10a56`
+and contains exactly:
+
+```json
+{"contractVersion":1,"code":"windows-runtime-composition-open-failed"}
+```
+
+The six-stage split was present in the checked-out merge, but its classification
+was not closed. A synchronous `waitForToolsList()` failure could occur before
+its promise-level handler existed. Separately, the exact tools/list timeout was
+preserved for capability progress classification, but when all eight relay
+stages were present there was no missing stage; the raw protocol error then fell
+through to generic `composition-open`. The bounded Artifact cannot distinguish
+which of these two uncovered paths occurred. Both were reproduced RED before
+implementation and now map to the existing fixed
+`windows-composition-capability-tools-list-failed` stage. No timeout, retry,
+ACL, AppContainer, relay, permission, credential, tool, or `foundation/`
+behavior changed.
+
+Fresh local evidence:
+
+- focused composition/evidence tests: `49/49` passed;
+- typecheck, format, lint, and `git diff --check` passed.
+
+P8.2c remains open until the full local gate passes and one exact-head Windows
+run produces a successful authenticated-runtime Artifact that is independently
+validated.
+
+## 2026-08-22 P8.2c Windows composition-open stage split (local; exact-head CI pending)
+
+Exact-head CI run
+[`32499418503`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32499418503)
+for head `0f9c14a7300562c3593619784de2ec64f785e4f9` passed the Windows build
+probe, exact Windows containment, both Ubuntu jobs, Goose admission, and the
+macOS foundation/package job. The Windows authenticated-runtime job also passed
+exact runner build, lock, admission, and containment. Its only failure was the
+real runtime step, which produced the preserved Artifact
+`9453875922` containing only:
+
+```json
+{"contractVersion":1,"code":"windows-runtime-composition-open-failed"}
+```
+
+This did not reproduce the earlier model tool-name rejection, but the existing
+composition boundary still collapsed an unknown error during opening to the
+generic `composition-open` stage. No behavior failure can be inferred from that
+token alone.
+
+The bounded follow-up adds six Windows-only composition sub-stages around the
+existing opening boundaries: runner opening, ACP session opening, session
+binding, capability `tools/list`, ACP tool discovery, and discovered-tool shape
+normalization. Known ACP, runner, capability-timeout, and existing composition
+errors retain their prior classifiers; only an otherwise unknown Windows error
+is wrapped in a fixed composition-stage error. The outer evidence mapper and
+failure Artifact allowlist now admit the six corresponding tokens. No ACL,
+AppContainer, relay, timeout, retry, permission, credential, tool registry, or
+`foundation/` behavior changed.
+
+Fresh local evidence:
+
+- focused composition/evidence tests: `47/47` passed;
+- full `bun run check`: exit `0`, `171` test files passed / `3` skipped,
+  `1860` tests passed / `10` skipped;
+- format, lint, typecheck, P8 contract, security, smoke, boundary, foundation,
+  downstream, package, and `git diff --check` passed.
+
+P8.2c remains open. The next exact-head Windows run has one purpose: identify
+which composition-open sub-stage actually fails. Only after that concrete stage
+is known may a minimal behavior repair be attempted; a successful authenticated
+runtime Artifact is still required for closure.
+
+## 2026-08-21 P8.2c Windows model-tool name adaptation (local; exact-head CI pending)
+
+The exact-head Windows authenticated-runtime run
+[`32495480074`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32495480074)
+reached the first real model request and failed closed at
+`windows-runtime-model-main-request-decode-failed`. Its independently downloaded
+failure Artifact contained only:
+
+```json
+{"contractVersion":1,"code":"windows-runtime-model-main-request-decode-failed"}
+```
+
+The preceding native evidence proves this was not a Worker launch, AppContainer,
+ACL, or capability-relay failure. Goose's ExtensionManager names the six admitted
+tools with the fixed prefix
+`actestra-capability-proxy__`, while the Main-owned authenticated model bridge
+accepts only the six unprefixed Actestra tool IDs. The Windows Worker adapter was
+therefore sending a valid Goose name into a deliberately stricter Main protocol.
+
+The bounded repair is confined to
+`workers/goose-runner/src/windows_model_bridge.rs`: the adapter accepts only the
+exact `actestra-capability-proxy__` prefix plus the six closed coding IDs, strips
+that prefix for Worker-to-Main invocation and historical assistant tool-call
+messages, and restores the exact declared Goose name for Main-to-Worker model
+tool-call responses. Bare IDs, another extension prefix, unknown IDs, and
+undeclared model completions remain fail-closed. Main's whitelist, the capability
+bridge, permissions, network, credentials, timeout, retry, cleanup, and Goose's
+upstream framework were not widened or changed.
+
+Regression evidence is now local and fresh:
+
+- the target model bridge test is GREEN;
+- two negative tests reject the wrong prefix, bare names, unknown IDs, and
+  undeclared completions;
+- the real Goose ACP composition test is GREEN through `initialize`,
+  `session/new`, `_goose/unstable/tools/list`, `session/prompt`, the first model
+  tool-call, one capability-proxy call, a second model request, and final
+  `end_turn`; it verifies Main sees the six unprefixed IDs and Goose receives the
+  prefixed name again;
+- Goose Rust tests: `93/93` passed;
+- `bun run check`: exit `0`, `171` test files passed / `3` skipped,
+  `1860` tests passed / `10` skipped, with format, lint, typecheck, P8 contract,
+  security, smoke, boundary, foundation, downstream, and package gates green;
+- `git diff --check`: clean.
+
+This is still uncommitted local work on branch
+`codex/p8-2c-windows-runtime-composition`, based on source HEAD `397cd7b`. It is
+not yet Windows-compiled or Windows-executed after the repair. P8.2c remains
+open. The next and only justified native gate is one newly pushed exact-head
+Windows authenticated-runtime run; only its successful Artifact, independently
+checked against the source head and contents, can close this blocker.
+
+## 2026-08-21 P8.2c first-prompt model round-trip diagnostics (local; CI pending)
+
+Exact-head CI run
+[`32490455614`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32490455614)
+for branch head `7b847a254372e3adb69513869d61f3c5b00fa5e5` passed Goose runner
+admission, both Windows build and containment jobs, both Ubuntu jobs, and the
+macOS foundation/package job. The Windows authenticated-runtime job also passed
+its exact runner build/admission and containment steps. Its only failure was the
+first real read prompt, after about 36 seconds, with the newly separated bounded
+code `windows-runtime-prompt-timeout-failed`. This proves session creation and
+authenticated tool discovery completed, but no ACP prompt activity returned
+within the 30-second deadline.
+
+The failure Artifact is
+`p8-goose-runtime-windows-failure-37e3e4215070ed7f7eeb382e7a3a182216675fbf`
+(Artifact `9450557253`; uploaded ZIP SHA-256
+`dba1cb3a99da1cb71a41935a5b2705e4e5d5baf646917f9dcce4256ab9fe3ead`). Its
+single `windows-runtime-failure.json` has SHA-256
+`99665b1ba7c1181b89120e807af93def43af2f683fe9f6fc8599c9d7084198e3` and
+contains exactly:
+
+```json
+{"contractVersion":1,"code":"windows-runtime-prompt-timeout-failed"}
+```
+
+The existing evidence chain had no model-channel equivalent of its closed
+capability progress vocabulary, so this result cannot yet distinguish Worker
+request creation, Supervisor relay, Main decoding/invocation/response, or the
+return relay. The local diagnostic follow-up now records exactly ten fixed
+model request/response boundaries across the admitted Worker, Supervisor, Main,
+composition error classifier, and outer CI evidence mapper. It admits only
+fixed stage tokens and does not change model input, timeout, retry, ACL,
+permission, network, credential, tool, or cleanup behavior.
+
+The model diagnostic tests were observed RED before implementation. The local
+focused gate now passes `94/94` TypeScript/JavaScript tests and `91/91` Goose
+runner Rust tests; Rust format, repository format/lint/typecheck, the P8
+contract, and `git diff --check` are clean. A macOS cross-check of the Windows
+target remains unavailable because compiled SQLite and tree-sitter dependencies
+require Windows SDK C headers; exact Windows compilation and execution remain
+the next CI gate. P8.2c is still open. The next exact-head Windows run must be
+used once to identify the first missing model stage before any behavioral
+repair is attempted.
+
+## 2026-08-21 P8.2c third diagnostic rerun (first prompt classification gap)
+
+Exact-head CI run
+[`32487434198`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32487434198)
+for branch head `18c960a70a71b7331030450a3c0b7aacf2ffa504` checked out pull-request
+merge `0b206dbc66d6458a3ac8bcffa5f6e45a9466643c`. Windows build and
+containment succeeded. The authenticated-runtime job also passed exact runner
+build/admission and containment before failing in the runtime step after about
+35 seconds with `windows-runtime-session-open-failed`.
+
+The failure Artifact was independently downloaded as
+`p8-goose-runtime-windows-failure-0b206dbc66d6458a3ac8bcffa5f6e45a9466643c`
+(Artifact `9449334195`; uploaded ZIP SHA-256
+`5835d54458558a104a5ae1c4fceaa58173dc6bdcb390c1513716298499fd92ff`). Its
+single file `windows-runtime-failure.json` has SHA-256
+`38d6c40631d5a0cdea587f7dd253f68b6eade948d38b9b287bd9e156bd85baf9` and
+contains exactly:
+
+```json
+{"contractVersion":1,"code":"windows-runtime-session-open-failed"}
+```
+
+The checked-out merge contains the new mappings for every ACP session-opening
+code, so this repeated token is not evidence of another session/new failure.
+The integration test reuses `classifyGooseWindowsOpeningFailure()` when its
+first read prompt fails; that classifier still collapsed `prompt-rejected`,
+`prompt-timeout`, and `prompt-already-requested` into `session-open`. The roughly
+30-second runtime interval is consistent with the admitted first-prompt
+deadline, but the exact prompt code remains unproven until another bounded run.
+
+The follow-up diagnostic maps those three closed ACP prompt codes to distinct
+runtime evidence tokens. It does not change the prompt, timeout, tool,
+permission, network, credential, retry, or cleanup behavior. P8.2c remains open
+until Windows evidence identifies and fixes the real first-prompt stop and a
+successful Artifact is independently revalidated.
+
+## 2026-08-21 P8.2c second diagnostic rerun (Windows session error still unclassified)
+
+Exact-head CI run
+[`32485210487`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32485210487)
+for head `f139198df2034309e64a5192a3a2fd992e474a9c` again passed Goose runner
+admission, Windows build, Windows containment, and the authenticated runtime's
+exact artifact build/admission/containment steps. The only authenticated-runtime
+failure remained in `Run authenticated Windows Goose runtime`, which emitted
+the coarse bounded code `windows-runtime-session-open-failed`.
+
+The failure Artifact was independently downloaded as
+`p8-goose-runtime-windows-failure-ad828c35b4ba6b914a236aff8a65260e15bf5659`
+(Artifact `9448191744`; uploaded ZIP SHA-256
+`17b356b5972b59f4ddf35f62c85a315af8761a47491917d9774b86a9c9ef8ea0`). Its
+single file `windows-runtime-failure.json` has SHA-256
+`38d6c40631d5a0cdea587f7dd253f68b6eade948d38b9b287bd9e156bd85baf9` and
+contains exactly:
+
+```json
+{"contractVersion":1,"code":"windows-runtime-session-open-failed"}
+```
+
+The completed job log confirms the exact Windows runner artifact and
+containment acceptance succeeded before the runtime step. The second diagnostic
+mapping therefore did not observe `session-rejected` or
+`invalid-session-message`; the failure was a `GooseAcpSessionError` path that
+was still classified by the generic `session-open` fallback (or an equivalent
+outer error without one of the two mapped codes). No ACL, permission, ACP
+request, network, credential, retry, or Renderer behavior was changed.
+
+The next diagnostic patch adds closed mappings for the remaining session-open
+codes that can be raised by the admitted client (`invalid-session-options`,
+`session-already-open`, and `session-closed`) and admits their corresponding
+outer failure tokens. It is covered by focused classifier and closed-set tests;
+this is diagnostic-only and P8.2c remains open pending one new exact-head
+Windows run.
+
+## 2026-08-21 P8.2c first tool-call diagnostic rerun (Windows runtime still open)
+
+Exact-head CI run
+[`32480303614`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32480303614)
+for head `83ef390dc880671004f7aeefb9713c6b0e69d803` passed Goose runner
+admission, the Windows build probe, Windows containment, both Ubuntu jobs, and
+the macOS foundation/package job. The Windows authenticated-runtime job also
+completed the exact runner build and admission and passed its containment
+acceptance. Its only failure occurred in `Run authenticated Windows Goose
+runtime`, which emitted the bounded code
+`windows-runtime-session-open-failed`.
+
+The failure Artifact was independently downloaded as
+`p8-goose-runtime-windows-failure-df9b993da2844ee95eda5bdf3f366f11dcb26c15`
+(Artifact `9446776680`; uploaded ZIP SHA-256
+`01deeb321d2db290b585ae03ee0210004f2dd9237a47e2fa32c1058bf077962e`). Its
+single file `windows-runtime-failure.json` has SHA-256
+`38d6c40631d5a0cdea587f7dd253f68b6eade948d38b9b287bd9e156bd85baf9` and
+contains exactly:
+
+```json
+{"contractVersion":1,"code":"windows-runtime-session-open-failed"}
+```
+
+The CI log proves the runner executable was built and admitted
+(`manifestSha256=0ec764f9634555f4c4ac6d0fa3487d5d10d3734e4c50bfbfab6b9960a29870dd`,
+`executableSha256=a782b287810d72971456508d7a0db8d100aef30930607f5e138689c0a6b33961`)
+and that containment was verified before the runtime step. The new
+first-tool-call markers were therefore not reached: the outer harness caught a
+`GooseAcpSessionError` during composition opening and the classifier retained
+the coarse `session-open` token. This run does not prove whether the first
+failure is in ACP `session/new`, explicit tool discovery, or cleanup, and does
+not justify an ACL, permission, protocol, network, credential, or Renderer
+change.
+
+The diagnostic patch is locally green, but P8.2c remains open. No new CI run
+was triggered after this failure. The next action must first make the existing
+session-opening failure distinguishable (without changing authority or retry
+behavior), then use one exact-head Windows run to obtain the first real stage.
+Only a successful authenticated-runtime evidence Artifact whose digest,
+content, and source head are independently revalidated can close P8.2c.
+
+The follow-up diagnostic is now implemented locally: the evidence mapper keeps
+`GooseAcpSessionError` codes `session-rejected` and `invalid-session-message`
+separate as `windows-runtime-session-rejected-failed` and
+`windows-runtime-session-message-invalid-failed`. This changes only bounded
+failure classification and outer closed-set admission; it does not alter ACP
+messages, permissions, retries, or cleanup. Focused cross-layer tests pass
+(`112/112`), and format, lint, typecheck, and the P8 contract check are green.
+The change is not yet pushed or Windows-verified.
+
+The complete local `bun run check` for this diagnostic batch exits `0`:
+`171` test files passed / `3` skipped, `1855` tests passed / `10` skipped,
+P7 abuse, smoke harness, product boundary, foundation, downstream, and package
+checks all passed. The remaining bundler notices are pre-existing frozen
+foundation warnings.
+
+## 2026-08-21 P8.2c first tool-call diagnostic split (local; CI pending)
+
+The exact-head Windows authenticated-runtime run
+[`32474910533`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32474910533)
+for head `7620b90d2b4910ae955bc62a0ddc4ddc2d77cbb7` passed build, admission,
+containment, and ACP/session/tools-list setup, then failed during the first real
+`read-tool` prompt. Its bounded failure Artifact reported only
+`windows-runtime-read-tool-failed` because the integration harness wrote that
+stage before the prompt and never replaced it after the prompt exception.
+
+The local follow-up does not change ACLs, authority, protocol permissions,
+workspace scope, credentials, network policy, or `foundation/`. It adds a
+closed first-tool-call diagnostic vocabulary across the Worker capability
+client, Supervisor relay, Main capability host, composition classifier, and
+outer Windows evidence mapper. The call path now distinguishes request write,
+Supervisor read/forward, Main decode, Main invocation start/complete/failure,
+Main response write, Supervisor response read/forward, and Worker response
+decode. The integration harness now classifies a prompt exception before
+persisting the failure stage, so a new Windows run can identify the first
+missing call boundary rather than retaining the prewritten `read-tool` label.
+
+Local evidence is green: 77 focused TypeScript/JavaScript tests, 89 Goose
+runner Rust tests, format, lint, typecheck, and `git diff --check`. This is
+diagnostic evidence only; P8.2c remains open until one exact-head Windows CI
+run reports either a verified successful runtime Artifact or the first missing
+tool-call stage for a separate minimal behavior repair.
+
+## 2026-08-21 P8.2c Windows overlapped bridge repair (local; CI pending)
+
+Exact-head CI run
+[`32470992247`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32470992247)
+for Actestra head `37d533b288930c945f37527ce9e71b0f2065c49e` completed with
+six of seven jobs green. Windows and Ubuntu build/containment, Goose admission,
+and macOS foundation/package passed. The Windows authenticated-runtime job
+failed at the first exact missing capability stage:
+`windows-runtime-capability-supervisor-request-forward-failed`. Worker request
+write and Supervisor request read were observed; Supervisor request forwarding
+to Main did not complete.
+
+The independently downloaded failure Artifact is
+`p8-goose-runtime-windows-failure-64d785866f71062ab7fb9f32cbe6d892d338fec0`
+(Artifact `9443409418`; uploaded ZIP SHA-256
+`87a48c708daf9be764786765ae300de8b6c699e8b29486fb1fd145ac09e41f46`).
+Its single JSON file has SHA-256
+`1b6f37aa1f6871cffd21d8427e86c5d2018715aa7b4c837805efed31334aa0c4`
+and contains only the bounded failure code above.
+
+The transport defect is now repaired locally. Node's ordinary Windows
+`"pipe"` stdio creates an asynchronous parent endpoint but a synchronous child
+endpoint. fd 5/fd 6 are the Supervisor endpoints and carry concurrent request
+and response traffic. Duplicating either inherited handle did not create two
+independent pipe file objects, so Tokio's blocking-file wrapper could keep one
+direction occupied by a pending read and prevent the reverse write that CI
+identified. Main now creates only fd 5/fd 6 as Node `"overlapped"` stdio, and
+Supervisor wraps each exact inherited client handle in one Tokio
+`NamedPipeClient` inside the relay runtime. The seven-channel topology,
+protocol, cancellation path, Worker nine-handle allowlist, AppContainer, Job,
+credential and workspace boundaries remain unchanged.
+
+The behavior contract was written and observed RED before implementation. It
+now locks the exact five ordinary plus two overlapped stdio configuration, the
+real Windows duplex/isolated channel probe, one handle duplication, Tokio
+named-pipe ownership, and runtime registration. Focused local evidence passes
+`98` TypeScript/JavaScript tests with the Windows-native test skipped on macOS,
+plus `88/88` Goose runner tests. Rust format, TypeScript typecheck, repository
+format/lint, and `git diff --check` are clean.
+The Windows API slice also cross-compiles with Tokio `1.53.1` and
+`windows-sys 0.61.2`; a full macOS-to-Windows cross-build remains unavailable
+because the existing C dependencies require Windows SDK headers. The complete
+`bun run check` gate exits zero: `171` test files passed / `3` skipped; `1849`
+tests passed / `10` skipped; P7 abuse cases, boundaries, frozen AionUI
+foundation, downstream materialization, and package build all passed. P8.2c
+remains open until one new exact-head Windows CI run verifies the real runtime
+and its success Artifact.
+
+## 2026-08-21 P8.2c Windows capability round-trip diagnostics (local; CI pending)
+
+Exact-head CI run
+[`32463207473`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32463207473)
+for Actestra head `9bdc606f1cab811c96ea37bdfe23ce26a82003fc` completed with
+six of seven jobs green. The Windows and Ubuntu build/containment jobs, Goose
+admission, and macOS foundation/package job passed. Windows authenticated
+runtime crossed session creation but timed out during the first capability
+`list_tools()` round trip; the previous evidence still collapsed that gap to
+`windows-runtime-composition-open-failed`.
+
+The independently downloaded failure Artifact is
+`p8-goose-runtime-windows-failure-c30a68b012021ba43306b800a5ec29971550d1a7`
+(Artifact `9440508742`; uploaded ZIP SHA-256
+`e4015e0e69a29dd0adb48f363aa3d21c2ab5ec3c0dfefa0718a60bc772d187fb`).
+Its single JSON file has SHA-256
+`48e374b468548e544228e9e7a62d7edd975089f380248b33bcbc0f9900a10a56`
+and contains only the bounded composition-open failure code.
+
+This diagnostic-only follow-up closes the previously silent capability path
+with eight ordered stages: Worker request write, Supervisor request read and
+forward, Main request decode and response write, Supervisor response read and
+forward, and Worker response decode. Worker stderr is filtered in Supervisor
+and only the two exact fixed Worker markers can cross into Main. Supervisor
+relay markers are emitted once for the first request/response pair, so later
+tool calls cannot grow the diagnostic stream. Main retains only a frozen
+closed-stage snapshot, and composition converts the first missing stage into
+one of eight distinct failure codes only for a bounded capability-discovery
+timeout. Session, relay, cleanup, and other unrelated failures retain their
+original classification. The outer Windows evidence layer maps the eight codes
+to eight independent bounded Failure Artifact tokens.
+
+No AppContainer ACL, network, credential, Renderer, workspace, handle
+allowlist, retry, fallback, or `foundation/` authority changed. Focused local
+evidence passes `68/68` TypeScript/JavaScript tests and `88/88` Goose runner
+tests. The complete `bun run check` gate exits zero: `171` test files passed /
+`3` skipped; `1849` tests passed / `10` skipped; P7 abuse cases, boundaries,
+frozen AionUI foundation, downstream materialization, and package build all
+passed. Rust formatting and `git diff --check` are clean. P8.2c is not closed
+until exact-head Windows CI either produces a verified successful runtime
+Artifact or identifies one first missing capability stage for a separate
+minimal behavior repair.
+
+## 2026-08-21 P8.2c adapted-workspace admission fix (local; CI pending)
+
+Exact-head CI run
+[`32456441519`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32456441519)
+for Actestra head `6978e49c85369d308099f2c7dd039bdd6c2efce2` completed with
+six of seven jobs green. Windows build probe, Windows containment, both Ubuntu
+jobs, Goose admission, and macOS foundation/package passed. The Windows
+authenticated runtime crossed Worker startup, state-directory loading, and
+exact containment, then failed at ACP `session/new` with bounded code
+`windows-runtime-session-open-failed`.
+
+The preserved failure Artifact is
+`p8-goose-runtime-windows-failure-57ca92b5f688262c7c4ff37dea5a2e8bf20ec94a`
+(Artifact `9437974708`; uploaded ZIP SHA-256
+`503f2b2704b6329570be15dddfada2998bf189952c7d7f30f02f0e3d777665f6`).
+Its single JSON file has SHA-256
+`38d6c40631d5a0cdea587f7dd253f68b6eade948d38b9b287bd9e156bd85baf9`
+and contains only the bounded failure code. The same run's Windows containment
+Artifact is verified and has uploaded ZIP SHA-256
+`69e393a4caf78fe35853cdf1fb6a1c02b99989803d8110be0729bd810f886e90`;
+its JSON file SHA-256 is
+`10449a2ae97b0d79cc184116bb8b03250ffd767508588b30da6d7700597894ac`.
+
+Root cause was the private Goose adapter seam calling upstream
+`validate_absolute_cwd()` before selecting adapted behavior. That upstream
+helper checks `cwd.exists()` and `cwd.is_dir()` inside Goose. The Windows
+AppContainer intentionally has no direct isolated-worktree filesystem
+authority, so the check rejected the Main-admitted absolute workspace path
+before Goose could use the Main-owned capability bridge. Granting worktree ACL
+access would violate the accepted Tool Gateway boundary.
+
+The private runtime fix at immutable commit
+`81bb2c1428d11e41e7934f4569eb7dda3fb55b81` keeps the upstream path unchanged
+and gives adapted sessions a narrower check: the workspace path must be
+absolute, while its existence and ownership remain Main/Supervisor admission
+facts. It adds both helper-level and real ACP `session/new` regressions for an
+absolute path that the Worker cannot enumerate. The declared changed-path set
+remains the same three ACP server files and its new binary full-index diff
+SHA-256 is
+`975d31ebbabce450a66455ec55e0ecaddeaa3c558e62a0a559a810ad03194a18`.
+No AppContainer ACL, Renderer, credential, network, workspace, retry, or
+fallback authority changed.
+
+Fresh local evidence passes the private runtime adapter tests (`18/18`), Goose
+runner tests (`85/85`), focused provenance/admission/security tests (`91/91`),
+and the full `bun run check` gate (`171` test files passed / `3` skipped;
+`1843` tests passed / `10` skipped). This does not yet prove Windows behavior.
+P8.2c remains open pending exact-head Windows authenticated-runtime CI and
+success Artifact verification.
+
+## 2026-08-21 P8.2c per-operation Worker-side prepare exit codes (local; CI pending)
+
+The CI run for `2db6192` confirmed the diagnostic chain was not closed end-to-end. The Worker returned `EXIT_STATE_DIRECTORY_FAILED` (114) for all 10 `StateDirectoryPrepareFailure` variants, so the Supervisor could only report `windows-worker-state-directory-failed` regardless of which operation failed. The test child also exited with the single code 210 for all prepare failures. The JS closed-set lists in `gooseRunnerProcess.ts`, `gooseWindowsRuntimeEvidence.mjs`, and `gooseContainmentDiagnostics.test.mjs` were not updated.
+
+This follow-up closes the full cross-layer chain:
+
+- `StateDirectoryPrepareFailure` gains `worker_exit_code()` (117–126), `worker_runtime_code()` (10 distinct `windows-worker-state-directory-*` codes), and `test_child_exit_code()` (220–229).
+- `WorkerStartupFailure` gains `StateDirectoryPrepare(StateDirectoryPrepareFailure)`. Worker now exits with the per-variant code via `failure.worker_exit_code()`.
+- `classify_worker_startup_exit` decodes Worker exit codes 117–126 to the correct `StateDirectoryPrepare` variant.
+- `WINDOWS_RUNTIME_FAILURE_CODES` expanded from 32 → 42 entries.
+- `AnonymousPipeTestChildFailure::StateDirectoryPrepare` now carries the variant; test child exits with codes 220–229; `classify_anonymous_pipe_test_child_exit` decodes all 10.
+- `GOOSE_WINDOWS_SUPERVISOR_FAILURE_STAGES` and `GOOSE_WINDOWS_WORKER_STARTUP_STAGES` in `gooseRunnerProcess.ts`, `WINDOWS_WORKER_STARTUP_STAGES` in `gooseWindowsRuntimeEvidence.mjs`, `FAILURE_STAGE_CODES`, `GOOSE_CONTAINMENT_PROBE_DIAGNOSTIC_CODES`, and the explicit test list in `gooseContainmentDiagnostics.test.mjs` all updated.
+
+No ACL scope, workspace, network, credential, capability, retry, or Renderer authority changed.
+
+Local evidence: `cargo fmt --all --check` clean, 84/84 Rust tests, 58/58 JS evidence tests, `bun run check` gate passes. The next Windows CI run will emit one of the 10 `windows-worker-state-directory-*-failed` tokens identifying the exact filesystem call that fails under AppContainer. P8.2c remains open pending that CI result.
+
+## 2026-08-21 P8.2c per-operation prepare-stage exit codes (local; CI pending)
+
+The latest exact-head CI evidence is run
+[`32445677074`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32445677074).
+The Worker succeeded at control-frame, boundary-check, pipes, and control-message
+stages but failed inside `prepare_goose_state_directories()`, reported as
+`test-child-state-directory-prepare-failed`. This narrowed the failure to one
+of the nine filesystem operations inside that function but did not identify which
+one.
+
+This follow-up maps each of those operations to a distinct bounded exit code and
+runtime diagnostic string so the next Windows CI run reports the exact operation
+that fails under AppContainer. The new codes are:
+`windows-state-directory-root-metadata-failed`,
+`windows-state-directory-root-canonicalize-failed`,
+`windows-state-directory-data-metadata-failed`,
+`windows-state-directory-data-create-failed`,
+`windows-state-directory-data-canonicalize-failed`,
+`windows-state-directory-config-metadata-failed`,
+`windows-state-directory-config-create-failed`, and
+`windows-state-directory-config-canonicalize-failed`.
+The `StateDirectoryPrepareFailure` enum carries all ten prepare variants
+(including the existing `Layout` and `TraversalShape`). No ACL scope,
+workspace, network, credential, capability, retry, or Renderer authority was
+added.
+
+Fresh local evidence passes `cargo fmt --all --check`, all `84` Goose runner
+tests, the focused JS evidence tests (`58/58`), and the complete `bun run check`
+gate. The new codes are present in both `WINDOWS_RUNTIME_FAILURE_CODES`,
+`GOOSE_CONTAINMENT_PROBE_DIAGNOSTIC_CODES`, `FAILURE_STAGE_CODES`, and
+`WINDOWS_SUPERVISOR_FAILURE_STAGES`. A new exact-head CI run is required to
+identify the specific prepare operation that fails before any behavioral change
+is considered. P8.2c remains open.
+
+## 2026-08-21 P8.2c state-directory admission diagnosis (local; CI pending)
+
+The latest exact-head CI evidence is run
+[`32440652281`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32440652281)
+for head `5ec05514064aba91dda1aa11196b17308450741c`. Windows containment,
+Ubuntu build/containment, Goose admission, and the macOS foundation/package
+jobs passed. Windows authenticated runtime still failed with the Worker-side
+`windows-runtime-worker-state-directory-failed` token. The Windows build probe
+also reported the synthetic-only `test-supervisor-frame-read-failed`; this is
+not treated as production evidence.
+
+The bounded local follow-up keeps the existing permission and process
+boundaries but separates Supervisor-side state-directory admission failures
+into layout, traversal-shape, ancestor-access, root-access, child-access, and
+integrity-label stages. The Supervisor now reports these stages through the
+closed diagnostic vocabulary instead of collapsing them into the Worker
+state-directory token. The synthetic AppContainer pipe fixture also checks the
+child exit code after a frame-read failure, so a child-side state-directory
+exit is not reported as a parent frame-read symptom when the exit is observable.
+No ACL scope, workspace, network, credential, capability, retry, or Renderer
+authority was added.
+
+Fresh local evidence for this unpushed diagnosis passes `cargo fmt --all
+--check`, all `84` Goose runner tests, the focused Windows evidence tests
+(`36/36`), the complete `bun run check` gate (`171` test files passed / `3`
+skipped; `1843` tests passed / `10` skipped), and `git diff --check`. This is
+portable/macOS and closed-set evidence only; it does not prove Windows native
+behavior. A new exact-head CI run must still identify whether the real failure
+is Supervisor admission or Worker access before a behavioral ACL change is
+considered. P8.2c remains open.
+
+The following bounded diagnostic-only follow-up further separates the native
+synthetic child stages: state-directory preparation, data/config write, read,
+and delete. It does not change the production Worker protocol or ACL scope.
+Fresh Windows CI is still required to identify the first failing child
+operation before any behavioral ACL change is considered.
+
+## 2026-08-21 P8.2c nested private-root traversal remediation (local; CI pending)
+
+Exact-head CI run
+[`32437731730`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32437731730)
+for head `fe82d2dfcd89f95e69417e593df8d13b46cdc334` passed Windows containment,
+Ubuntu build/containment, Goose admission, and macOS foundation. Windows
+authenticated runtime still failed with the independently downloaded bounded
+Artifact `{"contractVersion":1,"code":"windows-runtime-worker-state-directory-failed"}`
+(SHA-256
+`38a4c736fd7c33bd703aedef9fdf4210f0828fb271f5a47c8bc09dc45253c71a`). The
+Windows build probe also retained the synthetic-only
+`test-supervisor-frame-read-failed`; the authenticated job's native primitives
+passed, so that synthetic failure is not treated as production evidence.
+
+The failure-path comparison found that the real Main launch nests the attempt
+root as `userData/goose-private/goose-attempt`, while the supervisor only
+authorized the attempt root and its two Goose state directories. The bounded
+follow-up adds an exact `privateRootTraversalRoot` to the one-shot control
+frame, validates that the private root has exactly two descendant components,
+and grants the retained AppContainer SID only `FILE_TRAVERSE` on the two
+ancestor directories. It forbids directory listing, creation, deletion,
+attribute changes, DACL/owner changes, and all writes on those ancestors. The
+existing low-integrity labels and state-directory write rights remain narrow;
+no workspace, network, credential, capability, retry, or renderer authority is
+added. The native state-directory fixture now uses the same nested shape.
+
+Local evidence for this unpushed remediation passes `cargo fmt`, all `82`
+portable Rust tests, the new exact ancestor-shape test, the Windows bridge and
+supervisor contract tests (`18/18`), and `git diff --check`. P8.2c remains open
+until a newly pushed exact-head CI run passes Windows build probe, containment,
+and authenticated runtime and its successful runtime Artifact is independently
+revalidated.
+
+## 2026-08-21 P8.2c Windows Goose state-directory ACL remediation (local; exact-head CI pending)
+
+Exact-head CI run
+[`32391373152`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32391373152)
+for head `153306c17b91d82328c62790310444a247f90e21` passed Goose runner
+admission, the Windows build probe and native primitives, Windows containment,
+both Ubuntu jobs, and the macOS foundation job. The Windows authenticated
+runtime reached the Worker and failed at the newly preserved exact stage
+`windows-runtime-worker-state-directory-failed`. The bounded failure Artifact
+was independently downloaded and has SHA-256
+`38a4c736fd7c33bd703aedef9fdf4210f0828fb271f5a47c8bc09dc45253c71a`;
+its complete content is
+`{"contractVersion":1,"code":"windows-runtime-worker-state-directory-failed"}`.
+This proves that control parsing, AppContainer boundary verification, runtime
+creation, and both inherited-handle bridges succeeded before the Worker tried
+to prepare its Goose state directories.
+
+The bounded local remediation creates and validates only `goose-data` and
+`goose-config`, then adds an inheritable access entry for the exact retained
+AppContainer SID before Worker launch. The attempt-private root receives only
+traverse, attribute, read-control, and synchronization access; the two Goose
+state directories receive read, write, execute, and delete access for
+themselves and their children. Existing owner and system ACL entries are
+preserved. The implementation does not grant `ALL APPLICATION PACKAGES` or
+`ALL RESTRICTED APPLICATION PACKAGES`, add an AppContainer capability, widen
+the worktree, executable, network, Renderer, preload, or credential boundary,
+or add a retry. It reads the effective exact-SID rights back after each ACL
+write and fails closed if required rights are absent or `WRITE_DAC` /
+`WRITE_OWNER` (or root write/delete rights) are present.
+
+The existing Windows AppContainer native pipe test now also proves that the
+child can create, read, and delete files in both admitted Goose state
+directories while a direct write in the attempt-private root is denied. The
+new Win32 ACL call surface has been separately type-checked as metadata for
+`x86_64-pc-windows-msvc` with Rust `1.96.1`; a full macOS-hosted Windows build
+still cannot replace Windows evidence because transitive native C crates need
+the MSVC CRT and assembler toolchain. Fresh local evidence for this remediation
+passes `cargo fmt --all --check`, all `82` portable Rust tests, the focused
+Windows Supervisor source contract (`11/11`), root formatting (`412` files),
+documentation links (`98` Markdown files), and `git diff --check`. The complete
+`bun run check` composite gate exits `0`: zero-warning lint and typecheck,
+`171` test files passed / `3` skipped with `1842` tests passed / `10` skipped,
+all `28` P7 abuse cases and `168` exact variants denied-safe, smoke harness,
+product boundary, frozen AionUI foundation, downstream materialization and
+package build all passed. Its remaining Vite `use client`, circular-chunk, and
+large-chunk notices are pre-existing frozen-foundation build warnings.
+
+The first pushed remediation head
+`c415178db9800168737c6e75b224639fb848d0a9` exposed one Windows-only test
+compile gap in CI run
+[`32398878358`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32398878358):
+the build-probe native-primitives step could not see
+`WINDOWS_CONTROL_MAX_BYTES` or the private-root helper from its sibling test
+module. This failure occurred before the new AppContainer ACL behavior ran; it
+does not establish either a successful or failed ACL result. The bounded local
+follow-up imports the existing closed frame limit into `windows_native_tests`
+and gives that module its own private-root fixture helper. It changes no
+production permission, process, handle, network, or cleanup behavior and awaits
+a new exact-head Windows compile and runtime result.
+
+P8.2c remains open. The next accepted evidence must come from one newly pushed
+exact head and must pass the Windows build probe, Windows containment, and
+Windows authenticated-runtime jobs. Only a successful runtime Artifact whose
+digest, content, and source head are independently revalidated can close
+P8.2c; Windows Electron/package acceptance, P8.2 overall, P8.3, P8.4, release,
+deployment, and user acceptance remain separate and open.
+
+## 2026-08-21 P8.2c Worker exit checking (format blocked; regression tests added)
+
+Commits `f9b8c84` and `4cea96d` completed the Supervisor stage diagnostic chain
+and added Worker exit checking before reporting ready-channel-invalid. CI run
+[`32390536814`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32390536814)
+for head `4cea96d` failed format check (`cargo fmt --all --check` exited 1) in
+three jobs (Goose runner admission, Ubuntu build probe, Ubuntu containment),
+blocking full native verification.
+
+The format issue was two lines around `GetExitCodeProcess` at
+`windows_supervisor.rs:2976-2977` that `rustfmt` reformatted. Local fix applied
+via `cargo fmt --all`. Two regression tests added:
+`classifies_worker_startup_exit_codes_to_distinct_failure_stages` covers the
+eight Worker exit codes 101/102/103/108/113/114/115/116 plus 0/1/259 (STILL_ACTIVE),
+and `maps_worker_startup_failures_to_distinct_runtime_codes` locks the eight
+runtime code strings. These tests ensure the new Worker-exit-check branch cannot
+regress without breaking the test suite.
+
+CI run `32390536814` did complete Windows authenticated runtime with the exact
+failure stage `windows-runtime-supervisor-ready-channel-invalid-failed` and
+artifact SHA-256 `fbe26b8352d3966e8219ac46a271b9fb0d8c0798c7f1e9e7f2e8e332aaa617bf`,
+proving the Supervisor diagnostic chain works end-to-end. This confirms the
+Worker exits before writing the ready marker, but the Supervisor had not yet
+checked Worker exit status, so it reported the symptom (ready-channel-invalid)
+rather than the cause (a Worker startup stage failure).
+
+Commit `4cea96d` added that Worker-exit check: when ready marker read fails,
+`GetExitCodeProcess` queries the Worker; if it exited with 101-116, the
+Supervisor reports the specific Worker stage via `classify_worker_startup_exit()`;
+only if the Worker is still running (exit code 259 / STILL_ACTIVE) or the query
+fails does it report `ready-channel-invalid`. The implementation preserves
+fail-closed behavior: query failure falls back to `ready-channel-invalid` rather
+than masking the failure entirely.
+
+Native primitives on Windows reached 8/8 for the first time in CI run
+`32381576768` for head `43ced80`, proving the anonymous-pipe test-harness fix
+was effective.
+
+Verification pending: format fix, two new regression tests, duplicate cleanup in
+`gooseContainmentEvidence.mjs` (removed the duplicated
+`windows-worker-ready-signal-failed` entry at lines 119-120). Next exact-head
+Windows CI will report the actual Worker startup failure stage instead of the
+Supervisor-level ready symptom.
+
+P8.2c remains open. The next Windows CI run for the format-fixed head will
+reveal which specific Worker stage fails (control-frame, boundary-verification,
+runtime-creation, capability-bridge, model-bridge, state-directory,
+ready-signal, or acp-handshake) under AppContainer, enabling the final
+behavioral fix.
+
+## 2026-08-20 P8.2c Windows bridge root-cause correction (pushed transport; harness rerun pending)
+
+Exact-head CI run
+[`32374588816`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32374588816)
+for source head `ac27c9bc45e323283ac1dfb8700764ed46cc9313` invalidated the
+startup-race conclusion recorded immediately below. The Windows build-probe
+native suite still failed at `test-child-pipe-unavailable` after all `20`
+retries over the bounded `500` ms interval. The repeated native RED means the
+ordinary Supervisor-to-AppContainer named-pipe transport is not a usable
+production boundary under the admitted Windows contract; another timeout,
+retry, DACL widening, namespace change, or network capability would not be an
+evidence-backed fix.
+
+The bounded local correction keeps Main-to-Supervisor fd `5`/`6`, ACP, the
+framed capability/model protocol, AppContainer launch, Job-before-resume,
+single resume, cleaned inherited environment, and the exact handle allowlist.
+It replaces only the Supervisor-to-Worker transport with four unidirectional
+anonymous-pipe endpoints forming two duplex channels. The Supervisor creates
+nine Worker endpoints in total (stdio, control, ready, capability read/write,
+and model read/write), marks their nine matching Supervisor endpoints
+non-inheritable, proves all `18` handles are unique with the expected
+inheritance flags, and admits only the nine Worker endpoints through
+`PROC_THREAD_ATTRIBUTE_HANDLE_LIST`. The Worker receives the six non-stdio
+handle values through one strict bounded argument contract and performs no
+named-pipe lookup. This follows the documented Windows
+[process-handle inheritance](https://learn.microsoft.com/en-us/windows/win32/procthread/inheritance)
+mechanism and does not add network, filesystem, credential, Renderer, or
+preload authority.
+
+Main no longer creates or transmits capability/model pipe names. The Rust
+named-pipe module and its unused Windows IO feature are removed. Diagnostics
+also remove the eight unreachable capability/model pipe-open causes and rename
+the two Supervisor construction failures to
+`windows-capability-channel-invalid` and `windows-model-channel-invalid`.
+Rust, Main, containment evidence, authenticated-runtime evidence, and their
+closed-set tests use the same reduced vocabulary.
+
+The transport correction was committed and pushed at
+`078c038eff2adf117eae6b03f104cd2754d76fb7`. Exact-head CI run
+[`32379613719`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32379613719)
+compiled and executed the Windows native matrix. The build-probe job passed
+seven of eight native tests and failed only
+`exact_appcontainer_exchanges_frames_over_allowlisted_inherited_pipes` at the
+bounded token `test-supervisor-frame-read-failed`; the authenticated-runtime
+job independently passed its native-primitives step on the same head.
+
+Source and log review identified a synthetic-test harness race rather than a
+production transport failure. The child is a re-executed Rust libtest process,
+but the test reused that process's `stdout` as the framed protocol channel.
+When libtest text reached `stdout` before the protocol frame, the parent parsed
+the first four text bytes as a length header and rejected the frame. The
+bounded local follow-up leaves production code unchanged: the synthetic child
+now exchanges frames over the already allowlisted capability anonymous-pipe
+pair, receives those two inherited handle values through its one-shot test
+stdin, and leaves `stdout` exclusively to libtest. It adds no retry, handle,
+capability, environment entry, or product authority.
+
+Fresh local evidence for the follow-up bytes passes:
+
+- `cargo fmt --all` and `cargo test --locked`: `82/82` tests passed;
+- the focused Windows Supervisor contract: `10/10` tests passed;
+- the previously pushed transport head also passed the ten affected
+  Main/script files: `147/147` tests;
+- `bun run check`: exit `0`, with `171` test files passed / `3` skipped and
+  `1840` tests passed / `10` skipped, plus format, zero-warning lint,
+  typecheck, P8 contract, Electron SQLite, P7 abuse, smoke harness, boundary,
+  frozen foundation, downstream, and package gates;
+- active production/test source has no remaining pipe-name metadata, old
+  named-pipe startup token, or deleted module reference;
+- `Cargo.lock` is byte-unchanged and `git diff --check` is clean.
+
+A macOS-hosted `cargo check --locked --target x86_64-pc-windows-msvc --tests`
+cannot supply Windows proof: it exits before project source in
+`libsqlite3-sys` / `zstd-sys` because this Mac has no MSVC CRT headers
+(`stdlib.h` / `string.h`). The harness follow-up is not yet committed, pushed,
+or executed on Windows, and run `32379613719` as a whole was still in progress
+at this evidence cutoff; no broader result is inferred from it. P8.2c therefore
+remains open. The next gate is a newly pushed exact head that passes the
+Windows native build probe, Windows containment, and Windows
+authenticated-runtime jobs. Only a successful runtime Artifact downloaded and
+independently revalidated can close P8.2c. Windows Electron/package acceptance,
+P8.2 overall, P8.3, P8.4, release, deployment, and user acceptance remain
+separate and open.
+
+## 2026-08-20 P8.2c Windows named-pipe startup race (native RED; bounded local remediation)
+
+The next exact-head run
+[`32372856650`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32372856650)
+for source head `7ba0a2d96c12e21bd04d75aecb86f928a87831ba` compiled and
+executed the expanded Windows native diagnostic protocol. Its build-probe
+native suite failed at the newly distinct token `test-child-pipe-unavailable`,
+not `test-child-pipe-access-denied`. This is the required native RED evidence
+for a transient pipe-open race: the AppContainer client can run before the
+parent has entered `ConnectNamedPipe`, and a one-shot client open can therefore
+observe an unavailable server despite the exact-SID security descriptor. It is
+not evidence for widening the DACL, AppContainer capabilities, namespace, or
+network authority. The run's remaining jobs are still in progress and no
+authenticated-runtime outcome is claimed from it yet.
+
+The local remediation retries only the already closed `busy` and `unavailable`
+client-open classes, at `25` ms intervals with at most `20` retries (`500` ms
+total). Access denied and unclassified failures still return immediately and
+fail closed. A test was observed RED before the retry predicate existed and
+GREEN afterward, locking all four outcomes. Fresh runner validation passes
+Rust formatting, `cargo test --locked` (`85/85`), and `git diff --check`.
+
+This change is not yet pushed or Windows-verified. P8.2c remains open until one
+new exact-head run passes the native AppContainer pipe exchange and emits a
+successful authenticated-runtime Artifact that is downloaded and independently
+revalidated. All broader P8.2, P8.3, P8.4, release, deployment, and acceptance
+non-claims remain unchanged.
+
+## 2026-08-20 P8.2c Windows authenticated runtime: dual-lease and pipe-open diagnosis (local green; exact-head native rerun pending)
+
+Exact-head pull-request CI run
+[`32368899818`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32368899818)
+for source head `f8241f2d78b9982c5111bc016f8d028b2019e5e2` independently
+passed Windows containment, both Ubuntu jobs, Goose admission, and the macOS
+foundation/package/smoke job. The Windows build-probe native suite alone failed
+its synthetic AppContainer pipe exchange at the old bounded token
+`test-child-pipe-connect-failed`; the authenticated-runtime job separately
+failed at the old broad token
+`windows-runtime-worker-capability-pipe-failed`. The downloaded Windows
+containment record is `verified` and has SHA-256
+`61a97510d03268514a438eee967922bae3f143f5b4b96ecaaf61fcf9aa2b4a91`.
+The downloaded runtime failure record has SHA-256
+`445ea7f6ad9b63d1560f3a4e29b198ec3f27fb11c4f7d9795410d7db8ad8edec`.
+Because the authenticated-runtime job's production runner and the build-probe
+job's synthetic child disagreed on the same head, this evidence does not prove
+a stable ACL denial and does not authorize a wider SID, network capability,
+namespace, or unconditional retry.
+
+Review of the production composition found one independent static protocol
+defect. Main already created separate capability and model attempt leases, but
+the Windows control frame carried only the capability lease and the Worker
+reused it for both bridge clients. The local remediation carries a distinct
+`modelAttemptLease` through the immutable Main spawn contract and one-shot
+control frame, requires both opaque leases to be valid and unequal, keeps both
+out of the Worker environment, and gives the model provider only the model
+lease. Capability and model host tests lock the two independent values.
+
+The same remediation replaces both broad Worker pipe-open stages with closed,
+sanitized cause classes: access denied, busy, unavailable, unclassified, and a
+separate post-open bridge-construction failure for each of capability and model.
+The synthetic AppContainer child uses the same four open-failure classes. The
+classification includes Windows file/path-not-found, semaphore timeout, bad
+pipe, no data, pipe-not-connected, and pipe-listening outcomes as unavailable;
+no raw Win32 code, path, pipe name, SID, PID, lease, or child output crosses the
+diagnostic boundary. Rust, Main, containment evidence, and final runtime
+evidence share regression-locked closed tokens. No retry is implemented; only
+new native evidence of `busy` or `unavailable` may justify a bounded retry,
+while access denied remains immediate fail-closed.
+
+Fresh local evidence passes: runner Rust formatting and `cargo test --locked`
+(`84/84`), the affected five Bun files (`74/74`), `git diff --check`, and the
+complete `bun run check` gate at exit `0` with `171` test files passed / `3`
+platform files skipped and `1840` tests passed / `10` skipped. That gate also
+passes format, zero-warning lint, typecheck, P8 contract, Electron SQLite, P7
+abuse cases, smoke harness, product boundary, frozen foundation, downstream
+materialization, and package build. A full macOS-hosted
+`cargo check --locked --target x86_64-pc-windows-msvc --tests` still stops in
+the existing native C dependency layer because `libsqlite3-sys` and `zstd-sys`
+cannot find the Windows MSVC CRT headers on this Mac; it is not Windows compile
+or runtime evidence.
+
+P8.2c remains open. The next gate is one newly pushed exact-head run that
+compiles and executes the expanded Windows diagnostics. A `busy` or
+`unavailable` result requires a RED test before any bounded retry; an
+access-denied result requires security-descriptor investigation without wider
+authority; a bridge result requires lease/adapter composition investigation.
+Only a successful Windows authenticated-runtime Artifact downloaded and
+independently revalidated can close P8.2c. Windows Electron/package acceptance,
+P8.2 overall, P8.3, P8.4, release, deployment, and user acceptance remain
+separate and open.
+
+## 2026-08-20 P8.2c Windows authenticated runtime: diagnostic protocol repair pending
+
+Exact-head CI run
+[`32366032098`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32366032098)
+for `ee24ef1` completed with the Windows build-probe native test failing because
+the synthetic AppContainer named-pipe child used libtest's panic exit `101`,
+which the parent incorrectly reused the production Worker startup classifier
+for and reported as `WorkerStartup(ControlFrame)`. This is a test-harness
+diagnostic collision, not evidence of a production control-frame failure.
+
+The same run independently passed Windows containment acceptance, Windows and
+Ubuntu build probes, Ubuntu containment, macOS foundation/package/smoke, and
+Goose admission. The real Windows authenticated runtime still failed at the
+bounded code `windows-runtime-worker-capability-pipe-failed`; therefore the
+low-integrity pipe label has not yet closed the real Worker capability-pipe
+journey, even though the separate containment probe is green.
+
+The pending local remediation gives the synthetic child a test-only exit
+protocol outside production `101..=108`, maps child and parent stages to closed
+sanitized tokens, and adds a regression test for the non-overlap. Local
+validation passes with `cargo test --locked` (`83/83`), Rust format, and
+`git diff --check`. No Windows authenticated-runtime claim is made until one
+new exact-head run reports the real child stage and, eventually, a successful
+authenticated runtime Artifact is downloaded and independently checked.
+
+## 2026-08-20 P8.2c Windows AppContainer named-pipe integrity remediation (local green; native rerun pending)
+
+Exact-head CI run
+[`32361943175`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32361943175)
+for pushed head `36a316ba9ba4e11c042ad9edb8a37ca2fcf67486` passed both
+Windows and Ubuntu build probes, both containment jobs, Ubuntu authenticated
+integration, Goose admission, and the macOS foundation/package/smoke job. The
+Windows authenticated-runtime job alone failed. Its bounded failure Artifact
+`p8-goose-runtime-windows-failure-2d8ca6da4bd4b40f0aaea94394afa27553740d30`
+contains the independently downloaded exact record
+`{"contractVersion":1,"code":"windows-runtime-worker-capability-pipe-failed"}`.
+This proves the previous outer-code remediation worked and places the native
+failure after AppContainer launch, Job assignment, Worker boundary verification,
+and Tokio runtime creation but before model-pipe connection, private-state setup,
+ready signalling, or ACP handshake.
+
+The remaining boundary defect is the pipe object's mandatory-integrity policy.
+The server already used the required `\\.\pipe\LOCAL\` namespace, requested a
+duplex byte pipe, and placed only the required owner SID and exact AppContainer
+SID in its DACL. Tokio's client opens the pipe for both read and write, and the
+DACL mask covers that request. The security descriptor did not carry a
+mandatory-integrity SACL, however. Under Windows Mandatory Integrity Control an
+unlabelled object is treated as medium integrity, so the low-integrity
+AppContainer cannot obtain write access even after its exact SID passes the
+DACL. This explains the observed failure at the first capability-pipe client
+open without authorizing a wider SID, network capability, loopback exemption,
+or namespace change.
+
+The local remediation adds one low-integrity mandatory label with
+`SYSTEM_MANDATORY_LABEL_NO_WRITE_UP` to each existing exact-SID pipe security
+descriptor. The two-entry DACL, one-client limit, local namespace, AppContainer,
+Job, handle allowlist, clean environment, and deny-all network boundary remain
+unchanged. A new Windows-native regression launches the real test child through
+the production AppContainer and Job path, requires a bidirectional capability-
+pipe exchange, and then requires a clean child exit. The existing ACL test now
+also verifies the one exact low-integrity label in memory. The prior exact-head
+production failure is the native RED evidence; this host cannot execute the new
+Windows-only test.
+
+Local evidence is green: the runner's `82` portable Rust tests pass, the
+Windows-only security-descriptor slice compiles for
+`x86_64-pc-windows-msvc` in an isolated API probe, documentation links pass for
+all `98` Markdown files, and the complete `bun run check` gate exits `0` with
+`171` test files passed / `3` skipped and `1840` tests passed / `10` skipped.
+Format, zero-warning lint, typecheck, P8 contract, Electron SQLite, P7 abuse,
+smoke harness, product boundary, frozen foundation, downstream overlay/package,
+and `git diff --check` pass in that same local state. The full Goose dependency
+graph still cannot be cross-compiled from this macOS host because native C
+dependencies require the Windows MSVC CRT; that is not native Windows evidence.
+
+P8.2c remains open. The next required evidence is one exact-head Windows run in
+which the new native AppContainer pipe test passes and the authenticated runtime
+advances through both pipes to the deterministic ACP journey. A successful
+runtime Artifact must be downloaded and independently revalidated before the
+gate may close. Windows Electron/package acceptance, P8.2 overall, P8.3, P8.4,
+release, deployment, and user acceptance remain separate and open.
+
+## 2026-08-20 P8.2c Windows authenticated-runtime outer-code closure remediation
+
+Exact-head CI run `32354734352` for source head `16d55da` crossed the vendored
+dependency fetch, Windows release build, lock freeze, Artifact admission, and
+exact Windows containment acceptance. Windows and Ubuntu build probes, both
+containment jobs, Ubuntu authenticated integration, Goose admission, and the
+macOS foundation/package-trust job passed. The sole failure was the real
+Windows authenticated-runtime integration. Its bounded failure Artifact
+contained only
+`{"contractVersion":1,"code":"windows-runtime-test-stage-unknown-failed"}`.
+
+The unknown result came from a cross-layer closed-set defect in the diagnostic
+wrapper. The stage classifier already mapped each of the eight native Worker
+startup stages to a distinct `windows-runtime-worker-*` code, but the outer
+runtime runner's final-output allowlist omitted all eight mapped values. A
+specific Worker startup result was therefore classified and then overwritten
+with the unknown fallback while producing the CI Artifact. This result does
+not identify or authorize a native ACL, named-pipe, AppContainer, or Worker
+behavior change.
+
+The local remediation exports the complete stage-code set from the classifier
+and has the outer runner consume that exact set instead of maintaining an
+incomplete parallel list. A regression test locks all eight Worker startup
+codes through that boundary. The test was observed RED before the change and
+GREEN afterward; the focused Windows evidence, native wiring, platform matrix,
+and containment-diagnostics suite passes `48/48`. Typecheck, lint with zero
+warnings/errors, format, and `git diff --check` also pass. The complete
+`bun run check` gate exits `0` with `171` test files passed, `3` platform files
+skipped, `1840` tests passed, and `10` skipped; security, boundary, frozen
+foundation, downstream materialization/package, and smoke-harness gates pass in
+the same run.
+
+P8.2c remains open. One new exact-head Windows authenticated-runtime run must
+now preserve the concrete native Worker stage. Only that sanitized stage may
+drive the next native repair; no CI rerun or ACL/pipe change has yet been made
+from the unknown result. P8.3, P8.4, release, deployment, and user acceptance
+remain separate and open.
+
+## 2026-08-20 P8.2c CI follow-up: unavailable `arrayref` remote blocked all jobs
+
+Exact-head CI run `32352605516` for commit `55734a6` did not execute any
+Windows runtime or containment code. Every Goose-related job stopped in
+`Fetch admitted private Goose runtime source` while Cargo attempted to fetch
+the `[patch.crates-io]` `arrayref` source from `https://github.com/droundy/arrayref`.
+The repository returned `Repository not found`; the injected SSH deploy key
+could not help because the patch URL was HTTPS. This is a supply-chain fetch
+configuration failure, not a new Worker, AppContainer, ACL, or named-pipe
+result. Ubuntu containment also reported a cleanup failure after its setup
+step was skipped, which is a secondary workflow symptom.
+
+The local remediation changes the patch to an explicit path dependency at
+`workers/goose-runner/vendor/arrayref`, an exact source copy of
+`arrayref 0.3.9` at upstream commit
+`f8d0299d863922db6c409d08098941e833b70d69`. Its BSD-2-Clause license and
+`SOURCE.md` provenance record are retained, and all vendor files are included
+in the runner source-tree digest. A regression test locks the path patch and
+rejects the unavailable remote form. Local offline Cargo metadata and the
+runner's 82 Rust tests pass. This remediation is not yet pushed or CI-verified;
+P8.2c remains open and the next gate is one exact-head run that reaches the
+Windows authenticated runtime.
+
+## 2026-08-20 P8.2c CI follow-up: yanked `arrayref` supply-chain gate
+
+Exact-head CI run `32344480355` for commit `18950d2` did not reach the Windows
+authenticated-runtime integration. Ubuntu build/containment, Windows
+containment, Goose admission, and macOS package trust all stopped at the same
+fail-closed `unsafe-audit` result: the yanked-package audit was non-empty after
+crates.io marked `arrayref 0.3.9` (selected through `blake3 1.8.5`) as yanked.
+The Team mixed-journey timeouts in Goose admission were downstream symptoms of
+that admission failure, not a new Worker or pipe diagnosis.
+
+The runner now temporarily pins the pre-yank `arrayref` source at immutable
+commit `f8d0299d863922db6c409d08098941e833b70d69` through Cargo's crates.io
+patch mechanism. The newly published `arrayref 0.3.10` is not accepted as an
+unreviewed registry input. Local locked metadata/tree checks and the bounded
+audit show no yanked-package warning; the existing RSA metadata-only finding
+remains unchanged. This dependency remediation is uncommitted and has not been
+sent to CI yet. P8.2c remains open until the lock/build/admission gate passes
+and a new exact-head Windows runtime result is obtained.
+
+The follow-up exact-head run `32349088724` confirmed that the dependency gate
+is fixed: all seven jobs crossed artifact admission, Windows containment passed,
+and Windows authenticated runtime actually ran. It still failed with the
+bounded artifact code `windows-runtime-test-failed`, so P8.2c is not closed.
+The remaining local remediation preserves a primary runtime stage when temporary
+evidence-directory cleanup fails and maps any otherwise-unrecognized failure to
+the explicit `windows-runtime-test-stage-unknown-failed` token instead of the
+opaque generic fallback. Focused evidence/wiring tests remain green; this
+change is not yet pushed for a new native run.
+
+## 2026-08-20 P8.2c Batch 4 authenticated-runtime failure diagnostics (local remediation; native rerun pending)
+
+The exact-head `dfee41e` Windows CI run `32340569696` proved the runner build,
+artifact admission, and Windows containment acceptance, but the authenticated
+runtime integration ended with `windows-runtime-test-failed`. The failure was
+in the test wrapper's evidence path rather than evidence of a Worker pipe or
+AppContainer ACL defect: child stdout/stderr were captured and discarded,
+unknown or missing failure-stage records collapsed to one token, and the CI
+workflow uploaded runtime evidence only on success.
+
+The local remediation adds a closed, sanitized classifier for child spawn,
+timeout, signal, empty collection, module-load, assertion, generic exit, and
+output-limit failures; distinguishes missing, invalid, oversized, and unknown
+failure-stage records; writes a bounded code-only failure record; and uploads
+that record under `if: failure()` without exporting raw child output. Regression
+coverage now locks the closed mappings, no-path guarantee, and CI wiring. Local
+evidence for this remediation is green: the focused evidence/wiring suite is
+`32/32`, P8 contract passes, typecheck/lint pass, and the script syntax and
+`git diff --check` are clean.
+
+This does not close P8.2c. The remediation is not yet pushed or exercised by a
+new exact-head Windows CI run. The next gate is to push this change, inspect the
+failure artifact from the new run, and only then decide whether a concrete
+Worker/AppContainer/named-pipe fix is required. Windows Electron/provider
+acceptance, P8.3, P8.4, release, deployment, and user acceptance remain open.
+
+## 2026-08-20 P8.2c Batch 4 Task 13 Windows authenticated-runtime CI wiring (local contract green; exact-head native evidence pending)
+
+Task 13 is implemented locally on branch
+`codex/p8-2c-windows-runtime-composition` on top of exact pushed Task 12 head
+`dc547e45cd2ba7737aca3465f7680bca3d099860`. CI now has a separate
+`windows-2025` authenticated-runtime job that builds and admits one exact
+Windows runner, produces exact containment evidence, binds the runtime test to
+the manifest and containment digests, runs the Task 12 MCP-free integration,
+re-admits the same Artifact, and uploads only the bounded runtime evidence on
+success. The P8 root contract now rejects a missing, reordered, credentialed,
+or unbounded version of this job.
+
+The superseded real-Artifact bridge probe that required the post-Task-7
+Windows Supervisor to fail after spawning has been removed. Its requirement
+contradicted the Task 12 runtime contract, which now requires the Supervisor to
+remain alive through authenticated ACP, model, Tool Gateway, cancellation, and
+parent-death cleanup. Contract tests forbid restoring the obsolete
+`fail-closed post-spawn` or timeout markers. The separate build-target child
+process test now has a bounded `20` second timeout because exact-head run
+[`32277562900`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32277562900)
+measured that operation at `13.169` seconds under the parallel Windows batch.
+
+That run is now final for exact head `19dd393fc14888a5c6614e87172ccb8db414b37a`:
+Windows containment, Ubuntu containment, Windows and Ubuntu artifact builds,
+Goose admission, and macOS foundation all crossed their native or package
+steps, but the Windows build-probe job failed only in the two test contracts
+above. The obsolete bridge probe waited `15` seconds for a failure that the
+working runtime no longer emits, while the independent build-target child
+process exceeded Vitest's default `5` second timeout. This is test-harness
+evidence, not a Windows runtime failure or authenticated-runtime success.
+
+Fresh local evidence for Task 13 is green: the focused suite passes `26/26`;
+the P8 contract reports `3` targets, `14` journeys, and `7` evidence classes;
+format, lint (zero warnings/errors), typecheck, documentation links (`96`
+Markdown files), and `git diff --check` pass.
+
+Exact-head CI run
+[`32281548144`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32281548144)
+then ran all seven jobs. Six passed, including Windows build probe, Windows
+containment, Ubuntu build/containment, Goose admission, and macOS foundation.
+The new authenticated-runtime job reached its real Windows native test, but
+failed with the generic `windows-runtime-test-failed` code before preserving
+runtime evidence. The failure is not yet classified because the Windows
+launcher did not read the integration test's bounded failure-stage record;
+that diagnostic gap is now fixed locally by mapping only closed stages for
+composition-open, read-tool, approved-write-tool, cancellation, and
+parent-death. No raw error, path, PID, or credential can cross the boundary.
+The next exact-head run
+[`32284767717`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32284767717)
+proved why no stage existed: Vitest reported no matching test before executing
+the integration body. The Windows-only `.integration.ts` file had not been
+added to the conditional Vitest include list, unlike the established Linux
+native integration. The Windows file is now admitted only when the full six-
+variable runtime evidence contract is present. A local command-shape probe
+changed from `No test files found` at exit `1` to one collected,
+platform-skipped file at exit `0`; that proves collection only and remains no
+Windows runtime evidence.
+
+This does not close Task 13, Task 12, or P8.2c. A new exact-head CI run must
+compile and execute the corrected Windows job, publish
+`p8-goose-runtime-windows-<exact SHA>`, and the downloaded record must pass the
+independent Task 12 evidence validator before native runtime composition is
+recorded as verified. Windows Electron/package/provider acceptance, overall
+P8.2, P8.3 candidate integrity and signing, P8.4 clean-machine and
+real-provider/manual Team acceptance, release, deployment, and user acceptance
+remain open.
+
+## 2026-08-20 P8.2c Batch 4 Task 12 exact Windows runtime evidence (portable implementation green; native evidence pending)
+
+Task 12 is implemented locally on branch
+`codex/p8-2c-windows-runtime-composition` on top of exact pushed head
+`19dd393fc14888a5c6614e87172ccb8db414b37a`. The new Windows-only integration
+admits the exact containment-bound `x86_64-pc-windows-msvc` runner Artifact,
+creates a real Git source checkout and Actestra-owned isolated worktree, uses
+the real isolated coding platform and `GooseCodingToolInvoker`, and drives one
+deterministic MCP-free ACP sequence through the Main-owned authenticated model
+and capability channels. The sequence reads an existing worktree file, obtains
+the real Tool Gateway approval for a write, writes
+`windows-runtime-acceptance.txt` only in the isolated worktree, starts a second
+blocked prompt, and observes cancellation. A separate Main-style process then
+opens the exact runtime and is terminated so the parent-liveness channel must
+remove the Supervisor and contained Worker. The source checkout HEAD, status,
+and original bytes are asserted unchanged.
+
+The new runner re-admits the same manifest before and after the test, requires
+the explicit containment-evidence file and manifest digest, binds source/base/
+private-runtime/patch/manifest/executable/containment digests, and emits only
+the closed 22-field runtime evidence record. The validator rejects missing or
+extra fields, false outcomes, target or digest drift, nonzero residual process
+counts, and path/PID/SID/pipe/prompt/API-key/tool-argument/raw-error material.
+The parent process deliberately carries environment and credential canaries;
+the real Windows Worker cannot reach ACP readiness unless its existing
+`verify_worker_boundary()` proves those values absent. No Provider credential,
+Renderer authority, original-workspace write, HTTP/MCP endpoint, or new tool is
+introduced.
+
+Portable local evidence is green: the evidence suite passes `16/16`, TypeScript
+typecheck is clean, format is clean, lint reports zero warnings/errors, and
+`git diff --check` passes. On macOS the native integration is deliberately not
+executed and is not Windows evidence. Exact-head CI run
+[`32277562900`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32277562900)
+for Task 11 head `19dd393` currently has Ubuntu containment, Ubuntu build, and
+Goose admission green; macOS foundation and both Windows jobs remain in
+progress.
+
+This does not close Task 12 or P8.2c. Task 13 must add and pass the separate
+exact-head Windows authenticated-runtime CI job against the same built Artifact
+and containment record. The bounded runtime Artifact must then be downloaded
+and independently revalidated before recording native evidence. Windows
+Electron/package/provider acceptance, overall P8.2, P8.3 candidate integrity
+and signing, P8.4 clean-machine and real-provider/manual Team acceptance,
+release, deployment, and user acceptance remain open.
+
+## 2026-08-20 P8.2c Batch 3 Task 11 MCP-free Windows ACP composition (local/package green; native gate open)
+
+Task 11 is implemented locally on top of `ffc005f`. ACP session options are
+now a backward-compatible discriminated union: macOS/Linux retain the existing
+MCP-HTTP `session/new` request, while the Windows authenticated mode sends
+`mcpServers: []` and places neither a URL nor an attempt lease in ACP. The
+Windows composition creates the Main-owned model and capability hosts, attaches
+them to the Supervisor's duplex channels, binds both to the one ACP session,
+waits for the exact six-tool discovery, and preserves the existing refusal and
+rejected-request counters and durable error mapping. Existing loopback and
+Linux relay composition tests remain unchanged and green.
+
+Local evidence is green: the focused cross-layer suite passes `110` tests with
+`2` platform skips; format, lint (zero warnings/errors), typecheck, and
+`git diff --check` pass. The downstream overlay now declares the shared bridge
+protocol as well as the new composition dependencies (`377` declared files),
+and `bun run downstream:aionui:package` completes after materialization and
+Electron/Vite bundling.
+
+This does not close Task 11 or P8.2c: the Windows-only duplex test is skipped on
+macOS, no exact-artifact Windows ACP/runtime/provider journey has run, and
+Windows CI is still in progress. Task 12 exact Windows runtime evidence,
+Electron/provider-backed acceptance, P8.3, P8.4, release, deployment, and user
+acceptance remain open.
+
+## 2026-08-20 P8.2c Batch 3 Task 10 explicit transport modes and seven-channel launch (local slice green; composition/native gate open)
+
+Task 10's launch slice is implemented locally on top of `201f121`. The Main
+side now selects an explicit transport mode from the exact runner target:
+macOS uses the existing loopback path, Linux uses the existing socket relay,
+and Windows is admitted only as `windows-authenticated`. Windows launch uses
+the shared seven-channel order (ACP stdin/stdout/stderr, one-shot control,
+parent liveness, capability, and model), with the last two channels represented
+as duplex streams and no URL, SSE, or MCP endpoint added to the environment.
+The existing Windows control contract remains unchanged; the new channel
+module is registered in the downstream overlay so materialized package builds
+include it.
+
+Portable local evidence is green: the complete `bun run check` exits `0` with
+`169` test files passed / `3` skipped and `1,808` tests passed / `11` skipped;
+P7 abuse, smoke harness, product boundary, frozen foundation, downstream
+overlay (`376` declared files), package, format, lint (zero warnings/errors),
+typecheck, Electron SQLite, and `git diff --check` also pass. The Windows-only
+duplex native test is skipped on macOS and therefore is not Windows evidence.
+
+This does not close Task 10 or P8.2c: the Main bridge hosts are not yet attached
+to the real Windows transport lifecycle, the ACP session still uses the
+loopback MCP request shape, and no exact-artifact Windows runtime/provider
+journey has run. Task 11 (MCP-free injected Windows ACP session), Task 12 exact
+Windows runtime evidence, Windows CI, Electron/provider-backed acceptance,
+P8.3, P8.4, release, deployment, and user acceptance remain open.
+
+## 2026-08-20 P8.2c Batch 3 Task 9 Main authenticated bridge hosts (local slice green; native gate remains open)
+
+Task 9 is implemented locally on top of `40cc9af`. Main now has separate
+authenticated Windows model and capability bridge hosts around the existing
+Actestra invoker ports. Both hosts consume the versioned length-prefixed frame
+protocol, bind exactly one ACP session to the attempt lease, reject malformed,
+stale, duplicate, wrong-scope, and cross-boundary requests, support bounded
+cancellation, and close idempotently. The model host preserves the existing
+failure vocabulary and counters: only a completion that passes Main's
+completion contract and can be serialized onto the bridge counts as served;
+broker or completion/serialization refusal counts as
+`model-completion-refused`; malformed or duplicate requests count as
+`rejectedRequestCount`. The capability host lists the exact six
+`CODING_TOOL_IDS`, reuses the existing tool schemas and `parseCodingToolInput`,
+and delegates execution to the existing `GooseMcpToolInvoker`; it does not
+gain filesystem, Git, shell, credential, or network authority.
+
+The protocol validator now also applies the existing coding-tool input
+contract before a capability call frame is admitted, and the existing MCP
+tool-list builder is shared by the Windows host so the Windows and loopback
+surfaces cannot drift in tool names or schemas. New tests exercise successful
+model and tool calls, refusal classification, malformed/wrong-scope input,
+replay rejection, cancellation, session binding, exact six-tool discovery,
+and idempotent cleanup.
+
+Local evidence is green: the focused protocol/host suite passes `13` tests
+with `56` assertions; `bun run check` exits `0` with `168` test files passed /
+`2` skipped and `1,805` tests passed / `10` skipped. The same run passed the
+P8 contract, Electron SQLite, P7 abuse gate (`28` cases / `168` variants),
+smoke harness, product boundary, frozen foundation, downstream overlay, and
+package gates. Format, lint (zero warnings/errors), typecheck, and
+`git diff --check` also pass.
+
+This does not close Task 9 or P8.2c yet: the Windows native runtime has not
+consumed these Main hosts through the real Supervisor channels, and the
+exact-head CI run `32271632641` is still in progress (Ubuntu build probe,
+Goose admission, and macOS foundation are green; Windows build/containment,
+Ubuntu containment, and the remaining CI jobs are not final). Task 10's
+explicit transport-mode composition and seven-channel implementation,
+Windows authenticated runtime integration, Electron/provider-backed
+acceptance, P8.3, P8.4, release, deployment, and user acceptance remain open.
 
 ## Current phase
+
+### 2026-08-19 P8.2c Batch 2 Task 7 local Worker runtime composition (native gate remains open)
+
+Task 7 is now implemented locally on top of `5ca5ef8`, beginning with commit
+`583bf21`. The Windows Worker no longer exits immediately after bridge
+readiness. Its startup path has a fixed, fail-closed seven-stage order:
+control validation, boundary verification, capability-pipe connection,
+model-pipe connection, adapter construction, ready notification, and adapted
+Goose ACP serving. The Worker constructs the existing
+`WindowsModelProvider` and `WindowsCapabilityClient`, binds the fixed
+`actestra` Provider identity and control-supplied model ID, installs the fixed
+`actestra-capability-proxy` extension, creates `goose-data` and `goose-config`
+only under the admitted attempt-private root, writes ready only after all of
+those steps succeed, and then calls the pinned private Goose runtime's
+`run_with_runtime_adapter()` entry point. It does not read Goose Provider,
+model, URL, credential, or global data/configuration environment variables.
+
+Portable local evidence is green: `cargo fmt --check`, `cargo test --locked`
+for `workers/goose-runner` (`81` tests passed), `git diff --check`, and the
+complete `bun run check` (`165` test files passed / `2` skipped and `1,792`
+tests passed / `10` skipped, followed by P7, smoke-harness, product-boundary,
+frozen-foundation, downstream-overlay, and package gates at exit `0`). The new
+tests lock startup ordering, every transition's stop-before-later-stage
+behavior, skip/replay rejection, symlink-safe private Goose state directories,
+first-discovery session binding, and a real in-process `initialize` -> MCP-free
+`session/new` -> injected-extension tool-discovery exchange through the pinned
+Goose ACP agent. That in-process exchange caught and closed a real defect: the
+shared model/capability session cell was previously never populated, so the
+first injected tool discovery would have failed closed before Main could bind
+the session. The capability adapter now atomically binds the first valid
+Goose-supplied session ID and rejects every later mismatch. The complete gate
+also reproduced an existing shell-fixture race in the Windows control-channel
+test: file existence could be observed after redirection created an empty file
+but before `cat` finished. The regression now makes that window deterministic,
+waits for the later launch-evidence completion marker, and only then reads and
+compares the exact control frame; the focused suite passes `7` tests with the
+native-Windows case skipped on macOS.
+
+This does not close Task 7 or P8.2c. The full Windows-target Cargo check was
+attempted again and remains blocked on this macOS host by the existing native
+C toolchain gap (`zstd-sys`, `libsqlite3-sys`, and tree-sitter builds cannot
+find Windows CRT headers/tools); this is not Windows execution evidence. The
+real Windows native startup/ACP session, exact-artifact authenticated runtime
+integration, Windows CI, and Electron/provider-backed acceptance remain open.
+The subsequent Task 8–11 Main bridge/composition work and Batch 4 evidence/CI
+tasks are not claimed complete. P8.3, P8.4, release, deployment, and user
+acceptance remain open.
+
+### 2026-08-19 P8.2c Batch 2 Task 6 local supervisor-relay implementation (native gate remains open)
+
+The Windows Supervisor composition now has the Task 6 source slice in place:
+Main launches seven ordered channels (ACP stdin/stdout/stderr, one-shot control,
+parent liveness, and duplex capability/model), while the Worker inherits exactly
+five handles (the three ACP handles plus dedicated control-read and ready-write
+handles). The Supervisor creates the two attempt-scoped `LOCAL` named pipes,
+accepts both AppContainer clients before consuming the dedicated ready marker,
+and relays ACP bytes plus bounded length-prefixed capability/model frames. The
+framed relays reject zero or oversized payloads, handle partial reads/writes,
+and terminate on disconnect. Parent-liveness close, Worker exit, relay failure,
+and the fixed active-duration budget are terminal; cleanup is bounded and emits
+the primary failure and an independent cleanup-failure code when both occur.
+The pre-Task-7 Worker intentionally fails closed after bridge readiness because
+the adapted Goose ACP/provider runtime is not yet present.
+
+Local evidence on branch `codex/p8-2c-windows-runtime-composition` is green:
+Goose Rust tests pass `74/74`; the focused Supervisor, diagnostic, bridge,
+lifecycle, and Main setup-classification suite passes `66` with `1` platform
+skip; TypeScript typecheck, project format, documentation links, and
+`git diff --check` pass. An isolated Windows-target API probe using the current
+source passes. The complete Cargo Windows-target check cannot run on this macOS
+host because the existing `zstd-sys`/`libsqlite3-sys` C builds lack the Windows
+CRT; this is environment evidence, not Windows native execution. The complete
+local `bun run check` exits `0`: Vitest reports `165` files passed / `2`
+skipped and `1,792` tests passed / `10` skipped; the P7 gate passes all `28`
+cases and `168` exact variants; smoke harness, product boundary (`143`
+Actestra-owned source files), frozen foundation, downstream overlay, and
+package checks all pass.
+
+This does not close Task 6 or P8.2c: Windows native execution, exact-artifact
+CI, and real relay behavior remain unverified. Task 7 must add the adapted Goose
+ACP/provider runtime and startup-order tests before any Windows runtime or
+Electron/provider-backed acceptance claim. P8.3, P8.4, release, deployment,
+and user acceptance remain open.
+
+### 2026-08-19 P8.2c Batch 1 private Goose runtime admission accepted
+
+The P8.2c source boundary now pins the standalone private
+`Ablankpaper/actestra-goose-runtime` repository at immutable commit
+`81bb2c1428d11e41e7934f4569eb7dda3fb55b81`, descending from canonical Goose
+`v1.45.0` commit `4dc0420f5704a92806c6628c8f0a3497d7a88759`. The admitted
+binary full-index diff changes exactly the three declared ACP server files and
+has SHA-256
+`975d31ebbabce450a66455ec55e0ecaddeaa3c558e62a0a559a810ad03194a18`.
+The private runtime is Apache-2.0, upstream has no root `NOTICE`, its adapter
+seam is default-off, and the admitted Goose Cargo feature set remains empty.
+
+The Actestra artifact and build contracts fail closed on canonical repository,
+base, private repository, runtime commit, changed-path set and order, patch
+digest, lock source, and feature drift. Six existing CI jobs admit the private
+source only for same-repository work. They load a repository-scoped read-only
+deploy key after dependency installation, run one frozen `cargo fetch`, then
+delete the key and clear the SSH command before tests, builds, or Artifact
+uploads. The private repository is not a GitHub Fork; its default branch stays
+at the canonical base, GitHub Actions are disabled, and it has no webhook or
+automatic upstream synchronization.
+
+Local Batch 1 evidence is green: source and workflow tests pass 98/98, runner
+Rust tests pass 53/53, `cargo metadata --locked` resolves the exact private
+commit, and the real metadata/check-out contract verifies source, ancestry,
+changed paths, patch digest, and features. Project format, Rust format, lint
+(zero warnings and errors), typecheck, documentation links (96 Markdown
+files), and `git diff --check` pass.
+
+The first pushed Batch 1 head `497bd243cbdd6d75ac55f19e8b4b7686a46f0a4d`
+started pull-request run
+[`32249392029`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32249392029).
+Both Windows jobs failed before private-source fetch because Git Bash
+`install -m 700 -d` could not change permissions on the NTFS-backed
+`RUNNER_TEMP`; Ubuntu completed the same credential setup and fetch. The run
+was cancelled because its remaining results could not verify the corrected
+head. The local correction keeps key creation, frozen fetch, and trap-based
+deletion in one step, normalizes only the Windows temporary path with
+`cygpath`, and applies POSIX modes only on non-Windows runners. A new exact-head
+CI run was required.
+
+The corrected exact head `87e3d29268920ce2d4ba3f179a913a51cf7cbfb0`
+passes pull-request CI run
+[`32249942348`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32249942348)
+with all six jobs green: Windows and Ubuntu x64 Goose build probes, Windows and
+Ubuntu x64 Goose containment, macOS arm64 foundation, and Goose runner
+admission. Every job fetched and admitted the exact private runtime. The two
+Windows jobs crossed the prior NTFS setup failure, Windows containment passed
+against the exact artifact, and the admission job passed the real Goose ACP
+handshake and cleanup. This closes Batch 1 source, provenance, credential
+scope, and exact-head CI admission only.
+
+This is source/provenance admission only. No adapted Windows Goose session,
+authenticated model/capability bridge, Electron package, P8.2c exit, P8.3
+candidate integrity, P8.4 real-provider acceptance, release, deployment, or
+user acceptance is claimed. Rollback restores canonical Goose
+`4dc0420f5704a92806c6628c8f0a3497d7a88759` and keeps Windows production
+runtime admission disabled.
 
 ### 2026-08-19 P8.2b Windows containment verified; P8.2b gate closed
 

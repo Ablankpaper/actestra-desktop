@@ -5,13 +5,15 @@ use std::fmt;
 
 pub(crate) const WINDOWS_CONTROL_MAX_BYTES: usize = 32 * 1024;
 
-const CONTROL_KEYS: [&str; 9] = [
+const CONTROL_KEYS: [&str; 11] = [
     "attemptId",
     "attemptLease",
     "contractVersion",
     "executableSha256",
+    "modelAttemptLease",
     "modelId",
     "privateRoot",
+    "privateRootTraversalRoot",
     "resourceBudget",
     "targetTriple",
     "worktreeRoot",
@@ -37,10 +39,76 @@ impl WindowsMode {
         match modes {
             [] => Ok(None),
             [mode] if mode == "--actestra-windows-supervisor-v1" => Ok(Some(Self::Supervisor)),
-            [mode] if mode == "--actestra-windows-worker-v1" => Ok(Some(Self::Worker)),
+            [mode, control, ready, capability_read, capability_write, model_read, model_write]
+                if mode == "--actestra-windows-worker-v1"
+                    && parse_worker_handle_values([
+                        control,
+                        ready,
+                        capability_read,
+                        capability_write,
+                        model_read,
+                        model_write,
+                    ])
+                    .is_some() =>
+            {
+                Ok(Some(Self::Worker))
+            }
             _ => Err(()),
         }
     }
+}
+
+pub(crate) fn parse_worker_handle_arguments(
+    arguments: &[String],
+) -> Result<Option<(u64, u64, u64, u64, u64, u64)>, ()> {
+    let modes = arguments.get(1..).ok_or(())?;
+    match modes {
+        [mode, control, ready, capability_read, capability_write, model_read, model_write]
+            if mode == "--actestra-windows-worker-v1" =>
+        {
+            let [control, ready, capability_read, capability_write, model_read, model_write] =
+                parse_worker_handle_values([
+                    control,
+                    ready,
+                    capability_read,
+                    capability_write,
+                    model_read,
+                    model_write,
+                ])
+                .ok_or(())?;
+            Ok(Some((
+                control,
+                ready,
+                capability_read,
+                capability_write,
+                model_read,
+                model_write,
+            )))
+        }
+        _ => Ok(None),
+    }
+}
+
+fn parse_worker_handle_values(values: [&str; 6]) -> Option<[u64; 6]> {
+    let parsed = values.map(parse_worker_handle_value);
+    let parsed = [
+        parsed[0]?, parsed[1]?, parsed[2]?, parsed[3]?, parsed[4]?, parsed[5]?,
+    ];
+    parsed
+        .iter()
+        .enumerate()
+        .all(|(index, value)| !parsed[..index].contains(value))
+        .then_some(parsed)
+}
+
+fn parse_worker_handle_value(value: &str) -> Option<u64> {
+    // Worker handle arguments use one bounded decimal representation: no sign, whitespace,
+    // prefix, sentinel, or platform-dependent pointer text is admitted.
+    if value.is_empty() || value.len() > 20 || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    let parsed = value.parse::<u64>().ok()?;
+    (parsed != 0 && parsed != u64::MAX).then_some(parsed)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -58,8 +126,10 @@ pub(crate) struct WindowsControlMessage {
     pub(crate) attempt_id: String,
     pub(crate) attempt_lease: String,
     pub(crate) executable_sha256: String,
+    pub(crate) model_attempt_lease: String,
     pub(crate) model_id: String,
     pub(crate) private_root: String,
+    pub(crate) private_root_traversal_root: String,
     pub(crate) resource_budget: WindowsResourceBudget,
     pub(crate) target_triple: String,
     pub(crate) worktree_root: String,
@@ -207,6 +277,23 @@ fn is_windows_drive_path(value: &str) -> bool {
     })
 }
 
+fn has_exact_two_descendant_components(root: &str, candidate: &str) -> bool {
+    if root.len() >= candidate.len()
+        || !candidate
+            .get(..root.len())
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case(root))
+        || candidate.as_bytes().get(root.len()) != Some(&b'\\')
+    {
+        return false;
+    }
+    let relative = &candidate[root.len() + 1..];
+    let mut components = relative.split('\\');
+    matches!(
+        (components.next(), components.next(), components.next()),
+        (Some(first), Some(second), None) if !first.is_empty() && !second.is_empty()
+    )
+}
+
 fn parse_resource_budget(value: &Value) -> Result<WindowsResourceBudget, ()> {
     let object = value.as_object().ok_or(())?;
     if !has_exact_keys(object, &RESOURCE_BUDGET_KEYS) {
@@ -267,15 +354,21 @@ pub(crate) fn parse_control_message(input: &[u8]) -> Result<WindowsControlMessag
     let attempt_id = exact_string(object, "attemptId", 32)?;
     let attempt_lease = exact_string(object, "attemptLease", 256)?;
     let executable_sha256 = exact_string(object, "executableSha256", 64)?;
+    let model_attempt_lease = exact_string(object, "modelAttemptLease", 256)?;
     let model_id = exact_string(object, "modelId", 256)?;
     let private_root = exact_string(object, "privateRoot", 4096)?;
+    let private_root_traversal_root = exact_string(object, "privateRootTraversalRoot", 4096)?;
     let target_triple = exact_string(object, "targetTriple", 64)?;
     let worktree_root = exact_string(object, "worktreeRoot", 4096)?;
     if !is_lower_hex(&attempt_id, 32)
         || !is_opaque_token(&attempt_lease)
         || !is_lower_hex(&executable_sha256, 64)
+        || !is_opaque_token(&model_attempt_lease)
+        || model_attempt_lease == attempt_lease
         || model_id.chars().any(char::is_control)
         || !is_windows_drive_path(&private_root)
+        || !is_windows_drive_path(&private_root_traversal_root)
+        || !has_exact_two_descendant_components(&private_root_traversal_root, &private_root)
         || target_triple != "x86_64-pc-windows-msvc"
         || !is_windows_drive_path(&worktree_root)
         || private_root.eq_ignore_ascii_case(&worktree_root)
@@ -286,8 +379,10 @@ pub(crate) fn parse_control_message(input: &[u8]) -> Result<WindowsControlMessag
         attempt_id,
         attempt_lease,
         executable_sha256,
+        model_attempt_lease,
         model_id,
         private_root,
+        private_root_traversal_root,
         resource_budget: parse_resource_budget(object.get("resourceBudget").ok_or(())?)?,
         target_triple,
         worktree_root,
@@ -312,8 +407,10 @@ pub(crate) fn serialize_control_message(message: &WindowsControlMessage) -> Resu
         "attemptLease": message.attempt_lease,
         "contractVersion": 1,
         "executableSha256": message.executable_sha256,
+        "modelAttemptLease": message.model_attempt_lease,
         "modelId": message.model_id,
         "privateRoot": message.private_root,
+        "privateRootTraversalRoot": message.private_root_traversal_root,
         "resourceBudget": {
             "maxActiveDurationMs": message.resource_budget.max_active_duration_ms,
             "maxChildProcesses": message.resource_budget.max_child_processes,
@@ -356,8 +453,10 @@ mod tests {
             "attemptLease": "lease_0123456789abcdef0123456789abcdef",
             "contractVersion": 1,
             "executableSha256": "a".repeat(64),
+            "modelAttemptLease": "model_0123456789abcdef0123456789abcdef",
             "modelId": "test-model",
             "privateRoot": "C:\\Actestra\\attempts\\one",
+            "privateRootTraversalRoot": "C:\\Actestra",
             "resourceBudget": {
                 "maxActiveDurationMs": 1_800_000,
                 "maxChildProcesses": 0,
@@ -381,6 +480,12 @@ mod tests {
         let worker = vec![
             "actestra-goose-runner.exe".to_string(),
             "--actestra-windows-worker-v1".to_string(),
+            "100".to_string(),
+            "101".to_string(),
+            "102".to_string(),
+            "103".to_string(),
+            "104".to_string(),
+            "105".to_string(),
         ];
         assert_eq!(
             WindowsMode::parse(&supervisor).unwrap(),
@@ -389,6 +494,10 @@ mod tests {
         assert_eq!(
             WindowsMode::parse(&worker).unwrap(),
             Some(WindowsMode::Worker)
+        );
+        assert_eq!(
+            parse_worker_handle_arguments(&worker).unwrap(),
+            Some((100, 101, 102, 103, 104, 105))
         );
         assert_eq!(
             WindowsMode::parse(&["actestra-goose-runner.exe".to_string()]).unwrap(),
@@ -409,15 +518,43 @@ mod tests {
                 "--actestra-windows-supervisor-v1".to_string(),
                 "--actestra-windows-worker-v1".to_string(),
             ],
+            vec![
+                "actestra-goose-runner.exe".to_string(),
+                "--actestra-windows-worker-v1".to_string(),
+                "0".to_string(),
+                "101".to_string(),
+            ],
+            vec![
+                "actestra-goose-runner.exe".to_string(),
+                "--actestra-windows-worker-v1".to_string(),
+                "101".to_string(),
+                "101".to_string(),
+            ],
         ] {
             assert!(WindowsMode::parse(&rejected).is_err());
         }
+        let repeated_worker_handle = vec![
+            "actestra-goose-runner.exe".to_string(),
+            "--actestra-windows-worker-v1".to_string(),
+            "101".to_string(),
+            "102".to_string(),
+            "103".to_string(),
+            "104".to_string(),
+            "105".to_string(),
+            "101".to_string(),
+        ];
+        assert!(parse_worker_handle_arguments(&repeated_worker_handle).is_err());
     }
 
     #[test]
     fn parses_only_the_bounded_exact_control_contract() {
         let parsed = parse_control_message(&exact_control_message()).unwrap();
         assert_eq!(parsed.attempt_id, "0123456789abcdef0123456789abcdef");
+        assert_eq!(
+            parsed.model_attempt_lease,
+            "model_0123456789abcdef0123456789abcdef"
+        );
+        assert_ne!(parsed.model_attempt_lease, parsed.attempt_lease);
         assert_eq!(parsed.resource_budget.max_cpu_seconds, 120);
         assert!(
             parse_control_message(&serialize_control_message(&parsed).unwrap()).unwrap() == parsed
@@ -439,6 +576,26 @@ mod tests {
     }
 
     #[test]
+    fn requires_the_private_root_to_have_exactly_two_admitted_ancestor_components() {
+        assert!(has_exact_two_descendant_components(
+            r"C:\Actestra",
+            r"C:\Actestra\goose-private\goose-attempt"
+        ));
+        assert!(!has_exact_two_descendant_components(
+            r"C:\Actestra",
+            r"C:\Actestra\goose-attempt"
+        ));
+        assert!(!has_exact_two_descendant_components(
+            r"C:\Actestra",
+            r"C:\Actestra\goose-private\nested\goose-attempt"
+        ));
+        assert!(!has_exact_two_descendant_components(
+            r"D:\Actestra",
+            r"C:\Actestra\goose-private\goose-attempt"
+        ));
+    }
+
+    #[test]
     fn redacts_control_evidence_before_serialization() {
         let parsed = parse_control_message(&exact_control_message()).unwrap();
         let evidence = redacted_control_evidence(&parsed);
@@ -449,6 +606,7 @@ mod tests {
             "C:\\Actestra",
             "D:\\worktrees",
             "lease_0123456789abcdef0123456789abcdef",
+            "model_0123456789abcdef0123456789abcdef",
             "test-model",
             "pipe",
             "prompt",

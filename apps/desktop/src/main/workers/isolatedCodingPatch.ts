@@ -8,17 +8,15 @@ import {
   requireClosedRepositoryConfiguration,
   withRepositoryConfigurationLocks,
 } from "./isolatedCodingWorktree";
+import {
+  CLOSED_GIT_CONFIG_ARGUMENTS,
+  GIT_EXECUTABLE,
+  workspaceGitEnvironment,
+} from "./workspaceGitBinding";
 
 const execFileAsync = promisify(execFile);
-const GIT_EXECUTABLE = "/usr/bin/git";
 const GIT_TIMEOUT_MS = 10_000;
 const MAX_UNTRACKED_PATCH_PATHS = 256;
-const CLOSED_GIT_CONFIG_ARGUMENTS = Object.freeze([
-  "-c",
-  "core.hooksPath=/dev/null",
-  "-c",
-  "core.fsmonitor=false",
-] as const);
 
 export type IsolatedCodingPatchErrorCode =
   | "invalid-options"
@@ -50,19 +48,6 @@ export interface IsolatedCodingPatchSnapshot {
   readonly patchByteLength: number;
   readonly patchSha256: string;
   readonly changedFileCount: number;
-}
-
-function gitEnvironment(worktreeRoot: string): Readonly<Record<string, string>> {
-  return Object.freeze({
-    GIT_ATTR_NOSYSTEM: "1",
-    GIT_CONFIG_GLOBAL: "/dev/null",
-    GIT_CONFIG_NOSYSTEM: "1",
-    GIT_OPTIONAL_LOCKS: "0",
-    GIT_TERMINAL_PROMPT: "0",
-    HOME: path.dirname(worktreeRoot),
-    LC_ALL: "C",
-    PATH: "/usr/bin:/bin",
-  });
 }
 
 function assertCanonicalAbsolutePath(value: string, label: string): void {
@@ -115,7 +100,7 @@ export async function captureIsolatedCodingPatch(
   assertCanonicalAbsolutePath(options.worktreeRoot, "Coding patch worktree root");
   assertCanonicalAbsolutePath(options.gitDirectory, "Coding patch Git directory");
   assertCanonicalAbsolutePath(options.gitCommonDirectory, "Coding patch Git common directory");
-  const environment = gitEnvironment(options.worktreeRoot);
+  const environment = workspaceGitEnvironment(options.worktreeRoot);
   const [canonicalWorktreeRoot, canonicalGitDirectory, canonicalGitCommonDirectory] =
     await Promise.all([
       realpath(options.worktreeRoot),

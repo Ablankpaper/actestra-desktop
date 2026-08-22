@@ -1,6 +1,48 @@
 pub(crate) const WINDOWS_SETUP_FAILURE_MARKER: &str = "ACTESTRA_GOOSE_NETWORK_POLICY_SETUP_FAILED";
 pub(crate) const WINDOWS_RESOURCE_FAILURE_MARKER: &str =
     "ACTESTRA_GOOSE_RESOURCE_LIMIT_SETUP_FAILED";
+
+// Worker exit codes for structured startup failure diagnosis
+#[cfg(any(windows, test))]
+const EXIT_CONTROL_FRAME_INVALID: i32 = 101;
+#[cfg(any(windows, test))]
+const EXIT_BOUNDARY_VERIFICATION_FAILED: i32 = 102;
+#[cfg(any(windows, test))]
+const EXIT_RUNTIME_CREATION_FAILED: i32 = 103;
+#[cfg(any(windows, test))]
+const EXIT_CAPABILITY_BRIDGE_FAILED: i32 = 108;
+#[cfg(any(windows, test))]
+const EXIT_MODEL_BRIDGE_FAILED: i32 = 113;
+#[cfg(any(windows, test))]
+const EXIT_STATE_DIRECTORY_FAILED: i32 = 114;
+#[cfg(any(windows, test))]
+const EXIT_READY_SIGNAL_FAILED: i32 = 115;
+#[cfg(any(windows, test))]
+const EXIT_ACP_HANDSHAKE_FAILED: i32 = 116;
+// Per-operation state-directory prepare exit codes; each maps to a distinct
+// WorkerStartupFailure::StateDirectoryPrepare variant so CI can pinpoint the
+// exact filesystem call that fails under AppContainer.
+#[cfg(any(windows, test))]
+const EXIT_STATE_DIRECTORY_LAYOUT_FAILED: i32 = 117;
+#[cfg(any(windows, test))]
+const EXIT_STATE_DIRECTORY_ROOT_METADATA_FAILED: i32 = 118;
+#[cfg(any(windows, test))]
+const EXIT_STATE_DIRECTORY_ROOT_CANONICALIZE_FAILED: i32 = 119;
+#[cfg(any(windows, test))]
+const EXIT_STATE_DIRECTORY_DATA_METADATA_FAILED: i32 = 120;
+#[cfg(any(windows, test))]
+const EXIT_STATE_DIRECTORY_DATA_CREATE_FAILED: i32 = 121;
+#[cfg(any(windows, test))]
+const EXIT_STATE_DIRECTORY_DATA_CANONICALIZE_FAILED: i32 = 122;
+#[cfg(any(windows, test))]
+const EXIT_STATE_DIRECTORY_CONFIG_METADATA_FAILED: i32 = 123;
+#[cfg(any(windows, test))]
+const EXIT_STATE_DIRECTORY_CONFIG_CREATE_FAILED: i32 = 124;
+#[cfg(any(windows, test))]
+const EXIT_STATE_DIRECTORY_CONFIG_CANONICALIZE_FAILED: i32 = 125;
+#[cfg(any(windows, test))]
+const EXIT_STATE_DIRECTORY_TRAVERSAL_SHAPE_FAILED: i32 = 126;
+
 #[cfg(windows)]
 use crate::containment::windows_contract::{
     decode_request_frame, decode_result, encode_request_frame, encode_result, WindowsProbeRequest,
@@ -11,21 +53,125 @@ use crate::containment::windows_contract::{
     WINDOWS_PROBE_CHILD_ARGUMENT, WINDOWS_PROBE_PARENT_ARGUMENT,
 };
 #[cfg(windows)]
+use crate::windows_capability_bridge::WindowsCapabilityClient;
+#[cfg(windows)]
+use crate::windows_model_bridge::WindowsModelProvider;
+#[cfg(windows)]
 const WINDOWS_WORKER_READY_MARKER: &[u8] = b"ACTESTRA_GOOSE_WINDOWS_WORKER_READY\n";
+#[cfg(any(windows, test))]
+const WINDOWS_RUNTIME_FAILURE_CODES: [&str; 42] = [
+    "windows-control-channel-invalid",
+    "windows-ready-channel-invalid",
+    "windows-capability-channel-invalid",
+    "windows-model-channel-invalid",
+    "windows-acp-relay-failed",
+    "windows-capability-relay-failed",
+    "windows-model-relay-failed",
+    "windows-worker-runtime-failed",
+    "windows-runtime-timeout",
+    "windows-runtime-cleanup-failed",
+    "windows-state-directory-layout-failed",
+    "windows-state-directory-root-metadata-failed",
+    "windows-state-directory-root-canonicalize-failed",
+    "windows-state-directory-data-metadata-failed",
+    "windows-state-directory-data-create-failed",
+    "windows-state-directory-data-canonicalize-failed",
+    "windows-state-directory-config-metadata-failed",
+    "windows-state-directory-config-create-failed",
+    "windows-state-directory-config-canonicalize-failed",
+    "windows-state-directory-traversal-shape-invalid",
+    "windows-state-directory-ancestor-access-failed",
+    "windows-state-directory-root-access-failed",
+    "windows-state-directory-child-access-failed",
+    "windows-state-directory-integrity-label-failed",
+    "windows-worker-control-frame-invalid",
+    "windows-worker-boundary-verification-failed",
+    "windows-worker-runtime-creation-failed",
+    "windows-worker-capability-bridge-failed",
+    "windows-worker-model-bridge-failed",
+    "windows-worker-state-directory-failed",
+    "windows-worker-state-directory-layout-failed",
+    "windows-worker-state-directory-root-metadata-failed",
+    "windows-worker-state-directory-root-canonicalize-failed",
+    "windows-worker-state-directory-data-metadata-failed",
+    "windows-worker-state-directory-data-create-failed",
+    "windows-worker-state-directory-data-canonicalize-failed",
+    "windows-worker-state-directory-config-metadata-failed",
+    "windows-worker-state-directory-config-create-failed",
+    "windows-worker-state-directory-config-canonicalize-failed",
+    "windows-worker-state-directory-traversal-shape-invalid",
+    "windows-worker-ready-signal-failed",
+    "windows-worker-acp-handshake-failed",
+];
+
+#[cfg(any(windows, test))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WindowsRuntimeEvent {
+    ParentLiveness(Result<(), ()>),
+    WorkerExit(Result<u32, ()>),
+    Timeout,
+    AcpRelay(Result<(), ()>),
+    CapabilityRelay(Result<(), ()>),
+    ModelRelay(Result<(), ()>),
+}
+
+#[cfg(any(windows, test))]
+fn classify_runtime_event(event: WindowsRuntimeEvent) -> Result<(), &'static str> {
+    match event {
+        WindowsRuntimeEvent::ParentLiveness(Ok(())) | WindowsRuntimeEvent::WorkerExit(Ok(0)) => {
+            Ok(())
+        }
+        WindowsRuntimeEvent::Timeout => Err("windows-runtime-timeout"),
+        WindowsRuntimeEvent::AcpRelay(_) => Err("windows-acp-relay-failed"),
+        WindowsRuntimeEvent::CapabilityRelay(_) => Err("windows-capability-relay-failed"),
+        WindowsRuntimeEvent::ModelRelay(_) => Err("windows-model-relay-failed"),
+        WindowsRuntimeEvent::WorkerExit(Ok(exit_code)) => {
+            Err(classify_worker_startup_exit(exit_code).runtime_code())
+        }
+        WindowsRuntimeEvent::ParentLiveness(Err(())) | WindowsRuntimeEvent::WorkerExit(Err(())) => {
+            Err("windows-worker-runtime-failed")
+        }
+    }
+}
+
+#[cfg(any(windows, test))]
+fn runtime_diagnostic_codes(
+    runtime_result: Result<(), &'static str>,
+    cleanup_complete: bool,
+) -> [Option<&'static str>; 2] {
+    let primary = runtime_result.err().map(|code| {
+        if WINDOWS_RUNTIME_FAILURE_CODES.contains(&code) {
+            code
+        } else {
+            "windows-worker-runtime-failed"
+        }
+    });
+    let cleanup = (!cleanup_complete).then_some("windows-runtime-cleanup-failed");
+    [primary, cleanup]
+}
 
 #[cfg(windows)]
 use std::ffi::c_void;
 #[cfg(windows)]
 use std::mem::{size_of, size_of_val, zeroed};
 #[cfg(windows)]
-use std::path::Path;
+use std::os::windows::ffi::OsStrExt;
+#[cfg(windows)]
+use std::path::{Path, PathBuf};
 #[cfg(windows)]
 use std::ptr::{null, null_mut};
 #[cfg(windows)]
 use windows_sys::Win32::Foundation::{
-    CloseHandle, CompareObjectHandles, DuplicateHandle, GetLastError, SetHandleInformation,
-    DUPLICATE_SAME_ACCESS, ERROR_BROKEN_PIPE, HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE,
+    CloseHandle, CompareObjectHandles, DuplicateHandle, GetHandleInformation, GetLastError,
+    LocalFree, SetHandleInformation, DUPLICATE_SAME_ACCESS, ERROR_BROKEN_PIPE,
+    ERROR_INSUFFICIENT_BUFFER, ERROR_SUCCESS, HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE,
     WAIT_OBJECT_0, WAIT_TIMEOUT,
+};
+#[cfg(windows)]
+use windows_sys::Win32::Security::Authorization::{
+    GetEffectiveRightsFromAclW, GetNamedSecurityInfoW, SetEntriesInAclW, SetNamedSecurityInfoW,
+    EXPLICIT_ACCESS_W, NO_MULTIPLE_TRUSTEE, SET_ACCESS, SE_FILE_OBJECT, TRUSTEE_IS_SID,
+    TRUSTEE_IS_USER, TRUSTEE_W,
 };
 #[cfg(windows)]
 use windows_sys::Win32::Security::Isolation::{
@@ -35,11 +181,19 @@ use windows_sys::Win32::Security::Isolation::{
 use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
 #[cfg(windows)]
 use windows_sys::Win32::Security::{
-    EqualSid, FreeSid, GetTokenInformation, TokenIsAppContainer, PSID, SECURITY_CAPABILITIES,
-    TOKEN_QUERY,
+    AddMandatoryAce, AllocateAndInitializeSid, EqualSid, FreeSid, GetTokenInformation,
+    InitializeAcl, TokenIsAppContainer, TokenUser, ACL, ACL_REVISION, DACL_SECURITY_INFORMATION,
+    LABEL_SECURITY_INFORMATION, NO_INHERITANCE, PSECURITY_DESCRIPTOR, PSID, SECURITY_CAPABILITIES,
+    SECURITY_MANDATORY_LABEL_AUTHORITY, SUB_CONTAINERS_AND_OBJECTS_INHERIT, TOKEN_QUERY,
+    TOKEN_USER,
 };
 #[cfg(windows)]
-use windows_sys::Win32::Storage::FileSystem::{ReadFile, WriteFile};
+use windows_sys::Win32::Storage::FileSystem::{
+    ReadFile, WriteFile, DELETE, FILE_ADD_FILE, FILE_ADD_SUBDIRECTORY, FILE_DELETE_CHILD,
+    FILE_GENERIC_EXECUTE, FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_LIST_DIRECTORY,
+    FILE_READ_ATTRIBUTES, FILE_READ_EA, FILE_TRAVERSE, FILE_WRITE_ATTRIBUTES, FILE_WRITE_EA,
+    READ_CONTROL, SYNCHRONIZE, WRITE_DAC, WRITE_OWNER,
+};
 #[cfg(windows)]
 use windows_sys::Win32::System::Console::{
     GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
@@ -61,6 +215,10 @@ use windows_sys::Win32::System::JobObjects::{
 use windows_sys::Win32::System::Pipes::CreatePipe;
 #[cfg(windows)]
 use windows_sys::Win32::System::SystemInformation::GetWindowsDirectoryW;
+#[cfg(windows)]
+use windows_sys::Win32::System::SystemServices::{
+    SECURITY_MANDATORY_LOW_RID, SYSTEM_MANDATORY_LABEL_NO_WRITE_UP,
+};
 #[cfg(windows)]
 use windows_sys::Win32::System::Threading::{
     CreateEventW, CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcess,
@@ -93,8 +251,39 @@ const WINDOWS_JOB_ACTIVE_PROCESS_LIMIT: u32 = 1;
 const WINDOWS_JOB_MEMORY_LIMIT_BYTES: usize = 1_073_741_824;
 #[cfg(windows)]
 const WINDOWS_JOB_USER_TIME_100NS: i64 = 120 * 10_000_000;
+#[cfg(windows)]
+const STATE_ROOT_ACCESS_MASK: u32 = FILE_TRAVERSE
+    | FILE_LIST_DIRECTORY
+    | FILE_READ_ATTRIBUTES
+    | FILE_READ_EA
+    | READ_CONTROL
+    | SYNCHRONIZE;
+#[cfg(windows)]
+const STATE_DIRECTORY_ACCESS_MASK: u32 =
+    FILE_GENERIC_READ | FILE_GENERIC_WRITE | FILE_GENERIC_EXECUTE | DELETE;
+#[cfg(windows)]
+const STATE_FORBIDDEN_ACCESS_MASK: u32 = WRITE_DAC | WRITE_OWNER;
+#[cfg(windows)]
+const STATE_ROOT_FORBIDDEN_ACCESS_MASK: u32 = STATE_FORBIDDEN_ACCESS_MASK
+    | FILE_ADD_FILE
+    | FILE_ADD_SUBDIRECTORY
+    | FILE_DELETE_CHILD
+    | FILE_WRITE_ATTRIBUTES
+    | FILE_WRITE_EA
+    | DELETE;
+#[cfg(windows)]
+const STATE_ANCESTOR_TRAVERSE_ACCESS_MASK: u32 = FILE_TRAVERSE;
+#[cfg(windows)]
+const STATE_ANCESTOR_FORBIDDEN_ACCESS_MASK: u32 =
+    STATE_ROOT_FORBIDDEN_ACCESS_MASK | FILE_LIST_DIRECTORY;
+#[cfg(windows)]
+const STATE_LOW_INTEGRITY_ACE_FLAGS: u32 = windows_sys::Win32::Security::CONTAINER_INHERIT_ACE
+    | windows_sys::Win32::Security::OBJECT_INHERIT_ACE;
 #[cfg(any(windows, test))]
 const WINDOWS_WORKER_MODE_ARGUMENT: &str = "--actestra-windows-worker-v1";
+#[cfg(all(test, windows))]
+const WINDOWS_ANONYMOUS_PIPE_TEST_CHILD_ARGUMENT: &str =
+    "windows_supervisor::windows_native_tests::appcontainer_anonymous_pipe_client_child";
 #[cfg(any(windows, test))]
 const WINDOWS_WORKER_PROGRAM_NAME: &str = "actestra-goose-runner.exe";
 #[cfg(any(windows, test))]
@@ -181,10 +370,13 @@ fn build_minimal_windows_environment_block(windows_directory: &[u16]) -> Result<
 
 #[cfg(any(windows, test))]
 fn build_command_line_for_argument(argument: &str) -> Result<Vec<u16>, ()> {
-    if !matches!(
+    let admitted = matches!(
         argument,
         WINDOWS_WORKER_MODE_ARGUMENT | WINDOWS_PROBE_CHILD_ARGUMENT | WINDOWS_PROBE_PARENT_ARGUMENT
-    ) {
+    );
+    #[cfg(all(test, windows))]
+    let admitted = admitted || argument == WINDOWS_ANONYMOUS_PIPE_TEST_CHILD_ARGUMENT;
+    if !admitted {
         return Err(());
     }
     Ok(format!("{WINDOWS_WORKER_PROGRAM_NAME} {argument}\0")
@@ -196,6 +388,62 @@ fn build_command_line_for_argument(argument: &str) -> Result<Vec<u16>, ()> {
 fn build_worker_command_line() -> Vec<u16> {
     build_command_line_for_argument(WINDOWS_WORKER_MODE_ARGUMENT)
         .expect("the production Windows worker argument must be accepted")
+}
+
+#[cfg(any(windows, test))]
+fn worker_pipe_handle_contract_is_closed(
+    worker_handles: [u64; 9],
+    parent_handles: [u64; 9],
+    worker_inheritable: [bool; 9],
+    parent_inheritable: [bool; 9],
+) -> bool {
+    let handles = worker_handles
+        .into_iter()
+        .chain(parent_handles)
+        .collect::<Vec<_>>();
+    handles.iter().enumerate().all(|(index, handle)| {
+        *handle != 0 && *handle != u64::MAX && !handles[..index].contains(handle)
+    }) && worker_inheritable.into_iter().all(|value| value)
+        && parent_inheritable.into_iter().all(|value| !value)
+}
+
+#[cfg(windows)]
+fn build_worker_command_line_with_handles(
+    control_read: HANDLE,
+    ready_write: HANDLE,
+    capability_read: HANDLE,
+    capability_write: HANDLE,
+    model_read: HANDLE,
+    model_write: HANDLE,
+) -> Result<Vec<u16>, ()> {
+    let handles = [
+        control_read,
+        ready_write,
+        capability_read,
+        capability_write,
+        model_read,
+        model_write,
+    ];
+    if handles
+        .iter()
+        .any(|handle| handle.is_null() || *handle == INVALID_HANDLE_VALUE)
+        || handles
+            .iter()
+            .enumerate()
+            .any(|(index, handle)| handles[..index].contains(handle))
+    {
+        return Err(());
+    }
+    let values = handles.map(|handle| handle as usize as u64);
+    if values.iter().any(|value| *value == 0 || *value == u64::MAX) {
+        return Err(());
+    }
+    Ok(format!(
+        "{WINDOWS_WORKER_PROGRAM_NAME} {WINDOWS_WORKER_MODE_ARGUMENT} {} {} {} {} {} {}\0",
+        values[0], values[1], values[2], values[3], values[4], values[5]
+    )
+    .encode_utf16()
+    .collect())
 }
 
 #[cfg(test)]
@@ -491,6 +739,286 @@ impl WorkerLaunchFailureStage {
     }
 }
 
+/// Exit protocol owned only by the synthetic AppContainer anonymous-pipe child used by the native
+/// regression test. These values deliberately do not overlap the production Worker's `101..=116`
+/// startup protocol, so a libtest panic or a test-stage failure cannot be misreported as a
+/// production control-frame failure.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AnonymousPipeTestChildFailure {
+    Runtime,
+    Channel,
+    StateDirectory,
+    StateDirectoryPrepare(StateDirectoryPrepareFailure),
+    StateDirectoryDataWrite,
+    StateDirectoryDataRead,
+    StateDirectoryDataRemove,
+    StateDirectoryConfigWrite,
+    StateDirectoryConfigRead,
+    StateDirectoryConfigRemove,
+    RootWriteAllowed,
+    FrameEncode,
+    FrameWrite,
+    FrameRead,
+    FrameMismatch,
+    Panic,
+    UnexpectedExit,
+}
+
+#[cfg(test)]
+impl AnonymousPipeTestChildFailure {
+    fn exit_code(self) -> i32 {
+        match self {
+            Self::Runtime => 201,
+            Self::Channel => 202,
+            Self::StateDirectory => 208,
+            Self::RootWriteAllowed => 209,
+            Self::StateDirectoryPrepare(variant) => variant.test_child_exit_code(),
+            Self::StateDirectoryDataWrite => 211,
+            Self::StateDirectoryDataRead => 212,
+            Self::StateDirectoryDataRemove => 213,
+            Self::StateDirectoryConfigWrite => 214,
+            Self::StateDirectoryConfigRead => 215,
+            Self::StateDirectoryConfigRemove => 216,
+            Self::FrameEncode => 203,
+            Self::FrameWrite => 204,
+            Self::FrameRead => 205,
+            Self::FrameMismatch => 206,
+            Self::Panic | Self::UnexpectedExit => 207,
+        }
+    }
+
+    fn code(self) -> &'static str {
+        match self {
+            Self::Runtime => "test-child-runtime-failed",
+            Self::Channel => "test-child-channel-invalid",
+            Self::StateDirectory => "test-child-state-directory-failed",
+            Self::StateDirectoryPrepare(variant) => variant.code(),
+            Self::StateDirectoryDataWrite => "test-child-state-directory-data-write-failed",
+            Self::StateDirectoryDataRead => "test-child-state-directory-data-read-failed",
+            Self::StateDirectoryDataRemove => "test-child-state-directory-data-remove-failed",
+            Self::StateDirectoryConfigWrite => "test-child-state-directory-config-write-failed",
+            Self::StateDirectoryConfigRead => "test-child-state-directory-config-read-failed",
+            Self::StateDirectoryConfigRemove => "test-child-state-directory-config-remove-failed",
+            Self::RootWriteAllowed => "test-child-root-write-allowed",
+            Self::FrameEncode => "test-child-frame-encode-failed",
+            Self::FrameWrite => "test-child-frame-write-failed",
+            Self::FrameRead => "test-child-frame-read-failed",
+            Self::FrameMismatch => "test-child-frame-mismatch",
+            Self::Panic => "test-child-panic",
+            Self::UnexpectedExit => "test-child-unexpected-exit",
+        }
+    }
+}
+
+#[cfg(test)]
+fn classify_anonymous_pipe_test_child_exit(exit_code: u32) -> AnonymousPipeTestChildFailure {
+    match exit_code {
+        201 => AnonymousPipeTestChildFailure::Runtime,
+        202 => AnonymousPipeTestChildFailure::Channel,
+        208 => AnonymousPipeTestChildFailure::StateDirectory,
+        209 => AnonymousPipeTestChildFailure::RootWriteAllowed,
+        220 => AnonymousPipeTestChildFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::Layout,
+        ),
+        221 => AnonymousPipeTestChildFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::RootMetadata,
+        ),
+        222 => AnonymousPipeTestChildFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::RootCanonicalize,
+        ),
+        223 => AnonymousPipeTestChildFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::DataMetadata,
+        ),
+        224 => AnonymousPipeTestChildFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::DataCreate,
+        ),
+        225 => AnonymousPipeTestChildFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::DataCanonicalize,
+        ),
+        226 => AnonymousPipeTestChildFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::ConfigMetadata,
+        ),
+        227 => AnonymousPipeTestChildFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::ConfigCreate,
+        ),
+        228 => AnonymousPipeTestChildFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::ConfigCanonicalize,
+        ),
+        229 => AnonymousPipeTestChildFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::TraversalShape,
+        ),
+        211 => AnonymousPipeTestChildFailure::StateDirectoryDataWrite,
+        212 => AnonymousPipeTestChildFailure::StateDirectoryDataRead,
+        213 => AnonymousPipeTestChildFailure::StateDirectoryDataRemove,
+        214 => AnonymousPipeTestChildFailure::StateDirectoryConfigWrite,
+        215 => AnonymousPipeTestChildFailure::StateDirectoryConfigRead,
+        216 => AnonymousPipeTestChildFailure::StateDirectoryConfigRemove,
+        203 => AnonymousPipeTestChildFailure::FrameEncode,
+        204 => AnonymousPipeTestChildFailure::FrameWrite,
+        205 => AnonymousPipeTestChildFailure::FrameRead,
+        206 => AnonymousPipeTestChildFailure::FrameMismatch,
+        // Rust's libtest harness reserves 101 for a test panic.
+        101 => AnonymousPipeTestChildFailure::Panic,
+        _ => AnonymousPipeTestChildFailure::UnexpectedExit,
+    }
+}
+
+/// Worker startup stage a worker exit code identifies, so a worker that dies
+/// before connecting is attributed to the stage it died in rather than being
+/// collapsed into one opaque runtime failure.
+#[cfg(any(windows, test))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WorkerStartupFailure {
+    ControlFrame,
+    BoundaryVerification,
+    RuntimeCreation,
+    CapabilityBridge,
+    ModelBridge,
+    StateDirectory,
+    StateDirectoryPrepare(StateDirectoryPrepareFailure),
+    ReadySignal,
+    AcpHandshake,
+    Unknown,
+}
+
+/// Supervisor-side state-directory admission failures are kept distinct from a Worker failing
+/// to use an already-admitted directory. This boundary is required to diagnose ACL preparation
+/// without widening the persisted failure vocabulary or exposing raw Win32 paths/codes.
+#[cfg(any(windows, test))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum StateDirectoryAdmissionFailure {
+    Prepare(StateDirectoryPrepareFailure),
+    TraversalShape,
+    AncestorAccess,
+    RootAccess,
+    ChildAccess,
+    IntegrityLabel,
+}
+
+#[cfg(any(windows, test))]
+impl StateDirectoryAdmissionFailure {
+    fn diagnostic_exit_code(self) -> i32 {
+        match self {
+            Self::Prepare(failure) => match failure {
+                StateDirectoryPrepareFailure::Layout => 63,
+                StateDirectoryPrepareFailure::RootMetadata => 69,
+                StateDirectoryPrepareFailure::RootCanonicalize => 70,
+                StateDirectoryPrepareFailure::DataMetadata => 71,
+                StateDirectoryPrepareFailure::DataCreate => 72,
+                StateDirectoryPrepareFailure::DataCanonicalize => 73,
+                StateDirectoryPrepareFailure::ConfigMetadata => 74,
+                StateDirectoryPrepareFailure::ConfigCreate => 75,
+                StateDirectoryPrepareFailure::ConfigCanonicalize => 76,
+                StateDirectoryPrepareFailure::TraversalShape => 64,
+            },
+            Self::TraversalShape => 64,
+            Self::AncestorAccess => 65,
+            Self::RootAccess => 66,
+            Self::ChildAccess => 67,
+            Self::IntegrityLabel => 68,
+        }
+    }
+
+    fn runtime_code(self) -> &'static str {
+        match self {
+            Self::Prepare(failure) => failure.code(),
+            Self::TraversalShape => "windows-state-directory-traversal-shape-invalid",
+            Self::AncestorAccess => "windows-state-directory-ancestor-access-failed",
+            Self::RootAccess => "windows-state-directory-root-access-failed",
+            Self::ChildAccess => "windows-state-directory-child-access-failed",
+            Self::IntegrityLabel => "windows-state-directory-integrity-label-failed",
+        }
+    }
+}
+
+#[cfg(any(windows, test))]
+fn classify_worker_startup_exit(exit_code: u32) -> WorkerStartupFailure {
+    match exit_code {
+        101 => WorkerStartupFailure::ControlFrame,
+        102 => WorkerStartupFailure::BoundaryVerification,
+        103 => WorkerStartupFailure::RuntimeCreation,
+        108 => WorkerStartupFailure::CapabilityBridge,
+        113 => WorkerStartupFailure::ModelBridge,
+        114 => WorkerStartupFailure::StateDirectory,
+        117 => WorkerStartupFailure::StateDirectoryPrepare(StateDirectoryPrepareFailure::Layout),
+        118 => {
+            WorkerStartupFailure::StateDirectoryPrepare(StateDirectoryPrepareFailure::RootMetadata)
+        }
+        119 => WorkerStartupFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::RootCanonicalize,
+        ),
+        120 => {
+            WorkerStartupFailure::StateDirectoryPrepare(StateDirectoryPrepareFailure::DataMetadata)
+        }
+        121 => {
+            WorkerStartupFailure::StateDirectoryPrepare(StateDirectoryPrepareFailure::DataCreate)
+        }
+        122 => WorkerStartupFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::DataCanonicalize,
+        ),
+        123 => WorkerStartupFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::ConfigMetadata,
+        ),
+        124 => {
+            WorkerStartupFailure::StateDirectoryPrepare(StateDirectoryPrepareFailure::ConfigCreate)
+        }
+        125 => WorkerStartupFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::ConfigCanonicalize,
+        ),
+        126 => WorkerStartupFailure::StateDirectoryPrepare(
+            StateDirectoryPrepareFailure::TraversalShape,
+        ),
+        115 => WorkerStartupFailure::ReadySignal,
+        116 => WorkerStartupFailure::AcpHandshake,
+        _ => WorkerStartupFailure::Unknown,
+    }
+}
+
+#[cfg(any(windows, test))]
+impl WorkerStartupFailure {
+    fn diagnostic_exit_code(self) -> i32 {
+        match self {
+            Self::ControlFrame => 47,
+            Self::BoundaryVerification => 48,
+            Self::RuntimeCreation => 49,
+            Self::CapabilityBridge => 54,
+            Self::ModelBridge => 59,
+            Self::StateDirectory => 60,
+            Self::StateDirectoryPrepare(variant) => match variant {
+                StateDirectoryPrepareFailure::Layout => 77,
+                StateDirectoryPrepareFailure::RootMetadata => 78,
+                StateDirectoryPrepareFailure::RootCanonicalize => 79,
+                StateDirectoryPrepareFailure::DataMetadata => 80,
+                StateDirectoryPrepareFailure::DataCreate => 81,
+                StateDirectoryPrepareFailure::DataCanonicalize => 82,
+                StateDirectoryPrepareFailure::ConfigMetadata => 83,
+                StateDirectoryPrepareFailure::ConfigCreate => 84,
+                StateDirectoryPrepareFailure::ConfigCanonicalize => 85,
+                StateDirectoryPrepareFailure::TraversalShape => 86,
+            },
+            Self::ReadySignal => 61,
+            Self::AcpHandshake => 62,
+            Self::Unknown => 46,
+        }
+    }
+
+    fn runtime_code(self) -> &'static str {
+        match self {
+            Self::ControlFrame => "windows-worker-control-frame-invalid",
+            Self::BoundaryVerification => "windows-worker-boundary-verification-failed",
+            Self::RuntimeCreation => "windows-worker-runtime-creation-failed",
+            Self::CapabilityBridge => "windows-worker-capability-bridge-failed",
+            Self::ModelBridge => "windows-worker-model-bridge-failed",
+            Self::StateDirectory => "windows-worker-state-directory-failed",
+            Self::StateDirectoryPrepare(variant) => variant.worker_runtime_code(),
+            Self::ReadySignal => "windows-worker-ready-signal-failed",
+            Self::AcpHandshake => "windows-worker-acp-handshake-failed",
+            Self::Unknown => "windows-worker-runtime-failed",
+        }
+    }
+}
+
 #[cfg(any(windows, test))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SupervisorFailureStage {
@@ -503,6 +1031,11 @@ enum SupervisorFailureStage {
     ControlSerialization,
     ControlWrite,
     WorkerReady,
+    CapabilityChannel,
+    ModelChannel,
+    WorkerRuntime,
+    StateDirectoryAdmission(StateDirectoryAdmissionFailure),
+    WorkerStartup(WorkerStartupFailure),
 }
 
 #[cfg(any(windows, test))]
@@ -518,13 +1051,39 @@ impl SupervisorFailureStage {
             Self::ControlSerialization => 15,
             Self::ControlWrite => 16,
             Self::WorkerReady => 17,
+            Self::CapabilityChannel => 18,
+            Self::ModelChannel => 19,
+            Self::WorkerRuntime => 46,
+            Self::StateDirectoryAdmission(failure) => failure.diagnostic_exit_code(),
+            Self::WorkerStartup(failure) => failure.diagnostic_exit_code(),
         }
     }
 }
 
-pub(crate) struct WindowsPipeNames {
-    pub(crate) capability: String,
-    pub(crate) model: String,
+#[cfg(any(windows, test))]
+fn runtime_code_for_supervisor_failure(stage: SupervisorFailureStage) -> Option<&'static str> {
+    match stage {
+        SupervisorFailureStage::ControlFrame
+        | SupervisorFailureStage::ControlSerialization
+        | SupervisorFailureStage::ControlWrite => Some("windows-control-channel-invalid"),
+        SupervisorFailureStage::WorkerReady => Some("windows-ready-channel-invalid"),
+        SupervisorFailureStage::CapabilityChannel => Some("windows-capability-channel-invalid"),
+        SupervisorFailureStage::ModelChannel => Some("windows-model-channel-invalid"),
+        SupervisorFailureStage::WorkerRuntime => Some("windows-worker-runtime-failed"),
+        SupervisorFailureStage::StateDirectoryAdmission(failure) => Some(failure.runtime_code()),
+        SupervisorFailureStage::WorkerStartup(failure) => Some(failure.runtime_code()),
+        _ => None,
+    }
+}
+
+#[cfg(windows)]
+fn report_supervisor_failure(stage: SupervisorFailureStage, fallback_marker: &str) -> i32 {
+    if let Some(code) = runtime_code_for_supervisor_failure(stage) {
+        eprintln!("Goose windows containment failed at bounded stage {code}");
+    } else {
+        eprintln!("{fallback_marker}");
+    }
+    stage.diagnostic_exit_code()
 }
 
 fn is_exact_attempt_id(attempt_id: &str) -> bool {
@@ -547,17 +1106,6 @@ pub(crate) fn remove_windows_probe_profile(attempt_id: &str) -> Result<(), ()> {
         return Err(());
     }
     Ok(())
-}
-
-pub(crate) fn derive_pipe_names(attempt_id: &str) -> Result<WindowsPipeNames, ()> {
-    if !is_exact_attempt_id(attempt_id) {
-        return Err(());
-    }
-    let prefix = r"\\.\pipe\LOCAL\Actestra.Goose.";
-    Ok(WindowsPipeNames {
-        capability: format!("{prefix}{attempt_id}.capability"),
-        model: format!("{prefix}{attempt_id}.model"),
-    })
 }
 
 #[cfg(windows)]
@@ -638,6 +1186,10 @@ impl AppContainerProfile {
             CapabilityCount: 0,
             Reserved: 0,
         }
+    }
+
+    fn sid(&self) -> PSID {
+        self.sid
     }
 
     fn remove(&mut self) -> Result<(), ()> {
@@ -798,6 +1350,16 @@ impl WorkerProcess {
             return Err(());
         }
         Ok(exit_code)
+    }
+
+    fn exit_code_if_exited(&self) -> Result<Option<u32>, ()> {
+        let mut exit_code = 0_u32;
+        // SAFETY: process is a live process handle owned by this wrapper and exit_code is a
+        // valid out pointer. STILL_ACTIVE means the process has not exited yet.
+        if unsafe { GetExitCodeProcess(self.process, &mut exit_code) } == 0 {
+            return Err(());
+        }
+        Ok((exit_code != 259).then_some(exit_code))
     }
 }
 
@@ -1413,7 +1975,19 @@ impl JobObject {
             .collect();
         // lpApplicationName keeps image resolution bound to the admitted absolute executable.
         // argv[0] is a fixed non-secret basename so WindowsMode still receives the mode at argv[1].
-        let mut command_line_wide = build_command_line_for_argument(command_argument)
+        let mut command_line_wide =
+            if command_argument == WINDOWS_WORKER_MODE_ARGUMENT && inherited_handles.len() == 9 {
+                build_worker_command_line_with_handles(
+                    inherited_handles[3],
+                    inherited_handles[4],
+                    inherited_handles[5],
+                    inherited_handles[6],
+                    inherited_handles[7],
+                    inherited_handles[8],
+                )
+            } else {
+                build_command_line_for_argument(command_argument)
+            }
             .map_err(|()| WorkerLaunchFailureStage::InputValidation)?;
 
         let security_capabilities = profile.security_capabilities();
@@ -1568,6 +2142,18 @@ struct WorkerPipeSet {
     worker_stdin: HANDLE,
     worker_stdout: HANDLE,
     worker_stderr: HANDLE,
+    supervisor_control_write: HANDLE,
+    worker_control_read: HANDLE,
+    supervisor_ready_read: HANDLE,
+    worker_ready_write: HANDLE,
+    supervisor_capability_read: HANDLE,
+    supervisor_capability_write: HANDLE,
+    worker_capability_read: HANDLE,
+    worker_capability_write: HANDLE,
+    supervisor_model_read: HANDLE,
+    supervisor_model_write: HANDLE,
+    worker_model_read: HANDLE,
+    worker_model_write: HANDLE,
 }
 
 #[cfg(windows)]
@@ -1584,6 +2170,18 @@ impl WorkerPipeSet {
         let mut worker_stdout = null_mut();
         let mut supervisor_stderr = null_mut();
         let mut worker_stderr = null_mut();
+        let mut supervisor_control_write = null_mut();
+        let mut worker_control_read = null_mut();
+        let mut supervisor_ready_read = null_mut();
+        let mut worker_ready_write = null_mut();
+        let mut supervisor_capability_read = null_mut();
+        let mut supervisor_capability_write = null_mut();
+        let mut worker_capability_read = null_mut();
+        let mut worker_capability_write = null_mut();
+        let mut supervisor_model_read = null_mut();
+        let mut supervisor_model_write = null_mut();
+        let mut worker_model_read = null_mut();
+        let mut worker_model_write = null_mut();
         let created = unsafe {
             CreatePipe(
                 &mut worker_stdin,
@@ -1603,6 +2201,42 @@ impl WorkerPipeSet {
                     &raw mut attributes,
                     0,
                 ) != 0
+                && CreatePipe(
+                    &mut worker_control_read,
+                    &mut supervisor_control_write,
+                    &raw mut attributes,
+                    0,
+                ) != 0
+                && CreatePipe(
+                    &mut supervisor_ready_read,
+                    &mut worker_ready_write,
+                    &raw mut attributes,
+                    0,
+                ) != 0
+                && CreatePipe(
+                    &mut worker_capability_read,
+                    &mut supervisor_capability_write,
+                    &raw mut attributes,
+                    0,
+                ) != 0
+                && CreatePipe(
+                    &mut supervisor_capability_read,
+                    &mut worker_capability_write,
+                    &raw mut attributes,
+                    0,
+                ) != 0
+                && CreatePipe(
+                    &mut worker_model_read,
+                    &mut supervisor_model_write,
+                    &raw mut attributes,
+                    0,
+                ) != 0
+                && CreatePipe(
+                    &mut supervisor_model_read,
+                    &mut worker_model_write,
+                    &raw mut attributes,
+                    0,
+                ) != 0
         };
         if !created {
             for handle in [
@@ -1612,6 +2246,18 @@ impl WorkerPipeSet {
                 worker_stdout,
                 supervisor_stderr,
                 worker_stderr,
+                supervisor_control_write,
+                worker_control_read,
+                supervisor_ready_read,
+                worker_ready_write,
+                supervisor_capability_read,
+                supervisor_capability_write,
+                worker_capability_read,
+                worker_capability_write,
+                supervisor_model_read,
+                supervisor_model_write,
+                worker_model_read,
+                worker_model_write,
             ] {
                 if !handle.is_null() {
                     unsafe { CloseHandle(handle) };
@@ -1619,7 +2265,17 @@ impl WorkerPipeSet {
             }
             return Err(());
         }
-        for handle in [supervisor_stdin, supervisor_stdout, supervisor_stderr] {
+        for handle in [
+            supervisor_stdin,
+            supervisor_stdout,
+            supervisor_stderr,
+            supervisor_control_write,
+            supervisor_ready_read,
+            supervisor_capability_read,
+            supervisor_capability_write,
+            supervisor_model_read,
+            supervisor_model_write,
+        ] {
             // SAFETY: each handle is a live parent-side pipe endpoint. Clearing only the inherit
             // bit keeps it private while the child-side endpoints remain explicitly allowlisted.
             if unsafe { SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0) } == 0 {
@@ -1630,6 +2286,18 @@ impl WorkerPipeSet {
                     worker_stdout,
                     supervisor_stderr,
                     worker_stderr,
+                    supervisor_control_write,
+                    worker_control_read,
+                    supervisor_ready_read,
+                    worker_ready_write,
+                    supervisor_capability_read,
+                    supervisor_capability_write,
+                    worker_capability_read,
+                    worker_capability_write,
+                    supervisor_model_read,
+                    supervisor_model_write,
+                    worker_model_read,
+                    worker_model_write,
                 ] {
                     if !owned.is_null() {
                         unsafe { CloseHandle(owned) };
@@ -1638,22 +2306,97 @@ impl WorkerPipeSet {
                 return Err(());
             }
         }
-        Ok(Self {
+        let pipes = Self {
             supervisor_stdin,
             supervisor_stdout,
             supervisor_stderr,
             worker_stdin,
             worker_stdout,
             worker_stderr,
-        })
+            supervisor_control_write,
+            worker_control_read,
+            supervisor_ready_read,
+            worker_ready_write,
+            supervisor_capability_read,
+            supervisor_capability_write,
+            worker_capability_read,
+            worker_capability_write,
+            supervisor_model_read,
+            supervisor_model_write,
+            worker_model_read,
+            worker_model_write,
+        };
+        if !pipes.handle_contract_is_closed() {
+            return Err(());
+        }
+        Ok(pipes)
     }
 
-    fn inherited_handles(&self) -> [HANDLE; 3] {
+    fn inherited_handles(&self) -> [HANDLE; 9] {
+        [
+            self.worker_stdin,
+            self.worker_stdout,
+            self.worker_stderr,
+            self.worker_control_read,
+            self.worker_ready_write,
+            self.worker_capability_read,
+            self.worker_capability_write,
+            self.worker_model_read,
+            self.worker_model_write,
+        ]
+    }
+
+    fn parent_handles(&self) -> [HANDLE; 9] {
+        [
+            self.supervisor_stdin,
+            self.supervisor_stdout,
+            self.supervisor_stderr,
+            self.supervisor_control_write,
+            self.supervisor_ready_read,
+            self.supervisor_capability_read,
+            self.supervisor_capability_write,
+            self.supervisor_model_read,
+            self.supervisor_model_write,
+        ]
+    }
+
+    fn handle_contract_is_closed(&self) -> bool {
+        fn inheritance_flags(handles: [HANDLE; 9]) -> Option<[bool; 9]> {
+            let mut result = [false; 9];
+            for (index, handle) in handles.into_iter().enumerate() {
+                let mut flags = 0_u32;
+                // SAFETY: every handle came from a successful CreatePipe call and remains owned by
+                // this pipe set. GetHandleInformation reads only its inheritance flags.
+                if unsafe { GetHandleInformation(handle, &mut flags) } == 0 {
+                    return None;
+                }
+                result[index] = flags & HANDLE_FLAG_INHERIT != 0;
+            }
+            Some(result)
+        }
+
+        let worker = self.inherited_handles();
+        let parent = self.parent_handles();
+        let Some(worker_inheritable) = inheritance_flags(worker) else {
+            return false;
+        };
+        let Some(parent_inheritable) = inheritance_flags(parent) else {
+            return false;
+        };
+        worker_pipe_handle_contract_is_closed(
+            worker.map(|handle| handle as usize as u64),
+            parent.map(|handle| handle as usize as u64),
+            worker_inheritable,
+            parent_inheritable,
+        )
+    }
+
+    fn probe_inherited_handles(&self) -> [HANDLE; 3] {
         [self.worker_stdin, self.worker_stdout, self.worker_stderr]
     }
 
     fn stdio(&self) -> [HANDLE; 3] {
-        self.inherited_handles()
+        [self.worker_stdin, self.worker_stdout, self.worker_stderr]
     }
 
     fn close_worker_endpoints(&mut self) {
@@ -1661,6 +2404,12 @@ impl WorkerPipeSet {
             &mut self.worker_stdin,
             &mut self.worker_stdout,
             &mut self.worker_stderr,
+            &mut self.worker_control_read,
+            &mut self.worker_ready_write,
+            &mut self.worker_capability_read,
+            &mut self.worker_capability_write,
+            &mut self.worker_model_read,
+            &mut self.worker_model_write,
         ] {
             if !handle.is_null() {
                 unsafe { CloseHandle(*handle) };
@@ -1676,6 +2425,60 @@ impl WorkerPipeSet {
             self.supervisor_stdin = null_mut();
         }
     }
+
+    fn take_worker_stdin(&mut self) -> Result<HANDLE, ()> {
+        let handle = self.supervisor_stdin;
+        if handle.is_null() || handle == INVALID_HANDLE_VALUE {
+            return Err(());
+        }
+        self.supervisor_stdin = null_mut();
+        Ok(handle)
+    }
+
+    fn take_worker_stdout(&mut self) -> Result<HANDLE, ()> {
+        let handle = self.supervisor_stdout;
+        if handle.is_null() || handle == INVALID_HANDLE_VALUE {
+            return Err(());
+        }
+        self.supervisor_stdout = null_mut();
+        Ok(handle)
+    }
+
+    fn take_capability_worker_channel(
+        &mut self,
+    ) -> Result<crate::windows_bridge::WindowsBridgeChannel, ()> {
+        let read = self.supervisor_capability_read;
+        let write = self.supervisor_capability_write;
+        if read.is_null()
+            || read == INVALID_HANDLE_VALUE
+            || write.is_null()
+            || write == INVALID_HANDLE_VALUE
+            || read == write
+        {
+            return Err(());
+        }
+        self.supervisor_capability_read = null_mut();
+        self.supervisor_capability_write = null_mut();
+        crate::windows_bridge::WindowsBridgeChannel::from_raw_handle_pair(read, write)
+    }
+
+    fn take_model_worker_channel(
+        &mut self,
+    ) -> Result<crate::windows_bridge::WindowsBridgeChannel, ()> {
+        let read = self.supervisor_model_read;
+        let write = self.supervisor_model_write;
+        if read.is_null()
+            || read == INVALID_HANDLE_VALUE
+            || write.is_null()
+            || write == INVALID_HANDLE_VALUE
+            || read == write
+        {
+            return Err(());
+        }
+        self.supervisor_model_read = null_mut();
+        self.supervisor_model_write = null_mut();
+        crate::windows_bridge::WindowsBridgeChannel::from_raw_handle_pair(read, write)
+    }
 }
 
 #[cfg(windows)]
@@ -1688,6 +2491,18 @@ impl Drop for WorkerPipeSet {
             &mut self.worker_stdin,
             &mut self.worker_stdout,
             &mut self.worker_stderr,
+            &mut self.supervisor_control_write,
+            &mut self.worker_control_read,
+            &mut self.supervisor_ready_read,
+            &mut self.worker_ready_write,
+            &mut self.supervisor_capability_read,
+            &mut self.supervisor_capability_write,
+            &mut self.worker_capability_read,
+            &mut self.worker_capability_write,
+            &mut self.supervisor_model_read,
+            &mut self.supervisor_model_write,
+            &mut self.worker_model_read,
+            &mut self.worker_model_write,
         ] {
             if !handle.is_null() {
                 unsafe { CloseHandle(*handle) };
@@ -1715,7 +2530,7 @@ pub(crate) fn launch_windows_containment_worker(
     excluded_handle
         .encoded_value()
         .map_err(|()| WindowsContainmentFailure::WorkerLaunch)?;
-    let inherited_handles = pipes.inherited_handles();
+    let inherited_handles = pipes.probe_inherited_handles();
     if inherited_handles
         .iter()
         .any(|handle| *handle == excluded_handle.handle)
@@ -1803,6 +2618,91 @@ fn read_exact_handle(handle: HANDLE, bytes: &mut [u8]) -> Result<(), ()> {
         offset += read as usize;
     }
     Ok(())
+}
+
+#[cfg(windows)]
+fn handle_from_fd(fd: i32) -> Result<HANDLE, ()> {
+    if fd < 0 {
+        return Err(());
+    }
+    // SAFETY: _get_osfhandle only reads the CRT descriptor table and returns its owned OS handle.
+    let raw = unsafe { libc::get_osfhandle(fd) };
+    if raw == -1 {
+        return Err(());
+    }
+    let source = raw as usize as HANDLE;
+    if source.is_null() || source == INVALID_HANDLE_VALUE {
+        return Err(());
+    }
+    let mut duplicate = null_mut();
+    if unsafe {
+        DuplicateHandle(
+            GetCurrentProcess(),
+            source,
+            GetCurrentProcess(),
+            &mut duplicate,
+            0,
+            0,
+            DUPLICATE_SAME_ACCESS,
+        )
+    } == 0
+        || duplicate.is_null()
+        || duplicate == INVALID_HANDLE_VALUE
+    {
+        return Err(());
+    }
+    Ok(duplicate)
+}
+
+#[cfg(windows)]
+fn overlapped_channel_from_fd(fd: i32) -> Result<crate::windows_bridge::WindowsBridgeChannel, ()> {
+    // DuplicateHandle cannot turn a synchronous duplex pipe into independent read/write file
+    // objects: both duplicates still serialize I/O through the same underlying object. Node
+    // therefore creates fd 5/fd 6 with FILE_FLAG_OVERLAPPED, and Tokio owns one asynchronous
+    // named-pipe client per bridge.
+    let handle = handle_from_fd(fd)?;
+    crate::windows_bridge::WindowsBridgeChannel::from_overlapped_raw_handle(handle)
+}
+
+#[cfg(windows)]
+async fn wait_for_parent_liveness() -> Result<(), ()> {
+    let handle = handle_from_fd(4)?;
+    let mut channel = crate::windows_bridge::WindowsBridgeChannel::from_raw_handle(handle)?;
+    let mut byte = [0_u8; 1];
+    match channel.read_once(&mut byte).await? {
+        0 => Ok(()),
+        _ => Err(()),
+    }
+}
+
+#[cfg(windows)]
+async fn wait_for_worker_exit_handle(handle: HANDLE) -> Result<u32, ()> {
+    loop {
+        match unsafe { WaitForSingleObject(handle, 0) } {
+            WAIT_OBJECT_0 => {
+                let mut exit_code = 0_u32;
+                if unsafe { GetExitCodeProcess(handle, &mut exit_code) } == 0 {
+                    return Err(());
+                }
+                return Ok(exit_code);
+            }
+            WAIT_TIMEOUT => {}
+            _ => return Err(()),
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+}
+
+#[cfg(windows)]
+fn cleanup_runtime(
+    job: &JobObject,
+    worker: &WorkerProcess,
+    profile: &mut AppContainerProfile,
+) -> bool {
+    let job_terminated = job.terminate_for_cleanup().is_ok();
+    let worker_terminal = worker.wait_for_exit(5_000).is_ok();
+    let profile_removed = profile.remove().is_ok();
+    job_terminated && worker_terminal && profile_removed
 }
 
 #[cfg(windows)]
@@ -1990,8 +2890,10 @@ pub(crate) fn run_supervisor() -> i32 {
         let control = match read_control_frame_from_fd(3) {
             Ok(control) => control,
             Err(()) => {
-                eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-                return SupervisorFailureStage::ControlFrame.diagnostic_exit_code();
+                return report_supervisor_failure(
+                    SupervisorFailureStage::ControlFrame,
+                    WINDOWS_SETUP_FAILURE_MARKER,
+                );
             }
         };
         return launch_controlled_worker(control);
@@ -2004,33 +2906,590 @@ pub(crate) fn run_supervisor() -> i32 {
 }
 
 pub(crate) fn run_worker() -> i32 {
+    run_worker_with_arguments(&[])
+}
+
+pub(crate) fn run_worker_with_arguments(_arguments: &[String]) -> i32 {
     #[cfg(windows)]
     {
-        let input = unsafe { GetStdHandle(STD_INPUT_HANDLE) };
-        let output = unsafe { GetStdHandle(STD_OUTPUT_HANDLE) };
-        let control = match read_control_frame_from_handle(input) {
+        let mut startup = WorkerStartupStateMachine::new();
+        let (
+            control_value,
+            ready_value,
+            capability_read_value,
+            capability_write_value,
+            model_read_value,
+            model_write_value,
+        ) = match crate::windows_control::parse_worker_handle_arguments(_arguments) {
+            Ok(Some(values)) => values,
+            _ => {
+                eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+                return EXIT_CONTROL_FRAME_INVALID;
+            }
+        };
+        let control_handle = control_value as usize as HANDLE;
+        let control_result = read_control_frame_from_handle(control_handle);
+        unsafe { CloseHandle(control_handle) };
+        let control = match control_result {
             Ok(control) => control,
             Err(()) => {
                 eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-                return 1;
+                return EXIT_CONTROL_FRAME_INVALID;
             }
         };
+        if startup
+            .advance(WorkerStartupStage::ControlValidated)
+            .is_err()
+        {
+            eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+            return EXIT_CONTROL_FRAME_INVALID;
+        }
         if !verify_worker_boundary() {
             eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-            return 1;
+            return EXIT_BOUNDARY_VERIFICATION_FAILED;
         }
-        if write_all_handle(output, WINDOWS_WORKER_READY_MARKER).is_err() {
+        if startup
+            .advance(WorkerStartupStage::BoundaryVerified)
+            .is_err()
+        {
             eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-            return 1;
+            return EXIT_BOUNDARY_VERIFICATION_FAILED;
         }
-        let _ = control;
-        0
+        let bridge_runtime = match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(runtime) => runtime,
+            Err(_) => {
+                eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+                return EXIT_RUNTIME_CREATION_FAILED;
+            }
+        };
+        let ready_handle = ready_value as usize as HANDLE;
+        let result = bridge_runtime.block_on(async {
+            let capability_channel =
+                crate::windows_bridge::WindowsBridgeChannel::from_raw_handle_pair(
+                    capability_read_value as usize as HANDLE,
+                    capability_write_value as usize as HANDLE,
+                )
+                .map_err(|_| EXIT_CAPABILITY_BRIDGE_FAILED)?;
+            startup
+                .advance(WorkerStartupStage::CapabilityConnected)
+                .map_err(|_| EXIT_CAPABILITY_BRIDGE_FAILED)?;
+            let model_channel = crate::windows_bridge::WindowsBridgeChannel::from_raw_handle_pair(
+                model_read_value as usize as HANDLE,
+                model_write_value as usize as HANDLE,
+            )
+            .map_err(|_| EXIT_MODEL_BRIDGE_FAILED)?;
+            startup
+                .advance(WorkerStartupStage::ModelConnected)
+                .map_err(|_| EXIT_MODEL_BRIDGE_FAILED)?;
+
+            let session_id = std::sync::Arc::new(tokio::sync::OnceCell::new());
+            let capability_client = WindowsCapabilityClient::new(
+                capability_channel,
+                control.attempt_lease.clone(),
+                session_id.clone(),
+            )
+            .map_err(|_| EXIT_CAPABILITY_BRIDGE_FAILED)?;
+            let model_provider = WindowsModelProvider::new(
+                model_channel,
+                control.model_attempt_lease.clone(),
+                session_id,
+                control.model_id.clone(),
+            )
+            .map_err(|_| EXIT_MODEL_BRIDGE_FAILED)?;
+            let (data_dir, config_dir) = load_prepared_goose_state_directories(
+                &control.private_root,
+            )
+            .map_err(|failure| {
+                eprintln!(
+                    "Goose windows containment failed at bounded stage {}",
+                    failure.code()
+                );
+                failure.worker_exit_code()
+            })?;
+            let adapter = goose::acp::server::AcpRuntimeAdapter {
+                provider_id: "actestra".to_string(),
+                model_config: goose_providers::model::ModelConfig::new(&control.model_id),
+                provider: std::sync::Arc::new(model_provider),
+                extension_name: "actestra-capability-proxy".to_string(),
+                extension_config: goose::agents::ExtensionConfig::Builtin {
+                    name: "actestra-capability-proxy".to_string(),
+                    description: "Actestra capability proxy".to_string(),
+                    display_name: None,
+                    timeout: None,
+                    bundled: Some(true),
+                    available_tools: Vec::new(),
+                },
+                extension_client: std::sync::Arc::new(capability_client),
+                data_dir,
+                config_dir,
+            };
+            startup
+                .advance(WorkerStartupStage::AdaptersConstructed)
+                .map_err(|_| EXIT_MODEL_BRIDGE_FAILED)?;
+            let ready_result = write_all_handle(ready_handle, WINDOWS_WORKER_READY_MARKER);
+            unsafe { CloseHandle(ready_handle) };
+            if ready_result.is_err() {
+                return Err(EXIT_READY_SIGNAL_FAILED);
+            }
+            startup
+                .advance(WorkerStartupStage::ReadyWritten)
+                .map_err(|_| EXIT_READY_SIGNAL_FAILED)?;
+            startup
+                .advance(WorkerStartupStage::AcpServing)
+                .map_err(|_| EXIT_ACP_HANDSHAKE_FAILED)?;
+            goose::acp::server::run_with_runtime_adapter(adapter)
+                .await
+                .map_err(|_| EXIT_ACP_HANDSHAKE_FAILED)
+        });
+        match result {
+            Ok(()) => 0,
+            Err(code) => {
+                eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+                code
+            }
+        }
     }
     #[cfg(not(windows))]
     {
         eprintln!("{WINDOWS_RESOURCE_FAILURE_MARKER}");
         1
     }
+}
+
+#[cfg(any(windows, test))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum StateDirectoryPrepareFailure {
+    Layout,
+    RootMetadata,
+    RootCanonicalize,
+    DataMetadata,
+    DataCreate,
+    DataCanonicalize,
+    ConfigMetadata,
+    ConfigCreate,
+    ConfigCanonicalize,
+    TraversalShape,
+}
+
+#[cfg(any(windows, test))]
+impl StateDirectoryPrepareFailure {
+    fn code(self) -> &'static str {
+        match self {
+            Self::Layout => "windows-state-directory-layout-failed",
+            Self::RootMetadata => "windows-state-directory-root-metadata-failed",
+            Self::RootCanonicalize => "windows-state-directory-root-canonicalize-failed",
+            Self::DataMetadata => "windows-state-directory-data-metadata-failed",
+            Self::DataCreate => "windows-state-directory-data-create-failed",
+            Self::DataCanonicalize => "windows-state-directory-data-canonicalize-failed",
+            Self::ConfigMetadata => "windows-state-directory-config-metadata-failed",
+            Self::ConfigCreate => "windows-state-directory-config-create-failed",
+            Self::ConfigCanonicalize => "windows-state-directory-config-canonicalize-failed",
+            Self::TraversalShape => "windows-state-directory-traversal-shape-invalid",
+        }
+    }
+
+    fn worker_exit_code(self) -> i32 {
+        match self {
+            Self::Layout => EXIT_STATE_DIRECTORY_LAYOUT_FAILED,
+            Self::RootMetadata => EXIT_STATE_DIRECTORY_ROOT_METADATA_FAILED,
+            Self::RootCanonicalize => EXIT_STATE_DIRECTORY_ROOT_CANONICALIZE_FAILED,
+            Self::DataMetadata => EXIT_STATE_DIRECTORY_DATA_METADATA_FAILED,
+            Self::DataCreate => EXIT_STATE_DIRECTORY_DATA_CREATE_FAILED,
+            Self::DataCanonicalize => EXIT_STATE_DIRECTORY_DATA_CANONICALIZE_FAILED,
+            Self::ConfigMetadata => EXIT_STATE_DIRECTORY_CONFIG_METADATA_FAILED,
+            Self::ConfigCreate => EXIT_STATE_DIRECTORY_CONFIG_CREATE_FAILED,
+            Self::ConfigCanonicalize => EXIT_STATE_DIRECTORY_CONFIG_CANONICALIZE_FAILED,
+            Self::TraversalShape => EXIT_STATE_DIRECTORY_TRAVERSAL_SHAPE_FAILED,
+        }
+    }
+
+    fn worker_runtime_code(self) -> &'static str {
+        match self {
+            Self::Layout => "windows-worker-state-directory-layout-failed",
+            Self::RootMetadata => "windows-worker-state-directory-root-metadata-failed",
+            Self::RootCanonicalize => "windows-worker-state-directory-root-canonicalize-failed",
+            Self::DataMetadata => "windows-worker-state-directory-data-metadata-failed",
+            Self::DataCreate => "windows-worker-state-directory-data-create-failed",
+            Self::DataCanonicalize => "windows-worker-state-directory-data-canonicalize-failed",
+            Self::ConfigMetadata => "windows-worker-state-directory-config-metadata-failed",
+            Self::ConfigCreate => "windows-worker-state-directory-config-create-failed",
+            Self::ConfigCanonicalize => "windows-worker-state-directory-config-canonicalize-failed",
+            Self::TraversalShape => "windows-worker-state-directory-traversal-shape-invalid",
+        }
+    }
+
+    #[cfg(test)]
+    fn test_child_exit_code(self) -> i32 {
+        match self {
+            Self::Layout => 220,
+            Self::RootMetadata => 221,
+            Self::RootCanonicalize => 222,
+            Self::DataMetadata => 223,
+            Self::DataCreate => 224,
+            Self::DataCanonicalize => 225,
+            Self::ConfigMetadata => 226,
+            Self::ConfigCreate => 227,
+            Self::ConfigCanonicalize => 228,
+            Self::TraversalShape => 229,
+        }
+    }
+}
+
+fn prepare_goose_state_directories(
+    private_root: &str,
+) -> Result<(std::path::PathBuf, std::path::PathBuf), StateDirectoryPrepareFailure> {
+    let root = std::path::Path::new(private_root);
+    if !root.is_absolute() {
+        return Err(StateDirectoryPrepareFailure::Layout);
+    }
+    let root_metadata =
+        std::fs::symlink_metadata(root).map_err(|_| StateDirectoryPrepareFailure::RootMetadata)?;
+    if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
+        return Err(StateDirectoryPrepareFailure::Layout);
+    }
+    let canonical_root =
+        std::fs::canonicalize(root).map_err(|_| StateDirectoryPrepareFailure::RootCanonicalize)?;
+    let data_dir = root.join("goose-data");
+    let config_dir = root.join("goose-config");
+
+    match std::fs::symlink_metadata(&data_dir) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                return Err(StateDirectoryPrepareFailure::Layout);
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            std::fs::create_dir(&data_dir).map_err(|_| StateDirectoryPrepareFailure::DataCreate)?;
+        }
+        Err(_) => return Err(StateDirectoryPrepareFailure::DataMetadata),
+    }
+    let canonical_data = std::fs::canonicalize(&data_dir)
+        .map_err(|_| StateDirectoryPrepareFailure::DataCanonicalize)?;
+    if canonical_data.parent() != Some(canonical_root.as_path()) {
+        return Err(StateDirectoryPrepareFailure::TraversalShape);
+    }
+
+    match std::fs::symlink_metadata(&config_dir) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                return Err(StateDirectoryPrepareFailure::Layout);
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            std::fs::create_dir(&config_dir)
+                .map_err(|_| StateDirectoryPrepareFailure::ConfigCreate)?;
+        }
+        Err(_) => return Err(StateDirectoryPrepareFailure::ConfigMetadata),
+    }
+    let canonical_config = std::fs::canonicalize(&config_dir)
+        .map_err(|_| StateDirectoryPrepareFailure::ConfigCanonicalize)?;
+    if canonical_config.parent() != Some(canonical_root.as_path()) {
+        return Err(StateDirectoryPrepareFailure::TraversalShape);
+    }
+
+    Ok((data_dir, config_dir))
+}
+
+fn load_prepared_goose_state_directories(
+    private_root: &str,
+) -> Result<(std::path::PathBuf, std::path::PathBuf), StateDirectoryPrepareFailure> {
+    let root = std::path::Path::new(private_root);
+    if !root.is_absolute() {
+        return Err(StateDirectoryPrepareFailure::Layout);
+    }
+    let root_metadata =
+        std::fs::symlink_metadata(root).map_err(|_| StateDirectoryPrepareFailure::RootMetadata)?;
+    if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
+        return Err(StateDirectoryPrepareFailure::Layout);
+    }
+
+    let data_dir = root.join("goose-data");
+    let data_metadata = std::fs::symlink_metadata(&data_dir)
+        .map_err(|_| StateDirectoryPrepareFailure::DataMetadata)?;
+    if data_metadata.file_type().is_symlink() || !data_metadata.is_dir() {
+        return Err(StateDirectoryPrepareFailure::Layout);
+    }
+
+    let config_dir = root.join("goose-config");
+    let config_metadata = std::fs::symlink_metadata(&config_dir)
+        .map_err(|_| StateDirectoryPrepareFailure::ConfigMetadata)?;
+    if config_metadata.file_type().is_symlink() || !config_metadata.is_dir() {
+        return Err(StateDirectoryPrepareFailure::Layout);
+    }
+
+    Ok((data_dir, config_dir))
+}
+
+#[cfg(windows)]
+fn wide_path(path: &Path) -> Result<Vec<u16>, ()> {
+    let mut value: Vec<u16> = path.as_os_str().encode_wide().collect();
+    if value.is_empty() || value.iter().any(|unit| *unit == 0) {
+        return Err(());
+    }
+    value.push(0);
+    Ok(value)
+}
+
+#[cfg(windows)]
+fn exact_sid_trustee(sid: PSID) -> Result<TRUSTEE_W, ()> {
+    if sid.is_null() {
+        return Err(());
+    }
+    Ok(TRUSTEE_W {
+        pMultipleTrustee: null_mut(),
+        MultipleTrusteeOperation: NO_MULTIPLE_TRUSTEE,
+        TrusteeForm: TRUSTEE_IS_SID,
+        TrusteeType: TRUSTEE_IS_USER,
+        ptstrName: sid.cast(),
+    })
+}
+
+#[cfg(windows)]
+fn exact_sid_effective_rights(path: &Path, sid: PSID) -> Result<u32, ()> {
+    let wide = wide_path(path)?;
+    let trustee = exact_sid_trustee(sid)?;
+    let mut dacl: *mut ACL = null_mut();
+    let mut descriptor: PSECURITY_DESCRIPTOR = null_mut();
+    // SAFETY: wide is a NUL-terminated existing filesystem path. Only the DACL and owning
+    // descriptor are requested; descriptor is released with LocalFree below.
+    let read_result = unsafe {
+        GetNamedSecurityInfoW(
+            wide.as_ptr(),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            null_mut(),
+            null_mut(),
+            &mut dacl,
+            null_mut(),
+            &mut descriptor,
+        )
+    };
+    if read_result != ERROR_SUCCESS || descriptor.is_null() || dacl.is_null() {
+        if !descriptor.is_null() {
+            // SAFETY: descriptor was allocated by GetNamedSecurityInfoW.
+            unsafe { LocalFree(descriptor) };
+        }
+        return Err(());
+    }
+    let mut rights = 0_u32;
+    // SAFETY: dacl remains owned by descriptor for this call and trustee contains the exact live
+    // AppContainer SID retained by AppContainerProfile.
+    let rights_result = unsafe { GetEffectiveRightsFromAclW(dacl, &trustee, &mut rights) };
+    // SAFETY: descriptor was allocated by GetNamedSecurityInfoW and is no longer needed.
+    unsafe { LocalFree(descriptor) };
+    if rights_result != ERROR_SUCCESS {
+        return Err(());
+    }
+    Ok(rights)
+}
+
+#[cfg(windows)]
+fn grant_exact_appcontainer_directory_access(
+    path: &Path,
+    sid: PSID,
+    access_mask: u32,
+    forbidden_mask: u32,
+    inheritance: u32,
+) -> Result<(), ()> {
+    let wide = wide_path(path)?;
+    let trustee = exact_sid_trustee(sid)?;
+    let mut current_dacl: *mut ACL = null_mut();
+    let mut descriptor: PSECURITY_DESCRIPTOR = null_mut();
+    // SAFETY: wide is a NUL-terminated existing directory. descriptor owns current_dacl and is
+    // released after SetEntriesInAclW has copied the existing ACL.
+    let read_result = unsafe {
+        GetNamedSecurityInfoW(
+            wide.as_ptr(),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            null_mut(),
+            null_mut(),
+            &mut current_dacl,
+            null_mut(),
+            &mut descriptor,
+        )
+    };
+    if read_result != ERROR_SUCCESS || descriptor.is_null() || current_dacl.is_null() {
+        if !descriptor.is_null() {
+            // SAFETY: descriptor was allocated by GetNamedSecurityInfoW.
+            unsafe { LocalFree(descriptor) };
+        }
+        return Err(());
+    }
+    let entry = EXPLICIT_ACCESS_W {
+        grfAccessPermissions: access_mask,
+        grfAccessMode: SET_ACCESS,
+        grfInheritance: inheritance,
+        Trustee: trustee,
+    };
+    let mut updated_dacl: *mut ACL = null_mut();
+    // SAFETY: entry refers to the retained exact SID, current_dacl is valid for descriptor's
+    // lifetime, and updated_dacl is an out pointer released with LocalFree.
+    let merge_result = unsafe { SetEntriesInAclW(1, &entry, current_dacl, &mut updated_dacl) };
+    // SAFETY: descriptor was allocated by GetNamedSecurityInfoW and current_dacl is no longer used.
+    unsafe { LocalFree(descriptor) };
+    if merge_result != ERROR_SUCCESS || updated_dacl.is_null() {
+        if !updated_dacl.is_null() {
+            // SAFETY: updated_dacl was allocated by SetEntriesInAclW.
+            unsafe { LocalFree(updated_dacl.cast()) };
+        }
+        return Err(());
+    }
+    // SAFETY: wide is the same bounded directory path and updated_dacl is a valid ACL containing
+    // the exact AppContainer SID entry plus the existing owner/system entries.
+    let write_result = unsafe {
+        SetNamedSecurityInfoW(
+            wide.as_ptr() as *mut u16,
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            null_mut(),
+            null_mut(),
+            updated_dacl,
+            null_mut(),
+        )
+    };
+    // SAFETY: updated_dacl was allocated by SetEntriesInAclW and is no longer used.
+    unsafe { LocalFree(updated_dacl.cast()) };
+    if write_result != ERROR_SUCCESS {
+        return Err(());
+    }
+    let effective = exact_sid_effective_rights(path, sid)?;
+    if effective & access_mask != access_mask || effective & forbidden_mask != 0 {
+        return Err(());
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn grant_low_integrity_directory_label(path: &Path) -> Result<(), ()> {
+    let wide = wide_path(path)?;
+    let mut low_sid: PSID = null_mut();
+    // SAFETY: SECURITY_MANDATORY_LABEL_AUTHORITY is the documented authority for integrity SIDs;
+    // the one subauthority is SECURITY_MANDATORY_LOW_RID.
+    if unsafe {
+        AllocateAndInitializeSid(
+            &SECURITY_MANDATORY_LABEL_AUTHORITY,
+            1,
+            SECURITY_MANDATORY_LOW_RID as u32,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            &mut low_sid,
+        )
+    } == 0
+        || low_sid.is_null()
+    {
+        return Err(());
+    }
+
+    // A mandatory-label ACE for one integrity SID is bounded well below this fixed ACL buffer.
+    // LABEL_SECURITY_INFORMATION updates only the integrity label and preserves audit SACL ACEs;
+    // requesting SACL_SECURITY_INFORMATION here would incorrectly require SeSecurityPrivilege.
+    let acl_size = 256_u32;
+    let mut replacement = vec![0_u8; acl_size as usize];
+    let replacement_acl = replacement.as_mut_ptr().cast::<ACL>();
+    // SAFETY: replacement is a writable buffer larger than the one-label ACL we append.
+    if unsafe { InitializeAcl(replacement_acl, acl_size, ACL_REVISION) } == 0 {
+        unsafe { FreeSid(low_sid) };
+        return Err(());
+    }
+    // SAFETY: low_sid is a valid integrity SID and replacement_acl has room for its ACE.
+    if unsafe {
+        AddMandatoryAce(
+            replacement_acl,
+            ACL_REVISION,
+            STATE_LOW_INTEGRITY_ACE_FLAGS,
+            SYSTEM_MANDATORY_LABEL_NO_WRITE_UP,
+            low_sid,
+        )
+    } == 0
+    {
+        unsafe { FreeSid(low_sid) };
+        return Err(());
+    }
+    // SAFETY: replacement_acl remains alive for the synchronous SetNamedSecurityInfoW call.
+    let write_result = unsafe {
+        SetNamedSecurityInfoW(
+            wide.as_ptr() as *mut u16,
+            SE_FILE_OBJECT,
+            LABEL_SECURITY_INFORMATION,
+            null_mut(),
+            null_mut(),
+            null_mut(),
+            replacement_acl,
+        )
+    };
+    unsafe { FreeSid(low_sid) };
+    if write_result != ERROR_SUCCESS {
+        return Err(());
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn private_root_traversal_paths(
+    private_root_traversal_root: &str,
+    private_root: &str,
+) -> Result<[PathBuf; 2], ()> {
+    let traversal_root = std::fs::canonicalize(private_root_traversal_root).map_err(|_| ())?;
+    let private_root = std::fs::canonicalize(private_root).map_err(|_| ())?;
+    let private_parent = private_root.parent().ok_or(())?.to_path_buf();
+    let private_grandparent = private_parent.parent().ok_or(())?;
+    if private_grandparent != traversal_root || private_parent == traversal_root {
+        return Err(());
+    }
+    Ok([traversal_root, private_parent])
+}
+
+#[cfg(windows)]
+fn prepare_appcontainer_goose_state_directories(
+    private_root_traversal_root: &str,
+    private_root: &str,
+    sid: PSID,
+) -> Result<(), StateDirectoryAdmissionFailure> {
+    let root = Path::new(private_root);
+    let (data_dir, config_dir) = prepare_goose_state_directories(private_root)
+        .map_err(StateDirectoryAdmissionFailure::Prepare)?;
+    let ancestors = private_root_traversal_paths(private_root_traversal_root, private_root)
+        .map_err(|_| StateDirectoryAdmissionFailure::TraversalShape)?;
+    for ancestor in ancestors {
+        grant_exact_appcontainer_directory_access(
+            &ancestor,
+            sid,
+            STATE_ANCESTOR_TRAVERSE_ACCESS_MASK,
+            STATE_ANCESTOR_FORBIDDEN_ACCESS_MASK,
+            NO_INHERITANCE,
+        )
+        .map_err(|_| StateDirectoryAdmissionFailure::AncestorAccess)?;
+    }
+    grant_exact_appcontainer_directory_access(
+        root,
+        sid,
+        STATE_ROOT_ACCESS_MASK,
+        STATE_ROOT_FORBIDDEN_ACCESS_MASK,
+        NO_INHERITANCE,
+    )
+    .map_err(|_| StateDirectoryAdmissionFailure::RootAccess)?;
+    for directory in [&data_dir, &config_dir] {
+        grant_exact_appcontainer_directory_access(
+            directory,
+            sid,
+            STATE_DIRECTORY_ACCESS_MASK,
+            STATE_FORBIDDEN_ACCESS_MASK,
+            SUB_CONTAINERS_AND_OBJECTS_INHERIT,
+        )
+        .map_err(|_| StateDirectoryAdmissionFailure::ChildAccess)?;
+        grant_low_integrity_directory_label(directory)
+            .map_err(|_| StateDirectoryAdmissionFailure::IntegrityLabel)?;
+    }
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -2093,13 +3552,167 @@ fn verify_worker_boundary() -> bool {
     queried && is_app_container == 1
 }
 
+const WORKER_REQUEST_WRITTEN_PROGRESS: &[u8] =
+    b"Goose windows capability progress at bounded stage windows-capability-worker-request-written";
+const WORKER_RESPONSE_DECODED_PROGRESS: &[u8] = b"Goose windows capability progress at bounded stage windows-capability-worker-response-decoded";
+const WORKER_CALL_REQUEST_WRITTEN_PROGRESS: &[u8] = b"Goose windows capability progress at bounded stage windows-capability-call-worker-request-written";
+const WORKER_CALL_RESPONSE_DECODED_PROGRESS: &[u8] = b"Goose windows capability progress at bounded stage windows-capability-call-worker-response-decoded";
+const WORKER_MODEL_REQUEST_WRITTEN_PROGRESS: &[u8] =
+    b"Goose windows model progress at bounded stage windows-model-worker-request-written";
+const WORKER_MODEL_RESPONSE_DECODED_PROGRESS: &[u8] =
+    b"Goose windows model progress at bounded stage windows-model-worker-response-decoded";
+const WORKER_ACP_ENTRY_PROGRESS: &[u8] =
+    b"Goose windows worker progress at bounded stage windows-worker-acp-entry";
+const WORKER_AGENT_CREATED_PROGRESS: &[u8] =
+    b"Goose windows worker progress at bounded stage windows-worker-agent-created";
+const WORKER_SERVE_ENTERED_PROGRESS: &[u8] =
+    b"Goose windows worker progress at bounded stage windows-worker-serve-entered";
+const WORKER_STDERR_RELAY_STARTED_PROGRESS: &[u8] =
+    b"Goose windows worker stderr progress at bounded stage windows-worker-stderr-relay-started";
+const WORKER_STDERR_BYTE_READ_PROGRESS: &[u8] =
+    b"Goose windows worker stderr progress at bounded stage windows-worker-stderr-byte-read";
+const WORKER_STDERR_MARKER_FORWARDED_PROGRESS: &[u8] =
+    b"Goose windows worker stderr progress at bounded stage windows-worker-stderr-marker-forwarded";
+
+fn worker_progress_line(line: &[u8]) -> Option<&'static str> {
+    match line {
+        value if value == WORKER_REQUEST_WRITTEN_PROGRESS => {
+            Some("windows-capability-worker-request-written")
+        }
+        value if value == WORKER_RESPONSE_DECODED_PROGRESS => {
+            Some("windows-capability-worker-response-decoded")
+        }
+        value if value == WORKER_CALL_REQUEST_WRITTEN_PROGRESS => {
+            Some("windows-capability-call-worker-request-written")
+        }
+        value if value == WORKER_CALL_RESPONSE_DECODED_PROGRESS => {
+            Some("windows-capability-call-worker-response-decoded")
+        }
+        value if value == WORKER_MODEL_REQUEST_WRITTEN_PROGRESS => {
+            Some("windows-model-worker-request-written")
+        }
+        value if value == WORKER_MODEL_RESPONSE_DECODED_PROGRESS => {
+            Some("windows-model-worker-response-decoded")
+        }
+        value if value == WORKER_ACP_ENTRY_PROGRESS => Some("windows-worker-acp-entry"),
+        value if value == WORKER_AGENT_CREATED_PROGRESS => Some("windows-worker-agent-created"),
+        value if value == WORKER_SERVE_ENTERED_PROGRESS => Some("windows-worker-serve-entered"),
+        value if value == WORKER_STDERR_RELAY_STARTED_PROGRESS => {
+            Some("windows-worker-stderr-relay-started")
+        }
+        value if value == WORKER_STDERR_BYTE_READ_PROGRESS => {
+            Some("windows-worker-stderr-byte-read")
+        }
+        value if value == WORKER_STDERR_MARKER_FORWARDED_PROGRESS => {
+            Some("windows-worker-stderr-marker-forwarded")
+        }
+        _ => None,
+    }
+}
+
+#[cfg(windows)]
+fn report_windows_bridge_progress(stage: &'static str) {
+    if stage.starts_with("windows-model-") {
+        eprintln!("Goose windows model progress at bounded stage {stage}");
+    } else if stage.starts_with("windows-worker-stderr-") {
+        eprintln!("Goose windows worker stderr progress at bounded stage {stage}");
+    } else if stage.starts_with("windows-worker-") {
+        eprintln!("Goose windows worker progress at bounded stage {stage}");
+    } else {
+        eprintln!("Goose windows capability progress at bounded stage {stage}");
+    }
+}
+
+struct WorkerCapabilityProgressLineFilter {
+    line: Vec<u8>,
+    overflowed: bool,
+}
+
+impl WorkerCapabilityProgressLineFilter {
+    fn new() -> Self {
+        Self {
+            line: Vec::with_capacity(128),
+            overflowed: false,
+        }
+    }
+
+    fn push(&mut self, byte: u8) -> Option<&'static str> {
+        if byte == b'\n' {
+            if self.overflowed {
+                self.line.clear();
+                self.overflowed = false;
+                return None;
+            }
+            if self.line.last() == Some(&b'\r') {
+                self.line.pop();
+            }
+            let result = worker_progress_line(&self.line);
+            self.line.clear();
+            return result;
+        }
+        if self.overflowed {
+            return None;
+        }
+        if self.line.len() >= 256 {
+            self.line.clear();
+            self.overflowed = true;
+            return None;
+        }
+        self.line.push(byte);
+        None
+    }
+}
+
+#[cfg(windows)]
+async fn relay_worker_stderr_progress(handle: HANDLE) -> Result<(), ()> {
+    let mut channel = crate::windows_bridge::WindowsBridgeChannel::from_raw_handle(handle)?;
+    report_windows_bridge_progress("windows-worker-stderr-relay-started");
+    let mut filter = WorkerCapabilityProgressLineFilter::new();
+    let mut byte = [0_u8; 1];
+    loop {
+        match channel.read_once(&mut byte).await? {
+            0 => return Ok(()),
+            1 => {
+                report_windows_bridge_progress("windows-worker-stderr-byte-read");
+                if let Some(stage) = filter.push(byte[0]) {
+                    report_windows_bridge_progress("windows-worker-stderr-marker-forwarded");
+                    report_windows_bridge_progress(stage);
+                }
+            }
+            _ => return Err(()),
+        }
+    }
+}
+
 #[cfg(windows)]
 fn launch_controlled_worker(control: crate::windows_control::WindowsControlMessage) -> i32 {
-    let profile = match AppContainerProfile::create(&control.attempt_id) {
+    let mut profile = match AppContainerProfile::create(&control.attempt_id) {
         Ok(profile) => profile,
         Err(()) => {
             eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
             return SupervisorFailureStage::Profile.diagnostic_exit_code();
+        }
+    };
+    if let Err(failure) = prepare_appcontainer_goose_state_directories(
+        &control.private_root_traversal_root,
+        &control.private_root,
+        profile.sid(),
+    ) {
+        return report_supervisor_failure(
+            SupervisorFailureStage::StateDirectoryAdmission(failure),
+            WINDOWS_SETUP_FAILURE_MARKER,
+        );
+    }
+    let bridge_runtime = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(_) => {
+            return report_supervisor_failure(
+                SupervisorFailureStage::CapabilityChannel,
+                WINDOWS_SETUP_FAILURE_MARKER,
+            );
         }
     };
     let job = match JobObject::create() {
@@ -2142,29 +3755,153 @@ fn launch_controlled_worker(control: crate::windows_control::WindowsControlMessa
     let payload = match crate::windows_control::serialize_control_message(&control) {
         Ok(payload) => payload,
         Err(()) => {
-            eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-            return SupervisorFailureStage::ControlSerialization.diagnostic_exit_code();
+            return report_supervisor_failure(
+                SupervisorFailureStage::ControlSerialization,
+                WINDOWS_SETUP_FAILURE_MARKER,
+            );
         }
     };
     let mut frame = Vec::with_capacity(payload.len() + 4);
     frame.extend_from_slice(&(payload.len() as u32).to_le_bytes());
     frame.extend_from_slice(&payload);
-    if write_all_handle(pipes.supervisor_stdin, &frame).is_err() {
-        eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-        return SupervisorFailureStage::ControlWrite.diagnostic_exit_code();
+    if write_all_handle(pipes.supervisor_control_write, &frame).is_err() {
+        return report_supervisor_failure(
+            SupervisorFailureStage::ControlWrite,
+            WINDOWS_SETUP_FAILURE_MARKER,
+        );
     }
-    unsafe { CloseHandle(pipes.supervisor_stdin) };
-    pipes.supervisor_stdin = null_mut();
+    unsafe { CloseHandle(pipes.supervisor_control_write) };
+    pipes.supervisor_control_write = null_mut();
+    let capability_worker = match pipes.take_capability_worker_channel() {
+        Ok(channel) => channel,
+        Err(()) => {
+            return report_supervisor_failure(
+                SupervisorFailureStage::CapabilityChannel,
+                WINDOWS_SETUP_FAILURE_MARKER,
+            );
+        }
+    };
+    let model_worker = match pipes.take_model_worker_channel() {
+        Ok(channel) => channel,
+        Err(()) => {
+            return report_supervisor_failure(
+                SupervisorFailureStage::ModelChannel,
+                WINDOWS_SETUP_FAILURE_MARKER,
+            );
+        }
+    };
+    // The Worker receives only the four explicitly allowlisted anonymous-pipe endpoints and writes
+    // ready after constructing both framed clients. No namespace lookup or additional authority is
+    // required across the AppContainer boundary.
     let mut marker = vec![0_u8; WINDOWS_WORKER_READY_MARKER.len()];
-    let worker_ready = read_exact_handle(pipes.supervisor_stdout, &mut marker).is_ok()
+    let worker_ready = read_exact_handle(pipes.supervisor_ready_read, &mut marker).is_ok()
         && marker == WINDOWS_WORKER_READY_MARKER;
     if !worker_ready {
-        eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
-        return SupervisorFailureStage::WorkerReady.diagnostic_exit_code();
+        let mut exit_code = 0_u32;
+        let worker_exited =
+            unsafe { GetExitCodeProcess(worker.process, &mut exit_code) } != 0 && exit_code != 259; // STILL_ACTIVE
+        if worker_exited {
+            let failure = classify_worker_startup_exit(exit_code);
+            return report_supervisor_failure(
+                SupervisorFailureStage::WorkerStartup(failure),
+                WINDOWS_SETUP_FAILURE_MARKER,
+            );
+        }
+        return report_supervisor_failure(
+            SupervisorFailureStage::WorkerReady,
+            WINDOWS_SETUP_FAILURE_MARKER,
+        );
     }
-    eprintln!("{WINDOWS_RESOURCE_FAILURE_MARKER}");
-    let _ = worker;
-    1
+    let worker_stdin = match pipes.take_worker_stdin() {
+        Ok(handle) => handle,
+        Err(()) => {
+            eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+            return SupervisorFailureStage::Pipes.diagnostic_exit_code();
+        }
+    };
+    let worker_stdout = match pipes.take_worker_stdout() {
+        Ok(handle) => handle,
+        Err(()) => {
+            eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+            return SupervisorFailureStage::Pipes.diagnostic_exit_code();
+        }
+    };
+    let worker_stderr = pipes.supervisor_stderr;
+    if worker_stderr.is_null() || worker_stderr == INVALID_HANDLE_VALUE {
+        eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+        return SupervisorFailureStage::Pipes.diagnostic_exit_code();
+    }
+    pipes.supervisor_stderr = null_mut();
+    let acp_input =
+        handle_from_fd(0).and_then(crate::windows_bridge::WindowsBridgeChannel::from_raw_handle);
+    let acp_output =
+        handle_from_fd(1).and_then(crate::windows_bridge::WindowsBridgeChannel::from_raw_handle);
+    let (capability_main, model_main) = {
+        // NamedPipeClient registration must occur inside the runtime that drives the relays.
+        let _runtime_guard = bridge_runtime.enter();
+        (overlapped_channel_from_fd(5), overlapped_channel_from_fd(6))
+    };
+    let worker_stdin = crate::windows_bridge::WindowsBridgeChannel::from_raw_handle(worker_stdin);
+    let worker_stdout = crate::windows_bridge::WindowsBridgeChannel::from_raw_handle(worker_stdout);
+    let (acp_input, acp_output, capability_main, model_main, worker_stdin, worker_stdout) = match (
+        acp_input,
+        acp_output,
+        capability_main,
+        model_main,
+        worker_stdin,
+        worker_stdout,
+    ) {
+        (Ok(a), Ok(b), Ok(c), Ok(d), Ok(e), Ok(f)) => (a, b, c, d, e, f),
+        _ => {
+            eprintln!("{WINDOWS_SETUP_FAILURE_MARKER}");
+            return SupervisorFailureStage::Pipes.diagnostic_exit_code();
+        }
+    };
+    let worker_process_handle = worker.process_handle();
+    let runtime_timeout_ms = control.resource_budget.max_active_duration_ms;
+    let relay_result = bridge_runtime.block_on(async move {
+        let acp_in = acp_input.copy_to(worker_stdin);
+        let acp_out = worker_stdout.copy_to(acp_output);
+        let progress_reporter: std::sync::Arc<dyn Fn(&'static str) + Send + Sync> =
+            std::sync::Arc::new(report_windows_bridge_progress);
+        let capability = capability_main
+            .relay_capability_framed_bidirectional(capability_worker, progress_reporter.clone());
+        let model = model_main.relay_model_framed_bidirectional(model_worker, progress_reporter);
+        let worker_exit = async move {
+            let _ = relay_worker_stderr_progress(worker_stderr).await;
+            wait_for_worker_exit_handle(worker_process_handle).await
+        };
+        tokio::select! {
+            result = wait_for_parent_liveness() => {
+                classify_runtime_event(WindowsRuntimeEvent::ParentLiveness(result))
+            },
+            result = worker_exit => {
+                classify_runtime_event(WindowsRuntimeEvent::WorkerExit(result))
+            },
+            _ = tokio::time::sleep(std::time::Duration::from_millis(runtime_timeout_ms)) => {
+                classify_runtime_event(WindowsRuntimeEvent::Timeout)
+            },
+            result = acp_in => classify_runtime_event(WindowsRuntimeEvent::AcpRelay(result)),
+            result = acp_out => classify_runtime_event(WindowsRuntimeEvent::AcpRelay(result)),
+            result = capability => {
+                classify_runtime_event(WindowsRuntimeEvent::CapabilityRelay(result))
+            },
+            result = model => classify_runtime_event(WindowsRuntimeEvent::ModelRelay(result)),
+        }
+    });
+    let cleanup_complete = cleanup_runtime(&job, &worker, &mut profile);
+    let diagnostic_codes = runtime_diagnostic_codes(relay_result, cleanup_complete);
+    drop((worker, pipes, profile, bridge_runtime));
+    for code in diagnostic_codes.into_iter().flatten() {
+        if WINDOWS_RUNTIME_FAILURE_CODES.contains(&code) {
+            eprintln!("Goose windows containment failed at bounded stage {code}");
+        }
+    }
+    if diagnostic_codes == [None, None] {
+        0
+    } else {
+        1
+    }
 }
 
 #[cfg(windows)]
@@ -2212,9 +3949,114 @@ fn read_control_frame_from_fd(
     parse_control_frame(&frame)
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum WorkerStartupStage {
+    ControlValidated,
+    BoundaryVerified,
+    CapabilityConnected,
+    ModelConnected,
+    AdaptersConstructed,
+    ReadyWritten,
+    AcpServing,
+}
+
+const WORKER_STARTUP_ORDER: [WorkerStartupStage; 7] = [
+    WorkerStartupStage::ControlValidated,
+    WorkerStartupStage::BoundaryVerified,
+    WorkerStartupStage::CapabilityConnected,
+    WorkerStartupStage::ModelConnected,
+    WorkerStartupStage::AdaptersConstructed,
+    WorkerStartupStage::ReadyWritten,
+    WorkerStartupStage::AcpServing,
+];
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct WorkerStartupStateMachine {
+    observed: Vec<WorkerStartupStage>,
+}
+
+impl WorkerStartupStateMachine {
+    pub(crate) fn new() -> Self {
+        Self {
+            observed: Vec::new(),
+        }
+    }
+
+    pub(crate) fn advance(&mut self, stage: WorkerStartupStage) -> Result<(), ()> {
+        if WORKER_STARTUP_ORDER.get(self.observed.len()).copied() != Some(stage) {
+            return Err(());
+        }
+        self.observed.push(stage);
+        Ok(())
+    }
+
+    pub(crate) fn observed(&self) -> &[WorkerStartupStage] {
+        &self.observed
+    }
+}
+
+#[cfg(test)]
+fn simulate_worker_startup(
+    fail_at: Option<WorkerStartupStage>,
+) -> Result<Vec<WorkerStartupStage>, WorkerStartupStage> {
+    let mut state = WorkerStartupStateMachine::new();
+    for stage in WORKER_STARTUP_ORDER {
+        state.advance(stage).expect("the startup order is valid");
+        if fail_at == Some(stage) {
+            return Err(stage);
+        }
+    }
+    Ok(state.observed().to_vec())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn requires_exactly_nine_unique_inheritable_worker_handles_and_private_parent_ends() {
+        let worker = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let parent = [10, 11, 12, 13, 14, 15, 16, 17, 18];
+        assert!(worker_pipe_handle_contract_is_closed(
+            worker, parent, [true; 9], [false; 9]
+        ));
+
+        let mut duplicate_worker = worker;
+        duplicate_worker[8] = duplicate_worker[0];
+        assert!(!worker_pipe_handle_contract_is_closed(
+            duplicate_worker,
+            parent,
+            [true; 9],
+            [false; 9]
+        ));
+
+        let mut colliding_parent = parent;
+        colliding_parent[5] = worker[5];
+        assert!(!worker_pipe_handle_contract_is_closed(
+            worker,
+            colliding_parent,
+            [true; 9],
+            [false; 9]
+        ));
+
+        let mut non_inheritable_worker = [true; 9];
+        non_inheritable_worker[5] = false;
+        assert!(!worker_pipe_handle_contract_is_closed(
+            worker,
+            parent,
+            non_inheritable_worker,
+            [false; 9]
+        ));
+
+        let mut inheritable_parent = [false; 9];
+        inheritable_parent[7] = true;
+        assert!(!worker_pipe_handle_contract_is_closed(
+            worker,
+            parent,
+            [true; 9],
+            inheritable_parent
+        ));
+    }
 
     #[test]
     fn cleanup_receipt_requires_every_observable_cleanup_stage() {
@@ -2229,19 +4071,559 @@ mod tests {
     }
 
     #[test]
-    fn derives_exact_attempt_scoped_pipe_names_without_private_text() {
-        let names = derive_pipe_names("0123456789abcdef0123456789abcdef").unwrap();
-        assert!(names
-            .capability
-            .starts_with(r"\\.\pipe\LOCAL\Actestra.Goose."));
-        assert!(names.model.starts_with(r"\\.\pipe\LOCAL\Actestra.Goose."));
-        assert!(names.capability.ends_with(".capability"));
-        assert!(names.model.ends_with(".model"));
-        assert_ne!(names.capability, names.model);
-        for forbidden in ["C:", "prompt", "model text", "lease"] {
-            assert!(!names.capability.contains(forbidden));
-            assert!(!names.model.contains(forbidden));
+    fn creates_only_private_goose_state_directories() {
+        let root = test_private_root("directories");
+        let (data_dir, config_dir) = prepare_goose_state_directories(root.to_str().unwrap())
+            .expect("private Goose directories should be created");
+        assert_eq!(data_dir.parent(), Some(root.as_path()));
+        assert_eq!(config_dir.parent(), Some(root.as_path()));
+        assert!(data_dir.is_dir());
+        assert!(config_dir.is_dir());
+
+        std::fs::remove_dir_all(&data_dir).unwrap();
+        std::fs::create_dir(&data_dir).unwrap();
+        assert!(prepare_goose_state_directories(root.to_str().unwrap()).is_ok());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn worker_loads_only_supervisor_prepared_goose_state_directories() {
+        let root = test_private_root("prepared-directories");
+        let expected = prepare_goose_state_directories(root.to_str().unwrap()).unwrap();
+        assert_eq!(
+            load_prepared_goose_state_directories(root.to_str().unwrap()).unwrap(),
+            expected
+        );
+
+        std::fs::remove_dir_all(&expected.0).unwrap();
+        assert_eq!(
+            load_prepared_goose_state_directories(root.to_str().unwrap()),
+            Err(StateDirectoryPrepareFailure::DataMetadata)
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlinked_private_goose_state_directories() {
+        let root = test_private_root("symlink");
+        let outside = test_private_root("outside");
+        std::os::unix::fs::symlink(&outside, root.join("goose-data")).unwrap();
+        assert!(prepare_goose_state_directories(root.to_str().unwrap()).is_err());
+        std::fs::remove_dir_all(root).unwrap();
+        std::fs::remove_dir_all(outside).unwrap();
+    }
+
+    fn test_private_root(label: &str) -> std::path::PathBuf {
+        let unique = format!(
+            "actestra-goose-{label}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let root = std::env::temp_dir().join(unique);
+        std::fs::create_dir(&root).unwrap();
+        root
+    }
+
+    #[test]
+    fn windows_worker_runtime_startup_order_is_fixed() {
+        assert_eq!(
+            simulate_worker_startup(None).unwrap(),
+            vec![
+                WorkerStartupStage::ControlValidated,
+                WorkerStartupStage::BoundaryVerified,
+                WorkerStartupStage::CapabilityConnected,
+                WorkerStartupStage::ModelConnected,
+                WorkerStartupStage::AdaptersConstructed,
+                WorkerStartupStage::ReadyWritten,
+                WorkerStartupStage::AcpServing,
+            ]
+        );
+    }
+
+    #[test]
+    fn worker_stderr_progress_filter_admits_only_exact_capability_markers() {
+        assert_eq!(
+            worker_progress_line(
+                b"Goose windows capability progress at bounded stage windows-capability-worker-request-written"
+            ),
+            Some("windows-capability-worker-request-written")
+        );
+        assert_eq!(
+            worker_progress_line(
+                b"Goose windows capability progress at bounded stage windows-capability-worker-response-decoded"
+            ),
+            Some("windows-capability-worker-response-decoded")
+        );
+        assert_eq!(
+            worker_progress_line(
+                b"Goose windows capability progress at bounded stage windows-capability-call-worker-request-written"
+            ),
+            Some("windows-capability-call-worker-request-written")
+        );
+        assert_eq!(
+            worker_progress_line(
+                b"Goose windows capability progress at bounded stage windows-capability-call-worker-response-decoded"
+            ),
+            Some("windows-capability-call-worker-response-decoded")
+        );
+        assert_eq!(
+            worker_progress_line(
+                b"Goose windows model progress at bounded stage windows-model-worker-request-written"
+            ),
+            Some("windows-model-worker-request-written")
+        );
+        assert_eq!(
+            worker_progress_line(
+                b"Goose windows model progress at bounded stage windows-model-worker-response-decoded"
+            ),
+            Some("windows-model-worker-response-decoded")
+        );
+        assert_eq!(
+            worker_progress_line(
+                b"Goose windows worker progress at bounded stage windows-worker-acp-entry"
+            ),
+            Some("windows-worker-acp-entry")
+        );
+        assert_eq!(
+            worker_progress_line(
+                b"Goose windows worker progress at bounded stage windows-worker-agent-created"
+            ),
+            Some("windows-worker-agent-created")
+        );
+        assert_eq!(
+            worker_progress_line(
+                b"Goose windows worker progress at bounded stage windows-worker-serve-entered"
+            ),
+            Some("windows-worker-serve-entered")
+        );
+        assert_eq!(
+            worker_progress_line(
+                b"Goose windows worker stderr progress at bounded stage windows-worker-stderr-relay-started"
+            ),
+            Some("windows-worker-stderr-relay-started")
+        );
+        assert_eq!(
+            worker_progress_line(
+                b"Goose windows worker stderr progress at bounded stage windows-worker-stderr-byte-read"
+            ),
+            Some("windows-worker-stderr-byte-read")
+        );
+        assert_eq!(
+            worker_progress_line(
+                b"Goose windows worker stderr progress at bounded stage windows-worker-stderr-marker-forwarded"
+            ),
+            Some("windows-worker-stderr-marker-forwarded")
+        );
+        assert_eq!(worker_progress_line(b"C:\\private\\secret"), None);
+        assert_eq!(
+            worker_progress_line(
+                b"Goose windows capability progress at bounded stage windows-capability-worker-request-written extra"
+            ),
+            None
+        );
+
+        let marker = b"Goose windows capability progress at bounded stage windows-capability-worker-request-written";
+        let mut filter = WorkerCapabilityProgressLineFilter::new();
+        let mut observed = Vec::new();
+        for byte in [vec![b'x'; 257], marker.to_vec(), vec![b'\n']].concat() {
+            if let Some(stage) = filter.push(byte) {
+                observed.push(stage);
+            }
         }
+        assert!(observed.is_empty());
+        for byte in [marker.to_vec(), vec![b'\n']].concat() {
+            if let Some(stage) = filter.push(byte) {
+                observed.push(stage);
+            }
+        }
+        assert_eq!(observed, vec!["windows-capability-worker-request-written"]);
+    }
+
+    #[test]
+    fn windows_worker_runtime_startup_failure_stops_before_later_stages() {
+        let expected = [
+            WorkerStartupStage::ControlValidated,
+            WorkerStartupStage::BoundaryVerified,
+            WorkerStartupStage::CapabilityConnected,
+            WorkerStartupStage::ModelConnected,
+            WorkerStartupStage::AdaptersConstructed,
+            WorkerStartupStage::ReadyWritten,
+            WorkerStartupStage::AcpServing,
+        ];
+
+        for (index, stage) in expected.into_iter().enumerate() {
+            let error = simulate_worker_startup(Some(stage)).unwrap_err();
+            assert_eq!(error, stage);
+            let mut state = WorkerStartupStateMachine::new();
+            for expected_stage in expected.into_iter().take(index + 1) {
+                state.advance(expected_stage).unwrap();
+            }
+            assert_eq!(state.observed(), &expected[..index + 1]);
+        }
+    }
+
+    #[test]
+    fn windows_worker_runtime_startup_state_machine_rejects_skips_and_replays() {
+        let mut state = WorkerStartupStateMachine::new();
+        assert!(state.advance(WorkerStartupStage::BoundaryVerified).is_err());
+        assert!(state.advance(WorkerStartupStage::ControlValidated).is_ok());
+        assert!(state.advance(WorkerStartupStage::ControlValidated).is_err());
+        assert!(state.advance(WorkerStartupStage::BoundaryVerified).is_ok());
+    }
+
+    #[tokio::test]
+    async fn windows_worker_runtime_initializes_an_mcp_free_adapted_acp_session() {
+        use crate::windows_capability_bridge::{
+            decode_capability_frame, encode_capability_frame, CapabilityFrame,
+            WindowsCapabilityClient,
+        };
+        use crate::windows_model_bridge::{
+            decode_model_frame, encode_model_frame, ModelFrame, WindowsModelProvider,
+        };
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+        use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
+
+        const LEASE: &str = "lease_0123456789abcdef0123456789abcdef";
+        const MODEL: &str = "actestra-fixed-model";
+        const TOOLS: [&str; 6] = [
+            "actestra.coding.file.read-text",
+            "actestra.coding.file.write-text",
+            "actestra.coding.terminal.run",
+            "actestra.coding.git.inspect",
+            "actestra.coding.diff.inspect",
+            "actestra.coding.test.run",
+        ];
+
+        let root = test_private_root("acp-runtime");
+        let workspace = root.join("work");
+        std::fs::create_dir(&workspace).unwrap();
+        let (data_dir, config_dir) =
+            prepare_goose_state_directories(root.to_str().unwrap()).unwrap();
+        let session_id = std::sync::Arc::new(tokio::sync::OnceCell::new());
+        let (capability_worker, capability_main) = tokio::io::duplex(64 * 1024);
+        let capability_client = WindowsCapabilityClient::new(
+            crate::windows_bridge::WindowsBridgeChannel::from_duplex(capability_worker),
+            LEASE.to_string(),
+            session_id.clone(),
+        )
+        .unwrap();
+        let (model_worker, model_main) = tokio::io::duplex(64 * 1024);
+        let model_provider = WindowsModelProvider::new(
+            crate::windows_bridge::WindowsBridgeChannel::from_duplex(model_worker),
+            LEASE.to_string(),
+            session_id.clone(),
+            MODEL.to_string(),
+        )
+        .unwrap();
+        let adapter = goose::acp::server::AcpRuntimeAdapter {
+            provider_id: "actestra".to_string(),
+            model_config: goose_providers::model::ModelConfig::new(MODEL),
+            provider: std::sync::Arc::new(model_provider),
+            extension_name: "actestra-capability-proxy".to_string(),
+            extension_config: goose::agents::ExtensionConfig::Builtin {
+                name: "actestra-capability-proxy".to_string(),
+                description: "Actestra capability proxy".to_string(),
+                display_name: None,
+                timeout: None,
+                bundled: Some(true),
+                available_tools: Vec::new(),
+            },
+            extension_client: std::sync::Arc::new(capability_client),
+            data_dir: data_dir.clone(),
+            config_dir: config_dir.clone(),
+        };
+        let server = goose::acp::server_factory::AcpServer::new_with_runtime_adapter(
+            goose::acp::server_factory::AcpServerFactoryConfig {
+                builtins: Vec::new(),
+                data_dir,
+                config_dir,
+                goose_platform: goose::agents::GoosePlatform::GooseCli,
+                additional_source_roots: Vec::new(),
+                enable_scheduler: false,
+            },
+            adapter,
+        );
+        let agent = server.create_agent().await.unwrap();
+        let (server_stream, client_stream) = tokio::io::duplex(256 * 1024);
+        let (server_read, server_write) = tokio::io::split(server_stream);
+        let serve_task = tokio::spawn(goose::acp::server::serve(
+            agent,
+            server_read.compat(),
+            server_write.compat_write(),
+        ));
+        let (client_read, mut client_write) = tokio::io::split(client_stream);
+        let mut client_read = tokio::io::BufReader::new(client_read);
+
+        async fn send(
+            writer: &mut tokio::io::WriteHalf<tokio::io::DuplexStream>,
+            value: serde_json::Value,
+        ) {
+            let mut line = serde_json::to_vec(&value).unwrap();
+            line.push(b'\n');
+            writer.write_all(&line).await.unwrap();
+        }
+
+        async fn response(
+            reader: &mut tokio::io::BufReader<tokio::io::ReadHalf<tokio::io::DuplexStream>>,
+            expected_id: &str,
+        ) -> serde_json::Value {
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).await.unwrap();
+                assert!(!line.is_empty(), "ACP transport closed before the response");
+                let message: serde_json::Value = serde_json::from_str(&line).unwrap();
+                if message.get("id").and_then(serde_json::Value::as_str) == Some(expected_id) {
+                    return message;
+                }
+            }
+        }
+
+        send(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": "initialize-1",
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": 1,
+                    "clientCapabilities": {},
+                    "clientInfo": {"name": "actestra-test", "version": "1"}
+                }
+            }),
+        )
+        .await;
+        let initialized = response(&mut client_read, "initialize-1").await;
+        assert_eq!(initialized["result"]["agentInfo"]["name"], "goose");
+
+        send(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": "session-1",
+                "method": "session/new",
+                "params": {"cwd": workspace, "mcpServers": []}
+            }),
+        )
+        .await;
+        let opened = response(&mut client_read, "session-1").await;
+        let acp_session = opened["result"]["sessionId"]
+            .as_str()
+            .expect("adapted session id")
+            .to_string();
+        assert!(session_id.get().is_none());
+
+        let capability_session = acp_session.clone();
+        let capability_task = tokio::spawn(async move {
+            let mut main =
+                crate::windows_bridge::WindowsBridgeChannel::from_duplex(capability_main);
+            let request = decode_capability_frame(
+                &main.read_frame().await.unwrap(),
+                LEASE,
+                &capability_session,
+            )
+            .unwrap();
+            let CapabilityFrame::ListRequest { request_id, .. } = request else {
+                panic!("expected injected extension list request");
+            };
+            let tools = TOOLS
+                .iter()
+                .map(|name| {
+                    let input_schema = if *name == TOOLS[0] {
+                        serde_json::json!({
+                            "properties": {"relativePath": {"type": "string"}},
+                            "type": "object"
+                        })
+                    } else {
+                        serde_json::json!({})
+                    };
+                    serde_json::json!({"inputSchema": input_schema, "name": name})
+                })
+                .collect();
+            main.write_frame(
+                &encode_capability_frame(&CapabilityFrame::ListResponse { request_id, tools })
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+            let request = decode_capability_frame(
+                &main.read_frame().await.unwrap(),
+                LEASE,
+                &capability_session,
+            )
+            .unwrap();
+            let CapabilityFrame::CallRequest {
+                request_id,
+                tool_name,
+                arguments,
+                ..
+            } = request
+            else {
+                panic!("expected injected extension tool call");
+            };
+            assert_eq!(tool_name, TOOLS[0]);
+            assert_eq!(arguments, serde_json::json!({"relativePath": "README.md"}));
+            main.write_frame(
+                &encode_capability_frame(&CapabilityFrame::CallResponse {
+                    request_id,
+                    is_error: false,
+                    content: "bounded README contents".to_string(),
+                })
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+            capability_session
+        });
+        send(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": "tools-1",
+                "method": "_goose/unstable/tools/list",
+                "params": {
+                    "sessionId": opened["result"]["sessionId"],
+                    "extensionName": "actestra-capability-proxy"
+                }
+            }),
+        )
+        .await;
+        let discovered = response(&mut client_read, "tools-1").await;
+        let names = discovered["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|tool| tool["name"].as_str().unwrap().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(names.len(), TOOLS.len());
+        assert!(names
+            .iter()
+            .all(|name| name.starts_with("actestra-capability-proxy__actestra.coding.")));
+        assert_eq!(
+            session_id.get().map(String::as_str),
+            Some(acp_session.as_str())
+        );
+
+        let model_session = acp_session.clone();
+        let model_task = tokio::spawn(async move {
+            let mut main = crate::windows_bridge::WindowsBridgeChannel::from_duplex(model_main);
+            let first =
+                decode_model_frame(&main.read_frame().await.unwrap(), LEASE, &model_session)
+                    .unwrap();
+            let ModelFrame::CompletionRequest {
+                request_id,
+                invocation,
+                ..
+            } = first
+            else {
+                panic!("expected first model completion request");
+            };
+            let mut tool_names = invocation["tools"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|tool| tool["name"].as_str().unwrap())
+                .collect::<Vec<_>>();
+            tool_names.sort_unstable();
+            let mut expected_tools = TOOLS.to_vec();
+            expected_tools.sort_unstable();
+            assert_eq!(tool_names, expected_tools);
+            assert!(invocation["messages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|message| {
+                    message["role"] == serde_json::json!("user")
+                        && message["content"] == serde_json::json!("Read README.md")
+                }));
+            main.write_frame(
+                &encode_model_frame(&ModelFrame::CompletionResponse {
+                    request_id,
+                    completion: serde_json::json!({
+                        "arguments": {"relativePath": "README.md"},
+                        "callId": "call-1",
+                        "name": TOOLS[0],
+                        "type": "tool-call",
+                        "usage": {"completionTokens": 4, "promptTokens": 7}
+                    }),
+                })
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+
+            let second =
+                decode_model_frame(&main.read_frame().await.unwrap(), LEASE, &model_session)
+                    .unwrap();
+            let ModelFrame::CompletionRequest {
+                request_id,
+                invocation,
+                ..
+            } = second
+            else {
+                panic!("expected follow-up model completion request");
+            };
+            assert!(invocation["messages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|message| {
+                    message["role"] == serde_json::json!("assistant")
+                        && message["toolCalls"][0]["name"] == serde_json::json!(TOOLS[0])
+                }));
+            assert!(invocation["messages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|message| {
+                    message["role"] == serde_json::json!("tool")
+                        && message["content"] == serde_json::json!("bounded README contents")
+                }));
+            main.write_frame(
+                &encode_model_frame(&ModelFrame::CompletionResponse {
+                    request_id,
+                    completion: serde_json::json!({
+                        "text": "README inspected",
+                        "type": "message",
+                        "usage": {"completionTokens": 2, "promptTokens": 9}
+                    }),
+                })
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        });
+
+        send(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": "prompt-1",
+                "method": "session/prompt",
+                "params": {
+                    "sessionId": acp_session,
+                    "prompt": [{"type": "text", "text": "Read README.md"}]
+                }
+            }),
+        )
+        .await;
+        let prompted = response(&mut client_read, "prompt-1").await;
+        assert_eq!(
+            prompted["result"]["stopReason"],
+            serde_json::json!("end_turn")
+        );
+        let bound_session = capability_task.await.unwrap();
+        assert_eq!(session_id.get(), Some(&bound_session));
+        model_task.await.unwrap();
+
+        drop(client_write);
+        serve_task.abort();
+        let _ = serve_task.await;
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[cfg(windows)]
@@ -2263,7 +4645,7 @@ mod tests {
             "0123456789abcdef0123456789abcdeg",
             "0123456789abcdef0123456789abcdef0",
         ] {
-            assert!(derive_pipe_names(value).is_err());
+            assert!(!is_exact_attempt_id(value));
         }
     }
 
@@ -2387,6 +4769,393 @@ mod tests {
     }
 
     #[test]
+    fn keeps_runtime_failure_codes_closed_and_sanitized() {
+        assert_eq!(WINDOWS_RUNTIME_FAILURE_CODES.len(), 42);
+        let mut unique = WINDOWS_RUNTIME_FAILURE_CODES.to_vec();
+        unique.sort_unstable();
+        unique.dedup();
+        assert_eq!(unique.len(), WINDOWS_RUNTIME_FAILURE_CODES.len());
+        for code in WINDOWS_RUNTIME_FAILURE_CODES {
+            assert!(code.starts_with("windows-"));
+            assert!(code
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte == b'-'));
+            assert!(!code.contains(['/', '\\', ' ', ':']));
+        }
+    }
+
+    #[test]
+    fn maps_each_worker_startup_exit_code_to_a_distinct_closed_runtime_code() {
+        let expected = [
+            (
+                EXIT_CONTROL_FRAME_INVALID,
+                "windows-worker-control-frame-invalid",
+            ),
+            (
+                EXIT_BOUNDARY_VERIFICATION_FAILED,
+                "windows-worker-boundary-verification-failed",
+            ),
+            (
+                EXIT_RUNTIME_CREATION_FAILED,
+                "windows-worker-runtime-creation-failed",
+            ),
+            (
+                EXIT_CAPABILITY_BRIDGE_FAILED,
+                "windows-worker-capability-bridge-failed",
+            ),
+            (
+                EXIT_MODEL_BRIDGE_FAILED,
+                "windows-worker-model-bridge-failed",
+            ),
+            (
+                EXIT_STATE_DIRECTORY_FAILED,
+                "windows-worker-state-directory-failed",
+            ),
+            (
+                EXIT_STATE_DIRECTORY_LAYOUT_FAILED,
+                "windows-worker-state-directory-layout-failed",
+            ),
+            (
+                EXIT_STATE_DIRECTORY_ROOT_METADATA_FAILED,
+                "windows-worker-state-directory-root-metadata-failed",
+            ),
+            (
+                EXIT_STATE_DIRECTORY_ROOT_CANONICALIZE_FAILED,
+                "windows-worker-state-directory-root-canonicalize-failed",
+            ),
+            (
+                EXIT_STATE_DIRECTORY_DATA_METADATA_FAILED,
+                "windows-worker-state-directory-data-metadata-failed",
+            ),
+            (
+                EXIT_STATE_DIRECTORY_DATA_CREATE_FAILED,
+                "windows-worker-state-directory-data-create-failed",
+            ),
+            (
+                EXIT_STATE_DIRECTORY_DATA_CANONICALIZE_FAILED,
+                "windows-worker-state-directory-data-canonicalize-failed",
+            ),
+            (
+                EXIT_STATE_DIRECTORY_CONFIG_METADATA_FAILED,
+                "windows-worker-state-directory-config-metadata-failed",
+            ),
+            (
+                EXIT_STATE_DIRECTORY_CONFIG_CREATE_FAILED,
+                "windows-worker-state-directory-config-create-failed",
+            ),
+            (
+                EXIT_STATE_DIRECTORY_CONFIG_CANONICALIZE_FAILED,
+                "windows-worker-state-directory-config-canonicalize-failed",
+            ),
+            (
+                EXIT_STATE_DIRECTORY_TRAVERSAL_SHAPE_FAILED,
+                "windows-worker-state-directory-traversal-shape-invalid",
+            ),
+            (
+                EXIT_READY_SIGNAL_FAILED,
+                "windows-worker-ready-signal-failed",
+            ),
+            (
+                EXIT_ACP_HANDSHAKE_FAILED,
+                "windows-worker-acp-handshake-failed",
+            ),
+        ];
+
+        let mut diagnostics = Vec::new();
+        for (exit_code, runtime_code) in expected {
+            let failure = classify_worker_startup_exit(exit_code as u32);
+            assert_eq!(failure.runtime_code(), runtime_code);
+            assert!(WINDOWS_RUNTIME_FAILURE_CODES.contains(&runtime_code));
+            assert_eq!(
+                runtime_code_for_supervisor_failure(SupervisorFailureStage::WorkerStartup(failure)),
+                Some(runtime_code)
+            );
+            assert_eq!(
+                runtime_diagnostic_codes(
+                    classify_runtime_event(WindowsRuntimeEvent::WorkerExit(Ok(exit_code as u32))),
+                    true
+                ),
+                [Some(runtime_code), None]
+            );
+            diagnostics.push(failure.diagnostic_exit_code());
+        }
+
+        diagnostics.sort_unstable();
+        diagnostics.dedup();
+        assert_eq!(diagnostics.len(), expected.len());
+
+        let unknown = classify_worker_startup_exit(1);
+        assert_eq!(unknown.runtime_code(), "windows-worker-runtime-failed");
+        assert_eq!(
+            classify_runtime_event(WindowsRuntimeEvent::WorkerExit(Ok(0))),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn maps_each_state_directory_admission_failure_to_a_distinct_closed_runtime_code() {
+        let failures = [
+            (
+                StateDirectoryAdmissionFailure::Prepare(StateDirectoryPrepareFailure::Layout),
+                "windows-state-directory-layout-failed",
+            ),
+            (
+                StateDirectoryAdmissionFailure::Prepare(StateDirectoryPrepareFailure::RootMetadata),
+                "windows-state-directory-root-metadata-failed",
+            ),
+            (
+                StateDirectoryAdmissionFailure::Prepare(
+                    StateDirectoryPrepareFailure::RootCanonicalize,
+                ),
+                "windows-state-directory-root-canonicalize-failed",
+            ),
+            (
+                StateDirectoryAdmissionFailure::Prepare(StateDirectoryPrepareFailure::DataMetadata),
+                "windows-state-directory-data-metadata-failed",
+            ),
+            (
+                StateDirectoryAdmissionFailure::Prepare(StateDirectoryPrepareFailure::DataCreate),
+                "windows-state-directory-data-create-failed",
+            ),
+            (
+                StateDirectoryAdmissionFailure::Prepare(
+                    StateDirectoryPrepareFailure::DataCanonicalize,
+                ),
+                "windows-state-directory-data-canonicalize-failed",
+            ),
+            (
+                StateDirectoryAdmissionFailure::Prepare(
+                    StateDirectoryPrepareFailure::ConfigMetadata,
+                ),
+                "windows-state-directory-config-metadata-failed",
+            ),
+            (
+                StateDirectoryAdmissionFailure::Prepare(StateDirectoryPrepareFailure::ConfigCreate),
+                "windows-state-directory-config-create-failed",
+            ),
+            (
+                StateDirectoryAdmissionFailure::Prepare(
+                    StateDirectoryPrepareFailure::ConfigCanonicalize,
+                ),
+                "windows-state-directory-config-canonicalize-failed",
+            ),
+            (
+                StateDirectoryAdmissionFailure::Prepare(
+                    StateDirectoryPrepareFailure::TraversalShape,
+                ),
+                "windows-state-directory-traversal-shape-invalid",
+            ),
+            (
+                StateDirectoryAdmissionFailure::AncestorAccess,
+                "windows-state-directory-ancestor-access-failed",
+            ),
+            (
+                StateDirectoryAdmissionFailure::RootAccess,
+                "windows-state-directory-root-access-failed",
+            ),
+            (
+                StateDirectoryAdmissionFailure::ChildAccess,
+                "windows-state-directory-child-access-failed",
+            ),
+            (
+                StateDirectoryAdmissionFailure::IntegrityLabel,
+                "windows-state-directory-integrity-label-failed",
+            ),
+        ];
+        let diagnostics: Vec<_> = failures
+            .iter()
+            .map(|(failure, _)| failure.diagnostic_exit_code())
+            .collect();
+        let mut unique = diagnostics.clone();
+        unique.sort_unstable();
+        unique.dedup();
+        assert_eq!(unique.len(), failures.len());
+        for (failure, runtime_code) in failures {
+            assert_eq!(failure.runtime_code(), runtime_code);
+            assert!(WINDOWS_RUNTIME_FAILURE_CODES.contains(&runtime_code));
+            assert_eq!(
+                runtime_code_for_supervisor_failure(
+                    SupervisorFailureStage::StateDirectoryAdmission(failure)
+                ),
+                Some(runtime_code)
+            );
+        }
+    }
+
+    #[test]
+    fn keeps_the_synthetic_anonymous_pipe_child_protocol_separate_from_production_worker_exits() {
+        let expected = [
+            (201, "test-child-runtime-failed"),
+            (202, "test-child-channel-invalid"),
+            (208, "test-child-state-directory-failed"),
+            (220, "windows-state-directory-layout-failed"),
+            (221, "windows-state-directory-root-metadata-failed"),
+            (222, "windows-state-directory-root-canonicalize-failed"),
+            (223, "windows-state-directory-data-metadata-failed"),
+            (224, "windows-state-directory-data-create-failed"),
+            (225, "windows-state-directory-data-canonicalize-failed"),
+            (226, "windows-state-directory-config-metadata-failed"),
+            (227, "windows-state-directory-config-create-failed"),
+            (228, "windows-state-directory-config-canonicalize-failed"),
+            (229, "windows-state-directory-traversal-shape-invalid"),
+            (211, "test-child-state-directory-data-write-failed"),
+            (212, "test-child-state-directory-data-read-failed"),
+            (213, "test-child-state-directory-data-remove-failed"),
+            (214, "test-child-state-directory-config-write-failed"),
+            (215, "test-child-state-directory-config-read-failed"),
+            (216, "test-child-state-directory-config-remove-failed"),
+            (203, "test-child-frame-encode-failed"),
+            (204, "test-child-frame-write-failed"),
+            (205, "test-child-frame-read-failed"),
+            (206, "test-child-frame-mismatch"),
+        ];
+
+        for (exit_code, code) in expected {
+            let failure = classify_anonymous_pipe_test_child_exit(exit_code);
+            assert_eq!(failure.code(), code);
+            assert_eq!(failure.exit_code(), exit_code as i32);
+            assert!(!(101..=116).contains(&exit_code));
+            assert!(code
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte == b'-'));
+        }
+        assert_eq!(
+            classify_anonymous_pipe_test_child_exit(101).code(),
+            "test-child-panic"
+        );
+        assert_eq!(
+            classify_anonymous_pipe_test_child_exit(u32::MAX).code(),
+            "test-child-unexpected-exit"
+        );
+        assert_eq!(
+            classify_anonymous_pipe_test_child_exit(202).code(),
+            "test-child-channel-invalid"
+        );
+
+        let closed_parent_stages = [
+            "test-supervisor-frame-read-failed",
+            "test-supervisor-frame-mismatch",
+            "test-supervisor-frame-write-failed",
+            "test-child-wait-failed",
+        ];
+        for stage in closed_parent_stages {
+            assert!(stage.starts_with("test-"));
+            assert!(stage
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte == b'-'));
+            assert!(!stage.contains(['/', '\\', ' ', ':']));
+        }
+    }
+
+    #[test]
+    fn maps_runtime_setup_failures_to_reachable_closed_diagnostics() {
+        assert_eq!(
+            runtime_code_for_supervisor_failure(SupervisorFailureStage::ControlFrame),
+            Some("windows-control-channel-invalid")
+        );
+        assert_eq!(
+            runtime_code_for_supervisor_failure(SupervisorFailureStage::ControlSerialization),
+            Some("windows-control-channel-invalid")
+        );
+        assert_eq!(
+            runtime_code_for_supervisor_failure(SupervisorFailureStage::ControlWrite),
+            Some("windows-control-channel-invalid")
+        );
+        assert_eq!(
+            runtime_code_for_supervisor_failure(SupervisorFailureStage::WorkerReady),
+            Some("windows-ready-channel-invalid")
+        );
+        assert_eq!(
+            runtime_code_for_supervisor_failure(SupervisorFailureStage::CapabilityChannel),
+            Some("windows-capability-channel-invalid")
+        );
+        assert_eq!(
+            runtime_code_for_supervisor_failure(SupervisorFailureStage::ModelChannel),
+            Some("windows-model-channel-invalid")
+        );
+        assert_eq!(
+            runtime_code_for_supervisor_failure(SupervisorFailureStage::WorkerRuntime),
+            Some("windows-worker-runtime-failed")
+        );
+        assert_eq!(
+            runtime_code_for_supervisor_failure(SupervisorFailureStage::Job),
+            None
+        );
+    }
+
+    #[test]
+    fn classifies_runtime_completion_without_misreporting_orderly_shutdown() {
+        assert_eq!(
+            classify_runtime_event(WindowsRuntimeEvent::ParentLiveness(Ok(()))),
+            Ok(())
+        );
+        assert_eq!(
+            classify_runtime_event(WindowsRuntimeEvent::ParentLiveness(Err(()))),
+            Err("windows-worker-runtime-failed")
+        );
+        assert_eq!(
+            classify_runtime_event(WindowsRuntimeEvent::WorkerExit(Ok(0))),
+            Ok(())
+        );
+        assert_eq!(
+            classify_runtime_event(WindowsRuntimeEvent::WorkerExit(Ok(1))),
+            Err("windows-worker-runtime-failed")
+        );
+        assert_eq!(
+            classify_runtime_event(WindowsRuntimeEvent::WorkerExit(Err(()))),
+            Err("windows-worker-runtime-failed")
+        );
+        assert_eq!(
+            classify_runtime_event(WindowsRuntimeEvent::Timeout),
+            Err("windows-runtime-timeout")
+        );
+        assert_eq!(
+            classify_runtime_event(WindowsRuntimeEvent::AcpRelay(Err(()))),
+            Err("windows-acp-relay-failed")
+        );
+        assert_eq!(
+            classify_runtime_event(WindowsRuntimeEvent::AcpRelay(Ok(()))),
+            Err("windows-acp-relay-failed")
+        );
+        assert_eq!(
+            classify_runtime_event(WindowsRuntimeEvent::CapabilityRelay(Err(()))),
+            Err("windows-capability-relay-failed")
+        );
+        assert_eq!(
+            classify_runtime_event(WindowsRuntimeEvent::CapabilityRelay(Ok(()))),
+            Err("windows-capability-relay-failed")
+        );
+        assert_eq!(
+            classify_runtime_event(WindowsRuntimeEvent::ModelRelay(Err(()))),
+            Err("windows-model-relay-failed")
+        );
+        assert_eq!(
+            classify_runtime_event(WindowsRuntimeEvent::ModelRelay(Ok(()))),
+            Err("windows-model-relay-failed")
+        );
+    }
+
+    #[test]
+    fn retains_primary_runtime_failure_and_reports_cleanup_separately() {
+        assert_eq!(
+            runtime_diagnostic_codes(Err("windows-model-relay-failed"), false),
+            [
+                Some("windows-model-relay-failed"),
+                Some("windows-runtime-cleanup-failed")
+            ]
+        );
+        assert_eq!(
+            runtime_diagnostic_codes(Ok(()), false),
+            [None, Some("windows-runtime-cleanup-failed")]
+        );
+        assert_eq!(runtime_diagnostic_codes(Ok(()), true), [None, None]);
+        assert_eq!(
+            runtime_diagnostic_codes(Err("untrusted runtime detail"), true),
+            [Some("windows-worker-runtime-failed"), None]
+        );
+    }
+
+    #[test]
     fn classifies_create_process_failures_without_raw_error_output() {
         let classifications = [
             (2, CreateProcessFailureReason::FileNotFound),
@@ -2456,10 +5225,34 @@ mod tests {
             SupervisorFailureStage::ControlSerialization,
             SupervisorFailureStage::ControlWrite,
             SupervisorFailureStage::WorkerReady,
+            SupervisorFailureStage::CapabilityChannel,
+            SupervisorFailureStage::ModelChannel,
+            SupervisorFailureStage::WorkerRuntime,
+            SupervisorFailureStage::StateDirectoryAdmission(
+                StateDirectoryAdmissionFailure::Prepare(StateDirectoryPrepareFailure::Layout),
+            ),
+            SupervisorFailureStage::StateDirectoryAdmission(
+                StateDirectoryAdmissionFailure::TraversalShape,
+            ),
+            SupervisorFailureStage::StateDirectoryAdmission(
+                StateDirectoryAdmissionFailure::AncestorAccess,
+            ),
+            SupervisorFailureStage::StateDirectoryAdmission(
+                StateDirectoryAdmissionFailure::RootAccess,
+            ),
+            SupervisorFailureStage::StateDirectoryAdmission(
+                StateDirectoryAdmissionFailure::ChildAccess,
+            ),
+            SupervisorFailureStage::StateDirectoryAdmission(
+                StateDirectoryAdmissionFailure::IntegrityLabel,
+            ),
+            SupervisorFailureStage::WorkerStartup(WorkerStartupFailure::StateDirectoryPrepare(
+                StateDirectoryPrepareFailure::RootMetadata,
+            )),
         ];
         assert_eq!(
             stages.map(SupervisorFailureStage::diagnostic_exit_code),
-            [10, 11, 12, 13, 14, 32, 15, 16, 17]
+            [10, 11, 12, 13, 14, 32, 15, 16, 17, 18, 19, 46, 63, 64, 65, 66, 67, 68, 78]
         );
     }
 
@@ -2585,6 +5378,7 @@ mod tests {
 #[cfg(all(test, windows))]
 mod windows_native_tests {
     use super::*;
+    use crate::windows_control::WINDOWS_CONTROL_MAX_BYTES;
     use std::ffi::OsString;
     use std::mem::size_of;
     use std::os::windows::ffi::OsStringExt;
@@ -2620,12 +5414,311 @@ mod windows_native_tests {
         )
     }
 
+    fn windows_test_private_root(label: &str) -> std::path::PathBuf {
+        let unique = format!(
+            "actestra-goose-{label}-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock must be after the Unix epoch")
+                .as_nanos()
+        );
+        let root = std::env::temp_dir().join(unique);
+        std::fs::create_dir(&root).expect("the Windows native test root must be created");
+        root
+    }
+
     struct TestHandle(HANDLE);
 
     impl Drop for TestHandle {
         fn drop(&mut self) {
             // SAFETY: the test wrapper owns the event handle created below.
             unsafe { CloseHandle(self.0) };
+        }
+    }
+
+    fn current_test_process_is_app_container() -> bool {
+        let mut token: HANDLE = null_mut();
+        // SAFETY: the current-process pseudo handle is valid and token is an out pointer.
+        if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) } == 0
+            || token.is_null()
+        {
+            return false;
+        }
+        let mut is_app_container = 0_u32;
+        let mut return_length = 0_u32;
+        // SAFETY: token is live and the output buffer exactly matches TokenIsAppContainer.
+        let queried = unsafe {
+            GetTokenInformation(
+                token,
+                TokenIsAppContainer,
+                (&raw mut is_app_container).cast::<c_void>(),
+                size_of::<u32>() as u32,
+                &mut return_length,
+            )
+        } != 0;
+        // SAFETY: token was opened above and is no longer needed.
+        unsafe { CloseHandle(token) };
+        queried && is_app_container == 1
+    }
+
+    #[test]
+    fn appcontainer_anonymous_pipe_client_child() {
+        if !current_test_process_is_app_container() {
+            return;
+        }
+
+        if let Err(failure) = run_appcontainer_anonymous_pipe_client_child() {
+            std::process::exit(failure.exit_code());
+        }
+    }
+
+    fn run_appcontainer_anonymous_pipe_client_child() -> Result<(), AnonymousPipeTestChildFailure> {
+        let input = unsafe { GetStdHandle(STD_INPUT_HANDLE) };
+        let mut handle_frame = [0_u8; 16];
+        read_exact_handle(input, &mut handle_frame)
+            .map_err(|_| AnonymousPipeTestChildFailure::Channel)?;
+        let mut root_length = [0_u8; 4];
+        read_exact_handle(input, &mut root_length)
+            .map_err(|_| AnonymousPipeTestChildFailure::Channel)?;
+        let root_length = u32::from_le_bytes(root_length) as usize;
+        if root_length == 0 || root_length > WINDOWS_CONTROL_MAX_BYTES {
+            return Err(AnonymousPipeTestChildFailure::Channel);
+        }
+        let mut root_bytes = vec![0_u8; root_length];
+        read_exact_handle(input, &mut root_bytes)
+            .map_err(|_| AnonymousPipeTestChildFailure::Channel)?;
+        // SAFETY: the test child owns its inherited stdin endpoint and no longer needs it after
+        // receiving the two dedicated bridge handles and bounded private-root path.
+        unsafe { CloseHandle(input) };
+        let private_root = String::from_utf8(root_bytes)
+            .map_err(|_| AnonymousPipeTestChildFailure::StateDirectory)?;
+        let (data_dir, config_dir) = match load_prepared_goose_state_directories(&private_root) {
+            Ok(result) => result,
+            Err(failure) => {
+                eprintln!(
+                    "Goose windows containment failed at bounded stage {}",
+                    failure.code()
+                );
+                return Err(AnonymousPipeTestChildFailure::StateDirectoryPrepare(
+                    failure,
+                ));
+            }
+        };
+        let data_probe = data_dir.join("appcontainer-state-data.txt");
+        std::fs::write(&data_probe, b"state")
+            .map_err(|_| AnonymousPipeTestChildFailure::StateDirectoryDataWrite)?;
+        if std::fs::read(&data_probe)
+            .map_err(|_| AnonymousPipeTestChildFailure::StateDirectoryDataRead)?
+            != b"state"
+        {
+            return Err(AnonymousPipeTestChildFailure::StateDirectoryDataRead);
+        }
+        std::fs::remove_file(data_probe)
+            .map_err(|_| AnonymousPipeTestChildFailure::StateDirectoryDataRemove)?;
+        let config_probe = config_dir.join("appcontainer-state-config.txt");
+        std::fs::write(&config_probe, b"state")
+            .map_err(|_| AnonymousPipeTestChildFailure::StateDirectoryConfigWrite)?;
+        if std::fs::read(&config_probe)
+            .map_err(|_| AnonymousPipeTestChildFailure::StateDirectoryConfigRead)?
+            != b"state"
+        {
+            return Err(AnonymousPipeTestChildFailure::StateDirectoryConfigRead);
+        }
+        std::fs::remove_file(config_probe)
+            .map_err(|_| AnonymousPipeTestChildFailure::StateDirectoryConfigRemove)?;
+        let root_probe = std::path::Path::new(&private_root).join("appcontainer-root-write.txt");
+        if std::fs::write(&root_probe, b"forbidden").is_ok() {
+            let _ = std::fs::remove_file(root_probe);
+            return Err(AnonymousPipeTestChildFailure::RootWriteAllowed);
+        }
+        let capability_read = u64::from_le_bytes(
+            handle_frame[..8]
+                .try_into()
+                .map_err(|_| AnonymousPipeTestChildFailure::Channel)?,
+        ) as usize as HANDLE;
+        let capability_write = u64::from_le_bytes(
+            handle_frame[8..]
+                .try_into()
+                .map_err(|_| AnonymousPipeTestChildFailure::Channel)?,
+        ) as usize as HANDLE;
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|_| AnonymousPipeTestChildFailure::Runtime)?;
+        runtime.block_on(async {
+            let mut client = crate::windows_bridge::WindowsBridgeChannel::from_raw_handle_pair(
+                capability_read,
+                capability_write,
+            )
+            .map_err(|_| AnonymousPipeTestChildFailure::Channel)?;
+            let frame = crate::windows_bridge::encode_json_frame(
+                &serde_json::json!({"contractVersion": 1, "kind": "appcontainer-test"}),
+            )
+            .map_err(|_| AnonymousPipeTestChildFailure::FrameEncode)?;
+            client
+                .write_frame(&frame)
+                .await
+                .map_err(|_| AnonymousPipeTestChildFailure::FrameWrite)?;
+            let observed = client
+                .read_frame()
+                .await
+                .map_err(|_| AnonymousPipeTestChildFailure::FrameRead)?;
+            if observed != frame {
+                return Err(AnonymousPipeTestChildFailure::FrameMismatch);
+            }
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn exact_appcontainer_exchanges_frames_over_allowlisted_inherited_pipes() {
+        let attempt_id = unique_attempt_id();
+        let profile = AppContainerProfile::create(&attempt_id)
+            .expect("a unique AppContainer profile must be created");
+        let bridge_runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("the anonymous-pipe test runtime must start");
+
+        let job = JobObject::create().expect("the AppContainer test Job must be configured");
+        let mut pipes = WorkerPipeSet::create().expect("the AppContainer test pipes must open");
+        let executable = std::env::current_exe().expect("the native test executable must resolve");
+        let current_directory = executable
+            .parent()
+            .expect("the native test executable must have an absolute parent");
+        let traversal_root = windows_test_private_root("appcontainer-state");
+        let private_root_parent = traversal_root.join("goose-private");
+        let private_root = private_root_parent.join("goose-attempt");
+        std::fs::create_dir(&private_root_parent)
+            .expect("the Windows native test parent must be created");
+        std::fs::create_dir(&private_root).expect("the Windows native test root must be created");
+        let traversal_root_text = traversal_root
+            .to_str()
+            .expect("the test traversal path must be UTF-8");
+        let private_root_text = private_root.to_str().expect("the test path must be UTF-8");
+        prepare_appcontainer_goose_state_directories(
+            traversal_root_text,
+            private_root_text,
+            profile.sid(),
+        )
+        .expect("the exact AppContainer SID must receive bounded state-directory access");
+        let private_root_bytes = private_root_text.as_bytes();
+        let capability_handle_frame = [
+            (pipes.worker_capability_read as usize as u64).to_le_bytes(),
+            (pipes.worker_capability_write as usize as u64).to_le_bytes(),
+        ]
+        .concat();
+        let test_control_frame = [
+            capability_handle_frame,
+            (private_root_bytes.len() as u32).to_le_bytes().to_vec(),
+            private_root_bytes.to_vec(),
+        ]
+        .concat();
+        let inherited_handles = pipes.inherited_handles();
+        let worker = job
+            .launch_suspended_worker_with_variant_and_stdio_and_argument(
+                &profile,
+                &executable,
+                current_directory,
+                &inherited_handles,
+                Some(pipes.stdio()),
+                WorkerLaunchVariant::Production,
+                WINDOWS_ANONYMOUS_PIPE_TEST_CHILD_ARGUMENT,
+                None,
+            )
+            .expect("the AppContainer anonymous-pipe test child must launch");
+        pipes.close_worker_endpoints();
+        let supervisor_control = pipes.take_worker_stdin().expect("supervisor control");
+        if write_all_handle(supervisor_control, &test_control_frame).is_err() {
+            panic!(
+                "the AppContainer anonymous-pipe test failed at bounded stage {}",
+                "test-supervisor-control-write-failed"
+            );
+        }
+        // SAFETY: ownership was transferred out of the pipe set and the one-shot test control is
+        // complete.
+        unsafe { CloseHandle(supervisor_control) };
+        let mut accepted = pipes
+            .take_capability_worker_channel()
+            .expect("the anonymous supervisor channel must open");
+        let expected = crate::windows_bridge::encode_json_frame(
+            &serde_json::json!({"contractVersion": 1, "kind": "appcontainer-test"}),
+        )
+        .expect("the AppContainer test frame must encode");
+        let observed = match bridge_runtime.block_on(accepted.read_frame()) {
+            Ok(observed) => observed,
+            Err(()) => match worker.exit_code_if_exited() {
+                Ok(Some(exit_code)) => {
+                    let failure = classify_anonymous_pipe_test_child_exit(exit_code);
+                    panic!(
+                        "the AppContainer anonymous-pipe test failed at bounded stage {}",
+                        failure.code()
+                    );
+                }
+                Ok(None) | Err(()) => {
+                    panic!(
+                        "the AppContainer anonymous-pipe test failed at bounded stage {}",
+                        "test-supervisor-frame-read-failed"
+                    );
+                }
+            },
+        };
+        if observed != expected {
+            panic!(
+                "the AppContainer anonymous-pipe test failed at bounded stage {}",
+                "test-supervisor-frame-mismatch"
+            );
+        }
+        bridge_runtime
+            .block_on(accepted.write_frame(&expected))
+            .unwrap_or_else(|_| {
+                panic!(
+                    "the AppContainer anonymous-pipe test failed at bounded stage {}",
+                    "test-supervisor-frame-write-failed"
+                )
+            });
+        drop(accepted);
+        match worker.wait_for_exit(5_000) {
+            Ok(0) => {}
+            Ok(exit_code) => {
+                let failure = classify_anonymous_pipe_test_child_exit(exit_code);
+                panic!(
+                    "the AppContainer anonymous-pipe test failed at bounded stage {}",
+                    failure.code()
+                );
+            }
+            Err(()) => panic!(
+                "the AppContainer anonymous-pipe test failed at bounded stage {}",
+                "test-child-wait-failed"
+            ),
+        }
+        std::fs::remove_dir_all(traversal_root)
+            .expect("the AppContainer state test root must be removable after exit");
+    }
+
+    #[test]
+    fn production_worker_allowlist_contains_exactly_nine_closed_pipe_endpoints() {
+        let pipes = WorkerPipeSet::create().expect("the production Worker pipes must open");
+        let inherited = pipes.inherited_handles();
+        assert_eq!(inherited.len(), 9);
+        assert_eq!(
+            inherited,
+            [
+                pipes.worker_stdin,
+                pipes.worker_stdout,
+                pipes.worker_stderr,
+                pipes.worker_control_read,
+                pipes.worker_ready_write,
+                pipes.worker_capability_read,
+                pipes.worker_capability_write,
+                pipes.worker_model_read,
+                pipes.worker_model_write,
+            ]
+        );
+        assert!(pipes.handle_contract_is_closed());
+        for worker_handle in inherited {
+            assert!(!pipes.parent_handles().contains(&worker_handle));
         }
     }
 
@@ -2961,5 +6054,93 @@ mod windows_native_tests {
             "a private LOCALAPPDATA value must satisfy AppContainer environment creation"
         );
         assert!(restored.is_ok());
+    }
+
+    #[test]
+    fn classifies_worker_startup_exit_codes_to_distinct_failure_stages() {
+        assert_eq!(
+            classify_worker_startup_exit(101),
+            WorkerStartupFailure::ControlFrame
+        );
+        assert_eq!(
+            classify_worker_startup_exit(102),
+            WorkerStartupFailure::BoundaryVerification
+        );
+        assert_eq!(
+            classify_worker_startup_exit(103),
+            WorkerStartupFailure::RuntimeCreation
+        );
+        assert_eq!(
+            classify_worker_startup_exit(108),
+            WorkerStartupFailure::CapabilityBridge
+        );
+        assert_eq!(
+            classify_worker_startup_exit(113),
+            WorkerStartupFailure::ModelBridge
+        );
+        assert_eq!(
+            classify_worker_startup_exit(114),
+            WorkerStartupFailure::StateDirectory
+        );
+        assert_eq!(
+            classify_worker_startup_exit(115),
+            WorkerStartupFailure::ReadySignal
+        );
+        assert_eq!(
+            classify_worker_startup_exit(116),
+            WorkerStartupFailure::AcpHandshake
+        );
+        assert_eq!(
+            classify_worker_startup_exit(0),
+            WorkerStartupFailure::Unknown
+        );
+        assert_eq!(
+            classify_worker_startup_exit(1),
+            WorkerStartupFailure::Unknown
+        );
+        assert_eq!(
+            classify_worker_startup_exit(259),
+            WorkerStartupFailure::Unknown
+        );
+    }
+
+    #[test]
+    fn maps_worker_startup_failures_to_distinct_runtime_codes() {
+        assert_eq!(
+            WorkerStartupFailure::ControlFrame.runtime_code(),
+            "windows-worker-control-frame-invalid"
+        );
+        assert_eq!(
+            WorkerStartupFailure::BoundaryVerification.runtime_code(),
+            "windows-worker-boundary-verification-failed"
+        );
+        assert_eq!(
+            WorkerStartupFailure::RuntimeCreation.runtime_code(),
+            "windows-worker-runtime-creation-failed"
+        );
+        assert_eq!(
+            WorkerStartupFailure::CapabilityBridge.runtime_code(),
+            "windows-worker-capability-bridge-failed"
+        );
+        assert_eq!(
+            WorkerStartupFailure::ModelBridge.runtime_code(),
+            "windows-worker-model-bridge-failed"
+        );
+        assert_eq!(
+            WorkerStartupFailure::StateDirectory.runtime_code(),
+            "windows-worker-state-directory-failed"
+        );
+        assert_eq!(
+            WorkerStartupFailure::ReadySignal.runtime_code(),
+            "windows-worker-ready-signal-failed"
+        );
+        assert_eq!(
+            WorkerStartupFailure::AcpHandshake.runtime_code(),
+            "windows-worker-acp-handshake-failed"
+        );
+        assert_eq!(
+            WorkerStartupFailure::Unknown.runtime_code(),
+            "windows-worker-runtime-failed"
+        );
     }
 }

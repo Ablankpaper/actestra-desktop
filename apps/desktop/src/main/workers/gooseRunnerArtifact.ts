@@ -53,7 +53,7 @@ export interface AdmittedGooseRunnerArtifact {
   readonly targetTriple: string;
   /** Exact Actestra source commit recorded by the artifact provenance. */
   readonly sourceCommit?: string;
-  readonly gooseCommit: typeof sourceContract.goose.commit;
+  readonly gooseCommit: typeof sourceContract.goose.runtimeCommit;
   readonly gooseVersion: typeof sourceContract.goose.version;
   readonly manifestPath: string;
   readonly manifestSha256: string;
@@ -382,7 +382,7 @@ function validateSbom(value: unknown): number {
   if (
     !isRecord(goose) ||
     typeof goose.purl !== "string" ||
-    !goose.purl.includes(sourceContract.goose.commit)
+    !goose.purl.includes(sourceContract.goose.runtimeCommit)
   ) {
     throw new GooseRunnerArtifactError(
       "invalid-sbom",
@@ -583,9 +583,15 @@ function validateAudit(value: unknown, targetTriple: string, buildToolHost: stri
 }
 
 function validateLockfile(lockfile: string): void {
-  const exactSource = `git+https://github.com/aaif-goose/goose?rev=${sourceContract.goose.commit}#${sourceContract.goose.commit}`;
+  const exactSource = `git+${sourceContract.goose.runtimeRepository}?rev=${sourceContract.goose.runtimeCommit}#${sourceContract.goose.runtimeCommit}`;
+  const goosePackageSources = [
+    ...lockfile.matchAll(
+      /name = "(?:goose|goose-acp-macros|goose-download-manager|goose-provider-types|goose-providers|goose-sdk-types)"\nversion = "[^"]+"\nsource = "([^"]+)"/g,
+    ),
+  ].map((match) => match[1]);
   if (
-    !lockfile.includes(exactSource) ||
+    goosePackageSources.length < 1 ||
+    goosePackageSources.some((source) => source !== exactSource) ||
     !/name = "event-listener"\nversion = "5\.4\.2"/.test(lockfile) ||
     /name = "event-listener"\nversion = "5\.4\.1"/.test(lockfile) ||
     !/name = "lru"\nversion = "0\.18\.2"/.test(lockfile) ||
@@ -881,7 +887,7 @@ export async function admitGooseRunnerArtifact(
     executableSize: executableStat.size,
     targetTriple,
     sourceCommit: provenance.actestraCommit as string,
-    gooseCommit: sourceContract.goose.commit,
+    gooseCommit: sourceContract.goose.runtimeCommit,
     gooseVersion: sourceContract.goose.version,
     manifestPath,
     manifestSha256: sha256Buffer(manifestBuffer),

@@ -30,19 +30,66 @@ describe("Windows Goose supervisor source contract", () => {
     expect(manifest).not.toContain("Win32_Security_AppLocker");
   });
 
+  it("grants only the exact AppContainer SID bounded access to private Goose state", () => {
+    const manifest = read("workers/goose-runner/Cargo.toml");
+    const supervisor = read("workers/goose-runner/src/windows_supervisor.rs");
+
+    expect(manifest).toContain('"Win32_Security_Authorization"');
+    for (const api of [
+      "GetNamedSecurityInfoW",
+      "SetEntriesInAclW",
+      "SetNamedSecurityInfoW",
+      "GetEffectiveRightsFromAclW",
+      "InitializeAcl",
+      "AddMandatoryAce",
+      "AllocateAndInitializeSid",
+    ]) {
+      expect(supervisor).toContain(api);
+    }
+    expect(supervisor).toContain("prepare_appcontainer_goose_state_directories");
+    expect(supervisor).toContain("load_prepared_goose_state_directories");
+    const workerRuntime = supervisor.slice(
+      supervisor.indexOf("pub(crate) fn run_worker_with_arguments"),
+      supervisor.indexOf("enum StateDirectoryPrepareFailure"),
+    );
+    expect(workerRuntime).toContain("load_prepared_goose_state_directories");
+    expect(workerRuntime).not.toContain("prepare_goose_state_directories(&control.private_root)");
+    expect(supervisor).toContain("profile.sid()");
+    expect(supervisor.indexOf("prepare_appcontainer_goose_state_directories")).toBeLessThan(
+      supervisor.indexOf("job.launch_suspended_worker_with_stdio"),
+    );
+    expect(supervisor).toContain("STATE_ROOT_ACCESS_MASK");
+    expect(supervisor).toContain("STATE_ANCESTOR_TRAVERSE_ACCESS_MASK");
+    expect(supervisor).toContain("STATE_DIRECTORY_ACCESS_MASK");
+    expect(supervisor).toContain("private_root_traversal_paths");
+    expect(supervisor).toContain("control.private_root_traversal_root");
+    expect(supervisor).toContain("grant_low_integrity_directory_label");
+    expect(supervisor).toContain("LABEL_SECURITY_INFORMATION");
+    expect(supervisor).toContain("SECURITY_MANDATORY_LOW_RID");
+    expect(supervisor).toContain("SYSTEM_MANDATORY_LABEL_NO_WRITE_UP");
+    expect(supervisor).toContain("NO_INHERITANCE");
+    expect(supervisor).toContain("SUB_CONTAINERS_AND_OBJECTS_INHERIT");
+    expect(supervisor).not.toContain("ALL APPLICATION PACKAGES");
+    expect(supervisor).not.toContain("ALL RESTRICTED APPLICATION PACKAGES");
+    expect(supervisor).not.toContain("S-1-15-2-1");
+    expect(supervisor).not.toContain("S-1-15-2-2");
+  });
+
   it("dispatches exact Windows modes before ordinary Goose while containment stays fail closed", () => {
     const main = read("workers/goose-runner/src/main.rs");
     const supervisor = read("workers/goose-runner/src/windows_supervisor.rs");
     const containment = read("workers/goose-runner/src/containment/windows.rs");
 
     expect(main).toContain("windows_supervisor::run_supervisor()");
-    expect(main).toContain("windows_supervisor::run_worker()");
+    expect(main).toContain("windows_supervisor::run_worker_with_arguments(&windows_arguments)");
     expect(main.indexOf("windows_supervisor::run_supervisor()")).toBeLessThan(
       main.indexOf("tokio::runtime::Builder::new_multi_thread()"),
     );
     expect(supervisor).toContain("ACTESTRA_GOOSE_NETWORK_POLICY_SETUP_FAILED");
     expect(supervisor).toContain("ACTESTRA_GOOSE_RESOURCE_LIMIT_SETUP_FAILED");
-    expect(supervisor).toContain("pub(crate) fn derive_pipe_names");
+    expect(supervisor).toContain("CreatePipe");
+    expect(supervisor).toContain("PROC_THREAD_ATTRIBUTE_HANDLE_LIST");
+    expect(supervisor).not.toContain("derive_pipe_names");
     expect(supervisor).not.toContain("CheckNetIsolation");
     expect(supervisor).not.toContain("privateNetworkClientServer");
     expect(containment).not.toContain('"status":"unsupported-platform"');
@@ -168,5 +215,91 @@ describe("Windows Goose supervisor source contract", () => {
     expect(supervisor).toContain(
       "Worker process token must have AppContainer isolation, not a plain token",
     );
+  });
+
+  it("keeps seven Main channels and exactly nine inherited Worker handles", () => {
+    const mainProcess = read("apps/desktop/src/main/workers/gooseRunnerProcess.ts");
+    const transport = read("apps/desktop/src/main/workers/gooseSessionTransport.ts");
+    const supervisor = read("workers/goose-runner/src/windows_supervisor.rs");
+    const control = read("workers/goose-runner/src/windows_control.rs");
+    expect(mainProcess).toContain("stdio: windowsSupervisor");
+    expect(mainProcess).toContain("? [...GOOSE_WINDOWS_STDIO_CONFIGURATION]");
+    expect(transport).toContain("GOOSE_WINDOWS_STDIO_CONFIGURATION");
+    expect(transport.match(/"overlapped"/gu)).toHaveLength(2);
+    expect(transport.match(/"pipe"/gu)).toHaveLength(5);
+    expect(transport).toContain('"parent-liveness"');
+    expect(transport).toContain('"capability"');
+    expect(transport).toContain('"model"');
+    expect(mainProcess).toContain("const capability = extendedStdio[5]");
+    expect(mainProcess).toContain("const model = extendedStdio[6]");
+    expect(mainProcess).toContain("readonly windowsChannels?: GooseWindowsSupervisorChannels");
+    for (const field of [
+      "worker_control_read",
+      "worker_ready_write",
+      "supervisor_control_write",
+      "supervisor_ready_read",
+      "worker_capability_read",
+      "worker_capability_write",
+      "worker_model_read",
+      "worker_model_write",
+    ]) {
+      expect(supervisor).toContain(field);
+    }
+    expect(supervisor).toContain("fn inherited_handles(&self) -> [HANDLE; 9]");
+    expect(supervisor).toContain("fn handle_contract_is_closed(&self) -> bool");
+    expect(supervisor).toContain("self.worker_control_read");
+    expect(supervisor).toContain("self.worker_ready_write");
+    expect(control).toContain("parse_worker_handle_arguments");
+    expect(control).toContain("bounded decimal");
+    expect(supervisor).toContain("CloseHandle(control_handle)");
+    expect(supervisor).toContain("CloseHandle(ready_handle)");
+    expect(supervisor.indexOf("let capability_worker = match")).toBeLessThan(
+      supervisor.indexOf("let mut marker = vec![0_u8; WINDOWS_WORKER_READY_MARKER.len()]"),
+    );
+  });
+
+  it("wraps each overlapped Main duplex bridge in one Tokio named-pipe client", () => {
+    const bridge = read("workers/goose-runner/src/windows_bridge.rs");
+    const supervisor = read("workers/goose-runner/src/windows_supervisor.rs");
+    const helperStart = supervisor.indexOf("fn overlapped_channel_from_fd");
+    const helperEnd = supervisor.indexOf("async fn wait_for_parent_liveness", helperStart);
+    const runtimeStart = supervisor.indexOf("let acp_input =");
+    const runtimeEnd = supervisor.indexOf("let worker_process_handle", runtimeStart);
+
+    expect(helperStart).toBeGreaterThan(-1);
+    expect(helperEnd).toBeGreaterThan(helperStart);
+    const helper = supervisor.slice(helperStart, helperEnd);
+    const runtime = supervisor.slice(runtimeStart, runtimeEnd);
+    expect(helper.match(/handle_from_fd\(fd\)/gu)).toHaveLength(1);
+    expect(helper).toContain("WindowsBridgeChannel::from_overlapped_raw_handle(handle)");
+    expect(bridge).toContain("tokio::net::windows::named_pipe::NamedPipeClient");
+    expect(runtime).toContain("let _runtime_guard = bridge_runtime.enter()");
+
+    expect(runtime).toContain("overlapped_channel_from_fd(5)");
+    expect(runtime).toContain("overlapped_channel_from_fd(6)");
+    expect(runtime).not.toContain(
+      "handle_from_fd(5).and_then(crate::windows_bridge::WindowsBridgeChannel::from_raw_handle)",
+    );
+    expect(runtime).not.toContain(
+      "handle_from_fd(6).and_then(crate::windows_bridge::WindowsBridgeChannel::from_raw_handle)",
+    );
+  });
+
+  it("declares closed supervisor relay failure stages", () => {
+    const supervisor = read("workers/goose-runner/src/windows_supervisor.rs");
+    for (const stage of [
+      "windows-control-channel-invalid",
+      "windows-ready-channel-invalid",
+      "windows-capability-channel-invalid",
+      "windows-model-channel-invalid",
+      "windows-acp-relay-failed",
+      "windows-capability-relay-failed",
+      "windows-model-relay-failed",
+      "windows-worker-runtime-failed",
+      "windows-runtime-timeout",
+      "windows-runtime-cleanup-failed",
+    ]) {
+      expect(supervisor).toContain(`"${stage}"`);
+    }
   });
 });

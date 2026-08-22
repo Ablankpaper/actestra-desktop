@@ -34,6 +34,14 @@ function sha256(value: string | Buffer): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function gooseCargoSource(): string {
+  return `git+${sourceContract.goose.runtimeRepository}?rev=${sourceContract.goose.runtimeCommit}#${sourceContract.goose.runtimeCommit}`;
+}
+
+function goosePurl(): string {
+  return `pkg:cargo/goose@${sourceContract.goose.version}?vcs_url=${encodeURIComponent(`git+${sourceContract.goose.runtimeRepository}@${sourceContract.goose.runtimeCommit}`)}`;
+}
+
 function buildToolEvidence(
   name: "cargo-auditable" | "cargo-audit",
   pin: Readonly<{ version: string; commit: string }>,
@@ -81,7 +89,7 @@ async function createArtifactFixture(
     "version = 4",
     'name = "goose"',
     'version = "1.45.0"',
-    `source = "git+https://github.com/aaif-goose/goose?rev=${sourceContract.goose.commit}#${sourceContract.goose.commit}"`,
+    `source = "${gooseCargoSource()}"`,
     'name = "event-listener"',
     'version = "5.4.2"',
     'name = "lru"',
@@ -107,21 +115,19 @@ async function createArtifactFixture(
     components: [
       {
         type: "library",
-        "bom-ref": `pkg:cargo/goose@${sourceContract.goose.version}?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Faaif-goose%2Fgoose%40${sourceContract.goose.commit}`,
+        "bom-ref": goosePurl(),
         name: "goose",
         version: sourceContract.goose.version,
-        purl: `pkg:cargo/goose@${sourceContract.goose.version}?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Faaif-goose%2Fgoose%40${sourceContract.goose.commit}`,
+        purl: goosePurl(),
       },
     ],
     dependencies: [
       {
         ref: `pkg:cargo/${sourceContract.runner.name}@${sourceContract.runner.version}`,
-        dependsOn: [
-          `pkg:cargo/goose@${sourceContract.goose.version}?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Faaif-goose%2Fgoose%40${sourceContract.goose.commit}`,
-        ],
+        dependsOn: [goosePurl()],
       },
       {
-        ref: `pkg:cargo/goose@${sourceContract.goose.version}?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Faaif-goose%2Fgoose%40${sourceContract.goose.commit}`,
+        ref: goosePurl(),
         dependsOn: [],
       },
     ],
@@ -264,7 +270,7 @@ describe("Goose runner artifact admission", () => {
       directory: canonicalDirectory,
       targetTriple: "aarch64-apple-darwin",
       executableSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
-      gooseCommit: sourceContract.goose.commit,
+      gooseCommit: sourceContract.goose.runtimeCommit,
       gooseVersion: sourceContract.goose.version,
     });
     expect(artifact.executablePath).toBe(path.join(canonicalDirectory, "actestra-goose-runner"));
@@ -473,6 +479,62 @@ describe("Goose runner artifact admission", () => {
 
     await expect(
       admitGooseRunnerArtifact(directory, admissionOptions(sha256(widenedManifest))),
+    ).rejects.toMatchObject({
+      name: "GooseRunnerArtifactError",
+      code: "incompatible-artifact",
+    });
+  });
+
+  it.each([
+    ["canonical repository", { repository: "https://example.invalid/goose.git" }],
+    ["upstream base", { baseCommit: "1".repeat(40) }],
+    ["private runtime repository", { runtimeRepository: "ssh://git@example.invalid/goose.git" }],
+    ["private runtime commit", { runtimeCommit: "2".repeat(40) }],
+    ["changed path", { changedPaths: ["crates/goose/src/acp/server.rs"] }],
+    ["changed path order", { changedPaths: [...sourceContract.goose.changedPaths].reverse() }],
+    ["patch digest", { patchSetSha256: "3".repeat(64) }],
+    ["feature set", { cargoFeatures: ["telemetry"] }],
+  ])("rejects Goose source-contract drift: %s", async (_label, override) => {
+    const { directory, manifest } = await createArtifactFixture();
+    const driftedManifest = JSON.stringify({
+      ...manifest,
+      goose: { ...manifest.goose, ...override },
+    });
+    await writeFile(path.join(directory, GOOSE_RUNNER_MANIFEST_FILE), driftedManifest);
+
+    await expect(
+      admitGooseRunnerArtifact(directory, admissionOptions(sha256(driftedManifest))),
+    ).rejects.toMatchObject({
+      name: "GooseRunnerArtifactError",
+      code: "incompatible-artifact",
+    });
+  });
+
+  it.each([
+    ["repository", "ssh://git@example.invalid/actestra-goose-runtime.git"],
+    ["revision", "4".repeat(40)],
+  ])("rejects Goose lock source %s drift", async (kind, replacement) => {
+    const { directory, manifest } = await createArtifactFixture();
+    const lockPath = path.join(directory, "Cargo.lock");
+    const lockfile = await readFile(lockPath, "utf8");
+    const driftedLock =
+      kind === "repository"
+        ? lockfile.replace(sourceContract.goose.runtimeRepository, replacement)
+        : lockfile.replaceAll(sourceContract.goose.runtimeCommit, replacement);
+    const driftedManifest = JSON.stringify({
+      ...manifest,
+      build: {
+        ...manifest.build,
+        lockfile: { ...manifest.build.lockfile, sha256: sha256(driftedLock) },
+      },
+    });
+    await Promise.all([
+      writeFile(lockPath, driftedLock),
+      writeFile(path.join(directory, GOOSE_RUNNER_MANIFEST_FILE), driftedManifest),
+    ]);
+
+    await expect(
+      admitGooseRunnerArtifact(directory, admissionOptions(sha256(driftedManifest))),
     ).rejects.toMatchObject({
       name: "GooseRunnerArtifactError",
       code: "incompatible-artifact",

@@ -163,4 +163,15 @@ describe("P8.1 platform matrix", () => {
       scripts.check.indexOf("bun run test:electron-sqlite"),
     );
   });
+
+  it("makes the Windows authenticated-runtime workflow part of the P8 root contract", async () => {
+    const checker = await import("../../scripts/check-p8-platform-matrix.mjs");
+    const workflow = readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8");
+
+    expect(checker.validateP8WindowsRuntimeCiContract).toEqual(expect.any(Function));
+    expect(checker.validateP8WindowsRuntimeCiContract(workflow)).toEqual([]);
+    expect(checker.validateP8WindowsRuntimeCiContract("jobs: {}\n")).toContain(
+      "windows-runtime-job",
+    );
+  });
 });

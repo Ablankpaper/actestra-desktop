@@ -14,7 +14,7 @@ ADR-0010.
 | AionUi | `iOfficeAI/AionUi` | `v2.1.41` | `2d8925fc67a97a20996fadcd2a0862b778b572ba` | Product UI and general-work foundation | P1 reproduced; exact 1,766-file runnable desktop snapshot imported and manifest-verified |
 | AionCore | `iOfficeAI/AionCore` | `v0.1.52` | `76f5554286ba0b6d33fb74d5c2bb2b3b0b83100d` | Initial native compatibility runtime/general worker | P1 locally built; ignored local bundle used for F0 launch; not committed or approved for distribution |
 | Croner | `Hexagon/croner` | `9.1.0` | `364a3074c2642b903eaf26e96f4bc197e3eaa6bc` | Main-owned schedule validation and occurrence calculation | Exact npm and downstream-native pin; MIT notice retained and package-verified |
-| Goose | `aaif-goose/goose` | `v1.45.0` source/ACP target | `4dc0420f5704a92806c6628c8f0a3497d7a88759` | Minimal Actestra-built stdio ACP coding Worker under ADR-0024 | P5.0 accepted; P5.1 exact runner, lock, artifact admission, no-network initialize, and cleanup implemented locally; upstream binary rejected |
+| Goose | `aaif-goose/goose`; private runtime source `Ablankpaper/actestra-goose-runtime` | `v1.45.0` source/ACP target | upstream base `4dc0420f5704a92806c6628c8f0a3497d7a88759`; runtime `5d66f81a3a992b063ff6f22663789fbe7be42b48` | Minimal Actestra-built stdio ACP coding Worker under ADR-0024 | P5.1 runner admitted; P8.2c source contract pins a default-off three-file adapter seam plus bounded ACP startup diagnostics; Windows adapted execution is not yet verified; upstream binary rejected |
 | CrewAI | `crewAIInc/crewAI` | `1.15.8` evaluation snapshot | `e9caf1e1b89343bb833b5da6660faa91804a9dce` | First supervised planner-sidecar candidate | Metadata and license verified; local generic supervisor is Actestra-owned test infrastructure, not CrewAI; no source/package is imported, installed, bundled, or selected as the production P6 pin |
 | Eigent | `eigent-ai/eigent` | `v1.0.2` reference snapshot | `e478094a9ff433132b3cf1928e4143338ddaab20` | Team product and acceptance reference | Metadata inspected; not imported, installed, bundled, or selected as a runtime |
 
@@ -86,7 +86,8 @@ clarified before Actestra distributes AionCore-derived code or binaries.
 
 ## Goose v1.45.0 evidence
 
-- Verification date: 2026-08-01.
+- Verification dates: upstream evaluation 2026-08-01; private runtime pin
+  2026-08-19.
 - Upstream URL: <https://github.com/aaif-goose/goose>.
 - Release/tag: `v1.45.0`, published 2026-07-29; exact commit:
   `4dc0420f5704a92806c6628c8f0a3497d7a88759`.
@@ -97,6 +98,24 @@ clarified before Actestra distributes AionCore-derived code or binaries.
   Goose core stdio ACP entry with default features disabled, an initially empty
   Goose feature set, no builtins, and no scheduler. The broad upstream CLI is
   not selected as a runtime artifact.
+- P8.2c private runtime source: standalone private repository
+  `Ablankpaper/actestra-goose-runtime` at exact commit
+  `5d66f81a3a992b063ff6f22663789fbe7be42b48`. It is not a GitHub Fork, its
+  default branch remains the exact upstream base, GitHub Actions are disabled,
+  it has no webhook, and no automatic upstream synchronization moves the
+  admitted commit. Actestra CI receives repository-scoped read-only access;
+  fork pull requests do not enter jobs that resolve the private source.
+- The runtime commit descends from the exact upstream base and modifies only
+  `crates/goose/src/acp/server.rs`,
+  `crates/goose/src/acp/server_factory.rs`, and
+  `crates/goose/src/acp/server/new_session.rs`. Their binary full-index diff
+  SHA-256 is
+  `7e848a929788d1c9fcfa55e85620a1359688386d3c52978b5f4074f0367ea205`.
+  The change adds a default-off adapter seam for one fixed Provider, model, MCP
+  client, and active session. Adapted sessions accept only a Main-admitted
+  absolute workspace path without enumerating that directory from the
+  AppContainer; ordinary upstream sessions retain their accessible-directory
+  check. The admitted Goose Cargo feature set remains empty.
 - Rollback comparison: `v1.44.0` at
   `876555f85b1bd0e15ed75eed7c5ac1163c1f097a`. Older revisions are disallowed
   because `v1.44.0` fixes `GHSA-r5pp-p5r8-466r`.
@@ -130,14 +149,24 @@ clarified before Actestra distributes AionCore-derived code or binaries.
   the builder rehashes each executable before use.
 - The committed minimal runner uses Rust 1.96.1 at rustc commit
   `31fca3adb283cc9dfd56b49cdee9a96eb9c96ffd` with the same toolchain's
-  `rustfmt 1.9.0-stable (31fca3adb2 2026-06-26)`, an empty Goose patch and
-  feature set, `event-listener 5.4.2`, and `lru 0.18.2`. The `lru` floor removes
+  `rustfmt 1.9.0-stable (31fca3adb2 2026-06-26)`, an empty Goose feature set,
+  the exact private runtime patch above, `event-listener 5.4.2`, and
+  `lru 0.18.2`. The `lru` floor removes
   the reachable `RUSTSEC-2026-0253` unsoundness finding without changing the
   Goose source pin or feature surface. The original admitted macOS arm64
   executable was 63,911,512 bytes with SHA-256
   `1aa35cfa29a781752f992afa67dc6139f235b3cc662e01d2d556080dabbe8d21`;
   generated remediation artifacts remain local or short-lived CI evidence and
   are rehashed in their immutable manifest.
+- On 2026-08-20, crates.io marked `arrayref 0.3.9` yanked while `blake3 1.8.5`
+  still selected it, and the newly published `arrayref 0.3.10` was not yet a
+  reviewed registry input. The runner's `Cargo.toml` therefore pins the
+  pre-yank source at `droundy/arrayref` commit
+  `f8d0299d863922db6c409d08098941e833b70d69` is vendored under
+  `workers/goose-runner/vendor/arrayref` because the upstream repository is
+  unavailable to CI. The copy is included in the runner source-tree digest,
+  retains its BSD-2-Clause license, and is removable once a reviewed non-yanked
+  registry release is available.
 - The first exact runner lock and embedded-metadata scans both report only
   `RUSTSEC-2023-0071` for `rsa 0.9.10`. ADR-0025 permits that record only as
   `metadata-only-not-compiled`: the active graph excludes RSA and SQLx MySQL,
@@ -145,10 +174,15 @@ clarified before Actestra distributes AionCore-derived code or binaries.
   release artifact is compiled. The audit is not represented as clean.
 - Current import status: the small Actestra runner source, exact lock, Goose
   Apache-2.0 license payload, source contract, and build/admission scripts are
-  committed by P5.1. Cargo fetches the exact Goose source to build ignored local
-  or short-lived CI evidence. No Goose upstream source tree, official binary,
-  model, credential, private state, desktop package, candidate, or release is
-  committed or distributed by Actestra.
+  committed by P5.1 and extended by the P8.2c private-source admission. Cargo
+  fetches the exact immutable runtime source to build ignored local or
+  short-lived CI evidence. No Goose source tree is vendored into Actestra, and
+  no official binary, model, credential, private state, desktop package,
+  candidate, or release is committed or distributed by this source pin.
+- Rollback restores the two Cargo dependencies and source contract to canonical
+  upstream commit `4dc0420f5704a92806c6628c8f0a3497d7a88759` and keeps Windows
+  production runtime admission disabled. This pin is not evidence of adapted
+  Windows execution, Electron packaging, P8.2c completion, P8.3, or P8.4.
 - Full commands, cross-platform artifact digests, dependency paths, telemetry,
   network, signing, and remaining admission gates:
   [Goose v1.45.0 Evaluation](../upstream/GOOSE_V1.45.0_EVALUATION.md).
