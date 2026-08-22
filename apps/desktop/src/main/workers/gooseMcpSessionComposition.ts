@@ -688,7 +688,10 @@ export async function openGooseMcpSessionComposition(
               !(error instanceof GooseAcpSessionError) &&
               !(error instanceof GooseRunnerProcessError) &&
               !(error instanceof GooseMcpSessionCompositionError) &&
-              !(error instanceof GooseAuthenticatedBridgeProtocolError)
+              !(
+                error instanceof GooseAuthenticatedBridgeProtocolError &&
+                error.message === WINDOWS_CAPABILITY_TOOLS_LIST_TIMEOUT_MESSAGE
+              )
             ? new GooseMcpSessionCompositionError(
                 openingPhase,
                 "Windows Goose composition opening failed at an unclassified boundary",

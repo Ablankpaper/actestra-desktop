@@ -2,6 +2,27 @@
 
 Last updated: 2026-08-22
 
+## 2026-08-22 P8.2c authenticated-runtime generic opening failure (diagnosed; CI pending)
+
+Exact-head CI run
+[`32544229824`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32544229824)
+for source head `e3ac0a7630b81690f1e76eb7ded97fe1392c6cb0` passed the Windows
+build probe, Windows containment, Ubuntu build/containment, Goose admission, and
+the macOS foundation/package job. The only failure was the real Windows
+authenticated-runtime step. Its bounded failure Artifact `9468408066` contains
+only `windows-runtime-composition-open-failed`.
+
+The generic code was caused by a real classification gap: a non-timeout
+`GooseAuthenticatedBridgeProtocolError` was explicitly excluded from the
+Windows opening-phase wrapper, while the opening classifier has no independent
+mapping for that raw protocol error. It therefore fell through to the generic
+composition-open fallback. The fix keeps the existing timeout/progress path
+unchanged and wraps only non-timeout authenticated bridge errors at the current
+opening phase. A synchronous tools/list bridge-error regression covers the
+cross-layer behavior; focused composition tests are `21/21` passed. P8.2c
+remains open until a new exact-head Windows authenticated-runtime Artifact
+reports a concrete stage or verifies the complete journey.
+
 ## 2026-08-22 P8.2c Windows composition unknown-boundary diagnostic (local; CI pending)
 
 Exact-head CI run

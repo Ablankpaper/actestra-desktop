@@ -268,7 +268,9 @@ describe("Goose MCP session composition", () => {
   it("classifies a synchronous capability tools/list failure at its opening boundary", async () => {
     const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform")!;
     Object.defineProperty(process, "platform", { ...originalPlatform, value: "win32" });
-    const capabilityFailure = new Error("capability tools/list setup failed");
+    const capabilityFailure = new GooseAuthenticatedBridgeProtocolError(
+      "capability tools/list setup failed",
+    );
     const capabilityHost = Object.freeze({
       bindSession() {},
       waitForToolsList() {
