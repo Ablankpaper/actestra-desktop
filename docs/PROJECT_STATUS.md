@@ -2,6 +2,32 @@
 
 Last updated: 2026-08-22
 
+## 2026-08-22 P8.2c authenticated-runtime model-cause mapping still inconclusive
+
+Exact-head CI run
+[`32548007680`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32548007680)
+for source head `a90c2d399535414d8b737516f6a68aa8b25a0aee` passed the Windows
+build probe, Windows containment, Ubuntu build/containment, Goose admission, and
+the macOS foundation/package job. The only failure was the real Windows
+authenticated-runtime step. Its independently downloaded failure Artifact
+`9469583698` contains exactly:
+
+```json
+{"contractVersion":1,"code":"windows-runtime-composition-open-failed"}
+```
+
+The local diagnostic change preserves the two already-defined model-layer causes
+through the Windows evidence mapper: `model-completion-refused` maps to
+`windows-runtime-model-completion-refused-failed`, and `model-request-rejected`
+maps to `windows-runtime-model-request-rejected-failed`. Regressions cover both
+the mapper and the composition-to-evidence path; the focused composition,
+resource, and evidence suite is `77/77` passed. Because the exact-head Artifact
+still contains the generic composition-open code, the authenticated runtime's
+actual failing boundary remains unclassified. No ACL, AppContainer, pipe,
+protocol, credential, retry, or `foundation/` behavior was changed. P8.2c
+remains open; the next change requires new evidence that distinguishes the
+remaining composition boundary before any behavior repair is attempted.
+
 ## 2026-08-22 P8.2c authenticated-runtime generic opening failure (diagnosed; CI pending)
 
 Exact-head CI run

@@ -40,6 +40,8 @@ const FAILURE_STAGE_CODES = Object.freeze({
   "windows-composition-tool-discovery-failed": "windows-runtime-composition-tool-discovery-failed",
   "windows-composition-tool-normalization-failed":
     "windows-runtime-composition-tool-normalization-failed",
+  "model-completion-refused": "windows-runtime-model-completion-refused-failed",
+  "model-request-rejected": "windows-runtime-model-request-rejected-failed",
   "windows-capability-worker-request-write-failed":
     "windows-runtime-capability-worker-request-write-failed",
   "windows-capability-supervisor-request-read-failed":

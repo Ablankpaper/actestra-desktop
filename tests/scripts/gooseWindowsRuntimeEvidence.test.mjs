@@ -150,6 +150,20 @@ describe("Goose Windows runtime evidence", () => {
     }
     expect(
       classifyGooseWindowsOpeningFailure({
+        name: "GooseMcpSessionCompositionError",
+        code: "model-completion-refused",
+        message: "fixed internal diagnostic",
+      }),
+    ).toBe("model-completion-refused");
+    expect(
+      classifyGooseWindowsOpeningFailure({
+        name: "GooseMcpSessionCompositionError",
+        code: "model-request-rejected",
+        message: "fixed internal diagnostic",
+      }),
+    ).toBe("model-request-rejected");
+    expect(
+      classifyGooseWindowsOpeningFailure({
         name: "GooseRunnerProcessError",
         code: "windows-worker-control-frame-invalid",
         message: "Goose Windows worker startup failed",
@@ -416,6 +430,21 @@ describe("Goose Windows runtime evidence", () => {
       "windows-runtime-model-worker-response-decode-failed",
     ]);
     expect(new Set(tokens).size).toBe(10);
+  });
+
+  it("keeps model refusal causes distinct from transport stages", () => {
+    expect(
+      classifyGooseWindowsRuntimeFailureEvidence({
+        contractVersion: 1,
+        stage: "model-completion-refused",
+      }),
+    ).toBe("windows-runtime-model-completion-refused-failed");
+    expect(
+      classifyGooseWindowsRuntimeFailureEvidence({
+        contractVersion: 1,
+        stage: "model-request-rejected",
+      }),
+    ).toBe("windows-runtime-model-request-rejected-failed");
   });
 
   it("keeps each pre-launch state-directory admission stage distinct from Worker access", () => {
