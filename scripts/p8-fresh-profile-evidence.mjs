@@ -61,6 +61,7 @@ const TARGETS = new Map(
     Object.freeze({ id: target.id, packageFormats: Object.freeze([...target.packageFormats]) }),
   ]),
 );
+const FAILURE_TARGETS = new Set([...TARGETS.keys(), "unknown"]);
 
 export const P8_FRESH_PROFILE_TARGETS = Object.freeze(
   Object.fromEntries([...TARGETS].map(([id, target]) => [id, target])),
@@ -181,9 +182,12 @@ export function validateP8FreshProfileFailureEvidence(value, binding) {
   if (
     value.schemaVersion !== 1 ||
     value.status !== "failed" ||
-    !TARGETS.has(value.targetId) ||
+    !FAILURE_TARGETS.has(value.targetId) ||
     !validCommit(value.sourceCommit) ||
     !FAILURE_CODE_SET.has(value.code) ||
+    (value.targetId === "unknown" &&
+      value.code !== "invalid-arguments" &&
+      value.code !== "unsupported-target") ||
     binding.targetId !== value.targetId ||
     binding.sourceCommit !== value.sourceCommit
   ) {
@@ -193,7 +197,12 @@ export function validateP8FreshProfileFailureEvidence(value, binding) {
 }
 
 export function makeP8FreshProfileFailureEvidence(targetId, sourceCommit, code) {
-  if (!TARGETS.has(targetId) || !validCommit(sourceCommit) || !FAILURE_CODE_SET.has(code)) {
+  if (
+    !FAILURE_TARGETS.has(targetId) ||
+    !validCommit(sourceCommit) ||
+    !FAILURE_CODE_SET.has(code) ||
+    (targetId === "unknown" && code !== "invalid-arguments" && code !== "unsupported-target")
+  ) {
     throw new Error("Cannot create an unbounded P8.2d failure record");
   }
   return Object.freeze({
@@ -204,4 +213,3 @@ export function makeP8FreshProfileFailureEvidence(targetId, sourceCommit, code) 
     code,
   });
 }
-
