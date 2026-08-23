@@ -2,6 +2,44 @@
 
 Last updated: 2026-08-23
 
+## 2026-08-23 P8.2c parent-death fixture Node runtime alignment (local; Windows verification pending)
+
+Exact-head CI run `32588814951` attempt 2 at
+`a780c15e7611d6951fdfa56844c65d2663d7a52c` passed the Windows build and
+containment jobs, both Ubuntu jobs, Goose admission, and the macOS
+foundation/package job. The Windows authenticated-runtime job `97070685135`
+passed the primary read, approved-write, sequential-prompt, cancellation,
+original-workspace, and containment journey. It failed only while opening the
+separate parent-death fixture's nested Goose session. The bounded inner token
+was `windows-worker-stderr-relay-start-failed`; the outer token was
+`windows-runtime-parent-death-fixture-session-open-failed`. Failure Artifact
+`9480311166` has ZIP SHA-256
+`b882afa3db70510848b528da7f08354e1f724d6d28b23730622483b91ebd8e5e`.
+
+The nested fixture was the sole session host executed directly by Bun. The
+successful journey and production Electron Main use Node's `child_process`
+implementation, including its Windows `stdio: "overlapped"` channel contract.
+The corrected harness uses Bun only to bundle the TypeScript fixture into a
+Node-targeted ESM file under the canonical parent-death temporary root. It
+rejects a symlink, non-file, empty file, file larger than 1 MiB, or a canonical
+output outside that root, then executes the admitted fixture with
+`process.execPath`. A live process inspection confirmed that `bun run test`
+launches Vitest under Node, so `process.execPath` does not resolve back to Bun.
+No production Worker, Supervisor, ACP, ACL, AppContainer, handle, environment,
+model, capability, approval, cleanup, Renderer, or frozen AionUi behavior
+changed.
+
+The regression was observed RED before implementation and GREEN afterward.
+Fresh local evidence: the Windows evidence suite passed `33/33`; the generated
+bundle included 42 modules, was 348,891 bytes, loaded under Node 24, and reached
+the expected non-Windows platform guard; `bun run check` exited zero with
+`1882 passed / 10 skipped`, all 28 P7 cases and 168 variants denied-safe, clean
+format/lint/typecheck/P8/boundary/foundation/downstream checks, and a successful
+package build. Native Windows channel execution remains skipped on macOS by
+contract. P8.2c remains open until one new exact-head Windows authenticated
+runtime emits `status=verified` with `residualProcessCount=0` and all related CI
+jobs are green.
+
 ## 2026-08-23 P8.2c nested Windows ACP stderr-relay boundary diagnostics (local; Windows verification pending)
 
 The latest exact-head Windows run `32582272702` passed the Windows build and

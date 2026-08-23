@@ -57,10 +57,10 @@ async function waitForRuntimeProcesses(executablePath: string): Promise<readonly
 }
 
 /**
- * The probe spawns this fixture with every stdio stream ignored, so an
- * unpublished failure would reach CI as an unexplained early exit. Naming the
- * step in a bounded sibling file keeps the reason legible without carrying any
- * private path into the evidence artifact.
+ * The probe drains this fixture's pipe-backed stdout and stderr, so an
+ * unpublished failure would still reach CI as an unexplained early exit.
+ * Naming the step in a bounded sibling file keeps the reason legible without
+ * carrying any private path into the evidence artifact.
  */
 async function publishFailureStage(statePath: string, stage: string): Promise<void> {
   await writeFile(`${statePath}.failure`, `${JSON.stringify({ contractVersion: 1, stage })}\n`, {

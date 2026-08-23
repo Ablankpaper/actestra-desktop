@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { execFile, spawn } from "node:child_process";
-import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -54,6 +54,7 @@ const trustedManifestSha256 = process.env.ACTESTRA_GOOSE_RUNNER_MANIFEST_SHA256;
 const evidencePath = process.env.ACTESTRA_GOOSE_WINDOWS_RUNTIME_EVIDENCE_PATH;
 const failureEvidencePath = process.env.ACTESTRA_GOOSE_WINDOWS_RUNTIME_FAILURE_EVIDENCE_PATH;
 const containmentEvidenceSha256 = process.env.ACTESTRA_GOOSE_CONTAINMENT_EVIDENCE_SHA256;
+const MAX_PARENT_DEATH_FIXTURE_BUNDLE_BYTES = 1024 * 1024;
 const nativeEnabled =
   process.platform === "win32" &&
   process.arch === "x64" &&
@@ -324,22 +325,31 @@ async function fixtureExitDetail(statePath: string): Promise<string | undefined>
   }
 }
 
-async function parentDeathProbe(
-  artifact: AdmittedGooseRunnerArtifact,
-  workspaceDirectory: string,
-): Promise<number> {
-  const root = await mkdtemp(path.join(os.tmpdir(), "actestra-goose-windows-parent-death-"));
-  fixtureRoots.push(root);
-  const privateRootParent = path.join(root, "attempts");
-  const statePath = path.join(root, "state.json");
-  await mkdir(privateRootParent);
-  const child = spawn(
+async function buildParentDeathFixtureBundle(root: string): Promise<string> {
+  const rootMetadata = await lstat(root);
+  const canonicalRoot = await realpath(root);
+  if (rootMetadata.isSymbolicLink() || !rootMetadata.isDirectory() || canonicalRoot !== root) {
+    throw new Error("Windows runtime parent-death fixture root is invalid");
+  }
+
+  const fixtureBundle = path.join(root, "goose-windows-runtime-supervisor-exit.mjs");
+  await execFileAsync(
     "bun",
-    [path.join(repositoryRoot, "tests/fixtures/gooseWindowsRuntimeSupervisorExit.ts")],
+    [
+      "build",
+      path.join(repositoryRoot, "tests/fixtures/gooseWindowsRuntimeSupervisorExit.ts"),
+      "--target=node",
+      "--format=esm",
+      "--packages=external",
+      "--outfile",
+      fixtureBundle,
+    ],
     {
       cwd: repositoryRoot,
+      encoding: "utf8",
       env: {
         APPDATA: process.env.APPDATA ?? "",
+        BUN_INSTALL: process.env.BUN_INSTALL ?? "",
         ComSpec: process.env.ComSpec ?? "",
         LOCALAPPDATA: process.env.LOCALAPPDATA ?? "",
         PATH: process.env.PATH ?? "",
@@ -348,23 +358,69 @@ async function parentDeathProbe(
         TMP: process.env.TMP ?? os.tmpdir(),
         USERPROFILE: process.env.USERPROFILE ?? "",
         WINDIR: process.env.WINDIR ?? "",
-        ACTESTRA_GOOSE_WINDOWS_RUNTIME_SUPERVISOR_EXIT: "1",
-        ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIR: artifact.directory,
-        ACTESTRA_GOOSE_RUNNER_MANIFEST_SHA256: artifact.manifestSha256,
-        ACTESTRA_GOOSE_WINDOWS_RUNTIME_SUPERVISOR_ROOT: root,
-        ACTESTRA_GOOSE_WINDOWS_RUNTIME_SUPERVISOR_STATE: statePath,
-        ACTESTRA_GOOSE_WINDOWS_RUNTIME_WORKSPACE: workspaceDirectory,
       },
-      // Keep the fixture's own standard handles as readable pipes. On Windows
-      // Bun uses the parent's stdio-handle topology while creating the nested
-      // overlapped capability/model channels for the admitted Goose runner;
-      // closing stdout/stderr as NUL handles changes that topology and can
-      // leave ACP initialize waiting forever. Drain both streams locally so
-      // fixture diagnostics never cross into the bounded runtime artifact.
-      stdio: ["ignore", "pipe", "pipe"],
+      maxBuffer: 1024 * 1024,
       windowsHide: true,
     },
   );
+
+  const bundleMetadata = await lstat(fixtureBundle);
+  const canonicalBundle = await realpath(fixtureBundle);
+  const relativeBundle = path.relative(canonicalRoot, canonicalBundle);
+  if (
+    bundleMetadata.isSymbolicLink() ||
+    !bundleMetadata.isFile() ||
+    bundleMetadata.size < 1 ||
+    bundleMetadata.size > MAX_PARENT_DEATH_FIXTURE_BUNDLE_BYTES ||
+    relativeBundle === "" ||
+    relativeBundle === ".." ||
+    relativeBundle.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relativeBundle)
+  ) {
+    throw new Error("Windows runtime parent-death fixture bundle is invalid");
+  }
+  return canonicalBundle;
+}
+
+async function parentDeathProbe(
+  artifact: AdmittedGooseRunnerArtifact,
+  workspaceDirectory: string,
+): Promise<number> {
+  const root = await realpath(
+    await mkdtemp(path.join(os.tmpdir(), "actestra-goose-windows-parent-death-")),
+  );
+  fixtureRoots.push(root);
+  const privateRootParent = path.join(root, "attempts");
+  const statePath = path.join(root, "state.json");
+  await mkdir(privateRootParent);
+  await markFailure("parent-death-fixture-spawn");
+  const fixtureBundle = await buildParentDeathFixtureBundle(root);
+  const child = spawn(process.execPath, [fixtureBundle], {
+    cwd: repositoryRoot,
+    env: {
+      APPDATA: process.env.APPDATA ?? "",
+      ComSpec: process.env.ComSpec ?? "",
+      LOCALAPPDATA: process.env.LOCALAPPDATA ?? "",
+      PATH: process.env.PATH ?? "",
+      SystemRoot: process.env.SystemRoot ?? "",
+      TEMP: process.env.TEMP ?? os.tmpdir(),
+      TMP: process.env.TMP ?? os.tmpdir(),
+      USERPROFILE: process.env.USERPROFILE ?? "",
+      WINDIR: process.env.WINDIR ?? "",
+      ACTESTRA_GOOSE_WINDOWS_RUNTIME_SUPERVISOR_EXIT: "1",
+      ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIR: artifact.directory,
+      ACTESTRA_GOOSE_RUNNER_MANIFEST_SHA256: artifact.manifestSha256,
+      ACTESTRA_GOOSE_WINDOWS_RUNTIME_SUPERVISOR_ROOT: root,
+      ACTESTRA_GOOSE_WINDOWS_RUNTIME_SUPERVISOR_STATE: statePath,
+      ACTESTRA_GOOSE_WINDOWS_RUNTIME_WORKSPACE: workspaceDirectory,
+    },
+    // Execute the fixture under Node, matching Electron Main's Windows
+    // overlapped stdio semantics for the nested capability/model channels.
+    // Drain its diagnostics locally so they never cross into the bounded
+    // runtime artifact.
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+  });
   child.stdout?.resume();
   child.stderr?.resume();
   let state: { readonly privateRoot: string; readonly processIds: readonly number[] } | undefined;
@@ -373,7 +429,6 @@ async function parentDeathProbe(
     fixtureExited = true;
   });
   try {
-    await markFailure("parent-death-fixture-spawn");
     if (child.pid === undefined) {
       throw new Error("Windows runtime parent-death fixture never spawned");
     }

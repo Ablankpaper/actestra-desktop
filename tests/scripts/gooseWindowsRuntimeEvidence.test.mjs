@@ -731,6 +731,19 @@ describe("Goose Windows runtime evidence", () => {
     ).toBeUndefined();
   });
 
+  it("runs the parent-death fixture under Node so Windows overlapped channels match production", () => {
+    const integration = fs.readFileSync(
+      path.join(repositoryRoot, "tests/main/gooseRunnerWindowsNative.integration.ts"),
+      "utf8",
+    );
+
+    expect(integration).toContain("buildParentDeathFixtureBundle(root)");
+    expect(integration).toContain("spawn(process.execPath, [fixtureBundle]");
+    expect(integration).not.toContain(
+      'spawn(\n    "bun",\n    [path.join(repositoryRoot, "tests/fixtures/gooseWindowsRuntimeSupervisorExit.ts")]',
+    );
+  });
+
   it("maps only closed Windows runtime failure stages", () => {
     expect(
       classifyGooseWindowsRuntimeFailureEvidence({ contractVersion: 1, stage: "composition-open" }),
