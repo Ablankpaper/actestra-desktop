@@ -2,6 +2,64 @@
 
 Last updated: 2026-08-23
 
+## 2026-08-23 P8.2c Windows parent-death timeout budget correction (local green; exact-head CI pending)
+
+The documentation-only PR head `7e9ecfb19f47e28629fca2a11c16bf28409076a3`
+was exercised by pull-request CI run
+[`32623724363`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32623724363).
+Six of seven jobs succeeded. The sole failure was the Windows authenticated-
+runtime job, after Windows build, artifact admission, and containment had all
+passed. Failure Artifact `9489416812`
+(`p8-goose-runtime-windows-failure-8b0b05327f2a0d279ee06426cb33457f8ceed8a8`)
+has GitHub archive digest
+`sha256:c1a28b19f8c891d65da1f1b65116bd1e3ea8611044bc858588da62aedc0e8e5b`.
+The independently downloaded JSON has SHA-256
+`cb7ea7817acaa66caca55308890ed6dcfefbbf59d1dc3e4b1e2be113cf420658`
+and contains the bounded code
+`windows-runtime-parent-death-state-timeout-failed`.
+
+This was a test-harness budget defect, not evidence of a new Worker,
+Supervisor, AppContainer, ACL, handle, capability, model, approval, Gateway,
+write, cancellation, or cleanup behavior failure. The parent-death fixture's
+outer state watchdog was only 45 seconds, while the bounded phases it observes
+may legally consume 30 seconds for handshake, two 60-second session phases,
+and 10 seconds for process discovery. The outer watchdog could therefore fire
+at 45 seconds before the 160-second child contract had expired. The complete
+journey had the same inversion: its 180-second Vitest deadline and 210-second
+child-process deadline were both shorter than the sum of the bounded primary
+and parent-death phases.
+
+The local correction introduces one shared timeout contract for the Windows
+authenticated-runtime harness. It retains the existing inner phase limits and
+sets the parent state watchdog to 180 seconds, the Vitest integration deadline
+to 480 seconds, and the outer child-process deadline to 510 seconds. Regression
+coverage proves each outer deadline exceeds every bounded phase it observes
+and prevents the integration, fixture, and runner from returning to unrelated
+hard-coded limits. The regression was observed RED for the absent shared
+contract and again for the stale 210-second runner limit before turning GREEN.
+
+Fresh local evidence for the corrected slice is green: the Windows evidence
+suite passes `34/34`; format, lint, typecheck, changed-file Markdown, document-
+link, and `git diff --check` gates pass. One complete pre-finalization
+`bun run check` passed with `1883 passed / 10 skipped`, all 28 P7 cases and 168
+variants `denied-safe`, exact P8, boundary, foundation, downstream, and package
+checks. The final exact-working-tree composite run reached `1882 passed / 10
+skipped` and then exited 1 only because the unchanged
+`supervisedLocalAgentProvider.test.ts` native sandbox probe flaked under
+parallel load; its single isolated rerun passed `1/1`. The composite exit is
+not represented as green and the full suite was not blindly repeated. The
+change is limited to six Windows runtime test/fixture/runner files and this
+status entry; it does not modify `foundation/` or production Worker,
+Supervisor, renderer, policy, credential, filesystem, or runtime authority.
+
+The earlier exact-head verified Artifact from run `32621677780` remains the
+accepted product-behavior evidence recorded below. This timeout-contract repair
+is not yet Windows-verified, however, and the PR is not merge-ready until one
+new exact-head Windows authenticated-runtime run produces `status=verified`,
+`residualProcessCount=0`, an independently valid Artifact, and all seven jobs
+are green. This entry does not claim P8.2 overall, P8.3, P8.4, release,
+deployment, or user acceptance.
+
 ## 2026-08-23 P8.2c Windows authenticated Goose runtime composition verified
 
 PR #69 head `d260320d3cc76232bee55621b62a8d499dd83977` was exercised by the

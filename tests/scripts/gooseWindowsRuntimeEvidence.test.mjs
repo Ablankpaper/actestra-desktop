@@ -744,6 +744,61 @@ describe("Goose Windows runtime evidence", () => {
     );
   });
 
+  it("keeps the parent-death watchdog outside every bounded fixture startup phase", async () => {
+    const contractPath = path.join(
+      repositoryRoot,
+      "tests/fixtures/gooseWindowsRuntimeSupervisorContract.mjs",
+    );
+    const contractExists = fs.existsSync(contractPath);
+    expect(contractExists).toBe(true);
+    if (!contractExists) return;
+
+    const contract = await import("../fixtures/gooseWindowsRuntimeSupervisorContract");
+    const boundedFixtureStartupMs =
+      contract.WINDOWS_RUNTIME_HANDSHAKE_TIMEOUT_MS +
+      contract.WINDOWS_RUNTIME_SESSION_PHASE_TIMEOUT_MS * 2 +
+      contract.WINDOWS_PARENT_DEATH_PROCESS_DISCOVERY_TIMEOUT_MS;
+    expect(contract.WINDOWS_PARENT_DEATH_STATE_TIMEOUT_MS).toBeGreaterThan(boundedFixtureStartupMs);
+    const boundedPrimaryJourneyMs =
+      contract.WINDOWS_RUNTIME_HANDSHAKE_TIMEOUT_MS +
+      contract.WINDOWS_RUNTIME_SESSION_PHASE_TIMEOUT_MS * 2 +
+      contract.WINDOWS_RUNTIME_PROMPT_TIMEOUT_MS * 3;
+    const boundedParentDeathJourneyMs =
+      contract.WINDOWS_PARENT_DEATH_STATE_TIMEOUT_MS +
+      contract.WINDOWS_PARENT_DEATH_PROCESS_EXIT_TIMEOUT_MS * 2;
+    expect(contract.WINDOWS_RUNTIME_INTEGRATION_TIMEOUT_MS).toBeGreaterThan(
+      boundedPrimaryJourneyMs + boundedParentDeathJourneyMs,
+    );
+    expect(contract.WINDOWS_RUNTIME_CHILD_TIMEOUT_MS).toBeGreaterThan(
+      contract.WINDOWS_RUNTIME_INTEGRATION_TIMEOUT_MS,
+    );
+
+    const integration = fs.readFileSync(
+      path.join(repositoryRoot, "tests/main/gooseRunnerWindowsNative.integration.ts"),
+      "utf8",
+    );
+    const fixture = fs.readFileSync(
+      path.join(repositoryRoot, "tests/fixtures/gooseWindowsRuntimeSupervisorExit.ts"),
+      "utf8",
+    );
+    const runner = fs.readFileSync(
+      path.join(repositoryRoot, "scripts/run-goose-runner-windows-runtime.mjs"),
+      "utf8",
+    );
+    expect(integration).toContain("WINDOWS_PARENT_DEATH_STATE_TIMEOUT_MS");
+    expect(integration).toContain("WINDOWS_PARENT_DEATH_PROCESS_EXIT_TIMEOUT_MS");
+    expect(integration).toContain("WINDOWS_RUNTIME_PROMPT_TIMEOUT_MS");
+    expect(integration).toContain("WINDOWS_RUNTIME_INTEGRATION_TIMEOUT_MS");
+    expect(integration).toContain("vi.setConfig({ testTimeout: integrationTimeoutMs });");
+    expect(integration).not.toContain("}, 480_000);");
+    expect(integration).not.toContain("}, 180_000);");
+    expect(integration).not.toContain("}, 45_000);");
+    expect(fixture).toContain("WINDOWS_RUNTIME_HANDSHAKE_TIMEOUT_MS");
+    expect(fixture).toContain("WINDOWS_RUNTIME_SESSION_PHASE_TIMEOUT_MS");
+    expect(fixture).toContain("WINDOWS_PARENT_DEATH_PROCESS_DISCOVERY_TIMEOUT_MS");
+    expect(runner).toContain("WINDOWS_RUNTIME_CHILD_TIMEOUT_MS");
+  });
+
   it("maps only closed Windows runtime failure stages", () => {
     expect(
       classifyGooseWindowsRuntimeFailureEvidence({ contractVersion: 1, stage: "composition-open" }),

@@ -3,6 +3,11 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
+import {
+  WINDOWS_PARENT_DEATH_PROCESS_DISCOVERY_TIMEOUT_MS,
+  WINDOWS_RUNTIME_HANDSHAKE_TIMEOUT_MS,
+  WINDOWS_RUNTIME_SESSION_PHASE_TIMEOUT_MS,
+} from "./gooseWindowsRuntimeSupervisorContract.mjs";
 import { classifyGooseWindowsOpeningFailure } from "../../scripts/gooseWindowsRuntimeEvidence.mjs";
 import { openGooseMcpSessionComposition } from "../../apps/desktop/src/main/workers/gooseMcpSessionComposition";
 import { admitGooseRunnerArtifact } from "../../apps/desktop/src/main/workers/gooseRunnerArtifact";
@@ -44,7 +49,7 @@ async function findRuntimeProcessIds(executablePath: string): Promise<readonly n
 }
 
 async function waitForRuntimeProcesses(executablePath: string): Promise<readonly number[]> {
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + WINDOWS_PARENT_DEATH_PROCESS_DISCOVERY_TIMEOUT_MS;
   let observed: readonly number[] = [];
   while (Date.now() < deadline) {
     observed = await findRuntimeProcessIds(executablePath);
@@ -129,8 +134,8 @@ async function main(): Promise<never> {
       },
       commandIds: [],
       testIds: [],
-      handshakeTimeoutMs: 30_000,
-      sessionTimeoutMs: 60_000,
+      handshakeTimeoutMs: WINDOWS_RUNTIME_HANDSHAKE_TIMEOUT_MS,
+      sessionTimeoutMs: WINDOWS_RUNTIME_SESSION_PHASE_TIMEOUT_MS,
     });
   } catch (error) {
     await publishFailureDetail(statePath, classifyGooseWindowsOpeningFailure(error));

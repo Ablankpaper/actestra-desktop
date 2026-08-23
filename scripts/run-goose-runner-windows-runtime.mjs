@@ -13,6 +13,7 @@ import {
   classifyGooseWindowsRuntimeFailureEvidence,
   validateGooseWindowsRuntimeEvidence,
 } from "./gooseWindowsRuntimeEvidence.mjs";
+import { WINDOWS_RUNTIME_CHILD_TIMEOUT_MS } from "../tests/fixtures/gooseWindowsRuntimeSupervisorContract.mjs";
 
 const TARGET_TRIPLE = "x86_64-pc-windows-msvc";
 const MAX_OUTPUT_BYTES = 64 * 1024;
@@ -172,12 +173,12 @@ function boundedSystemEnvironment() {
   );
 }
 
-function runBounded(command, args, env = boundedSystemEnvironment()) {
+function runBounded(command, args, env = boundedSystemEnvironment(), timeout = 210_000) {
   return spawnSync(command, args, {
     cwd: repositoryRoot,
     env,
     encoding: "utf8",
-    timeout: 210_000,
+    timeout,
     maxBuffer: MAX_OUTPUT_BYTES,
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
@@ -406,19 +407,24 @@ async function main() {
   let primaryFailure;
   let cleanupFailure = false;
   try {
-    const child = runBounded("bun", ["run", "test", "--", "--bail=1", integrationTest], {
-      ...boundedSystemEnvironment(),
-      ACTESTRA_ENVIRONMENT_CANARY: "environment-canary-must-not-cross",
-      ANTHROPIC_API_KEY: "credential-canary-must-not-cross",
-      OPENAI_API_KEY: "credential-canary-must-not-cross",
-      AWS_SECRET_ACCESS_KEY: "credential-canary-must-not-cross",
-      ACTESTRA_GOOSE_WINDOWS_RUNTIME_INTEGRATION: "1",
-      ACTESTRA_GOOSE_WINDOWS_RUNTIME_EVIDENCE_PATH: evidencePath,
-      ACTESTRA_GOOSE_WINDOWS_RUNTIME_FAILURE_EVIDENCE_PATH: failureEvidencePath,
-      ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIR: artifactDirectory,
-      ACTESTRA_GOOSE_RUNNER_MANIFEST_SHA256: binding.manifestSha256,
-      ACTESTRA_GOOSE_CONTAINMENT_EVIDENCE_SHA256: containmentEvidenceSha256,
-    });
+    const child = runBounded(
+      "bun",
+      ["run", "test", "--", "--bail=1", integrationTest],
+      {
+        ...boundedSystemEnvironment(),
+        ACTESTRA_ENVIRONMENT_CANARY: "environment-canary-must-not-cross",
+        ANTHROPIC_API_KEY: "credential-canary-must-not-cross",
+        OPENAI_API_KEY: "credential-canary-must-not-cross",
+        AWS_SECRET_ACCESS_KEY: "credential-canary-must-not-cross",
+        ACTESTRA_GOOSE_WINDOWS_RUNTIME_INTEGRATION: "1",
+        ACTESTRA_GOOSE_WINDOWS_RUNTIME_EVIDENCE_PATH: evidencePath,
+        ACTESTRA_GOOSE_WINDOWS_RUNTIME_FAILURE_EVIDENCE_PATH: failureEvidencePath,
+        ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIR: artifactDirectory,
+        ACTESTRA_GOOSE_RUNNER_MANIFEST_SHA256: binding.manifestSha256,
+        ACTESTRA_GOOSE_CONTAINMENT_EVIDENCE_SHA256: containmentEvidenceSha256,
+      },
+      WINDOWS_RUNTIME_CHILD_TIMEOUT_MS,
+    );
     if (
       child.error !== undefined ||
       child.status !== 0 ||

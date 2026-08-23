@@ -6,7 +6,15 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
+import {
+  WINDOWS_PARENT_DEATH_PROCESS_EXIT_TIMEOUT_MS,
+  WINDOWS_PARENT_DEATH_STATE_TIMEOUT_MS,
+  WINDOWS_RUNTIME_HANDSHAKE_TIMEOUT_MS,
+  WINDOWS_RUNTIME_INTEGRATION_TIMEOUT_MS as INTEGRATION_TIMEOUT_MS,
+  WINDOWS_RUNTIME_PROMPT_TIMEOUT_MS,
+  WINDOWS_RUNTIME_SESSION_PHASE_TIMEOUT_MS,
+} from "../fixtures/gooseWindowsRuntimeSupervisorContract.mjs";
 import sourceContract from "../../apps/desktop/src/shared/gooseRunnerSource.json";
 import {
   classifyGooseWindowsCodingSessionOpenError,
@@ -54,7 +62,9 @@ const trustedManifestSha256 = process.env.ACTESTRA_GOOSE_RUNNER_MANIFEST_SHA256;
 const evidencePath = process.env.ACTESTRA_GOOSE_WINDOWS_RUNTIME_EVIDENCE_PATH;
 const failureEvidencePath = process.env.ACTESTRA_GOOSE_WINDOWS_RUNTIME_FAILURE_EVIDENCE_PATH;
 const containmentEvidenceSha256 = process.env.ACTESTRA_GOOSE_CONTAINMENT_EVIDENCE_SHA256;
+const integrationTimeoutMs = INTEGRATION_TIMEOUT_MS;
 const MAX_PARENT_DEATH_FIXTURE_BUNDLE_BYTES = 1024 * 1024;
+vi.setConfig({ testTimeout: integrationTimeoutMs });
 const nativeEnabled =
   process.platform === "win32" &&
   process.arch === "x64" &&
@@ -448,7 +458,7 @@ async function parentDeathProbe(
       if (bytes === undefined) return false;
       rawState = bytes.toString("utf8");
       return rawState.endsWith("\n");
-    }, 45_000);
+    }, WINDOWS_PARENT_DEATH_STATE_TIMEOUT_MS);
 
     await markFailure("parent-death-state-malformed");
     state = JSON.parse(rawState!);
@@ -484,10 +494,16 @@ async function parentDeathProbe(
     };
 
     await markFailure("parent-death-supervisor-not-exited");
-    await waitFor(async () => (await residual([supervisorProcessId])).length === 0);
+    await waitFor(
+      async () => (await residual([supervisorProcessId])).length === 0,
+      WINDOWS_PARENT_DEATH_PROCESS_EXIT_TIMEOUT_MS,
+    );
 
     await markFailure("parent-death-worker-not-exited");
-    await waitFor(async () => (await residual(workerProcessIds)).length === 0);
+    await waitFor(
+      async () => (await residual(workerProcessIds)).length === 0,
+      WINDOWS_PARENT_DEATH_PROCESS_EXIT_TIMEOUT_MS,
+    );
 
     await markFailure("parent-death-residual-processes");
     return (await residual([supervisorProcessId, ...workerProcessIds])).length;
@@ -647,8 +663,8 @@ describe.skipIf(!nativeEnabled)("native Windows Goose authenticated runtime comp
           toolInvoker: recordingToolInvoker,
           commandIds: [],
           testIds: [],
-          handshakeTimeoutMs: 30_000,
-          sessionTimeoutMs: 60_000,
+          handshakeTimeoutMs: WINDOWS_RUNTIME_HANDSHAKE_TIMEOUT_MS,
+          sessionTimeoutMs: WINDOWS_RUNTIME_SESSION_PHASE_TIMEOUT_MS,
         });
       } catch (error) {
         await markFailure(classifyGooseWindowsOpeningFailure(error));
@@ -662,7 +678,7 @@ describe.skipIf(!nativeEnabled)("native Windows Goose authenticated runtime comp
       try {
         const result = await opened.prompt({
           text: "Read answer.txt and acknowledge the result.",
-          timeoutMs: 30_000,
+          timeoutMs: WINDOWS_RUNTIME_PROMPT_TIMEOUT_MS,
         });
         expect(result).toMatchObject({ stopReason: "end_turn" });
       } catch (error) {
@@ -673,7 +689,7 @@ describe.skipIf(!nativeEnabled)("native Windows Goose authenticated runtime comp
       try {
         const result = await opened.prompt({
           text: "Write the approved acceptance file.",
-          timeoutMs: 30_000,
+          timeoutMs: WINDOWS_RUNTIME_PROMPT_TIMEOUT_MS,
         });
         expect(result).toMatchObject({ stopReason: "end_turn" });
       } catch (error) {
@@ -690,7 +706,10 @@ describe.skipIf(!nativeEnabled)("native Windows Goose authenticated runtime comp
         throw error;
       }
       await markFailure("cancellation");
-      const prompting = opened.prompt({ text: "Wait for cancellation.", timeoutMs: 30_000 });
+      const prompting = opened.prompt({
+        text: "Wait for cancellation.",
+        timeoutMs: WINDOWS_RUNTIME_PROMPT_TIMEOUT_MS,
+      });
       await cancellationStarted.promise;
       const closing = opened.close();
       await expect(prompting).rejects.toEqual(expect.any(Error));
@@ -751,7 +770,7 @@ describe.skipIf(!nativeEnabled)("native Windows Goose authenticated runtime comp
       flag: "wx",
       mode: 0o600,
     });
-  }, 180_000);
+  });
 });
 
 afterAll(async () => {
