@@ -5,6 +5,7 @@ import os from "node:os";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import { verifyPrivateGooseRuntime } from "./goosePrivateRuntimeContract.mjs";
 import { resolveGooseRunnerToolInstallContract } from "./install-goose-runner-tools.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -43,6 +44,7 @@ const sourceTreeFiles = [
   "apps/desktop/src/main/workers/gooseRunnerTarget.ts",
   "apps/desktop/src/shared/gooseRunnerSource.json",
   "scripts/build-goose-runner.mjs",
+  "scripts/goosePrivateRuntimeContract.mjs",
   "scripts/gooseContainmentEvidence.mjs",
   "scripts/install-goose-runner-tools.mjs",
   "scripts/record-goose-runner-containment.mjs",
@@ -52,6 +54,11 @@ const sourceTreeFiles = [
   "workers/goose-runner/Cargo.toml",
   "workers/goose-runner/PATCHES.md",
   "workers/goose-runner/licenses/GOOSE-APACHE-2.0.txt",
+  "workers/goose-runner/vendor/arrayref/Cargo.toml",
+  "workers/goose-runner/vendor/arrayref/LICENSE",
+  "workers/goose-runner/vendor/arrayref/README.md",
+  "workers/goose-runner/vendor/arrayref/SOURCE.md",
+  "workers/goose-runner/vendor/arrayref/src/lib.rs",
   "workers/goose-runner/rust-toolchain.toml",
   "workers/goose-runner/src/containment/linux.rs",
   "workers/goose-runner/src/containment/mod.rs",
@@ -179,7 +186,7 @@ function deterministicUuid(digest) {
 function cargoPurl(packageValue) {
   const base = `pkg:cargo/${encodeURIComponent(packageValue.name)}@${encodeURIComponent(packageValue.version)}`;
   if (typeof packageValue.source === "string" && packageValue.source.startsWith("git+")) {
-    return `${base}?vcs_url=${encodeURIComponent(`git+https://github.com/aaif-goose/goose@${sourceContract.goose.commit}`)}`;
+    return `${base}?vcs_url=${encodeURIComponent(`git+${sourceContract.goose.runtimeRepository}@${sourceContract.goose.runtimeCommit}`)}`;
   }
   return base;
 }
@@ -489,6 +496,28 @@ const buildEnvironment = {
   PATH: [toolDirectory, process.env.PATH ?? ""].filter(Boolean).join(path.delimiter),
   CARGO_NET_GIT_FETCH_WITH_CLI: "true",
 };
+const metadata = JSON.parse(
+  await requireSuccess(
+    "cargo",
+    [
+      "metadata",
+      "--locked",
+      "--no-default-features",
+      "--filter-platform",
+      targetTriple,
+      "--format-version",
+      "1",
+    ],
+    { cwd: runnerRoot, env: buildEnvironment },
+  ),
+);
+await verifyPrivateGooseRuntime({
+  metadata,
+  sourceContract,
+  git: (args, cwd) => run("git", args, { cwd }),
+}).catch((error) =>
+  fail(error instanceof Error ? error.message : "private runtime verification failed"),
+);
 const buildOutput = await requireSuccess(
   "cargo",
   ["auditable", "build", "--locked", "--release", "--message-format=json-render-diagnostics"],
@@ -503,21 +532,6 @@ const executableName = buildTarget.executableFile;
 const builtExecutable = path.join(runnerRoot, "target", "release", executableName);
 const sourceDigest = await sourceTreeSha256();
 const builtAt = new Date().toISOString();
-const metadata = JSON.parse(
-  await requireSuccess(
-    "cargo",
-    [
-      "metadata",
-      "--locked",
-      "--no-default-features",
-      "--filter-platform",
-      targetTriple,
-      "--format-version",
-      "1",
-    ],
-    { cwd: runnerRoot, env: { ...buildEnvironment, CARGO_NET_OFFLINE: "true" } },
-  ),
-);
 const cargoTreeOutput = await requireSuccess(
   "cargo",
   [

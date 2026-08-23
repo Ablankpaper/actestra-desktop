@@ -643,6 +643,10 @@
       "destination": "packages/desktop/src/actestra/main/workers/gooseMcpCapabilityServer.ts"
     },
     {
+      "source": "apps/desktop/src/main/workers/gooseAuthenticatedBridgeProtocol.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/gooseAuthenticatedBridgeProtocol.ts"
+    },
+    {
       "source": "apps/desktop/src/main/workers/gooseMcpSessionComposition.ts",
       "destination": "packages/desktop/src/actestra/main/workers/gooseMcpSessionComposition.ts"
     },
@@ -669,6 +673,18 @@
     {
       "source": "apps/desktop/src/main/workers/gooseRunnerProcess.ts",
       "destination": "packages/desktop/src/actestra/main/workers/gooseRunnerProcess.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/workers/gooseSessionTransport.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/gooseSessionTransport.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/workers/gooseWindowsCapabilityBridgeHost.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/gooseWindowsCapabilityBridgeHost.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/workers/gooseWindowsModelBridgeHost.ts",
+      "destination": "packages/desktop/src/actestra/main/workers/gooseWindowsModelBridgeHost.ts"
     },
     {
       "source": "apps/desktop/src/main/workers/gooseRunnerTarget.ts",
@@ -945,6 +961,7 @@
     "packages/desktop/src/actestra/main/workers/gooseBridgeSocket.ts",
     "packages/desktop/src/actestra/main/workers/gooseLoopbackModelServer.ts",
     "packages/desktop/src/actestra/main/workers/gooseMcpCapabilityServer.ts",
+    "packages/desktop/src/actestra/main/workers/gooseAuthenticatedBridgeProtocol.ts",
     "packages/desktop/src/actestra/main/workers/gooseMcpSessionComposition.ts",
     "packages/desktop/src/actestra/main/workers/gooseRunnerArtifact.ts",
     "packages/desktop/src/actestra/main/workers/gooseRunnerLinuxPackage.ts",
@@ -952,6 +969,9 @@
     "packages/desktop/src/actestra/main/workers/actestraCodingJourneyRuntime.ts",
     "packages/desktop/src/actestra/main/workers/actestraGeneralWorkRuntime.ts",
     "packages/desktop/src/actestra/main/workers/gooseRunnerProcess.ts",
+    "packages/desktop/src/actestra/main/workers/gooseSessionTransport.ts",
+    "packages/desktop/src/actestra/main/workers/gooseWindowsCapabilityBridgeHost.ts",
+    "packages/desktop/src/actestra/main/workers/gooseWindowsModelBridgeHost.ts",
     "packages/desktop/src/actestra/main/workers/gooseRunnerTarget.ts",
     "packages/desktop/src/actestra/main/workers/gooseRunnerSandbox.ts",
     "packages/desktop/src/actestra/main/workers/isolatedCodingMainService.ts",

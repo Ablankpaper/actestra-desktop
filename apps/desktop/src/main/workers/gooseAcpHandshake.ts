@@ -11,7 +11,14 @@ export const ACTESTRA_GOOSE_MCP_EXTENSION_NAME = "actestra-capability-proxy" as 
 const INITIALIZE_REQUEST_ID = "actestra-goose-initialize-1";
 const SESSION_NEW_REQUEST_ID = "actestra-goose-session-new-1";
 const TOOLS_LIST_REQUEST_ID = "actestra-goose-tools-list-1";
-const SESSION_PROMPT_REQUEST_ID = "actestra-goose-session-prompt-1";
+/**
+ * Each admitted turn correlates on its own fixed id. A session may issue many
+ * sequential prompts, so a single shared id would let a late update or response
+ * from an earlier turn be mis-attributed to the current one.
+ */
+const sessionPromptRequestId = (turn: number): string =>
+  `actestra-goose-session-prompt-${String(turn)}`;
+const MAX_SESSION_PROMPT_TURNS = 512;
 const DEFAULT_HANDSHAKE_TIMEOUT_MS = 10_000;
 const DEFAULT_SESSION_TIMEOUT_MS = 30_000;
 const MAX_SESSION_TIMEOUT_MS = 120_000;
@@ -111,12 +118,19 @@ export interface GooseAcpConnection {
   close(): Promise<void>;
 }
 
-export interface GooseAcpSessionOptions {
-  readonly workspaceDirectory: string;
-  readonly capabilityProxyUrl: string;
-  readonly attemptLease: string;
-  readonly timeoutMs?: number;
-}
+export type GooseAcpSessionOptions =
+  | Readonly<{
+      readonly transport?: "mcp-http";
+      readonly workspaceDirectory: string;
+      readonly capabilityProxyUrl: string;
+      readonly attemptLease: string;
+      readonly timeoutMs?: number;
+    }>
+  | Readonly<{
+      readonly transport: "injected";
+      readonly workspaceDirectory: string;
+      readonly timeoutMs?: number;
+    }>;
 
 export type GooseAcpSetupNotificationKind = "usage_update" | "available_commands_update";
 
@@ -733,6 +747,10 @@ async function openGooseAcpSession(
           ),
         );
       }, timeoutMs);
+      const mcpOptions = options as Extract<
+        GooseAcpSessionOptions,
+        { readonly transport?: "mcp-http" }
+      >;
       transport.sendLine(
         JSON.stringify({
           jsonrpc: "2.0",
@@ -740,19 +758,22 @@ async function openGooseAcpSession(
           method: "session/new",
           params: {
             cwd: options.workspaceDirectory,
-            mcpServers: [
-              {
-                type: "http",
-                name: ACTESTRA_GOOSE_MCP_EXTENSION_NAME,
-                url: options.capabilityProxyUrl,
-                headers: [
-                  {
-                    name: "Authorization",
-                    value: `Bearer ${options.attemptLease}`,
-                  },
-                ],
-              },
-            ],
+            mcpServers:
+              options.transport === "injected"
+                ? []
+                : [
+                    {
+                      type: "http",
+                      name: ACTESTRA_GOOSE_MCP_EXTENSION_NAME,
+                      url: mcpOptions.capabilityProxyUrl,
+                      headers: [
+                        {
+                          name: "Authorization",
+                          value: `Bearer ${mcpOptions.attemptLease}`,
+                        },
+                      ],
+                    },
+                  ],
           },
         }),
       );
@@ -1325,6 +1346,7 @@ function parsePromptMessage(
   line: string,
   options: GooseAcpPromptOptions,
   updates: GooseAcpPromptUpdate[],
+  requestId: string,
 ): GooseAcpPromptResult | undefined {
   if (Buffer.byteLength(line, "utf8") > MAX_SESSION_LINE_BYTES) {
     throw invalidSessionMessage("Goose prompt message is too large");
@@ -1354,7 +1376,7 @@ function parsePromptMessage(
   }
   if (Object.hasOwn(message, "error")) {
     assertSessionExactKeys(message, ["jsonrpc", "id", "error"], "Goose prompt error");
-    if (message.jsonrpc !== "2.0" || message.id !== SESSION_PROMPT_REQUEST_ID) {
+    if (message.jsonrpc !== "2.0" || message.id !== requestId) {
       throw invalidSessionMessage("Goose prompt error correlation is incompatible");
     }
     const error = assertSessionRecord(message.error, "Goose prompt error payload");
@@ -1378,7 +1400,7 @@ function parsePromptMessage(
     );
   }
   assertSessionExactKeys(message, ["jsonrpc", "id", "result"], "Goose prompt response");
-  if (message.jsonrpc !== "2.0" || message.id !== SESSION_PROMPT_REQUEST_ID) {
+  if (message.jsonrpc !== "2.0" || message.id !== requestId) {
     throw invalidSessionMessage("Goose prompt response correlation is incompatible");
   }
   const result = assertSessionRecord(message.result, "Goose prompt result");
@@ -1482,7 +1504,9 @@ function assertPromptOptions(options: GooseAcpPromptOptions, expectedSessionId: 
 async function promptGooseAcp(
   transport: GooseAcpTransport,
   options: GooseAcpPromptOptions,
+  turn = 1,
 ): Promise<GooseAcpPromptResult> {
+  const requestId = sessionPromptRequestId(turn);
   const timeoutMs = options.timeoutMs ?? DEFAULT_SESSION_TIMEOUT_MS;
   const updates: GooseAcpPromptUpdate[] = [];
   let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -1539,7 +1563,7 @@ async function promptGooseAcp(
           }
           arm();
           try {
-            const result = parsePromptMessage(line, options, updates);
+            const result = parsePromptMessage(line, options, updates, requestId);
             if (result !== undefined) {
               settle(() => resolve(result));
             }
@@ -1573,7 +1597,7 @@ async function promptGooseAcp(
       transport.sendLine(
         JSON.stringify({
           jsonrpc: "2.0",
-          id: SESSION_PROMPT_REQUEST_ID,
+          id: requestId,
           method: "session/prompt",
           params: {
             sessionId: options.sessionId,
@@ -1623,25 +1647,39 @@ function assertSessionOptions(options: GooseAcpSessionOptions): void {
       "Goose session workspace must be an absolute path",
     );
   }
-  const loopbackMatch = /^http:\/\/127\.0\.0\.1:([1-9][0-9]{0,4})\/mcp$/.exec(
-    options.capabilityProxyUrl,
-  );
-  const loopbackPort = loopbackMatch === null ? 0 : Number(loopbackMatch[1]);
-  if (loopbackPort < 1 || loopbackPort > 65_535) {
+  const transport = options.transport ?? "mcp-http";
+  if (transport !== "injected" && transport !== "mcp-http") {
     throw new GooseAcpSessionError(
       "invalid-session-options",
-      "Goose session capability proxy must use the exact admitted loopback HTTP endpoint",
+      "Goose session transport is not admitted",
     );
   }
-  if (
-    typeof options.attemptLease !== "string" ||
-    options.attemptLease.length < 32 ||
-    options.attemptLease.length > 256 ||
-    !/^[A-Za-z0-9._~-]+$/.test(options.attemptLease)
-  ) {
+  if (transport === "mcp-http" && "capabilityProxyUrl" in options && "attemptLease" in options) {
+    const loopbackMatch = /^http:\/\/127\.0\.0\.1:([1-9][0-9]{0,4})\/mcp$/.exec(
+      options.capabilityProxyUrl,
+    );
+    const loopbackPort = loopbackMatch === null ? 0 : Number(loopbackMatch[1]);
+    if (loopbackPort < 1 || loopbackPort > 65_535) {
+      throw new GooseAcpSessionError(
+        "invalid-session-options",
+        "Goose session capability proxy must use the exact admitted loopback HTTP endpoint",
+      );
+    }
+    if (
+      typeof options.attemptLease !== "string" ||
+      options.attemptLease.length < 32 ||
+      options.attemptLease.length > 256 ||
+      !/^[A-Za-z0-9._~-]+$/.test(options.attemptLease)
+    ) {
+      throw new GooseAcpSessionError(
+        "invalid-session-options",
+        "Goose session attempt lease is not a bounded opaque bearer value",
+      );
+    }
+  } else if (transport === "mcp-http") {
     throw new GooseAcpSessionError(
       "invalid-session-options",
-      "Goose session attempt lease is not a bounded opaque bearer value",
+      "Goose MCP session requires an admitted capability proxy and lease",
     );
   }
   if (
@@ -1742,7 +1780,8 @@ export async function connectGooseAcp(
     let activeSessionId: string | undefined;
     let toolDiscoveryRequested = false;
     let toolDiscoveryCompleted = false;
-    let promptRequested = false;
+    let promptInFlight = false;
+    let promptTurns = 0;
     return Object.freeze({
       info,
       async openSession(options: GooseAcpSessionOptions): Promise<GooseAcpSession> {
@@ -1803,14 +1842,25 @@ export async function connectGooseAcp(
           );
         }
         assertPromptOptions(options, activeSessionId);
-        if (promptRequested) {
+        if (promptInFlight) {
           throw new GooseAcpSessionError(
             "prompt-already-requested",
-            "Goose process already received its single admitted session/prompt request",
+            "Goose process already has an in-flight session/prompt request",
           );
         }
-        promptRequested = true;
-        return promptGooseAcp(transport, options);
+        if (promptTurns >= MAX_SESSION_PROMPT_TURNS) {
+          throw new GooseAcpSessionError(
+            "prompt-rejected",
+            "Goose session exceeded the admitted session/prompt turn count",
+          );
+        }
+        promptInFlight = true;
+        promptTurns += 1;
+        try {
+          return await promptGooseAcp(transport, options, promptTurns);
+        } finally {
+          promptInFlight = false;
+        }
       },
       async close(): Promise<void> {
         if (closed) {

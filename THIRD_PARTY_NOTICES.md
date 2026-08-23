@@ -47,18 +47,40 @@ AionUi material identified there.
 
 ## P5.1 Goose runner build materials
 
-The minimal `actestra-goose-runner` resolves Goose `v1.45.0` at exact commit
-`4dc0420f5704a92806c6628c8f0a3497d7a88759` as an Apache-2.0 Cargo
-dependency with default features disabled and no enabled Goose feature. The
-upstream source tree and official CLI binary are not committed. The exact
+The minimal `actestra-goose-runner` keeps Goose `v1.45.0` at canonical upstream
+base `4dc0420f5704a92806c6628c8f0a3497d7a88759`. For the P8.2c Windows runtime
+composition it resolves `goose` and `goose-providers` from the standalone
+private `Ablankpaper/actestra-goose-runtime` repository at immutable commit
+`5d66f81a3a992b063ff6f22663789fbe7be42b48`. That commit modifies only the
+three ACP server files recorded in `workers/goose-runner/PATCHES.md`; their
+binary full-index diff SHA-256 is
+`7e848a929788d1c9fcfa55e85620a1359688386d3c52978b5f4074f0367ea205`.
+The adapter is default-off, and Goose default features remain disabled with no
+enabled Goose feature.
+
+Goose is Apache-2.0 and has no root `NOTICE`. The upstream source tree is not
+vendored into Actestra and the official CLI binary is not committed. The exact
 Apache-2.0 payload is retained at
 `workers/goose-runner/licenses/GOOSE-APACHE-2.0.txt`, and each generated runner
 artifact copies it beside the executable, lock, audit report, CycloneDX 1.6
 SBOM, and immutable manifest.
 
+The private repository is not a GitHub Fork and has no automatic upstream
+synchronization. Actestra admits the immutable commit and exact diff rather
+than a moving branch. Rollback restores the canonical upstream base and keeps
+Windows production runtime admission disabled.
+
 The generated local artifact and any future seven-day CI artifact are admission
 evidence, not a packaged, signed, notarized, released, or distributed Actestra
 component.
+
+The runner also carries a source copy of `arrayref 0.3.9` under
+`workers/goose-runner/vendor/arrayref`. It is BSD-2-Clause licensed; its
+upstream commit and reason for vendoring are recorded in that directory's
+`SOURCE.md`. This copy replaces the yanked crates.io package selected by
+`blake3` and is included in the runner source-tree digest.
+The private runtime pin also does not prove adapted Windows execution, an
+Electron package, candidate status, P8.2c completion, or overall P8 completion.
 Before a desktop candidate includes the runner, Release must verify the full
 transitive SBOM and license expressions, applicable notices, package placement,
 signature, provenance, update and rollback behavior, and target-platform

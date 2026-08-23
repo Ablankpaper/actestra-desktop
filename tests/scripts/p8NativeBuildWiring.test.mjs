@@ -28,6 +28,81 @@ function expectOrderedFragments(contents, fragments) {
 }
 
 describe("P8 native Goose build wiring", () => {
+  it("admits the private runtime only for same-repository CI with a read-only deploy key", () => {
+    const workflow = read(".github/workflows/ci.yml");
+    const sameRepositoryCondition =
+      "if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository";
+    const hostKey =
+      "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl";
+
+    for (const jobId of [
+      "goose-runner",
+      "goose-runner-windows",
+      "goose-runner-linux",
+      "goose-containment-windows",
+      "goose-runtime-windows",
+      "goose-containment-linux",
+      "macos",
+    ]) {
+      const job = readWorkflowJob(workflow, jobId);
+      expect(job, `missing CI job ${jobId}`).not.toBe("");
+      expect(job).toContain(sameRepositoryCondition);
+      expect(job).toContain("name: Fetch admitted private Goose runtime source");
+      expect(job).toContain(
+        "ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY: ${{ secrets.ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY }}",
+      );
+      expect(job).toContain(hostKey);
+      expect(job).toContain("trap 'rm -rf -- \"$key_root\"' EXIT");
+      expect(job).toContain('mkdir -p "$key_root"');
+      expect(job).toContain('if [ "$RUNNER_OS" != "Windows" ]; then');
+      expect(job).toContain('chmod 700 "$key_root"');
+      expect(job).toContain('chmod 600 "$key_root/id_ed25519"');
+      expect(job).toContain("export CARGO_NET_GIT_FETCH_WITH_CLI=true");
+      expect(job).toContain('export GIT_SSH_COMMAND="ssh -i $key_root/id_ed25519');
+      expect(job).toContain("cargo fetch --manifest-path workers/goose-runner/Cargo.toml --locked");
+      expect(job).not.toContain('install -m 700 -d "$key_root"');
+      expect(job).not.toContain("$GITHUB_ENV");
+      expectOrderedFragments(job, [
+        "name: Checkout",
+        "name: Install dependencies",
+        "name: Fetch admitted private Goose runtime source",
+      ]);
+      const credentialStart = job.indexOf("name: Fetch admitted private Goose runtime source");
+      const credentialEnd = job.indexOf("\n      - name:", credentialStart);
+      const credentialWindow = job.slice(credentialStart, credentialEnd);
+      expect(credentialWindow.match(/\bcargo\b/gu)).toHaveLength(1);
+      expect(credentialWindow).not.toContain("bun run");
+      expect(`${job.slice(0, credentialStart)}${job.slice(credentialEnd)}`).not.toContain(
+        "ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY",
+      );
+      const uploadSteps = job
+        .split(/\n\s+- name:/u)
+        .filter((step) => step.includes("upload-artifact"))
+        .join("\n");
+      expect(uploadSteps).not.toContain("ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY");
+      expect(uploadSteps).not.toContain("actestra-goose-runtime-ssh");
+    }
+
+    expect(workflow).toContain(
+      "# GitHub ED25519 fingerprint: SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU",
+    );
+  });
+
+  it("keeps the immutable yanked-package patch in the reproducible source tree", () => {
+    const manifest = read("workers/goose-runner/Cargo.toml");
+    const lock = read("workers/goose-runner/Cargo.lock");
+
+    expect(manifest).toContain('arrayref = { path = "vendor/arrayref" }');
+    expect(lock).toContain('name = "arrayref"');
+    expect(lock).not.toContain("arrayref?rev=");
+    expect(
+      fs.existsSync(path.join(repositoryRoot, "workers/goose-runner/vendor/arrayref/SOURCE.md")),
+    ).toBe(true);
+    expect(read("workers/goose-runner/vendor/arrayref/SOURCE.md")).toContain(
+      "f8d0299d863922db6c409d08098941e833b70d69",
+    );
+  });
+
   it("registers a build-only emitted-artifact verifier at the production admission boundary", () => {
     const scripts = JSON.parse(read("package.json")).scripts;
     const verifierPath = path.join(repositoryRoot, "scripts/admit-goose-runner-build.ts");
@@ -119,6 +194,7 @@ describe("P8 native Goose build wiring", () => {
   it("runs the Windows supervisor native tests before admitting the emitted artifact", () => {
     const workflow = read(".github/workflows/ci.yml");
     const job = readWorkflowJob(workflow, "goose-runner-windows");
+    const bridgeContract = read("tests/main/gooseRunnerWindowsBridge.test.ts");
 
     expectOrderedFragments(job, [
       "bun run goose:runner:format:check",
@@ -126,6 +202,45 @@ describe("P8 native Goose build wiring", () => {
       "bun run goose:runner:build",
       "bun run goose:runner:admit-build",
     ]);
+    expect(bridgeContract).not.toContain("fail-closed post-spawn marker");
+    expect(bridgeContract).not.toContain("Windows supervisor spawn probe timed out");
+  });
+
+  it("binds one exact Windows artifact through containment and authenticated runtime evidence", () => {
+    const workflow = read(".github/workflows/ci.yml");
+    const job = readWorkflowJob(workflow, "goose-runtime-windows");
+
+    expect(job).toContain("name: P8.2 Windows x64 Goose authenticated runtime");
+    expect(job).toContain("runs-on: windows-2025");
+    expect(job).toContain("timeout-minutes: 60");
+    expectOrderedFragments(job, [
+      "bun run goose:runner:format:check",
+      "cargo test --manifest-path workers/goose-runner/Cargo.toml --locked windows_native_tests",
+      "bun run test tests/main/gooseRunnerWindowsChannelNative.test.ts",
+      "bun run goose:runner:tools",
+      "bun run goose:runner:build",
+      "git diff --exit-code -- workers/goose-runner/Cargo.lock",
+      "bun run goose:runner:admit-build",
+      "bun run goose:runner:containment:accept | Tee-Object -FilePath containment-evidence.json",
+      "ACTESTRA_GOOSE_RUNNER_MANIFEST_SHA256",
+      "ACTESTRA_GOOSE_CONTAINMENT_EVIDENCE_PATH",
+      "bun run goose:runner:integration:windows | Tee-Object -FilePath windows-runtime-evidence.json",
+      "name: Re-admit exact Windows Goose runner",
+      "run: bun run goose:runner:admit-build",
+      "name: Preserve bounded Windows authenticated runtime evidence",
+    ]);
+    expect(job).toContain("if: success()");
+    expect(job).toContain("name: p8-goose-runtime-windows-${{ github.sha }}");
+    expect(job).toContain("path: windows-runtime-evidence.json");
+    expect(job).toContain("ACTESTRA_GOOSE_WINDOWS_RUNTIME_FAILURE_OUTPUT_PATH");
+    expect(job).toContain("name: Preserve bounded Windows authenticated runtime failure");
+    expect(job).toContain("if: failure()");
+    expect(job).toContain("path: windows-runtime-failure.json");
+    expect(job).toContain("retention-days: 3");
+    expect(job).toContain("compression-level: 0");
+    expect(job).not.toContain("OPENAI_API_KEY");
+    expect(job).not.toContain("ANTHROPIC_API_KEY");
+    expect(job).not.toContain("provider credential");
   });
 
   it("installs the exact Ubuntu package layout with sudo only around setup and teardown", () => {

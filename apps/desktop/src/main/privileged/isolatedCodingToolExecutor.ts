@@ -50,6 +50,11 @@ import {
   type WorkspaceGrant,
 } from "../../core";
 import type { IsolatedCodingProcessDefinition } from "./isolatedCodingToolPlatform";
+import {
+  CLOSED_GIT_CONFIG_ARGUMENTS,
+  GIT_EXECUTABLE,
+  workspaceGitEnvironment,
+} from "../workers/workspaceGitBinding";
 import { captureIsolatedCodingPatch } from "../workers/isolatedCodingPatch";
 import {
   WorkerStorageBudgetError,
@@ -59,7 +64,6 @@ import {
 } from "../workers/workerStorageBudget";
 
 const execFileAsync = promisify(execFile);
-const GIT_EXECUTABLE = "/usr/bin/git";
 const SANDBOX_EXECUTABLE = "/usr/bin/sandbox-exec";
 const PROCESS_TERMINATE_GRACE_MS = 1_000;
 const STDERR_SIGNATURE_PROBE_BYTES = 4_096;
@@ -70,12 +74,6 @@ const MACOS_DENIED_HOST_READ_ROOTS = Object.freeze([
   "/private/tmp",
   "/private/var/folders",
   "/Library",
-] as const);
-const CLOSED_GIT_CONFIG_ARGUMENTS = Object.freeze([
-  "-c",
-  "core.hooksPath=/dev/null",
-  "-c",
-  "core.fsmonitor=false",
 ] as const);
 
 export interface IsolatedCodingToolExecutorConfig {
@@ -517,18 +515,7 @@ async function readCodingFile(
 }
 
 function gitEnvironment(root: string): Readonly<Record<string, string>> {
-  const privateRoot = path.dirname(root);
-  return Object.freeze({
-    GIT_ATTR_NOSYSTEM: "1",
-    GIT_CONFIG_GLOBAL: "/dev/null",
-    GIT_CONFIG_NOSYSTEM: "1",
-    GIT_OPTIONAL_LOCKS: "0",
-    GIT_PAGER: "cat",
-    GIT_TERMINAL_PROMPT: "0",
-    HOME: privateRoot,
-    LC_ALL: "C",
-    PATH: "/usr/bin:/bin",
-  });
+  return Object.freeze({ ...workspaceGitEnvironment(path.dirname(root)), GIT_PAGER: "cat" });
 }
 
 async function requireExactGitBinding(

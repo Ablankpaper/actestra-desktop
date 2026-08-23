@@ -1,9 +1,12 @@
 # Goose v1.45.0 P5 Evaluation
 
-Status: Verified P5.0 source, protocol, license, artifact, and dependency
-evidence; no Goose material imported or executed by Actestra
+Status: Verified P5 source, protocol, license, artifact, and dependency
+evidence; P8.2c private default-off runtime adapter and exact-head Windows
+authenticated runtime composition are verified. Electron packaging, the
+overall P8.2 matrix, P8.3, and P8.4 remain separate gates.
 
-Verification date: 2026-08-01
+Verification dates: upstream evaluation 2026-08-01; private runtime pin
+2026-08-19
 
 Decision: [ADR-0024](../architecture/decisions/0024-minimal-goose-acp-runner.md)
 
@@ -48,6 +51,44 @@ This entry point permits an Actestra-owned minimal runner that excludes the
 upstream CLI crate. Actestra will not use `goose serve`, HTTP/WebSocket ACP,
 `--dangerously-unauthenticated`, `--with-builtin developer`, or the scheduler.
 No second UI is involved.
+
+### P8.2c private runtime adapter source
+
+Actestra now resolves the `goose` and `goose-providers` crates from the
+standalone private repository `Ablankpaper/actestra-goose-runtime` at immutable
+commit `5d66f81a3a992b063ff6f22663789fbe7be42b48`. That commit descends from
+the exact upstream base and changes only:
+
+- `crates/goose/src/acp/server.rs`;
+- `crates/goose/src/acp/server_factory.rs`; and
+- `crates/goose/src/acp/server/new_session.rs`.
+
+The binary full-index Git diff for the three declared paths has SHA-256
+`7e848a929788d1c9fcfa55e85620a1359688386d3c52978b5f4074f0367ea205`.
+It adds a default-off ACP adapter seam that binds one fixed Provider, model,
+MCP client, and active session. The adapted path accepts only the absolute
+workspace path already admitted by Main without requiring AppContainer
+enumeration; the ordinary upstream entry point retains its accessible-directory
+validation. No separate Goose UI is imported, and the admitted Goose feature
+set remains empty.
+
+Exact Windows authenticated-runtime evidence was verified in CI run
+`32621677780` on merge ref
+`f110509e46325b0bf2e71d98929cdb43bf20b45e`, Artifact `9488950524`, with ZIP
+SHA-256
+`d93fdfaa834d2893f5ce744a3431f9e2eee0d33f0ee9a02c08303b6deb31885b`. The
+repository validator returned `{ ok: true }`. The record proves ACP/MCP
+initialization, six-tool discovery, read, approved write, cancellation,
+parent-death cleanup, credential and environment canary absence, direct
+network denial, original-workspace preservation, and zero residual processes
+on `x86_64-pc-windows-msvc`. This is a P8.2c runtime-composition result; it is
+not candidate, clean-machine, release, or user-acceptance evidence.
+
+The private repository is not a GitHub Fork. Its default branch remains the
+exact upstream base, GitHub Actions are disabled, and there is no webhook or
+automatic upstream synchronization. Actestra CI uses a repository-scoped
+read-only deploy key only in same-repository jobs that resolve the private
+source. The immutable commit, not a branch tip, is the product input.
 
 The ACP server still creates private configuration and SQLite/session state.
 `GOOSE_PATH_ROOT` can redirect the primary data, config, and state root, but
@@ -121,6 +162,14 @@ the registry query timed out, reports:
 The yanked-package check is incomplete because crates.io queries timed out; it
 is tracked as an environment gap and does not replace the vulnerability result.
 
+For the current P8.2c runner lock, crates.io subsequently marked the selected
+`arrayref 0.3.9` (via `blake3 1.8.5`) as yanked. The runner now uses a
+vendored exact source copy of the pre-yank `droundy/arrayref` commit
+`f8d0299d863922db6c409d08098941e833b70d69`; no yanked registry package is
+accepted and the audit remains fail-closed. The copy and its BSD-2-Clause
+license are included in the runner source-tree digest because the upstream
+repository is unavailable to CI.
+
 Static reverse dependency analysis of the exact lock and manifests shows:
 
 - `quick-xml 0.36.2` enters through `docx-rs -> goose-mcp`;
@@ -150,8 +199,9 @@ is a direct normal Goose core dependency and was present in the Actestra
 auditable binary. The Actestra-owned runner lock therefore advances only that
 package to `0.18.2`; artifact admission pins the safe resolved version and
 rejects `0.18.1`. A rebuilt lock and binary scan contains no unsound warning
-and retains only ADR-0025's exact RSA metadata record. The Goose commit, empty
-feature set, and empty source-patch set are unchanged.
+and retains only ADR-0025's exact RSA metadata record. The canonical Goose base
+and empty feature set are unchanged; the P8.2c three-file adapter patch is
+recorded separately above.
 
 ## Telemetry, credentials, and network
 
@@ -179,6 +229,14 @@ digest, and applicable dependency notices in the package and in
 
 The root Actestra license remains an owner decision. Selecting Goose does not
 set or change it.
+
+Upstream has no root `NOTICE`. The private runtime preserves the Apache-2.0
+license and records its modified upstream paths and exact diff digest. Rollback
+restores the runner source and lock to canonical upstream commit
+`4dc0420f5704a92806c6628c8f0a3497d7a88759` and disables Windows production
+runtime admission. The exact CI Artifact above proves the adapted Windows
+runtime composition, but not Electron packaging, the complete P8.2 matrix,
+candidate integrity, real-provider acceptance, or P8 completion.
 
 ## P5.0 result and remaining gate
 

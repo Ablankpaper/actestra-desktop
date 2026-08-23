@@ -8,14 +8,30 @@ import type { AdmittedGooseRunnerArtifact } from "../../apps/desktop/src/main/wo
 import {
   GOOSE_NATIVE_NETWORK_POLICY_FAILURE_MARKER,
   GOOSE_NATIVE_RESOURCE_LIMIT_FAILURE_MARKER,
+  GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES,
+  GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
+  GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
+  GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES,
+  GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES,
+  GOOSE_WINDOWS_MODEL_PROGRESS_STAGES,
   GooseRunnerProcessError,
   assertGooseAcpSpawnOptions,
+  createGooseWindowsCapabilityProgressMatcher,
+  createGooseWindowsModelProgressMatcher,
+  createGooseWindowsWorkerAcpProgressMatcher,
+  createGooseWindowsWorkerStderrRelayProgressMatcher,
   createGooseRunnerEnvironment,
   createGooseRunnerSetupFailureMatcher,
   createGooseRunnerResourceFailureMatcher,
   openGooseRunnerHandshake,
   type GooseAcpSpawnOptions,
 } from "../../apps/desktop/src/main/workers/gooseRunnerProcess";
+import {
+  createGooseWindowsCapabilityProgress,
+  createGooseWindowsModelProgress,
+  createGooseWindowsWorkerAcpProgress,
+  createGooseWindowsWorkerStderrRelayProgress,
+} from "../../apps/desktop/src/main/workers/gooseSessionTransport";
 import { createGooseRunnerSandboxLaunch } from "../../apps/desktop/src/main/workers/gooseRunnerSandbox";
 import { LoopbackGooseAcpTransport } from "../fixtures/gooseAcp";
 
@@ -163,11 +179,11 @@ describe("Goose runner native resource boundary", () => {
   it("requires the exact immutable Windows supervisor contract before spawn", () => {
     const root = path.resolve(os.tmpdir(), "actestra-goose-windows-options");
     const attemptLease = "lease_0123456789abcdef0123456789abcdef";
+    const modelAttemptLease = "model_0123456789abcdef0123456789abcdef";
     const windows = Object.freeze({
       supervisorMode: "--actestra-windows-supervisor-v1" as const,
-      capabilityPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.capability`,
-      modelPipeName: String.raw`\\.\pipe\LOCAL\Actestra.Goose.0123456789abcdef0123456789abcdef.model`,
       attemptLease,
+      modelAttemptLease,
       attemptId: "0123456789abcdef0123456789abcdef",
       executableSha256: "a".repeat(64),
       modelId: "test-model",
@@ -194,7 +210,15 @@ describe("Goose runner native resource boundary", () => {
       Object.freeze({ ...exact, windows: { ...windows } }),
       Object.freeze({
         ...exact,
+        windows: Object.freeze({ ...windows, modelAttemptLease: attemptLease }),
+      }),
+      Object.freeze({
+        ...exact,
         environment: Object.freeze({ ...exact.environment, OPENAI_API_KEY: attemptLease }),
+      }),
+      Object.freeze({
+        ...exact,
+        environment: Object.freeze({ ...exact.environment, OPENAI_API_KEY: modelAttemptLease }),
       }),
     ]) {
       expect(() => assertGooseAcpSpawnOptions(invalid)).toThrowError(
@@ -268,6 +292,160 @@ describe("Goose runner native resource boundary", () => {
 
     expect(matcher.push(Buffer.from(`ignored:${marker.slice(0, split)}`))).toBeUndefined();
     expect(matcher.push(Buffer.from(`${marker.slice(split)}:ignored`))).toBe(expected);
+    expect(Object.keys(matcher)).toEqual(["push"]);
+  });
+
+  it("extracts only the eight bounded Windows capability progress stages across stderr chunks", () => {
+    const progress = createGooseWindowsCapabilityProgress();
+    const matcher = createGooseWindowsCapabilityProgressMatcher();
+    const marker = (stage: string): string =>
+      `Goose windows capability progress at bounded stage ${stage}`;
+
+    expect(
+      matcher.push(
+        Buffer.from(`ignored:${marker(GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES[0]).slice(0, 31)}`),
+      ),
+    ).toEqual([]);
+    for (const stage of matcher.push(
+      Buffer.from(
+        `${marker(GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES[0]).slice(31)}\n` +
+          `${marker(GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES[3])}\nC:\\private\\ignored`,
+      ),
+    )) {
+      progress.record(stage);
+    }
+    progress.record(GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES[0]);
+
+    expect(progress.snapshot()).toEqual([
+      GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES[0],
+      GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES[3],
+    ]);
+    expect(Object.isFrozen(progress.snapshot())).toBe(true);
+    expect(JSON.stringify(progress.snapshot())).not.toContain("private");
+    expect(Object.keys(matcher)).toEqual(["push"]);
+    expect(Object.keys(progress)).toEqual([
+      "record",
+      "snapshot",
+      "beginAttempt",
+      "attemptSnapshot",
+    ]);
+  });
+
+  it("extracts only the ten bounded Windows model progress stages across stderr chunks", () => {
+    const progress = createGooseWindowsModelProgress();
+    const matcher = createGooseWindowsModelProgressMatcher();
+    const marker = (stage: string): string =>
+      `Goose windows model progress at bounded stage ${stage}`;
+
+    expect(
+      matcher.push(
+        Buffer.from(`ignored:${marker(GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[0]).slice(0, 27)}`),
+      ),
+    ).toEqual([]);
+    for (const stage of matcher.push(
+      Buffer.from(
+        `${marker(GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[0]).slice(27)}\n` +
+          `${marker(GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[6])}\nC:\\private\\ignored`,
+      ),
+    )) {
+      progress.record(stage);
+    }
+
+    expect(progress.snapshot()).toEqual([
+      GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[0],
+      GOOSE_WINDOWS_MODEL_PROGRESS_STAGES[6],
+    ]);
+    expect(matcher.push(Buffer.from("windows-model-unbounded-private-stage"))).toEqual([]);
+  });
+
+  it("extracts bounded Worker ACP startup progress and keeps only the deepest stage", () => {
+    const progress = createGooseWindowsWorkerAcpProgress();
+    const matcher = createGooseWindowsWorkerAcpProgressMatcher();
+    const marker = (stage: string): string =>
+      `Goose windows worker progress at bounded stage ${stage}`;
+
+    expect(
+      matcher.push(
+        Buffer.from(`${marker(GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES[0]).slice(0, 19)}`),
+      ),
+    ).toEqual([]);
+    for (const stage of matcher.push(
+      Buffer.from(
+        `${marker(GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES[0]).slice(19)}\n` +
+          `${marker(GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES[1])}\n` +
+          `${marker(GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES[2])}\nC:\\private\\ignored`,
+      ),
+    )) {
+      progress.record(stage);
+    }
+
+    expect(progress.snapshot()).toEqual(GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES);
+    expect(progress.deepest()).toBe(GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES[2]);
+    expect(JSON.stringify(progress.snapshot())).not.toContain("private");
+    expect(Object.keys(matcher)).toEqual(["push"]);
+  });
+
+  it("extracts bounded Worker stderr relay progress without retaining raw stderr", () => {
+    const progress = createGooseWindowsWorkerStderrRelayProgress();
+    const matcher = createGooseWindowsWorkerStderrRelayProgressMatcher();
+    const marker = (stage: string): string =>
+      `Goose windows worker stderr progress at bounded stage ${stage}`;
+
+    expect(
+      matcher.push(
+        Buffer.from(`${marker(GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES[0]).slice(0, 23)}`),
+      ),
+    ).toEqual([]);
+    for (const stage of matcher.push(
+      Buffer.from(
+        `${marker(GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES[0]).slice(23)}\n` +
+          `${marker(GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES[1])}\n` +
+          `${marker(GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES[2])}\nC:\\private\\ignored`,
+      ),
+    )) {
+      progress.record(stage);
+    }
+
+    expect(progress.snapshot()).toEqual(GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES);
+    expect(JSON.stringify(progress.snapshot())).not.toContain("private");
+    expect(Object.keys(matcher)).toEqual(["push"]);
+  });
+
+  it("extracts bounded tool-call progress and Main invocation failure stages", () => {
+    const matcher = createGooseWindowsCapabilityProgressMatcher();
+    const marker = (stage: string): string =>
+      `Goose windows capability progress at bounded stage ${stage}`;
+    const observed = matcher.push(
+      Buffer.from(
+        `${marker(GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES[0])}\n` +
+          `${marker(GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES[0])}\n`,
+      ),
+    );
+    expect(observed).toEqual([
+      GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES[0],
+      GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES[0],
+    ]);
+    expect(JSON.stringify(observed)).not.toContain("private");
+  });
+
+  it.each([
+    "windows-control-channel-invalid",
+    "windows-ready-channel-invalid",
+    "windows-capability-channel-invalid",
+    "windows-model-channel-invalid",
+    "windows-acp-relay-failed",
+    "windows-capability-relay-failed",
+    "windows-model-relay-failed",
+    "windows-worker-runtime-failed",
+    "windows-runtime-timeout",
+    "windows-runtime-cleanup-failed",
+  ])("maps the closed Windows stage %s without retaining stderr", (stage) => {
+    const matcher = createGooseRunnerSetupFailureMatcher();
+    const marker = `Goose windows containment failed at bounded stage ${stage}`;
+    const split = Math.floor(marker.length / 2);
+
+    expect(matcher.push(Buffer.from(marker.slice(0, split)))).toBeUndefined();
+    expect(matcher.push(Buffer.from(marker.slice(split)))).toBe(stage);
     expect(Object.keys(matcher)).toEqual(["push"]);
   });
 

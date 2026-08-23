@@ -166,10 +166,11 @@ describe("P8 native Goose containment acceptance gate", () => {
     expect(source).toContain("path.join(repositoryRoot, probeSourceRelativePath)");
   });
 
-  it("keeps build admission separate from exact-artifact Ubuntu and Windows containment jobs", () => {
+  it("keeps build admission separate from exact-artifact containment and Windows runtime jobs", () => {
     const workflow = read(".github/workflows/ci.yml");
     const linuxJob = readWorkflowJob(workflow, "goose-containment-linux");
     const windowsJob = readWorkflowJob(workflow, "goose-containment-windows");
+    const windowsRuntimeJob = readWorkflowJob(workflow, "goose-runtime-windows");
     expect(workflow).toContain("pull_request:");
     expect(workflow).toContain("P8.2 Ubuntu x64 Goose build probe");
     expect(workflow).toContain("P8.2 Windows x64 Goose build probe");
@@ -180,7 +181,7 @@ describe("P8 native Goose containment acceptance gate", () => {
     expect(workflow).toContain("containment-evidence.json");
     expect(workflow).toContain("if-no-files-found: error");
     expect(workflow).not.toContain("actions/download-artifact@");
-    expect(workflow.match(/bun run goose:runner:containment:accept/gu) ?? []).toHaveLength(2);
+    expect(workflow.match(/bun run goose:runner:containment:accept/gu) ?? []).toHaveLength(3);
     expect(workflow.match(/bun run goose:runner:integration:linux/gu) ?? []).toHaveLength(1);
     expect(workflow).toMatch(
       /goose-runner-windows:[\s\S]*Admit emitted Goose runner artifact[\s\S]*goose-runner-linux:/u,
@@ -205,10 +206,12 @@ describe("P8 native Goose containment acceptance gate", () => {
     expect(linuxJob.match(/bun run goose:runner:admit-build/gu) ?? []).toHaveLength(2);
     expect(linuxJob).toContain("${RUNNER_TEMP}");
     expect(windowsJob).not.toContain("goose:runner:integration:linux");
+    expect(windowsRuntimeJob).toContain("goose:runner:integration:windows");
+    expect(windowsRuntimeJob).not.toContain("goose:runner:integration:linux");
     expect(workflow).not.toContain("continue-on-error");
     expect(workflow).not.toContain("OPENAI_API_KEY");
     expect(workflow).not.toContain("ACTESTRA_API_KEY");
-    expect(workflow.match(/^\s+if: success\(\)$/gmu) ?? []).toHaveLength(2);
+    expect(workflow.match(/^\s+if: success\(\)$/gmu) ?? []).toHaveLength(3);
     expect(fs.existsSync(path.join(repositoryRoot, ".github/workflows/p8-containment.yml"))).toBe(
       false,
     );
@@ -216,7 +219,7 @@ describe("P8 native Goose containment acceptance gate", () => {
     const actionReferences = [...workflow.matchAll(/^\s+uses:\s+([^\s#]+)\s*(?:#.*)?$/gmu)].map(
       (match) => match[1],
     );
-    expect(actionReferences).toHaveLength(21);
+    expect(actionReferences).toHaveLength(26);
     for (const reference of actionReferences) {
       expect(reference).toMatch(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+@[a-f0-9]{40}$/u);
     }

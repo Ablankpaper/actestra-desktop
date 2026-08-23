@@ -10,11 +10,14 @@ import {
 } from "./gooseMcpCapabilityServer";
 import {
   ACTESTRA_GOOSE_MCP_EXTENSION_NAME,
+  GooseAcpHandshakeError,
+  GooseAcpSessionError,
   type GooseAcpHumanDecisionGate,
   type GooseAcpInfo,
   type GooseAcpPromptResult,
   type GooseAcpSession,
 } from "./gooseAcpHandshake";
+import { GooseAuthenticatedBridgeProtocolError } from "./gooseAuthenticatedBridgeProtocol";
 import {
   startGooseLoopbackModelServer,
   type GooseLoopbackModelServer,
@@ -30,11 +33,49 @@ import {
   type OpenGooseRunnerHandshakeOptions,
   type OpenGooseRunnerHandshakeResult,
 } from "./gooseRunnerProcess";
+import {
+  GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES,
+  GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
+  GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
+  GOOSE_WINDOWS_MODEL_PROGRESS_STAGES,
+  GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES,
+  GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES,
+  resolveGooseSessionTransportMode,
+  type GooseWindowsCapabilityProgress,
+  type GooseWindowsCapabilityProgressStage,
+  type GooseWindowsModelProgress,
+  type GooseWindowsModelProgressStage,
+  type GooseWindowsWorkerAcpProgress,
+  type GooseWindowsWorkerAcpProgressStage,
+  type GooseWindowsWorkerStderrRelayProgress,
+  type GooseWindowsWorkerStderrRelayProgressStage,
+  type GooseCapabilityBoundary,
+  type GooseModelBoundary,
+} from "./gooseSessionTransport";
+import {
+  startGooseWindowsCapabilityBridgeHost,
+  type GooseWindowsCapabilityBridgeHost,
+  type StartGooseWindowsCapabilityBridgeHostOptions,
+} from "./gooseWindowsCapabilityBridgeHost";
+import {
+  startGooseWindowsModelBridgeHost,
+  type GooseWindowsModelBridgeHost,
+  type StartGooseWindowsModelBridgeHostOptions,
+} from "./gooseWindowsModelBridgeHost";
+import type { Duplex } from "node:stream";
 
 const DEFAULT_TOOLS_LIST_WAIT_MS = 30_000;
+const WINDOWS_CAPABILITY_TOOLS_LIST_TIMEOUT_MESSAGE = "Windows capability tools/list timed out";
 const EXPECTED_GOOSE_TOOL_NAMES = Object.freeze(
   CODING_TOOL_IDS.map((toolId) => `${ACTESTRA_GOOSE_MCP_EXTENSION_NAME}__${toolId}`),
 );
+type WindowsCompositionOpeningPhase =
+  | "windows-composition-runner-open-failed"
+  | "windows-composition-session-open-failed"
+  | "windows-composition-session-bind-failed"
+  | "windows-composition-capability-tools-list-failed"
+  | "windows-composition-tool-discovery-failed"
+  | "windows-composition-tool-normalization-failed";
 
 export interface OpenGooseMcpSessionCompositionOptions {
   readonly artifact: AdmittedGooseRunnerArtifact;
@@ -66,9 +107,182 @@ export interface GooseMcpSessionComposition {
 
 export type GooseMcpSessionCompositionErrorCode =
   | "cleanup-failed"
+  | "windows-composition-runner-open-failed"
+  | "windows-composition-session-open-failed"
+  | "windows-composition-session-bind-failed"
+  | "windows-composition-capability-tools-list-failed"
+  | "windows-composition-tool-discovery-failed"
+  | "windows-composition-tool-normalization-failed"
   | "model-completion-refused"
   | "model-request-rejected"
-  | "tool-discovery-mismatch";
+  | "tool-discovery-mismatch"
+  | "windows-prompt-unclassified-failed"
+  | "windows-worker-acp-entry-failed"
+  | "windows-worker-agent-creation-failed"
+  | "windows-worker-serve-failed"
+  | "windows-worker-acp-connect-failed"
+  | "windows-worker-stderr-relay-start-failed"
+  | "windows-worker-stderr-byte-read-failed"
+  | "windows-worker-stderr-marker-forward-failed"
+  | GooseWindowsCapabilityProgressFailureCode
+  | GooseWindowsCapabilityCallProgressFailureCode
+  | GooseWindowsModelProgressFailureCode;
+
+export const GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_FAILURE_CODES = Object.freeze([
+  "windows-capability-call-worker-request-write-failed",
+  "windows-capability-call-supervisor-request-read-failed",
+  "windows-capability-call-supervisor-request-forward-failed",
+  "windows-capability-call-main-request-decode-failed",
+  "windows-capability-call-main-tool-invocation-start-failed",
+  "windows-capability-call-main-tool-invocation-complete-failed",
+  "windows-capability-call-main-response-write-failed",
+  "windows-capability-call-supervisor-response-read-failed",
+  "windows-capability-call-supervisor-response-forward-failed",
+  "windows-capability-call-worker-response-decode-failed",
+  "windows-capability-call-main-tool-invocation-failed",
+  "windows-capability-call-main-contract-failed",
+  "windows-capability-call-main-approval-failed",
+  "windows-capability-call-main-gateway-failed",
+  "windows-capability-call-main-output-failed",
+] as const);
+
+export type GooseWindowsCapabilityCallProgressFailureCode =
+  (typeof GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_FAILURE_CODES)[number];
+
+export const GOOSE_WINDOWS_CAPABILITY_PROGRESS_FAILURE_CODES = Object.freeze([
+  "windows-capability-worker-request-write-failed",
+  "windows-capability-supervisor-request-read-failed",
+  "windows-capability-supervisor-request-forward-failed",
+  "windows-capability-main-request-decode-failed",
+  "windows-capability-main-response-write-failed",
+  "windows-capability-supervisor-response-read-failed",
+  "windows-capability-supervisor-response-forward-failed",
+  "windows-capability-worker-response-decode-failed",
+] as const);
+
+export type GooseWindowsCapabilityProgressFailureCode =
+  (typeof GOOSE_WINDOWS_CAPABILITY_PROGRESS_FAILURE_CODES)[number];
+
+export const GOOSE_WINDOWS_MODEL_PROGRESS_FAILURE_CODES = Object.freeze([
+  "windows-model-worker-request-write-failed",
+  "windows-model-supervisor-request-read-failed",
+  "windows-model-supervisor-request-forward-failed",
+  "windows-model-main-request-decode-failed",
+  "windows-model-main-invocation-start-failed",
+  "windows-model-main-invocation-complete-failed",
+  "windows-model-main-response-write-failed",
+  "windows-model-supervisor-response-read-failed",
+  "windows-model-supervisor-response-forward-failed",
+  "windows-model-worker-response-decode-failed",
+] as const);
+
+export type GooseWindowsModelProgressFailureCode =
+  (typeof GOOSE_WINDOWS_MODEL_PROGRESS_FAILURE_CODES)[number];
+
+export const GOOSE_WINDOWS_WORKER_ACP_PROGRESS_FAILURE_CODES = Object.freeze([
+  "windows-worker-acp-entry-failed",
+  "windows-worker-agent-creation-failed",
+  "windows-worker-serve-failed",
+  "windows-worker-acp-connect-failed",
+] as const);
+
+export type GooseWindowsWorkerAcpProgressFailureCode =
+  (typeof GOOSE_WINDOWS_WORKER_ACP_PROGRESS_FAILURE_CODES)[number];
+
+export const GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_FAILURE_CODES = Object.freeze([
+  "windows-worker-stderr-relay-start-failed",
+  "windows-worker-stderr-byte-read-failed",
+  "windows-worker-stderr-marker-forward-failed",
+] as const);
+
+export type GooseWindowsWorkerStderrRelayProgressFailureCode =
+  (typeof GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_FAILURE_CODES)[number];
+
+export function classifyGooseWindowsModelProgressFailure(
+  observed: readonly GooseWindowsModelProgressStage[],
+): GooseWindowsModelProgressFailureCode | undefined {
+  const stages = new Set(observed);
+  const firstMissing = GOOSE_WINDOWS_MODEL_PROGRESS_STAGES.findIndex((stage) => !stages.has(stage));
+  return firstMissing < 0 ? undefined : GOOSE_WINDOWS_MODEL_PROGRESS_FAILURE_CODES[firstMissing];
+}
+
+export function classifyGooseWindowsWorkerAcpProgressFailure(
+  observed: readonly GooseWindowsWorkerAcpProgressStage[],
+): GooseWindowsWorkerAcpProgressFailureCode {
+  const stages = new Set(observed);
+  const firstMissing = GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES.findIndex(
+    (stage) => !stages.has(stage),
+  );
+  return GOOSE_WINDOWS_WORKER_ACP_PROGRESS_FAILURE_CODES[firstMissing < 0 ? 3 : firstMissing];
+}
+
+export function classifyGooseWindowsWorkerStderrRelayProgressFailure(
+  observed: readonly GooseWindowsWorkerStderrRelayProgressStage[],
+): GooseWindowsWorkerStderrRelayProgressFailureCode | undefined {
+  const stages = new Set(observed);
+  const firstMissing = GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES.findIndex(
+    (stage) => !stages.has(stage),
+  );
+  return firstMissing < 0
+    ? undefined
+    : GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_FAILURE_CODES[firstMissing];
+}
+
+export function classifyGooseWindowsCapabilityCallProgressFailure(
+  observed: readonly GooseWindowsCapabilityProgressStage[],
+): GooseWindowsCapabilityCallProgressFailureCode | undefined {
+  const stages = new Set(observed);
+  // A recorded Main failure stage is evidence, not an absence, so it outranks
+  // the first-missing scan: the round trip did reach Main and was refused there.
+  const failureStage = GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES.findIndex((stage) =>
+    stages.has(stage),
+  );
+  if (failureStage >= 0) {
+    return GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_FAILURE_CODES[
+      GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES.length + failureStage
+    ];
+  }
+  const firstMissing = GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES.findIndex(
+    (stage) => !stages.has(stage),
+  );
+  return firstMissing < 0
+    ? undefined
+    : GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_FAILURE_CODES[firstMissing];
+}
+
+export function classifyGooseWindowsCapabilityProgressFailure(
+  observed: readonly GooseWindowsCapabilityProgressStage[],
+): GooseWindowsCapabilityProgressFailureCode | undefined {
+  const stages = new Set(observed);
+  const firstMissing = GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES.findIndex(
+    (stage) => !stages.has(stage),
+  );
+  return firstMissing < 0
+    ? undefined
+    : GOOSE_WINDOWS_CAPABILITY_PROGRESS_FAILURE_CODES[firstMissing];
+}
+
+/**
+ * A prompt failure that already names its own boundary is left alone. Only an
+ * error that would otherwise reach CI as an unnamed cause gets the bounded
+ * unclassified token.
+ */
+function isAlreadyClassifiedPromptFailure(error: unknown): boolean {
+  return (
+    error instanceof GooseAcpSessionError ||
+    error instanceof GooseAcpHandshakeError ||
+    error instanceof GooseRunnerProcessError ||
+    error instanceof GooseMcpSessionCompositionError
+  );
+}
+
+function isGooseWindowsCapabilityDiscoveryTimeout(error: unknown): boolean {
+  return (
+    (error instanceof GooseAcpSessionError && error.code === "tool-discovery-timeout") ||
+    (error instanceof GooseAuthenticatedBridgeProtocolError &&
+      error.message === WINDOWS_CAPABILITY_TOOLS_LIST_TIMEOUT_MESSAGE)
+  );
+}
 
 export class GooseMcpSessionCompositionError extends Error {
   constructor(
@@ -81,6 +295,25 @@ export class GooseMcpSessionCompositionError extends Error {
   }
 }
 
+function windowsCompositionStageError(
+  code: Extract<GooseMcpSessionCompositionErrorCode, `windows-composition-${string}`>,
+  message: string,
+  cause: unknown,
+): Error {
+  if (
+    process.platform !== "win32" ||
+    cause instanceof GooseAcpHandshakeError ||
+    cause instanceof GooseAcpSessionError ||
+    cause instanceof GooseMcpSessionCompositionError ||
+    cause instanceof GooseRunnerProcessError ||
+    (cause instanceof GooseAuthenticatedBridgeProtocolError &&
+      cause.message === WINDOWS_CAPABILITY_TOOLS_LIST_TIMEOUT_MESSAGE)
+  ) {
+    return cause instanceof Error ? cause : new Error(message, { cause });
+  }
+  return new GooseMcpSessionCompositionError(code, message, { cause });
+}
+
 export interface GooseMcpSessionCompositionDependencies {
   startCapabilityServer(
     options: StartGooseMcpCapabilityServerOptions,
@@ -91,12 +324,23 @@ export interface GooseMcpSessionCompositionDependencies {
   openRunnerHandshake(
     options: OpenGooseRunnerHandshakeOptions,
   ): Promise<OpenGooseRunnerHandshakeResult>;
+  startWindowsCapabilityHost?(
+    options: StartGooseWindowsCapabilityBridgeHostOptions,
+  ): GooseWindowsCapabilityBridgeHost;
+  startWindowsModelHost?(
+    options: StartGooseWindowsModelBridgeHostOptions,
+  ): GooseWindowsModelBridgeHost;
 }
+
+type CapabilityServer = GooseMcpCapabilityServer | GooseCapabilityBoundary;
+type ModelServer = GooseLoopbackModelServer | GooseModelBoundary;
 
 const DEFAULT_DEPENDENCIES: GooseMcpSessionCompositionDependencies = Object.freeze({
   startCapabilityServer: startGooseMcpCapabilityServer,
   startModelServer: startGooseLoopbackModelServer,
   openRunnerHandshake: openGooseRunnerHandshake,
+  startWindowsCapabilityHost: startGooseWindowsCapabilityBridgeHost,
+  startWindowsModelHost: startGooseWindowsModelBridgeHost,
 });
 
 function createAttemptLease(): string {
@@ -104,8 +348,8 @@ function createAttemptLease(): string {
 }
 
 async function closePreparedBridgeServers(
-  capabilityServer: GooseMcpCapabilityServer | undefined,
-  modelServer: GooseLoopbackModelServer | undefined,
+  capabilityServer: CapabilityServer | undefined,
+  modelServer: ModelServer | undefined,
 ): Promise<void> {
   const failures: unknown[] = [];
   if (modelServer !== undefined) {
@@ -160,8 +404,8 @@ function normalizeDiscoveredToolNames(value: unknown): readonly string[] {
 
 async function collectCleanupFailures(
   runner: OpenGooseRunnerHandshakeResult | undefined,
-  capabilityServer: GooseMcpCapabilityServer | undefined,
-  modelServer: GooseLoopbackModelServer | undefined,
+  capabilityServer: CapabilityServer | undefined,
+  modelServer: ModelServer | undefined,
   runnerOwnsBridgeServers = false,
 ): Promise<unknown[]> {
   const failures: unknown[] = [];
@@ -191,8 +435,8 @@ async function collectCleanupFailures(
 
 async function closeComposition(
   runner: OpenGooseRunnerHandshakeResult,
-  capabilityServer: GooseMcpCapabilityServer,
-  modelServer: GooseLoopbackModelServer,
+  capabilityServer: CapabilityServer,
+  modelServer: ModelServer,
   runnerOwnsBridgeServers: boolean,
 ): Promise<void> {
   const failures = await collectCleanupFailures(
@@ -215,14 +459,28 @@ export async function openGooseMcpSessionComposition(
   dependencies: GooseMcpSessionCompositionDependencies = DEFAULT_DEPENDENCIES,
 ): Promise<GooseMcpSessionComposition> {
   const attemptLease = createAttemptLease();
+  const runtimeTargetTriple =
+    process.platform === "win32"
+      ? "x86_64-pc-windows-msvc"
+      : process.platform === "linux"
+        ? "x86_64-unknown-linux-gnu"
+        : options.artifact.targetTriple;
+  const transportMode = resolveGooseSessionTransportMode(runtimeTargetTriple);
+  const windowsAuthenticated = transportMode === "windows-authenticated";
   let modelAttemptLease = createAttemptLease();
   while (modelAttemptLease === attemptLease) {
     modelAttemptLease = createAttemptLease();
   }
-  let capabilityServer: GooseMcpCapabilityServer | undefined;
-  let modelServer: GooseLoopbackModelServer | undefined;
+  let capabilityServer: CapabilityServer | undefined;
+  let modelServer: ModelServer | undefined;
   let runner: OpenGooseRunnerHandshakeResult | undefined;
-  const runnerOwnsBridgeServers = process.platform === "linux";
+  let windowsCapabilityProgress: GooseWindowsCapabilityProgress | undefined;
+  let windowsModelProgress: GooseWindowsModelProgress | undefined;
+  let windowsWorkerAcpProgress: GooseWindowsWorkerAcpProgress | undefined;
+  let windowsWorkerStderrRelayProgress: GooseWindowsWorkerStderrRelayProgress | undefined;
+  let capabilityDiscoveryStarted = false;
+  let openingPhase: WindowsCompositionOpeningPhase = "windows-composition-runner-open-failed";
+  const runnerOwnsBridgeServers = transportMode === "linux-relay" || windowsAuthenticated;
   let session: GooseAcpSession;
   let toolNames: readonly string[];
   try {
@@ -231,6 +489,60 @@ export async function openGooseMcpSessionComposition(
       const prepareBridge = async (
         root: GooseRunnerPreparedRoot,
       ): Promise<GooseRunnerPreparedBridge> => {
+        if (windowsAuthenticated) {
+          const attemptId = randomBytes(16).toString("hex");
+          let bridgeClosePromise: Promise<void> | undefined;
+          let attached = false;
+          const attachWindowsChannels = (channels: {
+            capability: Duplex;
+            model: Duplex;
+            capabilityProgress: GooseWindowsCapabilityProgress;
+            modelProgress: GooseWindowsModelProgress;
+            workerAcpProgress?: GooseWindowsWorkerAcpProgress;
+            workerStderrRelayProgress?: GooseWindowsWorkerStderrRelayProgress;
+          }): void => {
+            if (attached)
+              throw new GooseRunnerProcessError(
+                "invalid-options",
+                "Windows Goose bridge channels were attached twice",
+              );
+            attached = true;
+            windowsCapabilityProgress = channels.capabilityProgress;
+            windowsModelProgress = channels.modelProgress;
+            windowsWorkerAcpProgress = channels.workerAcpProgress;
+            windowsWorkerStderrRelayProgress = channels.workerStderrRelayProgress;
+            capabilityServer = (
+              dependencies.startWindowsCapabilityHost ?? startGooseWindowsCapabilityBridgeHost
+            )({
+              stream: channels.capability,
+              attemptLease,
+              commandIds: options.commandIds,
+              testIds: options.testIds,
+              invokeTool: options.toolInvoker,
+              capabilityProgress: channels.capabilityProgress,
+            });
+            modelServer = (dependencies.startWindowsModelHost ?? startGooseWindowsModelBridgeHost)({
+              stream: channels.model,
+              attemptLease: modelAttemptLease,
+              invokeModel: options.modelInvoker,
+              modelProgress: channels.modelProgress,
+            });
+          };
+          const close = (): Promise<void> => {
+            bridgeClosePromise ??= closePreparedBridgeServers(capabilityServer, modelServer);
+            return bridgeClosePromise;
+          };
+          return Object.freeze({
+            windows: Object.freeze({
+              attemptId,
+              attemptLease,
+              modelAttemptLease,
+            }),
+            modelId: options.modelId,
+            attachWindowsChannels,
+            close,
+          });
+        }
         const [capabilityPort, modelPort] = await reserveDistinctBridgePorts();
         const capabilitySocketPath = path.join(root.bridgeDirectory, "capability.sock");
         const modelSocketPath = path.join(root.bridgeDirectory, "model.sock");
@@ -251,9 +563,11 @@ export async function openGooseMcpSessionComposition(
             socketPath: modelSocketPath,
             loopbackPort: modelPort,
           });
+          const loopbackCapabilityServer = capabilityServer as GooseMcpCapabilityServer;
+          const loopbackModelServer = modelServer as GooseLoopbackModelServer;
           if (
-            capabilityServer.url !== `http://127.0.0.1:${String(capabilityPort)}/mcp` ||
-            modelServer.baseUrl !== `http://127.0.0.1:${String(modelPort)}/v1`
+            loopbackCapabilityServer.url !== `http://127.0.0.1:${String(capabilityPort)}/mcp` ||
+            loopbackModelServer.baseUrl !== `http://127.0.0.1:${String(modelPort)}/v1`
           ) {
             throw new GooseRunnerProcessError(
               "invalid-options",
@@ -280,9 +594,9 @@ export async function openGooseMcpSessionComposition(
           return bridgeClosePromise;
         };
         return Object.freeze({
-          capabilityProxyUrl: capabilityServer.url,
+          capabilityProxyUrl: (capabilityServer as GooseMcpCapabilityServer).url,
           modelBinding: Object.freeze({
-            baseUrl: modelServer.baseUrl,
+            baseUrl: (modelServer as GooseLoopbackModelServer).baseUrl,
             modelId: options.modelId,
             attemptLease: modelAttemptLease,
           }),
@@ -291,15 +605,24 @@ export async function openGooseMcpSessionComposition(
           close,
         });
       };
-      runner = await dependencies.openRunnerHandshake({
-        artifact: options.artifact,
-        privateRootParent: options.privateRootParent,
-        workspaceDirectory: options.workspaceDirectory,
-        prepareBridge,
-        ...(options.handshakeTimeoutMs === undefined
-          ? {}
-          : { handshakeTimeoutMs: options.handshakeTimeoutMs }),
-      });
+      try {
+        runner = await dependencies.openRunnerHandshake({
+          artifact: options.artifact,
+          privateRootParent: options.privateRootParent,
+          workspaceDirectory: options.workspaceDirectory,
+          prepareBridge,
+          ...(options.handshakeTimeoutMs === undefined
+            ? {}
+            : { handshakeTimeoutMs: options.handshakeTimeoutMs }),
+        });
+      } catch (error) {
+        throw windowsCompositionStageError(
+          "windows-composition-runner-open-failed",
+          "Windows Goose runner opening failed",
+          error,
+        );
+      }
+      openingPhase = "windows-composition-session-open-failed";
     } else {
       capabilityServer = await dependencies.startCapabilityServer({
         attemptLease,
@@ -317,9 +640,9 @@ export async function openGooseMcpSessionComposition(
         artifact: options.artifact,
         privateRootParent: options.privateRootParent,
         workspaceDirectory: options.workspaceDirectory,
-        capabilityProxyUrl: capabilityServer.url,
+        capabilityProxyUrl: (capabilityServer as GooseMcpCapabilityServer).url,
         modelBinding: {
-          baseUrl: modelServer.baseUrl,
+          baseUrl: (modelServer as GooseLoopbackModelServer).baseUrl,
           modelId: options.modelId,
           attemptLease: modelAttemptLease,
         },
@@ -334,26 +657,161 @@ export async function openGooseMcpSessionComposition(
         "Goose bridge composition did not produce all required runtime resources",
       );
     }
-    session = await runner.openSession({
-      workspaceDirectory: options.workspaceDirectory,
-      capabilityProxyUrl: capabilityServer.url,
-      attemptLease,
-      ...(options.sessionTimeoutMs === undefined ? {} : { timeoutMs: options.sessionTimeoutMs }),
-    });
-    modelServer.bindSession(session.sessionId);
-    const toolsListed = capabilityServer.waitForToolsList(
-      options.sessionTimeoutMs ?? DEFAULT_TOOLS_LIST_WAIT_MS,
-    );
+    try {
+      session = await runner.openSession(
+        windowsAuthenticated
+          ? {
+              transport: "injected",
+              workspaceDirectory: options.workspaceDirectory,
+              ...(options.sessionTimeoutMs === undefined
+                ? {}
+                : { timeoutMs: options.sessionTimeoutMs }),
+            }
+          : {
+              transport: "mcp-http",
+              workspaceDirectory: options.workspaceDirectory,
+              capabilityProxyUrl: (capabilityServer as GooseMcpCapabilityServer).url,
+              attemptLease,
+              ...(options.sessionTimeoutMs === undefined
+                ? {}
+                : { timeoutMs: options.sessionTimeoutMs }),
+            },
+      );
+    } catch (error) {
+      throw windowsCompositionStageError(
+        "windows-composition-session-open-failed",
+        "Windows Goose session opening failed",
+        error,
+      );
+    }
+    openingPhase = "windows-composition-session-bind-failed";
+    try {
+      modelServer.bindSession(session.sessionId);
+      if (windowsAuthenticated) {
+        (capabilityServer as GooseCapabilityBoundary).bindSession(session.sessionId);
+      }
+    } catch (error) {
+      throw windowsCompositionStageError(
+        "windows-composition-session-bind-failed",
+        "Windows Goose session binding failed",
+        error,
+      );
+    }
+    openingPhase = "windows-composition-capability-tools-list-failed";
+    capabilityDiscoveryStarted = true;
+    let toolsListed: Promise<void>;
+    try {
+      toolsListed = capabilityServer.waitForToolsList(
+        options.sessionTimeoutMs ?? DEFAULT_TOOLS_LIST_WAIT_MS,
+      );
+    } catch (error) {
+      throw windowsCompositionStageError(
+        "windows-composition-capability-tools-list-failed",
+        "Windows Goose capability tools/list failed",
+        error,
+      );
+    }
+    openingPhase = "windows-composition-tool-discovery-failed";
     const [discovery] = await Promise.all([
-      runner.discoverTools({
-        sessionId: session.sessionId,
-        extensionName: ACTESTRA_GOOSE_MCP_EXTENSION_NAME,
-        ...(options.sessionTimeoutMs === undefined ? {} : { timeoutMs: options.sessionTimeoutMs }),
+      runner
+        .discoverTools({
+          sessionId: session.sessionId,
+          extensionName: ACTESTRA_GOOSE_MCP_EXTENSION_NAME,
+          ...(options.sessionTimeoutMs === undefined
+            ? {}
+            : { timeoutMs: options.sessionTimeoutMs }),
+        })
+        .catch((error) => {
+          throw windowsCompositionStageError(
+            "windows-composition-tool-discovery-failed",
+            "Windows Goose tool discovery failed",
+            error,
+          );
+        }),
+      toolsListed.catch((error) => {
+        throw windowsCompositionStageError(
+          "windows-composition-capability-tools-list-failed",
+          "Windows Goose capability tools/list failed",
+          error,
+        );
       }),
-      toolsListed,
     ]);
-    toolNames = normalizeDiscoveredToolNames(discovery.toolNames);
+    openingPhase = "windows-composition-tool-normalization-failed";
+    try {
+      toolNames = normalizeDiscoveredToolNames(discovery.toolNames);
+    } catch (error) {
+      throw windowsCompositionStageError(
+        "windows-composition-tool-normalization-failed",
+        "Windows Goose tool discovery shape was invalid",
+        error,
+      );
+    }
   } catch (error) {
+    const workerAcpProgressFailure =
+      windowsAuthenticated &&
+      windowsWorkerAcpProgress !== undefined &&
+      error instanceof GooseAcpHandshakeError &&
+      error.code === "startup-timeout"
+        ? classifyGooseWindowsWorkerAcpProgressFailure(windowsWorkerAcpProgress.snapshot())
+        : undefined;
+    const workerStderrRelayProgressFailure =
+      windowsAuthenticated &&
+      windowsWorkerStderrRelayProgress !== undefined &&
+      error instanceof GooseAcpHandshakeError &&
+      error.code === "startup-timeout"
+        ? classifyGooseWindowsWorkerStderrRelayProgressFailure(
+            windowsWorkerStderrRelayProgress.snapshot(),
+          )
+        : undefined;
+    const progressFailure =
+      windowsAuthenticated &&
+      capabilityDiscoveryStarted &&
+      windowsCapabilityProgress !== undefined &&
+      isGooseWindowsCapabilityDiscoveryTimeout(error)
+        ? classifyGooseWindowsCapabilityProgressFailure(windowsCapabilityProgress.snapshot())
+        : undefined;
+    const openingError =
+      workerStderrRelayProgressFailure !== undefined
+        ? new GooseMcpSessionCompositionError(
+            workerStderrRelayProgressFailure,
+            "Windows Worker stderr relay stopped before a bounded stage",
+            { cause: error },
+          )
+        : workerAcpProgressFailure !== undefined
+          ? new GooseMcpSessionCompositionError(
+              workerAcpProgressFailure,
+              "Windows Worker ACP startup stopped before a bounded stage",
+              { cause: error },
+            )
+          : progressFailure !== undefined
+            ? new GooseMcpSessionCompositionError(
+                progressFailure,
+                "Windows capability round trip stopped before a bounded stage",
+                { cause: error },
+              )
+            : windowsAuthenticated && isGooseWindowsCapabilityDiscoveryTimeout(error)
+              ? new GooseMcpSessionCompositionError(
+                  "windows-composition-capability-tools-list-failed",
+                  "Windows capability tools/list failed after every relay stage completed",
+                  { cause: error },
+                )
+              : windowsAuthenticated &&
+                  process.platform === "win32" &&
+                  error instanceof Error &&
+                  !(error instanceof GooseAcpHandshakeError) &&
+                  !(error instanceof GooseAcpSessionError) &&
+                  !(error instanceof GooseRunnerProcessError) &&
+                  !(error instanceof GooseMcpSessionCompositionError) &&
+                  !(
+                    error instanceof GooseAuthenticatedBridgeProtocolError &&
+                    error.message === WINDOWS_CAPABILITY_TOOLS_LIST_TIMEOUT_MESSAGE
+                  )
+                ? new GooseMcpSessionCompositionError(
+                    openingPhase,
+                    "Windows Goose composition opening failed at an unclassified boundary",
+                    { cause: error },
+                  )
+                : error;
     const cleanupFailures = await collectCleanupFailures(
       runner,
       capabilityServer,
@@ -366,13 +824,13 @@ export async function openGooseMcpSessionComposition(
         "Goose session opening failed and cleanup did not complete",
         {
           cause: new AggregateError(
-            [error, ...cleanupFailures],
+            [openingError, ...cleanupFailures],
             "Goose session opening and cleanup failed",
           ),
         },
       );
     }
-    throw error;
+    throw openingError;
   }
 
   let closePromise: Promise<void> | undefined;
@@ -388,14 +846,70 @@ export async function openGooseMcpSessionComposition(
       const refusedBefore = stableModelServer.refusedInferenceCount;
       const rejectedBefore = stableModelServer.rejectedRequestCount;
       const servedBefore = stableModelServer.servedInferenceCount;
-      const result = await stableRunner.prompt({
-        sessionId: session.sessionId,
-        text: promptOptions.text,
-        ...(promptOptions.timeoutMs === undefined ? {} : { timeoutMs: promptOptions.timeoutMs }),
-        ...(promptOptions.humanDecisionGate === undefined
-          ? {}
-          : { humanDecisionGate: promptOptions.humanDecisionGate }),
-      });
+      // Each prompt is classified on its own round trips. Carrying the session's
+      // accumulated stages forward would leave nothing missing after the first
+      // successful prompt, and every later failure would escape unclassified.
+      windowsCapabilityProgress?.beginAttempt();
+      windowsModelProgress?.beginAttempt();
+      let result: GooseAcpPromptResult;
+      try {
+        result = await stableRunner.prompt({
+          sessionId: session.sessionId,
+          text: promptOptions.text,
+          ...(promptOptions.timeoutMs === undefined ? {} : { timeoutMs: promptOptions.timeoutMs }),
+          ...(promptOptions.humanDecisionGate === undefined
+            ? {}
+            : { humanDecisionGate: promptOptions.humanDecisionGate }),
+        });
+      } catch (error) {
+        if (windowsAuthenticated && windowsCapabilityProgress !== undefined) {
+          const observed = windowsCapabilityProgress.attemptSnapshot();
+          const callActivity = observed.some(
+            (stage) =>
+              (GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES as readonly string[]).includes(
+                stage,
+              ) ||
+              (GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES as readonly string[]).includes(stage),
+          );
+          const callFailure = callActivity
+            ? classifyGooseWindowsCapabilityCallProgressFailure(observed)
+            : undefined;
+          if (callFailure !== undefined) {
+            throw new GooseMcpSessionCompositionError(
+              callFailure,
+              "Windows capability tool-call round trip stopped before a bounded stage",
+              { cause: error },
+            );
+          }
+        }
+        if (windowsAuthenticated && windowsModelProgress !== undefined) {
+          const observed = windowsModelProgress.attemptSnapshot();
+          const modelActivity = observed.some((stage) =>
+            (GOOSE_WINDOWS_MODEL_PROGRESS_STAGES as readonly string[]).includes(stage),
+          );
+          if (modelActivity) {
+            const modelFailure = classifyGooseWindowsModelProgressFailure(observed);
+            if (modelFailure !== undefined) {
+              throw new GooseMcpSessionCompositionError(
+                modelFailure,
+                "Windows model round trip stopped before a bounded stage",
+                { cause: error },
+              );
+            }
+          }
+        }
+        // A Windows prompt that reached neither bridge leaves no stage to scan.
+        // Without a token of its own it would surface as the generic outer
+        // stage marker, which is exactly the diagnostic dead end this replaces.
+        if (windowsAuthenticated && !isAlreadyClassifiedPromptFailure(error)) {
+          throw new GooseMcpSessionCompositionError(
+            "windows-prompt-unclassified-failed",
+            "Windows Goose prompt failed before any bounded bridge stage was observed",
+            { cause: error },
+          );
+        }
+        throw error;
+      }
       // Goose reports a content-free 400 as an ordinary assistant turn, which
       // would otherwise publish as an unchanged read-only attempt. Only a turn
       // that failed without ever serving a completion is a failure; a 400 the

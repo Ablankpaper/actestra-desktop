@@ -4,7 +4,7 @@ import { constants as fsConstants, createReadStream, realpathSync } from "node:f
 import { chmod, copyFile, lstat, mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
-import type { Readable, Writable } from "node:stream";
+import type { Duplex, Readable, Writable } from "node:stream";
 import {
   GooseAcpHandshakeError,
   connectGooseAcp,
@@ -36,6 +36,36 @@ import {
   resolveGooseRunnerRuntimeTarget,
   type GooseExecutableAuthority,
 } from "./gooseRunnerTarget";
+import {
+  GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES,
+  GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
+  GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
+  GOOSE_WINDOWS_MODEL_PROGRESS_STAGES,
+  GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES,
+  GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES,
+  GOOSE_WINDOWS_STDIO_CONFIGURATION,
+  createGooseWindowsCapabilityProgress,
+  createGooseWindowsModelProgress,
+  createGooseWindowsWorkerAcpProgress,
+  createGooseWindowsWorkerStderrRelayProgress,
+  type GooseWindowsCapabilityProgress,
+  type GooseWindowsCapabilityProgressStage,
+  type GooseWindowsModelProgress,
+  type GooseWindowsModelProgressStage,
+  type GooseWindowsWorkerAcpProgress,
+  type GooseWindowsWorkerAcpProgressStage,
+  type GooseWindowsWorkerStderrRelayProgress,
+  type GooseWindowsWorkerStderrRelayProgressStage,
+} from "./gooseSessionTransport";
+
+export { GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES } from "./gooseSessionTransport";
+export {
+  GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES,
+  GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
+  GOOSE_WINDOWS_MODEL_PROGRESS_STAGES,
+  GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES,
+  GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES,
+} from "./gooseSessionTransport";
 
 const MAX_STDOUT_LINE_BYTES = 64 * 1024;
 const MAX_STDERR_BYTES = 256 * 1024;
@@ -51,13 +81,96 @@ export const GOOSE_NATIVE_ASYNC_RUNTIME_FAILURE_MARKER =
 export const GOOSE_NATIVE_ACP_SERVER_FAILURE_MARKER = "ACTESTRA_GOOSE_ACP_SERVER_FAILED";
 export const GOOSE_NATIVE_RELAY_FAILURE_MARKER = "ACTESTRA_GOOSE_LINUX_RELAY_STOPPED";
 export const GOOSE_NATIVE_PANIC_FAILURE_MARKER = "ACTESTRA_GOOSE_RUNNER_PANICKED";
+function windowsRuntimeStageMarker(stage: string): string {
+  return `Goose windows containment failed at bounded stage ${stage}`;
+}
+
+function windowsCapabilityProgressMarker(stage: GooseWindowsCapabilityProgressStage): string {
+  return `Goose windows capability progress at bounded stage ${stage}`;
+}
+
+function windowsModelProgressMarker(stage: GooseWindowsModelProgressStage): string {
+  return `Goose windows model progress at bounded stage ${stage}`;
+}
+
+function windowsWorkerAcpProgressMarker(stage: GooseWindowsWorkerAcpProgressStage): string {
+  return `Goose windows worker progress at bounded stage ${stage}`;
+}
+
+function windowsWorkerStderrRelayProgressMarker(
+  stage: GooseWindowsWorkerStderrRelayProgressStage,
+): string {
+  return `Goose windows worker stderr progress at bounded stage ${stage}`;
+}
+/**
+ * Supervisor runtime stages carry their own closed code all the way to CI evidence.
+ * Collapsing them would erase the signal that distinguishes a capability-channel
+ * construction failure from a relay fault or timeout.
+ */
+export const GOOSE_WINDOWS_SUPERVISOR_FAILURE_STAGES = Object.freeze([
+  "windows-control-channel-invalid",
+  "windows-ready-channel-invalid",
+  "windows-capability-channel-invalid",
+  "windows-model-channel-invalid",
+  "windows-acp-relay-failed",
+  "windows-capability-relay-failed",
+  "windows-model-relay-failed",
+  "windows-worker-runtime-failed",
+  "windows-runtime-timeout",
+  "windows-runtime-cleanup-failed",
+  "windows-state-directory-layout-failed",
+  "windows-state-directory-root-metadata-failed",
+  "windows-state-directory-root-canonicalize-failed",
+  "windows-state-directory-data-metadata-failed",
+  "windows-state-directory-data-create-failed",
+  "windows-state-directory-data-canonicalize-failed",
+  "windows-state-directory-config-metadata-failed",
+  "windows-state-directory-config-create-failed",
+  "windows-state-directory-config-canonicalize-failed",
+  "windows-state-directory-traversal-shape-invalid",
+  "windows-state-directory-ancestor-access-failed",
+  "windows-state-directory-root-access-failed",
+  "windows-state-directory-child-access-failed",
+  "windows-state-directory-integrity-label-failed",
+] as const);
+/**
+ * Worker startup stages carry their own closed code all the way to CI evidence.
+ * Collapsing them would erase the signal that distinguishes a capability-pipe
+ * ACL rejection from a control-frame parse failure or Tokio runtime fault.
+ */
+export const GOOSE_WINDOWS_WORKER_STARTUP_STAGES = Object.freeze([
+  "windows-worker-control-frame-invalid",
+  "windows-worker-boundary-verification-failed",
+  "windows-worker-runtime-creation-failed",
+  "windows-worker-capability-bridge-failed",
+  "windows-worker-model-bridge-failed",
+  "windows-worker-state-directory-failed",
+  "windows-worker-state-directory-layout-failed",
+  "windows-worker-state-directory-root-metadata-failed",
+  "windows-worker-state-directory-root-canonicalize-failed",
+  "windows-worker-state-directory-data-metadata-failed",
+  "windows-worker-state-directory-data-create-failed",
+  "windows-worker-state-directory-data-canonicalize-failed",
+  "windows-worker-state-directory-config-metadata-failed",
+  "windows-worker-state-directory-config-create-failed",
+  "windows-worker-state-directory-config-canonicalize-failed",
+  "windows-worker-state-directory-traversal-shape-invalid",
+  "windows-worker-ready-signal-failed",
+  "windows-worker-acp-handshake-failed",
+] as const);
+export type GooseRunnerWindowsSupervisorFailure =
+  (typeof GOOSE_WINDOWS_SUPERVISOR_FAILURE_STAGES)[number];
+export type GooseRunnerWindowsWorkerStartupFailure =
+  (typeof GOOSE_WINDOWS_WORKER_STARTUP_STAGES)[number];
 export type GooseRunnerProcessErrorCode =
   | "invalid-options"
   | "artifact-mismatch"
   | "network-policy-unavailable"
   | "worker-resource-enforcement-unavailable"
   | "spawn-failed"
-  | "cleanup-failed";
+  | "cleanup-failed"
+  | GooseRunnerWindowsSupervisorFailure
+  | GooseRunnerWindowsWorkerStartupFailure;
 
 export class GooseRunnerProcessError extends Error {
   constructor(
@@ -87,14 +200,14 @@ export interface GooseAcpSpawnOptions {
       };
   readonly windows?: Readonly<{
     readonly supervisorMode: "--actestra-windows-supervisor-v1";
-    readonly capabilityPipeName: string;
-    readonly modelPipeName: string;
     readonly attemptLease: string;
+    readonly modelAttemptLease: string;
     readonly attemptId: string;
     readonly executableSha256: string;
     readonly modelId: string;
     readonly targetTriple: "x86_64-pc-windows-msvc";
   }>;
+  readonly attachWindowsChannels?: (channels: GooseWindowsSupervisorChannels) => void;
 }
 
 export type GooseAcpTransportFactory = (options: GooseAcpSpawnOptions) => GooseAcpTransport;
@@ -107,15 +220,42 @@ export interface GooseRunnerSetupFailureMatcher {
   push(chunk: Uint8Array): GooseRunnerSetupFailure | undefined;
 }
 
+export interface GooseWindowsCapabilityProgressMatcher {
+  push(chunk: Uint8Array): readonly GooseWindowsCapabilityProgressStage[];
+}
+
+export interface GooseWindowsModelProgressMatcher {
+  push(chunk: Uint8Array): readonly GooseWindowsModelProgressStage[];
+}
+
+export interface GooseWindowsWorkerAcpProgressMatcher {
+  push(chunk: Uint8Array): readonly GooseWindowsWorkerAcpProgressStage[];
+}
+
+export interface GooseWindowsWorkerStderrRelayProgressMatcher {
+  push(chunk: Uint8Array): readonly GooseWindowsWorkerStderrRelayProgressStage[];
+}
+
 export type GooseRunnerSetupFailure =
   | "network-policy-unavailable"
   | "worker-resource-enforcement-unavailable"
   | "runner-runtime"
   | "runner-acp"
   | "runner-relay"
-  | "runner-panic";
+  | "runner-panic"
+  | GooseRunnerWindowsSupervisorFailure
+  | GooseRunnerWindowsWorkerStartupFailure;
 
 type GooseChildProcess = ChildProcessByStdio<Writable, Readable, Readable>;
+
+export interface GooseWindowsSupervisorChannels {
+  readonly capability: Duplex;
+  readonly model: Duplex;
+  readonly capabilityProgress: GooseWindowsCapabilityProgress;
+  readonly modelProgress: GooseWindowsModelProgress;
+  readonly workerAcpProgress?: GooseWindowsWorkerAcpProgress;
+  readonly workerStderrRelayProgress?: GooseWindowsWorkerStderrRelayProgress;
+}
 
 export interface GooseAcpLaunchCommand {
   readonly command: string;
@@ -139,11 +279,13 @@ export interface GooseRunnerPreparedRoot {
 }
 
 export interface GooseRunnerPreparedBridge {
-  readonly capabilityProxyUrl: string;
-  readonly modelBinding: GooseRunnerModelBinding;
-  readonly capabilitySocketPath: string;
-  readonly modelSocketPath: string;
+  readonly capabilityProxyUrl?: string;
+  readonly modelBinding?: GooseRunnerModelBinding;
+  readonly capabilitySocketPath?: string;
+  readonly modelSocketPath?: string;
   readonly windows?: GooseRunnerWindowsBridgeEnvironment;
+  readonly modelId?: string;
+  readonly attachWindowsChannels?: (channels: GooseWindowsSupervisorChannels) => void;
   close(): Promise<void>;
 }
 
@@ -156,9 +298,9 @@ export interface GooseRunnerLinuxBridgeEnvironment {
 }
 
 export interface GooseRunnerWindowsBridgeEnvironment {
-  readonly capabilityPipeName: string;
-  readonly modelPipeName: string;
+  readonly attemptId: string;
   readonly attemptLease: string;
+  readonly modelAttemptLease: string;
 }
 
 export type GooseRunnerBridgeFactory = (
@@ -289,17 +431,16 @@ function hasExactWindowsSupervisorSpawnContract(options: GooseAcpSpawnOptions): 
   if (
     windows === undefined ||
     !Object.isFrozen(windows) ||
-    Reflect.ownKeys(windows).length !== 8 ||
+    Reflect.ownKeys(windows).length !== 7 ||
     Reflect.ownKeys(windows).some(
       (key) =>
         typeof key !== "string" ||
         ![
           "attemptLease",
           "attemptId",
-          "capabilityPipeName",
           "executableSha256",
+          "modelAttemptLease",
           "modelId",
-          "modelPipeName",
           "supervisorMode",
           "targetTriple",
         ].includes(key),
@@ -309,13 +450,7 @@ function hasExactWindowsSupervisorSpawnContract(options: GooseAcpSpawnOptions): 
   ) {
     return false;
   }
-  const validPipeName = (pipeName: string): boolean =>
-    /^\\\\\.\\pipe\\LOCAL\\Actestra\.Goose\.[A-Za-z0-9._-]{16,128}$/.test(pipeName) &&
-    Buffer.byteLength(pipeName, "utf8") <= 180;
   if (
-    !validPipeName(windows.capabilityPipeName) ||
-    !validPipeName(windows.modelPipeName) ||
-    windows.capabilityPipeName === windows.modelPipeName ||
     !/^[a-f0-9]{32}$/.test(windows.attemptId) ||
     !/^[a-f0-9]{64}$/.test(windows.executableSha256) ||
     windows.modelId.length < 1 ||
@@ -324,7 +459,11 @@ function hasExactWindowsSupervisorSpawnContract(options: GooseAcpSpawnOptions): 
     windows.targetTriple !== "x86_64-pc-windows-msvc" ||
     windows.attemptLease.length < 32 ||
     windows.attemptLease.length > 256 ||
-    !/^[A-Za-z0-9._~-]+$/.test(windows.attemptLease)
+    !/^[A-Za-z0-9._~-]+$/.test(windows.attemptLease) ||
+    windows.modelAttemptLease.length < 32 ||
+    windows.modelAttemptLease.length > 256 ||
+    !/^[A-Za-z0-9._~-]+$/.test(windows.modelAttemptLease) ||
+    windows.modelAttemptLease === windows.attemptLease
   ) {
     return false;
   }
@@ -346,8 +485,7 @@ function hasExactWindowsSupervisorSpawnContract(options: GooseAcpSpawnOptions): 
   const environmentValues = new Set(Object.values(options.environment));
   return (
     !environmentValues.has(windows.attemptLease) &&
-    !environmentValues.has(windows.capabilityPipeName) &&
-    !environmentValues.has(windows.modelPipeName)
+    !environmentValues.has(windows.modelAttemptLease)
   );
 }
 
@@ -413,14 +551,7 @@ export function assertGooseAcpSpawnOptions(
   }
 }
 
-/**
- * Recognizes only the runner's fixed setup marker. Its state retains no stderr
- * content, so native diagnostic text never crosses the process boundary.
- */
-function createGooseRunnerFixedMarkerMatcher(
-  markerText: string,
-): GooseRunnerResourceFailureMatcher {
-  const marker = Buffer.from(markerText, "utf8");
+function markerFallbackTable(marker: Buffer): Uint8Array {
   const fallback = new Uint8Array(marker.length);
   for (let index = 1, prefixLength = 0; index < marker.length; ) {
     if (marker[index] === marker[prefixLength]) {
@@ -433,6 +564,18 @@ function createGooseRunnerFixedMarkerMatcher(
       index += 1;
     }
   }
+  return fallback;
+}
+
+/**
+ * Recognizes only the runner's fixed setup marker. Its state retains no stderr
+ * content, so native diagnostic text never crosses the process boundary.
+ */
+function createGooseRunnerFixedMarkerMatcher(
+  markerText: string,
+): GooseRunnerResourceFailureMatcher {
+  const marker = Buffer.from(markerText, "utf8");
+  const fallback = markerFallbackTable(marker);
   let matched = 0;
   let detected = false;
   return Object.freeze({
@@ -455,8 +598,117 @@ function createGooseRunnerFixedMarkerMatcher(
   });
 }
 
+/**
+ * Like {@link createGooseRunnerFixedMarkerMatcher}, but re-arms after each hit
+ * so a stage that recurs on a later prompt is reported again. A latching
+ * matcher would leave every attempt after the first with no observable stage,
+ * which is what made a failing second prompt unclassifiable.
+ */
+function createGooseRunnerRepeatingMarkerMatcher(
+  markerText: string,
+): GooseRunnerResourceFailureMatcher {
+  const marker = Buffer.from(markerText, "utf8");
+  const fallback = markerFallbackTable(marker);
+  let matched = 0;
+  return Object.freeze({
+    push(chunk: Uint8Array): boolean {
+      let seen = false;
+      for (const byte of chunk) {
+        while (matched > 0 && byte !== marker[matched]) {
+          matched = fallback[matched - 1] ?? 0;
+        }
+        if (byte === marker[matched]) {
+          matched += 1;
+          if (matched === marker.length) {
+            seen = true;
+            matched = fallback[matched - 1] ?? 0;
+          }
+        }
+      }
+      return seen;
+    },
+  });
+}
+
 export function createGooseRunnerResourceFailureMatcher(): GooseRunnerResourceFailureMatcher {
   return createGooseRunnerFixedMarkerMatcher(GOOSE_NATIVE_RESOURCE_LIMIT_FAILURE_MARKER);
+}
+
+export function createGooseWindowsCapabilityProgressMatcher(): GooseWindowsCapabilityProgressMatcher {
+  const matchers = [
+    ...GOOSE_WINDOWS_CAPABILITY_PROGRESS_STAGES,
+    ...GOOSE_WINDOWS_CAPABILITY_CALL_PROGRESS_STAGES,
+    ...GOOSE_WINDOWS_CAPABILITY_CALL_FAILURE_STAGES,
+  ].map(
+    (stage) =>
+      [
+        stage,
+        createGooseRunnerRepeatingMarkerMatcher(windowsCapabilityProgressMarker(stage)),
+      ] as const,
+  );
+  return Object.freeze({
+    push(chunk: Uint8Array): readonly GooseWindowsCapabilityProgressStage[] {
+      const detected: GooseWindowsCapabilityProgressStage[] = [];
+      for (const [stage, matcher] of matchers) {
+        if (matcher.push(chunk)) detected.push(stage);
+      }
+      return Object.freeze(detected);
+    },
+  });
+}
+
+export function createGooseWindowsModelProgressMatcher(): GooseWindowsModelProgressMatcher {
+  const matchers = GOOSE_WINDOWS_MODEL_PROGRESS_STAGES.map(
+    (stage) =>
+      [stage, createGooseRunnerRepeatingMarkerMatcher(windowsModelProgressMarker(stage))] as const,
+  );
+  return Object.freeze({
+    push(chunk: Uint8Array): readonly GooseWindowsModelProgressStage[] {
+      const detected: GooseWindowsModelProgressStage[] = [];
+      for (const [stage, matcher] of matchers) {
+        if (matcher.push(chunk)) detected.push(stage);
+      }
+      return Object.freeze(detected);
+    },
+  });
+}
+
+export function createGooseWindowsWorkerAcpProgressMatcher(): GooseWindowsWorkerAcpProgressMatcher {
+  const matchers = GOOSE_WINDOWS_WORKER_ACP_PROGRESS_STAGES.map(
+    (stage) =>
+      [
+        stage,
+        createGooseRunnerRepeatingMarkerMatcher(windowsWorkerAcpProgressMarker(stage)),
+      ] as const,
+  );
+  return Object.freeze({
+    push(chunk: Uint8Array): readonly GooseWindowsWorkerAcpProgressStage[] {
+      const detected: GooseWindowsWorkerAcpProgressStage[] = [];
+      for (const [stage, matcher] of matchers) {
+        if (matcher.push(chunk)) detected.push(stage);
+      }
+      return Object.freeze(detected);
+    },
+  });
+}
+
+export function createGooseWindowsWorkerStderrRelayProgressMatcher(): GooseWindowsWorkerStderrRelayProgressMatcher {
+  const matchers = GOOSE_WINDOWS_WORKER_STDERR_RELAY_PROGRESS_STAGES.map(
+    (stage) =>
+      [
+        stage,
+        createGooseRunnerRepeatingMarkerMatcher(windowsWorkerStderrRelayProgressMarker(stage)),
+      ] as const,
+  );
+  return Object.freeze({
+    push(chunk: Uint8Array): readonly GooseWindowsWorkerStderrRelayProgressStage[] {
+      const detected: GooseWindowsWorkerStderrRelayProgressStage[] = [];
+      for (const [stage, matcher] of matchers) {
+        if (matcher.push(chunk)) detected.push(stage);
+      }
+      return Object.freeze(detected);
+    },
+  });
 }
 
 export function createGooseRunnerSetupFailureMatcher(): GooseRunnerSetupFailureMatcher {
@@ -466,6 +718,14 @@ export function createGooseRunnerSetupFailureMatcher(): GooseRunnerSetupFailureM
   const acp = createGooseRunnerFixedMarkerMatcher(GOOSE_NATIVE_ACP_SERVER_FAILURE_MARKER);
   const relay = createGooseRunnerFixedMarkerMatcher(GOOSE_NATIVE_RELAY_FAILURE_MARKER);
   const panic = createGooseRunnerFixedMarkerMatcher(GOOSE_NATIVE_PANIC_FAILURE_MARKER);
+  const windowsSupervisor = GOOSE_WINDOWS_SUPERVISOR_FAILURE_STAGES.map(
+    (stage) =>
+      [stage, createGooseRunnerFixedMarkerMatcher(windowsRuntimeStageMarker(stage))] as const,
+  );
+  const windowsWorkerStartup = GOOSE_WINDOWS_WORKER_STARTUP_STAGES.map(
+    (stage) =>
+      [stage, createGooseRunnerFixedMarkerMatcher(windowsRuntimeStageMarker(stage))] as const,
+  );
   let detected: GooseRunnerSetupFailure | undefined;
   return Object.freeze({
     push(chunk: Uint8Array) {
@@ -482,6 +742,20 @@ export function createGooseRunnerSetupFailureMatcher(): GooseRunnerSetupFailureM
         detected = "runner-relay";
       } else if (panic.push(chunk)) {
         detected = "runner-panic";
+      } else {
+        let supervisorStage: GooseRunnerWindowsSupervisorFailure | undefined;
+        for (const [stage, matcher] of windowsSupervisor) {
+          if (matcher.push(chunk)) supervisorStage ??= stage;
+        }
+        let workerStartup: GooseRunnerWindowsWorkerStartupFailure | undefined;
+        for (const [stage, matcher] of windowsWorkerStartup) {
+          if (matcher.push(chunk)) workerStartup ??= stage;
+        }
+        if (supervisorStage !== undefined) {
+          detected = supervisorStage;
+        } else if (workerStartup !== undefined) {
+          detected = workerStartup;
+        }
       }
       return detected;
     },
@@ -494,6 +768,18 @@ function setupFailureError(failure: GooseRunnerSetupFailure): GooseRunnerProcess
   }
   if (failure === "worker-resource-enforcement-unavailable") {
     return new GooseRunnerProcessError(failure, "Goose native resource enforcement is unavailable");
+  }
+  if ((GOOSE_WINDOWS_SUPERVISOR_FAILURE_STAGES as readonly string[]).includes(failure)) {
+    return new GooseRunnerProcessError(
+      failure as GooseRunnerWindowsSupervisorFailure,
+      "Goose Windows supervisor failed",
+    );
+  }
+  if ((GOOSE_WINDOWS_WORKER_STARTUP_STAGES as readonly string[]).includes(failure)) {
+    return new GooseRunnerProcessError(
+      failure as GooseRunnerWindowsWorkerStartupFailure,
+      "Goose Windows worker startup failed",
+    );
   }
   const message =
     failure === "runner-runtime"
@@ -622,8 +908,8 @@ function validatePreparedBridge(
   }
   const keys = Reflect.ownKeys(value);
   if (
-    keys.length < 5 ||
-    keys.length > 6 ||
+    keys.length < 2 ||
+    keys.length > 9 ||
     keys.some(
       (key) =>
         typeof key !== "string" ||
@@ -632,7 +918,9 @@ function validatePreparedBridge(
           "modelBinding",
           "capabilitySocketPath",
           "modelSocketPath",
+          "modelId",
           "windows",
+          "attachWindowsChannels",
           "close",
         ].includes(key),
     )
@@ -646,12 +934,43 @@ function validatePreparedBridge(
   const capabilitySocketPath = value.capabilitySocketPath;
   const modelSocketPath = value.modelSocketPath;
   const windows = value.windows;
+  const modelId = value.modelId;
+  const attachWindowsChannels = value.attachWindowsChannels;
   const close = value.close;
+  if (typeof close !== "function") {
+    throw new GooseRunnerProcessError(
+      "invalid-options",
+      "Goose bridge factory returned an invalid endpoint contract",
+    );
+  }
+  if (windows !== undefined) {
+    if (typeof attachWindowsChannels !== "function") {
+      throw new GooseRunnerProcessError(
+        "invalid-options",
+        "Windows Goose bridge factory must attach the authenticated channels",
+      );
+    }
+    return Object.freeze({
+      windows: validateWindowsBridgeEnvironment(windows),
+      modelId:
+        typeof modelId === "string" && modelId.length > 0 && modelId.length <= 256
+          ? modelId
+          : (() => {
+              throw new GooseRunnerProcessError(
+                "invalid-options",
+                "Windows Goose bridge factory must return the admitted model identifier",
+              );
+            })(),
+      attachWindowsChannels: attachWindowsChannels as (
+        channels: GooseWindowsSupervisorChannels,
+      ) => void,
+      close: close as () => Promise<void>,
+    });
+  }
   if (
     typeof capabilityProxyUrl !== "string" ||
     typeof capabilitySocketPath !== "string" ||
-    typeof modelSocketPath !== "string" ||
-    typeof close !== "function"
+    typeof modelSocketPath !== "string"
   ) {
     throw new GooseRunnerProcessError(
       "invalid-options",
@@ -701,6 +1020,14 @@ function validatePreparedBridge(
     capabilitySocketPath,
     modelSocketPath,
     ...(windows === undefined ? {} : { windows: validateWindowsBridgeEnvironment(windows) }),
+    ...(attachWindowsChannels === undefined
+      ? {}
+      : {
+          attachWindowsChannels: attachWindowsChannels as (
+            channels: GooseWindowsSupervisorChannels,
+          ) => void,
+        }),
+    ...(modelId === undefined ? {} : { modelId: modelId as string }),
     close: close as () => Promise<void>,
   });
 }
@@ -718,7 +1045,7 @@ function validateWindowsBridgeEnvironment(value: unknown): GooseRunnerWindowsBri
     keys.some(
       (key) =>
         typeof key !== "string" ||
-        !["attemptLease", "capabilityPipeName", "modelPipeName"].includes(key),
+        !["attemptId", "attemptLease", "modelAttemptLease"].includes(key),
     )
   ) {
     throw new GooseRunnerProcessError(
@@ -726,42 +1053,26 @@ function validateWindowsBridgeEnvironment(value: unknown): GooseRunnerWindowsBri
       "Goose Windows bridge environment contains unsupported fields",
     );
   }
-  const { capabilityPipeName, modelPipeName, attemptLease } = value;
-  const validPipeName = (pipeName: unknown): pipeName is string =>
-    typeof pipeName === "string" &&
-    /^\\\\\.\\pipe\\LOCAL\\Actestra\.Goose\.[a-f0-9]{32}\.(?:capability|model)$/.test(pipeName) &&
-    Buffer.byteLength(pipeName, "utf8") <= 180;
+  const { attemptId, attemptLease, modelAttemptLease } = value;
   if (
-    !validPipeName(capabilityPipeName) ||
-    !validPipeName(modelPipeName) ||
-    capabilityPipeName === modelPipeName ||
-    !capabilityPipeName.endsWith(".capability") ||
-    !modelPipeName.endsWith(".model") ||
-    capabilityPipeName.slice(0, -"capability".length) !== modelPipeName.slice(0, -"model".length) ||
+    typeof attemptId !== "string" ||
+    !/^[a-f0-9]{32}$/.test(attemptId) ||
     typeof attemptLease !== "string" ||
     attemptLease.length < 32 ||
     attemptLease.length > 256 ||
-    !/^[A-Za-z0-9._~-]+$/.test(attemptLease)
+    !/^[A-Za-z0-9._~-]+$/.test(attemptLease) ||
+    typeof modelAttemptLease !== "string" ||
+    modelAttemptLease.length < 32 ||
+    modelAttemptLease.length > 256 ||
+    !/^[A-Za-z0-9._~-]+$/.test(modelAttemptLease) ||
+    modelAttemptLease === attemptLease
   ) {
     throw new GooseRunnerProcessError(
       "invalid-options",
       "Goose Windows bridge environment is invalid",
     );
   }
-  return Object.freeze({ capabilityPipeName, modelPipeName, attemptLease });
-}
-
-function windowsBridgeAttemptId(value: GooseRunnerWindowsBridgeEnvironment): string {
-  const match = value.capabilityPipeName.match(
-    /^\\\\\.\\pipe\\LOCAL\\Actestra\.Goose\.([a-f0-9]{32})\.capability$/,
-  );
-  if (match?.[1] === undefined) {
-    throw new GooseRunnerProcessError(
-      "invalid-options",
-      "Goose Windows bridge attempt identity is invalid",
-    );
-  }
-  return match[1];
+  return Object.freeze({ attemptId, attemptLease, modelAttemptLease });
 }
 
 function validateLinuxBridgeEnvironment(
@@ -893,6 +1204,11 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
   private readonly exitListeners = new Set<(code: number | null, signal: string | null) => void>();
   private readonly exitPromise: Promise<void>;
   private readonly nativeSetupFailureMatcher = createGooseRunnerSetupFailureMatcher();
+  private readonly windowsCapabilityProgressMatcher = createGooseWindowsCapabilityProgressMatcher();
+  private readonly windowsModelProgressMatcher = createGooseWindowsModelProgressMatcher();
+  private readonly windowsWorkerAcpProgressMatcher = createGooseWindowsWorkerAcpProgressMatcher();
+  private readonly windowsWorkerStderrRelayProgressMatcher =
+    createGooseWindowsWorkerStderrRelayProgressMatcher();
   private stdoutBuffer = "";
   private stderrBytes = 0;
   private exited = false;
@@ -902,6 +1218,7 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
   constructor(
     private readonly child: GooseChildProcess,
     private readonly parentLiveness?: Writable,
+    readonly windowsChannels?: GooseWindowsSupervisorChannels,
   ) {
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => {
@@ -923,6 +1240,18 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
       }
     });
     child.stderr.on("data", (chunk: Buffer) => {
+      for (const stage of this.windowsWorkerStderrRelayProgressMatcher.push(chunk)) {
+        this.windowsChannels?.workerStderrRelayProgress?.record(stage);
+      }
+      for (const stage of this.windowsCapabilityProgressMatcher.push(chunk)) {
+        this.windowsChannels?.capabilityProgress.record(stage);
+      }
+      for (const stage of this.windowsModelProgressMatcher.push(chunk)) {
+        this.windowsChannels?.modelProgress.record(stage);
+      }
+      for (const stage of this.windowsWorkerAcpProgressMatcher.push(chunk)) {
+        this.windowsChannels?.workerAcpProgress?.record(stage);
+      }
       const setupFailure = this.nativeSetupFailureMatcher.push(chunk);
       if (setupFailure !== undefined) {
         this.failTransport(setupFailureError(setupFailure));
@@ -1023,6 +1352,8 @@ class NodeGooseAcpTransport implements GooseAcpTransport {
 
   private async closeProcess(): Promise<void> {
     this.parentLiveness?.end();
+    this.windowsChannels?.capability.end();
+    this.windowsChannels?.model.end();
     this.child.stdin.end();
     if (await this.waitForProcessTreeExit(CLOSE_GRACE_MS)) {
       return;
@@ -1063,8 +1394,10 @@ export function encodeWindowsSupervisorControlFrame(options: GooseAcpSpawnOption
       attemptLease: windows.attemptLease,
       contractVersion: 1,
       executableSha256: windows.executableSha256,
+      modelAttemptLease: windows.modelAttemptLease,
       modelId: windows.modelId,
       privateRoot: path.dirname(options.workingDirectory),
+      privateRootTraversalRoot: path.dirname(path.dirname(path.dirname(options.workingDirectory))),
       resourceBudget: options.resourceBudget,
       targetTriple: windows.targetTriple,
       worktreeRoot: workspaceDirectory,
@@ -1203,10 +1536,12 @@ export function createNodeGooseAcpTransport(
         ? { ...options.environment }
         : { ...options.environment, ACTESTRA_PARENT_LIVENESS_FD: "3" },
       detached: true,
-      // Windows reserves fd 3 for the one-shot control frame and fd 4 for
-      // parent liveness. Other hosts retain the existing fd 3 liveness pipe.
+      // Windows reserves fd 3 for the one-shot control frame, fd 4 for parent liveness,
+      // and fd 5/fd 6 for the duplex capability/model supervisor channels. Other hosts
+      // retain the existing fd 3 liveness pipe. The last two child endpoints use
+      // overlapped I/O so the Rust Supervisor can relay both directions concurrently.
       stdio: windowsSupervisor
-        ? ["pipe", "pipe", "pipe", "pipe", "pipe"]
+        ? [...GOOSE_WINDOWS_STDIO_CONFIGURATION]
         : ["pipe", "pipe", "pipe", "pipe"],
       windowsHide: true,
     });
@@ -1220,11 +1555,28 @@ export function createNodeGooseAcpTransport(
   }
   const control = child.stdio[3];
   const parentLiveness = child.stdio[4];
+  const extendedStdio = child.stdio as unknown as readonly [
+    Writable,
+    Readable,
+    Readable,
+    Readable | Writable | null | undefined,
+    Readable | Writable | null | undefined,
+    Duplex | null | undefined,
+    Duplex | null | undefined,
+  ];
+  const capability = extendedStdio[5];
+  const model = extendedStdio[6];
   if (
     control === null ||
     parentLiveness === null ||
+    capability === null ||
+    model === null ||
     typeof (control as Writable).write !== "function" ||
-    typeof (parentLiveness as Writable).write !== "function"
+    typeof (parentLiveness as Writable).write !== "function" ||
+    typeof (capability as Duplex).write !== "function" ||
+    typeof (capability as Duplex).on !== "function" ||
+    typeof (model as Duplex).write !== "function" ||
+    typeof (model as Duplex).on !== "function"
   ) {
     child.kill();
     throw new GooseRunnerProcessError(
@@ -1235,7 +1587,17 @@ export function createNodeGooseAcpTransport(
   const controlWriter = control as Writable;
   controlWriter.once("error", () => child.kill());
   controlWriter.end(Buffer.from(encodeWindowsSupervisorControlFrame(options)));
-  return new NodeGooseAcpTransport(child, parentLiveness as Writable);
+  const windowsChannels: GooseWindowsSupervisorChannels = Object.freeze({
+    capability: capability as Duplex,
+    model: model as Duplex,
+    capabilityProgress: createGooseWindowsCapabilityProgress(),
+    modelProgress: createGooseWindowsModelProgress(),
+    workerAcpProgress: createGooseWindowsWorkerAcpProgress(),
+    workerStderrRelayProgress: createGooseWindowsWorkerStderrRelayProgress(),
+  });
+  const transport = new NodeGooseAcpTransport(child, parentLiveness as Writable, windowsChannels);
+  options.attachWindowsChannels?.(windowsChannels);
+  return transport;
 }
 
 async function preparePrivateRoot(
@@ -1470,7 +1832,7 @@ export async function openGooseRunnerHandshake(
   if (runtimeTarget.platform === "win32" && options.prepareBridge === undefined) {
     throw new GooseRunnerProcessError(
       "network-policy-unavailable",
-      "Windows Goose runtime requires the exact admitted named-pipe bridge contract",
+      "Windows Goose runtime requires the exact admitted inherited-handle bridge contract",
     );
   }
   let prepared: GooseRunnerPreparedRoot | undefined;
@@ -1501,7 +1863,7 @@ export async function openGooseRunnerHandshake(
       if (runtimeTarget.platform === "win32" && bridge.windows === undefined) {
         throw new GooseRunnerProcessError(
           "network-policy-unavailable",
-          "Windows Goose runtime requires the exact admitted named-pipe bridge contract",
+          "Windows Goose runtime requires the exact admitted inherited-handle bridge contract",
         );
       }
     }
@@ -1523,7 +1885,9 @@ export async function openGooseRunnerHandshake(
       bridge !== undefined &&
       capabilityProxyPort !== undefined &&
       stableModelBinding !== undefined &&
-      admittedWorkspaceDirectory !== undefined
+      admittedWorkspaceDirectory !== undefined &&
+      typeof bridge.capabilitySocketPath === "string" &&
+      typeof bridge.modelSocketPath === "string"
         ? Object.freeze({
             capabilitySocketPath: bridge.capabilitySocketPath,
             modelSocketPath: bridge.modelSocketPath,
@@ -1563,15 +1927,17 @@ export async function openGooseRunnerHandshake(
         : {
             windows: Object.freeze({
               supervisorMode: "--actestra-windows-supervisor-v1" as const,
-              capabilityPipeName: windowsBridgeEnvironment.capabilityPipeName,
-              modelPipeName: windowsBridgeEnvironment.modelPipeName,
               attemptLease: windowsBridgeEnvironment.attemptLease,
-              attemptId: windowsBridgeAttemptId(windowsBridgeEnvironment),
+              modelAttemptLease: windowsBridgeEnvironment.modelAttemptLease,
+              attemptId: windowsBridgeEnvironment.attemptId,
               executableSha256: options.artifact.executableSha256,
-              modelId: stableModelBinding!.binding.modelId,
+              modelId: stableModelBinding?.binding.modelId ?? bridge?.modelId ?? "",
               targetTriple: "x86_64-pc-windows-msvc" as const,
             }),
           }),
+      ...(bridge?.attachWindowsChannels === undefined
+        ? {}
+        : { attachWindowsChannels: bridge.attachWindowsChannels }),
     });
     assertGooseContainmentLaunch(
       Object.freeze({

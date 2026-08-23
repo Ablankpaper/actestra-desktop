@@ -587,7 +587,10 @@ function contractVersionProperty(): Readonly<Record<string, unknown>> {
   return Object.freeze({ type: "integer", const: 1 });
 }
 
-function toolList(commandIds: readonly string[], testIds: readonly string[]): readonly unknown[] {
+export function toolList(
+  commandIds: readonly string[],
+  testIds: readonly string[],
+): readonly unknown[] {
   return Object.freeze([
     Object.freeze({
       name: CODING_FILE_READ_TOOL_ID,

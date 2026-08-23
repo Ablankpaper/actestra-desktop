@@ -3,17 +3,15 @@ import { constants as fsConstants } from "node:fs";
 import { lstat, mkdtemp, open, realpath, rm, unlink } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
+import {
+  CLOSED_GIT_CONFIG_ARGUMENTS,
+  GIT_EXECUTABLE,
+  workspaceGitEnvironment,
+} from "./workspaceGitBinding";
 
 const execFileAsync = promisify(execFile);
-const GIT_EXECUTABLE = "/usr/bin/git";
 const GIT_TIMEOUT_MS = 10_000;
 const GIT_MAX_OUTPUT_BYTES = 64 * 1024;
-const CLOSED_GIT_CONFIG_ARGUMENTS = Object.freeze([
-  "-c",
-  "core.hooksPath=/dev/null",
-  "-c",
-  "core.fsmonitor=false",
-] as const);
 
 export type IsolatedCodingWorktreeErrorCode =
   | "invalid-options"
@@ -83,19 +81,6 @@ async function requireCanonicalDirectory(value: string, label: string): Promise<
     );
   }
   return canonical;
-}
-
-function gitEnvironment(managedRoot: string): Readonly<Record<string, string>> {
-  return Object.freeze({
-    GIT_ATTR_NOSYSTEM: "1",
-    GIT_CONFIG_GLOBAL: "/dev/null",
-    GIT_CONFIG_NOSYSTEM: "1",
-    GIT_OPTIONAL_LOCKS: "0",
-    GIT_TERMINAL_PROMPT: "0",
-    HOME: managedRoot,
-    LC_ALL: "C",
-    PATH: "/usr/bin:/bin",
-  });
 }
 
 async function runGit(
@@ -278,7 +263,7 @@ export async function createIsolatedCodingWorktree(
     );
   }
 
-  const environment = gitEnvironment(managedRoot);
+  const environment = workspaceGitEnvironment(managedRoot);
   let reportedRoot: string;
   let insideWorktree: string;
   let commit: string;
@@ -287,7 +272,9 @@ export async function createIsolatedCodingWorktree(
   try {
     [reportedRoot, insideWorktree, commit, repositoryGitCommonDirectory, repositoryGitDirectory] =
       await Promise.all([
-        runGit(repositoryRoot, environment, "rev-parse", "--show-toplevel"),
+        runGit(repositoryRoot, environment, "rev-parse", "--show-toplevel").then((directory) =>
+          realpath(directory),
+        ),
         runGit(repositoryRoot, environment, "rev-parse", "--is-inside-work-tree"),
         runGit(repositoryRoot, environment, "rev-parse", "--verify", "HEAD^{commit}"),
         runGit(
@@ -364,16 +351,20 @@ export async function createIsolatedCodingWorktree(
             "--git-common-dir",
           )
         ).split("\n");
-        if (values.length !== 3 || values[0] !== canonicalWorktreeRoot) {
+        if (values.length !== 3) {
           throw new IsolatedCodingWorktreeError(
             "worktree-create-failed",
             "Created coding worktree reported an incompatible Git binding",
           );
         }
-        const [canonicalGitDirectory, canonicalGitCommonDirectory] = await Promise.all([
-          realpath(values[1]!),
-          realpath(values[2]!),
-        ]);
+        const [reportedWorktreeRoot, canonicalGitDirectory, canonicalGitCommonDirectory] =
+          await Promise.all([realpath(values[0]!), realpath(values[1]!), realpath(values[2]!)]);
+        if (reportedWorktreeRoot !== canonicalWorktreeRoot) {
+          throw new IsolatedCodingWorktreeError(
+            "worktree-create-failed",
+            "Created coding worktree reported an incompatible Git binding",
+          );
+        }
         if (
           canonicalGitCommonDirectory !== repositoryGitCommonDirectory ||
           !isInside(canonicalGitCommonDirectory, canonicalGitDirectory)

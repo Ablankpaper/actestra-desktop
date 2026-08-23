@@ -11,6 +11,15 @@ const nativeLinuxGooseIntegrationFiles =
   process.env.ACTESTRA_GOOSE_RUNNER_MANIFEST_SHA256 !== undefined
     ? ["tests/main/gooseRunnerLinuxNative.integration.ts"]
     : [];
+const nativeWindowsGooseIntegrationFiles =
+  process.env.ACTESTRA_GOOSE_WINDOWS_RUNTIME_INTEGRATION === "1" &&
+  process.env.ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIR !== undefined &&
+  process.env.ACTESTRA_GOOSE_RUNNER_MANIFEST_SHA256 !== undefined &&
+  process.env.ACTESTRA_GOOSE_WINDOWS_RUNTIME_EVIDENCE_PATH !== undefined &&
+  process.env.ACTESTRA_GOOSE_WINDOWS_RUNTIME_FAILURE_EVIDENCE_PATH !== undefined &&
+  process.env.ACTESTRA_GOOSE_CONTAINMENT_EVIDENCE_SHA256 !== undefined
+    ? ["tests/main/gooseRunnerWindowsNative.integration.ts"]
+    : [];
 
 export default defineConfig({
   test: {
@@ -20,6 +29,7 @@ export default defineConfig({
       "tests/**/*.test.{ts,tsx,mjs}",
       ...admittedGooseRunnerIntegrationFiles,
       ...nativeLinuxGooseIntegrationFiles,
+      ...nativeWindowsGooseIntegrationFiles,
     ],
     coverage: {
       provider: "v8",
