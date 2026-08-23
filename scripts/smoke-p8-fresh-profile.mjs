@@ -7,16 +7,34 @@ import { execFileSync, spawn } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import {
+  P8_FRESH_PROFILE_FAILURE_CODES,
   P8_FRESH_PROFILE_TARGETS,
   makeP8FreshProfileFailureEvidence,
 } from "./p8-fresh-profile-evidence.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const P8_FRESH_PROFILE_MARKER_PREFIX = "ACTESTRA_P8_FRESH_PROFILE_READY ";
+export const P8_FRESH_PROFILE_FAILURE_MARKER_PREFIX = "ACTESTRA_P8_FRESH_PROFILE_FAILED ";
+export const P8_FRESH_PROFILE_RESULT_FILE_NAME = "p8-fresh-profile-result.json";
 export const P8_FRESH_PROFILE_MAX_OUTPUT_BYTES = 256 * 1024;
+export const P8_FRESH_PROFILE_RESULT_MAX_BYTES = 4 * 1024;
 export const P8_FRESH_PROFILE_STARTUP_TIMEOUT_MS = 60_000;
 export const P8_FRESH_PROFILE_CLEANUP_TIMEOUT_MS = 10_000;
 const MARKER_KEYS = Object.freeze(["providerCount", "providerUiState", "providerUiTextPresent"]);
+const FAILURE_CODE_SET = new Set(P8_FRESH_PROFILE_FAILURE_CODES);
+const RUNNING_STAGE_CODES = Object.freeze({
+  "bootstrap-isolation": "startup-timeout-bootstrap-isolation",
+  "bootstrap-user-data": "startup-timeout-bootstrap-user-data",
+  "bootstrap-complete": "startup-timeout-bootstrap-complete",
+  "app-ready": "startup-timeout-app-ready",
+  "initialize-start": "startup-timeout-initialize",
+  "initialize-complete": "startup-timeout-initialize-complete",
+  "backend-start": "startup-timeout-backend",
+  "backend-ready": "startup-timeout-backend-ready",
+  "window-created": "startup-timeout-window",
+  "renderer-loaded": "startup-timeout-renderer",
+  "renderer-probe-started": "probe-timeout",
+});
 
 class P8FreshProfileSmokeError extends Error {
   constructor(code, message = code) {
@@ -51,18 +69,32 @@ function appendOutput(current, chunk) {
 /** Parse only the bounded E2E marker; all other child output is discarded. */
 export function parseP8FreshProfileMarker(output) {
   if (typeof output !== "string") return Object.freeze({ ok: false, code: "marker-missing" });
-  const payloads = output
-    .split(/\r?\n/u)
-    .map((line) => {
-      const markerIndex = line.indexOf(P8_FRESH_PROFILE_MARKER_PREFIX);
-      return markerIndex === -1
-        ? undefined
-        : line.slice(markerIndex + P8_FRESH_PROFILE_MARKER_PREFIX.length);
-    })
-    .filter((payload) => payload !== undefined);
-  if (payloads.length === 0) return Object.freeze({ ok: false, code: "marker-missing" });
-  if (payloads.length > 1) return Object.freeze({ ok: false, code: "marker-duplicate" });
-  const payload = payloads[0];
+  const signals = output.split(/\r?\n/u).flatMap((line) => {
+    const markerIndex = line.indexOf(P8_FRESH_PROFILE_MARKER_PREFIX);
+    if (markerIndex !== -1) {
+      return [
+        { kind: "ready", value: line.slice(markerIndex + P8_FRESH_PROFILE_MARKER_PREFIX.length) },
+      ];
+    }
+    const failureIndex = line.indexOf(P8_FRESH_PROFILE_FAILURE_MARKER_PREFIX);
+    return failureIndex === -1
+      ? []
+      : [
+          {
+            kind: "failed",
+            value: line.slice(failureIndex + P8_FRESH_PROFILE_FAILURE_MARKER_PREFIX.length).trim(),
+          },
+        ];
+  });
+  if (signals.length === 0) return Object.freeze({ ok: false, code: "marker-missing" });
+  if (signals.length > 1) return Object.freeze({ ok: false, code: "marker-duplicate" });
+  const signal = signals[0];
+  if (signal.kind === "failed") {
+    return FAILURE_CODE_SET.has(signal.value)
+      ? Object.freeze({ ok: false, code: signal.value })
+      : Object.freeze({ ok: false, code: "marker-malformed" });
+  }
+  const payload = signal.value;
   let value;
   try {
     value = JSON.parse(payload);
@@ -86,6 +118,70 @@ export function parseP8FreshProfileMarker(output) {
     return Object.freeze({ ok: false, code: "provider-ui-state-missing" });
   }
   return Object.freeze({ ok: true, value: Object.freeze({ ...value }) });
+}
+
+/** Parse the optional Main-owned result file used when packaged GUI stdio is unavailable. */
+export function parseP8FreshProfileResultFile(userData) {
+  if (typeof userData !== "string" || userData.length === 0) {
+    return Object.freeze({ ok: false, code: "marker-missing" });
+  }
+  const resultPath = path.join(userData, P8_FRESH_PROFILE_RESULT_FILE_NAME);
+  let stat;
+  try {
+    stat = fs.lstatSync(resultPath, { throwIfNoEntry: false });
+  } catch {
+    return Object.freeze({ ok: false, code: "marker-malformed" });
+  }
+  if (stat === undefined) return Object.freeze({ ok: false, code: "marker-missing" });
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.size > P8_FRESH_PROFILE_RESULT_MAX_BYTES) {
+    return Object.freeze({ ok: false, code: "marker-malformed" });
+  }
+  let value;
+  try {
+    value = JSON.parse(fs.readFileSync(resultPath, "utf8"));
+  } catch {
+    return Object.freeze({ ok: false, code: "marker-malformed" });
+  }
+  if (
+    hasExactKeys(value, ["status", "providerCount", "providerUiState", "providerUiTextPresent"]) &&
+    value.status === "verified" &&
+    value.providerCount === 0 &&
+    value.providerUiState === "provider-unavailable" &&
+    value.providerUiTextPresent === true
+  ) {
+    return Object.freeze({
+      ok: true,
+      value: Object.freeze({
+        providerCount: 0,
+        providerUiState: "provider-unavailable",
+        providerUiTextPresent: true,
+      }),
+    });
+  }
+  if (
+    hasExactKeys(value, ["status", "code"]) &&
+    value.status === "failed" &&
+    FAILURE_CODE_SET.has(value.code)
+  ) {
+    return Object.freeze({ ok: false, code: value.code });
+  }
+  if (
+    hasExactKeys(value, ["status", "stage"]) &&
+    value.status === "running" &&
+    typeof value.stage === "string" &&
+    Object.hasOwn(RUNNING_STAGE_CODES, value.stage)
+  ) {
+    return Object.freeze({
+      ok: false,
+      code: RUNNING_STAGE_CODES[value.stage],
+      running: true,
+    });
+  }
+  return Object.freeze({ ok: false, code: "marker-malformed" });
+}
+
+export function classifyP8FreshProfileRunningStage(stage) {
+  return RUNNING_STAGE_CODES[stage] ?? "startup-timeout-before-app-ready";
 }
 
 function canonicalDirectory(value, label) {
@@ -392,6 +488,14 @@ export async function runP8FreshProfileSmoke(options) {
       output = appendOutput(output, chunk);
     });
 
+    const readSignal = () => {
+      const fileSignal = parseP8FreshProfileResultFile(isolation.userData);
+      if (fileSignal.ok || (fileSignal.code !== "marker-missing" && !fileSignal.running)) {
+        return fileSignal;
+      }
+      const outputSignal = parseP8FreshProfileMarker(output);
+      return outputSignal.code === "marker-missing" ? fileSignal : outputSignal;
+    };
     const timeoutMs = options.timeoutMs ?? P8_FRESH_PROFILE_STARTUP_TIMEOUT_MS;
     const startedAt = Date.now();
     let markerResult;
@@ -399,18 +503,24 @@ export async function runP8FreshProfileSmoke(options) {
       const runtimeSnapshot = snapshotProcessTree(child.pid, [...observedPids]);
       if (!runtimeSnapshot?.ok) smokeFailure("process-probe-failed");
       for (const pid of runtimeSnapshot.pids) observedPids.add(pid);
-      markerResult = parseP8FreshProfileMarker(output);
-      if (markerResult.ok || markerResult.code !== "marker-missing") break;
+      markerResult = readSignal();
+      if (markerResult.ok || (markerResult.code !== "marker-missing" && !markerResult.running))
+        break;
       const outcome = await Promise.race([outcomePromise, delay(25).then(() => undefined)]);
       if (outcome !== undefined) {
-        markerResult = parseP8FreshProfileMarker(output);
-        if (markerResult.ok || markerResult.code !== "marker-missing") break;
+        markerResult = readSignal();
+        if (markerResult.ok || (markerResult.code !== "marker-missing" && !markerResult.running))
+          break;
+        if (markerResult.running) smokeFailure(markerResult.code);
         smokeFailure(outcome.kind === "error" ? "spawn-failed" : "early-exit");
       }
     }
-    markerResult ??= parseP8FreshProfileMarker(output);
+    markerResult ??= readSignal();
     if (!markerResult.ok) {
-      if (markerResult.code === "marker-missing") smokeFailure("startup-timeout");
+      if (markerResult.running) smokeFailure(markerResult.code);
+      if (markerResult.code === "marker-missing") {
+        smokeFailure("startup-timeout-before-app-ready");
+      }
       smokeFailure(markerResult.code);
     }
 
@@ -454,29 +564,7 @@ export async function runP8FreshProfileSmoke(options) {
     const targetId = options?.targetId;
     const sourceCommit = options?.sourceCommit;
     const code = error instanceof P8FreshProfileSmokeError ? error.code : "early-exit";
-    const safeCode = [
-      "invalid-arguments",
-      "unsupported-target",
-      "package-missing",
-      "package-structure-invalid",
-      "artifact-mismatch",
-      "profile-isolation-invalid",
-      "spawn-failed",
-      "early-exit",
-      "startup-timeout",
-      "marker-missing",
-      "marker-malformed",
-      "marker-duplicate",
-      "provider-projection-nonempty",
-      "provider-ui-state-missing",
-      "profile-manifest-invalid",
-      "sqlite-schema-invalid",
-      "non-graceful-exit",
-      "process-probe-failed",
-      "residual-processes",
-    ].includes(code)
-      ? code
-      : "early-exit";
+    const safeCode = FAILURE_CODE_SET.has(code) ? code : "early-exit";
     const boundedTarget =
       typeof targetId === "string" && P8_FRESH_PROFILE_TARGETS[targetId] !== undefined
         ? targetId

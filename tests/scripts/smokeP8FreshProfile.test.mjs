@@ -9,7 +9,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { P8_FRESH_PROFILE_SUCCESS_KEYS } from "../../scripts/p8-fresh-profile-evidence.mjs";
 import {
   P8_FRESH_PROFILE_MARKER_PREFIX,
+  P8_FRESH_PROFILE_RESULT_FILE_NAME,
   parseP8FreshProfileMarker,
+  classifyP8FreshProfileRunningStage,
   resolveP8FreshProfileIsolation,
   runP8FreshProfileSmoke,
 } from "../../scripts/smoke-p8-fresh-profile.mjs";
@@ -127,6 +129,116 @@ describe("P8.2d packaged fresh-profile smoke", () => {
     ).toEqual({ ok: false, code: "marker-duplicate" });
   });
 
+  it("parses one bounded application failure marker", () => {
+    expect(
+      parseP8FreshProfileMarker(
+        "noise\nACTESTRA_P8_FRESH_PROFILE_FAILED provider-ipc-unavailable\n",
+      ),
+    ).toEqual({
+      ok: false,
+      code: "provider-ipc-unavailable",
+    });
+    expect(parseP8FreshProfileMarker("ACTESTRA_P8_FRESH_PROFILE_FAILED arbitrary-error\n")).toEqual(
+      {
+        ok: false,
+        code: "marker-malformed",
+      },
+    );
+  });
+
+  it("accepts the bounded result file when packaged stdout is unavailable", async () => {
+    const fixture = createMacPackageFixture();
+    const result = await runP8FreshProfileSmoke(
+      makeRunOptions(fixture, (child, environment) => {
+        writeDurableState(environment);
+        fs.writeFileSync(
+          path.join(environment.ACTESTRA_USER_DATA_DIR, P8_FRESH_PROFILE_RESULT_FILE_NAME),
+          JSON.stringify({
+            status: "verified",
+            providerCount: 0,
+            providerUiState: "provider-unavailable",
+            providerUiTextPresent: true,
+          }) + "\n",
+        );
+        emitExitAndClose(child, 0, null);
+      }),
+    );
+    expect(result.evidence.status).toBe("verified");
+  });
+
+  it("accepts the bounded stdout marker when the result file remains at a running stage", async () => {
+    const fixture = createMacPackageFixture();
+    const result = await runP8FreshProfileSmoke(
+      makeRunOptions(fixture, (child, environment) => {
+        writeDurableState(environment);
+        fs.writeFileSync(
+          path.join(environment.ACTESTRA_USER_DATA_DIR, P8_FRESH_PROFILE_RESULT_FILE_NAME),
+          JSON.stringify({ status: "running", stage: "renderer-probe-started" }) + "\n",
+        );
+        emitReady(child);
+      }),
+    );
+    expect(result.evidence.status).toBe("verified");
+  });
+
+  it("returns a bounded failure from the result file", async () => {
+    const fixture = createMacPackageFixture();
+    const result = await runP8FreshProfileSmoke(
+      makeRunOptions(fixture, (child, environment) => {
+        fs.writeFileSync(
+          path.join(environment.ACTESTRA_USER_DATA_DIR, P8_FRESH_PROFILE_RESULT_FILE_NAME),
+          JSON.stringify({ status: "failed", code: "provider-ipc-unavailable" }) + "\n",
+        );
+        emitExitAndClose(child, 1, null);
+      }),
+    );
+    expect(result.evidence.code).toBe("provider-ipc-unavailable");
+  });
+
+  it("classifies a running result file as a bounded probe timeout", async () => {
+    const fixture = createMacPackageFixture();
+    const result = await runP8FreshProfileSmoke(
+      makeRunOptions(fixture, (child, environment) => {
+        fs.writeFileSync(
+          path.join(environment.ACTESTRA_USER_DATA_DIR, P8_FRESH_PROFILE_RESULT_FILE_NAME),
+          JSON.stringify({ status: "running", stage: "renderer-probe-started" }) + "\n",
+        );
+        // Keep the child alive until the smoke timeout; no stdout is emitted.
+      }),
+    );
+    expect(result.evidence.code).toBe("probe-timeout");
+  });
+
+  it("keeps the bounded stage when the packaged child exits before the probe completes", async () => {
+    const fixture = createMacPackageFixture();
+    const result = await runP8FreshProfileSmoke(
+      makeRunOptions(fixture, (child, environment) => {
+        fs.writeFileSync(
+          path.join(environment.ACTESTRA_USER_DATA_DIR, P8_FRESH_PROFILE_RESULT_FILE_NAME),
+          JSON.stringify({ status: "running", stage: "initialize-complete" }) + "\n",
+        );
+        emitExitAndClose(child, 1, null);
+      }),
+    );
+    expect(result.evidence.code).toBe("startup-timeout-initialize-complete");
+  });
+
+  it.each([
+    ["bootstrap-isolation", "startup-timeout-bootstrap-isolation"],
+    ["bootstrap-user-data", "startup-timeout-bootstrap-user-data"],
+    ["bootstrap-complete", "startup-timeout-bootstrap-complete"],
+    ["app-ready", "startup-timeout-app-ready"],
+    ["initialize-start", "startup-timeout-initialize"],
+    ["initialize-complete", "startup-timeout-initialize-complete"],
+    ["backend-start", "startup-timeout-backend"],
+    ["backend-ready", "startup-timeout-backend-ready"],
+    ["window-created", "startup-timeout-window"],
+    ["renderer-loaded", "startup-timeout-renderer"],
+    ["renderer-probe-started", "probe-timeout"],
+  ])("maps running stage %s to %s", (stage, expectedCode) => {
+    expect(classifyP8FreshProfileRunningStage(stage)).toBe(expectedCode);
+  });
+
   it("accepts the bounded ready marker after the packaged Electron log prefix", async () => {
     const fixture = createMacPackageFixture();
     const result = await runP8FreshProfileSmoke(
@@ -185,7 +297,7 @@ describe("P8.2d packaged fresh-profile smoke", () => {
 
   it.each([
     ["early exit", (child) => emitExitAndClose(child, 1, null), "early-exit"],
-    ["startup timeout", () => {}, "startup-timeout"],
+    ["startup timeout before Main bootstrap", () => {}, "startup-timeout-before-app-ready"],
     [
       "malformed marker",
       (child) => {

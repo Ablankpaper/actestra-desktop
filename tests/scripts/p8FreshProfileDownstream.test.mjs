@@ -38,12 +38,20 @@ describe("P8.2d downstream fresh-profile hook", () => {
       "data-testid='actestra-provider-unavailable'",
       "ACTESTRA_P8_FRESH_PROFILE_SMOKE",
       "ACTESTRA_P8_FRESH_PROFILE_READY",
+      "ACTESTRA_P8_FRESH_PROFILE_FAILED",
+      "p8-fresh-profile-result.json",
+      "renderer-probe-started",
+      "bootstrap-isolation",
+      "bootstrap-user-data",
+      "bootstrap-complete",
       "window.electronAPI?.actestraProviderList",
       "direct-provider-fetch-not-denied",
       "window.location.hash = '/settings/model'",
       "[data-testid=model-header]",
       "[data-testid=actestra-provider-unavailable]",
       "providerUiTextPresent: true",
+      "writeFreshProfileResult({ status: 'verified', ...evidence })",
+      "JSON.stringify(evidence)",
       "app.quit()",
     ]) {
       expect(patch).toContain(fragment);
@@ -52,6 +60,22 @@ describe("P8.2d downstream fresh-profile hook", () => {
     expect(patch).not.toContain("readFile(");
     expect(patch).not.toContain("exec(");
     expect(patch).not.toContain("api_key");
+    expect(patch).toContain("fs.renameSync");
+  });
+
+  it("writes bootstrap evidence only after canonical isolation containment passes", () => {
+    const patch = read(
+      "downstream/aionui-v2.1.41/patches/0022-actestra-p8-fresh-profile-smoke.mjs",
+    );
+    const containmentCheck = patch.indexOf(
+      "throw new Error('Actestra E2E runtime paths escaped their real isolated root')",
+    );
+    const firstBootstrapWrite = patch.indexOf(
+      "writeFreshProfileBootstrapStage('bootstrap-isolation')",
+    );
+    expect(patch).not.toContain("bootstrap-start");
+    expect(containmentCheck).toBeGreaterThanOrEqual(0);
+    expect(firstBootstrapWrite).toBeGreaterThan(containmentCheck);
   });
 
   it("materializes a syntactically valid Main fresh-profile probe", () => {
@@ -62,15 +86,43 @@ describe("P8.2d downstream fresh-profile hook", () => {
       outputRoot,
       "packages/desktop/src/renderer/components/settings/SettingsModal/contents/ModelModalContent.tsx",
     );
+    const chromiumPath = path.join(
+      outputRoot,
+      "packages/desktop/src/process/utils/configureChromium.ts",
+    );
     fs.mkdirSync(path.dirname(mainPath), { recursive: true });
     fs.mkdirSync(path.dirname(modelPath), { recursive: true });
+    fs.mkdirSync(path.dirname(chromiumPath), { recursive: true });
     fs.writeFileSync(
       mainPath,
-      `function installProbe(mainWindow: any) {
+      `const exposeBackendPort = (backendPort: number) => backendPort;
+let backendStartedOk = false;
+function installProbe(mainWindow: any) {
   if (
       process.env.ACTESTRA_E2E_TEST === '1' &&
       process.env.ACTESTRA_GENERAL_WORK_SMOKE_SCENARIO !== 'recover-worker-crash'
   ) {}
+const handleAppReady = async (): Promise<void> => {
+  const mark = (_label: string) => undefined;
+  mark('start');
+
+  if (!app.isPackaged) {}
+  try {
+    await initializeProcess();
+    rendererInitialLanguage = ProcessConfig.getSync('language') ?? null;
+    mark('initializeProcess');
+  } catch {}
+  if (true) {
+    const backendStartup = await startBackendOrExit({});
+    createWindow({ showOnReady: showMainWindowOnReady });
+    appReadyDone = true;
+  }
+};
+const markBackendReady = (backendPort: number) => {
+  if (backendStartedOk) return;
+  exposeBackendPort(backendPort);
+  backendStartedOk = true;
+};
   mainWindow.webContents.once('did-finish-load', () => {
       if (process.env.ACTESTRA_E2E_TEST === '1') {
         const providerProbe = [];
@@ -87,6 +139,28 @@ describe("P8.2d downstream fresh-profile hook", () => {
             <Info theme='outline' size='48' className='text-t-secondary mb-16px' />
   </div>
 );
+`,
+      "utf8",
+    );
+    fs.writeFileSync(
+      chromiumPath,
+      `import * as fs from 'fs';
+import * as path from 'path';
+const isActestraE2ETest =
+  process.env.ACTESTRA_E2E_TEST === '1' || process.env.AIONUI_E2E_TEST === '1';
+const actestraE2EIsolationRoot = '/tmp/isolation';
+const actestraE2EHomeDir = '/tmp/isolation/home';
+const actestraE2ETempDir = '/tmp/isolation/temp';
+if (isActestraE2ETest) {
+  const realIsolationRoot = fs.realpathSync(actestraE2EIsolationRoot);
+  if (true) {
+    throw new Error('Actestra E2E runtime paths escaped their real isolated root');
+  }
+  app.setPath('home', actestraE2EHomeDir);
+}
+const actestraUserDataDir = '/tmp/isolation/user-data';
+app.setPath('userData', actestraUserDataDir);
+ensureActestraProfileLayout(actestraUserDataDir);
 `,
       "utf8",
     );
@@ -116,6 +190,16 @@ describe("P8.2d downstream fresh-profile hook", () => {
         sourceFile.parseDiagnostics.map((diagnostic) =>
           ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
         ),
+      ).toEqual([]);
+      const program = ts.createProgram({
+        rootNames: [mainPath],
+        options: { noEmit: true, noLib: true, noResolve: true, skipLibCheck: true },
+      });
+      expect(
+        ts
+          .getPreEmitDiagnostics(program)
+          .filter((diagnostic) => diagnostic.code === 2300)
+          .map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")),
       ).toEqual([]);
     } finally {
       fs.rmSync(temporaryRoot, { recursive: true, force: true });

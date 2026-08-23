@@ -25,7 +25,7 @@ function expectOrderedFragments(contents, fragments) {
 
 function expectBoundedEvidenceUpload(job, targetId) {
   const name = `p8-fresh-profile-${targetId}-${"${{ github.sha }}"}`;
-  const file = `p8-fresh-profile-${targetId}.json`;
+  const file = `out/p8-evidence/p8-fresh-profile-${targetId}.json`;
   const uploadStart = job.indexOf(`name: ${name}`);
   expect(uploadStart).toBeGreaterThan(-1);
   const upload = job.slice(uploadStart, job.indexOf("\n      - name:", uploadStart));
@@ -61,7 +61,7 @@ describe("P8.2d native Electron fresh-profile CI wiring", () => {
       '--package "dmg=$dmg_path"',
       '--package "zip=$zip_path"',
       "--source-commit ${{ github.sha }}",
-      "--evidence p8-fresh-profile-macos-15-arm64.json",
+      "--evidence out/p8-evidence/p8-fresh-profile-macos-15-arm64.json",
     ]);
     expectBoundedEvidenceUpload(job, "macos-15-arm64");
   });
@@ -85,7 +85,7 @@ describe("P8.2d native Electron fresh-profile CI wiring", () => {
       '--runtime "$runtimePath"',
       '--package "nsis=$($installers[0].FullName)"',
       "--source-commit ${{ github.sha }}",
-      "--evidence p8-fresh-profile-windows-11-x64.json",
+      "--evidence out/p8-evidence/p8-fresh-profile-windows-11-x64.json",
     ]);
     expectBoundedEvidenceUpload(job, "windows-11-x64");
     expect(job).not.toContain("ACTESTRA_GOOSE_RUNTIME_DEPLOY_KEY");
@@ -107,7 +107,7 @@ describe("P8.2d native Electron fresh-profile CI wiring", () => {
       "--runtime /opt/Actestra/Actestra",
       '--package "deb=$ACTESTRA_LINUX_DEB_PATH"',
       "--source-commit ${{ github.sha }}",
-      "--evidence p8-fresh-profile-ubuntu-24.04-x64.json",
+      "--evidence out/p8-evidence/p8-fresh-profile-ubuntu-24.04-x64.json",
       "Remove complete Ubuntu Electron package",
     ]);
     expectBoundedEvidenceUpload(job, "ubuntu-24.04-x64");

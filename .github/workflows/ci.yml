@@ -502,15 +502,15 @@ jobs:
             --runtime "$runtimePath" `
             --package "nsis=$($installers[0].FullName)" `
             --source-commit ${{ github.sha }} `
-            --evidence p8-fresh-profile-windows-11-x64.json
+            --evidence out/p8-evidence/p8-fresh-profile-windows-11-x64.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Preserve bounded Windows P8.2d fresh-profile evidence
-        if: always() && hashFiles('p8-fresh-profile-windows-11-x64.json') != ''
+        if: always() && hashFiles('out/p8-evidence/p8-fresh-profile-windows-11-x64.json') != ''
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: p8-fresh-profile-windows-11-x64-${{ github.sha }}
-          path: p8-fresh-profile-windows-11-x64.json
+          path: out/p8-evidence/p8-fresh-profile-windows-11-x64.json
           if-no-files-found: error
           retention-days: 3
           compression-level: 0
@@ -781,14 +781,14 @@ jobs:
             --runtime /opt/Actestra/Actestra \
             --package "deb=$ACTESTRA_LINUX_DEB_PATH" \
             --source-commit ${{ github.sha }} \
-            --evidence p8-fresh-profile-ubuntu-24.04-x64.json
+            --evidence out/p8-evidence/p8-fresh-profile-ubuntu-24.04-x64.json
 
       - name: Preserve bounded Ubuntu P8.2d fresh-profile evidence
-        if: always() && hashFiles('p8-fresh-profile-ubuntu-24.04-x64.json') != ''
+        if: always() && hashFiles('out/p8-evidence/p8-fresh-profile-ubuntu-24.04-x64.json') != ''
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: p8-fresh-profile-ubuntu-24.04-x64-${{ github.sha }}
-          path: p8-fresh-profile-ubuntu-24.04-x64.json
+          path: out/p8-evidence/p8-fresh-profile-ubuntu-24.04-x64.json
           if-no-files-found: error
           retention-days: 3
           compression-level: 0
@@ -930,14 +930,14 @@ jobs:
             --package "dmg=$dmg_path" \
             --package "zip=$zip_path" \
             --source-commit ${{ github.sha }} \
-            --evidence p8-fresh-profile-macos-15-arm64.json
+            --evidence out/p8-evidence/p8-fresh-profile-macos-15-arm64.json
 
       - name: Preserve bounded macOS P8.2d fresh-profile evidence
-        if: always() && hashFiles('p8-fresh-profile-macos-15-arm64.json') != ''
+        if: always() && hashFiles('out/p8-evidence/p8-fresh-profile-macos-15-arm64.json') != ''
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: p8-fresh-profile-macos-15-arm64-${{ github.sha }}
-          path: p8-fresh-profile-macos-15-arm64.json
+          path: out/p8-evidence/p8-fresh-profile-macos-15-arm64.json
           if-no-files-found: error
           retention-days: 3
           compression-level: 0
