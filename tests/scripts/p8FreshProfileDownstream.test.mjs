@@ -40,15 +40,28 @@ describe("P8.2d downstream fresh-profile hook", () => {
       "ACTESTRA_P8_FRESH_PROFILE_READY",
       "ACTESTRA_P8_FRESH_PROFILE_FAILED",
       "p8-fresh-profile-result.json",
+      "p8-fresh-profile-stage-",
       "renderer-probe-started",
       "bootstrap-isolation",
+      "bootstrap-home",
+      "bootstrap-temp",
+      "bootstrap-app-data",
+      "bootstrap-name",
+      "bootstrap-directories",
       "bootstrap-user-data",
+      "bootstrap-session-data",
+      "bootstrap-logs",
+      "bootstrap-crash-dumps",
       "bootstrap-complete",
       "window.electronAPI?.actestraProviderList",
       "direct-provider-fetch-not-denied",
       "window.location.hash = '/settings/model'",
       "[data-testid=model-header]",
       "[data-testid=actestra-provider-unavailable]",
+      "provider-ui-route-missing",
+      "provider-ui-header-missing",
+      "provider-ui-empty-state-missing",
+      "provider-ui-text-missing",
       "providerUiTextPresent: true",
       "writeFreshProfileResult({ status: 'verified', ...evidence })",
       "JSON.stringify(evidence)",
@@ -61,6 +74,10 @@ describe("P8.2d downstream fresh-profile hook", () => {
     expect(patch).not.toContain("exec(");
     expect(patch).not.toContain("api_key");
     expect(patch).toContain("fs.renameSync");
+    expect(patch).toContain("flag: 'wx'");
+    expect(patch).not.toContain("writeFreshProfileResult({ status: 'running'");
+    expect(patch).not.toContain("const temporaryPath = resultPath + '.tmp'");
+    expect(patch).not.toContain("throw new Error('provider-ui-state-missing')");
   });
 
   it("writes bootstrap evidence only after canonical isolation containment passes", () => {
@@ -157,9 +174,25 @@ if (isActestraE2ETest) {
     throw new Error('Actestra E2E runtime paths escaped their real isolated root');
   }
   app.setPath('home', actestraE2EHomeDir);
+  app.setPath('temp', actestraE2ETempDir);
 }
-const actestraUserDataDir = '/tmp/isolation/user-data';
+const actestraUserDataDir = resolveActestraUserDataPath({
+  appDataRoot: app.getPath('appData'),
+  explicitPath: '/tmp/isolation/user-data',
+  development: false,
+  multiInstance: false,
+});
+app.setName(ACTESTRA_PRODUCT.name);
+for (const directory of [
+  actestraUserDataDir,
+  path.join(actestraUserDataDir, 'session'),
+]) {
+  ensureActestraPrivateDirectory(directory);
+}
 app.setPath('userData', actestraUserDataDir);
+app.setPath('sessionData', path.join(actestraUserDataDir, 'session'));
+app.setPath('logs', path.join(actestraUserDataDir, 'logs'));
+app.setPath('crashDumps', path.join(actestraUserDataDir, 'crash-dumps'));
 ensureActestraProfileLayout(actestraUserDataDir);
 `,
       "utf8",

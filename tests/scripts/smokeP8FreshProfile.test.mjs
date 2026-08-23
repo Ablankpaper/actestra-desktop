@@ -10,7 +10,9 @@ import { P8_FRESH_PROFILE_SUCCESS_KEYS } from "../../scripts/p8-fresh-profile-ev
 import {
   P8_FRESH_PROFILE_MARKER_PREFIX,
   P8_FRESH_PROFILE_RESULT_FILE_NAME,
+  p8FreshProfileStageFileName,
   parseP8FreshProfileMarker,
+  parseP8FreshProfileStageFiles,
   classifyP8FreshProfileRunningStage,
   resolveP8FreshProfileIsolation,
   runP8FreshProfileSmoke,
@@ -209,6 +211,87 @@ describe("P8.2d packaged fresh-profile smoke", () => {
     expect(result.evidence.code).toBe("probe-timeout");
   });
 
+  it("uses the latest write-once stage when a stale overwritten result stops advancing", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-p8-stage-test-"));
+    temporaryRoots.push(root);
+    fs.writeFileSync(
+      path.join(root, P8_FRESH_PROFILE_RESULT_FILE_NAME),
+      JSON.stringify({ status: "running", stage: "bootstrap-isolation" }) + "\n",
+    );
+    for (const stage of ["bootstrap-isolation", "bootstrap-home", "bootstrap-temp"]) {
+      fs.writeFileSync(
+        path.join(root, p8FreshProfileStageFileName(stage)),
+        JSON.stringify({ status: "running", stage }) + "\n",
+      );
+    }
+
+    expect(parseP8FreshProfileStageFiles(root)).toEqual({
+      ok: false,
+      code: "startup-timeout-bootstrap-temp",
+      running: true,
+    });
+  });
+
+  it("fails closed when a write-once stage file is malformed", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-p8-stage-test-"));
+    temporaryRoots.push(root);
+    fs.writeFileSync(path.join(root, p8FreshProfileStageFileName("bootstrap-home")), "{}\n");
+
+    expect(parseP8FreshProfileStageFiles(root)).toEqual({
+      ok: false,
+      code: "marker-malformed",
+    });
+  });
+
+  it.each([
+    ["missing trailing newline", '{"status":"running","stage":"bootstrap-home"}'],
+    ["extra field", '{"status":"running","stage":"bootstrap-home","detail":"unbounded"}\n'],
+    ["mismatched stage", '{"status":"running","stage":"bootstrap-temp"}\n'],
+  ])("rejects a stage file with %s", (_label, contents) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-p8-stage-test-"));
+    temporaryRoots.push(root);
+    fs.writeFileSync(path.join(root, p8FreshProfileStageFileName("bootstrap-home")), contents);
+
+    expect(parseP8FreshProfileStageFiles(root)).toEqual({
+      ok: false,
+      code: "marker-malformed",
+    });
+  });
+
+  it("rejects symbolic-link stage evidence and unbounded stage names", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-p8-stage-test-"));
+    temporaryRoots.push(root);
+    const outside = path.join(root, "outside.json");
+    fs.writeFileSync(outside, '{"status":"running","stage":"bootstrap-home"}\n');
+    fs.symlinkSync(outside, path.join(root, p8FreshProfileStageFileName("bootstrap-home")));
+
+    expect(parseP8FreshProfileStageFiles(root)).toEqual({
+      ok: false,
+      code: "marker-malformed",
+    });
+    expect(() => p8FreshProfileStageFileName("../escape")).toThrow();
+  });
+
+  it("uses write-once stage evidence in the packaged-run timeout classification", async () => {
+    const fixture = createMacPackageFixture();
+    const result = await runP8FreshProfileSmoke(
+      makeRunOptions(fixture, (_child, environment) => {
+        fs.writeFileSync(
+          path.join(environment.ACTESTRA_USER_DATA_DIR, P8_FRESH_PROFILE_RESULT_FILE_NAME),
+          JSON.stringify({ status: "running", stage: "bootstrap-isolation" }) + "\n",
+        );
+        for (const stage of ["bootstrap-isolation", "bootstrap-home", "bootstrap-temp"]) {
+          fs.writeFileSync(
+            path.join(environment.ACTESTRA_USER_DATA_DIR, p8FreshProfileStageFileName(stage)),
+            JSON.stringify({ status: "running", stage }) + "\n",
+          );
+        }
+      }),
+    );
+
+    expect(result.evidence.code).toBe("startup-timeout-bootstrap-temp");
+  });
+
   it("keeps the bounded stage when the packaged child exits before the probe completes", async () => {
     const fixture = createMacPackageFixture();
     const result = await runP8FreshProfileSmoke(
@@ -225,7 +308,15 @@ describe("P8.2d packaged fresh-profile smoke", () => {
 
   it.each([
     ["bootstrap-isolation", "startup-timeout-bootstrap-isolation"],
+    ["bootstrap-home", "startup-timeout-bootstrap-home"],
+    ["bootstrap-temp", "startup-timeout-bootstrap-temp"],
+    ["bootstrap-app-data", "startup-timeout-bootstrap-app-data"],
+    ["bootstrap-name", "startup-timeout-bootstrap-name"],
+    ["bootstrap-directories", "startup-timeout-bootstrap-directories"],
     ["bootstrap-user-data", "startup-timeout-bootstrap-user-data"],
+    ["bootstrap-session-data", "startup-timeout-bootstrap-session-data"],
+    ["bootstrap-logs", "startup-timeout-bootstrap-logs"],
+    ["bootstrap-crash-dumps", "startup-timeout-bootstrap-crash-dumps"],
     ["bootstrap-complete", "startup-timeout-bootstrap-complete"],
     ["app-ready", "startup-timeout-app-ready"],
     ["initialize-start", "startup-timeout-initialize"],

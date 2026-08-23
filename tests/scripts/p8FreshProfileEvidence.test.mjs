@@ -38,6 +38,25 @@ function validRecord() {
 }
 
 describe("P8.2d fresh-profile evidence contract", () => {
+  it("keeps platform bootstrap and Provider UI diagnostics in the closed vocabulary", () => {
+    expect(P8_FRESH_PROFILE_FAILURE_CODES).toEqual(
+      expect.arrayContaining([
+        "startup-timeout-bootstrap-home",
+        "startup-timeout-bootstrap-temp",
+        "startup-timeout-bootstrap-app-data",
+        "startup-timeout-bootstrap-name",
+        "startup-timeout-bootstrap-directories",
+        "startup-timeout-bootstrap-session-data",
+        "startup-timeout-bootstrap-logs",
+        "startup-timeout-bootstrap-crash-dumps",
+        "provider-ui-route-missing",
+        "provider-ui-header-missing",
+        "provider-ui-empty-state-missing",
+        "provider-ui-text-missing",
+      ]),
+    );
+  });
+
   it("accepts a complete record bound to the exact target and artifacts", async () => {
     expect(
       validateP8FreshProfileEvidence(validRecord(), {

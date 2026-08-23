@@ -16,6 +16,7 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 export const P8_FRESH_PROFILE_MARKER_PREFIX = "ACTESTRA_P8_FRESH_PROFILE_READY ";
 export const P8_FRESH_PROFILE_FAILURE_MARKER_PREFIX = "ACTESTRA_P8_FRESH_PROFILE_FAILED ";
 export const P8_FRESH_PROFILE_RESULT_FILE_NAME = "p8-fresh-profile-result.json";
+export const P8_FRESH_PROFILE_STAGE_FILE_PREFIX = "p8-fresh-profile-stage-";
 export const P8_FRESH_PROFILE_MAX_OUTPUT_BYTES = 256 * 1024;
 export const P8_FRESH_PROFILE_RESULT_MAX_BYTES = 4 * 1024;
 export const P8_FRESH_PROFILE_STARTUP_TIMEOUT_MS = 60_000;
@@ -24,7 +25,15 @@ const MARKER_KEYS = Object.freeze(["providerCount", "providerUiState", "provider
 const FAILURE_CODE_SET = new Set(P8_FRESH_PROFILE_FAILURE_CODES);
 const RUNNING_STAGE_CODES = Object.freeze({
   "bootstrap-isolation": "startup-timeout-bootstrap-isolation",
+  "bootstrap-home": "startup-timeout-bootstrap-home",
+  "bootstrap-temp": "startup-timeout-bootstrap-temp",
+  "bootstrap-app-data": "startup-timeout-bootstrap-app-data",
+  "bootstrap-name": "startup-timeout-bootstrap-name",
+  "bootstrap-directories": "startup-timeout-bootstrap-directories",
   "bootstrap-user-data": "startup-timeout-bootstrap-user-data",
+  "bootstrap-session-data": "startup-timeout-bootstrap-session-data",
+  "bootstrap-logs": "startup-timeout-bootstrap-logs",
+  "bootstrap-crash-dumps": "startup-timeout-bootstrap-crash-dumps",
   "bootstrap-complete": "startup-timeout-bootstrap-complete",
   "app-ready": "startup-timeout-app-ready",
   "initialize-start": "startup-timeout-initialize",
@@ -35,6 +44,7 @@ const RUNNING_STAGE_CODES = Object.freeze({
   "renderer-loaded": "startup-timeout-renderer",
   "renderer-probe-started": "probe-timeout",
 });
+const RUNNING_STAGES = Object.freeze(Object.keys(RUNNING_STAGE_CODES));
 
 class P8FreshProfileSmokeError extends Error {
   constructor(code, message = code) {
@@ -178,6 +188,61 @@ export function parseP8FreshProfileResultFile(userData) {
     });
   }
   return Object.freeze({ ok: false, code: "marker-malformed" });
+}
+
+export function p8FreshProfileStageFileName(stage) {
+  if (typeof stage !== "string" || !Object.hasOwn(RUNNING_STAGE_CODES, stage)) {
+    throw new TypeError("P8.2d stage must come from the closed stage vocabulary");
+  }
+  return `${P8_FRESH_PROFILE_STAGE_FILE_PREFIX}${stage}.json`;
+}
+
+/** Read the latest exact write-once stage without trusting directory order or timestamps. */
+export function parseP8FreshProfileStageFiles(userData) {
+  if (typeof userData !== "string" || userData.length === 0) {
+    return Object.freeze({ ok: false, code: "marker-missing" });
+  }
+  let latest;
+  for (const stage of RUNNING_STAGES) {
+    const stagePath = path.join(userData, p8FreshProfileStageFileName(stage));
+    let stat;
+    try {
+      stat = fs.lstatSync(stagePath, { throwIfNoEntry: false });
+    } catch {
+      return Object.freeze({ ok: false, code: "marker-malformed" });
+    }
+    if (stat === undefined) continue;
+    if (
+      !stat.isFile() ||
+      stat.isSymbolicLink() ||
+      stat.size === 0 ||
+      stat.size > P8_FRESH_PROFILE_RESULT_MAX_BYTES
+    ) {
+      return Object.freeze({ ok: false, code: "marker-malformed" });
+    }
+    let contents;
+    let value;
+    try {
+      contents = fs.readFileSync(stagePath, "utf8");
+      value = JSON.parse(contents);
+    } catch {
+      return Object.freeze({ ok: false, code: "marker-malformed" });
+    }
+    if (
+      !hasExactKeys(value, ["status", "stage"]) ||
+      value.status !== "running" ||
+      value.stage !== stage ||
+      contents !== `${JSON.stringify(value)}\n`
+    ) {
+      return Object.freeze({ ok: false, code: "marker-malformed" });
+    }
+    latest = Object.freeze({
+      ok: false,
+      code: RUNNING_STAGE_CODES[stage],
+      running: true,
+    });
+  }
+  return latest ?? Object.freeze({ ok: false, code: "marker-missing" });
 }
 
 export function classifyP8FreshProfileRunningStage(stage) {
@@ -489,12 +554,16 @@ export async function runP8FreshProfileSmoke(options) {
     });
 
     const readSignal = () => {
-      const fileSignal = parseP8FreshProfileResultFile(isolation.userData);
-      if (fileSignal.ok || (fileSignal.code !== "marker-missing" && !fileSignal.running)) {
-        return fileSignal;
+      const resultSignal = parseP8FreshProfileResultFile(isolation.userData);
+      if (resultSignal.ok || (resultSignal.code !== "marker-missing" && !resultSignal.running)) {
+        return resultSignal;
       }
+      const stageSignal = parseP8FreshProfileStageFiles(isolation.userData);
+      if (stageSignal.code !== "marker-missing" && !stageSignal.running) return stageSignal;
       const outputSignal = parseP8FreshProfileMarker(output);
-      return outputSignal.code === "marker-missing" ? fileSignal : outputSignal;
+      if (outputSignal.code !== "marker-missing") return outputSignal;
+      if (stageSignal.running) return stageSignal;
+      return resultSignal;
     };
     const timeoutMs = options.timeoutMs ?? P8_FRESH_PROFILE_STARTUP_TIMEOUT_MS;
     const startedAt = Date.now();

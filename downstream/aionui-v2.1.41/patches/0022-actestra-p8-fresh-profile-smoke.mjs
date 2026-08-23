@@ -43,20 +43,27 @@ const writeFreshProfileBootstrapStage = (stage: string): void => {
   const userData = process.env.ACTESTRA_USER_DATA_DIR?.trim();
   if (!userData || ![
     'bootstrap-isolation',
+    'bootstrap-home',
+    'bootstrap-temp',
+    'bootstrap-app-data',
+    'bootstrap-name',
+    'bootstrap-directories',
     'bootstrap-user-data',
+    'bootstrap-session-data',
+    'bootstrap-logs',
+    'bootstrap-crash-dumps',
     'bootstrap-complete',
   ].includes(stage)) return;
   try {
-    const resultPath = path.join(userData, 'p8-fresh-profile-result.json');
-    const temporaryPath = resultPath + '.tmp';
+    const stagePath = path.join(userData, 'p8-fresh-profile-stage-' + stage + '.json');
     fs.mkdirSync(userData, { recursive: true });
-    fs.writeFileSync(temporaryPath, JSON.stringify({ status: 'running', stage }) + '\\n', {
+    fs.writeFileSync(stagePath, JSON.stringify({ status: 'running', stage }) + '\\n', {
       encoding: 'utf8',
       mode: 0o600,
+      flag: 'wx',
     });
-    fs.renameSync(temporaryPath, resultPath);
   } catch {
-    // Later Main stages and the bounded stdout marker remain fallbacks.
+    // A later write-once stage or bounded terminal marker remains the fallback.
   }
 };`,
 );
@@ -65,18 +72,62 @@ replaceOnce(
   "packages/desktop/src/process/utils/configureChromium.ts",
   `    throw new Error('Actestra E2E runtime paths escaped their real isolated root');
   }
-  app.setPath('home', actestraE2EHomeDir);`,
+  app.setPath('home', actestraE2EHomeDir);
+  app.setPath('temp', actestraE2ETempDir);`,
   `    throw new Error('Actestra E2E runtime paths escaped their real isolated root');
   }
   writeFreshProfileBootstrapStage('bootstrap-isolation');
-  app.setPath('home', actestraE2EHomeDir);`,
+  app.setPath('home', actestraE2EHomeDir);
+  writeFreshProfileBootstrapStage('bootstrap-home');
+  app.setPath('temp', actestraE2ETempDir);
+  writeFreshProfileBootstrapStage('bootstrap-temp');`,
+);
+
+replaceOnce(
+  "packages/desktop/src/process/utils/configureChromium.ts",
+  `const actestraUserDataDir = resolveActestraUserDataPath({
+  appDataRoot: app.getPath('appData'),`,
+  `const actestraAppDataRoot = app.getPath('appData');
+writeFreshProfileBootstrapStage('bootstrap-app-data');
+const actestraUserDataDir = resolveActestraUserDataPath({
+  appDataRoot: actestraAppDataRoot,`,
+);
+
+replaceOnce(
+  "packages/desktop/src/process/utils/configureChromium.ts",
+  `app.setName(ACTESTRA_PRODUCT.name);`,
+  `app.setName(ACTESTRA_PRODUCT.name);
+writeFreshProfileBootstrapStage('bootstrap-name');
+`,
 );
 
 replaceOnce(
   "packages/desktop/src/process/utils/configureChromium.ts",
   `app.setPath('userData', actestraUserDataDir);`,
-  `app.setPath('userData', actestraUserDataDir);
+  `writeFreshProfileBootstrapStage('bootstrap-directories');
+app.setPath('userData', actestraUserDataDir);
 writeFreshProfileBootstrapStage('bootstrap-user-data');`,
+);
+
+replaceOnce(
+  "packages/desktop/src/process/utils/configureChromium.ts",
+  `app.setPath('sessionData', path.join(actestraUserDataDir, 'session'));`,
+  `app.setPath('sessionData', path.join(actestraUserDataDir, 'session'));
+writeFreshProfileBootstrapStage('bootstrap-session-data');`,
+);
+
+replaceOnce(
+  "packages/desktop/src/process/utils/configureChromium.ts",
+  `app.setPath('logs', path.join(actestraUserDataDir, 'logs'));`,
+  `app.setPath('logs', path.join(actestraUserDataDir, 'logs'));
+writeFreshProfileBootstrapStage('bootstrap-logs');`,
+);
+
+replaceOnce(
+  "packages/desktop/src/process/utils/configureChromium.ts",
+  `app.setPath('crashDumps', path.join(actestraUserDataDir, 'crash-dumps'));`,
+  `app.setPath('crashDumps', path.join(actestraUserDataDir, 'crash-dumps'));
+writeFreshProfileBootstrapStage('bootstrap-crash-dumps');`,
 );
 
 replaceOnce(
@@ -103,16 +154,15 @@ replaceOnce(
     'renderer-probe-started',
   ].includes(stage)) return;
   try {
-    const resultPath = path.join(userData, 'p8-fresh-profile-result.json');
-    const temporaryPath = resultPath + '.tmp';
+    const stagePath = path.join(userData, 'p8-fresh-profile-stage-' + stage + '.json');
     fs.mkdirSync(userData, { recursive: true });
-    fs.writeFileSync(temporaryPath, JSON.stringify({ status: 'running', stage }) + '\\n', {
+    fs.writeFileSync(stagePath, JSON.stringify({ status: 'running', stage }) + '\\n', {
       encoding: 'utf8',
       mode: 0o600,
+      flag: 'wx',
     });
-    fs.renameSync(temporaryPath, resultPath);
   } catch {
-    // The bounded stdout marker remains the compatibility fallback.
+    // A later write-once stage or bounded terminal marker remains the fallback.
   }
 };
 
@@ -205,7 +255,6 @@ replaceOnce(
           }
         };
         writeFreshProfileStage('renderer-probe-started');
-        writeFreshProfileResult({ status: 'running', stage: 'renderer-probe-started' });
         const freshProfileProbe = [
           '(async () => {',
           '  const port = window.__backendPort;',
@@ -219,15 +268,27 @@ replaceOnce(
           "  if (!Array.isArray(providers) || providers.length !== 0) throw new Error('provider-projection-nonempty');",
           "  window.location.hash = '/settings/model';",
           '  const deadline = Date.now() + 15_000;',
+          '  let routeReady = false;',
+          '  let headerReady = false;',
+          '  let emptyStateReady = false;',
+          '  let emptyStateTextReady = false;',
           '  while (Date.now() < deadline) {',
+          "    routeReady = window.location.hash === '#/settings/model';",
           "    const header = document.querySelector('[data-testid=model-header]');",
           "    const emptyState = document.querySelector('[data-testid=actestra-provider-unavailable]');",
-          '    if (header && emptyState && (emptyState.textContent ?? "").trim().length > 0) {',
+          '    headerReady = header !== null;',
+          '    emptyStateReady = emptyState !== null;',
+          '    emptyStateTextReady = (emptyState?.textContent ?? "").trim().length > 0;',
+          '    if (routeReady && headerReady && emptyStateReady && emptyStateTextReady) {',
           "      return { providerCount: 0, providerUiState: 'provider-unavailable', providerUiTextPresent: true };",
           '    }',
           '    await new Promise((resolve) => setTimeout(resolve, 50));',
           '  }',
-          "  throw new Error('provider-ui-state-missing');",
+          "  if (!routeReady) throw new Error('provider-ui-route-missing');",
+          "  if (!headerReady) throw new Error('provider-ui-header-missing');",
+          "  if (!emptyStateReady) throw new Error('provider-ui-empty-state-missing');",
+          "  if (!emptyStateTextReady) throw new Error('provider-ui-text-missing');",
+          "  throw new Error('provider-ui-evidence-invalid');",
           '})()',
         ].join('\\n');
         void mainWindow.webContents
@@ -262,7 +323,10 @@ replaceOnce(
                 'direct-provider-fetch-not-denied',
                 'provider-ipc-unavailable',
                 'provider-projection-nonempty',
-                'provider-ui-state-missing',
+                'provider-ui-route-missing',
+                'provider-ui-header-missing',
+                'provider-ui-empty-state-missing',
+                'provider-ui-text-missing',
                 'provider-ui-evidence-invalid',
               ].includes(error.message)
                 ? error.message
