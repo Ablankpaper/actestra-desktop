@@ -47,11 +47,16 @@ function createFakeChild(onSpawn) {
   child.stdout = new EventEmitter();
   child.stderr = new EventEmitter();
   child.kill = () => {
-    child.emit("exit", null, "SIGTERM");
+    emitExitAndClose(child, null, "SIGTERM");
     return true;
   };
   queueMicrotask(() => onSpawn(child));
   return child;
+}
+
+function emitExitAndClose(child, code, signal) {
+  child.emit("exit", code, signal);
+  child.emit("close", code, signal);
 }
 
 function makeRunOptions(fixture, onSpawn, snapshotProcessTree = () => ({ ok: true, pids: [] })) {
@@ -93,7 +98,7 @@ function emitReady(child) {
       providerUiTextPresent: true,
     })}\n`,
   );
-  child.emit("exit", 0, null);
+  emitExitAndClose(child, 0, null);
 }
 
 describe("P8.2d packaged fresh-profile smoke", () => {
@@ -122,6 +127,25 @@ describe("P8.2d packaged fresh-profile smoke", () => {
     ).toEqual({ ok: false, code: "marker-duplicate" });
   });
 
+  it("accepts the bounded ready marker after the packaged Electron log prefix", async () => {
+    const fixture = createMacPackageFixture();
+    const result = await runP8FreshProfileSmoke(
+      makeRunOptions(fixture, (child, environment) => {
+        writeDurableState(environment);
+        child.stdout.emit(
+          "data",
+          `22:02:53.589 › ${P8_FRESH_PROFILE_MARKER_PREFIX}${JSON.stringify({
+            providerCount: 0,
+            providerUiState: "provider-unavailable",
+            providerUiTextPresent: true,
+          })}\n`,
+        );
+        emitExitAndClose(child, 0, null);
+      }),
+    );
+    expect(result.evidence.status).toBe("verified");
+  });
+
   it("accepts a packaged app that writes durable state, reports the empty-provider UI, and exits normally", async () => {
     const fixture = createMacPackageFixture();
     const result = await runP8FreshProfileSmoke(
@@ -137,14 +161,36 @@ describe("P8.2d packaged fresh-profile smoke", () => {
     expect(Object.keys(result.evidence).sort()).toEqual([...P8_FRESH_PROFILE_SUCCESS_KEYS].sort());
   });
 
+  it("waits for stdio to drain after exit before classifying the ready marker", async () => {
+    const fixture = createMacPackageFixture();
+    const result = await runP8FreshProfileSmoke(
+      makeRunOptions(fixture, (child, environment) => {
+        writeDurableState(environment);
+        child.emit("exit", 0, null);
+        setTimeout(() => {
+          child.stdout.emit(
+            "data",
+            `${P8_FRESH_PROFILE_MARKER_PREFIX}${JSON.stringify({
+              providerCount: 0,
+              providerUiState: "provider-unavailable",
+              providerUiTextPresent: true,
+            })}\n`,
+          );
+          child.emit("close", 0, null);
+        }, 5);
+      }),
+    );
+    expect(result.evidence.status).toBe("verified");
+  });
+
   it.each([
-    ["early exit", (child) => child.emit("exit", 1, null), "early-exit"],
+    ["early exit", (child) => emitExitAndClose(child, 1, null), "early-exit"],
     ["startup timeout", () => {}, "startup-timeout"],
     [
       "malformed marker",
       (child) => {
         child.stdout.emit("data", `${P8_FRESH_PROFILE_MARKER_PREFIX}{bad}\n`);
-        child.emit("exit", 0, null);
+        emitExitAndClose(child, 0, null);
       },
       "marker-malformed",
     ],
@@ -155,7 +201,7 @@ describe("P8.2d packaged fresh-profile smoke", () => {
           "data",
           `${P8_FRESH_PROFILE_MARKER_PREFIX}${JSON.stringify({ providerCount: 1, providerUiState: "provider-unavailable", providerUiTextPresent: true })}\n`,
         );
-        child.emit("exit", 0, null);
+        emitExitAndClose(child, 0, null);
       },
       "provider-projection-nonempty",
     ],
@@ -166,7 +212,7 @@ describe("P8.2d packaged fresh-profile smoke", () => {
           "data",
           `${P8_FRESH_PROFILE_MARKER_PREFIX}${JSON.stringify({ providerCount: 0, providerUiState: "ready", providerUiTextPresent: true })}\n`,
         );
-        child.emit("exit", 0, null);
+        emitExitAndClose(child, 0, null);
       },
       "provider-ui-state-missing",
     ],

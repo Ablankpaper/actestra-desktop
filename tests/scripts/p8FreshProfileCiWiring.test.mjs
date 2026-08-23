@@ -54,7 +54,7 @@ describe("P8.2d native Electron fresh-profile CI wiring", () => {
       "bun run dist:mac -- --arm64 --dir --skip-vite",
       "Verify packaged identity and product boundary",
       "Build native macOS DMG and ZIP from the verified app",
-      "bunx electron-builder --mac dmg zip --arm64 --prepackaged out/mac-arm64/Actestra.app --publish never",
+      "bunx electron-builder --config packages/desktop/electron-builder.yml --mac dmg zip --arm64 --prepackaged out/mac-arm64/Actestra.app --publish never",
       "Run P8.2d packaged fresh-profile acceptance",
       "--target macos-15-arm64",
       "--runtime .actestra/aionui-v2.1.41/out/mac-arm64/Actestra.app",

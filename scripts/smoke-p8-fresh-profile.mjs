@@ -51,12 +51,18 @@ function appendOutput(current, chunk) {
 /** Parse only the bounded E2E marker; all other child output is discarded. */
 export function parseP8FreshProfileMarker(output) {
   if (typeof output !== "string") return Object.freeze({ ok: false, code: "marker-missing" });
-  const lines = output
+  const payloads = output
     .split(/\r?\n/u)
-    .filter((line) => line.startsWith(P8_FRESH_PROFILE_MARKER_PREFIX));
-  if (lines.length === 0) return Object.freeze({ ok: false, code: "marker-missing" });
-  if (lines.length > 1) return Object.freeze({ ok: false, code: "marker-duplicate" });
-  const payload = lines[0].slice(P8_FRESH_PROFILE_MARKER_PREFIX.length);
+    .map((line) => {
+      const markerIndex = line.indexOf(P8_FRESH_PROFILE_MARKER_PREFIX);
+      return markerIndex === -1
+        ? undefined
+        : line.slice(markerIndex + P8_FRESH_PROFILE_MARKER_PREFIX.length);
+    })
+    .filter((payload) => payload !== undefined);
+  if (payloads.length === 0) return Object.freeze({ ok: false, code: "marker-missing" });
+  if (payloads.length > 1) return Object.freeze({ ok: false, code: "marker-duplicate" });
+  const payload = payloads[0];
   let value;
   try {
     value = JSON.parse(payload);
@@ -182,7 +188,7 @@ function delay(milliseconds) {
 function childOutcome(child) {
   return new Promise((resolve) => {
     child.once("error", (error) => resolve({ kind: "error", error }));
-    child.once("exit", (code, signal) => resolve({ kind: "exit", code, signal }));
+    child.once("close", (code, signal) => resolve({ kind: "exit", code, signal }));
   });
 }
 

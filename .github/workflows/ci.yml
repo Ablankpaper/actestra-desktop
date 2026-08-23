@@ -909,7 +909,7 @@ jobs:
 
       - name: Build native macOS DMG and ZIP from the verified app
         working-directory: .actestra/aionui-v2.1.41
-        run: bunx electron-builder --mac dmg zip --arm64 --prepackaged out/mac-arm64/Actestra.app --publish never
+        run: bunx electron-builder --config packages/desktop/electron-builder.yml --mac dmg zip --arm64 --prepackaged out/mac-arm64/Actestra.app --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
