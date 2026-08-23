@@ -1,8 +1,9 @@
 # Goose v1.45.0 P5 Evaluation
 
 Status: Verified P5 source, protocol, license, artifact, and dependency
-evidence; P8.2c pins a private default-off runtime adapter, but adapted Windows
-execution is not yet verified
+evidence; P8.2c private default-off runtime adapter and exact-head Windows
+authenticated runtime composition are verified. Electron packaging, the
+overall P8.2 matrix, P8.3, and P8.4 remain separate gates.
 
 Verification dates: upstream evaluation 2026-08-01; private runtime pin
 2026-08-19
@@ -70,6 +71,18 @@ workspace path already admitted by Main without requiring AppContainer
 enumeration; the ordinary upstream entry point retains its accessible-directory
 validation. No separate Goose UI is imported, and the admitted Goose feature
 set remains empty.
+
+Exact Windows authenticated-runtime evidence was verified in CI run
+`32621677780` on merge ref
+`f110509e46325b0bf2e71d98929cdb43bf20b45e`, Artifact `9488950524`, with ZIP
+SHA-256
+`d93fdfaa834d2893f5ce744a3431f9e2eee0d33f0ee9a02c08303b6deb31885b`. The
+repository validator returned `{ ok: true }`. The record proves ACP/MCP
+initialization, six-tool discovery, read, approved write, cancellation,
+parent-death cleanup, credential and environment canary absence, direct
+network denial, original-workspace preservation, and zero residual processes
+on `x86_64-pc-windows-msvc`. This is a P8.2c runtime-composition result; it is
+not candidate, clean-machine, release, or user-acceptance evidence.
 
 The private repository is not a GitHub Fork. Its default branch remains the
 exact upstream base, GitHub Actions are disabled, and there is no webhook or
@@ -221,9 +234,9 @@ Upstream has no root `NOTICE`. The private runtime preserves the Apache-2.0
 license and records its modified upstream paths and exact diff digest. Rollback
 restores the runner source and lock to canonical upstream commit
 `4dc0420f5704a92806c6628c8f0a3497d7a88759` and disables Windows production
-runtime admission. The source pin does not prove Windows runtime execution,
-Electron packaging, candidate integrity, real-provider acceptance, or P8
-completion.
+runtime admission. The exact CI Artifact above proves the adapted Windows
+runtime composition, but not Electron packaging, the complete P8.2 matrix,
+candidate integrity, real-provider acceptance, or P8 completion.
 
 ## P5.0 result and remaining gate
 

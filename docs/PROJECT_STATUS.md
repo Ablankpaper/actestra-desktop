@@ -2,6 +2,58 @@
 
 Last updated: 2026-08-23
 
+## 2026-08-23 P8.2c Windows authenticated Goose runtime composition verified
+
+PR #69 head `d260320d3cc76232bee55621b62a8d499dd83977` was exercised by the
+exact pull-request merge ref `f110509e46325b0bf2e71d98929cdb43bf20b45e` in CI
+run [`32621677780`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32621677780).
+All seven jobs succeeded: Windows build probe, Windows containment, Windows
+authenticated runtime, Ubuntu build probe, Ubuntu containment, Goose
+admission, and macOS foundation/package.
+
+The Windows authenticated-runtime job produced Artifact `9488950524`
+(`p8-goose-runtime-windows-f110509e46325b0bf2e71d98929cdb43bf20b45e`). Its
+ZIP SHA-256 is
+`d93fdfaa834d2893f5ce744a3431f9e2eee0d33f0ee9a02c08303b6deb31885b`; the
+contained evidence JSON is bound to merge ref `f110509e...`, Goose base
+`4dc0420f...`, private runtime `5d66f81a...`, and adapter patch digest
+`7e848a929788d1c9fcfa55e85620a1359688386d3c52978b5f4074f0367ea205`.
+The repository validator independently returned `{ ok: true }` for the
+downloaded evidence record.
+
+The verified record proves, on `x86_64-pc-windows-msvc`,
+`acpInitialized=true`, `mcpFreeSessionCreated=true`, `exactToolCount=6`,
+`readToolCompleted=true`, `approvedWriteToolCompleted=true`,
+`cancellationObserved=true`, `parentDeathCleanupObserved=true`,
+`credentialCanaryAbsent=true`, `environmentCanaryAbsent=true`,
+`directNetworkDenied=true`, `originalWorkspaceUnchanged=true`, and
+`residualProcessCount=0`. This is the first exact-head Windows authenticated
+runtime evidence that covers the complete read → approved-write → cancellation
+→ parent-death cleanup journey.
+
+The final harness correction runs the nested parent-death fixture through a
+Node-targeted bundle launched by `process.execPath`, matching the production
+Electron/Main Windows stdio contract. Bun is used only to produce the bounded,
+non-symlink fixture bundle. The correction does not widen Worker, Supervisor,
+ACL, AppContainer, handle, environment, model, capability, approval,
+filesystem, Renderer, or foundation authority.
+
+Fresh local evidence remains green: Windows evidence tests `33/33`, full
+`bun run check` with `1882 passed / 10 skipped`, all 28 P7 cases and 168
+variants `denied-safe`, Rust/native admission and formatting checks, boundary,
+foundation, downstream, and package checks. The macOS checkout correctly skips
+Windows-native execution; the Windows proof above is CI-backed.
+
+This closes the P8.2c Windows authenticated Goose runtime-composition gate.
+It does **not** close the entire P8.2 matrix or claim P8 completion: remaining
+P8.2 product/package journeys must be checked separately, while P8.3
+(candidate integrity, SBOM, signing, update, rollback), P8.4 (clean-machine
+lifecycle, real-provider and manual Team acceptance), release, deployment, and
+user acceptance remain open.
+
+The entries below are historical evidence snapshots from before this verified
+run and are retained for diagnosis and provenance.
+
 ## 2026-08-23 P8.2c parent-death fixture Node runtime alignment (local; Windows verification pending)
 
 Exact-head CI run `32588814951` attempt 2 at

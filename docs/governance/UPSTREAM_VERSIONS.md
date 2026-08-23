@@ -14,7 +14,7 @@ ADR-0010.
 | AionUi | `iOfficeAI/AionUi` | `v2.1.41` | `2d8925fc67a97a20996fadcd2a0862b778b572ba` | Product UI and general-work foundation | P1 reproduced; exact 1,766-file runnable desktop snapshot imported and manifest-verified |
 | AionCore | `iOfficeAI/AionCore` | `v0.1.52` | `76f5554286ba0b6d33fb74d5c2bb2b3b0b83100d` | Initial native compatibility runtime/general worker | P1 locally built; ignored local bundle used for F0 launch; not committed or approved for distribution |
 | Croner | `Hexagon/croner` | `9.1.0` | `364a3074c2642b903eaf26e96f4bc197e3eaa6bc` | Main-owned schedule validation and occurrence calculation | Exact npm and downstream-native pin; MIT notice retained and package-verified |
-| Goose | `aaif-goose/goose`; private runtime source `Ablankpaper/actestra-goose-runtime` | `v1.45.0` source/ACP target | upstream base `4dc0420f5704a92806c6628c8f0a3497d7a88759`; runtime `5d66f81a3a992b063ff6f22663789fbe7be42b48` | Minimal Actestra-built stdio ACP coding Worker under ADR-0024 | P5.1 runner admitted; P8.2c source contract pins a default-off three-file adapter seam plus bounded ACP startup diagnostics; Windows adapted execution is not yet verified; upstream binary rejected |
+| Goose | `aaif-goose/goose`; private runtime source `Ablankpaper/actestra-goose-runtime` | `v1.45.0` source/ACP target | upstream base `4dc0420f5704a92806c6628c8f0a3497d7a88759`; runtime `5d66f81a3a992b063ff6f22663789fbe7be42b48` | Minimal Actestra-built stdio ACP coding Worker under ADR-0024 | P5.1 runner admitted; P8.2c Windows authenticated runtime composition verified on exact CI merge ref `f110509e46325b0bf2e71d98929cdb43bf20b45e` (run `32621677780`); overall P8.2, P8.3, and P8.4 remain separate; upstream binary rejected |
 | CrewAI | `crewAIInc/crewAI` | `1.15.8` evaluation snapshot | `e9caf1e1b89343bb833b5da6660faa91804a9dce` | First supervised planner-sidecar candidate | Metadata and license verified; local generic supervisor is Actestra-owned test infrastructure, not CrewAI; no source/package is imported, installed, bundled, or selected as the production P6 pin |
 | Eigent | `eigent-ai/eigent` | `v1.0.2` reference snapshot | `e478094a9ff433132b3cf1928e4143338ddaab20` | Team product and acceptance reference | Metadata inspected; not imported, installed, bundled, or selected as a runtime |
 
@@ -116,6 +116,17 @@ clarified before Actestra distributes AionCore-derived code or binaries.
   absolute workspace path without enumerating that directory from the
   AppContainer; ordinary upstream sessions retain their accessible-directory
   check. The admitted Goose Cargo feature set remains empty.
+- Exact Windows authenticated-runtime evidence was verified in CI run
+  `32621677780` on merge ref
+  `f110509e46325b0bf2e71d98929cdb43bf20b45e`, Artifact `9488950524`, with ZIP
+  SHA-256
+  `d93fdfaa834d2893f5ce744a3431f9e2eee0d33f0ee9a02c08303b6deb31885b`. The
+  repository validator returned `{ ok: true }`; the record covers ACP/MCP
+  initialization, six-tool discovery, read, approved write, cancellation,
+  parent-death cleanup, credential and environment canary absence, direct
+  network denial, original-workspace preservation, and zero residual
+  processes. This is runtime-composition evidence for the Windows target, not
+  candidate or clean-machine acceptance.
 - Rollback comparison: `v1.44.0` at
   `876555f85b1bd0e15ed75eed7c5ac1163c1f097a`. Older revisions are disallowed
   because `v1.44.0` fixes `GHSA-r5pp-p5r8-466r`.
@@ -181,8 +192,9 @@ clarified before Actestra distributes AionCore-derived code or binaries.
   candidate, or release is committed or distributed by this source pin.
 - Rollback restores the two Cargo dependencies and source contract to canonical
   upstream commit `4dc0420f5704a92806c6628c8f0a3497d7a88759` and keeps Windows
-  production runtime admission disabled. This pin is not evidence of adapted
-  Windows execution, Electron packaging, P8.2c completion, P8.3, or P8.4.
+  production runtime admission disabled. The verified runtime record does not
+  prove Electron packaging, the overall P8.2 matrix, P8.3, P8.4, release,
+  deployment, or user acceptance.
 - Full commands, cross-platform artifact digests, dependency paths, telemetry,
   network, signing, and remaining admission gates:
   [Goose v1.45.0 Evaluation](../upstream/GOOSE_V1.45.0_EVALUATION.md).
