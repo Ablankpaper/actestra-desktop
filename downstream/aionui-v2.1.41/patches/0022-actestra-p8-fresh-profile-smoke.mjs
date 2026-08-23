@@ -87,10 +87,14 @@ replaceOnce(
   "packages/desktop/src/process/utils/configureChromium.ts",
   `const actestraUserDataDir = resolveActestraUserDataPath({
   appDataRoot: app.getPath('appData'),`,
-  `const actestraAppDataRoot = app.getPath('appData');
+  `const actestraAppDataRoot = explicitUserDataDir?.trim()
+  ? path.dirname(path.resolve(explicitUserDataDir))
+  : undefined;
+if (actestraAppDataRoot) app.setPath('appData', actestraAppDataRoot);
+const resolvedActestraAppDataRoot = app.getPath('appData');
 writeFreshProfileBootstrapStage('bootstrap-app-data');
 const actestraUserDataDir = resolveActestraUserDataPath({
-  appDataRoot: actestraAppDataRoot,`,
+  appDataRoot: resolvedActestraAppDataRoot,`,
 );
 
 replaceOnce(
@@ -273,7 +277,7 @@ replaceOnce(
           '  let emptyStateReady = false;',
           '  let emptyStateTextReady = false;',
           '  while (Date.now() < deadline) {',
-          "    routeReady = window.location.hash === '#/settings/model';",
+          "    routeReady = window.location.hash.includes('/settings/model');",
           "    const header = document.querySelector('[data-testid=model-header]');",
           "    const emptyState = document.querySelector('[data-testid=actestra-provider-unavailable]');",
           '    headerReady = header !== null;',

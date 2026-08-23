@@ -1,6 +1,48 @@
 # Project Status
 
-Last updated: 2026-08-23
+Last updated: 2026-08-24
+
+## 2026-08-24 P8.2d fresh-profile cross-platform correction prepared; platform CI pending
+
+The P8.2d package-acceptance run [`32655959370`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32655959370)
+for PR #71's merge ref `05713476da7e952d9c8ce9555e96bf1ff6034b5a`
+provided the first target-specific failure records. macOS was verified; Windows
+failed with `startup-timeout-bootstrap-temp`, and Ubuntu failed with
+`provider-ui-route-missing`. These records are retained as diagnostic evidence,
+not as a closed P8.2d result. The Windows authenticated Goose job in that old
+run remained independently in progress when this entry was prepared and is not
+part of the fresh-profile conclusion.
+
+The Windows log reached `bootstrap-isolation`, `bootstrap-home`, and
+`bootstrap-temp`, then stopped before `bootstrap-app-data`. The source ordering
+showed that the first unverified boundary was the packaged Electron
+`app.getPath('appData')` lookup, not `app.setPath('temp')`. The Ubuntu failure
+record came from a renderer probe that required the exact hash string
+`#/settings/model`; that matcher was narrower than the platform-safe route
+surface and prevented the later Provider empty-state checks from being
+observed.
+
+On isolated branch `codex/p8-2-package-runtime`, the pending correction is
+limited to the downstream P8 smoke patch and its contract test. When an
+explicit `ACTESTRA_USER_DATA_DIR` is present, Main now derives and sets an
+isolated app-data root before reading `app.getPath('appData')`, then uses the
+resolved value for the private profile. The provider route probe now accepts
+hash decorations containing `/settings/model` while retaining its header,
+empty-state, and non-empty-text assertions. No `foundation/` file was changed.
+
+Fresh local evidence for this uncommitted correction is green: the three
+P8.2d-focused files pass `65/65`; materialized downstream installation and
+TypeScript pass; `bun run check` exits 0 with `175` test files passed,
+`3` skipped, `1,952` tests passed, and `10` skipped; the P7 abuse gate is
+`28/28` cases and `168/168` variants denied-safe; foundation, downstream,
+documentation-link, boundary, and package checks pass. These are local
+evidence only. The correction has not yet been committed, pushed, or exercised
+on Windows/Ubuntu/macOS at the new exact HEAD.
+
+P8.2d remains open until one new exact-head CI run produces `status: "verified"`
+for all three targets with matching package/executable/ASAR bindings and
+`residualProcessCount: 0`. P8.2 overall, P8.3, P8.4, release, deployment,
+distribution, and user acceptance remain separate gates.
 
 ## 2026-08-23 P8.2c accepted on main
 

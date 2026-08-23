@@ -239,6 +239,24 @@ ensureActestraProfileLayout(actestraUserDataDir);
     }
   });
 
+  it("does not resolve the host appData path when a fresh profile is explicit", () => {
+    const patch = read(
+      "downstream/aionui-v2.1.41/patches/0022-actestra-p8-fresh-profile-smoke.mjs",
+    );
+    expect(patch).toContain(
+      `const actestraAppDataRoot = explicitUserDataDir?.trim()\n  ? path.dirname(path.resolve(explicitUserDataDir))\n  : undefined;\nif (actestraAppDataRoot) app.setPath('appData', actestraAppDataRoot);\nconst resolvedActestraAppDataRoot = app.getPath('appData');`,
+    );
+    expect(patch).toContain("appDataRoot: resolvedActestraAppDataRoot,");
+  });
+
+  it("accepts the native settings route with its platform-safe hash decoration", () => {
+    const patch = read(
+      "downstream/aionui-v2.1.41/patches/0022-actestra-p8-fresh-profile-smoke.mjs",
+    );
+    expect(patch).toContain("routeReady = window.location.hash.includes('/settings/model');");
+    expect(patch).not.toContain("routeReady = window.location.hash === '#/settings/model';");
+  });
+
   it("keeps the two touched native files in the reviewed changed-file contract", () => {
     const overlay = JSON.parse(read("downstream/aionui-v2.1.41/overlay.json"));
     expect(overlay.expectedChangedFiles).toEqual(
