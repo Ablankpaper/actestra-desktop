@@ -2,6 +2,36 @@
 
 Last updated: 2026-08-23
 
+## 2026-08-23 P8.2c accepted on main
+
+P8.2c was accepted through pull request
+[#69](https://github.com/Ablankpaper/actestra-desktop/pull/69), final head
+`b8d45506ab3ea49a5c2abe9cceec3b332d3e4f39`, final pull-request CI run
+[`32628898544`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32628898544),
+and squash merge `088e2c0535d05eb3e90f2cc769f5fcd95aa29c4b`. The independent
+merged-main CI run
+[`32630573467`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32630573467)
+passed all seven jobs at that exact main commit.
+
+The merged-main Windows authenticated-runtime job `97172634901` produced
+Artifact `9491317531`
+(`p8-goose-runtime-windows-088e2c0535d05eb3e90f2cc769f5fcd95aa29c4b`).
+GitHub records archive digest
+`sha256:b89f268024721f164ae872fa2ce0b1f19485bdd063abc4f2a4846e08b8936d28`;
+the independently downloaded evidence JSON has SHA-256
+`4eb7d0373971257cd2ae6dd2c8826585e84f0db598f62bca43541212272d9956`.
+The repository validator independently returned `{ ok: true }` against the
+main commit, Goose-source, manifest, executable, and containment-evidence
+bindings. The record contains `status=verified`, completed read and approved-
+write tool calls, observed cancellation and parent-death cleanup, absent
+credential and environment canaries, denied direct network access, an
+unchanged original workspace, and `residualProcessCount=0`.
+
+This is the formal mainline closure of the P8.2c Windows authenticated Goose
+runtime-composition gate only. Overall P8.2 product/package journeys, P8.3,
+P8.4, release, deployment, distribution, and user acceptance remain open and
+require their own evidence.
+
 ## 2026-08-23 P8.2c Windows parent-death timeout budget correction verified
 
 The documentation-only PR head `7e9ecfb19f47e28629fca2a11c16bf28409076a3`
