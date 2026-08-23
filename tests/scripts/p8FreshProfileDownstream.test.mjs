@@ -59,6 +59,9 @@ describe("P8.2d downstream fresh-profile hook", () => {
       "const root = document.querySelector('#root')",
       "window.location.hash = '#/settings/model'",
       "window.dispatchEvent(new PopStateEvent('popstate'))",
+      "let nextNavigationAt = 0",
+      "if (Date.now() >= nextNavigationAt)",
+      "nextNavigationAt = Date.now() + 250",
       "[data-testid=model-header]",
       "[data-testid=actestra-provider-unavailable]",
       "provider-ui-route-missing",
@@ -260,7 +263,7 @@ ensureActestraProfileLayout(actestraUserDataDir);
     expect(patch).not.toContain("routeReady = window.location.hash === '#/settings/model';");
   });
 
-  it("settles the initial HashRouter route before navigating from the Main probe", () => {
+  it("retries HashRouter navigation until its listener and route are settled", () => {
     const patch = read(
       "downstream/aionui-v2.1.41/patches/0022-actestra-p8-fresh-profile-smoke.mjs",
     );
@@ -268,6 +271,9 @@ ensureActestraProfileLayout(actestraUserDataDir);
     expect(patch).toContain("if (root?.childElementCount) break;");
     expect(patch).toContain("window.location.hash = '#/settings/model';");
     expect(patch).toContain("window.dispatchEvent(new PopStateEvent('popstate'));");
+    expect(patch).toContain("let nextNavigationAt = 0;");
+    expect(patch).toContain("if (Date.now() >= nextNavigationAt) {");
+    expect(patch).toContain("nextNavigationAt = Date.now() + 250;");
   });
 
   it("keeps the two touched native files in the reviewed changed-file contract", () => {

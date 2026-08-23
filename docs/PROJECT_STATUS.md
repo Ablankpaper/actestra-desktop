@@ -2,7 +2,38 @@
 
 Last updated: 2026-08-24
 
-## 2026-08-24 P8.2d Ubuntu route-race correction prepared; platform CI pending
+## 2026-08-24 P8.2d three-platform route-race evidence; retry correction pending CI
+
+The exact-head CI run [`32660088123`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32660088123)
+ran at merge-ref source `9243d69906459cafed255e2758707086e82acd3a` for
+branch `codex/p8-2-package-runtime`. Its packaged fresh-profile evidence
+failed identically on all three targets: macOS, Windows, and Ubuntu each
+returned `provider-ui-route-missing`. The complete job logs show that package
+build, installation, profile bootstrap, Goose admission/containment, and
+application startup completed before the Renderer probe failed; no platform
+package or Goose runtime failure was observed in this run. P8.2d therefore
+remains open and no target is counted as verified from this run.
+
+Source inspection of the pinned React Router confirms that `HashRouter` listens
+to `popstate` only after its history listener is registered. The prior probe
+dispatched one navigation event after waiting for a mounted root child; that
+event could still precede the listener and be lost, leaving the initial route
+redirect in place. The downstream-only correction now retries the canonical
+`#/settings/model` hash plus synthetic `popstate` every 250 ms inside the
+existing bounded probe window until the route and Provider empty-state checks
+both succeed. A focused regression test locks the retry boundary. This change
+does not modify `foundation/` or grant Renderer additional authority.
+
+Fresh local focused verification after the retry correction is `66/66`; the
+full `bun run check` now exits `0` (`175` test files passed / `3` skipped,
+`1,953` tests passed / `10` skipped, P7 abuse gate `28/28` cases and `168/168`
+variants denied-safe, foundation/downstream/package checks green). The exact-head
+three-platform packaged acceptance is still pending, and local results are not
+cross-platform closure. The next required evidence is one new CI run at the exact pushed commit with all three
+fresh-profile records `status: "verified"`, matching package/executable/app.asar
+bindings, and `residualProcessCount: 0`.
+
+The prior route-race diagnosis and retained evidence follow:
 
 The exact-head CI run [`32657987890`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32657987890)
 completed with six non-fresh-profile jobs plus the Windows authenticated runtime
