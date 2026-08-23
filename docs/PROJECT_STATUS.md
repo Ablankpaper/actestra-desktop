@@ -2,7 +2,37 @@
 
 Last updated: 2026-08-24
 
-## 2026-08-24 P8.2d fresh-profile cross-platform correction prepared; platform CI pending
+## 2026-08-24 P8.2d Ubuntu route-race correction prepared; platform CI pending
+
+The exact-head CI run [`32657987890`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32657987890)
+completed with six non-fresh-profile jobs plus the Windows authenticated runtime
+green. Its P8.2d records bound to merge-ref source
+`3068c29e16980c9584e92ae270797e6d2e6ab929` are independently retained: Windows
+and macOS are `status: "verified"` with Provider IPC, direct-fetch denial,
+profile manifest, schema 23, graceful exit, and zero residual processes. Ubuntu
+alone remains `status: "failed"` with `provider-ui-route-missing`.
+
+The complete Ubuntu job log shows DEB installation, AppArmor admission, Linux
+Goose containment, package inspection, and application startup all succeeded;
+the failure occurs only in the Renderer probe after `did-finish-load`. Code
+inspection of the pinned AionUi Router confirms that `HashRouter` is mounted
+only after AuthProvider/config readiness, while the probe previously changed
+`window.location.hash` immediately and did not emit the `popstate` event that
+the pinned React Router hash history listens for. This creates a startup route
+race (exposed by Ubuntu's timing) and can leave the probe observing a route that
+was never accepted by the Router. This is a diagnosis from source and logs, not
+yet a cross-platform acceptance result.
+
+The new downstream-only correction waits for the Renderer `#root` to have a
+mounted child before navigation, writes the canonical `#/settings/model` hash,
+and dispatches a synthetic `popstate`. A regression test locks all three
+requirements. `foundation/` remains untouched. Fresh local verification for
+this correction is green: the focused P8.2d set is `66/66`, `bun run check`
+exits 0 with `175` test files passed / `3` skipped and `1,953` tests passed /
+`10` skipped, the P7 abuse gate is `28/28` cases and `168/168` variants
+`denied-safe`, and foundation/downstream/package checks pass. These are local
+results only; this correction is not yet committed, pushed, or exercised on a
+new Windows/Ubuntu/macOS CI head.
 
 The P8.2d package-acceptance run [`32655959370`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32655959370)
 for PR #71's merge ref `05713476da7e952d9c8ce9555e96bf1ff6034b5a`

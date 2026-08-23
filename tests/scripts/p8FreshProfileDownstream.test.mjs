@@ -55,7 +55,10 @@ describe("P8.2d downstream fresh-profile hook", () => {
       "bootstrap-complete",
       "window.electronAPI?.actestraProviderList",
       "direct-provider-fetch-not-denied",
-      "window.location.hash = '/settings/model'",
+      "const initialRouteDeadline = Date.now() + 15_000",
+      "const root = document.querySelector('#root')",
+      "window.location.hash = '#/settings/model'",
+      "window.dispatchEvent(new PopStateEvent('popstate'))",
       "[data-testid=model-header]",
       "[data-testid=actestra-provider-unavailable]",
       "provider-ui-route-missing",
@@ -255,6 +258,16 @@ ensureActestraProfileLayout(actestraUserDataDir);
     );
     expect(patch).toContain("routeReady = window.location.hash.includes('/settings/model');");
     expect(patch).not.toContain("routeReady = window.location.hash === '#/settings/model';");
+  });
+
+  it("settles the initial HashRouter route before navigating from the Main probe", () => {
+    const patch = read(
+      "downstream/aionui-v2.1.41/patches/0022-actestra-p8-fresh-profile-smoke.mjs",
+    );
+    expect(patch).toContain("const root = document.querySelector('#root');");
+    expect(patch).toContain("if (root?.childElementCount) break;");
+    expect(patch).toContain("window.location.hash = '#/settings/model';");
+    expect(patch).toContain("window.dispatchEvent(new PopStateEvent('popstate'));");
   });
 
   it("keeps the two touched native files in the reviewed changed-file contract", () => {
