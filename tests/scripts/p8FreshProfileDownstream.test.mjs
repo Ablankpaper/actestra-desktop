@@ -41,8 +41,8 @@ describe("P8.2d downstream fresh-profile hook", () => {
       "window.electronAPI?.actestraProviderList",
       "direct-provider-fetch-not-denied",
       "window.location.hash = '/settings/model'",
-      '[data-testid="model-header"]',
-      '[data-testid="actestra-provider-unavailable"]',
+      "[data-testid=model-header]",
+      "[data-testid=actestra-provider-unavailable]",
       "providerUiTextPresent: true",
       "app.quit()",
     ]) {

@@ -15,7 +15,6 @@ import {
 } from "../../scripts/smoke-p8-fresh-profile.mjs";
 
 const commit = "b".repeat(40);
-const digest = "a".repeat(64);
 const temporaryRoots = [];
 
 afterEach(() => {

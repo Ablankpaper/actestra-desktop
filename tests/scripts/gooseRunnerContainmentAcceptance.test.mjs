@@ -219,7 +219,9 @@ describe("P8 native Goose containment acceptance gate", () => {
     const actionReferences = [...workflow.matchAll(/^\s+uses:\s+([^\s#]+)\s*(?:#.*)?$/gmu)].map(
       (match) => match[1],
     );
-    expect(actionReferences).toHaveLength(26);
+    // P8.2d adds one Windows checkout/setup/upload trio plus the macOS and
+    // Ubuntu bounded-evidence uploads to the existing pinned action set.
+    expect(actionReferences).toHaveLength(32);
     for (const reference of actionReferences) {
       expect(reference).toMatch(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+@[a-f0-9]{40}$/u);
     }
