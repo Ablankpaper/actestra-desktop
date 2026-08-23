@@ -454,6 +454,67 @@ jobs:
           retention-days: 3
           compression-level: 0
 
+  electron-package-windows:
+    name: P8.2d Windows x64 native Electron package
+    runs-on: windows-2025
+    timeout-minutes: 45
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.13.0
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.9
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install materialized Actestra AionUi dependencies
+        run: bun run downstream:aionui:install
+
+      - name: Build native Windows NSIS and unpacked application
+        run: bun run --cwd .actestra/aionui-v2.1.41 dist:win -- --x64
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Run P8.2d packaged fresh-profile acceptance
+        shell: pwsh
+        run: |
+          $outputRoot = Join-Path $env:GITHUB_WORKSPACE ".actestra/aionui-v2.1.41/out"
+          $runtimePath = Join-Path $outputRoot "win-unpacked/Actestra.exe"
+          if (-not (Test-Path -LiteralPath $runtimePath -PathType Leaf)) {
+            throw "Packaged Actestra.exe is missing"
+          }
+          $installers = @(Get-ChildItem -LiteralPath $outputRoot -Filter "*.exe" -File)
+          if ($installers.Count -ne 1) {
+            throw "Expected exactly one NSIS package"
+          }
+          bun run smoke:p8-fresh-profile -- `
+            --target windows-11-x64 `
+            --runtime "$runtimePath" `
+            --package "nsis=$($installers[0].FullName)" `
+            --source-commit ${{ github.sha }} `
+            --evidence p8-fresh-profile-windows-11-x64.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Preserve bounded Windows P8.2d fresh-profile evidence
+        if: always() && hashFiles('p8-fresh-profile-windows-11-x64.json') != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: p8-fresh-profile-windows-11-x64-${{ github.sha }}
+          path: p8-fresh-profile-windows-11-x64.json
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
   goose-containment-linux:
     name: P8.2 Ubuntu x64 Goose containment
     runs-on: ubuntu-24.04
@@ -676,10 +737,83 @@ jobs:
           esac
           exit "$cleanup_status"
 
+      - name: Install complete Ubuntu Electron package for P8.2d
+        shell: bash
+        env:
+          ACTESTRA_LINUX_DEB_PATH: ${{ steps.linux-package.outputs.path }}
+        run: |
+          set -euo pipefail
+          cleanup_on_error() {
+            set +e
+            sudo apparmor_parser --remove /etc/apparmor.d/Actestra >/dev/null 2>&1 || true
+            sudo rm -f -- /etc/apparmor.d/Actestra
+            sudo rm -rf -- /opt/Actestra
+          }
+          trap cleanup_on_error ERR
+
+          command -v xvfb-run >/dev/null
+          test -f "$ACTESTRA_LINUX_DEB_PATH"
+          test ! -e /opt/Actestra
+          extract_root="$RUNNER_TEMP/actestra-p8-fresh-profile-deb"
+          rm -rf -- "$extract_root"
+          mkdir -p "$extract_root"
+          dpkg-deb --extract "$ACTESTRA_LINUX_DEB_PATH" "$extract_root"
+          test -x "$extract_root/opt/Actestra/Actestra"
+          test -f "$extract_root/opt/Actestra/resources/app.asar"
+          test -f "$extract_root/opt/Actestra/resources/apparmor-profile"
+          sudo cp -a "$extract_root/opt/Actestra" /opt/Actestra
+          sudo install -o root -g root -m 0644 \
+            "$extract_root/opt/Actestra/resources/apparmor-profile" \
+            /etc/apparmor.d/Actestra
+          sudo apparmor_parser --replace --write-cache --skip-read-cache /etc/apparmor.d/Actestra
+          test -x /opt/Actestra/Actestra
+          test -f /opt/Actestra/resources/app.asar
+
+      - name: Run P8.2d packaged fresh-profile acceptance under Xvfb
+        shell: bash
+        env:
+          ACTESTRA_LINUX_DEB_PATH: ${{ steps.linux-package.outputs.path }}
+        run: |
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          xvfb-run -a bun run smoke:p8-fresh-profile -- \
+            --target ubuntu-24.04-x64 \
+            --runtime /opt/Actestra/Actestra \
+            --package "deb=$ACTESTRA_LINUX_DEB_PATH" \
+            --source-commit ${{ github.sha }} \
+            --evidence p8-fresh-profile-ubuntu-24.04-x64.json
+
+      - name: Preserve bounded Ubuntu P8.2d fresh-profile evidence
+        if: always() && hashFiles('p8-fresh-profile-ubuntu-24.04-x64.json') != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: p8-fresh-profile-ubuntu-24.04-x64-${{ github.sha }}
+          path: p8-fresh-profile-ubuntu-24.04-x64.json
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+      - name: Remove complete Ubuntu Electron package
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          cleanup_status=0
+          sudo apparmor_parser --remove /etc/apparmor.d/Actestra >/dev/null 2>&1 || true
+          sudo rm -f -- /etc/apparmor.d/Actestra || cleanup_status=1
+          if pgrep -f '^/opt/Actestra/Actestra( |$)' >/dev/null 2>&1; then
+            cleanup_status=1
+          fi
+          sudo rm -rf -- /opt/Actestra || cleanup_status=1
+          rm -rf -- "$RUNNER_TEMP/actestra-p8-fresh-profile-deb" || cleanup_status=1
+          test ! -e /etc/apparmor.d/Actestra || cleanup_status=1
+          test ! -e /opt/Actestra || cleanup_status=1
+          exit "$cleanup_status"
+
   macos:
     name: macOS arm64 foundation
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 45
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
 
     steps:
@@ -772,6 +906,41 @@ jobs:
 
       - name: Verify packaged identity and product boundary
         run: bun run verify:package -- .actestra/aionui-v2.1.41/out/mac-arm64/Actestra.app
+
+      - name: Build native macOS DMG and ZIP from the verified app
+        working-directory: .actestra/aionui-v2.1.41
+        run: bunx electron-builder --mac dmg zip --arm64 --prepackaged out/mac-arm64/Actestra.app --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Run P8.2d packaged fresh-profile acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          dmg_candidates=(.actestra/aionui-v2.1.41/out/*.dmg)
+          zip_candidates=(.actestra/aionui-v2.1.41/out/*.zip)
+          test "${#dmg_candidates[@]}" -eq 1
+          test "${#zip_candidates[@]}" -eq 1
+          dmg_path="${dmg_candidates[0]}"
+          zip_path="${zip_candidates[0]}"
+          bun run smoke:p8-fresh-profile -- \
+            --target macos-15-arm64 \
+            --runtime .actestra/aionui-v2.1.41/out/mac-arm64/Actestra.app \
+            --package "dmg=$dmg_path" \
+            --package "zip=$zip_path" \
+            --source-commit ${{ github.sha }} \
+            --evidence p8-fresh-profile-macos-15-arm64.json
+
+      - name: Preserve bounded macOS P8.2d fresh-profile evidence
+        if: always() && hashFiles('p8-fresh-profile-macos-15-arm64.json') != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: p8-fresh-profile-macos-15-arm64-${{ github.sha }}
+          path: p8-fresh-profile-macos-15-arm64.json
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
 
       - name: Install pinned Goose runner audit tools for package trust
         run: bun run goose:runner:tools
