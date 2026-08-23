@@ -2,7 +2,7 @@
 
 Last updated: 2026-08-23
 
-## 2026-08-23 P8.2c Windows parent-death timeout budget correction (local green; exact-head CI pending)
+## 2026-08-23 P8.2c Windows parent-death timeout budget correction verified
 
 The documentation-only PR head `7e9ecfb19f47e28629fca2a11c16bf28409076a3`
 was exercised by pull-request CI run
@@ -52,13 +52,34 @@ change is limited to six Windows runtime test/fixture/runner files and this
 status entry; it does not modify `foundation/` or production Worker,
 Supervisor, renderer, policy, credential, filesystem, or runtime authority.
 
-The earlier exact-head verified Artifact from run `32621677780` remains the
-accepted product-behavior evidence recorded below. This timeout-contract repair
-is not yet Windows-verified, however, and the PR is not merge-ready until one
-new exact-head Windows authenticated-runtime run produces `status=verified`,
-`residualProcessCount=0`, an independently valid Artifact, and all seven jobs
-are green. This entry does not claim P8.2 overall, P8.3, P8.4, release,
-deployment, or user acceptance.
+The timeout correction was then exercised from PR head
+`0708e308873df8be20062e55fc758466597edb63` through exact pull-request merge
+ref `05ac83b7d4e0a3caf19c98bdd3b766e08f1fffca` in CI run
+[`32626530560`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32626530560).
+The first attempt passed the Windows authenticated runtime and five other jobs;
+its sole failure was the independent macOS Goose-admission build when
+`cargo-audit` could not fetch the RustSec advisory database because of a GitHub
+network I/O error. No source, lockfile, audit disposition, or permission change
+was made. A single failed-job rerun, attempt 2, passed build/admission, the real
+Goose ACP handshake and cleanup suite (`240/240`), and Artifact preservation.
+The completed run records all seven jobs as successful at the same PR head.
+
+The Windows authenticated-runtime job produced Artifact `9490249498`
+(`p8-goose-runtime-windows-05ac83b7d4e0a3caf19c98bdd3b766e08f1fffca`).
+GitHub records archive digest
+`sha256:bd4066a0325b5ff872b9de4a606595b21064f133cd6cc1221e79154f44a1b50a`;
+the independently downloaded evidence JSON has SHA-256
+`1c360239a44178e1faac6ae069027a703f200c688ffcb184c11e2c065d3ed5d6`.
+The repository validator independently returned `{ ok: true }` against the
+merge-ref, Goose-source, manifest, executable, and CRLF-preserved containment
+evidence bindings. The record contains `status=verified`, completed read and
+approved-write tool calls, observed cancellation and parent-death cleanup,
+absent credential and environment canaries, denied direct network access,
+an unchanged original workspace, and `residualProcessCount=0`.
+
+This closes the corrected P8.2c Windows authenticated Goose runtime-composition
+gate. It does not close P8.2 overall, P8.3, P8.4, release, deployment, or user
+acceptance. Those gates retain their separate evidence requirements.
 
 ## 2026-08-23 P8.2c Windows authenticated Goose runtime composition verified
 
