@@ -72,6 +72,23 @@ describe("P8.2d fresh-profile evidence contract", () => {
     ).toEqual({ ok: true });
   });
 
+  it("accepts the exact Ubuntu target identifier from the closed P8 matrix", () => {
+    const value = {
+      ...validRecord(),
+      targetId: "ubuntu-24.04-x64",
+      packages: [{ format: "deb", sha256: digest }],
+    };
+    expect(
+      validateP8FreshProfileEvidence(value, {
+        targetId: value.targetId,
+        sourceCommit: commit,
+        packages: value.packages,
+        executableSha256: value.executableSha256,
+        appAsarSha256: value.appAsarSha256,
+      }),
+    ).toEqual({ ok: true });
+  });
+
   it.each([
     ["extra key", (value) => (value.extra = true)],
     ["wrong target", (value) => (value.targetId = "windows-11-x64")],

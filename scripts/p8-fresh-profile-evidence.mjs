@@ -25,7 +25,7 @@ const SUCCESS_KEYS = Object.freeze([
 const FAILURE_KEYS = Object.freeze(["code", "schemaVersion", "sourceCommit", "status", "targetId"]);
 const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
 const COMMIT_PATTERN = /^[a-f0-9]{40}$/u;
-const TARGET_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/u;
+const TARGET_PATTERN = /^[a-z0-9][a-z0-9.-]{0,63}$/u;
 const PACKAGE_FORMAT_PATTERN = /^[a-z0-9][a-z0-9-]{0,15}$/u;
 
 export const P8_FRESH_PROFILE_SUCCESS_KEYS = SUCCESS_KEYS;
