@@ -128,11 +128,27 @@ not a merged-main or release claim.
 During independent validation of that retained evidence, the P8 fresh-profile
 validator was found to reject the already-defined dotted target ID
 `ubuntu-24.04-x64`. Commit `ec0504e9f14257d75ce463f165dc12358abf2459`
-adds the smallest contract correction and a regression test (`14/14` focused
-tests pass locally). Its exact-head CI is still required before this follow-up
-is considered verified. These results do not close overall P8.2, P8.3, P8.4,
-candidate signing/notarization, release, deployment, distribution, or final
-user acceptance.
+adds the smallest contract correction and a regression test. Exact branch-head
+CI run [`32750422404`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32750422404)
+then passed seven jobs, including both Windows Goose build/containment and the
+authenticated Windows runtime, but the Windows packaged fresh-profile job
+failed after the package build with the bounded `process-probe-failed` record.
+The smoke ran for about 5.7 seconds before that record, consistent with the
+probe's prior 5-second PowerShell timeout while `Get-CimInstance Win32_Process`
+requested the complete process object before selecting its two required
+fields. The retained failure Artifact is bound to merge-ref source
+`8bb23cfd14e3d152ecbd8e81452f206d5402bff1`.
+
+Local commit `3797cd5` narrows that Windows query to the exact
+`ProcessId,ParentProcessId` CIM properties and gives the single probe a bounded
+10-second budget. It adds no retry and does not relax the fail-closed residual
+process decision. The regression is green (`46/46` fresh-profile tests), as
+are format, lint, strict TypeScript, the P8 contract, `git diff --check`, all 17
+affected Root files (`379/379` tests), and all six materialized AionUI files
+(`72/72` tests). A new exact-head Windows packaged run remains required before
+this probe correction is considered CI-verified. These results do not close
+overall P8.2, P8.3, P8.4, candidate signing/notarization, release, deployment,
+distribution, or final user acceptance.
 
 ## 2026-08-24 P8.2d three-platform route-race evidence; retry correction pending CI
 
