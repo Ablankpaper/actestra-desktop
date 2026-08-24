@@ -1,8 +1,8 @@
 # Project Status
 
-Last updated: 2026-08-24
+Last updated: 2026-08-25
 
-## 2026-08-24 P8 product-acceptance corrections locally and partially in Electron verified; exact-head CI pending
+## 2026-08-25 P8 product-acceptance corrections CI-verified; evidence-contract follow-up pending
 
 The isolated branch `codex/p8-product-fixes` currently carries one bounded
 product-correction batch based on
@@ -110,9 +110,29 @@ resume to `running` at revision 7; its later failure was
 test separately proves a `model-unavailable` received while paused remains the
 durable incident and cannot be overwritten by a stale resume.
 
-Exact-head CI remains required for the committed correction bytes. These
-results do not close overall P8.2, P8.3, P8.4, candidate signing/notarization,
-release, deployment, distribution, or final user acceptance.
+The exact-head PR CI run [`32745525871`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32745525871)
+for branch head `dc531e7ea78d4eee0af7be38a61056647b7d6b54` completed all eight
+jobs successfully: Windows authenticated Goose runtime, Windows build and
+containment, Windows packaged fresh-profile, Ubuntu build and containment,
+macOS packaged fresh-profile/foundation, and Goose admission. The retained
+Windows runtime record is `status = verified`, with the exact read and
+approved-write calls, cancellation and parent-death cleanup, absent credential
+and environment canaries, denied direct network access, unchanged original
+workspace, and `residualProcessCount = 0`. The three fresh-profile records for
+macOS, Windows, and Ubuntu are all `status = verified`, with Provider IPC,
+direct-fetch denial, schema 23, graceful exit, and zero residual processes.
+Because this was a pull-request workflow, the packaged evidence is bound to
+its materialized merge ref `12dfa13c7c2f75c76480e25b2b136b04fb016a83`; it is
+not a merged-main or release claim.
+
+During independent validation of that retained evidence, the P8 fresh-profile
+validator was found to reject the already-defined dotted target ID
+`ubuntu-24.04-x64`. Commit `ec0504e9f14257d75ce463f165dc12358abf2459`
+adds the smallest contract correction and a regression test (`14/14` focused
+tests pass locally). Its exact-head CI is still required before this follow-up
+is considered verified. These results do not close overall P8.2, P8.3, P8.4,
+candidate signing/notarization, release, deployment, distribution, or final
+user acceptance.
 
 ## 2026-08-24 P8.2d three-platform route-race evidence; retry correction pending CI
 
