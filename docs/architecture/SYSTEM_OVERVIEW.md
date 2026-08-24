@@ -150,6 +150,15 @@ private profile, and isolated external-effect providers as a reviewable
 downstream overlay. It does not edit the frozen source or remove original
 functional entries.
 
+The Main-owned Renderer network boundary admits only plain HTTP and WebSocket
+traffic to the currently running AionCore loopback port. Credential-bearing
+Provider record reads and writes are still cancelled at that boundary and
+served only through the fixed, trusted-main-frame Provider IPC after Main
+redaction. A wrong port, a remote host, HTTPS/WSS, or any other destination
+remains denied. The local WebSocket exception is required for AionUI content
+chunks and `Finish` events; it grants no Provider, filesystem, credential, or
+general network authority to the Renderer.
+
 P3.1 and P3.2 add a runtime-neutral core domain, lifecycle validation, and
 version 1 event stream contract. P3.3 adds a storage-neutral port plus a SQLite
 adapter with schema versions 1 and 2. P3.4 historically added the version 1

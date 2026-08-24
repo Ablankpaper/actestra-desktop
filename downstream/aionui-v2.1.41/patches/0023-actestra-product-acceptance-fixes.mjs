@@ -1211,6 +1211,35 @@ replaceOnce(
   it('does not warm up team session when draft content changes', async () => {`,
 );
 
+// The Main-owned Renderer network boundary must preserve the one authenticated
+// AionCore realtime channel. Without this exact exception, HTTP persistence
+// succeeds while every content/Finish event is cancelled before Chromium can
+// deliver it to the retained AionUI message stream.
+replaceOnce(
+  "packages/desktop/src/actestra/main/compatibility/providerRendererBoundary.ts",
+  "    parsed.protocol === 'http:' &&\n    (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost') &&",
+  "    (parsed.protocol === 'http:' || parsed.protocol === 'ws:') &&\n    (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost') &&",
+);
+
+replaceOnce(
+  "tests/unit/actestra/providerRendererBoundary.test.ts",
+  "    expect(allowed).toHaveBeenCalledWith({ cancel: false });\n  });",
+  `    expect(allowed).toHaveBeenCalledWith({ cancel: false });
+
+    const realtimeAllowed = vi.fn();
+    listener!({ method: 'GET', url: 'ws://127.0.0.1:49152/ws' }, realtimeAllowed);
+    expect(realtimeAllowed).toHaveBeenCalledWith({ cancel: false });
+
+    const wrongPortBlocked = vi.fn();
+    listener!({ method: 'GET', url: 'ws://127.0.0.1:49153/ws' }, wrongPortBlocked);
+    expect(wrongPortBlocked).toHaveBeenCalledWith({ cancel: true });
+
+    const remoteRealtimeBlocked = vi.fn();
+    listener!({ method: 'GET', url: 'wss://realtime.example.invalid/ws' }, remoteRealtimeBlocked);
+    expect(remoteRealtimeBlocked).toHaveBeenCalledWith({ cancel: true });
+  });`,
+);
+
 // Existing ACP and AionRS transports already emit each content chunk into the
 // message merger. Lock that Finish only terminates state and is not the first
 // render on either retained conversation backend.

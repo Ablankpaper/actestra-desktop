@@ -2,7 +2,7 @@
 
 Last updated: 2026-08-24
 
-## 2026-08-24 P8 product-acceptance corrections locally verified; exact-head CI and Electron gates pending
+## 2026-08-24 P8 product-acceptance corrections locally and partially in Electron verified; exact-head CI pending
 
 The isolated branch `codex/p8-product-fixes` currently carries one bounded
 product-correction batch based on
@@ -73,12 +73,46 @@ copies, and the production package build. The package emits only the existing
 upstream dynamic-import, circular-chunk, and chunk-size notices; no package
 failure occurred.
 
-This is local code/package verification, not Electron/provider acceptance.
-Exact-head CI and a new real Electron/provider run covering
-immediate user-message display, content streaming, terminal release, General
-file rejection, precise delivery failure, and pause/resume behavior remain
-required. P8.2d, overall P8.2, P8.3, P8.4, release, deployment, distribution,
-and user acceptance remain separate gates.
+The first packaged inspection exposed one additional cross-layer defect: the
+Main-owned Renderer network boundary admitted current-port AionCore HTTP but
+cancelled its WebSocket, so persistence succeeded while content chunks and
+`Finish` could not reach AionUI. Patch 0023 now admits only `ws:` on the exact
+current `127.0.0.1`/`localhost` AionCore port alongside HTTP. Provider record
+routes remain IPC-only, while the wrong port, remote WS/WSS, HTTPS, and all
+other destinations remain cancelled. The materialized boundary and Renderer
+set passes 6 files and 72 tests; the affected Root acceptance set passes 9
+files and 174 tests.
+
+Real Provider-backed Electron evidence from the resulting macOS arm64 package
+now proves the reported conversation symptoms on one bounded task: the user
+message appeared in about one second, assistant content first appeared before
+`Finish` and grew from one to five visible chunks while processing continued,
+and the complete 24-part response removed the processing indicator after the
+durable terminal state arrived. This is evidence for optimistic projection,
+incremental streaming, and terminal reconciliation on that package, not a
+general release claim.
+
+The same packaged app also exercised an existing pending coding delivery after
+the original repository HEAD moved. The apply request persisted
+`state = failed` with `failure_code = head-drift`; the destination retained its
+pre-apply HEAD and clean status, and `drift-result.txt` was not created. The
+separate dirty and HEAD-drift paths remain independently regression-tested.
+
+General file admission, invalid-control-character UI mapping, and the synthetic
+paused-model-failure case are cross-layer evidence rather than new physical UI
+acceptance. The General path proves explicit file requirements produce
+`general-capability-mismatch` before any `model-requested` event and expose no
+Glob or file tool. LF multiline content remains accepted, while invalid Team
+payloads map to the localized `team-invalid-request` path. Persisted evidence
+from the reported pause/resume run shows pause at revision 5 and successful
+resume to `running` at revision 7; its later failure was
+`general-input-required`, not a broken resume transition. A dedicated recovery
+test separately proves a `model-unavailable` received while paused remains the
+durable incident and cannot be overwritten by a stale resume.
+
+Exact-head CI remains required for the committed correction bytes. These
+results do not close overall P8.2, P8.3, P8.4, candidate signing/notarization,
+release, deployment, distribution, or final user acceptance.
 
 ## 2026-08-24 P8.2d three-platform route-race evidence; retry correction pending CI
 

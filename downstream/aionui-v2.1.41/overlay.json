@@ -298,12 +298,13 @@
         "stream-terminal runtime reconciliation",
         "optimistic-user message delivery",
         "streaming message rendering",
+        "current-port AionCore realtime WebSocket exception",
         "General v1 text-only admission UI",
         "Team invalid-request mapping",
         "pause/resume incident explanation"
       ],
-      "authorityOwner": "Actestra Main/Core remains authoritative for runtime, persistence, Team and General decisions; the downstream Renderer patch only reconciles bounded projections and preserves AionUI's existing message merge and streaming components",
-      "rollback": "Regenerate without patch 0023. Existing AionUI runtime, SendBox, message stream, Team and pause UI return unchanged; no frozen-source or native-profile mutation is required."
+      "authorityOwner": "Actestra Main/Core remains authoritative for runtime, persistence, Team, General and the exact current AionCore loopback port; the downstream Renderer patch only reconciles bounded projections and preserves AionUI's existing message merge and streaming components",
+      "rollback": "Regenerate without patch 0023. Existing AionUI runtime, SendBox, message stream, Team and pause UI return unchanged, and the earlier HTTP-only Renderer exception resumes blocking the local realtime channel; no frozen-source or native-profile mutation is required."
     }
   ],
   "sourceCopies": [
