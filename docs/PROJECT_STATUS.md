@@ -2,7 +2,7 @@
 
 Last updated: 2026-08-25
 
-## 2026-08-25 P8 product-acceptance corrections CI-verified; evidence-contract follow-up pending
+## 2026-08-25 P8 product-acceptance corrections and evidence follow-up CI-verified
 
 The isolated branch `codex/p8-product-fixes` currently carries one bounded
 product-correction batch based on
@@ -139,16 +139,31 @@ requested the complete process object before selecting its two required
 fields. The retained failure Artifact is bound to merge-ref source
 `8bb23cfd14e3d152ecbd8e81452f206d5402bff1`.
 
-Local commit `3797cd5` narrows that Windows query to the exact
+Commit `3797cd5` narrows that Windows query to the exact
 `ProcessId,ParentProcessId` CIM properties and gives the single probe a bounded
 10-second budget. It adds no retry and does not relax the fail-closed residual
 process decision. The regression is green (`46/46` fresh-profile tests), as
 are format, lint, strict TypeScript, the P8 contract, `git diff --check`, all 17
 affected Root files (`379/379` tests), and all six materialized AionUI files
-(`72/72` tests). A new exact-head Windows packaged run remains required before
-this probe correction is considered CI-verified. These results do not close
-overall P8.2, P8.3, P8.4, candidate signing/notarization, release, deployment,
-distribution, or final user acceptance.
+(`72/72` tests). The final composite gate on branch head
+`a3c30ad9d7ea614b24ce148b0d1e9ace66c6b85c` also passes at exit `0`, with
+`1,986` passing and `10` skipped tests plus the package build.
+
+Exact-head PR CI run
+[`32753878545`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32753878545)
+then completed all eight jobs successfully. Its Windows packaged fresh-profile
+step passed the corrected process probe, and the retained macOS, Windows, and
+Ubuntu fresh-profile records all validate as `status = verified` with graceful
+exit and `residualProcessCount = 0`. The Windows authenticated-runtime record
+also validates as `status = verified`: read, approved write, cancellation, and
+parent-death cleanup were observed; credential and environment canaries were
+absent; direct network access was denied; the original workspace was unchanged;
+and no residual process remained. These retained Artifacts are bound to the PR
+merge-ref source `dfa0823471a67087cab728f1948c061bd277440c`, not to formal
+`main` or a release candidate. This closes the product-correction batch's local,
+exact-head CI, and narrow packaged-smoke gates. It does not close overall P8.2,
+P8.3, P8.4, candidate signing/notarization, release, deployment, distribution,
+or final user acceptance.
 
 ## 2026-08-24 P8.2d three-platform route-race evidence; retry correction pending CI
 
