@@ -106,6 +106,18 @@ function emitReady(child) {
 }
 
 describe("P8.2d packaged fresh-profile smoke", () => {
+  it("bounds the Windows process-table probe to the two required CIM properties", () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "scripts", "smoke-p8-fresh-profile.mjs"),
+      "utf8",
+    );
+
+    expect(source).toContain(
+      "Get-CimInstance -ClassName Win32_Process -Property ProcessId,ParentProcessId",
+    );
+    expect(source).toContain("P8_FRESH_PROFILE_WINDOWS_PROCESS_PROBE_TIMEOUT_MS = 10_000");
+  });
+
   it("parses exactly one bounded ready marker", () => {
     expect(
       parseP8FreshProfileMarker(
