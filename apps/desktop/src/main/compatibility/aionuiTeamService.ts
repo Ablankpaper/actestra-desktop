@@ -39,6 +39,7 @@ import {
 } from "../../compatibility/aionui";
 import {
   PersistenceError,
+  DEFAULT_GENERAL_REQUIREMENTS,
   artifactId,
   assertDomainGraph,
   compareInstants,
@@ -331,6 +332,23 @@ const TEAM_MODEL_IDENTIFIER_PATTERN = /^[A-Za-z0-9]+(?:[._:/-][A-Za-z0-9]+)*$/u;
 const TEAM_ARTIFACT_DELIVERY_SCAN_LIMIT = 100;
 const MAX_TEAM_MODEL_PROVIDERS = 64;
 const MAX_TEAM_MODELS_PER_PROVIDER = 256;
+const AIONUI_FILE_REFERENCE_MARKER = "[[AION_FILES]]";
+const EXPLICIT_FILE_GENERAL_REQUIREMENTS = Object.freeze({
+  contractVersion: 1 as const,
+  capabilities: Object.freeze(["workspace-read"] as const),
+  contextReferences: Object.freeze(["workspace-file"] as const),
+  inputRequirements: Object.freeze(["file-reference"] as const),
+  completionCriteria: "json-envelope" as const,
+});
+
+function orchestratedTaskGoal(content: string, files: readonly string[]): string {
+  if (files.length === 0) return content;
+  const marker = `\n\n${AIONUI_FILE_REFERENCE_MARKER}\n`;
+  const markerIndex = content.lastIndexOf(marker);
+  if (markerIndex < 0) return content;
+  const instruction = content.slice(0, markerIndex).trim();
+  return instruction.length === 0 ? "Review the explicitly selected files." : instruction;
+}
 
 function digest(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -4540,12 +4558,6 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
         "Team experience does not match durable authority",
       );
     }
-    if (files.length > 0) {
-      throw new AionUiTeamBridgePortError(
-        "team-unavailable",
-        "Orchestrated Team attachments are unavailable",
-      );
-    }
     const team = await this.#requireTeam(stableTeamId);
     if (this.#admission === null) {
       throw new AionUiTeamBridgePortError(
@@ -4556,13 +4568,14 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
     const orchestrator = await this.#ensureWorkerRuntime(team);
     await this.#assertNoActiveRun(team.teamId);
     const existingRuns = await this.#persistence.listTeamRunsForTeam(team.teamId, 100);
+    const goal = orchestratedTaskGoal(content, files);
     const plan = await this.#admission.propose({
       protocolVersion: 1,
       correlationId: correlationId(
         `correlation-team-ui-${digest(`${team.teamId}:${String(existingRuns.length + 1)}:${content}`)}`,
       ),
       planVersion: 1,
-      goal: content,
+      goal,
       workerCapabilities: Object.freeze([
         ...new Set(team.members.map(({ capability }) => capability)),
       ]),
@@ -4572,6 +4585,8 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
           classification: "internal",
         }),
       ]),
+      generalRequirements:
+        files.length === 0 ? DEFAULT_GENERAL_REQUIREMENTS : EXPLICIT_FILE_GENERAL_REQUIREMENTS,
       limits: Object.freeze({
         maxNodes: 5,
         maxDepth: 4,
@@ -4587,7 +4602,7 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
     const started = await orchestrator.start(accepted.runId, instant(this.#now()));
     return Object.freeze({
       enqueue_status: "accepted",
-      message_id: teamMessageId(started, content),
+      message_id: teamMessageId(started, goal),
       run: projectRunEvent(team, started, "user_message"),
     });
   }

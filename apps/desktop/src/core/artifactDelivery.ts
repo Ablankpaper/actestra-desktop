@@ -420,7 +420,7 @@ export function isArtifactDeliveryTransitionLegal(
   to: ArtifactDeliveryState,
 ): boolean {
   if (from === "pending") {
-    return to === "applying" || to === "cancelled";
+    return to === "applying" || to === "cancelled" || to === "failed";
   }
   if (from === "applying") {
     // `applying → applying` refines an attempt already in flight: it is how the approval this
@@ -437,7 +437,10 @@ export function isArtifactDeliveryTransitionLegal(
   if (from === "applied") {
     return false;
   }
-  return to === "applying";
+  // A pre-approval fail-closed check (for example a dirty tree or moved HEAD) can settle a
+  // retryable delivery without ever entering `applying`. Preserve that durable reason instead of
+  // leaving the record pending and making the refusal look like an unattempted delivery.
+  return to === "applying" || to === "failed";
 }
 
 /**

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DEFAULT_GENERAL_REQUIREMENTS } from "../../apps/desktop/src/core";
 import {
   MAX_TEAM_PLANNER_SIDECAR_MESSAGE_BYTES,
   normalizeTeamPlannerSidecarReady,
@@ -19,6 +20,11 @@ const PLAN_REQUEST = {
     maxConcurrency: 2,
     maxTotalAttempts: 3,
   },
+} as const;
+
+const NORMALIZED_PLAN_REQUEST = {
+  ...PLAN_REQUEST,
+  generalRequirements: DEFAULT_GENERAL_REQUIREMENTS,
 } as const;
 
 const PLAN_CANDIDATE = {
@@ -108,7 +114,7 @@ describe("Team planner sidecar protocol", () => {
       type: "request",
       requestId: "planner-request-propose-1",
       operation: "propose",
-      payload: PLAN_REQUEST,
+      payload: NORMALIZED_PLAN_REQUEST,
     });
 
     expect(request).toEqual({
@@ -116,10 +122,14 @@ describe("Team planner sidecar protocol", () => {
       type: "request",
       requestId: "planner-request-propose-1",
       operation: "propose",
-      payload: PLAN_REQUEST,
+      payload: NORMALIZED_PLAN_REQUEST,
     });
     expect(Object.isFrozen(request)).toBe(true);
+    if (request.operation !== "propose") {
+      throw new Error("Expected the normalized sidecar request to remain a propose operation");
+    }
     expect(Object.isFrozen(request.payload)).toBe(true);
+    expect(Object.isFrozen(request.payload.generalRequirements)).toBe(true);
 
     const response = normalizeTeamPlannerSidecarResponse(
       {

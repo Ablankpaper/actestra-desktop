@@ -5,6 +5,11 @@ import {
   type CorrelationId,
   type TaskId,
 } from "./domain";
+import {
+  GENERAL_V1_CONTRACT_VERSION,
+  assertGeneralCapabilityRequest,
+  type GeneralCapabilityRequest,
+} from "./generalCapabilityAdmission";
 
 declare const teamPlanValueBrand: unique symbol;
 
@@ -31,6 +36,15 @@ export const TEAM_PLAN_MAX_COMPLETION_CRITERIA_BYTES = 2_048;
 export const TEAM_WORKER_CAPABILITIES = ["general", "coding"] as const;
 export const TEAM_CONTEXT_CLASSIFICATIONS = ["public", "internal", "confidential"] as const;
 export const TEAM_PLAN_RISK_LEVELS = ["low", "medium", "high"] as const;
+
+/** The compatibility contract used when reading a pre-requirements Team plan. */
+export const DEFAULT_GENERAL_REQUIREMENTS: GeneralCapabilityRequest = Object.freeze({
+  contractVersion: GENERAL_V1_CONTRACT_VERSION,
+  capabilities: Object.freeze(["text-generation"] as const),
+  contextReferences: Object.freeze(["inline-text"] as const),
+  inputRequirements: Object.freeze(["bounded-text"] as const),
+  completionCriteria: "json-envelope" as const,
+});
 
 export type TeamWorkerCapability = (typeof TEAM_WORKER_CAPABILITIES)[number];
 export type TeamContextClassification = (typeof TEAM_CONTEXT_CLASSIFICATIONS)[number];
@@ -75,6 +89,8 @@ export interface TeamPlannerRequest {
   readonly goal: string;
   readonly workerCapabilities: readonly TeamWorkerCapability[];
   readonly contextReferences: readonly TeamPlannerContextReference[];
+  /** Structured General v1 authority. Legacy callers may omit it; normalization supplies the default. */
+  readonly generalRequirements?: GeneralCapabilityRequest;
   readonly limits: TeamPlannerLimits;
 }
 
@@ -91,6 +107,8 @@ export interface TeamPlanWorkerCandidateNode extends TeamPlanCandidateNodeBase {
   readonly capability: TeamWorkerCapability;
   readonly expectedArtifactKind: ArtifactKind;
   readonly maxAttempts: number;
+  /** General-only planner metadata. Admission replaces it with the request authority. */
+  readonly requirements?: GeneralCapabilityRequest;
 }
 
 export interface TeamPlanHumanFeedbackCandidateNode extends TeamPlanCandidateNodeBase {
@@ -120,6 +138,8 @@ export interface AdmittedTeamPlanWorkerNode extends AdmittedTeamPlanNodeBase {
   readonly capability: TeamWorkerCapability;
   readonly expectedArtifactKind: ArtifactKind;
   readonly maxAttempts: number;
+  /** Present for General nodes; absent for coding nodes. */
+  readonly requirements?: GeneralCapabilityRequest;
 }
 
 export interface AdmittedTeamPlanHumanFeedbackNode extends AdmittedTeamPlanNodeBase {
@@ -149,7 +169,7 @@ export interface TeamPlanPersistencePort {
   getAdmittedTeamPlan(planId: TeamPlanId): Promise<AdmittedTeamPlan | null>;
 }
 
-const REQUEST_KEYS = [
+const LEGACY_REQUEST_KEYS = [
   "protocolVersion",
   "correlationId",
   "planVersion",
@@ -158,6 +178,7 @@ const REQUEST_KEYS = [
   "contextReferences",
   "limits",
 ] as const;
+const REQUEST_KEYS = [...LEGACY_REQUEST_KEYS, "generalRequirements"] as const;
 const LIMIT_KEYS = ["maxNodes", "maxDepth", "maxConcurrency", "maxTotalAttempts"] as const;
 const CONTEXT_REFERENCE_KEYS = ["referenceId", "classification"] as const;
 const CANDIDATE_KEYS = [
@@ -178,6 +199,7 @@ const WORKER_NODE_KEYS = [
   "risk",
   "maxAttempts",
 ] as const;
+const GENERAL_WORKER_NODE_KEYS = [...WORKER_NODE_KEYS, "requirements"] as const;
 const HUMAN_FEEDBACK_NODE_KEYS = [
   "candidateKey",
   "title",
@@ -209,6 +231,7 @@ const ADMITTED_WORKER_NODE_KEYS = [
   "risk",
   "maxAttempts",
 ] as const;
+const ADMITTED_GENERAL_WORKER_NODE_KEYS = [...ADMITTED_WORKER_NODE_KEYS, "requirements"] as const;
 const ADMITTED_HUMAN_FEEDBACK_NODE_KEYS = [
   "nodeId",
   "taskId",
@@ -328,8 +351,46 @@ function requireIntegerRange(
   return parsed;
 }
 
+function normalizeGeneralRequirements(
+  value: unknown,
+  code: TeamPlanAdmissionErrorCode,
+): GeneralCapabilityRequest {
+  try {
+    assertGeneralCapabilityRequest(value);
+  } catch (error) {
+    throw new TeamPlanAdmissionError(
+      code,
+      error instanceof Error ? error.message : "General requirements are invalid",
+    );
+  }
+  const request = value as GeneralCapabilityRequest;
+  return Object.freeze({
+    contractVersion: GENERAL_V1_CONTRACT_VERSION,
+    capabilities: Object.freeze([...request.capabilities]),
+    contextReferences: Object.freeze([...request.contextReferences]),
+    inputRequirements: Object.freeze([...request.inputRequirements]),
+    completionCriteria: request.completionCriteria,
+  });
+}
+
+function sameGeneralRequirements(
+  left: GeneralCapabilityRequest,
+  right: GeneralCapabilityRequest,
+): boolean {
+  return (
+    left.contractVersion === right.contractVersion &&
+    JSON.stringify(left.capabilities) === JSON.stringify(right.capabilities) &&
+    JSON.stringify(left.contextReferences) === JSON.stringify(right.contextReferences) &&
+    JSON.stringify(left.inputRequirements) === JSON.stringify(right.inputRequirements) &&
+    left.completionCriteria === right.completionCriteria
+  );
+}
+
 export function normalizeTeamPlannerRequest(value: unknown): TeamPlannerRequest {
-  if (!isRecord(value) || !hasExactKeys(value, REQUEST_KEYS)) {
+  if (
+    !isRecord(value) ||
+    (!hasExactKeys(value, REQUEST_KEYS) && !hasExactKeys(value, LEGACY_REQUEST_KEYS))
+  ) {
     throw new TeamPlanAdmissionError("invalid-request", "Team planner request must be a record");
   }
   if (value.protocolVersion !== TEAM_PLANNER_PROTOCOL_VERSION) {
@@ -398,6 +459,12 @@ export function normalizeTeamPlannerRequest(value: unknown): TeamPlannerRequest 
       "Team planner context references must be unique",
     );
   }
+  const generalRequirements = normalizeGeneralRequirements(
+    Object.hasOwn(value, "generalRequirements")
+      ? value.generalRequirements
+      : DEFAULT_GENERAL_REQUIREMENTS,
+    "invalid-request",
+  );
   return Object.freeze({
     protocolVersion: TEAM_PLANNER_PROTOCOL_VERSION,
     correlationId: correlationId(
@@ -417,6 +484,7 @@ export function normalizeTeamPlannerRequest(value: unknown): TeamPlannerRequest 
     ),
     workerCapabilities: Object.freeze(capabilities),
     contextReferences: Object.freeze(references),
+    generalRequirements,
     limits: Object.freeze({
       maxNodes: requireIntegerRange(
         value.limits.maxNodes,
@@ -505,7 +573,6 @@ function parseCandidateNode(value: unknown): TeamPlanCandidateNode {
   }
   if (
     value.kind !== "worker" ||
-    !hasExactKeys(value, WORKER_NODE_KEYS) ||
     !TEAM_WORKER_CAPABILITIES.includes(value.capability as TeamWorkerCapability) ||
     !["file", "document", "dataset", "directory", "other"].includes(
       value.expectedArtifactKind as string,
@@ -513,6 +580,26 @@ function parseCandidateNode(value: unknown): TeamPlanCandidateNode {
   ) {
     throw new TeamPlanAdmissionError("invalid-candidate", "Team worker node is invalid");
   }
+  const hasRequirements = Object.hasOwn(value, "requirements");
+  if (
+    value.capability === "coding" &&
+    (hasRequirements || !hasExactKeys(value, WORKER_NODE_KEYS))
+  ) {
+    throw new TeamPlanAdmissionError(
+      "invalid-candidate",
+      "Coding worker nodes cannot carry General requirements",
+    );
+  }
+  if (
+    value.capability === "general" &&
+    !hasExactKeys(value, hasRequirements ? GENERAL_WORKER_NODE_KEYS : WORKER_NODE_KEYS)
+  ) {
+    throw new TeamPlanAdmissionError("invalid-candidate", "General worker node shape is invalid");
+  }
+  const requirements =
+    value.capability === "general" && hasRequirements
+      ? normalizeGeneralRequirements(value.requirements, "invalid-candidate")
+      : undefined;
   return Object.freeze({
     ...base,
     kind: "worker",
@@ -525,6 +612,7 @@ function parseCandidateNode(value: unknown): TeamPlanCandidateNode {
       "Team worker attempts",
       "invalid-candidate",
     ),
+    ...(requirements === undefined ? {} : { requirements }),
   });
 }
 
@@ -684,6 +772,19 @@ function validateCandidateEnvelope(
         `Team worker capability ${node.capability} is unavailable`,
       );
     }
+    if (
+      node.capability === "general" &&
+      node.requirements !== undefined &&
+      !sameGeneralRequirements(
+        node.requirements,
+        request.generalRequirements ?? DEFAULT_GENERAL_REQUIREMENTS,
+      )
+    ) {
+      throw new TeamPlanAdmissionError(
+        "candidate-mismatch",
+        "General worker requirements do not match the Actestra planner request",
+      );
+    }
   }
 
   const totalAttempts = workerNodes.reduce((total, node) => total + node.maxAttempts, 0);
@@ -736,11 +837,18 @@ function canonicalInput(request: TeamPlannerRequest, candidate: TeamPlanCandidat
     contextReferences: [...request.contextReferences].sort((left, right) =>
       compareText(left.referenceId, right.referenceId),
     ),
+    generalRequirements: request.generalRequirements ?? DEFAULT_GENERAL_REQUIREMENTS,
     limits: request.limits,
     summary: candidate.summary,
     nodes: [...candidate.nodes]
       .sort((left, right) => compareText(left.candidateKey, right.candidateKey))
-      .map((node) => ({ ...node, dependsOn: [...node.dependsOn].sort() })),
+      .map((node) => ({
+        ...node,
+        ...(node.kind === "worker" && node.capability === "general"
+          ? { requirements: request.generalRequirements ?? DEFAULT_GENERAL_REQUIREMENTS }
+          : {}),
+        dependsOn: [...node.dependsOn].sort(),
+      })),
   });
 }
 
@@ -825,7 +933,6 @@ function parseAdmittedNode(value: unknown): AdmittedTeamPlanNode {
   }
   if (
     value.kind !== "worker" ||
-    !hasExactKeys(value, ADMITTED_WORKER_NODE_KEYS) ||
     !TEAM_WORKER_CAPABILITIES.includes(value.capability as TeamWorkerCapability) ||
     !["file", "document", "dataset", "directory", "other"].includes(
       value.expectedArtifactKind as string,
@@ -833,6 +940,34 @@ function parseAdmittedNode(value: unknown): AdmittedTeamPlanNode {
   ) {
     throw new TeamPlanAdmissionError("invalid-candidate", "Admitted team-plan worker is invalid");
   }
+  const hasRequirements = Object.hasOwn(value, "requirements");
+  if (
+    value.capability === "coding" &&
+    (hasRequirements || !hasExactKeys(value, ADMITTED_WORKER_NODE_KEYS))
+  ) {
+    throw new TeamPlanAdmissionError(
+      "invalid-candidate",
+      "Coding worker nodes cannot carry General requirements",
+    );
+  }
+  if (
+    value.capability === "general" &&
+    !hasExactKeys(
+      value,
+      hasRequirements ? ADMITTED_GENERAL_WORKER_NODE_KEYS : ADMITTED_WORKER_NODE_KEYS,
+    )
+  ) {
+    throw new TeamPlanAdmissionError(
+      "invalid-candidate",
+      "Admitted General worker shape is invalid",
+    );
+  }
+  const requirements =
+    value.capability === "general" && hasRequirements
+      ? normalizeGeneralRequirements(value.requirements, "invalid-candidate")
+      : value.capability === "general"
+        ? DEFAULT_GENERAL_REQUIREMENTS
+        : undefined;
   return Object.freeze({
     ...base,
     kind: "worker",
@@ -845,6 +980,7 @@ function parseAdmittedNode(value: unknown): AdmittedTeamPlanNode {
       "Team worker attempts",
       "invalid-candidate",
     ),
+    ...(requirements === undefined ? {} : { requirements }),
   });
 }
 
@@ -900,6 +1036,23 @@ export function normalizeAdmittedTeamPlan(value: unknown): AdmittedTeamPlan {
     );
   }
   const nodes = Object.freeze(value.nodes.map(parseAdmittedNode));
+  const generalNodes = nodes.filter(
+    (node): node is AdmittedTeamPlanWorkerNode =>
+      node.kind === "worker" && node.capability === "general",
+  );
+  const generalRequirements = generalNodes[0]?.requirements ?? DEFAULT_GENERAL_REQUIREMENTS;
+  if (
+    generalNodes.some(
+      (node) =>
+        node.requirements === undefined ||
+        !sameGeneralRequirements(node.requirements, generalRequirements),
+    )
+  ) {
+    throw new TeamPlanAdmissionError(
+      "invalid-candidate",
+      "Admitted General nodes must share one requirements contract",
+    );
+  }
   for (const identities of [
     nodes.map(({ nodeId }) => nodeId),
     nodes.map(({ taskId: nodeTaskId }) => nodeTaskId),
@@ -954,6 +1107,7 @@ export function normalizeAdmittedTeamPlan(value: unknown): AdmittedTeamPlan {
           capability: node.capability,
           expectedArtifactKind: node.expectedArtifactKind,
           maxAttempts: node.maxAttempts,
+          ...(node.capability === "general" ? { requirements: node.requirements } : {}),
         });
   });
   const ordered = topologicalNodes(candidateNodes);
@@ -986,6 +1140,7 @@ export function normalizeAdmittedTeamPlan(value: unknown): AdmittedTeamPlan {
       goal,
       workerCapabilities: TEAM_WORKER_CAPABILITIES,
       contextReferences: Object.freeze([]),
+      generalRequirements,
       limits,
     }),
     Object.freeze({
@@ -1087,6 +1242,9 @@ export async function admitTeamPlanCandidate(
           capability: node.capability,
           expectedArtifactKind: node.expectedArtifactKind,
           maxAttempts: node.maxAttempts,
+          ...(node.capability === "general"
+            ? { requirements: request.generalRequirements ?? DEFAULT_GENERAL_REQUIREMENTS }
+            : {}),
         });
   });
   return Object.freeze({

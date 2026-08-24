@@ -402,8 +402,11 @@ describe("applyArtifactToWorkspace", () => {
     expect(await readFile(path.join(repository.root, "tracked.txt"), "utf8")).toBe(
       "user work in progress\n",
     );
-    // The refusal happens before the destination is bound, so nothing is persisted at all.
-    expect(persisted).toHaveLength(0);
+    expect(persisted.at(-1)).toMatchObject({
+      state: "failed",
+      destinationGrantId: DESTINATION_GRANT,
+      failureCode: "workspace-dirty",
+    });
   });
 
   it("does not treat Actestra-owned task output as user workspace dirt", async () => {
@@ -444,7 +447,11 @@ describe("applyArtifactToWorkspace", () => {
 
     expect((error as ArtifactWorkspaceApplicatorError).code).toBe("workspace-dirty");
     expect(await readFile(path.join(repository.root, "tracked.txt"), "utf8")).toBe("original\n");
-    expect(persisted).toHaveLength(0);
+    expect(persisted.at(-1)).toMatchObject({
+      state: "failed",
+      destinationGrantId: DESTINATION_GRANT,
+      failureCode: "workspace-dirty",
+    });
   });
 
   it("refuses when HEAD has moved since the patch was produced", async () => {
@@ -456,7 +463,11 @@ describe("applyArtifactToWorkspace", () => {
 
     expect((error as ArtifactWorkspaceApplicatorError).code).toBe("head-drift");
     expect(await readFile(path.join(repository.root, "tracked.txt"), "utf8")).toBe("original\n");
-    expect(persisted).toHaveLength(0);
+    expect(persisted.at(-1)).toMatchObject({
+      state: "failed",
+      destinationGrantId: DESTINATION_GRANT,
+      failureCode: "head-drift",
+    });
   });
 
   it("refuses a conflicting patch at dry-run, before any approval is requested", async () => {

@@ -2,6 +2,84 @@
 
 Last updated: 2026-08-24
 
+## 2026-08-24 P8 product-acceptance corrections locally verified; exact-head CI and Electron gates pending
+
+The isolated branch `codex/p8-product-fixes` currently carries one bounded
+product-correction batch based on
+`d7b264957a12bcfbd5b7d5b87d99535f7a8b2d63`. It does not edit the frozen
+AionUI source under `foundation/`; user-visible changes are recorded in the
+R1/R2 downstream patch
+`0023-actestra-product-acceptance-fixes.mjs`. The batch addresses the reported
+acceptance defects as follows:
+
+- ACP and AionRS now project the exact user message synchronously before the
+  Main acknowledgement, bind it to the canonical message identity after
+  acceptance, remove only that optimistic record on rejection, and keep using
+  the retained content-chunk merger before `Finish`. This targets the blank
+  conversation and delayed-user-message behavior shown in the 2026-08-24
+  screenshots without creating a second message store.
+- A stream `finish` or error is no longer enough by itself to release the
+  Renderer processing gate. The Renderer performs a bounded durable runtime
+  reread and releases only after the same turn is confirmed terminal, then
+  refreshes persisted history. When `Finish` omits its turn identifier and the
+  terminal runtime has already cleared it, the Renderer retains the exact
+  active-turn identity for stale-running suppression; it also rechecks the
+  current active turn before release, so a delayed old terminal cannot unlock a
+  newer turn.
+- Orchestrated-Team `files[]` / `@` file selections become structured General
+  requirements in Main. A concrete path and AionUI's `[[AION_FILES]]` payload
+  are removed from the planner goal; requirements survive plan admission,
+  persisted run recovery, and Worker routing. General v1 returns
+  `general-capability-mismatch` before model execution and receives no Glob or
+  workspace tool. The Team leader retains the explicit file-selection entry so
+  Main can classify the request, while direct General-member conversations
+  remain text-only. Natural-language keywords are not treated as authority.
+- Multiline contract failures converge on the existing localized
+  `team-invalid-request` message on both retained ACP and AionRS send paths,
+  rather than showing a private validator detail or a generic failure.
+- A dirty destination or moved HEAD before Artifact apply approval now writes a
+  terminal failed delivery with the exact durable `workspace-dirty` or
+  `head-drift` code instead of leaving the database record `pending`. The
+  repository check remains fail closed and no patch is applied.
+- A General model failure that completes while the Team attempt is paused is
+  retained across resume as the original `model-unavailable` cause. The
+  recovery state machine does not overwrite it, and the AionUI Team projection
+  uses the persisted blocked explanation instead of collapsing it into a
+  generic `attempt-failed` label.
+
+Review also found and closed two recovery-compatibility details in the same
+requirements path: pre-requirements Team run records restore the existing
+bounded text-only default, and requirements reloaded from persistence are
+deeply frozen. Coding nodes still reject General requirements and unknown
+fields remain fail closed.
+
+Fresh focused evidence before the final composite gate was green: the five
+materialized Renderer files passed `57/57`, including no-ID Finish and delayed
+old-Finish/new-turn regressions; the affected Root set passed `13` files and
+`307/307` tests. P8 contract, product boundary, exact AionUI foundation, and
+downstream changed-file checks were then rerun on the final bytes before the
+composite gate. The downstream check initially identified one omitted reviewed
+test path; enumerating every patch target and registering the existing test
+closed that metadata drift without changing runtime behavior.
+
+The final production/test bytes pass `bun run package` and the complete
+`bun run check` at exit `0`: format, zero-warning lint, strict TypeScript, the
+three-target P8 contract, Electron SQLite, `178` passing and `3` skipped test
+files with `1,984` passing and `10` skipped tests, all `28` P7 abuse cases and
+`168` exact variants denied-safe, deterministic smoke-harness behavior, the
+149-source product boundary, the exact 1,766-file AionUI foundation, the
+389-file downstream contract with 4 R0 invariants and 135 reviewed source
+copies, and the production package build. The package emits only the existing
+upstream dynamic-import, circular-chunk, and chunk-size notices; no package
+failure occurred.
+
+This is local code/package verification, not Electron/provider acceptance.
+Exact-head CI and a new real Electron/provider run covering
+immediate user-message display, content streaming, terminal release, General
+file rejection, precise delivery failure, and pause/resume behavior remain
+required. P8.2d, overall P8.2, P8.3, P8.4, release, deployment, distribution,
+and user acceptance remain separate gates.
+
 ## 2026-08-24 P8.2d three-platform route-race evidence; retry correction pending CI
 
 The exact-head CI run [`32660088123`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32660088123)

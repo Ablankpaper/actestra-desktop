@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import * as core from "../../apps/desktop/src/core";
-import type { AdmittedTeamPlan } from "../../apps/desktop/src/core";
+import type { AdmittedTeamPlan, TeamRunWorkerNode } from "../../apps/desktop/src/core";
 
 const REQUEST = {
   protocolVersion: 1,
@@ -211,6 +211,49 @@ describe("Actestra Team run authority", () => {
     expect(run.nodes.every((node) => Object.isFrozen(node) && Object.isFrozen(node.attempts))).toBe(
       true,
     );
+  });
+
+  it("restores legacy General run nodes with the bounded text-only requirements", () => {
+    const current = core.createTeamRunSnapshot(
+      plan,
+      createTeam(),
+      core.instant("2026-08-04T01:00:01.000Z"),
+    );
+    const legacy = JSON.parse(JSON.stringify(current)) as {
+      nodes: Array<{ capability?: string; requirements?: unknown }>;
+    };
+    for (const node of legacy.nodes) {
+      if (node.capability === "general") {
+        delete node.requirements;
+      }
+    }
+
+    const restored = core.normalizeTeamRunSnapshot(legacy);
+    const generalNodes = restored.nodes.filter(
+      (node): node is TeamRunWorkerNode => node.kind === "worker" && node.capability === "general",
+    );
+    expect(generalNodes).not.toHaveLength(0);
+    expect(
+      generalNodes.every((node) => node.requirements === core.DEFAULT_GENERAL_REQUIREMENTS),
+    ).toBe(true);
+  });
+
+  it("deeply freezes General requirements restored from a persisted run", () => {
+    const persisted = JSON.parse(
+      JSON.stringify(
+        core.createTeamRunSnapshot(plan, createTeam(), core.instant("2026-08-04T01:00:01.000Z")),
+      ),
+    );
+
+    const restored = core.normalizeTeamRunSnapshot(persisted);
+    const generalNode = restored.nodes.find(
+      (node): node is TeamRunWorkerNode => node.kind === "worker" && node.capability === "general",
+    );
+    expect(generalNode?.requirements).toBeDefined();
+    expect(Object.isFrozen(generalNode?.requirements)).toBe(true);
+    expect(Object.isFrozen(generalNode?.requirements?.capabilities)).toBe(true);
+    expect(Object.isFrozen(generalNode?.requirements?.contextReferences)).toBe(true);
+    expect(Object.isFrozen(generalNode?.requirements?.inputRequirements)).toBe(true);
   });
 
   it("retains an admitted node-count ceiling above the actual canonical graph", async () => {

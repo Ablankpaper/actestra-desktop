@@ -1391,6 +1391,13 @@ describe("AionUiGeneralWorkJourneyService", () => {
         }),
       ]),
     );
+    const refusedEventTypes = checkpoint?.events.map(({ type }) => type) ?? [];
+    expect(refusedEventTypes).not.toContain("tool.requested");
+    expect(refusedEventTypes).not.toContain("tool.started");
+    expect(refusedEventTypes).not.toContain("tool.completed");
+    const refusedDurableEvidence = JSON.stringify(checkpoint?.events);
+    expect(refusedDurableEvidence).not.toContain("model-requested");
+    expect(refusedDurableEvidence).not.toContain("Glob");
     // No half-written draft may survive a blocked admission.
     expect(graph.artifacts).toEqual([]);
 

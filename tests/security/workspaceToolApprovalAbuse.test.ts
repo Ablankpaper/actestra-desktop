@@ -657,7 +657,13 @@ describe("P7 workspace, delivery, tool, and approval abuse baseline", () => {
 
     expect(result.error).toMatchObject({ code: "workspace-dirty" });
     expect(await readFile(path.join(repo.root, "tracked.txt"), "utf8")).toBe("user work\n");
-    expect(result.bench.persisted).toHaveLength(0);
+    expect(result.bench.persisted).toHaveLength(1);
+    expect(result.bench.persisted[0]).toMatchObject({
+      state: "failed",
+      destinationGrantId: grant(repo.root).grantId,
+      approvalId: null,
+      failureCode: "workspace-dirty",
+    });
   });
 
   it("P7-A-WORKSPACE-003 P7-V-WORKSPACE-003-HEAD-DRIFT", async () => {
@@ -666,7 +672,13 @@ describe("P7 workspace, delivery, tool, and approval abuse baseline", () => {
 
     expect(result.error).toMatchObject({ code: "head-drift" });
     expect(await readFile(path.join(repo.root, "tracked.txt"), "utf8")).toBe("original\n");
-    expect(result.bench.persisted).toHaveLength(0);
+    expect(result.bench.persisted).toHaveLength(1);
+    expect(result.bench.persisted[0]).toMatchObject({
+      state: "failed",
+      destinationGrantId: grant(repo.root).grantId,
+      approvalId: null,
+      failureCode: "head-drift",
+    });
   });
 
   it("P7-A-DELIVERY-001 P7-V-DELIVERY-001-SOURCE-WRITE-BEFORE-APPLY-APPROVAL", async () => {

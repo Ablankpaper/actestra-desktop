@@ -4,6 +4,7 @@ import {
   createTeamRunSnapshot,
   instant,
   normalizeTeamDefinition,
+  type GeneralCapabilityRequest,
 } from "../../apps/desktop/src/core";
 
 function digest(value: string): string {
@@ -14,6 +15,7 @@ export interface TeamRunFixtureOptions {
   readonly generalMaxAttempts?: number;
   readonly codingMaxAttempts?: number;
   readonly maxTotalAttempts?: number;
+  readonly generalRequirements?: GeneralCapabilityRequest;
 }
 
 export async function createTeamRunFixture(
@@ -30,6 +32,15 @@ export async function createTeamRunFixture(
     goal: "Coordinate bounded General and coding work before explicit workflow feedback.",
     workerCapabilities: ["general", "coding"],
     contextReferences: [],
+    generalRequirements:
+      options.generalRequirements ??
+      ({
+        contractVersion: 1,
+        capabilities: ["text-generation"],
+        contextReferences: ["inline-text"],
+        inputRequirements: ["bounded-text"],
+        completionCriteria: "json-envelope",
+      } as const),
     limits: {
       maxNodes: 3,
       maxDepth: 2,

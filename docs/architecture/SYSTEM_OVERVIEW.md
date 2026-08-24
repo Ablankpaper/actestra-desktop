@@ -554,6 +554,18 @@ a patch Artifact, while only a separately approved Main operation can apply it
 to the original workspace. General v1 remains text-only and validates a
 structured output envelope before Artifact creation.
 
+For an orchestrated Team, the retained AionUI leader send box may supply an
+explicit `files[]` / `@` file selection only as a structured capability-demand
+signal. Main removes AionUI's `[[AION_FILES]]` payload and concrete paths from
+the planner goal, converts the signal to persisted `workspace-read`,
+`workspace-file`, and `file-reference` General requirements, and carries that
+same immutable contract through admission, the Team run, and Worker routing.
+General v1 rejects the unsupported request as `general-capability-mismatch`
+before model execution; it receives no file path, Glob, workspace tool, or
+filesystem authority. Direct conversations with a General Team member remain
+text-only and do not expose file-selection controls. Natural-language wording
+alone is never scanned to infer filesystem authority.
+
 The 2026-08-06 amendment to
 [ADR-0015](decisions/0015-crewai-supervised-orchestration-sidecar.md) makes an
 Actestra Main-owned local-Agent compatibility provider a possible production

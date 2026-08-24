@@ -7,6 +7,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  ARTIFACT_DELIVERY_CONTRACT_VERSION,
   artifactId,
   eventId,
   instant,
@@ -24,6 +25,7 @@ import {
   workspaceId,
   WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
   type Instant,
+  type ArtifactDeliveryRecord,
   type TeamPlanCandidate,
 } from "../../apps/desktop/src/core";
 import type {
@@ -52,7 +54,13 @@ import {
   TeamPlanAdmissionServiceError,
 } from "../../apps/desktop/src/main/orchestration/teamPlanAdmissionService";
 import { deriveTeamJourneyReplyStreamId } from "../../apps/desktop/src/main/orchestration/teamJourneyWorkerRouter";
+import {
+  GENERAL_WORKER_PROTOCOL_VERSION,
+  type GeneralWorkerMessage,
+  type GeneralWorkerRequest,
+} from "../../apps/desktop/src/shared/generalWorkerProtocol";
 import { openSqliteCorePersistence } from "../../apps/desktop/src/utility/persistence/sqliteCorePersistence";
+import { GeneralWorkerService } from "../../apps/desktop/src/utility/worker/generalWorkerService";
 import { createTeamRunFixture } from "../fixtures/teamRun";
 import { createDomainGraph, createEvent } from "../fixtures/core";
 
@@ -5160,6 +5168,128 @@ describe("AionUiTeamService", () => {
     await persistence.close();
   });
 
+  it("turns explicit orchestrated file references into General admission metadata before Worker execution", async () => {
+    const persistence = openSqliteCorePersistence(createTestDirectory());
+    const now = clock();
+    const planner = {
+      propose: vi.fn(async (request: unknown) => candidateFor(request)),
+    };
+    const admission = new TeamPlanAdmissionService({ planner, persistence });
+    const executions: Array<Parameters<TeamWorkerExecutionPort["execute"]>[0]> = [];
+    let generalWorkerMessages: readonly GeneralWorkerMessage[] = [];
+    const worker: TeamWorkerExecutionPort = {
+      taskIdFor: ({ nodeId, attemptNumber }) =>
+        taskId(`task-team-file-admission-${nodeId.slice(-12)}-${String(attemptNumber)}`),
+      execute: vi.fn(async (input): Promise<TeamWorkerExecutionResult> => {
+        executions.push(input);
+        if (input.capability === "general") {
+          const request: Extract<GeneralWorkerRequest, { operation: "start" }> = {
+            protocolVersion: GENERAL_WORKER_PROTOCOL_VERSION,
+            type: "request",
+            requestId: "request-team-explicit-file-admission",
+            operation: "start",
+            payload: {
+              attemptToken: "attempt-team-explicit-file-admission",
+              prompt: input.goal,
+              entryState: "ready",
+              executionMode: "model-writing-artifact",
+              ...(input.requirements === undefined ? {} : { requirements: input.requirements }),
+            },
+          };
+          generalWorkerMessages = await new GeneralWorkerService().handle(request);
+          const failure = generalWorkerMessages.find(
+            (message) => message.type === "event" && message.event.type === "failed",
+          );
+          if (failure?.type !== "event" || failure.event.type !== "failed") {
+            throw new Error("General did not refuse the explicit file requirement");
+          }
+          return { status: "failed", incidentCode: failure.event.errorCode };
+        }
+        return new Promise<TeamWorkerExecutionResult>(() => {});
+      }),
+      prepareApprovalDecision: vi.fn(),
+      commitApprovalDecision: vi.fn(),
+      pause: vi.fn(async () => {}),
+      resume: vi.fn(async () => {}),
+      cancel: vi.fn(async () => {}),
+    };
+    const orchestrator = new TeamOrchestratorService({
+      persistence,
+      worker,
+      aggregator: {
+        aggregate: vi.fn(async () => ({ summary: "Unused", artifacts: [] })),
+      },
+      now,
+    });
+    const service = new AionUiTeamService({
+      persistence,
+      admission,
+      orchestrator,
+      modelCatalog: createRouteModelCatalog,
+      now,
+      createDigest: () => "3".repeat(64),
+    });
+    const created = requireNativeTeam(await service.dispatch(createRoute));
+    const selectedPath = "/private/tmp/actestra-explicit-reference/README.md";
+    const instruction = "Summarize the explicitly selected file.";
+
+    const acknowledgement = (await service.dispatch({
+      kind: "send-message",
+      teamId: created.id,
+      content: `${instruction}\n\n[[AION_FILES]]\n${selectedPath}`,
+      files: [selectedPath],
+      requestNonce: `team-request-${"b".repeat(64)}`,
+    })) as NativeAionUiTeamRunAck;
+
+    expect(planner.propose).toHaveBeenCalledOnce();
+    expect(planner.propose.mock.calls[0]?.[0]).toMatchObject({
+      goal: instruction,
+      generalRequirements: {
+        contractVersion: 1,
+        capabilities: ["workspace-read"],
+        contextReferences: ["workspace-file"],
+        inputRequirements: ["file-reference"],
+        completionCriteria: "json-envelope",
+      },
+    });
+    expect(JSON.stringify(planner.propose.mock.calls[0]?.[0])).not.toContain(selectedPath);
+    expect(executions.find(({ capability }) => capability === "general")).toMatchObject({
+      requirements: {
+        capabilities: ["workspace-read"],
+        contextReferences: ["workspace-file"],
+        inputRequirements: ["file-reference"],
+      },
+    });
+    expect(executions.find(({ capability }) => capability === "coding")).not.toHaveProperty(
+      "requirements",
+    );
+    await vi.waitFor(() => {
+      expect(generalWorkerMessages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "event",
+            event: expect.objectContaining({
+              type: "failed",
+              errorCode: "general-capability-mismatch",
+            }),
+          }),
+        ]),
+      );
+    });
+    expect(JSON.stringify(generalWorkerMessages)).not.toContain("model-requested");
+    expect(JSON.stringify(generalWorkerMessages)).not.toContain("Glob");
+
+    await service.dispatch({
+      kind: "cancel-run",
+      teamId: created.id,
+      runId: acknowledgement.run.team_run_id,
+      reason: "Close the explicit-reference admission fixture.",
+    });
+    service.close();
+    await orchestrator.close();
+    await persistence.close();
+  });
+
   it("rebuilds durable Team chat activity from admitted-plan and run-revision authority", async () => {
     const directory = createTestDirectory();
     const persistence = openSqliteCorePersistence(directory);
@@ -5391,4 +5521,178 @@ describe("AionUiTeamService", () => {
     reopened.close();
     await reopenedPersistence.close();
   });
+
+  for (const failureCode of ["workspace-dirty", "head-drift"] as const) {
+    it(`projects a restart-durable ${failureCode} delivery on the Team coding Artifact`, async () => {
+      const directory = createTestDirectory();
+      const persistence = openSqliteCorePersistence(directory);
+      const now = clock();
+      const planner = {
+        propose: vi.fn(async (request: unknown) => candidateFor(request)),
+      };
+      const admission = new TeamPlanAdmissionService({ planner, persistence });
+      const codingArtifactId = artifactId(`artifact-team-delivery-${failureCode}`);
+      const worker: TeamWorkerExecutionPort = {
+        taskIdFor: ({ nodeId, attemptNumber }) =>
+          taskId(`task-team-delivery-${nodeId.slice(-12)}-${String(attemptNumber)}`),
+        execute: vi.fn(
+          async (input): Promise<TeamWorkerExecutionResult> => ({
+            status: "completed",
+            summary: `${input.capability} result is ready.`,
+            artifacts:
+              input.capability === "coding"
+                ? [
+                    {
+                      artifactId: codingArtifactId,
+                      taskId: input.workerTaskId,
+                      kind: input.expectedArtifactKind,
+                    },
+                  ]
+                : [],
+          }),
+        ),
+        prepareApprovalDecision: vi.fn(),
+        commitApprovalDecision: vi.fn(),
+        pause: vi.fn(async () => {}),
+        resume: vi.fn(async () => {}),
+        cancel: vi.fn(async () => {}),
+      };
+      const aggregator: TeamResultAggregationPort = {
+        aggregate: vi.fn(async () => ({ summary: "Unused", artifacts: [] })),
+      };
+      const orchestrator = new TeamOrchestratorService({
+        persistence,
+        worker,
+        aggregator,
+        now,
+      });
+      const service = new AionUiTeamService({
+        persistence,
+        admission,
+        orchestrator,
+        modelCatalog: createRouteModelCatalog,
+        now,
+        createDigest: () => (failureCode === "workspace-dirty" ? "7" : "8").repeat(64),
+      });
+      const created = requireNativeTeam(await service.dispatch(createRoute));
+      const acknowledgement = (await service.dispatch({
+        kind: "send-message",
+        teamId: created.id,
+        content: "Prepare a bounded brief and an isolated patch for delivery review.",
+        files: [],
+        requestNonce: `team-request-${failureCode}-${"d".repeat(64)}`,
+      })) as NativeAionUiTeamRunAck;
+      const runId = teamRunId(acknowledgement.run.team_run_id);
+      await orchestrator.waitForIdle(runId);
+
+      const snapshot = await persistence.getTeamRunSnapshot(runId);
+      if (snapshot === null) throw new Error("Team run snapshot is unavailable");
+      const codingNode = snapshot.nodes.find(
+        (node) => node.kind === "worker" && node.capability === "coding",
+      );
+      const codingArtifact = codingNode?.artifacts[0];
+      if (codingArtifact === undefined) throw new Error("Coding Artifact is unavailable");
+      const workspace = workspaceId(created.workspace);
+      const createdAt = instant("2026-08-05T03:00:00.000Z");
+      await persistence.replaceDomainGraph({
+        workspaces: [
+          {
+            id: workspace,
+            name: "Team delivery projection workspace",
+            state: "active",
+            createdAt,
+            updatedAt: createdAt,
+          },
+        ],
+        tasks: [
+          {
+            id: codingArtifact.taskId,
+            workspaceId: workspace,
+            title: "Team coding Artifact delivery",
+            state: "completed",
+            createdAt,
+            updatedAt: createdAt,
+          },
+        ],
+        workers: [],
+        sessions: [],
+        approvals: [],
+        artifacts: [
+          {
+            id: codingArtifact.artifactId,
+            workspaceId: workspace,
+            taskId: codingArtifact.taskId,
+            kind: codingArtifact.kind,
+            label: "Team patch Artifact",
+            state: "available",
+            createdAt,
+            updatedAt: createdAt,
+          },
+        ],
+      });
+      const pending = {
+        contractVersion: ARTIFACT_DELIVERY_CONTRACT_VERSION,
+        artifactId: codingArtifact.artifactId,
+        workspaceId: workspace,
+        destinationWorkspaceId: null,
+        taskId: codingArtifact.taskId,
+        sessionId: null,
+        state: "pending",
+        patchOwnerGrantId: "grant-team-isolated-patch",
+        patchOwnerWorkerId: null,
+        patchRequestId: null,
+        destinationGrantId: null,
+        patchReference: "team-patch-content-reference",
+        patchSha256: "a".repeat(64),
+        patchByteLength: 128,
+        baseCommit: "b".repeat(40),
+        changedFileCount: 1,
+        approvalId: null,
+        verifiedHead: null,
+        failureCode: null,
+        failureMessage: null,
+        createdAt,
+        updatedAt: createdAt,
+      } as const satisfies ArtifactDeliveryRecord;
+      await persistence.persistArtifactDelivery(pending);
+      await persistence.persistArtifactDelivery({
+        ...pending,
+        state: "failed",
+        destinationGrantId: "grant-team-original-workspace",
+        failureCode,
+        failureMessage: `Delivery refused with ${failureCode}`,
+        updatedAt: instant("2026-08-05T03:00:01.000Z"),
+      });
+
+      service.close();
+      await orchestrator.close();
+      await persistence.close();
+
+      const reopenedPersistence = openSqliteCorePersistence(directory);
+      const reopened = new AionUiTeamService({
+        persistence: reopenedPersistence,
+        admission: null,
+        orchestrator: null,
+        now: clock(),
+        createDigest: () => "9".repeat(64),
+      });
+      const recovered = (await reopened.dispatch({
+        kind: "run-state",
+        teamId: created.id,
+      })) as NativeAionUiTeamRunState;
+      const projectedCodingArtifact = recovered.active_run?.actestra.nodes
+        .find(({ capability }) => capability === "coding")
+        ?.artifacts.find(({ artifact_id }) => artifact_id === codingArtifact.artifactId);
+      expect(projectedCodingArtifact?.delivery).toMatchObject({
+        delivery_state: "failed",
+        base_commit: "b".repeat(40),
+        changed_file_count: 1,
+        failure_code: failureCode,
+      });
+      expect(projectedCodingArtifact?.delivery).not.toHaveProperty("apply_approval_id");
+
+      reopened.close();
+      await reopenedPersistence.close();
+    });
+  }
 });
