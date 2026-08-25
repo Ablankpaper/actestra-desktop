@@ -6,23 +6,46 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-/** Absolute interpreter path, so a mutated `PATH` can never select a different Git. */
-function resolveWindowsGitExecutable(): string {
-  const programFiles = process.env.ProgramFiles ?? "C:\\Program Files";
-  const programFilesX86 = process.env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)";
-  const candidates = [
-    path.join(programFiles, "Git", "cmd", "git.exe"),
-    path.join(programFilesX86, "Git", "cmd", "git.exe"),
-  ];
+export interface GitExecutableResolverDependencies {
+  readonly existsSync: (filePath: string) => boolean;
+  readonly statSync: (filePath: string) => Readonly<{ isFile(): boolean }>;
+  readonly realpathSync: (filePath: string) => string;
+}
+
+const DEFAULT_GIT_EXECUTABLE_RESOLVER_DEPENDENCIES: GitExecutableResolverDependencies =
+  Object.freeze({
+    existsSync,
+    statSync,
+    realpathSync: (filePath: string) => realpathSync.native(filePath),
+  });
+
+/**
+ * Resolve an absolute platform-owned Git interpreter. Windows deliberately
+ * admits only the two standard Git-for-Windows installation roots; it never
+ * consults PATH. The dependency parameter keeps this boundary testable for a
+ * Windows target from a non-Windows host without weakening the production
+ * resolver.
+ */
+export function resolveGitExecutable(
+  platform: NodeJS.Platform = process.platform,
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+  dependencies: GitExecutableResolverDependencies = DEFAULT_GIT_EXECUTABLE_RESOLVER_DEPENDENCIES,
+): string {
+  if (platform !== "win32") return "/usr/bin/git";
+
+  const windowsPath = path.win32;
+  const programFiles = environment.ProgramFiles ?? "C:\\Program Files";
+  const programFilesX86 = environment["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)";
+  const roots = [programFiles, programFilesX86];
+  const candidates = roots
+    .filter((root) => windowsPath.isAbsolute(root))
+    .map((root) => windowsPath.normalize(windowsPath.join(root, "Git", "cmd", "git.exe")));
   for (const candidate of candidates) {
-    if (!existsSync(candidate)) continue;
+    if (!dependencies.existsSync(candidate)) continue;
     try {
-      const metadata = statSync(candidate);
-      const canonical = realpathSync.native(candidate);
-      if (
-        metadata.isFile() &&
-        canonical.toLowerCase() === path.normalize(candidate).toLowerCase()
-      ) {
+      const metadata = dependencies.statSync(candidate);
+      const canonical = windowsPath.normalize(dependencies.realpathSync(candidate));
+      if (metadata.isFile() && canonical.toLowerCase() === candidate.toLowerCase()) {
         return canonical;
       }
     } catch {
@@ -32,8 +55,8 @@ function resolveWindowsGitExecutable(): string {
   throw new Error("Windows Git executable is unavailable in a standard installation root");
 }
 
-export const GIT_EXECUTABLE =
-  process.platform === "win32" ? resolveWindowsGitExecutable() : "/usr/bin/git";
+/** Absolute interpreter path, so a mutated `PATH` can never select a different Git. */
+export const GIT_EXECUTABLE = resolveGitExecutable();
 export const GIT_TIMEOUT_MS = 10_000;
 export const GIT_NULL_DEVICE = process.platform === "win32" ? "NUL" : "/dev/null";
 
