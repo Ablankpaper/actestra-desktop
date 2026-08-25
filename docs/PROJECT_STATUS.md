@@ -38,7 +38,12 @@ P7 packaged trust, SBOM/license/audit checks, packaged smoke, schema 23,
 Main/Renderer/General Worker readiness, and clean exit/profile cleanup passed.
 The Goose runner remains an external admitted artifact (`packaged: false`,
 `disposition: external-admitted`) as designed; it is not silently bundled into
-the `.app`.
+the `.app`. The local candidate's external runner manifest currently reports
+local provenance `7ea6a8ea7de387ad6071c52ad73e294b228f3e1e` with `dirty: true`,
+so its native Goose execution is not claimed as a `d07e824` exact-head runner
+build. The same-tree Windows CI runtime above is the authoritative native
+runner evidence for this batch; rebuilding a local runner is a separate
+candidate-refresh action, not a missing product-fix test.
 
 The running candidate was exercised with a configured temporary Provider:
 
