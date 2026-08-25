@@ -1,6 +1,36 @@
 # Project Status
 
-Last updated: 2026-08-25
+Last updated: 2026-08-26
+
+## 2026-08-25 P8.2 product acceptance integration closure
+
+The eight-case targeted acceptance record is
+[`docs/acceptance/P8.2_PRODUCT_FIX_ACCEPTANCE_2026-08-25.md`](acceptance/P8.2_PRODUCT_FIX_ACCEPTANCE_2026-08-25.md).
+The final local verification on the accepted tree passed the Root focused
+collection (`10` files / `189` tests), materialized downstream Renderer
+collection (`6` files / `77` tests), and the full `bun run check` composite gate
+(`CHECK_EXIT=0`, `1,992` passed, `10` skipped; format, lint, typecheck, P8
+contract, security, boundary, foundation, downstream, and package stages).
+
+The implementation was integrated in order:
+
+- PR [#71](https://github.com/Ablankpaper/actestra-desktop/pull/71) merged as
+  `40b563bc46d00fd083c7c792cacfbae216ab4278`.
+- PR [#72](https://github.com/Ablankpaper/actestra-desktop/pull/72) merged as
+  `35c1820c5709e111c9e58a6ba456e8ee07e5c519`; `origin/main` now points to that
+  commit.
+- PR #72's exact-head workflow run
+  [32861424456](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32861424456)
+  passed all eight jobs, including the Windows authenticated runtime. The
+  squash merge preserved the exact PR tree. The merged commit contains
+  historical `[skip ci]` markers, so GitHub did not create a separate push-CI
+  run for the merge commit; no merged-main CI claim is made from that absence.
+
+P8.3 candidate integrity/update trust and P8.4 clean-machine lifecycle and
+final internal acceptance remain open. No release, deployment, distribution,
+or final-user-acceptance claim is made.
+This synchronization changes documentation only; it does not change runtime
+or frozen-foundation files.
 
 ## 2026-08-25 P8.2 targeted product acceptance — eight cases passed
 
@@ -25,18 +55,18 @@ materialized tree had no installed `node_modules`; the prescribed frozen-lock
 install completed, and the same six files then passed. No runtime code was
 changed in response to that environment-only failure.
 
-This is targeted P8.2 product evidence only. PR #71 and PR #72 remain open and
-are intentionally not yet represented as merged-main evidence. P8.3 and P8.4
-remain separate open gates.
+This is the pre-integration acceptance snapshot. PR #71 and PR #72 were open
+when this section was recorded; their subsequent merge is recorded above.
+P8.3 and P8.4 remain separate open gates.
 
 ## 2026-08-25 P8 product-fix batch — CI, candidate, and Electron follow-up
 
 The implementation batch is `d07e824ce0b2dae2c72ef4a2bbbc391b5a2e75b7` on
 `codex/p8-product-fixes`, pushed to `origin`, and reviewed in PR [#72](https://github.com/Ablankpaper/actestra-desktop/pull/72).
-The PR is stacked on `codex/p8-2-package-runtime` (PR #71), not directly on
-`main`. The evidence in this section is bound to the `d07e824` implementation
-tree; a later documentation-only commit does not change those implementation
-bytes.
+The PR was stacked on `codex/p8-2-package-runtime` (PR #71), not directly on
+`main`; it was subsequently rebased onto `main` and merged as recorded above.
+The evidence in this section is bound to the `d07e824` implementation tree; a
+later documentation-only commit does not change those implementation bytes.
 
 ### Remote CI
 
@@ -91,8 +121,8 @@ mapping remains covered by automated tests and cross-layer validation.
 ### Remaining boundary
 
 This closes the five reported product-fix behaviors at local-test, same-tree
-PR-CI, packaged-smoke, and bounded real-Electron evidence layers. It does not
-yet close the overall P8 exit gate: PR #72 is not merged; P8.3 candidate
+PR-CI, packaged-smoke, and bounded real-Electron evidence layers. PR #72 is
+now merged; the overall P8 exit gate remains open because P8.3 candidate
 integrity/update trust (formal signing/notarization where applicable, update
 metadata, and rollback evidence) and P8.4 clean-machine install/upgrade/
 uninstall, runbook, issue-intake, and final internal acceptance remain open.
