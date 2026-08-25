@@ -29,6 +29,8 @@ The implementation was integrated in order:
 P8.3 candidate integrity/update trust and P8.4 clean-machine lifecycle and
 final internal acceptance remain open. No release, deployment, distribution,
 or final-user-acceptance claim is made.
+This synchronization changes documentation only; it does not change runtime
+or frozen-foundation files.
 
 ## 2026-08-25 P8.2 targeted product acceptance — eight cases passed
 
