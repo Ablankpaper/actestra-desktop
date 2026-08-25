@@ -279,6 +279,17 @@
       ],
       "authorityOwner": "Actestra Main and the native electron-builder DEB lifecycle; no Renderer or runtime privilege authority",
       "rollback": "Regenerate without patch 0021 and remove the Linux package staging wrapper. Darwin and Windows runner paths, the existing Linux fail-closed resolver, and frozen foundation remain unchanged."
+    },
+    {
+      "path": "patches/0022-actestra-p8-fresh-profile-smoke.mjs",
+      "classification": ["R1"],
+      "domains": [
+        "native Electron fresh-profile acceptance",
+        "Main-owned Provider IPC empty-state evidence",
+        "AionUI model-settings unavailable guidance"
+      ],
+      "authorityOwner": "Actestra Main owns the E2E-only fresh-profile lifecycle and bounded evidence; the retained AionUI Renderer only presents its existing Provider empty state",
+      "rollback": "Regenerate without patch 0022 and remove the P8.2d smoke wiring. Existing profile data, schema 23, Provider records, routes, UI text, production authority, and frozen foundation remain unchanged."
     }
   ],
   "sourceCopies": [
@@ -1024,6 +1035,7 @@
     "packages/desktop/src/common/types/platform/electron.ts",
     "packages/desktop/src/common/types/team/teamTypes.ts",
     "packages/desktop/src/index.ts",
+    "packages/desktop/src/renderer/components/settings/SettingsModal/contents/ModelModalContent.tsx",
     "packages/desktop/src/preload/main.ts",
     "packages/desktop/src/process/bridge/updateBridge.ts",
     "packages/desktop/src/process/bridge/webuiBridge.ts",

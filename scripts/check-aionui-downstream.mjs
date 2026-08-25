@@ -152,6 +152,9 @@ function main() {
     !overlay.patches.some(
       (patch) => patch.path === "patches/0021-actestra-ubuntu-apparmor-bootstrap.mjs",
     ) ||
+    !overlay.patches.some(
+      (patch) => patch.path === "patches/0022-actestra-p8-fresh-profile-smoke.mjs",
+    ) ||
     overlay.uiContract.layoutChangesAllowed !== true ||
     overlay.uiContract.featureEntryRemovalAllowed !== false
   ) {
@@ -176,6 +179,17 @@ function main() {
     if (!teamPatch.domains.includes(domain)) {
       throw new Error(`P6 Team patch is missing reviewed domain: ${domain}`);
     }
+  }
+  const freshProfilePatch = overlay.patches.find(
+    (patch) => patch.path === "patches/0022-actestra-p8-fresh-profile-smoke.mjs",
+  );
+  if (
+    freshProfilePatch.classification.length !== 1 ||
+    freshProfilePatch.classification[0] !== "R1" ||
+    !freshProfilePatch.authorityOwner.includes("Actestra Main") ||
+    !freshProfilePatch.rollback.includes("Regenerate without patch 0022")
+  ) {
+    throw new Error("Invalid P8.2d fresh-profile downstream authority metadata");
   }
 
   const diagnosticExportPatch = overlay.patches.find(
@@ -547,6 +561,20 @@ function main() {
   ]);
   requireText(path.join(outputRoot, "packages/desktop/src/renderer/components/layout/Layout.tsx"), [
     ">Actestra<",
+  ]);
+  requireText(
+    path.join(
+      outputRoot,
+      "packages/desktop/src/renderer/components/settings/SettingsModal/contents/ModelModalContent.tsx",
+    ),
+    ["data-testid='actestra-provider-unavailable'"],
+  );
+  requireText(path.join(outputRoot, "packages/desktop/src/index.ts"), [
+    "ACTESTRA_P8_FRESH_PROFILE_READY",
+    "ACTESTRA_P8_FRESH_PROFILE_SMOKE !== '1'",
+    "window.electronAPI?.actestraProviderList",
+    "actestra-provider-unavailable",
+    "app.quit()",
   ]);
   requireText(path.join(outputRoot, "packages/desktop/src/common/adapter/httpBridge.ts"), [
     "publishActestraHttpObservation",

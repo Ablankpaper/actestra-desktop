@@ -121,6 +121,15 @@ describe("AionUi downstream path safety", () => {
         "bounded cleanup and redacted evidence",
       ]),
     });
+    expect(
+      overlay.patches.find(
+        (patch) => patch.path === "patches/0022-actestra-p8-fresh-profile-smoke.mjs",
+      ),
+    ).toMatchObject({
+      classification: ["R1"],
+      authorityOwner: expect.stringContaining("Actestra Main"),
+      rollback: expect.stringContaining("Regenerate without patch 0022"),
+    });
     expect(overlay.uiContract.layoutChangesAllowed).toBe(true);
     expect(overlay.uiContract.featureEntryRemovalAllowed).toBe(false);
     expect(overlay.expectedChangedFiles).toEqual(
