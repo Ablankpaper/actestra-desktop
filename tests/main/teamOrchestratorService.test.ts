@@ -376,6 +376,25 @@ describe("TeamOrchestratorService", () => {
     await service.close();
   });
 
+  it("forwards the admitted General requirements instead of replacing them with text-only defaults", async () => {
+    const requirements = {
+      contractVersion: 1,
+      capabilities: ["workspace-read"],
+      contextReferences: ["workspace-file"],
+      inputRequirements: ["file-reference"],
+      completionCriteria: "json-envelope",
+    } as const;
+    const { accepted, service, worker } = await setup("general-requirements", {
+      generalRequirements: requirements,
+    });
+
+    await service.start(accepted.runId, instant("2026-08-04T01:31:00.000Z"));
+
+    expect(worker.pending.get("general")?.input.requirements).toEqual(requirements);
+    expect(worker.pending.get("coding")?.input.requirements).toBeUndefined();
+    await service.close();
+  });
+
   it("keeps dependent feedback closed until both Worker Artifacts persist", async () => {
     const { accepted, service, worker } = await setup("dependency");
     await service.start(accepted.runId, instant("2026-08-04T01:31:00.000Z"));
@@ -669,6 +688,59 @@ describe("TeamOrchestratorService", () => {
     );
     expect(node?.attempts.at(-1)?.incidentCode).toBe("prompt-timeout");
     expect(node?.blockedExplanation).toContain("prompt-timeout");
+    await service.close();
+  });
+
+  it("persists a model failure received while paused and refuses a stale resume without rewriting it", async () => {
+    const { accepted, service, worker } = await setup("paused-model-failure");
+    await service.start(accepted.runId, instant("2026-08-04T02:11:00.000Z"));
+    const general = worker.pending.get("general")!.input;
+    await service.pause({
+      runId: accepted.runId,
+      nodeId: general.nodeId,
+      reason: "Pause while the General provider is running.",
+      occurredAt: instant("2026-08-04T02:12:00.000Z"),
+    });
+
+    worker.reject(
+      "general",
+      Object.assign(new Error("The configured provider is temporarily unavailable"), {
+        code: "model-unavailable",
+      }),
+    );
+    await vi.waitFor(async () => {
+      expect(
+        (await service.get(accepted.runId)).nodes.find(({ nodeId }) => nodeId === general.nodeId)
+          ?.status,
+      ).toBe("failed");
+    });
+    const failed = await service.get(accepted.runId);
+    const failedGeneral = failed.nodes.find(({ nodeId }) => nodeId === general.nodeId);
+    expect(failedGeneral).toMatchObject({
+      status: "failed",
+      blockedReason: "attempt-failed",
+    });
+    expect(failedGeneral?.attempts.at(-1)).toMatchObject({
+      status: "failed",
+      incidentCode: "model-unavailable",
+    });
+
+    await expect(
+      service.resume({
+        runId: accepted.runId,
+        nodeId: general.nodeId,
+        reason: "Do not revive a terminal provider failure.",
+        occurredAt: instant("2026-08-04T02:13:00.000Z"),
+      }),
+    ).rejects.toMatchObject({ code: "worker-failed" });
+    const afterRejectedResume = await service.get(accepted.runId);
+    expect(afterRejectedResume.revision).toBe(failed.revision);
+    expect(
+      afterRejectedResume.nodes.find(({ nodeId }) => nodeId === general.nodeId)?.attempts.at(-1),
+    ).toMatchObject({
+      status: "failed",
+      incidentCode: "model-unavailable",
+    });
     await service.close();
   });
 

@@ -13,6 +13,13 @@ const REQUEST = {
       classification: "internal",
     },
   ],
+  generalRequirements: {
+    contractVersion: 1,
+    capabilities: ["text-generation"],
+    contextReferences: ["inline-text"],
+    inputRequirements: ["bounded-text"],
+    completionCriteria: "json-envelope",
+  },
   limits: {
     maxNodes: 5,
     maxDepth: 4,
@@ -104,13 +111,83 @@ describe("Actestra team-plan admission", () => {
 
   it("normalizes and deeply freezes the closed planner request", () => {
     const request = core.normalizeTeamPlannerRequest(REQUEST);
+    const generalRequirements = request.generalRequirements!;
 
     expect(request).toEqual(REQUEST);
     expect(Object.isFrozen(request)).toBe(true);
     expect(Object.isFrozen(request.workerCapabilities)).toBe(true);
     expect(Object.isFrozen(request.contextReferences)).toBe(true);
     expect(request.contextReferences.every(Object.isFrozen)).toBe(true);
+    expect(Object.isFrozen(generalRequirements)).toBe(true);
+    expect(Object.isFrozen(generalRequirements.capabilities)).toBe(true);
+    expect(Object.isFrozen(generalRequirements.contextReferences)).toBe(true);
+    expect(Object.isFrozen(generalRequirements.inputRequirements)).toBe(true);
     expect(Object.isFrozen(request.limits)).toBe(true);
+  });
+
+  it("persists structured General requirements from the planner request into every General node", async () => {
+    const fileReadRequirements = {
+      contractVersion: 1,
+      capabilities: ["workspace-read"],
+      contextReferences: ["workspace-file"],
+      inputRequirements: ["file-reference"],
+      completionCriteria: "json-envelope",
+    } as const;
+
+    const plan = await core.admitTeamPlanCandidate(
+      { ...REQUEST, generalRequirements: fileReadRequirements },
+      CANDIDATE,
+    );
+    const generalNodes = plan.nodes.filter(
+      (node): node is core.AdmittedTeamPlanWorkerNode =>
+        node.kind === "worker" && node.capability === "general",
+    );
+
+    expect(generalNodes).toHaveLength(3);
+    expect(generalNodes.every((node) => node.requirements === generalNodes[0]?.requirements)).toBe(
+      true,
+    );
+    expect(generalNodes[0]).toMatchObject({ requirements: fileReadRequirements });
+    expect(Object.isFrozen(generalNodes[0]?.requirements)).toBe(true);
+    expect(
+      core
+        .normalizeAdmittedTeamPlan(JSON.parse(JSON.stringify(plan)))
+        .nodes.filter(
+          (node): node is core.AdmittedTeamPlanWorkerNode =>
+            node.kind === "worker" && node.capability === "general",
+        ),
+    ).toEqual(generalNodes);
+  });
+
+  it("keeps legacy planner requests compatible by assigning the bounded text-only General contract", () => {
+    const { generalRequirements: _requirements, ...legacyRequest } = REQUEST;
+    expect(core.normalizeTeamPlannerRequest(legacyRequest).generalRequirements).toEqual(
+      REQUEST.generalRequirements,
+    );
+  });
+
+  it("restores legacy admitted General nodes with the bounded text-only contract", async () => {
+    const plan = await core.admitTeamPlanCandidate(REQUEST, CANDIDATE);
+    const serialized = JSON.parse(JSON.stringify(plan)) as {
+      nodes: Array<{ kind: string; capability?: string; requirements?: unknown }>;
+    };
+    for (const node of serialized.nodes) {
+      if (node.kind === "worker" && node.capability === "general") {
+        delete node.requirements;
+      }
+    }
+
+    const restored = core.normalizeAdmittedTeamPlan(serialized);
+    const restoredGeneralNodes = restored.nodes.filter(
+      (node): node is core.AdmittedTeamPlanWorkerNode =>
+        node.kind === "worker" && node.capability === "general",
+    );
+    expect(
+      restoredGeneralNodes.every(
+        (node) => node.requirements === restoredGeneralNodes[0]?.requirements,
+      ),
+    ).toBe(true);
+    expect(restored.nodes[0]).toMatchObject({ requirements: REQUEST.generalRequirements });
   });
 
   it("preserves bounded LF-delimited Team goals across planner admission", async () => {
@@ -250,6 +327,41 @@ describe("Actestra team-plan admission", () => {
         ...CANDIDATE,
         nodes: CANDIDATE.nodes.map((node, index) =>
           index === 0 ? { ...node, shell: "/bin/zsh" } : node,
+        ),
+      },
+      "invalid-candidate",
+    ],
+    [
+      "sidecar substitution of General requirements",
+      REQUEST,
+      {
+        ...CANDIDATE,
+        nodes: CANDIDATE.nodes.map((node, index) =>
+          index === 0
+            ? {
+                ...node,
+                requirements: {
+                  contractVersion: 1,
+                  capabilities: ["workspace-read"],
+                  contextReferences: ["workspace-file"],
+                  inputRequirements: ["file-reference"],
+                  completionCriteria: "json-envelope",
+                },
+              }
+            : node,
+        ),
+      },
+      "candidate-mismatch",
+    ],
+    [
+      "General requirements on a coding node",
+      REQUEST,
+      {
+        ...CANDIDATE,
+        nodes: CANDIDATE.nodes.map((node) =>
+          node.kind === "worker" && node.capability === "coding"
+            ? { ...node, requirements: REQUEST.generalRequirements }
+            : node,
         ),
       },
       "invalid-candidate",

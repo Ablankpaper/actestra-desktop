@@ -14,6 +14,7 @@ import {
 } from "./domain";
 import {
   normalizeAdmittedTeamPlan,
+  DEFAULT_GENERAL_REQUIREMENTS,
   teamPlanId,
   type AdmittedTeamPlan,
   type TeamPlanId,
@@ -22,6 +23,10 @@ import {
   type TeamPlannerLimits,
   type TeamWorkerCapability,
 } from "./teamOrchestration";
+import {
+  assertGeneralCapabilityRequest,
+  type GeneralCapabilityRequest,
+} from "./generalCapabilityAdmission";
 import { auditRecordId, type AuditRecordId } from "./privilegedServices";
 
 declare const teamRunValueBrand: unique symbol;
@@ -226,6 +231,8 @@ export interface TeamRunWorkerNode extends TeamRunNodeBase {
   readonly capability: TeamWorkerCapability;
   readonly expectedArtifactKind: ArtifactKind;
   readonly maxAttempts: number;
+  /** General-only capability authority persisted with the run snapshot. */
+  readonly requirements?: GeneralCapabilityRequest;
 }
 
 export interface TeamRunHumanFeedbackNode extends TeamRunNodeBase {
@@ -477,6 +484,7 @@ const TEAM_RUN_WORKER_NODE_KEYS = [
   "attempts",
   "artifacts",
 ] as const;
+const TEAM_RUN_GENERAL_WORKER_NODE_KEYS = [...TEAM_RUN_WORKER_NODE_KEYS, "requirements"] as const;
 const TEAM_RUN_HUMAN_NODE_KEYS = [
   "nodeId",
   "taskId",
@@ -1017,6 +1025,29 @@ function parseWorkflowFeedback(value: unknown): TeamWorkflowFeedback | null {
   });
 }
 
+function parseGeneralRequirements(value: unknown): GeneralCapabilityRequest {
+  if (value === undefined) {
+    return DEFAULT_GENERAL_REQUIREMENTS;
+  }
+  try {
+    assertGeneralCapabilityRequest(value);
+    return Object.freeze({
+      contractVersion: value.contractVersion,
+      capabilities: Object.freeze([...value.capabilities]),
+      contextReferences: Object.freeze([...value.contextReferences]),
+      inputRequirements: Object.freeze([...value.inputRequirements]),
+      completionCriteria: value.completionCriteria,
+    });
+  } catch (error) {
+    throw new TeamRunContractError(
+      "invalid-record",
+      error instanceof Error
+        ? `General requirements are invalid: ${error.message}`
+        : "General requirements are invalid",
+    );
+  }
+}
+
 function parseRunNode(value: unknown): TeamRunNode {
   if (
     !isRecord(value) ||
@@ -1026,8 +1057,13 @@ function parseRunNode(value: unknown): TeamRunNode {
   ) {
     throw new TeamRunContractError("invalid-record", "Team run node is invalid");
   }
+  const hasRequirements = Object.hasOwn(value, "requirements");
   const expectedKeys =
-    value.kind === "worker" ? TEAM_RUN_WORKER_NODE_KEYS : TEAM_RUN_HUMAN_NODE_KEYS;
+    value.kind !== "worker"
+      ? TEAM_RUN_HUMAN_NODE_KEYS
+      : value.capability === "general" && hasRequirements
+        ? TEAM_RUN_GENERAL_WORKER_NODE_KEYS
+        : TEAM_RUN_WORKER_NODE_KEYS;
   if (!hasExactKeys(value, expectedKeys)) {
     throw new TeamRunContractError("invalid-record", "Team run node contains an unknown field");
   }
@@ -1036,6 +1072,12 @@ function parseRunNode(value: unknown): TeamRunNode {
     !TEAM_PLAN_RISKS.includes(value.risk as TeamPlanRisk)
   ) {
     throw new TeamRunContractError("invalid-record", "Team run node state is invalid");
+  }
+  if (value.capability === "coding" && hasRequirements) {
+    throw new TeamRunContractError(
+      "invalid-record",
+      "Coding run nodes cannot contain General requirements",
+    );
   }
   const stableNodeId = teamPlanNodeId(value.nodeId);
   const attempts = value.attempts.map((attempt) => parseRunAttempt(attempt, stableNodeId));
@@ -1114,12 +1156,16 @@ function parseRunNode(value: unknown): TeamRunNode {
       "Worker nodes cannot contain workflow feedback authority",
     );
   }
+  const capability = value.capability as TeamWorkerCapability;
+  const requirements =
+    capability === "general" ? parseGeneralRequirements(value.requirements) : undefined;
   return Object.freeze({
     ...base,
     kind: "worker",
-    capability: value.capability as TeamWorkerCapability,
+    capability,
     expectedArtifactKind: value.expectedArtifactKind as ArtifactKind,
     maxAttempts: requirePositiveInteger(value.maxAttempts, "Team node maximum attempts"),
+    ...(requirements === undefined ? {} : { requirements }),
   });
 }
 
@@ -1332,6 +1378,7 @@ export function createTeamRunSnapshot(
             capability: node.capability,
             expectedArtifactKind: node.expectedArtifactKind,
             maxAttempts: node.maxAttempts,
+            ...(node.capability === "general" ? { requirements: node.requirements } : {}),
           };
     }),
     result: null,

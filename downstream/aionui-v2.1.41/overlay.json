@@ -290,6 +290,21 @@
       ],
       "authorityOwner": "Actestra Main owns the E2E-only fresh-profile lifecycle and bounded evidence; the retained AionUI Renderer only presents its existing Provider empty state",
       "rollback": "Regenerate without patch 0022 and remove the P8.2d smoke wiring. Existing profile data, schema 23, Provider records, routes, UI text, production authority, and frozen foundation remain unchanged."
+    },
+    {
+      "path": "patches/0023-actestra-product-acceptance-fixes.mjs",
+      "classification": ["R1", "R2"],
+      "domains": [
+        "stream-terminal runtime reconciliation",
+        "optimistic-user message delivery",
+        "streaming message rendering",
+        "current-port AionCore realtime WebSocket exception",
+        "General v1 text-only admission UI",
+        "Team invalid-request mapping",
+        "pause/resume incident explanation"
+      ],
+      "authorityOwner": "Actestra Main/Core remains authoritative for runtime, persistence, Team, General and the exact current AionCore loopback port; the downstream Renderer patch only reconciles bounded projections and preserves AionUI's existing message merge and streaming components",
+      "rollback": "Regenerate without patch 0023. Existing AionUI runtime, SendBox, message stream, Team and pause UI return unchanged, and the earlier HTTP-only Renderer exception resumes blocking the local realtime channel; no frozen-source or native-profile mutation is required."
     }
   ],
   "sourceCopies": [
@@ -824,6 +839,14 @@
     {
       "source": "apps/desktop/src/shared/gooseRunnerLinuxPackage.ts",
       "destination": "packages/desktop/src/actestra/shared/gooseRunnerLinuxPackage.ts"
+    },
+    {
+      "source": "apps/desktop/src/renderer/utils/chat/optimisticUserMessage.ts",
+      "destination": "packages/desktop/src/actestra/renderer/optimisticUserMessage.ts"
+    },
+    {
+      "source": "apps/desktop/src/renderer/utils/chat/conversationTerminal.ts",
+      "destination": "packages/desktop/src/actestra/renderer/conversationTerminal.ts"
     }
   ],
   "assetCopies": [
@@ -1194,7 +1217,9 @@
     "tests/unit/feedback/submitFeedbackReport.test.ts",
     "tests/unit/process/services/autoUpdaterService.test.ts",
     "tests/unit/providers/ClientFactory.test.ts",
+    "tests/unit/conversation/runtime/conversationCommandQueueDrain.dom.test.tsx",
     "tests/unit/renderer/conversation/AcpSendBox.dom.test.tsx",
+    "tests/unit/renderer/conversation/AionrsSendBox.dom.test.tsx",
     "tests/unit/renderer/conversation/SendBoxCronPrefill.dom.test.tsx",
     "tests/unit/renderer/AgentModeSelector.dom.test.tsx",
     "tests/unit/renderer/conversation/useConversationActionsCron.dom.test.ts",
@@ -1213,12 +1238,14 @@
     "tests/unit/renderer/team/TeamPermissionContext.dom.test.tsx",
     "tests/unit/renderer/team/TeamSlowResponse.dom.test.tsx",
     "tests/unit/renderer/team/TeamSlowResponseWiring.dom.test.tsx",
+    "tests/unit/renderer/team/TeamChatView.dom.test.tsx",
     "tests/unit/renderer/teamSendRuntime.test.ts",
     "tests/unit/renderer/team/useTeamSessionCronCleanup.dom.test.ts",
     "tests/unit/renderer/team/useTeamListCronCleanup.dom.test.tsx",
     "tests/unit/renderer/team/useTeamRunViewSlowReconcile.dom.test.tsx",
     "tests/unit/renderer/team/useTeamWarmup.dom.test.tsx",
     "tests/unit/renderer/useAcpModelInfo.dom.test.ts",
+    "tests/unit/renderer/useAcpMessage.dom.test.ts",
     "tests/unit/renderer/useTeamRunView.dom.test.tsx",
     "tests/unit/common-adapter/httpBridge.test.ts",
     "tests/e2e/cases/teams/team-create.e2e.ts",
@@ -1251,7 +1278,17 @@
     "tests/unit/renderer/useDesktopTurnNotification.dom.test.tsx",
     "tests/unit/sentry.test.ts",
     "tests/unit/updateBridgeCdnRewrite.test.ts",
-    "tests/unit/updateBridgeDownloadDedupe.test.ts"
+    "tests/unit/updateBridgeDownloadDedupe.test.ts",
+    "packages/desktop/src/actestra/renderer/optimisticUserMessage.ts",
+    "packages/desktop/src/actestra/renderer/conversationTerminal.ts",
+    "packages/desktop/src/renderer/components/chat/SendBox/index.tsx",
+    "packages/desktop/src/renderer/pages/conversation/runtime/useConversationRuntimeView.ts",
+    "packages/desktop/src/renderer/pages/conversation/Messages/hooks.ts",
+    "packages/desktop/src/renderer/pages/conversation/platforms/aionrs/AionrsChat.tsx",
+    "packages/desktop/src/renderer/pages/conversation/platforms/aionrs/AionrsSendBox.tsx",
+    "packages/desktop/src/renderer/pages/conversation/platforms/aionrs/useAionrsMessage.ts",
+    "packages/desktop/src/renderer/pages/conversation/platforms/acp/AcpChat.tsx",
+    "packages/desktop/src/renderer/pages/conversation/platforms/acp/AcpSendBox.tsx"
   ],
   "invariantFiles": [
     "packages/desktop/src/renderer/components/layout/Router.tsx",

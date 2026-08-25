@@ -269,9 +269,52 @@ try {
 const fs = require("node:fs");
 const path = require("node:path");
 const { DatabaseSync } = require("node:sqlite");
+const requiredAbsoluteDirectories = [
+  "ACTESTRA_E2E_ISOLATION_ROOT",
+  "ACTESTRA_USER_DATA_DIR",
+  "ACTESTRA_E2E_HOME_DIR",
+  "ACTESTRA_E2E_TEMP_DIR",
+];
+for (const name of requiredAbsoluteDirectories) {
+  if (!path.isAbsolute(process.env[name] ?? "")) {
+    console.error("missing-or-relative-isolation-directory:" + name);
+    process.exit(17);
+  }
+}
+const isolationRoot = process.env.ACTESTRA_E2E_ISOLATION_ROOT;
+function isStrictlyInside(candidate) {
+  const relative = path.relative(isolationRoot, candidate);
+  return (
+    relative !== "" &&
+    relative !== ".." &&
+    !relative.startsWith(".." + path.sep) &&
+    !path.isAbsolute(relative)
+  );
+}
+for (const name of [
+  "ACTESTRA_USER_DATA_DIR",
+  "ACTESTRA_E2E_HOME_DIR",
+  "ACTESTRA_E2E_TEMP_DIR",
+]) {
+  if (!isStrictlyInside(process.env[name])) {
+    console.error("isolation-directory-escaped:" + name);
+    process.exit(18);
+  }
+}
+if (
+  process.env.HOME !== process.env.ACTESTRA_E2E_HOME_DIR ||
+  process.env.USERPROFILE !== process.env.ACTESTRA_E2E_HOME_DIR ||
+  process.env.TMPDIR !== process.env.ACTESTRA_E2E_TEMP_DIR ||
+  process.env.TMP !== process.env.ACTESTRA_E2E_TEMP_DIR ||
+  process.env.TEMP !== process.env.ACTESTRA_E2E_TEMP_DIR ||
+  process.env.ACTESTRA_DISABLE_AUTO_UPDATE !== "1"
+) {
+  console.error("incomplete-isolation-environment");
+  process.exit(19);
+}
 fs.mkdirSync(process.env.ACTESTRA_USER_DATA_DIR, { recursive: true });
 fs.writeFileSync(
-  path.join(process.env.ACTESTRA_USER_DATA_DIR, "data-layout.json"),
+  path.join(process.env.ACTESTRA_USER_DATA_DIR, "actestra-profile.json"),
   JSON.stringify({ product: "Actestra", layoutVersion: 1 }),
 );
 const stateDirectory = path.join(process.env.ACTESTRA_USER_DATA_DIR, "state");
@@ -283,16 +326,20 @@ database.exec(\`
   PRAGMA user_version = 23;
 \`);
 database.close();
-console.log("ACTESTRA_PERSISTENCE_UTILITY_READY");
 console.log("ACTESTRA_GENERAL_WORKER_READY");
-console.log("ACTESTRA_READY");
-console.log("ACTESTRA_WINDOW_READY");
-console.log("ACTESTRA_RENDERER_READY");
+console.log("[Actestra persistence] Utility ready schema=23");
+console.log("[Actestra] Main window created");
+console.log("[AionUi] Renderer did-finish-load");
+console.log("ACTESTRA_RENDERER_PROVIDER_SMOKE_READY");
+console.log("startup: managed runtime background preparation completed");
 process.on("SIGTERM", () => {});
 setInterval(() => {}, 1_000);
 `;
   const forcedTermination = runSmoke(createAppBundle("ignores-sigterm", ignoresSigtermSource));
-  assert(forcedTermination.status === 0, "SIGKILL fallback must complete the smoke check");
+  assert(
+    forcedTermination.status === 0,
+    `SIGKILL fallback must complete with the full E2E isolation contract\n${combinedOutput(forcedTermination)}`,
+  );
   assert(
     combinedOutput(forcedTermination).includes("Packaged smoke passed"),
     "SIGKILL fallback must preserve the successful validation result",

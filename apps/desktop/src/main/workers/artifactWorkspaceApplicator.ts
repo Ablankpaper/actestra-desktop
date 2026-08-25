@@ -246,6 +246,26 @@ export async function applyArtifactToWorkspace(
 
   const environment = workspaceGitEnvironment(binding.workspaceRoot);
 
+  // Pre-approval repository checks happen before the normal `applying` record exists. A fail-closed
+  // refusal at this boundary still has a durable cause: otherwise the UI/database would retain
+  // `pending` and lose the distinction between "not attempted" and "workspace was unsafe".
+  const persistPreflightFailure = async (
+    error: ArtifactWorkspaceApplicatorError,
+  ): Promise<void> => {
+    if (error.code !== "workspace-dirty" && error.code !== "head-drift") return;
+    const failedDelivery = normalizeArtifactDeliveryRecord({
+      ...delivery,
+      state: "failed",
+      destinationGrantId: options.grant.grantId,
+      approvalId: null,
+      verifiedHead: null,
+      failureCode: error.code,
+      failureMessage: error.message,
+      updatedAt: options.clock.now(),
+    });
+    await options.persistence.persistArtifactDelivery(failedDelivery);
+  };
+
   try {
     await withRepositoryConfigurationLocks(
       binding.gitCommonDirectory,
@@ -305,6 +325,7 @@ export async function applyArtifactToWorkspace(
     );
   } catch (error) {
     if (error instanceof ArtifactWorkspaceApplicatorError) {
+      await persistPreflightFailure(error);
       throw error;
     }
     throw new ArtifactWorkspaceApplicatorError(

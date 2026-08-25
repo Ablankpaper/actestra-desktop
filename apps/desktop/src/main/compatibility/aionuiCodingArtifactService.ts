@@ -11,6 +11,10 @@ import {
 import { ArtifactDeliveryService } from "../workers/artifactDeliveryService";
 import { AionUiCodingJourneyServiceError } from "./aionuiCodingJourneyService";
 
+type CodingArtifactPatchSaveResult = Readonly<{
+  readonly status: "saved" | "cancelled";
+}>;
+
 /** The Main-owned Artifact half of the coding bridge, independent of any model Worker runtime. */
 export interface AionUiCodingArtifactPort {
   viewArtifact(artifactIdValue: string): Promise<{
@@ -18,17 +22,26 @@ export interface AionUiCodingArtifactPort {
     readonly changedFileCount: number;
     readonly patchPreview: string;
   }>;
-  downloadArtifact(artifactIdValue: string): Promise<{
-    readonly fileName: string;
-    readonly content: string;
-  }>;
+  downloadArtifact(artifactIdValue: string): Promise<CodingArtifactPatchSaveResult>;
   applyArtifact(artifactIdValue: string): Promise<{ readonly approvalId: string }>;
   resolveArtifactApply(approvalIdValue: string, decision: UserApprovalDecision): Promise<void>;
+}
+
+export interface AionUiCodingArtifactPatchSaverPort {
+  /**
+   * Presents the Main-owned native save decision and writes the complete patch without returning
+   * either its contents or the selected filesystem path across the Renderer boundary.
+   */
+  save(input: {
+    readonly fileName: string;
+    readonly content: string;
+  }): Promise<CodingArtifactPatchSaveResult>;
 }
 
 export interface AionUiCodingArtifactServiceOptions {
   readonly persistence: ActestraPersistencePort & ArtifactWorkspaceOperationsPort;
   readonly clock: AgentClock;
+  readonly patchSaver: AionUiCodingArtifactPatchSaverPort;
   /** Internal seam for the Main-owned delivery authority; production constructs the real service. */
   readonly deliveryService?: Pick<
     ArtifactDeliveryService,
@@ -68,10 +81,7 @@ export class AionUiCodingArtifactService implements AionUiCodingArtifactPort {
     };
   }
 
-  async downloadArtifact(artifactIdValue: string): Promise<{
-    readonly fileName: string;
-    readonly content: string;
-  }> {
+  async downloadArtifact(artifactIdValue: string): Promise<CodingArtifactPatchSaveResult> {
     const stableArtifactId = artifactId(artifactIdValue);
     const content = await this.config.persistence.getArtifactPatchContent(stableArtifactId);
     const graph = await this.config.persistence.loadDomainGraph();
@@ -79,10 +89,10 @@ export class AionUiCodingArtifactService implements AionUiCodingArtifactPort {
     if (artifact === undefined) {
       throw new AionUiCodingJourneyServiceError("artifact-not-found", "Artifact not found");
     }
-    return {
+    return this.config.patchSaver.save({
       fileName: `${artifact.label.replace(/[^a-zA-Z0-9-]/g, "-")}.patch`,
       content,
-    };
+    });
   }
 
   async applyArtifact(artifactIdValue: string): Promise<{ readonly approvalId: string }> {

@@ -240,7 +240,7 @@ describe("TeamJourneyWorkerRouter", () => {
       },
     );
     expect(submitFromTrustedContext.mock.calls[0]?.[0]).toMatchObject({
-      prompt: expect.stringContaining(input.completionCriteria),
+      prompt: expect.not.stringContaining(input.completionCriteria),
     });
     expect(() =>
       assertAionUiGeneralWorkIntent(submitFromTrustedContext.mock.calls[0]?.[0]),
@@ -365,6 +365,52 @@ describe("TeamJourneyWorkerRouter", () => {
     expect(submitted.prompt).toContain("Inline source text (provided and complete):");
     expect(submitted.prompt).toContain("Do not ask for a file or additional source material.");
     expect(submitted.prompt).toContain(input.goal);
+  });
+
+  it("forwards Planner-owned file requirements unchanged into General admission", async () => {
+    let workerTaskId = taskId("task-team-router-file-requirements");
+    const submitFromTrustedContext = vi.fn(async (_intent: unknown, _context: unknown) =>
+      generalProjection(workerTaskId, "running"),
+    );
+    const router = new TeamJourneyWorkerRouter({
+      persistence: { loadDomainGraph: vi.fn(async () => completedGraph(workerTaskId, "document")) },
+      workspaceContext: {
+        resolve: vi.fn(async () => ({
+          rootPath: "/private/tmp/actestra-team-router-file-requirements",
+          displayName: "Actestra Team file requirements workspace",
+        })),
+      },
+      general: {
+        submitFromTrustedContext,
+        waitForIdle: vi.fn(async () => undefined),
+        list: vi.fn(async () => [generalProjection(workerTaskId, "completed")]),
+        cancel: vi.fn(),
+      },
+      coding: {
+        submit: vi.fn(),
+        submitFromTrustedContext: vi.fn(),
+        waitForIdle: vi.fn(),
+        list: vi.fn(),
+        cancel: vi.fn(),
+      },
+    });
+    const requirements = Object.freeze({
+      contractVersion: 1 as const,
+      capabilities: Object.freeze(["workspace-read"] as const),
+      contextReferences: Object.freeze(["workspace-file"] as const),
+      inputRequirements: Object.freeze(["file-reference"] as const),
+      completionCriteria: "json-envelope" as const,
+    });
+    const input = Object.freeze({
+      ...(await executionInput(router, "general")),
+      requirements,
+    });
+    workerTaskId = input.workerTaskId;
+
+    await expect(router.execute(input, new AbortController().signal)).resolves.toMatchObject({
+      status: "completed",
+    });
+    expect(submitFromTrustedContext.mock.calls[0]?.[0]).toMatchObject({ requirements });
   });
 
   it("states the isolated-worktree patch Artifact delivery contract in the coding prompt", async () => {
@@ -562,6 +608,63 @@ describe("TeamJourneyWorkerRouter", () => {
 
     await router.resume(input.attemptId);
     await expect(execution).resolves.toMatchObject({ status: "completed" });
+  });
+
+  it("preserves a General model failure that lands while the Team attempt is paused", async () => {
+    let workerTaskId = taskId("task-team-router-paused-model-failure");
+    const idle = deferred();
+    const submitFromTrustedContext = vi.fn(async () => generalProjection(workerTaskId, "running"));
+    const list = vi.fn(async () => [
+      {
+        ...generalProjection(workerTaskId, "running"),
+        status: "failed" as const,
+        canCancel: false,
+        incidentCode: "model-unavailable",
+        artifacts: [],
+      },
+    ]);
+    const router = new TeamJourneyWorkerRouter({
+      persistence: { loadDomainGraph: vi.fn() },
+      workspaceContext: {
+        resolve: vi.fn(async () => ({
+          rootPath: "/private/tmp/actestra-team-router-paused-model-failure",
+          displayName: "Paused General failure workspace",
+        })),
+      },
+      general: {
+        submitFromTrustedContext,
+        waitForIdle: vi.fn(async () => idle.promise),
+        list,
+        cancel: vi.fn(),
+      },
+      coding: {
+        submit: vi.fn(),
+        submitFromTrustedContext: vi.fn(),
+        waitForIdle: vi.fn(),
+        list: vi.fn(),
+        cancel: vi.fn(),
+      },
+    });
+    const input = await executionInput(router, "general");
+    workerTaskId = input.workerTaskId;
+    let settled = false;
+    const execution = router.execute(input, new AbortController().signal).finally(() => {
+      settled = true;
+    });
+    await vi.waitFor(() => expect(submitFromTrustedContext).toHaveBeenCalledTimes(1));
+
+    await router.pause(input.attemptId, "Pause while the General model is running.");
+    idle.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(settled).toBe(false);
+
+    await router.resume(input.attemptId);
+    await expect(execution).rejects.toMatchObject({
+      name: "TeamJourneyWorkerRouterError",
+      code: "journey-failed",
+      cause: { code: "model-unavailable" },
+    });
+    expect(list).toHaveBeenCalledTimes(1);
   });
 
   it("cancels the exact active coding journey without exposing coding authority", async () => {

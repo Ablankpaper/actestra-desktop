@@ -150,6 +150,15 @@ private profile, and isolated external-effect providers as a reviewable
 downstream overlay. It does not edit the frozen source or remove original
 functional entries.
 
+The Main-owned Renderer network boundary admits only plain HTTP and WebSocket
+traffic to the currently running AionCore loopback port. Credential-bearing
+Provider record reads and writes are still cancelled at that boundary and
+served only through the fixed, trusted-main-frame Provider IPC after Main
+redaction. A wrong port, a remote host, HTTPS/WSS, or any other destination
+remains denied. The local WebSocket exception is required for AionUI content
+chunks and `Finish` events; it grants no Provider, filesystem, credential, or
+general network authority to the Renderer.
+
 P3.1 and P3.2 add a runtime-neutral core domain, lifecycle validation, and
 version 1 event stream contract. P3.3 adds a storage-neutral port plus a SQLite
 adapter with schema versions 1 and 2. P3.4 historically added the version 1
@@ -553,6 +562,18 @@ Coding delivery remains split by authority: an isolated Goose worktree produces
 a patch Artifact, while only a separately approved Main operation can apply it
 to the original workspace. General v1 remains text-only and validates a
 structured output envelope before Artifact creation.
+
+For an orchestrated Team, the retained AionUI leader send box may supply an
+explicit `files[]` / `@` file selection only as a structured capability-demand
+signal. Main removes AionUI's `[[AION_FILES]]` payload and concrete paths from
+the planner goal, converts the signal to persisted `workspace-read`,
+`workspace-file`, and `file-reference` General requirements, and carries that
+same immutable contract through admission, the Team run, and Worker routing.
+General v1 rejects the unsupported request as `general-capability-mismatch`
+before model execution; it receives no file path, Glob, workspace tool, or
+filesystem authority. Direct conversations with a General Team member remain
+text-only and do not expose file-selection controls. Natural-language wording
+alone is never scanned to infer filesystem authority.
 
 The 2026-08-06 amendment to
 [ADR-0015](decisions/0015-crewai-supervised-orchestration-sidecar.md) makes an

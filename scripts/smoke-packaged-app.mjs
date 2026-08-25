@@ -11,9 +11,25 @@ const appBundle = path.resolve(
   process.argv[2] ?? path.join(repositoryRoot, "release", "mac-arm64", "Actestra.app"),
 );
 const executable = path.join(appBundle, "Contents", "MacOS", "Actestra");
-const profileDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-smoke-"));
+const isolationRoot = fs.realpathSync.native(
+  fs.mkdtempSync(path.join(os.tmpdir(), "actestra-smoke-")),
+);
+const profileDirectory = path.join(isolationRoot, "user-data");
+const homeDirectory = path.join(isolationRoot, "home");
+const tempDirectory = path.join(isolationRoot, "temp");
+for (const directory of [profileDirectory, homeDirectory, tempDirectory]) {
+  fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+}
 const timeoutMilliseconds = 20_000;
 const expectedPersistenceSchemaVersion = 23;
+const readinessMarkers = Object.freeze([
+  "ACTESTRA_GENERAL_WORKER_READY",
+  "[Actestra persistence] Utility ready schema=23",
+  "[Actestra] Main window created",
+  "[AionUi] Renderer did-finish-load",
+  "ACTESTRA_RENDERER_PROVIDER_SMOKE_READY",
+  "startup: managed runtime background preparation completed",
+]);
 let output = "";
 let childOutcome = null;
 let resolveChildOutcome;
@@ -27,7 +43,16 @@ const child = spawn(executable, [], {
   env: {
     ...process.env,
     ACTESTRA_E2E_TEST: "1",
+    ACTESTRA_DISABLE_AUTO_UPDATE: "1",
     ACTESTRA_USER_DATA_DIR: profileDirectory,
+    ACTESTRA_E2E_ISOLATION_ROOT: isolationRoot,
+    ACTESTRA_E2E_HOME_DIR: homeDirectory,
+    ACTESTRA_E2E_TEMP_DIR: tempDirectory,
+    HOME: homeDirectory,
+    USERPROFILE: homeDirectory,
+    TMPDIR: tempDirectory,
+    TMP: tempDirectory,
+    TEMP: tempDirectory,
   },
   stdio: ["ignore", "pipe", "pipe"],
 });
@@ -73,6 +98,10 @@ function describeChildOutcome(outcome) {
   return `exit code ${outcome.code}`;
 }
 
+function hasReadinessMarkers() {
+  return readinessMarkers.every((marker) => output.includes(marker));
+}
+
 async function terminateChild() {
   if (childOutcome !== null) {
     return childOutcome;
@@ -97,14 +126,7 @@ async function finishWithFailure(message) {
 }
 
 const startedAt = Date.now();
-while (
-  Date.now() - startedAt < timeoutMilliseconds &&
-  (!output.includes("ACTESTRA_READY") ||
-    !output.includes("ACTESTRA_PERSISTENCE_UTILITY_READY") ||
-    !output.includes("ACTESTRA_GENERAL_WORKER_READY") ||
-    !output.includes("ACTESTRA_WINDOW_READY") ||
-    !output.includes("ACTESTRA_RENDERER_READY"))
-) {
+while (Date.now() - startedAt < timeoutMilliseconds && !hasReadinessMarkers()) {
   if (childOutcome !== null) {
     await finishWithFailure(
       `Actestra stopped before readiness: ${describeChildOutcome(childOutcome)}`,
@@ -113,13 +135,7 @@ while (
   await delay(100);
 }
 
-if (
-  !output.includes("ACTESTRA_READY") ||
-  !output.includes("ACTESTRA_PERSISTENCE_UTILITY_READY") ||
-  !output.includes("ACTESTRA_GENERAL_WORKER_READY") ||
-  !output.includes("ACTESTRA_WINDOW_READY") ||
-  !output.includes("ACTESTRA_RENDERER_READY")
-) {
+if (!hasReadinessMarkers()) {
   await finishWithFailure("ready markers were not observed before timeout");
 }
 
@@ -134,16 +150,20 @@ if (profileEntries.some((entry) => entry.toLowerCase().includes("aionui"))) {
   await finishWithFailure("upstream application data appeared in the isolated profile");
 }
 
-let dataLayoutManifest;
+let profileManifest;
 try {
-  dataLayoutManifest = JSON.parse(
-    fs.readFileSync(path.join(profileDirectory, "data-layout.json"), "utf8"),
+  profileManifest = JSON.parse(
+    fs.readFileSync(path.join(profileDirectory, "actestra-profile.json"), "utf8"),
   );
 } catch {
-  await finishWithFailure("Actestra data layout manifest is missing or unreadable");
+  await finishWithFailure("Actestra profile manifest is missing or unreadable");
 }
-if (dataLayoutManifest.product !== "Actestra" || dataLayoutManifest.layoutVersion !== 1) {
-  await finishWithFailure("Actestra data layout manifest is missing or invalid");
+if (
+  Reflect.ownKeys(profileManifest).length !== 2 ||
+  profileManifest.product !== "Actestra" ||
+  profileManifest.layoutVersion !== 1
+) {
+  await finishWithFailure("Actestra profile manifest is invalid");
 }
 
 if (childOutcome !== null) {

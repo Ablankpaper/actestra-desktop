@@ -21,6 +21,7 @@ export const P8_FRESH_PROFILE_MAX_OUTPUT_BYTES = 256 * 1024;
 export const P8_FRESH_PROFILE_RESULT_MAX_BYTES = 4 * 1024;
 export const P8_FRESH_PROFILE_STARTUP_TIMEOUT_MS = 60_000;
 export const P8_FRESH_PROFILE_CLEANUP_TIMEOUT_MS = 10_000;
+const P8_FRESH_PROFILE_WINDOWS_PROCESS_PROBE_TIMEOUT_MS = 10_000;
 const MARKER_KEYS = Object.freeze(["providerCount", "providerUiState", "providerUiTextPresent"]);
 const FAILURE_CODE_SET = new Set(P8_FRESH_PROFILE_FAILURE_CODES);
 const RUNNING_STAGE_CODES = Object.freeze({
@@ -393,13 +394,13 @@ function descendantPids(rows, rootPid) {
 
 function windowsProcessRows() {
   const script =
-    "$rows = Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId | ConvertTo-Json -Compress; Write-Output $rows";
+    "$rows = Get-CimInstance -ClassName Win32_Process -Property ProcessId,ParentProcessId | Select-Object ProcessId,ParentProcessId | ConvertTo-Json -Compress; Write-Output $rows";
   const output = execFileSync(
     "powershell.exe",
     ["-NoProfile", "-NonInteractive", "-Command", script],
     {
       encoding: "utf8",
-      timeout: 5_000,
+      timeout: P8_FRESH_PROFILE_WINDOWS_PROCESS_PROBE_TIMEOUT_MS,
     },
   );
   const parsed = JSON.parse(output);

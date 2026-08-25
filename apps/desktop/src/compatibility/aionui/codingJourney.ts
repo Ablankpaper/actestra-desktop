@@ -1,6 +1,5 @@
 import {
   ARTIFACT_PATCH_PREVIEW_MAXIMUM_BYTES,
-  MAX_ISOLATED_CODING_PATCH_BYTES,
   approvalId,
   artifactId,
   compareInstants,
@@ -91,7 +90,8 @@ const ARTIFACT_DELIVERY_REQUIRED_KEYS = [
 ] as const;
 const ARTIFACT_DELIVERY_OPTIONAL_KEYS = ["failureCode", "applyApprovalId"] as const;
 const ARTIFACT_VIEW_KEYS = ["baseCommit", "changedFileCount", "patchPreview"] as const;
-const ARTIFACT_DOWNLOAD_KEYS = ["fileName", "content"] as const;
+const ARTIFACT_DOWNLOAD_KEYS = ["status"] as const;
+const ARTIFACT_DOWNLOAD_STATUSES = ["saved", "cancelled"] as const;
 const ARTIFACT_APPLY_KEYS = ["approvalId"] as const;
 
 const TASK_STATES: readonly TaskState[] = [
@@ -133,6 +133,7 @@ const REJECTION_CODES = [
   "delivery-not-found",
   "delivery-conflict",
   "workspace-dirty",
+  "head-drift",
   "apply-failed",
 ] as const;
 
@@ -193,10 +194,10 @@ export interface AionUiCodingJourneyArtifactViewResponse {
   readonly patchPreview: string;
 }
 
-export interface AionUiCodingJourneyArtifactDownloadResponse {
-  readonly fileName: string;
-  readonly content: string;
-}
+export type AionUiCodingJourneyArtifactDownloadResponse = Readonly<{
+  /** Main has either durably written the user-selected file or the user cancelled the save dialog. */
+  status: (typeof ARTIFACT_DOWNLOAD_STATUSES)[number];
+}>;
 
 export interface AionUiCodingJourneyArtifactApplyResponse {
   /**
@@ -780,13 +781,12 @@ export function assertAionUiCodingJourneyBridgeResult(
     const artifactDownload = value.artifactDownload;
     if (
       !hasExactKeys(artifactDownload, ARTIFACT_DOWNLOAD_KEYS) ||
-      typeof artifactDownload.fileName !== "string" ||
-      !/^[A-Za-z0-9-]*\.patch$/u.test(artifactDownload.fileName)
+      !ARTIFACT_DOWNLOAD_STATUSES.includes(
+        artifactDownload.status as AionUiCodingJourneyArtifactDownloadResponse["status"],
+      )
     ) {
       throw new Error("AionUI coding-journey Artifact download is invalid");
     }
-    boundedIdentifier(artifactDownload.fileName, 520);
-    boundedText(artifactDownload.content, MAX_ISOLATED_CODING_PATCH_BYTES);
     return;
   }
   if (hasExactKeys(value, ["status", "artifactApply"]) && isRecord(value.artifactApply)) {

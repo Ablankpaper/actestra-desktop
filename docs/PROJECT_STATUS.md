@@ -1,6 +1,314 @@
 # Project Status
 
-Last updated: 2026-08-24
+Last updated: 2026-08-25
+
+## 2026-08-25 P8.2 targeted product acceptance — eight cases passed
+
+The formal case-by-case record is
+[`docs/acceptance/P8.2_PRODUCT_FIX_ACCEPTANCE_2026-08-25.md`](acceptance/P8.2_PRODUCT_FIX_ACCEPTANCE_2026-08-25.md).
+It is bound to the candidate
+`/Users/zizimutou/Library/Caches/Actestra/candidates/d07e824.thASb1/mac-arm64/Actestra.app`
+and the local branch `codex/p8-product-fixes` at `65957820f789028fe44cc9bfe2a701d4547b8d2e`.
+
+Eight targeted cases passed: immediate user-message projection and streaming
+before Finish; General v1 file-read refusal without Glob; legal LF multiline
+Team input; invalid-control-character `team-invalid-request` mapping; durable
+`workspace-dirty` and `head-drift` Artifact failures; approved Artifact apply;
+and pause/resume preservation of a `model-completion-refused` runtime incident.
+The pause/resume case is a classification pass, not a claim that the test model
+must produce a coding Artifact.
+
+Fresh focused validation on the final checkout passed Root `10` files / `189`
+tests and materialized downstream Renderer `6` files / `77` tests. The first
+downstream invocation could not resolve three dependencies because the
+materialized tree had no installed `node_modules`; the prescribed frozen-lock
+install completed, and the same six files then passed. No runtime code was
+changed in response to that environment-only failure.
+
+This is targeted P8.2 product evidence only. PR #71 and PR #72 remain open and
+are intentionally not yet represented as merged-main evidence. P8.3 and P8.4
+remain separate open gates.
+
+## 2026-08-25 P8 product-fix batch — CI, candidate, and Electron follow-up
+
+The implementation batch is `d07e824ce0b2dae2c72ef4a2bbbc391b5a2e75b7` on
+`codex/p8-product-fixes`, pushed to `origin`, and reviewed in PR [#72](https://github.com/Ablankpaper/actestra-desktop/pull/72).
+The PR is stacked on `codex/p8-2-package-runtime` (PR #71), not directly on
+`main`. The evidence in this section is bound to the `d07e824` implementation
+tree; a later documentation-only commit does not change those implementation
+bytes.
+
+### Remote CI
+
+PR workflow run [32839632765](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32839632765)
+completed with all eight jobs successful, including the Windows authenticated
+Goose runtime, Windows containment and package probes, Ubuntu containment and
+package fresh-profile probe, macOS arm64 package/foundation checks, and Goose
+runner admission. The Windows authenticated record is `status: verified`: ACP
+initialization, MCP session creation, read, approved write, cancellation,
+parent-death cleanup, credential/environment canary absence, direct-network
+denial, unchanged original workspace, and `residualProcessCount = 0` were all
+observed.
+
+Because this was a `pull_request` workflow, GitHub checked the PR merge ref
+(`9ac485ad174cb63b9bcaf078af477686f8b9e575`), not a merged-main or release ref.
+Its tree (`2a12f58d53c070fe732bf8ea36d4b969fa843a6a`) was independently verified
+to equal the `d07e824` tree, so this is same-tree PR evidence, not a claim of
+direct commit-head, merged-main, release, or deployment validation.
+
+### macOS candidate and real Electron evidence
+
+The candidate package is at
+`/Users/zizimutou/Library/Caches/Actestra/candidates/d07e824.thASb1/mac-arm64/Actestra.app`.
+Package verification, ad-hoc signing, arm64 bundle/materialization checks,
+P7 packaged trust, SBOM/license/audit checks, packaged smoke, schema 23,
+Main/Renderer/General Worker readiness, and clean exit/profile cleanup passed.
+The Goose runner remains an external admitted artifact (`packaged: false`,
+`disposition: external-admitted`) as designed; it is not silently bundled into
+the `.app`. The local candidate's external runner manifest currently reports
+local provenance `7ea6a8ea7de387ad6071c52ad73e294b228f3e1e` with `dirty: true`,
+so its native Goose execution is not claimed as a `d07e824` exact-head runner
+build. The same-tree Windows CI runtime above is the authoritative native
+runner evidence for this batch; rebuilding a local runner is a separate
+candidate-refresh action, not a missing product-fix test.
+
+The running candidate was exercised with a configured temporary Provider:
+
+- the user message appeared immediately, streamed content arrived before
+  `Finish`, and the processing indicator cleared after durable terminal state;
+- an explicit General file request was refused with the localized capability
+  guidance and no Glob/file tool;
+- a moved-HEAD coding delivery was projected as `head-drift` and remained
+  unapplied;
+- a clean coding Artifact showed `Applied` and disabled the apply action;
+- Provider credentials were not exposed to the Renderer or conversation.
+
+The multiline Team UI attempt was accepted after the input layer normalized the
+line break and was manually cancelled, so physical UI rejection of a literal
+multiline payload is not claimed here; the closed `team-invalid-request`
+mapping remains covered by automated tests and cross-layer validation.
+
+### Remaining boundary
+
+This closes the five reported product-fix behaviors at local-test, same-tree
+PR-CI, packaged-smoke, and bounded real-Electron evidence layers. It does not
+yet close the overall P8 exit gate: PR #72 is not merged; P8.3 candidate
+integrity/update trust (formal signing/notarization where applicable, update
+metadata, and rollback evidence) and P8.4 clean-machine install/upgrade/
+uninstall, runbook, issue-intake, and final internal acceptance remain open.
+No release, deployment, distribution, or final-user-acceptance claim is made.
+
+## 2026-08-25 P8 product-fix implementation evidence (historical pre-CI snapshot)
+
+This coherent batch was prepared on `codex/p8-product-fixes` atop `7ea6a8e`. It
+contains 18 intended files and no changes under the frozen `foundation/` tree.
+The evidence below covers the batch bytes before exact-head CI; it must not be
+read as a candidate package, release, or final user acceptance.
+
+The five reported product defects now have bounded downstream fixes and tests:
+
+- ACP/AionRS project the user's message before asynchronous Main admission,
+  reconcile it to the canonical message, merge content chunks while the turn is
+  running, and release the local processing gate only after a bounded durable
+  runtime reread confirms the same terminal turn. The exact current-port
+  AionCore `ws:` route is admitted so chunks and `Finish` can reach the retained
+  AionUI stream.
+- General v1 receives structured requirements before execution. Explicit Team
+  file/network requests are classified in Main, unsupported requirements are
+  refused before `model-requested`, and the direct General-member SendBox is
+  text-only; no `Glob`, workspace tool, file path, or network authority is
+  exposed.
+- Invalid multiline Team requests use the closed `team-invalid-request`
+  response and localized guidance on both ACP and AionRS paths.
+- Dirty or moved-HEAD Artifact destinations persist terminal `workspace-dirty`
+  or `head-drift` delivery failures, and the Main bridge preserves those codes.
+  Patch download writes through a Main-owned native save dialog and returns only
+  `saved`/`cancelled` across the Renderer boundary.
+- A model failure observed while a Team attempt is paused remains the durable
+  incident after resume, with localized General guidance instead of a generic
+  `attempt-failed` label.
+
+Current local evidence:
+
+- The focused affected Root set passed 7 files / 143 tests with the repository's
+  Vitest runner.
+- Materialized downstream AionUI tests passed 7 files / 92 tests.
+- `bun run format:check`, `bun run lint`, `bun run typecheck`, P8 contract,
+  `git diff --check`, and `bun run downstream:aionui:check` pass.
+- The already-running complete `bun run check` finished at exit 0 with 178
+  passing test files, 3 skipped files, 1,992 passing tests, and 10 skipped
+  tests, plus the P7 abuse gate, product/foundation/downstream boundary checks,
+  and the production package build. Existing upstream bundler notices remain
+  warnings only.
+
+The next evidence boundary after this commit is explicit: push it, run one
+exact-head CI, rebuild a package from that exact commit, and repeat the real
+Electron/provider acceptance. Until those steps occur, the five fixes are
+locally validated implementation rather than a remotely verified or released
+closure.
+
+## 2026-08-25 P8 product-acceptance corrections and evidence follow-up CI-verified
+
+The isolated branch `codex/p8-product-fixes` currently carries one bounded
+product-correction batch based on
+`d7b264957a12bcfbd5b7d5b87d99535f7a8b2d63`. It does not edit the frozen
+AionUI source under `foundation/`; user-visible changes are recorded in the
+R1/R2 downstream patch
+`0023-actestra-product-acceptance-fixes.mjs`. The batch addresses the reported
+acceptance defects as follows:
+
+- ACP and AionRS now project the exact user message synchronously before the
+  Main acknowledgement, bind it to the canonical message identity after
+  acceptance, remove only that optimistic record on rejection, and keep using
+  the retained content-chunk merger before `Finish`. This targets the blank
+  conversation and delayed-user-message behavior shown in the 2026-08-24
+  screenshots without creating a second message store.
+- A stream `finish` or error is no longer enough by itself to release the
+  Renderer processing gate. The Renderer performs a bounded durable runtime
+  reread and releases only after the same turn is confirmed terminal, then
+  refreshes persisted history. When `Finish` omits its turn identifier and the
+  terminal runtime has already cleared it, the Renderer retains the exact
+  active-turn identity for stale-running suppression; it also rechecks the
+  current active turn before release, so a delayed old terminal cannot unlock a
+  newer turn.
+- Orchestrated-Team `files[]` / `@` file selections become structured General
+  requirements in Main. A concrete path and AionUI's `[[AION_FILES]]` payload
+  are removed from the planner goal; requirements survive plan admission,
+  persisted run recovery, and Worker routing. General v1 returns
+  `general-capability-mismatch` before model execution and receives no Glob or
+  workspace tool. The Team leader retains the explicit file-selection entry so
+  Main can classify the request, while direct General-member conversations
+  remain text-only. Natural-language keywords are not treated as authority.
+- Multiline contract failures converge on the existing localized
+  `team-invalid-request` message on both retained ACP and AionRS send paths,
+  rather than showing a private validator detail or a generic failure.
+- A dirty destination or moved HEAD before Artifact apply approval now writes a
+  terminal failed delivery with the exact durable `workspace-dirty` or
+  `head-drift` code instead of leaving the database record `pending`. The
+  repository check remains fail closed and no patch is applied.
+- A General model failure that completes while the Team attempt is paused is
+  retained across resume as the original `model-unavailable` cause. The
+  recovery state machine does not overwrite it, and the AionUI Team projection
+  uses the persisted blocked explanation instead of collapsing it into a
+  generic `attempt-failed` label.
+
+Review also found and closed two recovery-compatibility details in the same
+requirements path: pre-requirements Team run records restore the existing
+bounded text-only default, and requirements reloaded from persistence are
+deeply frozen. Coding nodes still reject General requirements and unknown
+fields remain fail closed.
+
+Fresh focused evidence before the final composite gate was green: the five
+materialized Renderer files passed `57/57`, including no-ID Finish and delayed
+old-Finish/new-turn regressions; the affected Root set passed `13` files and
+`307/307` tests. P8 contract, product boundary, exact AionUI foundation, and
+downstream changed-file checks were then rerun on the final bytes before the
+composite gate. The downstream check initially identified one omitted reviewed
+test path; enumerating every patch target and registering the existing test
+closed that metadata drift without changing runtime behavior.
+
+The final production/test bytes pass `bun run package` and the complete
+`bun run check` at exit `0`: format, zero-warning lint, strict TypeScript, the
+three-target P8 contract, Electron SQLite, `178` passing and `3` skipped test
+files with `1,984` passing and `10` skipped tests, all `28` P7 abuse cases and
+`168` exact variants denied-safe, deterministic smoke-harness behavior, the
+149-source product boundary, the exact 1,766-file AionUI foundation, the
+389-file downstream contract with 4 R0 invariants and 135 reviewed source
+copies, and the production package build. The package emits only the existing
+upstream dynamic-import, circular-chunk, and chunk-size notices; no package
+failure occurred.
+
+The first packaged inspection exposed one additional cross-layer defect: the
+Main-owned Renderer network boundary admitted current-port AionCore HTTP but
+cancelled its WebSocket, so persistence succeeded while content chunks and
+`Finish` could not reach AionUI. Patch 0023 now admits only `ws:` on the exact
+current `127.0.0.1`/`localhost` AionCore port alongside HTTP. Provider record
+routes remain IPC-only, while the wrong port, remote WS/WSS, HTTPS, and all
+other destinations remain cancelled. The materialized boundary and Renderer
+set passes 6 files and 72 tests; the affected Root acceptance set passes 9
+files and 174 tests.
+
+Real Provider-backed Electron evidence from the resulting macOS arm64 package
+now proves the reported conversation symptoms on one bounded task: the user
+message appeared in about one second, assistant content first appeared before
+`Finish` and grew from one to five visible chunks while processing continued,
+and the complete 24-part response removed the processing indicator after the
+durable terminal state arrived. This is evidence for optimistic projection,
+incremental streaming, and terminal reconciliation on that package, not a
+general release claim.
+
+The same packaged app also exercised an existing pending coding delivery after
+the original repository HEAD moved. The apply request persisted
+`state = failed` with `failure_code = head-drift`; the destination retained its
+pre-apply HEAD and clean status, and `drift-result.txt` was not created. The
+separate dirty and HEAD-drift paths remain independently regression-tested.
+
+General file admission, invalid-control-character UI mapping, and the synthetic
+paused-model-failure case are cross-layer evidence rather than new physical UI
+acceptance. The General path proves explicit file requirements produce
+`general-capability-mismatch` before any `model-requested` event and expose no
+Glob or file tool. LF multiline content remains accepted, while invalid Team
+payloads map to the localized `team-invalid-request` path. Persisted evidence
+from the reported pause/resume run shows pause at revision 5 and successful
+resume to `running` at revision 7; its later failure was
+`general-input-required`, not a broken resume transition. A dedicated recovery
+test separately proves a `model-unavailable` received while paused remains the
+durable incident and cannot be overwritten by a stale resume.
+
+The exact-head PR CI run [`32745525871`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32745525871)
+for branch head `dc531e7ea78d4eee0af7be38a61056647b7d6b54` completed all eight
+jobs successfully: Windows authenticated Goose runtime, Windows build and
+containment, Windows packaged fresh-profile, Ubuntu build and containment,
+macOS packaged fresh-profile/foundation, and Goose admission. The retained
+Windows runtime record is `status = verified`, with the exact read and
+approved-write calls, cancellation and parent-death cleanup, absent credential
+and environment canaries, denied direct network access, unchanged original
+workspace, and `residualProcessCount = 0`. The three fresh-profile records for
+macOS, Windows, and Ubuntu are all `status = verified`, with Provider IPC,
+direct-fetch denial, schema 23, graceful exit, and zero residual processes.
+Because this was a pull-request workflow, the packaged evidence is bound to
+its materialized merge ref `12dfa13c7c2f75c76480e25b2b136b04fb016a83`; it is
+not a merged-main or release claim.
+
+During independent validation of that retained evidence, the P8 fresh-profile
+validator was found to reject the already-defined dotted target ID
+`ubuntu-24.04-x64`. Commit `ec0504e9f14257d75ce463f165dc12358abf2459`
+adds the smallest contract correction and a regression test. Exact branch-head
+CI run [`32750422404`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32750422404)
+then passed seven jobs, including both Windows Goose build/containment and the
+authenticated Windows runtime, but the Windows packaged fresh-profile job
+failed after the package build with the bounded `process-probe-failed` record.
+The smoke ran for about 5.7 seconds before that record, consistent with the
+probe's prior 5-second PowerShell timeout while `Get-CimInstance Win32_Process`
+requested the complete process object before selecting its two required
+fields. The retained failure Artifact is bound to merge-ref source
+`8bb23cfd14e3d152ecbd8e81452f206d5402bff1`.
+
+Commit `3797cd5` narrows that Windows query to the exact
+`ProcessId,ParentProcessId` CIM properties and gives the single probe a bounded
+10-second budget. It adds no retry and does not relax the fail-closed residual
+process decision. The regression is green (`46/46` fresh-profile tests), as
+are format, lint, strict TypeScript, the P8 contract, `git diff --check`, all 17
+affected Root files (`379/379` tests), and all six materialized AionUI files
+(`72/72` tests). The final composite gate on branch head
+`a3c30ad9d7ea614b24ce148b0d1e9ace66c6b85c` also passes at exit `0`, with
+`1,986` passing and `10` skipped tests plus the package build.
+
+Exact-head PR CI run
+[`32753878545`](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32753878545)
+then completed all eight jobs successfully. Its Windows packaged fresh-profile
+step passed the corrected process probe, and the retained macOS, Windows, and
+Ubuntu fresh-profile records all validate as `status = verified` with graceful
+exit and `residualProcessCount = 0`. The Windows authenticated-runtime record
+also validates as `status = verified`: read, approved write, cancellation, and
+parent-death cleanup were observed; credential and environment canaries were
+absent; direct network access was denied; the original workspace was unchanged;
+and no residual process remained. These retained Artifacts are bound to the PR
+merge-ref source `dfa0823471a67087cab728f1948c061bd277440c`, not to formal
+`main` or a release candidate. This closes the product-correction batch's local,
+exact-head CI, and narrow packaged-smoke gates. It does not close overall P8.2,
+P8.3, P8.4, candidate signing/notarization, release, deployment, distribution,
+or final user acceptance.
 
 ## 2026-08-24 P8.2d three-platform route-race evidence; retry correction pending CI
 

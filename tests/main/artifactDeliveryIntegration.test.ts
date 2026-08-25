@@ -89,6 +89,140 @@ async function createRepository(): Promise<{ readonly root: string; readonly hea
   return { root, head: stdout.trim() };
 }
 
+async function createDurableDeliveryFixture(options: {
+  readonly directory: string;
+  readonly root: string;
+  readonly baseCommit: string;
+}): Promise<{
+  readonly persistence: Awaited<ReturnType<typeof openTestPersistenceUtility>>["client"];
+  readonly destination: WorkspaceGrant;
+}> {
+  const persistence = (await openTestPersistenceUtility(options.directory)).client;
+  clients.push(persistence);
+
+  await persistence.replaceDomainGraph({
+    workspaces: [
+      {
+        id: WORKSPACE,
+        name: "Cross-layer delivery workspace",
+        state: "active",
+        createdAt: CREATED_AT,
+        updatedAt: CREATED_AT,
+      },
+    ],
+    tasks: [
+      {
+        id: TASK,
+        workspaceId: WORKSPACE,
+        title: "Apply a reviewed patch to the original workspace",
+        state: "completed",
+        createdAt: CREATED_AT,
+        updatedAt: CREATED_AT,
+      },
+    ],
+    sessions: [
+      {
+        id: SESSION,
+        workspaceId: WORKSPACE,
+        taskId: TASK,
+        workerId: WORKER,
+        state: "completed",
+        createdAt: CREATED_AT,
+        updatedAt: CREATED_AT,
+      },
+    ],
+    workers: [
+      {
+        id: WORKER,
+        workspaceId: WORKSPACE,
+        adapterKind: GENERAL_WORKER_ADAPTER_KIND,
+        state: "stopped",
+        createdAt: CREATED_AT,
+        updatedAt: CREATED_AT,
+      },
+    ],
+    approvals: [],
+    artifacts: [
+      {
+        id: ARTIFACT,
+        taskId: TASK,
+        workspaceId: WORKSPACE,
+        sessionId: SESSION,
+        kind: "file",
+        label: "Reviewed patch",
+        state: "available",
+        createdAt: CREATED_AT,
+        updatedAt: CREATED_AT,
+      },
+    ],
+  });
+
+  const patchOwner: WorkspaceGrant = {
+    contractVersion: WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
+    grantId: workspaceGrantId(PATCH_OWNER_GRANT),
+    workspaceId: WORKSPACE,
+    rootPath: options.root,
+    displayName: "Cross-layer isolated worktree",
+    state: "active",
+    createdAt: CREATED_AT,
+    updatedAt: CREATED_AT,
+  };
+  await persistence.persistWorkspaceGrant(patchOwner);
+  const record = {
+    contractVersion: ARTIFACT_DELIVERY_CONTRACT_VERSION,
+    artifactId: ARTIFACT,
+    workspaceId: WORKSPACE,
+    destinationWorkspaceId: null,
+    taskId: TASK,
+    sessionId: SESSION,
+    state: "pending",
+    patchOwnerGrantId: PATCH_OWNER_GRANT,
+    patchOwnerWorkerId: WORKER,
+    patchRequestId: PATCH_REQUEST,
+    destinationGrantId: null,
+    patchReference: PATCH_REFERENCE,
+    patchSha256: createHash("sha256").update(PATCH, "utf8").digest("hex"),
+    patchByteLength: Buffer.byteLength(PATCH, "utf8"),
+    baseCommit: options.baseCommit,
+    changedFileCount: 1,
+    approvalId: null,
+    verifiedHead: null,
+    failureCode: null,
+    failureMessage: null,
+    createdAt: CREATED_AT,
+    updatedAt: CREATED_AT,
+  } as const satisfies ArtifactDeliveryRecord;
+  await persistence.storeContentReference({
+    contractVersion: WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
+    reference: toolInputReference(PATCH_REFERENCE),
+    kind: "tool-input",
+    owner: artifactPatchOwner(record),
+    classification: "task-content",
+    mediaType: "text/plain; charset=utf-8",
+    content: PATCH,
+    createdAt: CREATED_AT,
+  });
+  await persistence.persistWorkspaceGrant({
+    ...patchOwner,
+    state: "revoked",
+    updatedAt: instant("2026-08-11T08:00:01.000Z"),
+  });
+  const destination: WorkspaceGrant = {
+    contractVersion: WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
+    grantId: workspaceGrantId(DESTINATION_GRANT),
+    workspaceId: WORKSPACE,
+    rootPath: options.root,
+    displayName: "Cross-layer destination",
+    state: "active",
+    createdAt: CREATED_AT,
+    updatedAt: CREATED_AT,
+  };
+  await persistence.persistWorkspaceGrant(destination);
+  await persistence.persistArtifactDelivery(record);
+
+  return { persistence, destination };
+}
+
 function approvingGateway(): {
   readonly gateway: ToolGateway;
   readonly decide: () => ApprovalRequestSnapshot;
@@ -121,141 +255,12 @@ describe("Artifact delivery cross-layer integration", () => {
     const { root, head } = await createRepository();
     const directory = await mkdtemp(path.join(tmpdir(), "actestra-delivery-cross-layer-store-"));
     roots.push(directory);
-    const persistence = (await openTestPersistenceUtility(directory)).client;
-    clients.push(persistence);
-    const now = clock();
-
-    // The durable graph the applicator reads its ownership facts from, written through the real
-    // persistence utility rather than a double, so the walk crosses the process boundary for real.
-    await persistence.replaceDomainGraph({
-      workspaces: [
-        {
-          id: WORKSPACE,
-          name: "Cross-layer delivery workspace",
-          state: "active",
-          createdAt: CREATED_AT,
-          updatedAt: CREATED_AT,
-        },
-      ],
-      tasks: [
-        {
-          id: TASK,
-          workspaceId: WORKSPACE,
-          title: "Apply a reviewed patch to the original workspace",
-          state: "completed",
-          createdAt: CREATED_AT,
-          updatedAt: CREATED_AT,
-        },
-      ],
-      sessions: [
-        {
-          id: SESSION,
-          workspaceId: WORKSPACE,
-          taskId: TASK,
-          workerId: WORKER,
-          state: "completed",
-          createdAt: CREATED_AT,
-          updatedAt: CREATED_AT,
-        },
-      ],
-      workers: [
-        {
-          id: WORKER,
-          workspaceId: WORKSPACE,
-          adapterKind: GENERAL_WORKER_ADAPTER_KIND,
-          state: "stopped",
-          createdAt: CREATED_AT,
-          updatedAt: CREATED_AT,
-        },
-      ],
-      approvals: [],
-      artifacts: [
-        {
-          id: ARTIFACT,
-          taskId: TASK,
-          workspaceId: WORKSPACE,
-          sessionId: SESSION,
-          kind: "file",
-          label: "Reviewed patch",
-          state: "available",
-          createdAt: CREATED_AT,
-          updatedAt: CREATED_AT,
-        },
-      ],
-    });
-    // The isolated worktree that produced the patch, active while the patch is stored because
-    // persistence admits a content reference only under a live grant.
-    const patchOwner: WorkspaceGrant = {
-      contractVersion: WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
-      grantId: workspaceGrantId(PATCH_OWNER_GRANT),
-      workspaceId: WORKSPACE,
-      rootPath: root,
-      displayName: "Cross-layer isolated worktree",
-      state: "active",
-      createdAt: CREATED_AT,
-      updatedAt: CREATED_AT,
-    };
-    await persistence.persistWorkspaceGrant(patchOwner);
-    const record = {
-      contractVersion: ARTIFACT_DELIVERY_CONTRACT_VERSION,
-      artifactId: ARTIFACT,
-      workspaceId: WORKSPACE,
-      destinationWorkspaceId: null,
-      taskId: TASK,
-      sessionId: SESSION,
-      state: "pending",
-      // The patch was produced in an isolated worktree that no longer exists. Its grant authorizes
-      // reading the patch and nothing else; the destination authority is a separate grant entirely.
-      patchOwnerGrantId: PATCH_OWNER_GRANT,
-      // The publisher recorded the exact authority it stored the patch under. Apply must read it back
-      // with that same identity, so the record carries it instead of a constant a later read guesses.
-      patchOwnerWorkerId: WORKER,
-      patchRequestId: PATCH_REQUEST,
-      destinationGrantId: null,
-      patchReference: PATCH_REFERENCE,
-      patchSha256: createHash("sha256").update(PATCH, "utf8").digest("hex"),
-      patchByteLength: Buffer.byteLength(PATCH, "utf8"),
+    const { persistence, destination } = await createDurableDeliveryFixture({
+      directory,
+      root,
       baseCommit: head,
-      changedFileCount: 1,
-      approvalId: null,
-      verifiedHead: null,
-      failureCode: null,
-      failureMessage: null,
-      createdAt: CREATED_AT,
-      updatedAt: CREATED_AT,
-    } as const satisfies ArtifactDeliveryRecord;
-    // Stored under the same owner the applicator derives when reading it back, so the read is
-    // authorized by the isolated worktree authority rather than by the destination grant.
-    await persistence.storeContentReference({
-      contractVersion: WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
-      reference: toolInputReference(PATCH_REFERENCE),
-      kind: "tool-input",
-      owner: artifactPatchOwner(record),
-      classification: "task-content",
-      mediaType: "text/plain; charset=utf-8",
-      content: PATCH,
-      createdAt: CREATED_AT,
     });
-    // Only now does the worktree go away and the user's own workspace become the live grant, which is
-    // the real sequence: storing the patch demands an active grant, reading it back does not. That
-    // asymmetry is what lets apply run long after the isolated worktree is gone.
-    await persistence.persistWorkspaceGrant({
-      ...patchOwner,
-      state: "revoked",
-      updatedAt: instant("2026-08-11T08:00:01.000Z"),
-    });
-    const destination: WorkspaceGrant = {
-      contractVersion: WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
-      grantId: workspaceGrantId(DESTINATION_GRANT),
-      workspaceId: WORKSPACE,
-      rootPath: root,
-      displayName: "Cross-layer destination",
-      state: "active",
-      createdAt: CREATED_AT,
-      updatedAt: CREATED_AT,
-    };
-    await persistence.persistWorkspaceGrant(destination);
-    await persistence.persistArtifactDelivery(record);
+    const now = clock();
 
     const { gateway, decide } = approvingGateway();
     const applied = await applyArtifactToWorkspace({
@@ -317,4 +322,68 @@ describe("Artifact delivery cross-layer integration", () => {
     ).rejects.toMatchObject({ code: "already-applied" });
     expect(await readFile(path.join(root, "tracked.txt"), "utf8")).toBe("applied by actestra\n");
   });
+
+  for (const scenario of [
+    {
+      failureCode: "workspace-dirty" as const,
+      baseCommit: (head: string) => head,
+      arrange: async (root: string) => {
+        await writeFile(path.join(root, "tracked.txt"), "user work in progress\n", "utf8");
+      },
+      expectedBytes: "user work in progress\n",
+    },
+    {
+      failureCode: "head-drift" as const,
+      baseCommit: () => "1".repeat(40),
+      arrange: async () => {},
+      expectedBytes: "original\n",
+    },
+  ]) {
+    it(`persists ${scenario.failureCode} across SQLite close/reopen and projects the exact failure`, async () => {
+      const { root, head } = await createRepository();
+      const directory = await mkdtemp(path.join(tmpdir(), "actestra-delivery-failure-store-"));
+      roots.push(directory);
+      const { persistence, destination } = await createDurableDeliveryFixture({
+        directory,
+        root,
+        baseCommit: scenario.baseCommit(head),
+      });
+      await scenario.arrange(root);
+      const { gateway, decide } = approvingGateway();
+
+      await expect(
+        applyArtifactToWorkspace({
+          artifactId: ARTIFACT,
+          workspaceRoot: root,
+          grant: destination,
+          persistence,
+          clock: clock(),
+          toolGateway: gateway,
+          awaitApprovalDecision: async () => decide(),
+          signal: new AbortController().signal,
+        }),
+      ).rejects.toMatchObject({ code: scenario.failureCode });
+      expect(await readFile(path.join(root, "tracked.txt"), "utf8")).toBe(scenario.expectedBytes);
+
+      await persistence.close();
+      const reopened = (await openTestPersistenceUtility(directory)).client;
+      clients.push(reopened);
+      const durable = await reopened.getArtifactDelivery(ARTIFACT);
+      expect(durable).toMatchObject({
+        state: "failed",
+        destinationGrantId: DESTINATION_GRANT,
+        approvalId: null,
+        verifiedHead: null,
+        failureCode: scenario.failureCode,
+      });
+      expect(await reopened.listArtifactDeliveriesForTask(TASK, 10)).toEqual([durable]);
+
+      expect(projectArtifactDelivery(durable!)).toEqual({
+        deliveryState: "failed",
+        baseCommit: scenario.baseCommit(head),
+        changedFileCount: 1,
+        failureCode: scenario.failureCode,
+      });
+    });
+  }
 });

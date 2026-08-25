@@ -226,11 +226,10 @@ function generalIntent(input: TeamWorkerExecutionInput, binding: TeamJourneyBind
   }
   const title = boundedText(input.title, 256);
   const goal = boundedText(input.goal, 1_900);
-  const purpose = boundedText(input.completionCriteria, 1_800);
   const prompt = [
     `Title: ${title}`,
     "Audience: Actestra Team",
-    `Purpose: Write a concise reviewable summary. Completion requirement: ${purpose}`,
+    "Purpose: Write a concise reviewable summary from the complete inline source text below.",
     `Point: Inline source text (provided and complete): ${goal}`,
     "Point: Use only this inline text. It is not a file reference and must not be fetched.",
     "Point: Do not ask for a file or additional source material.",

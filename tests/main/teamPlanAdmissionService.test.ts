@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import {
+  DEFAULT_GENERAL_REQUIREMENTS,
   normalizeTeamPlanCandidate,
   type AdmittedTeamPlan,
   type PersistAdmittedTeamPlanResult,
@@ -30,6 +31,10 @@ const REQUEST = {
     maxConcurrency: 2,
     maxTotalAttempts: 3,
   },
+} as const;
+const NORMALIZED_REQUEST = {
+  ...REQUEST,
+  generalRequirements: DEFAULT_GENERAL_REQUIREMENTS,
 } as const;
 
 const CANDIDATE = {
@@ -111,11 +116,12 @@ describe("TeamPlanAdmissionService", () => {
   it("sends only a normalized request and admits the returned candidate in Core", async () => {
     const planner = {
       propose: vi.fn(async (request: unknown, signal: AbortSignal) => {
-        expect(request).toEqual(REQUEST);
+        expect(request).toEqual(NORMALIZED_REQUEST);
         expect(Object.isFrozen(request)).toBe(true);
-        const record = request as typeof REQUEST;
+        const record = request as typeof NORMALIZED_REQUEST;
         expect(Object.isFrozen(record.workerCapabilities)).toBe(true);
         expect(Object.isFrozen(record.contextReferences)).toBe(true);
+        expect(Object.isFrozen(record.generalRequirements)).toBe(true);
         expect(Object.isFrozen(record.limits)).toBe(true);
         expect(signal.aborted).toBe(false);
         return NORMALIZED_CANDIDATE;

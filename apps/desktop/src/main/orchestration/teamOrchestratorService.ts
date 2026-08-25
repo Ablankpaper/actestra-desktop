@@ -1,7 +1,6 @@
 import {
   compareInstants,
   createTeamRunSnapshot,
-  GENERAL_V1_CONTRACT_VERSION,
   instant,
   normalizeAdmittedTeamPlan,
   normalizeTeamDefinition,
@@ -752,16 +751,8 @@ export class TeamOrchestratorService {
         capability: startedNode.capability,
         completionCriteria: startedNode.completionCriteria,
         expectedArtifactKind: startedNode.expectedArtifactKind,
-        ...(startedNode.capability === "general"
-          ? {
-              requirements: Object.freeze({
-                contractVersion: GENERAL_V1_CONTRACT_VERSION,
-                capabilities: Object.freeze(["text-generation"] as const),
-                contextReferences: Object.freeze(["inline-text"] as const),
-                inputRequirements: Object.freeze(["bounded-text"] as const),
-                completionCriteria: "json-envelope" as const,
-              }),
-            }
+        ...(startedNode.capability === "general" && startedNode.requirements !== undefined
+          ? { requirements: startedNode.requirements }
           : {}),
       });
       const controller = new AbortController();

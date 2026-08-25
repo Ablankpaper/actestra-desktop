@@ -27,6 +27,13 @@ const request = {
   goal: "Coordinate one bounded General and coding result.",
   workerCapabilities: ["general", "coding"],
   contextReferences: [],
+  generalRequirements: {
+    contractVersion: 1,
+    capabilities: ["text-generation"],
+    contextReferences: ["inline-text"],
+    inputRequirements: ["bounded-text"],
+    completionCriteria: "json-envelope",
+  },
   limits: { maxNodes: 3, maxDepth: 2, maxConcurrency: 2, maxTotalAttempts: 3 },
 } as const;
 
@@ -77,6 +84,7 @@ describe("Actestra native Team planner production identity", () => {
       "human-feedback",
     ]);
     expect(first.nodes[0]).toMatchObject({ kind: "worker", capability: "general", dependsOn: [] });
+    expect(first.nodes[0]).toMatchObject({ requirements: request.generalRequirements });
     expect(first.nodes[1]).toMatchObject({ kind: "worker", capability: "coding", dependsOn: [] });
     expect(first.nodes[2]).toMatchObject({
       kind: "human-feedback",

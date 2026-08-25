@@ -3,6 +3,7 @@ import {
   TEAM_PLAN_MAX_DEPTH,
   TEAM_PLAN_MAX_NODE_ATTEMPTS,
   TEAM_PLAN_MAX_TOTAL_ATTEMPTS,
+  DEFAULT_GENERAL_REQUIREMENTS,
   TeamPlanAdmissionError,
   normalizeTeamPlannerRequest,
   type TeamPlanCandidate,
@@ -54,6 +55,7 @@ function workerNode(
   title: string,
   completionCriteria: string,
   expectedArtifactKind: "document" | "file",
+  requirements?: TeamPlannerRequest["generalRequirements"],
 ) {
   return Object.freeze({
     candidateKey,
@@ -65,6 +67,9 @@ function workerNode(
     completionCriteria,
     risk: capability === "coding" ? ("high" as const) : ("medium" as const),
     maxAttempts: Math.min(2, TEAM_PLAN_MAX_NODE_ATTEMPTS),
+    ...(capability === "general"
+      ? { requirements: requirements ?? DEFAULT_GENERAL_REQUIREMENTS }
+      : {}),
   });
 }
 
@@ -82,6 +87,7 @@ export function createActestraNativeTeamPlanCandidate(value: unknown): TeamPlanC
         "Prepare the General Work result",
         "General completes the bounded task and records its Actestra-owned Artifact reference.",
         "document",
+        request.generalRequirements,
       ),
       workerNode(
         CODING_NODE_KEY,
