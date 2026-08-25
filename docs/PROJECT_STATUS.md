@@ -2,6 +2,33 @@
 
 Last updated: 2026-08-25
 
+## 2026-08-25 P8.2 targeted product acceptance — eight cases passed
+
+The formal case-by-case record is
+[`docs/acceptance/P8.2_PRODUCT_FIX_ACCEPTANCE_2026-08-25.md`](acceptance/P8.2_PRODUCT_FIX_ACCEPTANCE_2026-08-25.md).
+It is bound to the candidate
+`/Users/zizimutou/Library/Caches/Actestra/candidates/d07e824.thASb1/mac-arm64/Actestra.app`
+and the local branch `codex/p8-product-fixes` at `65957820f789028fe44cc9bfe2a701d4547b8d2e`.
+
+Eight targeted cases passed: immediate user-message projection and streaming
+before Finish; General v1 file-read refusal without Glob; legal LF multiline
+Team input; invalid-control-character `team-invalid-request` mapping; durable
+`workspace-dirty` and `head-drift` Artifact failures; approved Artifact apply;
+and pause/resume preservation of a `model-completion-refused` runtime incident.
+The pause/resume case is a classification pass, not a claim that the test model
+must produce a coding Artifact.
+
+Fresh focused validation on the final checkout passed Root `10` files / `189`
+tests and materialized downstream Renderer `6` files / `77` tests. The first
+downstream invocation could not resolve three dependencies because the
+materialized tree had no installed `node_modules`; the prescribed frozen-lock
+install completed, and the same six files then passed. No runtime code was
+changed in response to that environment-only failure.
+
+This is targeted P8.2 product evidence only. PR #71 and PR #72 remain open and
+are intentionally not yet represented as merged-main evidence. P8.3 and P8.4
+remain separate open gates.
+
 ## 2026-08-25 P8 product-fix batch — CI, candidate, and Electron follow-up
 
 The implementation batch is `d07e824ce0b2dae2c72ef4a2bbbc391b5a2e75b7` on
