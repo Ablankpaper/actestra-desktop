@@ -2,6 +2,36 @@
 
 Last updated: 2026-08-26
 
+## 2026-08-26 P8 stabilization baseline established
+
+The formal stabilization baseline is merged origin/main commit
+b8d77c5c5101454e9c30b1484b4e2f64b88cc672, source tree
+e25988340c3f6c67e14f20c10b5c3c4108b69bc4, in worktree
+/Users/zizimutou/actestra-worktrees/p8-stabilization on branch
+codex/release/p8-stabilization. It was created from the merged remote ref,
+not from the older local checkout. The baseline and the PR #73 merge-ref tree
+are byte-identical; the PR merge-ref CI evidence is exact-tree evidence, but
+it is not merged-main CI evidence.
+
+PR #73 exact-head run 32873869921 passed all eight jobs. The squash merge
+contains historical [skip ci] markers, and no push-CI run exists for commit
+b8d77c5c...; no merged-main CI claim is made from that absence.
+
+The current P8.2 ledger is
+[P8.2_EVIDENCE_LEDGER_2026-08-26.md](acceptance/P8.2_EVIDENCE_LEDGER_2026-08-26.md),
+with the binding record in
+[P8_STABILIZATION_BASELINE_2026-08-26.md](acceptance/P8_STABILIZATION_BASELINE_2026-08-26.md).
+Three exact-tree fresh-profile package rows are verified, along with narrow
+Windows Goose runtime and Windows/Ubuntu containment slices. The complete
+nine-journey P8.2 gate remains open because General Artifact, Artifact apply,
+General+Goose Team, crash/restart, and target-complete privacy/P7 evidence
+are incomplete. P8.3 and P8.4 remain unstarted.
+
+This branch is feature-frozen: only release-blocking correctness, security,
+recovery, cleanup, packaging, platform-boundary fixes, and their evidence may
+be added. New feature design documents may continue elsewhere but do not enter
+the stabilization branch.
+
 ## 2026-08-25 P8.2 product acceptance integration closure
 
 The eight-case targeted acceptance record is
