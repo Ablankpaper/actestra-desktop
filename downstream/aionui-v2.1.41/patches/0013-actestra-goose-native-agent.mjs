@@ -342,6 +342,27 @@ replaceOnce(
   codingArtifactService = new AionUiCodingArtifactService({
     persistence: activePersistence,
     clock: platform.clock,
+    patchSaver: {
+      save: async ({ fileName, content }) => {
+        const trustedWindow = currentWindow;
+        if (trustedWindow === null || trustedWindow.isDestroyed()) {
+          throw new Error('Actestra patch download window is unavailable');
+        }
+        const selected = await dialog.showSaveDialog(trustedWindow, {
+          title: 'Save patch Artifact',
+          defaultPath: fileName,
+          filters: [{ name: 'Patch', extensions: ['patch'] }],
+        });
+        if (selected.canceled || selected.filePath === undefined) {
+          return Object.freeze({ status: 'cancelled' as const });
+        }
+        await fs.promises.writeFile(selected.filePath, content, {
+          encoding: 'utf8',
+          mode: 0o600,
+        });
+        return Object.freeze({ status: 'saved' as const });
+      },
+    },
   });
   console.info('[Actestra isolated coding] Desktop-main containment ready');`,
 );
@@ -1513,7 +1534,9 @@ const ActestraCodingArtifactCard: React.FC<{
       const result = await downloadActestraCodingJourneyArtifact(request);
       setNotice(
         result.status === 'ok' && 'artifactDownload' in result
-          ? 'Saved ' + result.artifactDownload.fileName
+          ? result.artifactDownload.status === 'saved'
+            ? 'Patch saved.'
+            : 'Download cancelled.'
           : result.status === 'rejected'
             ? result.code
             : 'execution-failed',
@@ -1533,6 +1556,10 @@ const ActestraCodingArtifactCard: React.FC<{
         await onDeliveryChanged?.();
         return;
       }
+      // Preflight dirty/HEAD checks fail before an approval exists, but Main has already persisted
+      // their exact terminal delivery. Refresh before showing the bounded rejection so the card does
+      // not keep rendering the stale pending projection until an unrelated Team event arrives.
+      await onDeliveryChanged?.();
       setNotice(result.status === 'rejected' ? result.code : 'execution-failed');
     });
 
@@ -2908,12 +2935,43 @@ describe('Actestra coding Artifact card', () => {
     );
   });
 
+  it('reports only the Main-owned durable save outcome after downloading a patch', async () => {
+    mocks.download.mockResolvedValue({
+      status: 'ok',
+      artifactDownload: { status: 'saved' },
+    });
+    render(
+      <ActestraCodingArtifactCard
+        nativeConversationId={NATIVE_CONVERSATION_ID}
+        artifact={artifact()}
+      />,
+    );
+
+    await userEvent.click(screen.getByTestId('actestra-coding-artifact-download'));
+
+    expect(mocks.download).toHaveBeenCalledExactlyOnceWith({
+      contractVersion: 1,
+      nativeConversationId: NATIVE_CONVERSATION_ID,
+      artifactId: ARTIFACT_ID,
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('actestra-coding-artifact-notice').textContent).toContain(
+        'Patch saved',
+      ),
+    );
+    expect(screen.getByTestId('actestra-coding-artifact-notice').textContent).not.toContain(
+      'undefined',
+    );
+  });
+
   it('reports a rejection code without claiming the apply succeeded', async () => {
+    const onDeliveryChanged = vi.fn();
     mocks.apply.mockResolvedValue({ status: 'rejected', code: 'workspace-unavailable' });
     render(
       <ActestraCodingArtifactCard
         nativeConversationId={NATIVE_CONVERSATION_ID}
         artifact={artifact()}
+        onDeliveryChanged={onDeliveryChanged}
       />,
     );
 
@@ -2924,6 +2982,7 @@ describe('Actestra coding Artifact card', () => {
         'workspace-unavailable',
       ),
     );
+    expect(onDeliveryChanged).toHaveBeenCalledTimes(1);
   });
 });
 `,

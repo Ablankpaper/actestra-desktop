@@ -9,10 +9,7 @@ import {
   assertAionUiCodingJourneySubmitRequest,
   type AionUiCodingJourneyApprovalDecisionRequest,
   type AionUiCodingJourneyArtifactApplyDecisionRequest,
-  type AionUiCodingJourneyArtifactApplyResponse,
-  type AionUiCodingJourneyArtifactDownloadResponse,
   type AionUiCodingJourneyArtifactOperationRequest,
-  type AionUiCodingJourneyArtifactViewResponse,
   type AionUiCodingJourneyBridgeResult,
   type AionUiCodingJourneyCancelRequest,
   type AionUiCodingJourneyListRequest,
@@ -20,7 +17,7 @@ import {
   type AionUiCodingJourneyPublishDecisionRequest,
   type AionUiCodingJourneySubmitRequest,
 } from "../../compatibility/aionui";
-import { PersistenceError } from "../../core";
+import { ArtifactWorkspaceApplicatorError, PersistenceError } from "../../core";
 import type { AionUiCodingArtifactPort } from "./aionuiCodingArtifactService";
 import { AionUiCodingJourneyServiceError } from "./aionuiCodingJourneyService";
 
@@ -47,10 +44,6 @@ export interface AionUiCodingJourneyPort {
     approvalId: string,
     decision: "approved" | "denied",
   ): Promise<AionUiCodingJourneyProjection>;
-  viewArtifact(artifactIdValue: string): Promise<AionUiCodingJourneyArtifactViewResponse>;
-  downloadArtifact(artifactIdValue: string): Promise<AionUiCodingJourneyArtifactDownloadResponse>;
-  applyArtifact(artifactIdValue: string): Promise<AionUiCodingJourneyArtifactApplyResponse>;
-  resolveArtifactApply(approvalIdValue: string, decision: "approved" | "denied"): Promise<void>;
 }
 
 type RejectionCode = Extract<AionUiCodingJourneyBridgeResult, { status: "rejected" }>["code"];
@@ -61,6 +54,12 @@ function rejected(code: RejectionCode): AionUiCodingJourneyBridgeResult {
 
 function executionFailure(error: unknown): AionUiCodingJourneyBridgeResult {
   if (error instanceof AionUiCodingJourneyServiceError) {
+    return rejected(error.code);
+  }
+  if (
+    error instanceof ArtifactWorkspaceApplicatorError &&
+    (error.code === "workspace-dirty" || error.code === "head-drift")
+  ) {
     return rejected(error.code);
   }
   if (error instanceof PersistenceError) {
@@ -103,7 +102,7 @@ export class AionUiCodingJourneyBridgeService {
   }
 
   #artifacts(): AionUiCodingArtifactPort {
-    const artifacts = this.artifactPort ?? this.journey;
+    const artifacts = this.artifactPort;
     if (artifacts === null) {
       throw new AionUiCodingJourneyServiceError(
         "agent-unavailable",

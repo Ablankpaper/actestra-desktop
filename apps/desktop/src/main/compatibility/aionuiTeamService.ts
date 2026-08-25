@@ -340,6 +340,42 @@ const EXPLICIT_FILE_GENERAL_REQUIREMENTS = Object.freeze({
   inputRequirements: Object.freeze(["file-reference"] as const),
   completionCriteria: "json-envelope" as const,
 });
+const EXPLICIT_NETWORK_GENERAL_REQUIREMENTS = Object.freeze({
+  contractVersion: 1 as const,
+  capabilities: Object.freeze(["network-fetch"] as const),
+  contextReferences: Object.freeze(["network-resource"] as const),
+  inputRequirements: Object.freeze(["network-reference"] as const),
+  completionCriteria: "json-envelope" as const,
+});
+
+// This parser can only reduce authority: an explicit positive file/network instruction becomes a
+// structured requirement that General v1 rejects before model execution. It never grants a tool or
+// treats a negated clause such as "不要读取文件" / "do not read files" as a capability request.
+const EXPLICIT_FILE_ACCESS_INSTRUCTION =
+  /(?:^|[\n。！？；;:：])\s*(?:(?:请|先|请先)\s*)?(?:读取|打开|查看|浏览)\s*(?:(?:本地|当前|项目|仓库|工作区)\s*)?(?:文件|目录|README(?:\.[A-Za-z0-9_-]+)?|[A-Za-z0-9_.-]+\.[A-Za-z0-9_-]{1,16}|[./\\][^\s，。！？；;]+)/iu;
+const EXPLICIT_ENGLISH_FILE_ACCESS_INSTRUCTION =
+  /(?:^|[\n.!?;:])\s*(?:please\s+|first\s+|then\s+)*(?:read|open|inspect|browse)\s+(?:the\s+)?(?:local\s+|current\s+|project\s+|repository\s+|workspace\s+)*(?:file|directory|README(?:\.[A-Za-z0-9_-]+)?|[A-Za-z0-9_.-]+\.[A-Za-z0-9_-]{1,16}|[./\\][^\s,.!?;]+)/iu;
+const EXPLICIT_NETWORK_ACCESS_INSTRUCTION =
+  /(?:^|[\n。！？；;:：])\s*(?:(?:请|先|请先)\s*)?(?:联网|访问|检索|搜索|打开)\s*(?:网络|网页|网站|https?:\/\/)/iu;
+const EXPLICIT_ENGLISH_NETWORK_ACCESS_INSTRUCTION =
+  /(?:^|[\n.!?;:])\s*(?:please\s+|first\s+|then\s+)*(?:fetch|visit|search|browse|open)\s+(?:the\s+)?(?:web|network|website|https?:\/\/)/iu;
+
+function generalRequirementsForTask(content: string, files: readonly string[]) {
+  if (
+    files.length > 0 ||
+    EXPLICIT_FILE_ACCESS_INSTRUCTION.test(content) ||
+    EXPLICIT_ENGLISH_FILE_ACCESS_INSTRUCTION.test(content)
+  ) {
+    return EXPLICIT_FILE_GENERAL_REQUIREMENTS;
+  }
+  if (
+    EXPLICIT_NETWORK_ACCESS_INSTRUCTION.test(content) ||
+    EXPLICIT_ENGLISH_NETWORK_ACCESS_INSTRUCTION.test(content)
+  ) {
+    return EXPLICIT_NETWORK_GENERAL_REQUIREMENTS;
+  }
+  return DEFAULT_GENERAL_REQUIREMENTS;
+}
 
 function orchestratedTaskGoal(content: string, files: readonly string[]): string {
   if (files.length === 0) return content;
@@ -1693,6 +1729,16 @@ export class LoopbackAionUiStandardTeamBackend implements AionUiStandardTeamBack
         "team-model-unavailable",
       ),
     );
+    // AionRS owns its model selection through the Provider configuration and
+    // exposes only permission/session modes from this endpoint. ACP members,
+    // by contrast, must expose and reconcile a Main-admitted model catalog.
+    // Do not apply the ACP model-catalog requirement to an AionRS member.
+    const memberBackend = modelIdentifier(
+      matchingMembers[0]!.assistant_backend ?? matchingMembers[0]!.backend,
+    );
+    if (memberBackend === "aionrs" || conversation.type === "aionrs") {
+      return currentOptions;
+    }
     const currentModelOption = standardModelOption(currentOptions);
     if (!currentModelOption.options.some(({ value }) => value === persistedModel)) {
       throw new AionUiTeamBridgePortError(
@@ -4585,8 +4631,7 @@ export class AionUiTeamService implements AionUiTeamBridgePort {
           classification: "internal",
         }),
       ]),
-      generalRequirements:
-        files.length === 0 ? DEFAULT_GENERAL_REQUIREMENTS : EXPLICIT_FILE_GENERAL_REQUIREMENTS,
+      generalRequirements: generalRequirementsForTask(content, files),
       limits: Object.freeze({
         maxNodes: 5,
         maxDepth: 4,

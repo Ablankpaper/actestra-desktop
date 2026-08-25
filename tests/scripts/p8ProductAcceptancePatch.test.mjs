@@ -19,5 +19,9 @@ describe("P8 product acceptance downstream patch", () => {
     expect(patch).toContain("team-invalid-request");
     expect(patch).toContain("attempt-failed");
     expect(patch).toContain("chat.history.refresh");
+    expect(patch).toContain("generalInputRequired");
+    expect(patch).toContain("generalCapabilityMismatch");
+    expect(patch).toContain("generalOutputInvalid");
+    expect(patch).toContain("generalInstructionNoncompliant");
   });
 });

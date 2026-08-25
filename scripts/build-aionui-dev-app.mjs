@@ -98,7 +98,15 @@ function resolveOutputDirectory() {
 }
 
 function resolveElectronCache() {
-  return process.env.ELECTRON_CACHE ?? path.join(os.homedir(), "Library", "Caches", "electron");
+  return (
+    process.env.electron_config_cache ??
+    process.env.ELECTRON_CACHE ??
+    path.join(os.homedir(), "Library", "Caches", "electron")
+  );
+}
+
+function resolveElectronDistribution() {
+  return path.join(materializedRoot, "node_modules", "electron", "dist");
 }
 
 function materializeDownstream() {
@@ -145,6 +153,7 @@ function buildApp(outputDir) {
       "--arm64",
       "--dir",
       `--config.directories.output=${outputDir}`,
+      `--config.electronDist=${resolveElectronDistribution()}`,
     ],
     {
       cwd: repositoryRoot,
@@ -154,6 +163,7 @@ function buildApp(outputDir) {
         ...process.env,
         CSC_IDENTITY_AUTO_DISCOVERY: "false",
         AIONUI_HUB_SKIP: "1",
+        electron_config_cache: resolveElectronCache(),
         ELECTRON_CACHE: resolveElectronCache(),
       },
     },

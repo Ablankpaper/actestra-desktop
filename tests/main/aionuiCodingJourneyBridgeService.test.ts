@@ -4,7 +4,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { AionUiCodingJourneyProjection } from "../../apps/desktop/src/compatibility/aionui";
-import { artifactId, instant, taskId } from "../../apps/desktop/src/core";
+import {
+  ArtifactWorkspaceApplicatorError,
+  artifactId,
+  instant,
+  taskId,
+} from "../../apps/desktop/src/core";
 import { AionUiCodingJourneyServiceError } from "../../apps/desktop/src/main/compatibility/aionuiCodingJourneyService";
 
 const servicePath = path.resolve(
@@ -48,7 +53,7 @@ describe("AionUiCodingJourneyBridgeService", () => {
         changedFileCount: 1,
         patchPreview: "diff",
       })),
-      downloadArtifact: vi.fn(async () => ({ fileName: "patch.patch", content: "diff content" })),
+      downloadArtifact: vi.fn(async () => ({ status: "saved" as const })),
       applyArtifact: vi.fn(async () => ({ approvalId: "approval-artifact-apply-123" })),
       resolveArtifactApply: vi.fn(async () => {}),
     };
@@ -132,7 +137,7 @@ describe("AionUiCodingJourneyBridgeService", () => {
         changedFileCount: 1,
         patchPreview: "diff",
       })),
-      downloadArtifact: vi.fn(async () => ({ fileName: "patch.patch", content: "diff content" })),
+      downloadArtifact: vi.fn(async () => ({ status: "saved" as const })),
       applyArtifact: vi.fn(async () => ({ approvalId: "approval-artifact-apply-fallback" })),
       resolveArtifactApply: vi.fn(async () => undefined),
     };
@@ -169,6 +174,60 @@ describe("AionUiCodingJourneyBridgeService", () => {
     );
   });
 
+  it("never falls back to a journey implementation that could return patch contents", async () => {
+    expect(fs.existsSync(servicePath)).toBe(true);
+    if (!fs.existsSync(servicePath)) return;
+    const { AionUiCodingJourneyBridgeService } =
+      await import("../../apps/desktop/src/main/compatibility/aionuiCodingJourneyBridgeService");
+    const downloadArtifact = vi.fn(async () => ({
+      fileName: "private.patch",
+      content: "private patch contents",
+    }));
+    const journey = {
+      submit: vi.fn(),
+      list: vi.fn(),
+      cancel: vi.fn(),
+      decideApproval: vi.fn(),
+      decidePublish: vi.fn(),
+      downloadArtifact,
+    };
+
+    await expect(
+      new AionUiCodingJourneyBridgeService(journey as never).downloadArtifact({
+        contractVersion: 1,
+        nativeConversationId: "native-coding-no-artifact-port",
+        artifactId: artifactId(`artifact-no-renderer-patch-${"e".repeat(64)}`),
+      }),
+    ).resolves.toEqual({ status: "rejected", code: "agent-unavailable" });
+    expect(downloadArtifact).not.toHaveBeenCalled();
+  });
+
+  it.each(["workspace-dirty", "head-drift"] as const)(
+    "preserves the exact %s preflight rejection after Main persists it",
+    async (code) => {
+      expect(fs.existsSync(servicePath)).toBe(true);
+      if (!fs.existsSync(servicePath)) return;
+      const { AionUiCodingJourneyBridgeService } =
+        await import("../../apps/desktop/src/main/compatibility/aionuiCodingJourneyBridgeService");
+      const artifactPort = {
+        viewArtifact: vi.fn(),
+        downloadArtifact: vi.fn(),
+        applyArtifact: vi.fn(async () => {
+          throw new ArtifactWorkspaceApplicatorError(code, "private repository state");
+        }),
+        resolveArtifactApply: vi.fn(),
+      };
+
+      await expect(
+        new AionUiCodingJourneyBridgeService(null, artifactPort as never).applyArtifact({
+          contractVersion: 1,
+          nativeConversationId: `native-coding-${code}`,
+          artifactId: artifactId(`artifact-${code}-${"f".repeat(64)}`),
+        }),
+      ).resolves.toEqual({ status: "rejected", code });
+    },
+  );
+
   it("maps internal failures to fixed codes without returning private details", async () => {
     expect(fs.existsSync(servicePath)).toBe(true);
     if (!fs.existsSync(servicePath)) return;
@@ -200,7 +259,7 @@ describe("AionUiCodingJourneyBridgeService", () => {
         changedFileCount: 1,
         patchPreview: "diff",
       })),
-      downloadArtifact: vi.fn(async () => ({ fileName: "patch.patch", content: "diff content" })),
+      downloadArtifact: vi.fn(async () => ({ status: "saved" as const })),
       applyArtifact: vi.fn(async () => ({ approvalId: "approval-artifact-apply-123" })),
       resolveArtifactApply: vi.fn(async () => {}),
     };

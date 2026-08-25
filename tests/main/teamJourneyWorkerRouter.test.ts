@@ -240,7 +240,7 @@ describe("TeamJourneyWorkerRouter", () => {
       },
     );
     expect(submitFromTrustedContext.mock.calls[0]?.[0]).toMatchObject({
-      prompt: expect.stringContaining(input.completionCriteria),
+      prompt: expect.not.stringContaining(input.completionCriteria),
     });
     expect(() =>
       assertAionUiGeneralWorkIntent(submitFromTrustedContext.mock.calls[0]?.[0]),

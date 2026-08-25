@@ -204,8 +204,106 @@ replaceOnce(
 
 replaceOnce(
   "packages/desktop/src/renderer/pages/team/components/ActestraTeamWorkspace.tsx",
+  "function blockedExplanation(\n",
+  `const GENERAL_ATTEMPT_FAILURE_KEYS: Readonly<Record<string, string>> = {
+  'general-capability-mismatch': 'generalCapabilityMismatch',
+  'general-input-required': 'generalInputRequired',
+  'general-output-invalid': 'generalOutputInvalid',
+  'general-instruction-noncompliant': 'generalInstructionNoncompliant',
+  'model-unavailable': 'generalModelUnavailable',
+  'model-timeout': 'generalModelTimeout',
+  'model-completion-refused': 'generalModelCompletionRefused',
+};
+
+function generalAttemptFailureExplanation(
+  node: NativeAionUiTeamNodeView,
+  translate: (key: string, options?: Record<string, unknown>) => string,
+): string | null {
+  const prefix = 'The bounded Worker attempt failed: ';
+  const explanation = node.blocked_explanation;
+  if (node.capability !== 'general' || !explanation?.startsWith(prefix) || !explanation.endsWith('.')) {
+    return null;
+  }
+  const incidentCode = explanation.slice(prefix.length, -1);
+  const translationKey = GENERAL_ATTEMPT_FAILURE_KEYS[incidentCode];
+  return translationKey ? translate('team.actestra.blocked.' + translationKey) : null;
+}
+
+function blockedExplanation(
+`,
+);
+
+replaceOnce(
+  "packages/desktop/src/renderer/pages/team/components/ActestraTeamWorkspace.tsx",
   "    case 'attempt-failed': return translate('team.actestra.blocked.attemptFailed');",
-  "    case 'attempt-failed': return node.blocked_explanation ?? translate('team.actestra.blocked.attemptFailed');",
+  "    case 'attempt-failed': return generalAttemptFailureExplanation(node, translate) ?? node.blocked_explanation ?? translate('team.actestra.blocked.attemptFailed');",
+);
+
+replaceOnce(
+  "packages/desktop/src/renderer/services/i18n/locales/en-US/team.json",
+  '      "attemptFailed": "The previous attempt failed; retry the Worker to continue.",',
+  `      "attemptFailed": "The previous attempt failed; retry the Worker to continue.",
+      "generalCapabilityMismatch": "General v1 cannot read files, use the network, or call tools. Remove that requirement or use Coding or another capable path.",
+      "generalInputRequired": "General needs source text that was not provided. Paste the missing text into the task and retry, or choose another execution path.",
+      "generalOutputInvalid": "General returned no valid structured result after one correction. Nothing was written; retry or narrow the request.",
+      "generalInstructionNoncompliant": "General could not satisfy the instruction without gaps. Supply the missing text and retry.",
+      "generalModelUnavailable": "The configured model could not be reached. Check the Provider and retry.",
+      "generalModelTimeout": "The configured model took too long to answer. Retry the task.",
+      "generalModelCompletionRefused": "The model returned no usable completion. Rephrase the task or retry.",`,
+);
+
+replaceOnce(
+  "packages/desktop/src/renderer/services/i18n/locales/zh-CN/team.json",
+  '      "attemptFailed": "上一次尝试失败，请重试 Worker 以继续。",',
+  `      "attemptFailed": "上一次尝试失败，请重试 Worker 以继续。",
+      "generalCapabilityMismatch": "General v1 无权读取文件、联网或调用工具。请移除该要求，或改用 Coding 或其他具备相应能力的路径。",
+      "generalInputRequired": "General 缺少任务所需的原始文本。请把缺少的内容直接粘贴到任务中再重试，或改用其他执行路径。",
+      "generalOutputInvalid": "General 修正一次后仍未返回有效的结构化结果，因此没有写入任何内容。请重试或缩小任务范围。",
+      "generalInstructionNoncompliant": "General 无法在不留下内容缺口的情况下满足指令。请补充缺少的文本后重试。",
+      "generalModelUnavailable": "当前配置的模型无法访问。请检查 Provider 后重试。",
+      "generalModelTimeout": "当前配置的模型响应超时。请重试此任务。",
+      "generalModelCompletionRefused": "模型没有返回可用结果。请改写任务或重试。",`,
+);
+
+replaceOnce(
+  "tests/unit/renderer/team/ActestraTeamWorkspace.dom.test.tsx",
+  "      if (key === 'team.actestra.blocked.protectedApproval') return 'Approval is required before Goose can continue.';",
+  "      if (key === 'team.actestra.blocked.protectedApproval') return 'Approval is required before Goose can continue.';\n      if (key === 'team.actestra.blocked.generalInputRequired') return 'General needs source text that was not provided. Paste the missing text into the task and retry, or choose another execution path.';",
+);
+
+replaceOnce(
+  "tests/unit/renderer/team/ActestraTeamWorkspace.dom.test.tsx",
+  "  it('localizes run, member, node, and capability tokens from the Main projection', async () => {",
+  `  it('shows actionable General failure guidance instead of the internal incident token', async () => {
+    mocks.getState.mockResolvedValue({
+      ...runState,
+      active_run: {
+        ...runState.active_run!,
+        actestra: {
+          ...runState.active_run!.actestra,
+          nodes: [
+            {
+              ...runState.active_run!.actestra.nodes[0]!,
+              capability: 'general',
+              state: 'failed',
+              blocked_reason: 'attempt-failed',
+              blocked_explanation: 'The bounded Worker attempt failed: general-input-required.',
+              current_executor: 'General Worker',
+              next_actions: ['retry'],
+              artifacts: [],
+            },
+          ],
+        },
+      },
+    });
+
+    renderWorkspace();
+    const blocked = await screen.findByTestId('actestra-team-blocked-reason');
+    expect(blocked).toHaveTextContent('General needs source text that was not provided.');
+    expect(blocked).not.toHaveTextContent('general-input-required');
+  });
+
+  it('localizes run, member, node, and capability tokens from the Main projection', async () => {`,
 );
 
 replaceOnce(

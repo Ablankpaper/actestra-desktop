@@ -150,14 +150,31 @@ describe("AionUI preserved coding-journey bridge contract", () => {
       assertResult({
         status: "ok",
         artifactDownload: {
-          fileName: "fixture-change.patch",
-          content: "diff --git a/fixture.ts b/fixture.ts",
+          status: "saved",
         },
       }),
     ).not.toThrow();
+    expect(() =>
+      assertResult({
+        status: "ok",
+        artifactDownload: {
+          status: "cancelled",
+        },
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertResult({
+        status: "ok",
+        artifactDownload: {
+          status: "saved",
+          content: "diff --git a/fixture.ts b/fixture.ts",
+        },
+      }),
+    ).toThrow();
     expect(() => assertResult({ status: "ok", artifactApply: { approvalId } })).not.toThrow();
     expect(() => assertResult({ status: "ok" })).not.toThrow();
     expect(() => assertResult({ status: "rejected", code: "approval-not-pending" })).not.toThrow();
+    expect(() => assertResult({ status: "rejected", code: "head-drift" })).not.toThrow();
   });
 
   it("rejects renderer-supplied paths, model/runtime authority, and malformed projections", async () => {

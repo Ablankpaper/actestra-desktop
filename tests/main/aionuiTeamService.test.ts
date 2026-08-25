@@ -1462,6 +1462,65 @@ describe("AionUiTeamService", () => {
     ]);
   });
 
+  it("accepts AionRS mode-only runtime options while its model remains Provider-managed", async () => {
+    vi.stubGlobal("__backendPort", 43_123);
+    const modeOnlyOptions = {
+      config_options: [
+        {
+          id: "mode",
+          name: "Mode",
+          category: "mode",
+          type: "select",
+          current_value: "default",
+          options: [
+            { value: "default", name: "Default" },
+            { value: "auto_edit", name: "Auto Edit" },
+            { value: "yolo", name: "YOLO" },
+          ],
+        },
+      ],
+    };
+    const fetchRequest = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/api/teams/native-team-aionrs")) {
+        return backendResponse({
+          id: "native-team-aionrs",
+          assistants: [
+            {
+              conversation_id: "native-conversation-aionrs",
+              assistant_backend: "aionrs",
+            },
+          ],
+        });
+      }
+      if (url.endsWith("/api/conversations/native-conversation-aionrs")) {
+        return backendResponse({
+          id: "native-conversation-aionrs",
+          type: "aionrs",
+          extra: { current_model_id: "gpt-5.6-sol" },
+        });
+      }
+      if (
+        url.endsWith(
+          "/api/teams/native-team-aionrs/conversations/native-conversation-aionrs/config-options",
+        )
+      ) {
+        return backendResponse(modeOnlyOptions);
+      }
+      throw new Error(`Unexpected AionRS config reconciliation URL: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchRequest);
+    const Backend = standardTeamLoopbackBackendConstructor();
+
+    await expect(
+      newStandardTeamLoopbackBackend(Backend).reconcileConfigOptions?.(
+        "native-team-aionrs",
+        "native-conversation-aionrs",
+      ),
+    ).resolves.toEqual(modeOnlyOptions);
+    expect(fetchRequest).toHaveBeenCalledTimes(3);
+  });
+
   it("fails closed when AionCore persistence names a model outside its runtime catalog", async () => {
     vi.stubGlobal("__backendPort", 43_123);
     const fetchRequest = vi.fn(async (input: string | URL | Request) => {
@@ -5284,6 +5343,142 @@ describe("AionUiTeamService", () => {
       teamId: created.id,
       runId: acknowledgement.run.team_run_id,
       reason: "Close the explicit-reference admission fixture.",
+    });
+    service.close();
+    await orchestrator.close();
+    await persistence.close();
+  });
+
+  it("classifies an explicit file-read instruction before General Worker execution", async () => {
+    const persistence = openSqliteCorePersistence(createTestDirectory());
+    const now = clock();
+    const planner = {
+      propose: vi.fn(async (request: unknown) => candidateFor(request)),
+    };
+    const admission = new TeamPlanAdmissionService({ planner, persistence });
+    const executions: Array<Parameters<TeamWorkerExecutionPort["execute"]>[0]> = [];
+    const worker: TeamWorkerExecutionPort = {
+      taskIdFor: ({ nodeId, attemptNumber }) =>
+        taskId(`task-team-file-instruction-${nodeId.slice(-12)}-${String(attemptNumber)}`),
+      execute: vi.fn((input): Promise<TeamWorkerExecutionResult> => {
+        executions.push(input);
+        return new Promise<TeamWorkerExecutionResult>(() => {});
+      }),
+      prepareApprovalDecision: vi.fn(),
+      commitApprovalDecision: vi.fn(),
+      pause: vi.fn(async () => {}),
+      resume: vi.fn(async () => {}),
+      cancel: vi.fn(async () => {}),
+    };
+    const orchestrator = new TeamOrchestratorService({
+      persistence,
+      worker,
+      aggregator: {
+        aggregate: vi.fn(async () => ({ summary: "Unused", artifacts: [] })),
+      },
+      now,
+    });
+    const service = new AionUiTeamService({
+      persistence,
+      admission,
+      orchestrator,
+      modelCatalog: createRouteModelCatalog,
+      now,
+      createDigest: () => "4".repeat(64),
+    });
+    const created = requireNativeTeam(await service.dispatch(createRoute));
+
+    const acknowledgement = (await service.dispatch({
+      kind: "send-message",
+      teamId: created.id,
+      content: "请读取 README.md 并总结内容。",
+      files: [],
+      requestNonce: `team-request-${"r".repeat(64)}`,
+    })) as NativeAionUiTeamRunAck;
+
+    expect(planner.propose.mock.calls[0]?.[0]).toMatchObject({
+      generalRequirements: {
+        capabilities: ["workspace-read"],
+        contextReferences: ["workspace-file"],
+        inputRequirements: ["file-reference"],
+      },
+    });
+    expect(executions.find(({ capability }) => capability === "general")).toMatchObject({
+      requirements: {
+        capabilities: ["workspace-read"],
+        contextReferences: ["workspace-file"],
+        inputRequirements: ["file-reference"],
+      },
+    });
+
+    await service.dispatch({
+      kind: "cancel-run",
+      teamId: created.id,
+      runId: acknowledgement.run.team_run_id,
+      reason: "Close the file-instruction admission fixture.",
+    });
+
+    const plainTextAcknowledgement = (await service.dispatch({
+      kind: "send-message",
+      teamId: created.id,
+      content: "请把以下三点整理成正式说明：安全、可控、可恢复。不要读取或修改任何文件。",
+      files: [],
+      requestNonce: `team-request-${"s".repeat(64)}`,
+    })) as NativeAionUiTeamRunAck;
+    expect(planner.propose.mock.calls[1]?.[0]).toMatchObject({
+      generalRequirements: {
+        capabilities: ["text-generation"],
+        contextReferences: ["inline-text"],
+        inputRequirements: ["bounded-text"],
+      },
+    });
+    await service.dispatch({
+      kind: "cancel-run",
+      teamId: created.id,
+      runId: plainTextAcknowledgement.run.team_run_id,
+      reason: "Close the plain-text admission fixture.",
+    });
+
+    const networkAcknowledgement = (await service.dispatch({
+      kind: "send-message",
+      teamId: created.id,
+      content: "Open https://example.com and summarize the page.",
+      files: [],
+      requestNonce: `team-request-${"t".repeat(64)}`,
+    })) as NativeAionUiTeamRunAck;
+    expect(planner.propose.mock.calls[2]?.[0]).toMatchObject({
+      generalRequirements: {
+        capabilities: ["network-fetch"],
+        contextReferences: ["network-resource"],
+        inputRequirements: ["network-reference"],
+      },
+    });
+    await service.dispatch({
+      kind: "cancel-run",
+      teamId: created.id,
+      runId: networkAcknowledgement.run.team_run_id,
+      reason: "Close the network-instruction admission fixture.",
+    });
+
+    const chineseNetworkAcknowledgement = (await service.dispatch({
+      kind: "send-message",
+      teamId: created.id,
+      content: "请打开 https://example.com 并总结网页内容。",
+      files: [],
+      requestNonce: `team-request-${"u".repeat(64)}`,
+    })) as NativeAionUiTeamRunAck;
+    expect(planner.propose.mock.calls[3]?.[0]).toMatchObject({
+      generalRequirements: {
+        capabilities: ["network-fetch"],
+        contextReferences: ["network-resource"],
+        inputRequirements: ["network-reference"],
+      },
+    });
+    await service.dispatch({
+      kind: "cancel-run",
+      teamId: created.id,
+      runId: chineseNetworkAcknowledgement.run.team_run_id,
+      reason: "Close the Chinese network-instruction admission fixture.",
     });
     service.close();
     await orchestrator.close();

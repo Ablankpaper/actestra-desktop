@@ -141,11 +141,21 @@ describe("build-aionui-dev-app", () => {
       expect(source).toMatch(/AIONUI_HUB_SKIP.*1/);
     });
 
-    it("uses the standard Electron cache while preserving an explicit override", () => {
+    it("uses the installed frozen Electron distribution instead of downloading it again", () => {
+      const source = readBuildScript();
+      expect(source).toContain("function resolveElectronDistribution");
+      expect(source).toContain('path.join(materializedRoot, "node_modules", "electron", "dist")');
+      expect(source).toContain("--config.electronDist");
+      expect(source).toMatch(/--config\.electronDist=\$\{resolveElectronDistribution\(\)\}/u);
+    });
+
+    it("uses the standard Electron install cache while preserving an explicit override", () => {
       const source = readBuildScript();
       expect(source).toContain("function resolveElectronCache");
+      expect(source).toContain("process.env.electron_config_cache");
       expect(source).toContain("process.env.ELECTRON_CACHE");
       expect(source).toContain('path.join(os.homedir(), "Library", "Caches", "electron")');
+      expect(source).toMatch(/electron_config_cache:\s*resolveElectronCache\(\)/u);
       expect(source).toMatch(/ELECTRON_CACHE:\s*resolveElectronCache\(\)/u);
     });
   });

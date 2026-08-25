@@ -57,11 +57,15 @@ describe("AionUiCodingArtifactService", () => {
         state: "active",
       })),
     };
+    const patchSaver = {
+      save: vi.fn(async () => Object.freeze({ status: "saved" as const })),
+    };
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const service = new AionUiCodingArtifactService({
       persistence: persistence as never,
       clock: { now: () => instant("2026-08-12T00:00:00.000Z") },
       deliveryService,
+      patchSaver,
     });
 
     await expect(service.viewArtifact(ARTIFACT)).resolves.toEqual({
@@ -70,6 +74,9 @@ describe("AionUiCodingArtifactService", () => {
       patchPreview: "diff --git a/a.txt b/a.txt",
     });
     await expect(service.downloadArtifact(ARTIFACT)).resolves.toEqual({
+      status: "saved",
+    });
+    expect(patchSaver.save).toHaveBeenCalledExactlyOnceWith({
       fileName: "Team-result.patch",
       content: "diff --git a/a.txt b/a.txt\n",
     });
@@ -128,6 +135,7 @@ describe("AionUiCodingArtifactService", () => {
         resolveApply: vi.fn(),
         recoverInterruptedApplies: vi.fn(async () => []),
       },
+      patchSaver: { save: vi.fn(async () => ({ status: "cancelled" as const })) },
     });
 
     await expect(service.applyArtifact(ARTIFACT)).resolves.toEqual({ approvalId: APPROVAL });

@@ -2,6 +2,55 @@
 
 Last updated: 2026-08-25
 
+## 2026-08-25 P8 product-fix implementation evidence (pre-CI)
+
+This coherent batch was prepared on `codex/p8-product-fixes` atop `7ea6a8e`. It
+contains 18 intended files and no changes under the frozen `foundation/` tree.
+The evidence below covers the batch bytes before exact-head CI; it must not be
+read as a candidate package, release, or final user acceptance.
+
+The five reported product defects now have bounded downstream fixes and tests:
+
+- ACP/AionRS project the user's message before asynchronous Main admission,
+  reconcile it to the canonical message, merge content chunks while the turn is
+  running, and release the local processing gate only after a bounded durable
+  runtime reread confirms the same terminal turn. The exact current-port
+  AionCore `ws:` route is admitted so chunks and `Finish` can reach the retained
+  AionUI stream.
+- General v1 receives structured requirements before execution. Explicit Team
+  file/network requests are classified in Main, unsupported requirements are
+  refused before `model-requested`, and the direct General-member SendBox is
+  text-only; no `Glob`, workspace tool, file path, or network authority is
+  exposed.
+- Invalid multiline Team requests use the closed `team-invalid-request`
+  response and localized guidance on both ACP and AionRS paths.
+- Dirty or moved-HEAD Artifact destinations persist terminal `workspace-dirty`
+  or `head-drift` delivery failures, and the Main bridge preserves those codes.
+  Patch download writes through a Main-owned native save dialog and returns only
+  `saved`/`cancelled` across the Renderer boundary.
+- A model failure observed while a Team attempt is paused remains the durable
+  incident after resume, with localized General guidance instead of a generic
+  `attempt-failed` label.
+
+Current local evidence:
+
+- The focused affected Root set passed 7 files / 143 tests with the repository's
+  Vitest runner.
+- Materialized downstream AionUI tests passed 7 files / 92 tests.
+- `bun run format:check`, `bun run lint`, `bun run typecheck`, P8 contract,
+  `git diff --check`, and `bun run downstream:aionui:check` pass.
+- The already-running complete `bun run check` finished at exit 0 with 178
+  passing test files, 3 skipped files, 1,992 passing tests, and 10 skipped
+  tests, plus the P7 abuse gate, product/foundation/downstream boundary checks,
+  and the production package build. Existing upstream bundler notices remain
+  warnings only.
+
+The next evidence boundary after this commit is explicit: push it, run one
+exact-head CI, rebuild a package from that exact commit, and repeat the real
+Electron/provider acceptance. Until those steps occur, the five fixes are
+locally validated implementation rather than a remotely verified or released
+closure.
+
 ## 2026-08-25 P8 product-acceptance corrections and evidence follow-up CI-verified
 
 The isolated branch `codex/p8-product-fixes` currently carries one bounded
