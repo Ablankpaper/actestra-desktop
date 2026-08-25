@@ -182,9 +182,12 @@ export async function resolveWorkspaceGitBinding(
   }
   const workspaceRoot = await canonicalize(topLevel, "root");
   const gitDirectory = await canonicalize(gitDir, "Git directory");
-  // `--git-common-dir` may be relative to the working tree, so it is joined before canonicalizing.
+  // `--git-common-dir` is relative to the directory from which Git was invoked
+  // (the candidate root), not necessarily the reported top-level directory.
+  // Resolving it against the candidate preserves linked-worktree bindings when
+  // the caller intentionally supplies a nested path.
   const gitCommonDirectory = await canonicalize(
-    path.isAbsolute(commonDir) ? commonDir : path.resolve(workspaceRoot, commonDir),
+    path.isAbsolute(commonDir) ? commonDir : path.resolve(canonicalCandidate, commonDir),
     "shared Git directory",
   );
   return Object.freeze({
