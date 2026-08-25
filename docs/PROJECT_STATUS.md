@@ -2,7 +2,71 @@
 
 Last updated: 2026-08-25
 
-## 2026-08-25 P8 product-fix implementation evidence (pre-CI)
+## 2026-08-25 P8 product-fix batch — CI, candidate, and Electron follow-up
+
+The implementation batch is `d07e824ce0b2dae2c72ef4a2bbbc391b5a2e75b7` on
+`codex/p8-product-fixes`, pushed to `origin`, and reviewed in PR [#72](https://github.com/Ablankpaper/actestra-desktop/pull/72).
+The PR is stacked on `codex/p8-2-package-runtime` (PR #71), not directly on
+`main`. The evidence in this section is bound to the `d07e824` implementation
+tree; a later documentation-only commit does not change those implementation
+bytes.
+
+### Remote CI
+
+PR workflow run [32839632765](https://github.com/Ablankpaper/actestra-desktop/actions/runs/32839632765)
+completed with all eight jobs successful, including the Windows authenticated
+Goose runtime, Windows containment and package probes, Ubuntu containment and
+package fresh-profile probe, macOS arm64 package/foundation checks, and Goose
+runner admission. The Windows authenticated record is `status: verified`: ACP
+initialization, MCP session creation, read, approved write, cancellation,
+parent-death cleanup, credential/environment canary absence, direct-network
+denial, unchanged original workspace, and `residualProcessCount = 0` were all
+observed.
+
+Because this was a `pull_request` workflow, GitHub checked the PR merge ref
+(`9ac485ad174cb63b9bcaf078af477686f8b9e575`), not a merged-main or release ref.
+Its tree (`2a12f58d53c070fe732bf8ea36d4b969fa843a6a`) was independently verified
+to equal the `d07e824` tree, so this is same-tree PR evidence, not a claim of
+direct commit-head, merged-main, release, or deployment validation.
+
+### macOS candidate and real Electron evidence
+
+The candidate package is at
+`/Users/zizimutou/Library/Caches/Actestra/candidates/d07e824.thASb1/mac-arm64/Actestra.app`.
+Package verification, ad-hoc signing, arm64 bundle/materialization checks,
+P7 packaged trust, SBOM/license/audit checks, packaged smoke, schema 23,
+Main/Renderer/General Worker readiness, and clean exit/profile cleanup passed.
+The Goose runner remains an external admitted artifact (`packaged: false`,
+`disposition: external-admitted`) as designed; it is not silently bundled into
+the `.app`.
+
+The running candidate was exercised with a configured temporary Provider:
+
+- the user message appeared immediately, streamed content arrived before
+  `Finish`, and the processing indicator cleared after durable terminal state;
+- an explicit General file request was refused with the localized capability
+  guidance and no Glob/file tool;
+- a moved-HEAD coding delivery was projected as `head-drift` and remained
+  unapplied;
+- a clean coding Artifact showed `Applied` and disabled the apply action;
+- Provider credentials were not exposed to the Renderer or conversation.
+
+The multiline Team UI attempt was accepted after the input layer normalized the
+line break and was manually cancelled, so physical UI rejection of a literal
+multiline payload is not claimed here; the closed `team-invalid-request`
+mapping remains covered by automated tests and cross-layer validation.
+
+### Remaining boundary
+
+This closes the five reported product-fix behaviors at local-test, same-tree
+PR-CI, packaged-smoke, and bounded real-Electron evidence layers. It does not
+yet close the overall P8 exit gate: PR #72 is not merged; P8.3 candidate
+integrity/update trust (formal signing/notarization where applicable, update
+metadata, and rollback evidence) and P8.4 clean-machine install/upgrade/
+uninstall, runbook, issue-intake, and final internal acceptance remain open.
+No release, deployment, distribution, or final-user-acceptance claim is made.
+
+## 2026-08-25 P8 product-fix implementation evidence (historical pre-CI snapshot)
 
 This coherent batch was prepared on `codex/p8-product-fixes` atop `7ea6a8e`. It
 contains 18 intended files and no changes under the frozen `foundation/` tree.
