@@ -14,6 +14,7 @@ import {
   type ActestraCodingJourneyRuntimeDependencies,
   type ActestraCodingModelBinding,
 } from "../../apps/desktop/src/main/workers/actestraCodingJourneyRuntime";
+import { GIT_EXECUTABLE } from "../../apps/desktop/src/main/workers/workspaceGitBinding";
 import {
   GOOSE_LINUX_ADMISSION_RECORD_FILE,
   GOOSE_LINUX_ARTIFACT_DIRECTORY,
@@ -202,13 +203,13 @@ describe("trusted Actestra coding journey runtime startup", () => {
     expect(Object.isFrozen(runtime!.tests)).toBe(true);
     expect(runtime!.commands).toEqual({
       "git.status": Object.freeze({
-        executablePath: "/usr/bin/git",
+        executablePath: GIT_EXECUTABLE,
         args: ["status", "--short", "--branch"],
       }),
     });
     expect(runtime!.tests).toEqual({
       "git.diff-check": Object.freeze({
-        executablePath: "/usr/bin/git",
+        executablePath: GIT_EXECUTABLE,
         args: ["diff", "--check"],
       }),
     });
