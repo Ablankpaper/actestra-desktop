@@ -239,4 +239,27 @@ describe("P8 native Goose containment acceptance gate", () => {
       expect(reference).toMatch(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+@[a-f0-9]{40}$/u);
     }
   });
+
+  it("consumes the verified containment summary without requiring private record fields", () => {
+    const workflow = read(".github/workflows/ci.yml");
+    const acceptance = read("scripts/run-goose-runner-containment.mjs");
+    const windowsPackageJob = readWorkflowJob(workflow, "electron-package-windows");
+    const linuxPackageJob = readWorkflowJob(workflow, "goose-containment-linux");
+
+    expect(acceptance).toContain("manifestSha256: digest(manifestBytes)");
+    for (const job of [windowsPackageJob, linuxPackageJob]) {
+      expect(job).toContain("manifestSha256");
+      expect(job).not.toMatch(/containment(?:\?|\$)?\.sourceCommit/u);
+      for (const capability of [
+        "filesystem",
+        "network",
+        "processTree",
+        "resources",
+        "parentDeath",
+        "cleanup",
+      ]) {
+        expect(job).not.toMatch(new RegExp(`containment(?:\\?|\\$)?\\.${capability}`, "u"));
+      }
+    }
+  });
 });

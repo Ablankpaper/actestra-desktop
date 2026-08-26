@@ -83,6 +83,8 @@ describe("P8.2 packaged product-journey downstream composition", () => {
     expect(patch).not.toContain("foundation/");
     expect(patch).not.toContain("process.cwd()");
     expect(patch).toContain("ACTESTRA_P8_PRODUCT_JOURNEYS_WORKSPACE");
+    expect(patch).toContain("p8ProductJourneyFailureStage");
+    expect(patch).toContain("stage: p8ProductJourneyFailureStage");
   });
 
   it("starts after renderer load and awaits completion before graceful exit", () => {

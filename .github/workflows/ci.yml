@@ -552,14 +552,8 @@ jobs:
             $manifest.runner.executable.sha256 -ne $executableDigest -or
             $containment.status -ne "verified" -or
             $containment.targetTriple -ne "x86_64-pc-windows-msvc" -or
-            $containment.sourceCommit -ne "${{ github.sha }}" -or
-            $containment.executableSha256 -ne $executableDigest -or
-            $containment.filesystem -ne $true -or
-            $containment.network -ne $true -or
-            $containment.processTree -ne $true -or
-            $containment.resources -ne $true -or
-            $containment.parentDeath -ne $true -or
-            $containment.cleanup -ne $true
+            $containment.manifestSha256 -ne $manifestDigest -or
+            $containment.executableSha256 -ne $executableDigest
           ) {
             throw "Windows runner or containment binding is invalid"
           }
@@ -916,9 +910,9 @@ jobs:
           manifest_digest="$(sha256sum "$manifest_path" | cut -d ' ' -f 1)"
           executable_digest="$(sha256sum "$executable_path" | cut -d ' ' -f 1)"
           containment_digest="$(sha256sum "$containment_path" | cut -d ' ' -f 1)"
-          node - "$manifest_path" "$containment_path" "$executable_digest" "${{ github.sha }}" <<'NODE'
+          node - "$manifest_path" "$containment_path" "$executable_digest" "${{ github.sha }}" "$manifest_digest" <<'NODE'
           const fs = require("node:fs");
-          const [manifestPath, containmentPath, executableDigest, sourceCommit] = process.argv.slice(2);
+          const [manifestPath, containmentPath, executableDigest, sourceCommit, manifestDigest] = process.argv.slice(2);
           const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
           const containment = JSON.parse(fs.readFileSync(containmentPath, "utf8"));
           const valid =
@@ -927,11 +921,8 @@ jobs:
             manifest?.runner?.executable?.sha256 === executableDigest &&
             containment?.status === "verified" &&
             containment?.targetTriple === "x86_64-unknown-linux-gnu" &&
-            containment?.sourceCommit === sourceCommit &&
-            containment?.executableSha256 === executableDigest &&
-            ["filesystem", "network", "processTree", "resources", "parentDeath", "cleanup"].every(
-              (key) => containment[key] === true,
-            );
+            containment?.manifestSha256 === manifestDigest &&
+            containment?.executableSha256 === executableDigest;
           if (!valid) process.exit(1);
           NODE
           xvfb-run -a bun run smoke:p8-product-journeys -- \

@@ -2,6 +2,28 @@
 
 Last updated: 2026-08-27
 
+## 2026-08-27 P8.2 containment-summary CI consumer repair (local)
+
+PR #77 run `33008974520` is associated with head
+`a3e9539197b52875b2d8b0a0bde106c48b9d7630`; its pull-request execution uses
+merge ref `a642be59e2351a1593e2e143e109eb765cf5f5c2`. The Ubuntu job successfully
+built and admitted the exact Goose runner, built and installed the DEB, passed
+the authenticated native integration and all six containment checks, and then
+failed before launching the packaged product-journey smoke. The new workflow
+consumer incorrectly required `sourceCommit` and the six internal capability
+booleans from `containment-evidence.json`, while the established verified
+summary contract intentionally emits only status, target, manifest,
+executable, and probe digests.
+
+The local repair keeps the source and target check on the exact package runner
+manifest, then binds the downloaded verified containment summary to that exact
+manifest digest and executable digest on both Windows and Ubuntu. It does not
+widen or bypass containment admission. A regression test first reproduced the
+contract mismatch and now passes with the focused P8 CI, package-binding, and
+candidate tests (`52/52`); lint reports zero warnings or errors and
+`git diff --check` passes. A new exact-head CI run is still required before
+P8.2 evidence can advance.
+
 ## 2026-08-27 P8 exact-head RustSec transport resilience (local)
 
 PR #77 exact-head CI run `33004547918`, attempt 2, was bound to

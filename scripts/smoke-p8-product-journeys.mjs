@@ -19,6 +19,7 @@ export const P8_PRODUCT_JOURNEY_RESULT_FILE_NAME = "p8-product-journeys-result.j
 export const P8_PRODUCT_JOURNEY_RESTART_JOURNAL_FILE_NAME = "p8-product-journeys-restart.json";
 export const P8_PRODUCT_JOURNEY_RESULT_MAX_BYTES = 32 * 1024;
 const P8_PRODUCT_JOURNEY_RESTART_JOURNAL_MAX_BYTES = 8 * 1024;
+const P8_PRODUCT_JOURNEY_DIAGNOSTIC_MAX_BYTES = 4 * 1024;
 
 const TARGETS = new Map(
   P8_PLATFORM_MATRIX.targets.map((target) => [
@@ -35,6 +36,10 @@ const DIGEST_PATTERN = /^[a-f0-9]{64}$/u;
 const COMMIT_PATTERN = /^[a-f0-9]{40}$/u;
 const CI_RUN_PATTERN = /^[1-9][0-9]{0,19}$/u;
 const FAILURE_CODE_SET = new Set(P8_PRODUCT_JOURNEY_FAILURE_CODES);
+const P8_PRODUCT_JOURNEY_DIAGNOSTIC_STAGES = new Set([
+  "startup-recovery",
+  ...P8_PRODUCT_JOURNEY_IDS,
+]);
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 class P8ProductJourneySmokeError extends Error {
@@ -43,6 +48,56 @@ class P8ProductJourneySmokeError extends Error {
     this.name = "P8ProductJourneySmokeError";
     this.code = code;
   }
+}
+
+/**
+ * Accept only the packaged app's fixed diagnostic line. Raw app output is
+ * intentionally discarded so paths, provider payloads, and other private
+ * values cannot cross the acceptance boundary.
+ */
+export function classifyP8ProductJourneyDiagnosticLine(value) {
+  if (
+    typeof value !== "string" ||
+    Buffer.byteLength(value, "utf8") > P8_PRODUCT_JOURNEY_DIAGNOSTIC_MAX_BYTES
+  ) {
+    return undefined;
+  }
+  const match = /^ACTESTRA_P8_PRODUCT_JOURNEYS_FAILED (\{[^\r\n]*\})$/u.exec(value);
+  if (match === null) return undefined;
+  let parsed;
+  try {
+    parsed = JSON.parse(match[1]);
+  } catch {
+    return undefined;
+  }
+  if (
+    !isRecord(parsed) ||
+    !hasExactKeys(parsed, ["code", "stage"]) ||
+    parsed.code !== "journey-failed" ||
+    typeof parsed.stage !== "string" ||
+    !P8_PRODUCT_JOURNEY_DIAGNOSTIC_STAGES.has(parsed.stage)
+  ) {
+    return undefined;
+  }
+  return Object.freeze({ code: "journey-failed", stage: parsed.stage });
+}
+
+function observeP8ProductJourneyDiagnostics(stream, onDiagnostic) {
+  if (stream === null || typeof stream?.on !== "function") return;
+  let pending = "";
+  stream.on("data", (chunk) => {
+    if (typeof chunk !== "string" && !Buffer.isBuffer(chunk)) return;
+    pending += chunk.toString("utf8");
+    if (Buffer.byteLength(pending, "utf8") > P8_PRODUCT_JOURNEY_DIAGNOSTIC_MAX_BYTES) {
+      pending = pending.slice(-P8_PRODUCT_JOURNEY_DIAGNOSTIC_MAX_BYTES);
+    }
+    const lines = pending.split(/\r?\n/u);
+    pending = lines.pop() ?? "";
+    for (const line of lines) {
+      const diagnostic = classifyP8ProductJourneyDiagnosticLine(line);
+      if (diagnostic !== undefined) onDiagnostic(diagnostic);
+    }
+  });
 }
 
 function smokeFailure(code) {
@@ -409,6 +464,8 @@ export async function runP8ProductJourneyCrashRestartRecovery(options) {
       });
       if (!child || !Number.isInteger(child.pid) || child.pid <= 0) smokeFailure("spawn-failed");
       outcomePromise = childOutcome(child);
+      observeP8ProductJourneyDiagnostics(child.stderr, options.onDiagnostic);
+      observeP8ProductJourneyDiagnostics(child.stdout, options.onDiagnostic);
       child.stdout?.resume?.();
       child.stderr?.resume?.();
       const initial = snapshotProcessTree(child.pid);
@@ -896,6 +953,7 @@ export async function runP8ProductJourneySmoke(options) {
   let ownsIsolation = false;
   let child;
   let outcomePromise;
+  let diagnostic;
   try {
     if (
       !isRecord(options) ||
@@ -962,6 +1020,9 @@ export async function runP8ProductJourneySmoke(options) {
         ),
         environment,
         ...(options.spawnChild === undefined ? {} : { spawnChild: options.spawnChild }),
+        onDiagnostic: (value) => {
+          diagnostic = value;
+        },
         snapshotProcessTree,
         timeoutMs: options.timeoutMs ?? 10 * 60_000,
         cleanupTimeoutMs: options.cleanupTimeoutMs ?? 10_000,
@@ -978,6 +1039,12 @@ export async function runP8ProductJourneySmoke(options) {
       });
       if (!child || !Number.isInteger(child.pid) || child.pid <= 0) smokeFailure("spawn-failed");
       outcomePromise = childOutcome(child);
+      observeP8ProductJourneyDiagnostics(child.stderr, (value) => {
+        diagnostic = value;
+      });
+      observeP8ProductJourneyDiagnostics(child.stdout, (value) => {
+        diagnostic = value;
+      });
       const initialSnapshot = snapshotProcessTree(child.pid);
       if (!initialSnapshot?.ok) smokeFailure("process-probe-failed");
       const observedPids = new Set(initialSnapshot.pids);
@@ -1064,6 +1131,9 @@ export async function runP8ProductJourneySmoke(options) {
   } catch (error) {
     if (child && outcomePromise) await terminateChild(child, outcomePromise).catch(() => undefined);
     const code = error instanceof P8ProductJourneySmokeError ? error.code : "early-exit";
+    if (diagnostic !== undefined) {
+      process.stderr.write(`${JSON.stringify({ ...diagnostic, outerCode: code })}\n`);
+    }
     return Object.freeze({ evidence: buildFailure(options, code) });
   } finally {
     await p7Smoke?.close?.().catch(() => undefined);

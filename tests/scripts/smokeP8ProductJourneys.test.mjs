@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { P8_PRODUCT_JOURNEY_IDS } from "../../scripts/p8-product-journey-evidence.mjs";
 import {
   P8_PRODUCT_JOURNEY_RESULT_FILE_NAME,
+  classifyP8ProductJourneyDiagnosticLine,
   normalizeP8ProductJourneyPackages,
   parseP8ProductJourneyArguments,
   parseP8ProductJourneyResultFile,
@@ -103,6 +104,27 @@ function smokeOptions(fixture, onSpawn, snapshotProcessTree = () => ({ ok: true,
 }
 
 describe("P8.2 packaged product-journey controller", () => {
+  it("classifies only bounded packaged-journey diagnostics", () => {
+    expect(
+      classifyP8ProductJourneyDiagnosticLine(
+        'ACTESTRA_P8_PRODUCT_JOURNEYS_FAILED {"code":"journey-failed","stage":"startup-recovery"}',
+      ),
+    ).toEqual({ code: "journey-failed", stage: "startup-recovery" });
+    expect(
+      classifyP8ProductJourneyDiagnosticLine(
+        'ACTESTRA_P8_PRODUCT_JOURNEYS_FAILED {"code":"journey-failed","stage":"general-artifact"}',
+      ),
+    ).toEqual({ code: "journey-failed", stage: "general-artifact" });
+    for (const invalid of [
+      'ACTESTRA_P8_PRODUCT_JOURNEYS_FAILED {"code":"journey-failed","stage":"/private/path"}',
+      'ACTESTRA_P8_PRODUCT_JOURNEYS_FAILED {"code":"raw-error","stage":"cleanup"}',
+      'prefix ACTESTRA_P8_PRODUCT_JOURNEYS_FAILED {"code":"journey-failed","stage":"cleanup"}',
+      'ACTESTRA_P8_PRODUCT_JOURNEYS_FAILED {"code":"journey-failed","stage":"cleanup","path":"/tmp/private"}',
+    ]) {
+      expect(classifyP8ProductJourneyDiagnosticLine(invalid)).toBeUndefined();
+    }
+  });
+
   it("parses only the closed CLI arguments", () => {
     expect(
       parseP8ProductJourneyArguments([

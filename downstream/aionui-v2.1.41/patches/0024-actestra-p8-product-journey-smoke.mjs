@@ -114,6 +114,7 @@ let p8ProductJourneySmokeStarted = false;
 let p8ProductJourneyDestinationWorkspaceId: WorkspaceId | null = null;
 let p8ProductJourneyStartupRecovery: readonly GeneralWorkRecoveryResult[] | null = null;
 let p8ProductJourneyRestartVerified = false;
+let p8ProductJourneyFailureStage = 'startup-recovery';
 
 function p8Verified(id: P8ProductJourneyId): P8ProductJourneyObservation {
   return Object.freeze({ id, status: 'verified' as const, residualProcessCount: 0 as const });
@@ -417,7 +418,10 @@ async function startP8ProductJourneySmoke(): Promise<void> {
     const coordinator = createP8ProductJourneyCoordinator({
       environment: process.env,
       appIsPackaged: app.isPackaged,
-      executeJourney: (id, signal) => executeP8ProductJourney(id, environment, signal),
+      executeJourney: (id, signal) => {
+        p8ProductJourneyFailureStage = id;
+        return executeP8ProductJourney(id, environment, signal);
+      },
       cleanup: async () => {
         await Promise.all([
           generalWorkJourneyService!.waitForIdle(),
@@ -435,7 +439,10 @@ async function startP8ProductJourneySmoke(): Promise<void> {
       /^[a-z]+(?:-[a-z]+)*$/u.test(error.message)
         ? error.message
         : 'journey-failed';
-    console.error('ACTESTRA_P8_PRODUCT_JOURNEYS_FAILED ' + JSON.stringify({ code }));
+    console.error(
+      'ACTESTRA_P8_PRODUCT_JOURNEYS_FAILED ' +
+        JSON.stringify({ code, stage: p8ProductJourneyFailureStage }),
+    );
   } finally {
     app.quit();
   }
