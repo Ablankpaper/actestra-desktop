@@ -886,6 +886,9 @@ jobs:
           --target-triple x86_64-unknown-linux-gnu
           --materialized-root "${{ github.workspace }}/.actestra/aionui-v2.1.41"
 
+      - name: Re-stage bound Ubuntu Goose admission into final package resources
+        run: bun run downstream:aionui:stage:linux-goose
+
       - name: Rebuild and inspect exact bound Ubuntu DEB package
         shell: bash
         env:

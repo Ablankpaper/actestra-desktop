@@ -2,6 +2,31 @@
 
 Last updated: 2026-08-27
 
+## 2026-08-27 P8.2 Ubuntu bound-admission restage repair (local)
+
+PR #77 run `33021704490`, bound to head
+`4bf7cab8f098dfe8dbb2654502052c4631e988ff`, passed Goose admission, the
+Ubuntu build probe, and Windows containment. The first concrete failure was in
+`P8.2 Ubuntu x64 Goose containment` after the containment-bound DEB itself
+rebuilt successfully: `inspect-aionui-linux-deb.mjs` rejected it with the
+closed result `{"status":"failed","code":"deb-digest-mismatch"}`. Remaining
+jobs were cancelled after the run could no longer become green, so this run is
+not P8.2 evidence.
+
+The failure was a package-binding contract mismatch. Containment re-admission
+updates the bound runner Artifact; the existing restage refreshed the generic
+runner resources and package attestation but left the Linux-specific
+`actestra-goose-runner-admission.json` bound to the pre-containment digests.
+The workflow now reruns `downstream:aionui:stage:linux-goose` after the generic
+bound-runner restage and before rebuilding the DEB, keeping the admission
+record, AppArmor profile, package attestation, manifest, and executable bound
+to the same Artifact. The regression was observed RED before the workflow
+change and now passes. The related CI wiring, package binding, native wiring,
+and DEB inspector collection passed `34` tests; an additional unchanged Linux
+staging test failed only because its assertion assumes a filesystem directory
+entry order that macOS did not return, so it was not retried or modified as
+part of this boundary. A new exact-head native CI run remains required.
+
 ## 2026-08-27 P8.2 packaged-journey failure-stage type repair (local)
 
 PR #77 run `33020020984`, bound to head

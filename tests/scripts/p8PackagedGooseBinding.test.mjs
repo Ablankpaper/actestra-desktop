@@ -182,6 +182,7 @@ describe("P8.2 package-bound Goose runner binding", () => {
       "Remove temporary Ubuntu Goose package layout",
       "Re-stage bound Ubuntu Goose runner into final package resources",
       "bun run downstream:aionui:stage:goose -- --target-triple x86_64-unknown-linux-gnu",
+      "bun run downstream:aionui:stage:linux-goose",
       "Rebuild and inspect exact bound Ubuntu DEB package",
       "bun run --cwd .actestra/aionui-v2.1.41 dist:linux -- --x64",
       'install -D -m 0644 "${deb_candidates[0]}" "$ACTESTRA_LINUX_DEB_PATH"',
