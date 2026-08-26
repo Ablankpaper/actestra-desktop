@@ -299,4 +299,20 @@ describe("P8.3 candidate integrity and update-trust contract", () => {
     expect(JSON.stringify(assembled)).not.toContain(root);
     expect(JSON.stringify(assembled)).not.toMatch(/Path|credential|secret|token/i);
   });
+
+  it("accepts target evidence produced by the bounded candidate-input job", () => {
+    const manifest = completeManifest();
+    const assembled = buildP8CandidateManifest({
+      sourceCommit,
+      ciRunId,
+      version: manifest.version,
+      targets: manifest.targets,
+      update: manifest.update,
+      rollback: manifest.rollback,
+    });
+    expect(validateP8CandidateMatrix(assembled)).toEqual({ ok: true });
+    expect(JSON.stringify(assembled)).not.toMatch(
+      /journeyEvidencePath|runtimeExecutablePath|appAsarPath/u,
+    );
+  });
 });

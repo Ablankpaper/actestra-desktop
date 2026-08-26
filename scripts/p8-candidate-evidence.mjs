@@ -320,6 +320,15 @@ function packageEntries(target, descriptor) {
 function assembleTargetEvidence(target, descriptor, sourceCommit, ciRunId) {
   const expected = target?.id !== undefined ? target : TARGETS.get(target?.targetId);
   if (!expected || !isRecord(descriptor)) throw new Error("target-matrix-incomplete");
+  // Candidate-input jobs may already have hashed and validated the exact
+  // package/runtime/runner files. Accept only that complete, path-free shape;
+  // no mutable workspace path is carried into the candidate manifest.
+  if (Array.isArray(descriptor.packages) && descriptor.journeyEvidenceSha256 !== undefined) {
+    const normalized = { ...descriptor, targetId: expected.id };
+    const validation = targetShape(normalized, sourceCommit, ciRunId);
+    if (!validation.ok) throw new Error(validation.code);
+    return Object.freeze(normalized);
+  }
   const journeyPath = requireFile(descriptor.journeyEvidencePath, "journey-evidence-incomplete");
   const journeyEvidence = readJsonFile(journeyPath);
   const journeyBinding = {
