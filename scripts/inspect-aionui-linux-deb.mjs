@@ -13,6 +13,7 @@ const MAX_SCRIPT_BYTES = 512 * 1024;
 const EXPECTED_TARGET = "x86_64-unknown-linux-gnu";
 const EXPECTED_PROFILE_NAME = "Actestra-Goose-Runner";
 const EXPECTED_EXECUTABLE = "/opt/Actestra/resources/actestra-goose-runner/actestra-goose-runner";
+const PACKAGE_ATTESTATION_FILE = "actestra-goose-runner-package.json";
 const RUNNER_FILES = Object.freeze([
   "GOOSE-APACHE-2.0.txt",
   "Cargo.lock",
@@ -21,6 +22,9 @@ const RUNNER_FILES = Object.freeze([
   "actestra-goose-runner.cdx.json",
   "actestra-goose-runner.manifest.json",
 ]);
+const PACKAGE_ATTESTATION_FILES = Object.freeze(
+  RUNNER_FILES.map((file) => `actestra-goose-runner/${file}`),
+);
 const ADMISSION_KEYS = Object.freeze([
   "contractVersion",
   "executablePath",
@@ -30,7 +34,18 @@ const ADMISSION_KEYS = Object.freeze([
   "runnerManifestSha256",
   "targetTriple",
 ]);
+const PACKAGE_ATTESTATION_KEYS = Object.freeze([
+  "contractVersion",
+  "executableFile",
+  "executableSha256",
+  "files",
+  "runnerDirectory",
+  "runnerManifestSha256",
+  "sourceCommit",
+  "targetTriple",
+]);
 const SHA256 = /^[a-f0-9]{64}$/u;
+const COMMIT = /^[a-f0-9]{40}$/u;
 
 export class AionuiLinuxDebInspectionError extends Error {
   constructor(code, message) {
@@ -105,6 +120,39 @@ function parseAdmission(bytes) {
   return Object.freeze({ ...value });
 }
 
+function parsePackageAttestation(bytes) {
+  let value;
+  try {
+    value = JSON.parse(Buffer.from(bytes).toString("utf8"));
+  } catch {
+    fail("deb-package-attestation-invalid", "DEB package attestation is invalid");
+  }
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    fail("deb-package-attestation-invalid", "DEB package attestation is invalid");
+  }
+  const keys = Reflect.ownKeys(value);
+  if (
+    keys.length !== PACKAGE_ATTESTATION_KEYS.length ||
+    keys.some((key) => typeof key !== "string" || !PACKAGE_ATTESTATION_KEYS.includes(key)) ||
+    value.contractVersion !== 1 ||
+    value.targetTriple !== EXPECTED_TARGET ||
+    typeof value.sourceCommit !== "string" ||
+    !COMMIT.test(value.sourceCommit) ||
+    typeof value.runnerManifestSha256 !== "string" ||
+    !SHA256.test(value.runnerManifestSha256) ||
+    typeof value.executableSha256 !== "string" ||
+    !SHA256.test(value.executableSha256) ||
+    value.executableFile !== "actestra-goose-runner" ||
+    value.runnerDirectory !== "actestra-goose-runner" ||
+    !Array.isArray(value.files) ||
+    value.files.length !== PACKAGE_ATTESTATION_FILES.length ||
+    value.files.some((file, index) => file !== PACKAGE_ATTESTATION_FILES[index])
+  ) {
+    fail("deb-package-attestation-invalid", "DEB package attestation is invalid");
+  }
+  return Object.freeze({ ...value, files: PACKAGE_ATTESTATION_FILES });
+}
+
 async function locateResources(root) {
   const candidates = [
     path.join(root, "data/opt/Actestra/resources"),
@@ -154,9 +202,13 @@ async function inspectExtracted(root) {
 
   const profilePath = path.join(resources, "apparmor-profile");
   const recordPath = path.join(resources, "actestra-goose-runner-admission.json");
+  const packageAttestationPath = path.join(resources, PACKAGE_ATTESTATION_FILE);
   const profileBytes = await boundedRead(profilePath, MAX_RECORD_BYTES, "deb-profile-invalid");
   const record = parseAdmission(
     await boundedRead(recordPath, MAX_RECORD_BYTES, "deb-record-invalid"),
+  );
+  const packageAttestation = parsePackageAttestation(
+    await boundedRead(packageAttestationPath, MAX_RECORD_BYTES, "deb-package-attestation-invalid"),
   );
   const executablePath = path.join(runner, "actestra-goose-runner");
   const executableMetadata = await regularFile(executablePath, "deb-runner-layout-invalid");
@@ -173,7 +225,9 @@ async function inspectExtracted(root) {
   if (
     digest(profileBytes) !== record.profileSha256 ||
     digest(manifestBytes) !== record.runnerManifestSha256 ||
-    digest(executableBytes) !== record.executableSha256
+    digest(executableBytes) !== record.executableSha256 ||
+    packageAttestation.runnerManifestSha256 !== record.runnerManifestSha256 ||
+    packageAttestation.executableSha256 !== record.executableSha256
   ) {
     fail("deb-digest-mismatch", "DEB profile or Goose Artifact digest does not match its record");
   }
@@ -210,8 +264,10 @@ async function inspectExtracted(root) {
     files: Object.freeze([
       "opt/Actestra/resources/apparmor-profile",
       "opt/Actestra/resources/actestra-goose-runner-admission.json",
+      `opt/Actestra/resources/${PACKAGE_ATTESTATION_FILE}`,
       ...RUNNER_FILES.map((name) => `opt/Actestra/resources/actestra-goose-runner/${name}`),
     ]),
+    sourceCommit: packageAttestation.sourceCommit,
     profileSha256: record.profileSha256,
     runnerManifestSha256: record.runnerManifestSha256,
     executableSha256: record.executableSha256,

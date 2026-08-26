@@ -1,6 +1,5 @@
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { isDeepStrictEqual, promisify } from "node:util";
+import { isDeepStrictEqual } from "node:util";
 import {
   AIONUI_CODING_JOURNEY_CONTRACT_VERSION,
   assertAionUiCodingJourneyProjection,
@@ -77,8 +76,8 @@ import type {
 } from "../workers/isolatedCodingMainService";
 import type { AdmittedGooseRunnerArtifact } from "../workers/gooseRunnerArtifact";
 import { ArtifactDeliveryService } from "../workers/artifactDeliveryService";
+import { resolveWorkspaceGitBinding } from "../workers/workspaceGitBinding";
 
-const execFileAsync = promisify(execFile);
 const MAX_TITLE_BYTES = 512;
 const TEAM_APPROVAL_ACTOR_ID = approvalActorId("actestra-team-owner");
 
@@ -538,22 +537,8 @@ function assertCancellationReason(value: unknown): asserts value is string | und
 
 async function requireCanonicalGitRoot(rootPath: string): Promise<string> {
   try {
-    const result = await execFileAsync(
-      "/usr/bin/git",
-      ["-C", rootPath, "rev-parse", "--show-toplevel"],
-      {
-        encoding: "utf8",
-        env: {
-          PATH: "/usr/bin:/bin",
-          GIT_CONFIG_GLOBAL: "/dev/null",
-          GIT_CONFIG_NOSYSTEM: "1",
-          GIT_TERMINAL_PROMPT: "0",
-        },
-        maxBuffer: 64 * 1024,
-      },
-    );
-    const reportedRoot = result.stdout.trim();
-    if (reportedRoot !== rootPath) {
+    const binding = await resolveWorkspaceGitBinding(rootPath);
+    if (binding.workspaceRoot !== rootPath) {
       throw new AionUiCodingJourneyServiceError(
         "workspace-unavailable",
         "AionUI coding requires the canonical Git worktree root, and this workspace is a subdirectory of one",
