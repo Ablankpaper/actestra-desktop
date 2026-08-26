@@ -12,6 +12,7 @@ describe("Goose runner native build script", () => {
     const source = fs.readFileSync(buildScriptPath, "utf8");
 
     expect(source).toContain('from "./install-goose-runner-tools.mjs"');
+    expect(source).toContain('from "./cargo-audit-lock-scan.mjs"');
     expect(source).toContain(
       "resolveGooseRunnerToolInstallContract(process.platform, process.arch)",
     );
@@ -23,6 +24,8 @@ describe("Goose runner native build script", () => {
     expect(source).not.toContain('path.join(toolDirectory, "cargo-auditable")');
     expect(source).not.toContain('`${toolDirectory}:${process.env.PATH ?? ""}`');
     expect(source).not.toContain('process.platform === "win32" ? "actestra-goose-runner.exe"');
+    expect(source).toContain("runCargoAuditLockScan(cargoAuditPath, lockAuditArguments");
+    expect(source).toContain("maxAttempts: noFetchAudit ? 1 : undefined");
   });
 
   it("binds every containment implementation file into the runner source digest", () => {
@@ -32,6 +35,7 @@ describe("Goose runner native build script", () => {
       "apps/desktop/src/main/workers/gooseRunnerProcess.ts",
       "apps/desktop/src/main/workers/gooseRunnerTarget.ts",
       "scripts/gooseContainmentEvidence.mjs",
+      "scripts/cargo-audit-lock-scan.mjs",
       "scripts/record-goose-runner-containment.mjs",
       "scripts/run-goose-runner-containment.mjs",
       "scripts/test-goose-runner-containment.mjs",

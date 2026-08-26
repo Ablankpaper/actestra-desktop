@@ -1,6 +1,38 @@
 # Project Status
 
-Last updated: 2026-08-26
+Last updated: 2026-08-27
+
+## 2026-08-27 P8 exact-head RustSec transport resilience (local)
+
+PR #77 exact-head CI run `33004547918`, attempt 2, was bound to
+`20f0980b307bcc7889f9a6fd665b1ca3e494db7d`. Its Ubuntu native build probe
+passed, but the macOS foundation job failed while building the exact final
+package runner. The first concrete failure was not a product test or candidate
+contract failure: pinned `cargo-audit` exited before producing JSON because its
+RustSec advisory-database Git fetch returned a GitHub network I/O error. The
+remaining jobs were cancelled after that run could no longer become green, so
+they are not P8.2 evidence.
+
+The isolated branch now has a bounded transport-resilience repair. The lockfile
+audit retries at most three times only when `cargo-audit` exits with its
+advisory-fetch transport error and no scan JSON. A completed vulnerability scan
+is never retried, `--no-fetch` remains single-attempt, and three transport
+failures still fail closed with the original error. The helper is included in
+the runner source digest. Fresh local validation passes the new retry contract,
+native build wiring, and source-digest tests (`15/15`), plus lint with zero
+warnings/errors and `git diff --check`. The complete `bun run check` gate also
+passes: root Vitest `191` files passed and `3` skipped (`2,098` tests passed and
+`10` skipped), all `28` P7 abuse cases and `168` exact variants were denied-safe,
+and typecheck, SQLite, smoke harness, product boundary, foundation, downstream,
+and production package gates completed successfully. Existing bundler warnings
+remain non-fatal.
+
+Local installation of the exact pinned audit tools could not provide an
+end-to-end runner build because the separate pinned `cargo-auditable` GitHub
+release-asset download also failed at the network boundary. That download was
+not repeated. Exact-head native CI is still required before the repair or P8.2
+can advance. P8.3 formal signing/notarization and P8.4 clean-machine and
+real-provider evidence remain open.
 
 ## 2026-08-27 P8.3/P8.4 fail-closed evidence implementation (local)
 

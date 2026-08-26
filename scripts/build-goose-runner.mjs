@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import { verifyPrivateGooseRuntime } from "./goosePrivateRuntimeContract.mjs";
 import { resolveGooseRunnerToolInstallContract } from "./install-goose-runner-tools.mjs";
+import { runCargoAuditLockScan } from "./cargo-audit-lock-scan.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const runnerRoot = path.join(repositoryRoot, "workers", "goose-runner");
@@ -44,6 +45,7 @@ const sourceTreeFiles = [
   "apps/desktop/src/main/workers/gooseRunnerTarget.ts",
   "apps/desktop/src/shared/gooseRunnerSource.json",
   "scripts/build-goose-runner.mjs",
+  "scripts/cargo-audit-lock-scan.mjs",
   "scripts/goosePrivateRuntimeContract.mjs",
   "scripts/gooseContainmentEvidence.mjs",
   "scripts/install-goose-runner-tools.mjs",
@@ -597,7 +599,14 @@ if (noFetchAudit) {
   lockAuditArguments.push("--no-fetch");
 }
 lockAuditArguments.push("--file", "Cargo.lock");
-const lockAuditResult = await run(cargoAuditPath, lockAuditArguments, { cwd: runnerRoot });
+const lockAuditResult = await runCargoAuditLockScan(cargoAuditPath, lockAuditArguments, {
+  cwd: runnerRoot,
+  maxAttempts: noFetchAudit ? 1 : undefined,
+  onRetry: (attempt) =>
+    process.stderr.write(
+      `cargo-audit lock scan advisory fetch failed; retrying (${String(attempt + 1)}/3)\n`,
+    ),
+});
 const lockAudit = parseJsonOutput(lockAuditResult, "cargo-audit lock scan", [1]);
 const binaryAuditResult = await run(
   cargoAuditPath,
