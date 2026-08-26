@@ -252,8 +252,10 @@ replaceOnce(
         if (general === null) return null;
         const coding = await startTrustedActestraCodingJourneyRuntime({
           userDataPath: app.getPath('userData'),
-          runnerAdmission: resolveTrustedActestraCodingRunnerAdmission(process.env),
+          runnerAdmission: app.isPackaged ? null : resolveTrustedActestraCodingRunnerAdmission(process.env),
           linuxPackageResourcesPath: process.platform === 'linux' ? process.resourcesPath : undefined,
+          packagedResourcesPath:
+            process.platform !== 'linux' && app.isPackaged ? process.resourcesPath : undefined,
           modelBinding,
         });
         if (coding === null) return null;

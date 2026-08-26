@@ -8,6 +8,8 @@ import type { GooseContainmentEvidence } from "./gooseRunnerContainment";
 import { resolveGooseRunnerBuildTargetByTriple } from "./gooseRunnerTarget";
 
 export const GOOSE_RUNNER_MANIFEST_FILE = "actestra-goose-runner.manifest.json" as const;
+export const GOOSE_RUNNER_PACKAGE_DIRECTORY = "actestra-goose-runner" as const;
+export const GOOSE_RUNNER_PACKAGE_ATTESTATION_FILE = "actestra-goose-runner-package.json" as const;
 
 const LOCKFILE_NAME = "Cargo.lock";
 const LICENSE_FILE_NAME = "GOOSE-APACHE-2.0.txt";
@@ -21,6 +23,15 @@ const MAX_AUDIT_BYTES = 16 * 1024 * 1024;
 const MAX_EXECUTABLE_BYTES = 512 * 1024 * 1024;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 const COMMIT_PATTERN = /^[a-f0-9]{40}$/;
+const MAX_PACKAGE_ATTESTATION_BYTES = 64 * 1024;
+
+const PACKAGE_ARTIFACT_METADATA_FILES = Object.freeze([
+  "GOOSE-APACHE-2.0.txt",
+  "Cargo.lock",
+  "actestra-goose-runner.audit.json",
+  "actestra-goose-runner.cdx.json",
+  GOOSE_RUNNER_MANIFEST_FILE,
+] as const);
 export type GooseRunnerArtifactErrorCode =
   | "missing-artifact"
   | "invalid-manifest"
@@ -61,6 +72,40 @@ export interface AdmittedGooseRunnerArtifact {
   readonly linuxInstall?: Readonly<GooseRunnerLinuxInstallAttestation>;
   /** Present only when the artifact carries a validated native probe record. */
   readonly containment?: GooseContainmentEvidence;
+}
+
+export interface GooseRunnerPackageAttestation {
+  readonly contractVersion: 1;
+  readonly targetTriple: string;
+  readonly sourceCommit: string;
+  readonly runnerManifestSha256: string;
+  readonly executableSha256: string;
+  readonly executableFile: string;
+  readonly runnerDirectory: typeof GOOSE_RUNNER_PACKAGE_DIRECTORY;
+  readonly files: readonly string[];
+}
+
+export interface AdmittedGooseRunnerPackage {
+  readonly resourcesPath: string;
+  readonly runnerDirectory: string;
+  readonly attestationPath: string;
+  readonly sourceCommit: string;
+  readonly runnerAdmission: Readonly<{
+    readonly directory: string;
+    readonly trustedManifestSha256: string;
+    readonly expectedTargetTriple: string;
+  }>;
+  readonly attestation: GooseRunnerPackageAttestation;
+  readonly artifact: AdmittedGooseRunnerArtifact;
+}
+
+export interface AdmitGooseRunnerPackageOptions {
+  readonly expectedTargetTriple: string;
+  readonly expectedSourceCommit?: string;
+  readonly admitRunnerArtifact?: (
+    directory: string,
+    options: AdmitGooseRunnerArtifactOptions,
+  ) => Promise<AdmittedGooseRunnerArtifact>;
 }
 
 export interface GooseRunnerLinuxInstallAttestation {
@@ -892,5 +937,286 @@ export async function admitGooseRunnerArtifact(
     manifestPath,
     manifestSha256: sha256Buffer(manifestBuffer),
     ...(containment === undefined ? {} : { containment }),
+  });
+}
+
+function packagePathIsInside(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return (
+    relative.length > 0 &&
+    relative !== ".." &&
+    !relative.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relative)
+  );
+}
+
+async function canonicalPackageResourceRoot(resourcesPath: string): Promise<string> {
+  if (
+    typeof resourcesPath !== "string" ||
+    !path.isAbsolute(resourcesPath) ||
+    path.resolve(resourcesPath) !== resourcesPath ||
+    path.parse(resourcesPath).root === resourcesPath
+  ) {
+    throw new GooseRunnerArtifactError(
+      "invalid-manifest",
+      "Goose package resources path must be an absolute non-root path",
+    );
+  }
+  const metadata = await lstat(resourcesPath).catch((error: unknown) => {
+    throw new GooseRunnerArtifactError(
+      "missing-artifact",
+      "Goose package resources directory is missing",
+      { cause: error },
+    );
+  });
+  if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
+    throw new GooseRunnerArtifactError(
+      "invalid-manifest",
+      "Goose package resources directory must be a real directory",
+    );
+  }
+  const canonical = await realpath(resourcesPath).catch((error: unknown) => {
+    throw new GooseRunnerArtifactError(
+      "missing-artifact",
+      "Goose package resources directory is missing",
+      { cause: error },
+    );
+  });
+  if (canonical !== resourcesPath) {
+    throw new GooseRunnerArtifactError(
+      "invalid-manifest",
+      "Goose package resources directory cannot resolve through a symlink",
+    );
+  }
+  return canonical;
+}
+
+async function canonicalPackageChild(
+  resourcesPath: string,
+  childName: string,
+  kind: "directory" | "file",
+): Promise<string> {
+  const candidate = path.join(resourcesPath, childName);
+  if (!packagePathIsInside(resourcesPath, candidate)) {
+    throw new GooseRunnerArtifactError(
+      "invalid-manifest",
+      "Goose package child escapes the resources directory",
+    );
+  }
+  const metadata = await lstat(candidate).catch((error: unknown) => {
+    throw new GooseRunnerArtifactError("missing-artifact", "Goose package child is missing", {
+      cause: error,
+    });
+  });
+  if (
+    metadata.isSymbolicLink() ||
+    (kind === "directory" ? !metadata.isDirectory() : !metadata.isFile())
+  ) {
+    throw new GooseRunnerArtifactError(
+      "invalid-manifest",
+      "Goose package child has an invalid filesystem type",
+    );
+  }
+  const canonical = await realpath(candidate).catch((error: unknown) => {
+    throw new GooseRunnerArtifactError("missing-artifact", "Goose package child is missing", {
+      cause: error,
+    });
+  });
+  if (canonical !== candidate || !packagePathIsInside(resourcesPath, canonical)) {
+    throw new GooseRunnerArtifactError(
+      "invalid-manifest",
+      "Goose package child resolves outside the resources directory",
+    );
+  }
+  return canonical;
+}
+
+function packageAttestationFiles(executableFile: string): readonly string[] {
+  return Object.freeze(
+    [
+      PACKAGE_ARTIFACT_METADATA_FILES[0],
+      PACKAGE_ARTIFACT_METADATA_FILES[1],
+      executableFile,
+      PACKAGE_ARTIFACT_METADATA_FILES[2],
+      PACKAGE_ARTIFACT_METADATA_FILES[3],
+      PACKAGE_ARTIFACT_METADATA_FILES[4],
+    ].map((file) => `${GOOSE_RUNNER_PACKAGE_DIRECTORY}/${file}`),
+  );
+}
+
+function parseGooseRunnerPackageAttestation(
+  value: unknown,
+  expectedTargetTriple: string,
+): GooseRunnerPackageAttestation {
+  const attestation = requireRecord(value, "Goose runner package attestation");
+  const keys = [
+    "contractVersion",
+    "targetTriple",
+    "sourceCommit",
+    "runnerManifestSha256",
+    "executableSha256",
+    "executableFile",
+    "runnerDirectory",
+    "files",
+  ] as const;
+  requireExactKeys(attestation, [...keys], "Goose runner package attestation");
+  const target = resolveGooseRunnerBuildTargetByTriple(expectedTargetTriple);
+  if (
+    target === undefined ||
+    attestation.contractVersion !== 1 ||
+    attestation.targetTriple !== expectedTargetTriple ||
+    attestation.runnerDirectory !== GOOSE_RUNNER_PACKAGE_DIRECTORY ||
+    attestation.executableFile !== target.executableFile
+  ) {
+    throw new GooseRunnerArtifactError(
+      "incompatible-artifact",
+      "Goose runner package attestation target is incompatible",
+    );
+  }
+  const sourceCommit = requireCommit(
+    attestation.sourceCommit,
+    "Goose runner package source commit",
+  );
+  const runnerManifestSha256 = requireSha256(
+    attestation.runnerManifestSha256,
+    "Goose runner package manifest SHA-256",
+  );
+  const executableSha256 = requireSha256(
+    attestation.executableSha256,
+    "Goose runner package executable SHA-256",
+  );
+  const expectedFiles = packageAttestationFiles(target.executableFile);
+  if (
+    !Array.isArray(attestation.files) ||
+    attestation.files.length !== expectedFiles.length ||
+    attestation.files.some((file, index) => file !== expectedFiles[index])
+  ) {
+    throw new GooseRunnerArtifactError(
+      "invalid-manifest",
+      "Goose runner package file attestation is not exact",
+    );
+  }
+  return Object.freeze({
+    contractVersion: 1,
+    targetTriple: expectedTargetTriple,
+    sourceCommit,
+    runnerManifestSha256,
+    executableSha256,
+    executableFile: target.executableFile,
+    runnerDirectory: GOOSE_RUNNER_PACKAGE_DIRECTORY,
+    files: expectedFiles,
+  });
+}
+
+export async function admitGooseRunnerPackage(
+  resourcesPath: string,
+  options: AdmitGooseRunnerPackageOptions,
+): Promise<AdmittedGooseRunnerPackage> {
+  const canonicalResourcesPath = await canonicalPackageResourceRoot(resourcesPath);
+  const target = resolveGooseRunnerBuildTargetByTriple(options.expectedTargetTriple);
+  if (target === undefined) {
+    throw new GooseRunnerArtifactError(
+      "incompatible-artifact",
+      "Goose runner package target is outside the admitted native build matrix",
+    );
+  }
+  const runnerDirectory = await canonicalPackageChild(
+    canonicalResourcesPath,
+    GOOSE_RUNNER_PACKAGE_DIRECTORY,
+    "directory",
+  );
+  const attestationPath = await canonicalPackageChild(
+    canonicalResourcesPath,
+    GOOSE_RUNNER_PACKAGE_ATTESTATION_FILE,
+    "file",
+  );
+  const attestationBuffer = await readRegularFile(
+    attestationPath,
+    MAX_PACKAGE_ATTESTATION_BYTES,
+    "Goose runner package attestation",
+  );
+  const attestation = parseGooseRunnerPackageAttestation(
+    parseJson(attestationBuffer, "Goose runner package attestation"),
+    target.targetTriple,
+  );
+  if (
+    options.expectedSourceCommit !== undefined &&
+    attestation.sourceCommit !==
+      requireCommit(options.expectedSourceCommit, "Expected Actestra source commit")
+  ) {
+    throw new GooseRunnerArtifactError(
+      "incompatible-artifact",
+      "Goose runner package source commit is not bound to the expected source",
+    );
+  }
+
+  const expectedFiles = new Set([...PACKAGE_ARTIFACT_METADATA_FILES, target.executableFile]);
+  const entries = await readdir(runnerDirectory, { withFileTypes: true });
+  if (
+    entries.length !== expectedFiles.size ||
+    entries.some(
+      (entry) => entry.isSymbolicLink() || !entry.isFile() || !expectedFiles.has(entry.name),
+    )
+  ) {
+    throw new GooseRunnerArtifactError(
+      "invalid-manifest",
+      "Goose runner package contains an unexpected or missing file",
+    );
+  }
+  const executablePath = path.join(runnerDirectory, target.executableFile);
+  const manifestPath = path.join(runnerDirectory, GOOSE_RUNNER_MANIFEST_FILE);
+  const executableBytes = await readRegularFile(
+    executablePath,
+    MAX_EXECUTABLE_BYTES,
+    "Goose runner package executable",
+  );
+  const manifestBytes = await readRegularFile(
+    manifestPath,
+    MAX_MANIFEST_BYTES,
+    "Goose runner package manifest",
+  );
+  if (
+    sha256Buffer(executableBytes) !== attestation.executableSha256 ||
+    sha256Buffer(manifestBytes) !== attestation.runnerManifestSha256
+  ) {
+    throw new GooseRunnerArtifactError(
+      "digest-mismatch",
+      "Goose runner package bytes differ from the package attestation",
+    );
+  }
+
+  const admittedArtifact = await (options.admitRunnerArtifact ?? admitGooseRunnerArtifact)(
+    runnerDirectory,
+    {
+      trustedManifestSha256: attestation.runnerManifestSha256,
+      expectedTargetTriple: target.targetTriple,
+    },
+  );
+  if (
+    admittedArtifact.directory !== runnerDirectory ||
+    admittedArtifact.executablePath !== executablePath ||
+    admittedArtifact.targetTriple !== target.targetTriple ||
+    admittedArtifact.sourceCommit !== attestation.sourceCommit ||
+    admittedArtifact.executableSha256 !== attestation.executableSha256 ||
+    admittedArtifact.manifestSha256 !== attestation.runnerManifestSha256
+  ) {
+    throw new GooseRunnerArtifactError(
+      "incompatible-artifact",
+      "Re-admitted Goose runner package is not bound to its package attestation",
+    );
+  }
+  const runnerAdmission = Object.freeze({
+    directory: runnerDirectory,
+    trustedManifestSha256: attestation.runnerManifestSha256,
+    expectedTargetTriple: target.targetTriple,
+  });
+  return Object.freeze({
+    resourcesPath: canonicalResourcesPath,
+    runnerDirectory,
+    attestationPath,
+    sourceCommit: attestation.sourceCommit,
+    runnerAdmission,
+    attestation,
+    artifact: admittedArtifact,
   });
 }

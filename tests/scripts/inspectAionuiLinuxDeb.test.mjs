@@ -32,6 +32,8 @@ async function fixture() {
     license: Buffer.from("license"),
     profile: Buffer.from("profile bytes\n"),
   };
+  const manifestSha256 = digest(files.manifest);
+  const executableSha256 = digest(files.executable);
   await Promise.all([
     writeFile(path.join(runnerRoot, "actestra-goose-runner"), files.executable),
     writeFile(path.join(runnerRoot, "actestra-goose-runner.manifest.json"), files.manifest),
@@ -41,12 +43,32 @@ async function fixture() {
     writeFile(path.join(runnerRoot, "GOOSE-APACHE-2.0.txt"), files.license),
     writeFile(path.join(dataRoot, "apparmor-profile"), files.profile),
     writeFile(
+      path.join(dataRoot, "actestra-goose-runner-package.json"),
+      JSON.stringify({
+        contractVersion: 1,
+        targetTriple: "x86_64-unknown-linux-gnu",
+        sourceCommit: "a".repeat(40),
+        runnerManifestSha256: manifestSha256,
+        executableSha256,
+        executableFile: "actestra-goose-runner",
+        runnerDirectory: "actestra-goose-runner",
+        files: [
+          "actestra-goose-runner/GOOSE-APACHE-2.0.txt",
+          "actestra-goose-runner/Cargo.lock",
+          "actestra-goose-runner/actestra-goose-runner",
+          "actestra-goose-runner/actestra-goose-runner.audit.json",
+          "actestra-goose-runner/actestra-goose-runner.cdx.json",
+          "actestra-goose-runner/actestra-goose-runner.manifest.json",
+        ],
+      }),
+    ),
+    writeFile(
       path.join(dataRoot, "actestra-goose-runner-admission.json"),
       JSON.stringify({
         contractVersion: 1,
         targetTriple: "x86_64-unknown-linux-gnu",
-        runnerManifestSha256: digest(files.manifest),
-        executableSha256: digest(files.executable),
+        runnerManifestSha256: manifestSha256,
+        executableSha256,
         profileSha256: digest(files.profile),
         profileName: "Actestra-Goose-Runner",
         executablePath: "/opt/Actestra/resources/actestra-goose-runner/actestra-goose-runner",
@@ -88,6 +110,10 @@ describe("Ubuntu DEB Goose package inspector", () => {
 
   it.each([
     ["missing profile", async (value) => rm(path.join(value.dataRoot, "apparmor-profile"))],
+    [
+      "missing package attestation",
+      async (value) => rm(path.join(value.dataRoot, "actestra-goose-runner-package.json")),
+    ],
     [
       "missing runner entry",
       async (value) => rm(path.join(value.dataRoot, "actestra-goose-runner/Cargo.lock")),

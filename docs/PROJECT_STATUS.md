@@ -34,6 +34,41 @@ recovery, cleanup, packaging, platform-boundary fixes, and their evidence may
 be added. New feature design documents may continue elsewhere but do not enter
 the stabilization branch.
 
+## 2026-08-26 P8.2 Task 4 package-bound Goose binding — local implementation GREEN
+
+On the isolated stabilization branch
+`codex/release/p8-stabilization-current`, the first P8.2 package-binding slice
+is implemented locally on top of the baseline above. The slice adds one
+Main-owned package attestation and fail-closed re-admission boundary for the
+exact Goose runner, stages that runner into macOS, Windows, and Ubuntu native
+package resources, transfers only the admitted Windows package input between
+its native build and package jobs, and requires Ubuntu's DEB inspector and
+manual-install layout to carry the same attestation. Packaged macOS and
+Windows Main startup no longer accepts an external runner directory; it admits
+only the runner under Electron `process.resourcesPath`. The frozen `foundation/`
+tree remains unchanged.
+
+The local evidence for this slice is:
+
+- focused package/runtime/CI-contract collection: `6` files, `37` passed,
+  `1` skipped;
+- full root Vitest collection: `183` files, `2,045` passed, `10` skipped;
+- `bun run format:check`, `bun run lint`, `bun run typecheck`,
+  `bun run docs:check`, `bun run p8:contract:check`,
+  `bun run downstream:aionui:check`, and `bun run foundation:aionui:check`;
+- materialized downstream dependency installation and
+  `.actestra/aionui-v2.1.41` TypeScript check; and
+- `git diff --check`.
+
+The materialized dependency install exits successfully; its existing
+postinstall emits the non-fatal `.git can't be found` message because the
+generated downstream tree is not itself a Git checkout. No package was
+uploaded, no exact-head CI run has validated this new tree, and no candidate,
+release, deployment, or acceptance claim is made from these local results.
+The P8.2 ledger remains bound to `6f2a64d2…` until this slice is committed and
+its new exact source SHA receives native package/runner evidence. P8.2 remains
+open; P8.3 and P8.4 remain unstarted.
+
 ## 2026-08-25 P8.2 product acceptance integration closure
 
 The eight-case targeted acceptance record is

@@ -544,9 +544,23 @@ function main() {
     "extraResources:",
     "- from: resources/actestra-goose-runner\n    to: actestra-goose-runner",
     "- from: resources/actestra-goose-runner-admission.json\n    to: actestra-goose-runner-admission.json",
+    "- from: resources/actestra-goose-runner-package.json\n    to: actestra-goose-runner-package.json",
     "deb:\n  appArmorProfile: resources/actestra-apparmor-profile",
     "linux:\n",
   ]);
+  const packageBoundGooseRunner = fs.readFileSync(builderConfigPath, "utf8");
+  if (
+    !packageBoundGooseRunner.includes("resources/actestra-goose-runner") ||
+    !packageBoundGooseRunner.includes("resources/actestra-goose-runner-admission.json") ||
+    !packageBoundGooseRunner.includes("resources/actestra-goose-runner-package.json") ||
+    !packageBoundGooseRunner.includes("mac:") ||
+    !packageBoundGooseRunner.includes("win:") ||
+    !packageBoundGooseRunner.includes("linux:")
+  ) {
+    throw new Error(
+      "P8.2 package-bound Goose runner contract is incomplete for mac, win, or linux",
+    );
+  }
   requireText(path.join(outputRoot, "packages/desktop/src/common/config/actestraProduct.ts"), [
     "name: 'Actestra'",
     "protocol: 'actestra'",
@@ -1131,6 +1145,9 @@ function main() {
     "await initializeProcess();",
     "startTrustedActestraCodingJourneyRuntime",
     "resolveTrustedActestraCodingRunnerAdmission",
+    "runnerAdmission: app.isPackaged ? null : resolveTrustedActestraCodingRunnerAdmission(process.env)",
+    "packagedResourcesPath:",
+    "process.platform !== 'linux' && app.isPackaged ? process.resourcesPath : undefined",
     "configureActestraTeamWorkerRuntimeAdmission({",
     "projectAionCoreTeamModelCatalog",
     "await initializeActestraPersistenceUtility(app.getPath('userData'));",
@@ -1720,6 +1737,7 @@ function main() {
     "admitGooseRunnerArtifact",
     "admitInstalledGooseRunnerLinuxPackage",
     "linuxPackageResourcesPath",
+    "packagedResourcesPath",
     "goose-private",
     '"git.status"',
     '"git.diff-check"',
@@ -1736,6 +1754,8 @@ function main() {
     "../privileged/isolatedCodingToolPlatform",
     "./gooseRunnerArtifact",
     "./gooseRunnerLinuxPackage",
+    "./gooseRunnerTarget",
+    "./workspaceGitBinding",
   ];
   const codingJourneyRuntimeImports = extractStaticModuleSpecifiers(
     fs.readFileSync(codingJourneyRuntimePath, "utf8"),

@@ -275,10 +275,13 @@
       "domains": [
         "Ubuntu DEB AppArmor profile",
         "root-owned Goose package resources",
-        "Linux runner admission"
+        "Linux runner admission",
+        "macOS runner package binding",
+        "Windows runner package binding",
+        "cross-platform package re-admission"
       ],
-      "authorityOwner": "Actestra Main and the native electron-builder DEB lifecycle; no Renderer or runtime privilege authority",
-      "rollback": "Regenerate without patch 0021 and remove the Linux package staging wrapper. Darwin and Windows runner paths, the existing Linux fail-closed resolver, and frozen foundation remain unchanged."
+      "authorityOwner": "Actestra Main and the native electron-builder package lifecycle; no Renderer or runtime privilege authority",
+      "rollback": "Regenerate without patch 0021 and remove the package staging wrapper. The existing fail-closed runner resolvers and frozen foundation remain unchanged."
     },
     {
       "path": "patches/0022-actestra-p8-fresh-profile-smoke.mjs",

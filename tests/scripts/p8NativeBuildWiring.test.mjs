@@ -176,17 +176,29 @@ describe("P8 native Goose build wiring", () => {
         nativeAdmissionTests,
         "bun run goose:runner:admit-build",
       ]);
-      for (const forbidden of [
+      const forbiddenFragments = [
         "goose:runner:test",
-        "upload-artifact",
         "electron-builder",
         "dist:mac",
         "smoke:",
         "codesign",
         "publish",
         "release",
-      ]) {
+      ];
+      for (const forbidden of forbiddenFragments) {
         expect(job, `${jobId} must not claim or run ${forbidden}`).not.toContain(forbidden);
+      }
+      if (jobId === "goose-runner-windows") {
+        expect(job).toContain(
+          "uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+        );
+        expect(job).toContain("name: actestra-goose-runner-windows-${{ github.sha }}");
+        expect(job).toContain("path: .actestra/goose-runner/x86_64-pc-windows-msvc");
+        expect(job).not.toContain("p8-goose-runtime");
+        expect(job).not.toContain("containment-evidence.json");
+        expect(job).not.toContain("candidate");
+      } else {
+        expect(job).not.toContain("upload-artifact");
       }
     }
   });

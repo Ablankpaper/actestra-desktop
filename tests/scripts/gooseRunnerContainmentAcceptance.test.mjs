@@ -180,7 +180,16 @@ describe("P8 native Goose containment acceptance gate", () => {
     expect(workflow).toContain("goose-containment-linux:");
     expect(workflow).toContain("containment-evidence.json");
     expect(workflow).toContain("if-no-files-found: error");
-    expect(workflow).not.toContain("actions/download-artifact@");
+    expect(workflow).toContain(
+      "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
+    );
+    expect(workflow.match(/actions\/download-artifact@/gu) ?? []).toHaveLength(1);
+    expect(readWorkflowJob(workflow, "goose-runner-windows")).not.toContain(
+      "actions/download-artifact@",
+    );
+    expect(readWorkflowJob(workflow, "electron-package-windows")).toContain(
+      "actestra-goose-runner-windows-${{ github.sha }}",
+    );
     expect(workflow.match(/bun run goose:runner:containment:accept/gu) ?? []).toHaveLength(3);
     expect(workflow.match(/bun run goose:runner:integration:linux/gu) ?? []).toHaveLength(1);
     expect(workflow).toMatch(
@@ -211,7 +220,7 @@ describe("P8 native Goose containment acceptance gate", () => {
     expect(workflow).not.toContain("continue-on-error");
     expect(workflow).not.toContain("OPENAI_API_KEY");
     expect(workflow).not.toContain("ACTESTRA_API_KEY");
-    expect(workflow.match(/^\s+if: success\(\)$/gmu) ?? []).toHaveLength(3);
+    expect(workflow.match(/^\s+if: success\(\)$/gmu) ?? []).toHaveLength(4);
     expect(fs.existsSync(path.join(repositoryRoot, ".github/workflows/p8-containment.yml"))).toBe(
       false,
     );
@@ -219,9 +228,9 @@ describe("P8 native Goose containment acceptance gate", () => {
     const actionReferences = [...workflow.matchAll(/^\s+uses:\s+([^\s#]+)\s*(?:#.*)?$/gmu)].map(
       (match) => match[1],
     );
-    // P8.2d adds one Windows checkout/setup/upload trio plus the macOS and
-    // Ubuntu bounded-evidence uploads to the existing pinned action set.
-    expect(actionReferences).toHaveLength(32);
+    // P8.2d adds one Windows checkout/setup/upload/download package transfer
+    // plus the macOS and Ubuntu bounded-evidence uploads to the existing set.
+    expect(actionReferences).toHaveLength(34);
     for (const reference of actionReferences) {
       expect(reference).toMatch(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+@[a-f0-9]{40}$/u);
     }

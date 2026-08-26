@@ -14,6 +14,7 @@ import {
   type ActestraCodingJourneyRuntimeDependencies,
   type ActestraCodingModelBinding,
 } from "../../apps/desktop/src/main/workers/actestraCodingJourneyRuntime";
+import type { AdmittedGooseRunnerPackage } from "../../apps/desktop/src/main/workers/gooseRunnerArtifact";
 import { GIT_EXECUTABLE } from "../../apps/desktop/src/main/workers/workspaceGitBinding";
 import {
   GOOSE_LINUX_ADMISSION_RECORD_FILE,
@@ -244,6 +245,66 @@ describe("trusted Actestra coding journey runtime startup", () => {
     expect(runtime!.revalidateArtifact).toBeTypeOf("function");
     await expect(runtime!.revalidateArtifact!()).resolves.toBe(linuxArtifact);
     expect(admitLinuxPackage).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses the Electron-owned packaged resources on Darwin and ignores environment runner admission", async () => {
+    const userDataPath = await profileRoot();
+    const packagedResourcesPath = path.join(userDataPath, "Resources");
+    const packageSourceCommit = "c".repeat(40);
+    const attestation = Object.freeze({
+      contractVersion: 1 as const,
+      targetTriple: artifact.targetTriple,
+      sourceCommit: packageSourceCommit,
+      runnerManifestSha256: artifact.manifestSha256,
+      executableSha256: artifact.executableSha256,
+      executableFile: "actestra-goose-runner",
+      runnerDirectory: "actestra-goose-runner" as const,
+      files: Object.freeze([
+        "actestra-goose-runner/GOOSE-APACHE-2.0.txt",
+        "actestra-goose-runner/Cargo.lock",
+        "actestra-goose-runner/actestra-goose-runner",
+        "actestra-goose-runner/actestra-goose-runner.audit.json",
+        "actestra-goose-runner/actestra-goose-runner.cdx.json",
+        "actestra-goose-runner/actestra-goose-runner.manifest.json",
+      ]),
+    });
+    const packaged = Object.freeze({
+      resourcesPath: packagedResourcesPath,
+      runnerDirectory: artifact.directory,
+      attestationPath: path.join(packagedResourcesPath, "actestra-goose-runner-package.json"),
+      sourceCommit: packageSourceCommit,
+      runnerAdmission,
+      attestation,
+      artifact,
+    }) satisfies AdmittedGooseRunnerPackage;
+    const admitPackagedRunnerPackage = vi.fn(async () => packaged);
+    const admitRunnerArtifact = vi.fn(async () => artifact);
+
+    const runtime = await startTrustedActestraCodingJourneyRuntime(
+      {
+        userDataPath,
+        runnerAdmission,
+        packagedResourcesPath,
+        modelBinding,
+      },
+      {
+        admitRunnerArtifact,
+        admitPackagedRunnerPackage,
+        platform: "darwin",
+        architecture: "arm64",
+      },
+    );
+
+    expect(runtime).not.toBeNull();
+    expect(admitPackagedRunnerPackage).toHaveBeenCalledWith(packagedResourcesPath, {
+      expectedTargetTriple: "aarch64-apple-darwin",
+    });
+    expect(admitRunnerArtifact).not.toHaveBeenCalled();
+    expect(runtime!.admittedArtifact).toBe(artifact);
+    expect(runtime!.runnerAdmission).toEqual(runnerAdmission);
+    expect(runtime!.revalidateArtifact).toBeTypeOf("function");
+    await expect(runtime!.revalidateArtifact!()).resolves.toBe(artifact);
+    expect(admitPackagedRunnerPackage).toHaveBeenCalledTimes(2);
   });
 
   it("fails before creating goose-private when the fixed Linux package is unavailable", async () => {
