@@ -100,11 +100,14 @@ describe("P8.2 package-bound Goose runner binding", () => {
         expectOrderedFragments(workflow, [
           "needs: - goose-runner-windows - goose-containment-windows",
           "name: Install dependencies",
-          "name: Download admitted Windows Goose runner artifact",
+          "name: Download bound Windows containment evidence",
           "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
-          "name: actestra-goose-runner-windows-${{ github.sha }}",
-          "path: .actestra/goose-runner/x86_64-pc-windows-msvc",
-          `bun run downstream:aionui:stage:goose -- --target-triple ${triple}`,
+          "name: Download bound Windows Goose runner artifact",
+          "name: p8-goose-bound-runner-windows-${{ github.sha }}",
+          "name: Stage exact Goose runner into the final Windows package resources",
+          `--target-triple ${triple}`,
+          '--artifact-directory "$boundArtifactDirectory"',
+          '--trusted-manifest-sha256 "$boundManifestDigest"',
           `name: ${packageMarker}`,
           packageCommand,
           `bun run downstream:aionui:admit:goose-package -- --target-triple ${triple}`,
@@ -125,9 +128,7 @@ describe("P8.2 package-bound Goose runner binding", () => {
           `bun run downstream:aionui:admit:goose-package -- --target-triple ${triple}`,
         ]);
       }
-      expect(workflow).toContain(
-        '--materialized-root "${{ github.workspace }}/.actestra/aionui-v2.1.41"',
-      );
+      expect(workflow).toContain(".actestra/aionui-v2.1.41");
       expect(workflow).toContain("--package-resource");
       expect(workflow).toContain("--re-admit");
       const journeyStart = workflow.indexOf("name: Run P8.2d packaged fresh-profile acceptance");
@@ -152,9 +153,11 @@ describe("P8.2 package-bound Goose runner binding", () => {
     "$job passes an absolute materialized root to the package staging helper",
     ({ job }) => {
       const workflow = readWorkflowJob(read(".github/workflows/ci.yml"), job);
-      expect(workflow).toContain(
-        '--materialized-root "${{ github.workspace }}/.actestra/aionui-v2.1.41"',
-      );
+      const expectedRoot =
+        job === "electron-package-windows"
+          ? '--materialized-root "$env:GITHUB_WORKSPACE/.actestra/aionui-v2.1.41"'
+          : '--materialized-root "${{ github.workspace }}/.actestra/aionui-v2.1.41"';
+      expect(workflow).toContain(expectedRoot);
       expect(workflow).not.toContain("--materialized-root .actestra/aionui-v2.1.41");
     },
   );

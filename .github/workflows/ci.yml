@@ -348,6 +348,16 @@ jobs:
           retention-days: 3
           compression-level: 0
 
+      - name: Preserve bound Windows Goose runner artifact
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: p8-goose-bound-runner-windows-${{ github.sha }}
+          path: .actestra/goose-runner/x86_64-pc-windows-msvc
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
   goose-runtime-windows:
     name: P8.2 Windows x64 Goose authenticated runtime
     runs-on: windows-2025
@@ -490,26 +500,35 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Download admitted Windows Goose runner artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: actestra-goose-runner-windows-${{ github.sha }}
-          path: .actestra/goose-runner/x86_64-pc-windows-msvc
-
       - name: Download bound Windows containment evidence
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: p8-goose-containment-windows-${{ github.sha }}
           path: out/p8-input/windows-containment
 
+      - name: Download bound Windows Goose runner artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: p8-goose-bound-runner-windows-${{ github.sha }}
+          path: out/p8-input/windows-bound-runner
+
       - name: Install materialized Actestra AionUi dependencies
         run: bun run downstream:aionui:install
 
       - name: Stage exact Goose runner into the final Windows package resources
-        run: >-
-          bun run downstream:aionui:stage:goose --
-          --target-triple x86_64-pc-windows-msvc
-          --materialized-root "${{ github.workspace }}/.actestra/aionui-v2.1.41"
+        shell: pwsh
+        run: |
+          $boundManifests = @(Get-ChildItem -LiteralPath (Join-Path $env:GITHUB_WORKSPACE "out/p8-input/windows-bound-runner") -Recurse -Filter "actestra-goose-runner.manifest.json" -File)
+          if ($boundManifests.Count -ne 1) {
+            throw "Expected exactly one bound Windows Goose runner manifest"
+          }
+          $boundArtifactDirectory = $boundManifests[0].Directory.FullName
+          $boundManifestDigest = (Get-FileHash -Algorithm SHA256 $boundManifests[0].FullName).Hash.ToLowerInvariant()
+          bun run downstream:aionui:stage:goose -- `
+            --target-triple x86_64-pc-windows-msvc `
+            --artifact-directory "$boundArtifactDirectory" `
+            --trusted-manifest-sha256 "$boundManifestDigest" `
+            --materialized-root "$env:GITHUB_WORKSPACE/.actestra/aionui-v2.1.41"
 
       - name: Build native Windows NSIS and unpacked application
         run: bun run --cwd .actestra/aionui-v2.1.41 dist:win -- --x64

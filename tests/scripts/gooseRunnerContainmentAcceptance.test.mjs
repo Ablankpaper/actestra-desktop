@@ -183,13 +183,14 @@ describe("P8 native Goose containment acceptance gate", () => {
     expect(workflow).toContain(
       "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
     );
-    // Two containment downloads plus the three exact candidate-input downloads.
+    // The bound Windows containment and runner downloads plus the three exact
+    // candidate-input downloads.
     expect(workflow.match(/actions\/download-artifact@/gu) ?? []).toHaveLength(5);
     expect(readWorkflowJob(workflow, "goose-runner-windows")).not.toContain(
       "actions/download-artifact@",
     );
     expect(readWorkflowJob(workflow, "electron-package-windows")).toContain(
-      "actestra-goose-runner-windows-${{ github.sha }}",
+      "p8-goose-bound-runner-windows-${{ github.sha }}",
     );
     expect(readWorkflowJob(workflow, "electron-package-windows")).toContain(
       "p8-goose-containment-windows-${{ github.sha }}",
@@ -224,7 +225,7 @@ describe("P8 native Goose containment acceptance gate", () => {
     expect(workflow).not.toContain("continue-on-error");
     expect(workflow).not.toContain("OPENAI_API_KEY");
     expect(workflow).not.toContain("ACTESTRA_API_KEY");
-    expect(workflow.match(/^\s+if: success\(\)$/gmu) ?? []).toHaveLength(4);
+    expect(workflow.match(/^\s+if: success\(\)$/gmu) ?? []).toHaveLength(5);
     expect(fs.existsSync(path.join(repositoryRoot, ".github/workflows/p8-containment.yml"))).toBe(
       false,
     );
@@ -234,7 +235,7 @@ describe("P8 native Goose containment acceptance gate", () => {
     );
     // P8.2d and the complete P8.2 product-journey gate add the native package
     // jobs, exact Windows containment download, and three bounded uploads.
-    expect(actionReferences).toHaveLength(48);
+    expect(actionReferences).toHaveLength(49);
     for (const reference of actionReferences) {
       expect(reference).toMatch(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+@[a-f0-9]{40}$/u);
     }

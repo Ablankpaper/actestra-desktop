@@ -2,6 +2,29 @@
 
 Last updated: 2026-08-27
 
+## 2026-08-27 P8.2 Windows bound-runner package handoff repair (local)
+
+The exact PR #77 run `33011983559` is bound to head
+`b07e586a43dd61f88680e19a8e8ac07575676777`. Goose admission, Ubuntu/Windows
+build probes, Windows authenticated runtime, and Windows containment passed.
+Ubuntu and macOS packaged journey steps returned the bounded
+`status=failed, code=journey-failed` result without a fixed-stage diagnostic.
+The Windows packaged journey failed its binding check because the package job
+re-downloaded the unbound runner (`143071b9...`) instead of the containment job's
+bound runner (`3775abd8...`), so its manifest digest did not match the verified
+containment summary (`2c6182dc...`).
+
+The local workflow repair uploads the bound Windows runner from the containment
+job, downloads that exact artifact in the package job, stages it with its
+explicit manifest digest, and then re-admits the runner from final Electron
+resources. CI wiring tests now cover the handoff and platform-specific staging
+roots. Focused P8 wiring/package tests pass (`25/25`); the complete local
+`bun run check` passes with 191 Vitest files passed and 3 skipped (2,100 tests
+passed and 10 skipped), all P7 abuse cases and exact variants denied-safe,
+SQLite/smoke/boundary/foundation/downstream checks, production package build,
+format, lint, and typecheck. This remains local implementation evidence until
+the repair is committed and an exact-head CI run passes.
+
 ## 2026-08-27 P8.2 containment-summary CI consumer repair (local)
 
 PR #77 run `33008974520` is associated with head

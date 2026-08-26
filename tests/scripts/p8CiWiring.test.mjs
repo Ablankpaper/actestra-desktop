@@ -58,6 +58,8 @@ describe("P8.2 packaged product-journey CI wiring", () => {
     expect(job).toContain("needs:");
     expect(job).toContain("goose-runner-windows");
     expect(job).toContain("goose-containment-windows");
+    expect(job).toContain("p8-goose-bound-runner-windows-${{ github.sha }}");
+    expect(job).toContain('--artifact-directory "$boundArtifactDirectory"');
     expect(job).toContain('$manifest.runner.targetTriple -ne "x86_64-pc-windows-msvc"');
     expectOrderedFragments(job, [
       "Re-admit Goose runner from the final Windows package resources",
