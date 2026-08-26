@@ -2,6 +2,29 @@
 
 Last updated: 2026-08-27
 
+## 2026-08-27 P8.2 packaged-journey failure-stage type repair (local)
+
+PR #77 run `33020020984`, bound to head
+`5d2b33e53a768d582e6ea1dda6602d9b44d9634f`, passed the Ubuntu build probe and
+Goose admission but failed in the macOS foundation job at `Type-check
+materialized Actestra AionUi application`. The exact compiler error rejected
+the failure projection because its local journey-stage variable had widened to
+`string` instead of the closed `P8ProductJourneyFailureStage` vocabulary. The
+remaining jobs were cancelled after that first concrete failure, so the run is
+not P8.2 evidence.
+
+The downstream patch now explicitly types that variable as
+`'startup-recovery' | P8ProductJourneyId`, preserving the same closed stage
+set accepted by the private failure file. A source-composition regression test
+binds the annotation. After repository-prescribed downstream materialization
+and dependency installation, the exact CI command `bunx tsc --noEmit --pretty
+false` passes in the generated AionUi tree. The focused downstream test passes
+`5/5`, and root `bun run typecheck` passes. Runs `33016877710`, `33018383490`,
+and `33020380054` were cancelled; the last of those was bound to the same
+unrepaired source tree through an empty trigger commit and was stopped rather
+than treated as new evidence. A committed exact-head native CI run remains
+required before P8.2 can advance.
+
 ## 2026-08-27 P8.2 packaged-journey private failure projection (local)
 
 PR #77 run `33016877710`, bound to head
@@ -9,9 +32,9 @@ PR #77 run `33016877710`, bound to head
 journey's bounded `status=failed, code=journey-failed` result without carrying
 the already fixed internal journey stage across the Electron stdout/stderr
 boundary. That run also exposed the Ubuntu package/containment binding mismatch
-now repaired by `53f9b941ffe30ab6cee8238e7d2eb0dbaa2bc557`. The latest exact-head run
-`33018383490` is still in progress; its Ubuntu build probe and Goose admission
-job have passed, but it is not yet P8.2 evidence.
+now repaired by `53f9b941ffe30ab6cee8238e7d2eb0dbaa2bc557`. The later exact-head run
+`33018383490` was cancelled after a newer diagnostic implementation superseded
+it, so it is not P8.2 evidence.
 
 The local diagnostic slice adds one private write-once
 `p8-product-journeys-failure.json` projection inside the isolated user-data

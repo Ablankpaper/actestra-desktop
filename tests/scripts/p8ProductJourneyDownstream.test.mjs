@@ -62,6 +62,7 @@ describe("P8.2 packaged product-journey downstream composition", () => {
       "runP7PackagedDiagnosticAuditSmoke",
       "ACTESTRA_P8_PRODUCT_JOURNEYS_RESTART_PHASE",
       "P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME",
+      "let p8ProductJourneyFailureStage: 'startup-recovery' | P8ProductJourneyId = 'startup-recovery'",
       "writeP8ProductJourneyFailure",
       "? 'hold'",
       "app.quit()",

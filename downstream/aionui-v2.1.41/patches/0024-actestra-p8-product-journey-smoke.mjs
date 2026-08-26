@@ -117,7 +117,7 @@ let p8ProductJourneySmokeStarted = false;
 let p8ProductJourneyDestinationWorkspaceId: WorkspaceId | null = null;
 let p8ProductJourneyStartupRecovery: readonly GeneralWorkRecoveryResult[] | null = null;
 let p8ProductJourneyRestartVerified = false;
-let p8ProductJourneyFailureStage = 'startup-recovery';
+let p8ProductJourneyFailureStage: 'startup-recovery' | P8ProductJourneyId = 'startup-recovery';
 
 function p8Verified(id: P8ProductJourneyId): P8ProductJourneyObservation {
   return Object.freeze({ id, status: 'verified' as const, residualProcessCount: 0 as const });
