@@ -6,29 +6,28 @@ This record freezes the source and evidence boundary for stabilization work.
 It does not claim that P8.2, P8.3, P8.4, a candidate, a release, or user
 acceptance is complete.
 
-| Field | Value |
-| --- | --- |
-| Repository | Ablankpaper/actestra-desktop |
-| Baseline source SHA | b8d77c5c5101454e9c30b1484b4e2f64b88cc672 |
-| Baseline source tree | e25988340c3f6c67e14f20c10b5c3c4108b69bc4 |
-| Remote ref | origin/main at verification time |
-| Baseline commit | docs: record P8.2 integration closure (#73) |
-| PR | #73, merged 2026-08-25 17:24:24Z |
-| PR exact head | 0b02d1af2c893778436a650a12ea1e839d3ccd0f |
-| PR CI | Run 32873869921, 8/8 jobs successful |
-| PR merge-ref commit | 5ff3d39187218a0c1b1f832c231f4195bbf7afce |
-| PR merge-ref tree | e25988340c3f6c67e14f20c10b5c3c4108b69bc4 (equal to baseline tree) |
-| Post-merge push-CI | None; no run exists for b8d77c5c because historical [skip ci] markers were retained |
-| Stabilization worktree | /Users/zizimutou/actestra-worktrees/p8-stabilization |
-| Stabilization branch | codex/release/p8-stabilization |
-| Worktree created | 2026-08-26T01:28:56+08:00 |
+| Field                  | Value                                                        |
+| ---------------------- | ------------------------------------------------------------ |
+| Repository             | Ablankpaper/actestra-desktop                                 |
+| Baseline source SHA    | 6f2a64d2eb4e159459005ce80eda71a14c754ad6                     |
+| Baseline source tree   | 95b68da2a0730a243cab5ed919dd4468ac760849                     |
+| Remote ref             | origin/main at verification time                             |
+| Baseline commit        | docs: establish p8 stabilization baseline                    |
+| PR                     | #74, merged 2026-08-25 18:13:06Z                             |
+| PR exact head          | 1c35fdf245af600623078e3a998fd3c77747197e                     |
+| PR CI                  | Run 32879077165, 8/8 jobs successful                         |
+| Post-merge push-CI     | Run 32882463581, 8/8 jobs successful, exact head `6f2a64d2`  |
+| Stabilization worktree | /Users/zizimutou/actestra-worktrees/p8-stabilization-baseline-6f2a64d |
+| Stabilization branch   | codex/release/p8-stabilization-baseline-6f2a64d                       |
+| Worktree created       | 2026-08-26 (exact `origin/main` checkout)                    |
 
-The merge changed only docs/PROJECT_STATUS.md relative to the preceding
-main commit 35c1820c5709e111c9e58a6ba456e8ee07e5c519. No runtime or frozen
-foundation file changed in that merge. The retained CI artifacts are exact-tree
-evidence for this baseline, but their CI event was a pull-request merge-ref
-event rather than a push on the merged commit object. A future candidate,
-signature, or release artifact must be rebuilt and bound to the baseline SHA.
+The merge changed only the stabilization documentation relative to the
+preceding main commit `b8d77c5c5101454e9c30b1484b4e2f64b88cc672`; no runtime or
+frozen foundation file changed. The exact-head push-CI run is direct evidence for
+this baseline's declared CI jobs and current fresh-profile/runtime slices. It is
+not, by itself, P8.2 product-journey closure, P8.3 candidate trust, or P8.4
+clean-machine acceptance. Any candidate, signature, or release artifact must
+remain bound to this exact baseline SHA.
 
 ## Preserved work and boundaries
 
@@ -38,6 +37,10 @@ signature, or release artifact must be rebuilt and bound to the baseline SHA.
 - Existing P4, P5, P7, P8, and product-fix worktrees are preserved. No WIP,
   generated dependency tree, local profile, database, or evidence directory
   is cleaned or overwritten by this baseline.
+- The earlier stabilization WIP worktrees, including
+  `/Users/zizimutou/actestra-worktrees/p8-stabilization-current` and
+  `/Users/zizimutou/actestra-worktrees/p8-2-product-journeys-next`, remain
+  separate from this exact-baseline worktree.
 - foundation/aionui-v2.1.41 remains frozen. Any blocking UI fix must use a
   recorded downstream overlay or patch.
 - Actestra remains independent from Aera and other local repositories.
@@ -66,11 +69,11 @@ baseline exit review are complete.
 
 ## Gate state at baseline
 
-| Gate | State | Boundary |
-| --- | --- | --- |
-| P8.2 | Open; narrow slices are verified and product journeys remain incomplete | See P8.2 evidence ledger |
-| P8.3 | Not started | Candidate integrity, provenance, signing/notarization, update trust, and rollback remain open |
-| P8.4 | Not started | Clean-machine lifecycle, real Provider, runbook, issue intake, and internal acceptance remain open |
-| Release and candidate | Not claimed | No candidate, release, deployment, distribution, or user-acceptance claim is made |
+| Gate                  | State                                                                   | Boundary                                                                                           |
+| --------------------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| P8.2                  | Open; narrow slices are verified and product journeys remain incomplete | See P8.2 evidence ledger                                                                           |
+| P8.3                  | Not started                                                             | Candidate integrity, provenance, signing/notarization, update trust, and rollback remain open      |
+| P8.4                  | Not started                                                             | Clean-machine lifecycle, real Provider, runbook, issue intake, and internal acceptance remain open |
+| Release and candidate | Not claimed                                                             | No candidate, release, deployment, distribution, or user-acceptance claim is made                  |
 
 The companion ledger is P8.2_EVIDENCE_LEDGER_2026-08-26.md.
