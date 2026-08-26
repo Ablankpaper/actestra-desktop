@@ -7,7 +7,7 @@ Last updated: 2026-08-27
 The exact PR #77 run `33011983559` is bound to head
 `b07e586a43dd61f88680e19a8e8ac07575676777`. Goose admission, Ubuntu/Windows
 build probes, Windows authenticated runtime, and Windows containment passed.
-Ubuntu and macOS packaged journey steps returned the bounded
+The macOS packaged journey returned the bounded
 `status=failed, code=journey-failed` result without a fixed-stage diagnostic.
 The Windows packaged journey failed its binding check because the package job
 re-downloaded the unbound runner (`143071b9...`) instead of the containment job's
@@ -24,6 +24,15 @@ passed and 10 skipped), all P7 abuse cases and exact variants denied-safe,
 SQLite/smoke/boundary/foundation/downstream checks, production package build,
 format, lint, and typecheck. This remains local implementation evidence until
 the repair is committed and an exact-head CI run passes.
+
+The same run's Ubuntu log also proves that its first DEB contained the
+pre-containment manifest (`6c0784f1...`), while the successful containment gate
+produced and re-admitted manifest `8cdceac7...`. The workflow consequently
+failed its digest check before starting `smoke:p8-product-journeys`. The next
+local repair re-stages the bound Ubuntu runner after containment, rebuilds and
+re-inspects the exact DEB at the established output path, and only then installs
+that package for P8.2 journey acceptance. Its focused CI/package-binding tests
+pass (`26/26`); exact-head native CI remains required.
 
 ## 2026-08-27 P8.2 containment-summary CI consumer repair (local)
 

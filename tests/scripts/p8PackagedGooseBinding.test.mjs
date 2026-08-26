@@ -174,6 +174,26 @@ describe("P8.2 package-bound Goose runner binding", () => {
     expect(installMatches[0].index).toBeLessThan(stageIndex);
   });
 
+  it("rebuilds the Ubuntu DEB from the containment-bound runner before journey acceptance", () => {
+    const workflow = readWorkflowJob(read(".github/workflows/ci.yml"), "goose-containment-linux");
+    expectOrderedFragments(workflow, [
+      "Run exact Ubuntu containment acceptance",
+      "Re-admit bound Ubuntu Goose runner artifact",
+      "Remove temporary Ubuntu Goose package layout",
+      "Re-stage bound Ubuntu Goose runner into final package resources",
+      "bun run downstream:aionui:stage:goose -- --target-triple x86_64-unknown-linux-gnu",
+      "Rebuild and inspect exact bound Ubuntu DEB package",
+      "bun run --cwd .actestra/aionui-v2.1.41 dist:linux -- --x64",
+      'install -D -m 0644 "${deb_candidates[0]}" "$ACTESTRA_LINUX_DEB_PATH"',
+      "Install complete Ubuntu Electron package for P8.2d",
+      "Run P8.2 packaged product-journey acceptance under Xvfb",
+    ]);
+    expect(workflow.match(/bun run downstream:aionui:stage:goose --/gu) ?? []).toHaveLength(2);
+    expect(
+      workflow.match(/bun run --cwd \.actestra\/aionui-v2\.1\.41 dist:linux/gu) ?? [],
+    ).toHaveLength(2);
+  });
+
   it("maps the runner resources into every native builder without a platform-only exception", () => {
     const overlay = JSON.parse(read("downstream/aionui-v2.1.41/overlay.json"));
     const patch = overlay.patches.find(

@@ -87,6 +87,10 @@ describe("P8.2 packaged product-journey CI wiring", () => {
     expect(job).toContain('manifest?.runner?.targetTriple === "x86_64-unknown-linux-gnu"');
     expectOrderedFragments(job, [
       "Run exact Ubuntu containment acceptance",
+      "Re-admit bound Ubuntu Goose runner artifact",
+      "Remove temporary Ubuntu Goose package layout",
+      "Re-stage bound Ubuntu Goose runner into final package resources",
+      "Rebuild and inspect exact bound Ubuntu DEB package",
       "Install complete Ubuntu Electron package for P8.2d",
       "Run P8.2 packaged product-journey acceptance under Xvfb",
       "xvfb-run -a bun run smoke:p8-product-journeys --",
