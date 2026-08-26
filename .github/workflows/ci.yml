@@ -632,7 +632,6 @@ jobs:
           # Build the real downstream DEB so the inspector sees the same
           # electron-builder maintainer scripts and resource destinations that
           # Ubuntu would install. This is package-wiring evidence only.
-          bun run downstream:aionui:install
           bun run downstream:aionui:stage:linux-goose
           bun run --cwd .actestra/aionui-v2.1.41 dist:linux -- --x64
           deb_path="$(find .actestra/aionui-v2.1.41/out -maxdepth 1 -type f -name '*.deb' -print -quit)"

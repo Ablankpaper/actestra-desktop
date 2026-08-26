@@ -149,6 +149,18 @@ describe("P8.2 package-bound Goose runner binding", () => {
     },
   );
 
+  it("does not rematerialize the Ubuntu tree after Goose staging", () => {
+    const workflow = readWorkflowJob(read(".github/workflows/ci.yml"), "goose-containment-linux");
+    const stageIndex = workflow.indexOf("bun run downstream:aionui:stage:goose --");
+    const packageIndex = workflow.indexOf("name: Build and inspect exact Ubuntu DEB package");
+    const installMatches = [...workflow.matchAll(/bun run downstream:aionui:install/gu)];
+
+    expect(stageIndex).toBeGreaterThan(-1);
+    expect(packageIndex).toBeGreaterThan(stageIndex);
+    expect(installMatches).toHaveLength(1);
+    expect(installMatches[0].index).toBeLessThan(stageIndex);
+  });
+
   it("maps the runner resources into every native builder without a platform-only exception", () => {
     const overlay = JSON.parse(read("downstream/aionui-v2.1.41/overlay.json"));
     const patch = overlay.patches.find(
