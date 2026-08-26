@@ -585,6 +585,22 @@ jobs:
           retention-days: 3
           compression-level: 0
 
+      - name: Preserve bounded Windows P8.3 candidate input
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: p8-candidate-input-windows-11-x64-${{ github.sha }}
+          path: |
+            .actestra/aionui-v2.1.41/out/*.exe
+            .actestra/aionui-v2.1.41/out/win-unpacked/Actestra.exe
+            .actestra/aionui-v2.1.41/out/win-unpacked/resources/app.asar
+            .actestra/aionui-v2.1.41/out/win-unpacked/resources/actestra-goose-runner/**
+            out/p8-evidence/p8-product-journeys-windows-11-x64.json
+            out/p8-input/windows-containment/containment-evidence.json
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
       - name: Run P8.2d packaged fresh-profile acceptance
         shell: pwsh
         run: |
@@ -939,6 +955,23 @@ jobs:
           retention-days: 3
           compression-level: 0
 
+      - name: Preserve bounded Ubuntu P8.3 candidate input
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: p8-candidate-input-ubuntu-24.04-x64-${{ github.sha }}
+          path: |
+            ${{ steps.linux-package.outputs.path }}
+            /opt/Actestra/Actestra
+            /opt/Actestra/resources/app.asar
+            /opt/Actestra/resources/actestra-goose-runner/**
+            ${{ github.workspace }}/out/p8-evidence/p8-product-journeys-ubuntu-24.04-x64.json
+            ${{ github.workspace }}/containment-evidence.json
+            ${{ github.workspace }}/THIRD_PARTY_NOTICES.md
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
       - name: Run P8.2d packaged fresh-profile acceptance under Xvfb
         shell: bash
         env:
@@ -1229,6 +1262,24 @@ jobs:
           retention-days: 3
           compression-level: 0
 
+      - name: Preserve bounded macOS P8.3 candidate input
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: p8-candidate-input-macos-15-arm64-${{ github.sha }}
+          path: |
+            .actestra/aionui-v2.1.41/out/*.dmg
+            .actestra/aionui-v2.1.41/out/*.zip
+            .actestra/aionui-v2.1.41/out/mac-arm64/Actestra.app/Contents/MacOS/Actestra
+            .actestra/aionui-v2.1.41/out/mac-arm64/Actestra.app/Contents/Resources/app.asar
+            .actestra/aionui-v2.1.41/out/mac-arm64/Actestra.app/Contents/Resources/actestra-goose-runner/**
+            out/p8-evidence/p8-product-journeys-macos-15-arm64.json
+            out/p8-evidence/p8-macos-platform-evidence.json
+            THIRD_PARTY_NOTICES.md
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
       - name: Run P8.2d packaged fresh-profile acceptance
         shell: bash
         run: |
@@ -1254,6 +1305,180 @@ jobs:
         with:
           name: p8-fresh-profile-macos-15-arm64-${{ github.sha }}
           path: out/p8-evidence/p8-fresh-profile-macos-15-arm64.json
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+  p8-candidate:
+    name: P8.3 candidate integrity and update trust
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    needs:
+      - electron-package-windows
+      - goose-containment-linux
+      - macos
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.13.0
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.9
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Download exact macOS candidate input
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: p8-candidate-input-macos-15-arm64-${{ github.sha }}
+          path: candidate-input/macos-15-arm64
+
+      - name: Download exact Windows candidate input
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: p8-candidate-input-windows-11-x64-${{ github.sha }}
+          path: candidate-input/windows-11-x64
+
+      - name: Download exact Ubuntu candidate input
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: p8-candidate-input-ubuntu-24.04-x64-${{ github.sha }}
+          path: candidate-input/ubuntu-24.04-x64
+
+      - name: Build exact-source candidate descriptors
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p candidate-input/descriptors candidate-evidence
+          find_one() {
+            local root="$1"
+            shift
+            local result
+            result="$(find "$root" -type f "$@" -print | sort | head -n 1)"
+            test -n "$result"
+            printf '%s\n' "$result"
+          }
+          exact_file() {
+            local root="$1"
+            local basename="$2"
+            find_one "$root" -name "$basename"
+          }
+          signing_proof="candidate-evidence/signing-unavailable.json"
+          node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({status:"evidence-incomplete", reason:"external-signing-metadata-unavailable"})+"\n", {mode:0o600, flag:"wx"})' "$signing_proof"
+          node -e 'require("fs").writeFileSync("candidate-evidence/update.json", JSON.stringify({channel:"internal-beta", endpoint:"https://updates.actestra.example/internal-beta", metadataSha256:"'"$(printf '%064d' 0 | tr 0 a)'" , signingAuthority:"actestra-update-key-v1"})+"\n", {mode:0o600, flag:"wx"})'
+          node -e 'require("fs").writeFileSync("candidate-evidence/rollback.json", JSON.stringify({previousVersion:"0.0.9-alpha.0", stateSchema:23, strategy:"restore-previous-candidate-on-update-failure", failureAction:"retain-state-and-require-operator-confirmation", proofSha256:"'"$(printf '%064d' 0 | tr 0 b)'"})+"\n", {mode:0o600, flag:"wx"})'
+
+          build_descriptor() {
+            local target="$1"
+            local root="candidate-input/$target"
+            local journeys
+            local runtime
+            local asar
+            local runner_manifest
+            local runner_executable
+            local containment
+            local sbom
+            local package
+            local extra_package_args=()
+            journeys="$(exact_file "$root" "p8-product-journeys-$target.json")"
+            runtime="$(find_one "$root" -name Actestra -o -name Actestra.exe)"
+            asar="$(exact_file "$root" app.asar)"
+            runner_manifest="$(exact_file "$root" actestra-goose-runner.manifest.json)"
+            runner_executable="$(find_one "$root" -name actestra-goose-runner -o -name actestra-goose-runner.exe)"
+            containment="$(find_one "$root" -name containment-evidence.json -o -name p8-macos-platform-evidence.json)"
+            sbom="$(exact_file "$root" actestra-goose-runner.cdx.json)"
+            if [[ "$target" == macos-* ]]; then
+              extra_package_args+=(--package "dmg=$(find_one "$root" -name '*.dmg')")
+              extra_package_args+=(--package "zip=$(find_one "$root" -name '*.zip')")
+            elif [[ "$target" == windows-* ]]; then
+              package="$(find_one "$root" -type f -name '*.exe' ! -path '*/win-unpacked/*')"
+              extra_package_args+=(--package "nsis=$package")
+            else
+              extra_package_args+=(--package "deb=$(find_one "$root" -name '*.deb')")
+            fi
+            bun run scripts/create-p8-candidate-input.mjs \
+              --target "$target" \
+              --journeys "$journeys" \
+              --runtime-executable "$runtime" \
+              --app-asar "$asar" \
+              --runner-manifest "$runner_manifest" \
+              --runner-executable "$runner_executable" \
+              --runner-containment "$containment" \
+              --sbom "$sbom" \
+              --notice "$GITHUB_WORKSPACE/THIRD_PARTY_NOTICES.md" \
+              --notice "$(exact_file "$root" GOOSE-APACHE-2.0.txt)" \
+              --signing-status unavailable \
+              --signing-identity unavailable \
+              --notarization unavailable \
+              --signing-verification "$signing_proof" \
+              --source-commit "${{ github.sha }}" \
+              --ci-run-id "${{ github.run_id }}" \
+              --output "candidate-input/descriptors/$target.json" \
+              "${extra_package_args[@]}"
+          }
+          build_descriptor macos-15-arm64
+          build_descriptor windows-11-x64
+          build_descriptor ubuntu-24.04-x64
+
+      - name: Assemble candidate and enforce signing gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p 'JSON.parse(require("fs").readFileSync("package.json", "utf8")).version')"
+          set +e
+          bun run p8:candidate:create \
+            --source-commit "${{ github.sha }}" \
+            --ci-run-id "${{ github.run_id }}" \
+            --version "$version" \
+            --target-input candidate-input/descriptors/macos-15-arm64.json \
+            --target-input candidate-input/descriptors/windows-11-x64.json \
+            --target-input candidate-input/descriptors/ubuntu-24.04-x64.json \
+            --update candidate-evidence/update.json \
+            --rollback candidate-evidence/rollback.json \
+            --output candidate-evidence/candidate-manifest.json >candidate-evidence/create.log 2>&1
+          create_status=$?
+          set -e
+          test -f candidate-evidence/candidate-manifest.json
+          manifest_status="$(node -p 'JSON.parse(require("fs").readFileSync("candidate-evidence/candidate-manifest.json", "utf8")).status')"
+          if [[ "$manifest_status" == verified ]]; then
+            bun run p8:candidate:check candidate-evidence/candidate-manifest.json | tee candidate-evidence/check.log
+            exit "${create_status}"
+          fi
+          test "$manifest_status" == evidence-incomplete
+          set +e
+          bun run p8:candidate:check candidate-evidence/candidate-manifest.json >candidate-evidence/check.log 2>&1
+          check_status=$?
+          set -e
+          test "$check_status" -ne 0
+          grep -q 'candidate-incomplete' candidate-evidence/check.log
+          node - <<'NODE'
+          const fs = require('node:fs');
+          fs.writeFileSync('candidate-evidence/failure.json', `${JSON.stringify({
+            schemaVersion: 1,
+            status: 'evidence-incomplete',
+            code: 'signing-incomplete',
+            sourceCommit: process.env.GITHUB_SHA,
+            ciRunId: process.env.GITHUB_RUN_ID,
+            redacted: true,
+          })}\n`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+          NODE
+          exit 1
+
+      - name: Preserve bounded candidate evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: p8-candidate-evidence-${{ github.sha }}
+          path: candidate-evidence/**
           if-no-files-found: error
           retention-days: 3
           compression-level: 0

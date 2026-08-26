@@ -2,6 +2,33 @@
 
 Last updated: 2026-08-26
 
+## 2026-08-27 P8.3/P8.4 fail-closed evidence implementation (local)
+
+The isolated branch `codex/p8-2-packaged-product-journeys` now contains the
+P8.3 candidate-input builder, exact three-target candidate aggregation job, and
+the P8.4 clean-machine evidence contract and runbook. Candidate inputs bind
+package/runtime/runner digests, P8.2 journey evidence, SBOM, provenance, and
+NOTICE files to one source commit and CI run. The candidate job deliberately
+returns `evidence-incomplete` and fails its gate when external signing or
+notarization metadata is unavailable; it never promotes ad-hoc output.
+
+P8.4 records require all five clean-machine journeys on every accepted target,
+exact candidate and environment binding, real-provider mode, redacted
+runbook/issue-intake revisions, and all lifecycle checks. The checker rejects
+synthetic providers, non-clean environments, mismatches, privacy leaks, and
+oversized or malformed records. The runbook records the operator sequence and
+states that Windows 11 and Ubuntu 24.04 clean-machine evidence, formal signing
+or notarization, and real-provider credentials require external controlled
+machines; no credentials are stored in CI or this repository.
+
+Fresh local validation for this uncommitted batch: P8.3 candidate tests `11/11`
+including CI wiring, P8.4 clean-machine tests `9/9`, Goose containment wiring
+`13/13`, and lint with zero warnings/errors. This is implementation evidence
+only. The branch has not yet received exact-head CI, a signed candidate, any
+clean-machine record, real-provider acceptance, release, deployment,
+distribution, or user-acceptance evidence. P8.2 remains open pending the
+current SHA's three-target CI and the existing nine-journey ledger update.
+
 ## 2026-08-26 P8 stabilization — PR #75 package-binding repair integrated locally
 
 PR #75 first exposed a Windows package-staging failure in run `32918925564`.

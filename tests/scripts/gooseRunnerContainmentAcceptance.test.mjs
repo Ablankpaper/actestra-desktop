@@ -183,7 +183,8 @@ describe("P8 native Goose containment acceptance gate", () => {
     expect(workflow).toContain(
       "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
     );
-    expect(workflow.match(/actions\/download-artifact@/gu) ?? []).toHaveLength(2);
+    // Two containment downloads plus the three exact candidate-input downloads.
+    expect(workflow.match(/actions\/download-artifact@/gu) ?? []).toHaveLength(5);
     expect(readWorkflowJob(workflow, "goose-runner-windows")).not.toContain(
       "actions/download-artifact@",
     );
@@ -233,7 +234,7 @@ describe("P8 native Goose containment acceptance gate", () => {
     );
     // P8.2d and the complete P8.2 product-journey gate add the native package
     // jobs, exact Windows containment download, and three bounded uploads.
-    expect(actionReferences).toHaveLength(38);
+    expect(actionReferences).toHaveLength(48);
     for (const reference of actionReferences) {
       expect(reference).toMatch(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+@[a-f0-9]{40}$/u);
     }
