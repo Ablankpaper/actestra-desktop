@@ -7,8 +7,8 @@ Last updated: 2026-08-26
 The unique stabilization baseline is the current merged `origin/main` commit
 `6f2a64d2eb4e159459005ce80eda71a14c754ad6`, source tree
 `95b68da2a0730a243cab5ed919dd4468ac760849`, in the clean worktree
-`/Users/zizimutou/actestra-worktrees/p8-stabilization-baseline-6f2a64d` on
-branch `codex/release/p8-stabilization-baseline-6f2a64d`. This worktree was
+`/Users/zizimutou/actestra-worktrees/p8-stabilization-main` on branch
+`codex/release/p8-stabilization-main`. This worktree was
 created directly from `origin/main`; it is not the older local checkout at
 `e8074b73…`, and it does not replace any existing WIP worktree, including
 `/Users/zizimutou/actestra-worktrees/p8-stabilization-current` and

@@ -17,8 +17,8 @@ acceptance is complete.
 | PR exact head          | 1c35fdf245af600623078e3a998fd3c77747197e                     |
 | PR CI                  | Run 32879077165, 8/8 jobs successful                         |
 | Post-merge push-CI     | Run 32882463581, 8/8 jobs successful, exact head `6f2a64d2`  |
-| Stabilization worktree | /Users/zizimutou/actestra-worktrees/p8-stabilization-baseline-6f2a64d |
-| Stabilization branch   | codex/release/p8-stabilization-baseline-6f2a64d                       |
+| Stabilization worktree | /Users/zizimutou/actestra-worktrees/p8-stabilization-main |
+| Stabilization branch   | codex/release/p8-stabilization-main                       |
 | Worktree created       | 2026-08-26 (exact `origin/main` checkout)                    |
 
 The merge changed only the stabilization documentation relative to the
