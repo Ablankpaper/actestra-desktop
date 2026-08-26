@@ -38,6 +38,10 @@ import type {
   OpenGooseCodingMainSessionOptions,
 } from "../../apps/desktop/src/main/workers/isolatedCodingMainService";
 import type { AdmittedGooseRunnerArtifact } from "../../apps/desktop/src/main/workers/gooseRunnerArtifact";
+import {
+  GIT_EXECUTABLE,
+  workspaceGitEnvironment,
+} from "../../apps/desktop/src/main/workers/workspaceGitBinding";
 import { openTestPersistenceUtility } from "../fixtures/persistenceUtility";
 
 const execFileAsync = promisify(execFile);
@@ -58,13 +62,9 @@ const artifact = Object.freeze({
 }) satisfies AdmittedGooseRunnerArtifact;
 
 async function runGit(repositoryRoot: string, ...arguments_: readonly string[]): Promise<string> {
-  const result = await execFileAsync("/usr/bin/git", ["-C", repositoryRoot, ...arguments_], {
+  const result = await execFileAsync(GIT_EXECUTABLE, ["-C", repositoryRoot, ...arguments_], {
     encoding: "utf8",
-    env: {
-      PATH: "/usr/bin:/bin",
-      GIT_CONFIG_NOSYSTEM: "1",
-      GIT_TERMINAL_PROMPT: "0",
-    },
+    env: workspaceGitEnvironment(repositoryRoot),
   });
   return result.stdout.trim();
 }

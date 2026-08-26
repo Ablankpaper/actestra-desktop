@@ -174,6 +174,16 @@ jobs:
       - name: Admit emitted Goose runner artifact
         run: bun run goose:runner:admit-build
 
+      - name: Preserve admitted Windows Goose runner package input
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: actestra-goose-runner-windows-${{ github.sha }}
+          path: .actestra/goose-runner/x86_64-pc-windows-msvc
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
   goose-runner-linux:
     name: P8.2 Ubuntu x64 Goose build probe
     runs-on: ubuntu-24.04
@@ -458,6 +468,7 @@ jobs:
     name: P8.2d Windows x64 native Electron package
     runs-on: windows-2025
     timeout-minutes: 45
+    needs: goose-runner-windows
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
 
     steps:
@@ -477,13 +488,32 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Download admitted Windows Goose runner artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: actestra-goose-runner-windows-${{ github.sha }}
+          path: .actestra/goose-runner/x86_64-pc-windows-msvc
+
       - name: Install materialized Actestra AionUi dependencies
         run: bun run downstream:aionui:install
+
+      - name: Stage exact Goose runner into the final Windows package resources
+        run: >-
+          bun run downstream:aionui:stage:goose --
+          --target-triple x86_64-pc-windows-msvc
+          --materialized-root "${{ github.workspace }}/.actestra/aionui-v2.1.41"
 
       - name: Build native Windows NSIS and unpacked application
         run: bun run --cwd .actestra/aionui-v2.1.41 dist:win -- --x64
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Re-admit Goose runner from the final Windows package resources
+        run: >-
+          bun run downstream:aionui:admit:goose-package --
+          --target-triple x86_64-pc-windows-msvc
+          --package-resource .actestra/aionui-v2.1.41/out/win-unpacked/resources
+          --re-admit
 
       - name: Run P8.2d packaged fresh-profile acceptance
         shell: pwsh
@@ -585,6 +615,15 @@ jobs:
       - name: Admit exact Ubuntu Goose runner artifact
         run: bun run goose:runner:admit-build
 
+      - name: Install materialized Actestra AionUi dependencies for final package
+        run: bun run downstream:aionui:install
+
+      - name: Stage exact Goose runner into the final Ubuntu package resources
+        run: >-
+          bun run downstream:aionui:stage:goose --
+          --target-triple x86_64-unknown-linux-gnu
+          --materialized-root "${{ github.workspace }}/.actestra/aionui-v2.1.41"
+
       - name: Build and inspect exact Ubuntu DEB package
         id: linux-package
         shell: bash
@@ -593,7 +632,6 @@ jobs:
           # Build the real downstream DEB so the inspector sees the same
           # electron-builder maintainer scripts and resource destinations that
           # Ubuntu would install. This is package-wiring evidence only.
-          bun run downstream:aionui:install
           bun run downstream:aionui:stage:linux-goose
           bun run --cwd .actestra/aionui-v2.1.41 dist:linux -- --x64
           deb_path="$(find .actestra/aionui-v2.1.41/out -maxdepth 1 -type f -name '*.deb' -print -quit)"
@@ -632,6 +670,7 @@ jobs:
           test -d "$package_resources/actestra-goose-runner"
           test -f "$package_resources/apparmor-profile"
           test -f "$package_resources/actestra-goose-runner-admission.json"
+          test -f "$package_resources/actestra-goose-runner-package.json"
 
           # GitHub's Ubuntu builder deliberately makes /opt world-writable for
           # hosted tools. Normalize only the fixed package parent for the
@@ -653,6 +692,9 @@ jobs:
           sudo install -o root -g root -m 0644 \
             "$package_resources/actestra-goose-runner-admission.json" \
             /opt/Actestra/resources/actestra-goose-runner-admission.json
+          sudo install -o root -g root -m 0644 \
+            "$package_resources/actestra-goose-runner-package.json" \
+            /opt/Actestra/resources/actestra-goose-runner-package.json
           for runner_file in \
             GOOSE-APACHE-2.0.txt \
             Cargo.lock \
@@ -675,7 +717,9 @@ jobs:
           test "$bootstrap_output" = "ACTESTRA_GOOSE_LINUX_BOOTSTRAP_OK"
 
       - name: Re-admit installed Ubuntu Goose package
-        run: bun run goose:runner:admit-package:linux
+        run: |
+          bun run goose:runner:admit-package:linux
+          bun run downstream:aionui:admit:goose-package -- --target-triple x86_64-unknown-linux-gnu --package-resource /opt/Actestra/resources --re-admit
 
       - name: Run authenticated Linux Goose integration
         id: linux-integration
@@ -870,8 +914,29 @@ jobs:
       - name: Verify documentation links
         run: bun run docs:check
 
+      - name: Install Rust 1.96.1 for final package runner
+        run: rustup toolchain install 1.96.1 --profile minimal --component rustfmt
+
+      - name: Install pinned Goose runner audit tools for final package
+        run: bun run goose:runner:tools
+
+      - name: Build exact Goose runner artifact for final package
+        run: bun run goose:runner:build
+
+      - name: Verify Goose runner lock remains frozen for final package
+        run: git diff --exit-code -- workers/goose-runner/Cargo.lock
+
+      - name: Admit exact Goose runner artifact for final package
+        run: bun run goose:runner:admit-build
+
       - name: Install materialized Actestra AionUi dependencies
         run: bun run downstream:aionui:install
+
+      - name: Stage exact Goose runner into the final macOS package resources
+        run: >-
+          bun run downstream:aionui:stage:goose --
+          --target-triple aarch64-apple-darwin
+          --materialized-root "${{ github.workspace }}/.actestra/aionui-v2.1.41"
 
       - name: Type-check materialized Actestra AionUi application
         working-directory: .actestra/aionui-v2.1.41
@@ -913,6 +978,13 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
+      - name: Re-admit Goose runner from the final macOS package resources
+        run: >-
+          bun run downstream:aionui:admit:goose-package --
+          --target-triple aarch64-apple-darwin
+          --package-resource .actestra/aionui-v2.1.41/out/mac-arm64/Actestra.app/Contents/Resources
+          --re-admit
+
       - name: Run P8.2d packaged fresh-profile acceptance
         shell: bash
         run: |
@@ -941,12 +1013,6 @@ jobs:
           if-no-files-found: error
           retention-days: 3
           compression-level: 0
-
-      - name: Install pinned Goose runner audit tools for package trust
-        run: bun run goose:runner:tools
-
-      - name: Build and admit Goose runner for package trust
-        run: bun run goose:runner:build
 
       - name: Compute external package trust roots
         id: p7-trust-roots

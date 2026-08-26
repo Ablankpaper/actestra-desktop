@@ -2,35 +2,90 @@
 
 Last updated: 2026-08-26
 
-## 2026-08-26 P8 stabilization baseline established
+## 2026-08-26 P8 stabilization — PR #75 package-binding repair integrated locally
 
-The formal stabilization baseline is merged origin/main commit
-b8d77c5c5101454e9c30b1484b4e2f64b88cc672, source tree
-e25988340c3f6c67e14f20c10b5c3c4108b69bc4, in worktree
-/Users/zizimutou/actestra-worktrees/p8-stabilization on branch
-codex/release/p8-stabilization. It was created from the merged remote ref,
-not from the older local checkout. The baseline and the PR #73 merge-ref tree
-are byte-identical; the PR merge-ref CI evidence is exact-tree evidence, but
-it is not merged-main CI evidence.
+PR #75 first exposed a Windows package-staging failure in run `32918925564`.
+The runner admission passed, but the staging helper rejected a valid absolute
+Windows path after GitHub Actions supplied mixed `\\` and `/` separators. The
+final PR #75 head `eec08d0309f97633cecc6999c9167b3b48a01edb` subsequently passed
+all eight jobs in run `32921397241`; that CI evidence is bound to the PR head,
+not to this stabilization branch.
 
-PR #73 exact-head run 32873869921 passed all eight jobs. The squash merge
-contains historical [skip ci] markers, and no push-CI run exists for commit
-b8d77c5c...; no merged-main CI claim is made from that absence.
+The three verified repair commits were cherry-picked onto the current
+stabilization branch: `10689a2` (absolute downstream staging roots), `84fcfdd`
+(Ubuntu attestation preservation), and `ad3e63d` (Windows staging-root
+normalization). Local focused verification now passes `7` files with `49`
+tests passed and `1` skipped. This is local implementation evidence only: the
+current stabilization head has no exact-head CI run yet, and no candidate,
+release, deployment, or acceptance claim is made from it. P8.2 remains open.
+
+## 2026-08-26 P8 stabilization baseline revalidated at latest origin/main
+
+The unique stabilization baseline is the current merged `origin/main` commit
+`6f2a64d2eb4e159459005ce80eda71a14c754ad6`, source tree
+`95b68da2a0730a243cab5ed919dd4468ac760849`, in the clean worktree
+`/Users/zizimutou/actestra-worktrees/p8-stabilization-main` on branch
+`codex/release/p8-stabilization-main`. This worktree was
+created directly from `origin/main`; it is not the older local checkout at
+`e8074b73…`, and it does not replace any existing WIP worktree, including
+`/Users/zizimutou/actestra-worktrees/p8-stabilization-current` and
+`/Users/zizimutou/actestra-worktrees/p8-2-product-journeys-next`.
+
+PR #74 merged the baseline documentation as `6f2a64d2…`. Its PR run
+`32879077165` passed all eight jobs, and the subsequent exact-head push-CI run
+`32882463581` also passed all eight jobs. The push run produced current-SHA
+fresh-profile records for macOS, Windows, and Ubuntu, plus bounded Windows
+Goose-runtime and Windows/Ubuntu-containment artifacts.
 
 The current P8.2 ledger is
 [P8.2_EVIDENCE_LEDGER_2026-08-26.md](acceptance/P8.2_EVIDENCE_LEDGER_2026-08-26.md),
 with the binding record in
 [P8_STABILIZATION_BASELINE_2026-08-26.md](acceptance/P8_STABILIZATION_BASELINE_2026-08-26.md).
-Three exact-tree fresh-profile package rows are verified, along with narrow
-Windows Goose runtime and Windows/Ubuntu containment slices. The complete
-nine-journey P8.2 gate remains open because General Artifact, Artifact apply,
-General+Goose Team, crash/restart, and target-complete privacy/P7 evidence
-are incomplete. P8.3 and P8.4 remain unstarted.
+The three fresh-profile rows are verified against the current SHA; the full
+nine-journey P8.2 gate remains open because General Artifact, complete Goose
+isolated Patch, Apply approval, General+Goose Team, crash/restart, and
+target-complete privacy/P7 evidence are incomplete. P8.3 and P8.4 remain
+unstarted.
 
 This branch is feature-frozen: only release-blocking correctness, security,
 recovery, cleanup, packaging, platform-boundary fixes, and their evidence may
 be added. New feature design documents may continue elsewhere but do not enter
 the stabilization branch.
+
+## 2026-08-26 P8.2 Task 4 package-bound Goose binding — local implementation GREEN
+
+On the isolated stabilization branch
+`codex/release/p8-stabilization-main`, the first P8.2 package-binding slice
+is implemented locally on top of the baseline above. The slice adds one
+Main-owned package attestation and fail-closed re-admission boundary for the
+exact Goose runner, stages that runner into macOS, Windows, and Ubuntu native
+package resources, transfers only the admitted Windows package input between
+its native build and package jobs, and requires Ubuntu's DEB inspector and
+manual-install layout to carry the same attestation. Packaged macOS and
+Windows Main startup no longer accepts an external runner directory; it admits
+only the runner under Electron `process.resourcesPath`. The frozen `foundation/`
+tree remains unchanged.
+
+The local evidence for this slice is:
+
+- focused package/runtime/CI-contract collection: `7` files, `49` passed,
+  `1` skipped;
+- full root Vitest collection: `183` files, `2,045` passed, `10` skipped;
+- `bun run format:check`, `bun run lint`, `bun run typecheck`,
+  `bun run docs:check`, `bun run p8:contract:check`,
+  `bun run downstream:aionui:check`, and `bun run foundation:aionui:check`;
+- materialized downstream dependency installation and
+  `.actestra/aionui-v2.1.41` TypeScript check; and
+- `git diff --check`.
+
+The materialized dependency install exits successfully; its existing
+postinstall emits the non-fatal `.git can't be found` message because the
+generated downstream tree is not itself a Git checkout. No package was
+uploaded, no exact-head CI run has validated this new tree, and no candidate,
+release, deployment, or acceptance claim is made from these local results.
+The P8.2 ledger remains bound to `6f2a64d2…` until this slice receives native
+package/runner evidence for its exact source SHA. P8.2 remains open; P8.3 and
+P8.4 remain unstarted.
 
 ## 2026-08-25 P8.2 product acceptance integration closure
 
