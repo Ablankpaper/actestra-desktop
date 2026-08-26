@@ -2,21 +2,22 @@
 
 Last updated: 2026-08-26
 
-## 2026-08-26 P8 stabilization — Windows package staging blocker isolated
+## 2026-08-26 P8 stabilization — PR #75 package-binding repair integrated locally
 
-The exact-head PR #75 run `32918925564` is **failed**, not mergeable. Its first
-failure was job `P8.2d Windows x64 native Electron package`, at
-`Stage exact Goose runner into the final Windows package resources`. The runner
-Artifact admission itself passed; the staging helper rejected the valid Windows
-absolute path because GitHub Actions interpolated mixed `\\` and `/` separators
-and the helper compared `path.resolve(root)` with the unnormalized input string.
+PR #75 first exposed a Windows package-staging failure in run `32918925564`.
+The runner admission passed, but the staging helper rejected a valid absolute
+Windows path after GitHub Actions supplied mixed `\\` and `/` separators. The
+final PR #75 head `eec08d0309f97633cecc6999c9167b3b48a01edb` subsequently passed
+all eight jobs in run `32921397241`; that CI evidence is bound to the PR head,
+not to this stabilization branch.
 
-The isolated stabilization worktree now has a minimal path-normalization fix and
-regression coverage for mixed Windows separators, relative roots, and an
-incorrect final directory. Local verification passed the focused package
-collection (`4` files, `18` tests), `bun run format:check`, `bun run typecheck`,
-and `git diff --check`. This is local implementation evidence only: the fix has
-not yet received a new exact-head Windows package run, and P8.2 remains open.
+The three verified repair commits were cherry-picked onto the current
+stabilization branch: `10689a2` (absolute downstream staging roots), `84fcfdd`
+(Ubuntu attestation preservation), and `ad3e63d` (Windows staging-root
+normalization). Local focused verification now passes `7` files with `49`
+tests passed and `1` skipped. This is local implementation evidence only: the
+current stabilization head has no exact-head CI run yet, and no candidate,
+release, deployment, or acceptance claim is made from it. P8.2 remains open.
 
 ## 2026-08-26 P8 stabilization baseline revalidated at latest origin/main
 
@@ -54,7 +55,7 @@ the stabilization branch.
 ## 2026-08-26 P8.2 Task 4 package-bound Goose binding — local implementation GREEN
 
 On the isolated stabilization branch
-`codex/release/p8-stabilization-current`, the first P8.2 package-binding slice
+`codex/release/p8-stabilization-main`, the first P8.2 package-binding slice
 is implemented locally on top of the baseline above. The slice adds one
 Main-owned package attestation and fail-closed re-admission boundary for the
 exact Goose runner, stages that runner into macOS, Windows, and Ubuntu native
@@ -67,7 +68,7 @@ tree remains unchanged.
 
 The local evidence for this slice is:
 
-- focused package/runtime/CI-contract collection: `6` files, `37` passed,
+- focused package/runtime/CI-contract collection: `7` files, `49` passed,
   `1` skipped;
 - full root Vitest collection: `183` files, `2,045` passed, `10` skipped;
 - `bun run format:check`, `bun run lint`, `bun run typecheck`,
@@ -82,9 +83,9 @@ postinstall emits the non-fatal `.git can't be found` message because the
 generated downstream tree is not itself a Git checkout. No package was
 uploaded, no exact-head CI run has validated this new tree, and no candidate,
 release, deployment, or acceptance claim is made from these local results.
-The P8.2 ledger remains bound to `6f2a64d2…` until this slice is committed and
-its new exact source SHA receives native package/runner evidence. P8.2 remains
-open; P8.3 and P8.4 remain unstarted.
+The P8.2 ledger remains bound to `6f2a64d2…` until this slice receives native
+package/runner evidence for its exact source SHA. P8.2 remains open; P8.3 and
+P8.4 remain unstarted.
 
 ## 2026-08-25 P8.2 product acceptance integration closure
 
