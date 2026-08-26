@@ -21,7 +21,7 @@ states that Windows 11 and Ubuntu 24.04 clean-machine evidence, formal signing
 or notarization, and real-provider credentials require external controlled
 machines; no credentials are stored in CI or this repository.
 
-Fresh local validation for this batch: P8.3 candidate tests `11/11`
+Fresh local validation for this batch: P8.3 candidate tests `12/12`
 including CI wiring, P8.4 clean-machine tests `9/9`, Goose containment wiring
 `13/13`, and lint with zero warnings/errors. This is implementation evidence
 only. The branch has not yet received exact-head CI, a signed candidate, any
