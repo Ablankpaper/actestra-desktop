@@ -19,7 +19,7 @@ function replaceOnce(before, after) {
 
 replaceOnce(
   `  - from: resources/hub\n    to: hub\n`,
-  `  - from: resources/hub\n    to: hub\n  - from: resources/actestra-goose-runner\n    to: actestra-goose-runner\n  - from: resources/actestra-goose-runner-admission.json\n    to: actestra-goose-runner-admission.json\n`,
+  `  - from: resources/hub\n    to: hub\n  - from: resources/actestra-goose-runner\n    to: actestra-goose-runner\n  - from: resources/actestra-goose-runner-admission.json\n    to: actestra-goose-runner-admission.json\n  - from: resources/actestra-goose-runner-package.json\n    to: actestra-goose-runner-package.json\n`,
 );
 const linuxAnchor = "linux:\n";
 const linuxIndex = contents.indexOf(linuxAnchor);

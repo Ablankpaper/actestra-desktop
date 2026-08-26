@@ -4,11 +4,17 @@ import path from "node:path";
 import type { ActestraMainModelInvoker } from "../model/actestraMainModelBroker";
 import type { AionUiCodingRunnerAdmission } from "../compatibility/aionuiCodingAgentService";
 import type { IsolatedCodingProcessDefinition } from "../privileged/isolatedCodingToolPlatform";
-import { admitGooseRunnerArtifact, type AdmittedGooseRunnerArtifact } from "./gooseRunnerArtifact";
+import {
+  admitGooseRunnerArtifact,
+  admitGooseRunnerPackage,
+  type AdmittedGooseRunnerArtifact,
+  type AdmittedGooseRunnerPackage,
+} from "./gooseRunnerArtifact";
 import {
   admitInstalledGooseRunnerLinuxPackage,
   type AdmittedGooseRunnerLinuxPackage,
 } from "./gooseRunnerLinuxPackage";
+import { resolveGooseRunnerRuntimeTarget } from "./gooseRunnerTarget";
 import { GIT_EXECUTABLE } from "./workspaceGitBinding";
 
 const MODEL_ID_PATTERN = /^[A-Za-z0-9]+(?:[._:/-][A-Za-z0-9]+)*$/;
@@ -37,6 +43,7 @@ export interface ActestraCodingModelBinding {
 export interface TrustedActestraCodingJourneyRuntime {
   readonly runnerAdmission: AionUiCodingRunnerAdmission;
   readonly admittedArtifact: AdmittedGooseRunnerArtifact;
+  readonly packagedRunnerPackage?: AdmittedGooseRunnerPackage;
   readonly linuxPackage?: AdmittedGooseRunnerLinuxPackage;
   readonly revalidateArtifact?: () => Promise<AdmittedGooseRunnerArtifact>;
   readonly privateRootParent: string;
@@ -50,19 +57,24 @@ export interface StartTrustedActestraCodingJourneyRuntimeOptions {
   readonly userDataPath: string;
   readonly runnerAdmission: AionUiCodingRunnerAdmission | null;
   readonly linuxPackageResourcesPath?: string;
+  readonly packagedResourcesPath?: string;
   readonly modelBinding: ActestraCodingModelBinding | null;
 }
 
 export interface ActestraCodingJourneyRuntimeDependencies {
   readonly admitRunnerArtifact: typeof admitGooseRunnerArtifact;
+  readonly admitPackagedRunnerPackage?: typeof admitGooseRunnerPackage;
   readonly admitLinuxPackage?: typeof admitInstalledGooseRunnerLinuxPackage;
   readonly platform?: NodeJS.Platform;
+  readonly architecture?: string;
 }
 
 const DEFAULT_DEPENDENCIES: ActestraCodingJourneyRuntimeDependencies = Object.freeze({
   admitRunnerArtifact: admitGooseRunnerArtifact,
+  admitPackagedRunnerPackage: admitGooseRunnerPackage,
   admitLinuxPackage: admitInstalledGooseRunnerLinuxPackage,
   platform: process.platform,
+  architecture: process.arch,
 });
 
 function nodeErrorCode(error: unknown): string | undefined {
@@ -234,9 +246,12 @@ export async function startTrustedActestraCodingJourneyRuntime(
     if (userDataPath === null) return null;
     let runnerAdmission: Readonly<AionUiCodingRunnerAdmission> | null;
     let admittedArtifact: AdmittedGooseRunnerArtifact;
+    let packagedRunnerPackage: Readonly<AdmittedGooseRunnerPackage> | undefined;
     let linuxPackage: Readonly<AdmittedGooseRunnerLinuxPackage> | undefined;
     let revalidateArtifact: (() => Promise<AdmittedGooseRunnerArtifact>) | undefined;
-    if ((dependencies.platform ?? process.platform) === "linux") {
+    const platform = dependencies.platform ?? process.platform;
+    const architecture = dependencies.architecture ?? process.arch;
+    if (platform === "linux") {
       if (typeof options.linuxPackageResourcesPath !== "string") return null;
       const admitLinuxPackage =
         dependencies.admitLinuxPackage ?? admitInstalledGooseRunnerLinuxPackage;
@@ -252,6 +267,25 @@ export async function startTrustedActestraCodingJourneyRuntime(
         if (refreshed === null) {
           throw new Error("The packaged Linux Goose runner is no longer admitted");
         }
+        return refreshed.artifact;
+      };
+    } else if (typeof options.packagedResourcesPath === "string") {
+      const target = resolveGooseRunnerRuntimeTarget(platform, architecture);
+      if (target === undefined) return null;
+      const admitPackagedRunnerPackage =
+        dependencies.admitPackagedRunnerPackage ?? admitGooseRunnerPackage;
+      const packagedResourcesPath = options.packagedResourcesPath;
+      packagedRunnerPackage = await admitPackagedRunnerPackage(packagedResourcesPath, {
+        expectedTargetTriple: target.targetTriple,
+      });
+      runnerAdmission = snapshotRunnerAdmission(packagedRunnerPackage.runnerAdmission);
+      if (runnerAdmission === null) return null;
+      admittedArtifact = packagedRunnerPackage.artifact;
+      if (!artifactMatchesAdmission(admittedArtifact, runnerAdmission)) return null;
+      revalidateArtifact = async (): Promise<AdmittedGooseRunnerArtifact> => {
+        const refreshed = await admitPackagedRunnerPackage(packagedResourcesPath, {
+          expectedTargetTriple: target.targetTriple,
+        });
         return refreshed.artifact;
       };
     } else {
@@ -270,6 +304,7 @@ export async function startTrustedActestraCodingJourneyRuntime(
     return Object.freeze({
       runnerAdmission,
       admittedArtifact,
+      ...(packagedRunnerPackage === undefined ? {} : { packagedRunnerPackage }),
       ...(linuxPackage === undefined ? {} : { linuxPackage }),
       ...(revalidateArtifact === undefined ? {} : { revalidateArtifact }),
       privateRootParent,
