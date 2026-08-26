@@ -2,6 +2,22 @@
 
 Last updated: 2026-08-26
 
+## 2026-08-26 P8 stabilization — Windows package staging blocker isolated
+
+The exact-head PR #75 run `32918925564` is **failed**, not mergeable. Its first
+failure was job `P8.2d Windows x64 native Electron package`, at
+`Stage exact Goose runner into the final Windows package resources`. The runner
+Artifact admission itself passed; the staging helper rejected the valid Windows
+absolute path because GitHub Actions interpolated mixed `\\` and `/` separators
+and the helper compared `path.resolve(root)` with the unnormalized input string.
+
+The isolated stabilization worktree now has a minimal path-normalization fix and
+regression coverage for mixed Windows separators, relative roots, and an
+incorrect final directory. Local verification passed the focused package
+collection (`4` files, `18` tests), `bun run format:check`, `bun run typecheck`,
+and `git diff --check`. This is local implementation evidence only: the fix has
+not yet received a new exact-head Windows package run, and P8.2 remains open.
+
 ## 2026-08-26 P8 stabilization baseline revalidated at latest origin/main
 
 The unique stabilization baseline is the current merged `origin/main` commit
