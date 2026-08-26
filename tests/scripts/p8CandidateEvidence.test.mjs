@@ -302,7 +302,7 @@ describe("P8.3 candidate integrity and update-trust contract", () => {
 
   it("accepts target evidence produced by the bounded candidate-input job", () => {
     const manifest = completeManifest();
-    const assembled = buildP8CandidateManifest({
+    const assembled = assembleP8Candidate({
       sourceCommit,
       ciRunId,
       version: manifest.version,
