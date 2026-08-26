@@ -84,6 +84,18 @@ and cleanup checks pass; the coordinator fails closed with a stable error and
 does not write a fabricated success record on timeout, unavailable provider,
 missing runner, drift, ambiguous effect, or cleanup failure.
 
+Because packaged Electron stdout/stderr is not a reliable cross-platform
+diagnostic transport, a failed launch may additionally write the fixed private
+file `p8-product-journeys-failure.json` inside the isolated user-data directory.
+Its complete schema is exactly `{ code, stage }`, where both values come from
+closed vocabularies. Main writes canonical one-line JSON through an owner-only,
+write-once temporary file and atomic rename. The external controller accepts
+only a regular non-symlink file with the exact name, strict size and permission
+limits, exact keys, and canonical newline; it emits only that bounded pair with
+its existing outer failure code. The controller deletes stale failure state
+before prepare and again before recovery. The file is diagnostic-only and can
+never substitute for the verified result file.
+
 ## Lifecycle and data flow
 
 ```text

@@ -6,10 +6,13 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   P8_PRODUCT_JOURNEY_IDS,
+  P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME,
   assertP8ProductJourneyPrivacy,
   createP8ProductJourneyCoordinator,
+  parseP8ProductJourneyFailure,
   parseP8ProductJourneyRestartJournal,
   parseP8ProductJourneySmokeEnvironment,
+  writeP8ProductJourneyFailure,
   writeP8ProductJourneyRestartJournal,
   writeP8ProductJourneyResult,
   type P8ProductJourneyRunContext,
@@ -41,7 +44,11 @@ function context(overrides: Partial<P8ProductJourneyRunContext> = {}): P8Product
   return {
     environment: completeEnvironment,
     appIsPackaged: true,
-    executeJourney: async (id) => ({ id, status: "verified", residualProcessCount: 0 }),
+    executeJourney: async (id) => ({
+      id,
+      status: "verified",
+      residualProcessCount: 0,
+    }),
     cleanup: async () => ({ residualProcessCount: 0 }),
     ...overrides,
   };
@@ -138,6 +145,55 @@ describe("P8 packaged product-journey coordinator", () => {
     }
   });
 
+  it("accepts and writes only a closed private failure record", () => {
+    const failure = {
+      code: "journey-failed" as const,
+      stage: "general-artifact" as const,
+    };
+    expect(parseP8ProductJourneyFailure(failure)).toEqual(failure);
+    expect(
+      parseP8ProductJourneyFailure({
+        ...failure,
+        extra: "not-allowed",
+      }),
+    ).toBeNull();
+    expect(
+      parseP8ProductJourneyFailure({
+        code: "journey-failed",
+        stage: "/private/path",
+      }),
+    ).toBeNull();
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-p8-failure-"));
+    const failurePath = path.join(directory, P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME);
+    try {
+      writeP8ProductJourneyFailure(failurePath, failure);
+      expect(fs.readFileSync(failurePath, "utf8")).toBe(`${JSON.stringify(failure)}\n`);
+      expect(fs.statSync(failurePath).mode & 0o777).toBe(0o600);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a pre-existing failure symlink without changing its target", () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-p8-failure-link-"));
+    const failurePath = path.join(directory, P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME);
+    const sentinelPath = path.join(directory, "sentinel.txt");
+    fs.writeFileSync(sentinelPath, "protected\n");
+    fs.symlinkSync(sentinelPath, failurePath);
+    try {
+      expect(() =>
+        writeP8ProductJourneyFailure(failurePath, {
+          code: "journey-failed",
+          stage: "general-artifact",
+        }),
+      ).toThrow("result-write-failed");
+      expect(fs.readFileSync(sentinelPath, "utf8")).toBe("protected\n");
+      expect(fs.lstatSync(failurePath).isSymbolicLink()).toBe(true);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("refuses a pre-existing restart temporary path without changing its target", () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-p8-restart-temp-"));
     const journalPath = path.join(directory, "p8-product-journeys-restart.json");
@@ -170,7 +226,11 @@ describe("P8 packaged product-journey coordinator", () => {
     const sessionId = "session-p8-restart";
     let recovered = false;
     const service = {
-      submitFromTrustedContext: vi.fn(async () => ({ taskId, status: "running", canCancel: true })),
+      submitFromTrustedContext: vi.fn(async () => ({
+        taskId,
+        status: "running",
+        canCancel: true,
+      })),
       list: vi.fn(async () => [
         {
           taskId,
@@ -207,11 +267,18 @@ describe("P8 packaged product-journey coordinator", () => {
         events: [],
       })),
       replayEvents: vi.fn(async () => [
-        { type: "worker.failed", payload: { errorCode: "application-restart" } },
+        {
+          type: "worker.failed",
+          payload: { errorCode: "application-restart" },
+        },
         { type: "task.failed", payload: { errorCode: "application-restart" } },
       ]),
       listRecentAgentAttemptEvidence: vi.fn(async () => [
-        { sessionId, state: "failed", incident: { code: "application-restart" } },
+        {
+          sessionId,
+          state: "failed",
+          incident: { code: "application-restart" },
+        },
       ]),
     };
     try {
@@ -300,7 +367,9 @@ describe("P8 packaged product-journey coordinator", () => {
         cleanup,
         executeJourney: async (_id, signal) =>
           new Promise((_resolve, reject) => {
-            signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+            signal.addEventListener("abort", () => reject(signal.reason), {
+              once: true,
+            });
             queueMicrotask(() => controller.abort(new Error("journey-failed")));
           }),
       }),
@@ -323,7 +392,9 @@ describe("P8 packaged product-journey coordinator", () => {
           executeJourney: async () => new Promise(() => undefined),
         }),
       ).run();
-      const rejection = expect(result).rejects.toMatchObject({ code: "journey-timeout" });
+      const rejection = expect(result).rejects.toMatchObject({
+        code: "journey-timeout",
+      });
       await vi.advanceTimersByTimeAsync(1_000);
       await rejection;
       expect(cleanup).toHaveBeenCalledOnce();

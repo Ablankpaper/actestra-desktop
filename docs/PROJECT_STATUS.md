@@ -2,6 +2,40 @@
 
 Last updated: 2026-08-27
 
+## 2026-08-27 P8.2 packaged-journey private failure projection (local)
+
+PR #77 run `33016877710`, bound to head
+`f8c01ab2db1f37c95a19111fc1c85b976dce73b5`, repeated the macOS packaged
+journey's bounded `status=failed, code=journey-failed` result without carrying
+the already fixed internal journey stage across the Electron stdout/stderr
+boundary. That run also exposed the Ubuntu package/containment binding mismatch
+now repaired by `53f9b941ffe30ab6cee8238e7d2eb0dbaa2bc557`. The latest exact-head run
+`33018383490` is still in progress; its Ubuntu build probe and Goose admission
+job have passed, but it is not yet P8.2 evidence.
+
+The local diagnostic slice adds one private write-once
+`p8-product-journeys-failure.json` projection inside the isolated user-data
+directory. The packaged Main process writes only the exact closed keys
+`{code, stage}` with owner-only permissions; the controller accepts only a
+regular non-symlink file, the fixed code/stage vocabularies, a strict size
+limit, and canonical one-line JSON. It removes stale failure state before the
+prepare launch and again between prepare and recovery, and prints only the
+bounded stage with the controller's existing outer code. Raw Electron output,
+paths, process identifiers, credentials, and payloads do not cross this
+boundary. Normal product startup and successful journey evidence are
+unchanged.
+
+The failure-file tests were observed RED before implementation. Fresh focused
+validation now passes `36/36`; root typecheck, focused lint, repository format,
+`git diff --check`, foundation and downstream contract checks, downstream
+materialization, and the complete materialized Electron production build pass.
+The first materialized build attempt correctly failed because that newly
+generated tree had no installed dependencies; after the repository-prescribed
+`downstream:aionui:install`, the same build completed successfully. This is
+local diagnostic evidence only until committed and exercised by a new
+exact-head CI run; it does not close P8.2, candidate trust/signing, P8.4
+clean-machine acceptance, release, or user acceptance.
+
 ## 2026-08-27 P8.2 Windows bound-runner package handoff repair (local)
 
 The exact PR #77 run `33011983559` is bound to head

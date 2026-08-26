@@ -90,8 +90,11 @@ import {
 import {
   assertP8ProductJourneyPrivacy,
   createP8ProductJourneyCoordinator,
+  P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME,
   P8_PRODUCT_JOURNEY_RESTART_JOURNAL_FILE_NAME,
+  parseP8ProductJourneyFailure,
   parseP8ProductJourneySmokeEnvironment,
+  writeP8ProductJourneyFailure,
   writeP8ProductJourneyResult,
   type P8ProductJourneyId,
   type P8ProductJourneyObservation,
@@ -439,9 +442,20 @@ async function startP8ProductJourneySmoke(): Promise<void> {
       /^[a-z]+(?:-[a-z]+)*$/u.test(error.message)
         ? error.message
         : 'journey-failed';
+    const failure =
+      parseP8ProductJourneyFailure({ code, stage: p8ProductJourneyFailureStage }) ??
+      Object.freeze({ code: 'journey-failed' as const, stage: p8ProductJourneyFailureStage });
+    try {
+      writeP8ProductJourneyFailure(
+        path.join(environment.userData, P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME),
+        failure,
+      );
+    } catch {
+      // The fixed console projection below remains the fallback diagnostic.
+    }
     console.error(
       'ACTESTRA_P8_PRODUCT_JOURNEYS_FAILED ' +
-        JSON.stringify({ code, stage: p8ProductJourneyFailureStage }),
+        JSON.stringify(failure),
     );
   } finally {
     app.quit();

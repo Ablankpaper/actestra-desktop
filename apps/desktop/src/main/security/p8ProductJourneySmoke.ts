@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 export const P8_PRODUCT_JOURNEY_RESULT_FILE_NAME = "p8-product-journeys-result.json" as const;
+export const P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME = "p8-product-journeys-failure.json" as const;
 export const P8_PRODUCT_JOURNEY_RESTART_JOURNAL_FILE_NAME =
   "p8-product-journeys-restart.json" as const;
 
@@ -19,6 +20,7 @@ export const P8_PRODUCT_JOURNEY_IDS = Object.freeze([
 
 export type P8ProductJourneyId = (typeof P8_PRODUCT_JOURNEY_IDS)[number];
 export type P8ProductJourneyStatus = "verified";
+export type P8ProductJourneyFailureStage = "startup-recovery" | P8ProductJourneyId;
 
 export type P8ProductJourneyObservation = Readonly<{
   id: P8ProductJourneyId;
@@ -30,6 +32,11 @@ export type P8ProductJourneyResult = Readonly<{
   schemaVersion: 1;
   status: "verified";
   journeys: readonly P8ProductJourneyObservation[];
+}>;
+
+export type P8ProductJourneyFailure = Readonly<{
+  code: P8ProductJourneySmokeErrorCode;
+  stage: P8ProductJourneyFailureStage;
 }>;
 
 export type P8ProductJourneyRestartJournal = Readonly<{
@@ -77,6 +84,7 @@ export type P8ProductJourneySmokeErrorCode =
 const MINIMUM_TIMEOUT_MS = 1_000;
 const MAXIMUM_TIMEOUT_MS = 300_000;
 const RESULT_KEYS = Object.freeze(["schemaVersion", "status", "journeys"] as const);
+const FAILURE_KEYS = Object.freeze(["code", "stage"] as const);
 const JOURNEY_KEYS = Object.freeze(["id", "status", "residualProcessCount"] as const);
 const RESTART_JOURNAL_KEYS = Object.freeze([
   "schemaVersion",
@@ -97,6 +105,11 @@ const FORBIDDEN_KEY =
   /^(?:credential|secret|token|password|privatepath|rawpayload|workerpid|processid)$/iu;
 const WINDOWS_ABSOLUTE_PATH = /^[a-z]:[\\/]/iu;
 const UNC_ABSOLUTE_PATH = /^\\\\[^\\]/u;
+const FAILURE_STAGES = new Set<P8ProductJourneyFailureStage>([
+  "startup-recovery",
+  ...P8_PRODUCT_JOURNEY_IDS,
+]);
+const P8_PRODUCT_JOURNEY_FAILURE_MAX_BYTES = 4 * 1024;
 
 export class P8ProductJourneySmokeError extends Error {
   constructor(readonly code: P8ProductJourneySmokeErrorCode) {
@@ -138,6 +151,70 @@ function cleanAbsolutePath(value: string | undefined): string | null {
   return normalized === candidate ? normalized : null;
 }
 
+export function parseP8ProductJourneyFailure(value: unknown): P8ProductJourneyFailure | null {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, FAILURE_KEYS) ||
+    typeof value.code !== "string" ||
+    !CLOSED_ERROR_CODES.has(value.code as P8ProductJourneySmokeErrorCode) ||
+    typeof value.stage !== "string" ||
+    !FAILURE_STAGES.has(value.stage as P8ProductJourneyFailureStage)
+  ) {
+    return null;
+  }
+  try {
+    assertP8ProductJourneyPrivacy(value);
+  } catch {
+    return null;
+  }
+  return Object.freeze({
+    code: value.code as P8ProductJourneySmokeErrorCode,
+    stage: value.stage as P8ProductJourneyFailureStage,
+  });
+}
+
+export function writeP8ProductJourneyFailure(
+  failurePath: string,
+  failure: P8ProductJourneyFailure,
+): void {
+  if (
+    parseP8ProductJourneyFailure(failure) === null ||
+    !path.isAbsolute(failurePath) ||
+    path.basename(failurePath) !== P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME
+  ) {
+    throw smokeError("result-write-failed");
+  }
+  const temporaryPath = `${failurePath}.tmp`;
+  try {
+    const existing = fs.lstatSync(failurePath, { throwIfNoEntry: false });
+    const existingTemporary = fs.lstatSync(temporaryPath, {
+      throwIfNoEntry: false,
+    });
+    if (existing !== undefined || existingTemporary !== undefined) {
+      throw smokeError("result-write-failed");
+    }
+    const serialized = `${JSON.stringify(failure)}\n`;
+    if (Buffer.byteLength(serialized, "utf8") > P8_PRODUCT_JOURNEY_FAILURE_MAX_BYTES) {
+      throw smokeError("result-write-failed");
+    }
+    fs.writeFileSync(temporaryPath, serialized, {
+      encoding: "utf8",
+      mode: 0o600,
+      flag: "wx",
+    });
+    fs.chmodSync(temporaryPath, 0o600);
+    fs.renameSync(temporaryPath, failurePath);
+    fs.chmodSync(failurePath, 0o600);
+  } catch (error) {
+    try {
+      fs.rmSync(temporaryPath, { force: true });
+    } catch {
+      // Keep the exported failure code bounded.
+    }
+    throw closedError(error, "result-write-failed");
+  }
+}
+
 export function parseP8ProductJourneySmokeEnvironment(
   environment: Readonly<Record<string, string | undefined>>,
 ): P8ProductJourneySmokeEnvironment | null {
@@ -173,7 +250,15 @@ export function parseP8ProductJourneySmokeEnvironment(
   ) {
     return null;
   }
-  return Object.freeze({ root, userData, home, temp, workspace, resultPath, timeoutMs });
+  return Object.freeze({
+    root,
+    userData,
+    home,
+    temp,
+    workspace,
+    resultPath,
+    timeoutMs,
+  });
 }
 
 function forbiddenString(value: string): boolean {

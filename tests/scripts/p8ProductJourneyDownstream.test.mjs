@@ -61,6 +61,8 @@ describe("P8.2 packaged product-journey downstream composition", () => {
       "runP7PackagedResourceReliabilitySmoke",
       "runP7PackagedDiagnosticAuditSmoke",
       "ACTESTRA_P8_PRODUCT_JOURNEYS_RESTART_PHASE",
+      "P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME",
+      "writeP8ProductJourneyFailure",
       "? 'hold'",
       "app.quit()",
     ]) {
@@ -99,5 +101,16 @@ describe("P8.2 packaged product-journey downstream composition", () => {
     expect(started).toBeGreaterThan(loaded);
     expect(write).toBeGreaterThanOrEqual(0);
     expect(quit).toBeGreaterThan(write);
+  });
+
+  it("writes a bounded private failure file before quitting", () => {
+    const patch = read(
+      "downstream/aionui-v2.1.41/patches/0024-actestra-p8-product-journey-smoke.mjs",
+    );
+    expect(patch).toContain("writeP8ProductJourneyFailure");
+    expect(patch).toContain("P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME");
+    expect(patch.indexOf("writeP8ProductJourneyFailure")).toBeLessThan(
+      patch.lastIndexOf("app.quit()"),
+    );
   });
 });

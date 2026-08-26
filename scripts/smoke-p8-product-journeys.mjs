@@ -16,8 +16,10 @@ import {
 import { P8_PLATFORM_MATRIX } from "./p8-platform-matrix.mjs";
 
 export const P8_PRODUCT_JOURNEY_RESULT_FILE_NAME = "p8-product-journeys-result.json";
+export const P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME = "p8-product-journeys-failure.json";
 export const P8_PRODUCT_JOURNEY_RESTART_JOURNAL_FILE_NAME = "p8-product-journeys-restart.json";
 export const P8_PRODUCT_JOURNEY_RESULT_MAX_BYTES = 32 * 1024;
+export const P8_PRODUCT_JOURNEY_FAILURE_MAX_BYTES = 4 * 1024;
 const P8_PRODUCT_JOURNEY_RESTART_JOURNAL_MAX_BYTES = 8 * 1024;
 const P8_PRODUCT_JOURNEY_DIAGNOSTIC_MAX_BYTES = 4 * 1024;
 
@@ -36,6 +38,12 @@ const DIGEST_PATTERN = /^[a-f0-9]{64}$/u;
 const COMMIT_PATTERN = /^[a-f0-9]{40}$/u;
 const CI_RUN_PATTERN = /^[1-9][0-9]{0,19}$/u;
 const FAILURE_CODE_SET = new Set(P8_PRODUCT_JOURNEY_FAILURE_CODES);
+const RUNTIME_FAILURE_CODE_SET = new Set([
+  ...P8_PRODUCT_JOURNEY_FAILURE_CODES,
+  "invalid-environment",
+  "privacy-redaction-failed",
+  "result-write-failed",
+]);
 const P8_PRODUCT_JOURNEY_DIAGNOSTIC_STAGES = new Set([
   "startup-recovery",
   ...P8_PRODUCT_JOURNEY_IDS,
@@ -80,6 +88,50 @@ export function classifyP8ProductJourneyDiagnosticLine(value) {
     return undefined;
   }
   return Object.freeze({ code: "journey-failed", stage: parsed.stage });
+}
+
+/**
+ * Read only the packaged app's private, write-once failure projection. The
+ * controller never exposes raw Electron output or file contents; it returns
+ * only this closed code/stage pair alongside its own outer failure code.
+ */
+export async function parseP8ProductJourneyFailureFile(userData) {
+  if (typeof userData !== "string" || !path.isAbsolute(userData)) return undefined;
+  const failurePath = path.join(userData, P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME);
+  let metadata;
+  try {
+    metadata = await lstat(failurePath);
+  } catch {
+    return undefined;
+  }
+  if (
+    metadata.isSymbolicLink() ||
+    !metadata.isFile() ||
+    metadata.size === 0 ||
+    metadata.size > P8_PRODUCT_JOURNEY_FAILURE_MAX_BYTES ||
+    (process.platform !== "win32" && (metadata.mode & 0o777) !== 0o600)
+  ) {
+    return undefined;
+  }
+  let contents;
+  let value;
+  try {
+    contents = await readFile(failurePath, "utf8");
+    value = JSON.parse(contents);
+  } catch {
+    return undefined;
+  }
+  if (
+    !hasExactKeys(value, ["code", "stage"]) ||
+    typeof value.code !== "string" ||
+    !RUNTIME_FAILURE_CODE_SET.has(value.code) ||
+    typeof value.stage !== "string" ||
+    !P8_PRODUCT_JOURNEY_DIAGNOSTIC_STAGES.has(value.stage) ||
+    contents !== `${JSON.stringify(value)}\n`
+  ) {
+    return undefined;
+  }
+  return Object.freeze({ code: value.code, stage: value.stage });
 }
 
 function observeP8ProductJourneyDiagnostics(stream, onDiagnostic) {
@@ -495,8 +547,10 @@ export async function runP8ProductJourneyCrashRestartRecovery(options) {
   let first;
   let second;
   try {
+    const failurePath = path.join(options.userDataPath, P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME);
     fs.rmSync(options.restartJournalPath, { force: true });
     fs.rmSync(options.resultPath, { force: true });
+    fs.rmSync(failurePath, { force: true });
     first = await launchPhase("prepare");
     let firstJournal;
     let firstOutcome;
@@ -535,6 +589,7 @@ export async function runP8ProductJourneyCrashRestartRecovery(options) {
       cleanupTimeoutMs,
     );
 
+    fs.rmSync(failurePath, { force: true });
     second = await launchPhase("recover");
     let secondJournal;
     let secondResult;
@@ -589,7 +644,11 @@ export async function runP8ProductJourneyCrashRestartRecovery(options) {
         cleanupTimeoutMs,
       );
     }
-    return Object.freeze({ restartCount: 1, journal: secondJournal, result: secondResult });
+    return Object.freeze({
+      restartCount: 1,
+      journal: secondJournal,
+      result: secondResult,
+    });
   } catch (error) {
     await cleanupPhase(second);
     await cleanupPhase(first);
@@ -620,7 +679,10 @@ export function parseP8ProductJourneyArguments(argv) {
       if (typeof value !== "string") throw new Error("invalid-arguments");
       const separator = value.indexOf("=");
       if (separator < 1 || separator === value.length - 1) throw new Error("invalid-arguments");
-      parsed.packages.push({ format: value.slice(0, separator), path: value.slice(separator + 1) });
+      parsed.packages.push({
+        format: value.slice(0, separator),
+        path: value.slice(separator + 1),
+      });
       index += 1;
       continue;
     }
@@ -845,7 +907,9 @@ async function prepareP8P7SmokeEnvironment(isolation, runtime, runner) {
     sentinel: path.join(root, "p7-security-sentinel.txt"),
     evidence: path.join(root, "p7-security-evidence.json"),
   };
-  fs.writeFileSync(security.sentinel, "P8 protected sentinel\n", { mode: 0o600 });
+  fs.writeFileSync(security.sentinel, "P8 protected sentinel\n", {
+    mode: 0o600,
+  });
 
   const resources = {
     evidence: path.join(root, "p7-resource-evidence.json"),
@@ -1007,6 +1071,9 @@ export async function runP8ProductJourneySmoke(options) {
     };
     p7Smoke = await prepareP8P7SmokeEnvironment(isolation, runtime, options.runner);
     Object.assign(environment, p7Smoke.environment);
+    fs.rmSync(path.join(isolation.userData, P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME), {
+      force: true,
+    });
     const snapshotProcessTree = options.snapshotProcessTree ?? defaultSnapshotProcessTree;
     let journeyResult;
     if (options.crashRestartRecovery !== false) {
@@ -1098,7 +1165,10 @@ export async function runP8ProductJourneySmoke(options) {
     }
 
     const runner = Object.freeze({ packaged: true, ...options.runner });
-    const packageBindings = packages.map(({ format, sha256 }) => ({ format, sha256 }));
+    const packageBindings = packages.map(({ format, sha256 }) => ({
+      format,
+      sha256,
+    }));
     const resultPath = path.join(isolation.userData, P8_PRODUCT_JOURNEY_RESULT_FILE_NAME);
     const evidence = Object.freeze({
       schemaVersion: 1,
@@ -1131,6 +1201,9 @@ export async function runP8ProductJourneySmoke(options) {
   } catch (error) {
     if (child && outcomePromise) await terminateChild(child, outcomePromise).catch(() => undefined);
     const code = error instanceof P8ProductJourneySmokeError ? error.code : "early-exit";
+    if (diagnostic === undefined && isolation !== undefined) {
+      diagnostic = await parseP8ProductJourneyFailureFile(isolation.userData);
+    }
     if (diagnostic !== undefined) {
       process.stderr.write(`${JSON.stringify({ ...diagnostic, outerCode: code })}\n`);
     }
@@ -1152,7 +1225,9 @@ async function main() {
     return;
   }
   const result = await runP8ProductJourneySmoke(options);
-  fs.mkdirSync(path.dirname(path.resolve(options.evidencePath)), { recursive: true });
+  fs.mkdirSync(path.dirname(path.resolve(options.evidencePath)), {
+    recursive: true,
+  });
   fs.writeFileSync(path.resolve(options.evidencePath), `${JSON.stringify(result.evidence)}\n`, {
     mode: 0o600,
   });

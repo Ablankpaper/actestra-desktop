@@ -5,12 +5,14 @@ import fs from "node:fs";
 import { mkdtemp, mkdir, realpath, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { P8_PRODUCT_JOURNEY_IDS } from "../../scripts/p8-product-journey-evidence.mjs";
 import {
+  P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME,
   P8_PRODUCT_JOURNEY_RESULT_FILE_NAME,
   classifyP8ProductJourneyDiagnosticLine,
   normalizeP8ProductJourneyPackages,
+  parseP8ProductJourneyFailureFile,
   parseP8ProductJourneyArguments,
   parseP8ProductJourneyResultFile,
   resolveP8ProductJourneyIsolation,
@@ -122,6 +124,54 @@ describe("P8.2 packaged product-journey controller", () => {
       'ACTESTRA_P8_PRODUCT_JOURNEYS_FAILED {"code":"journey-failed","stage":"cleanup","path":"/tmp/private"}',
     ]) {
       expect(classifyP8ProductJourneyDiagnosticLine(invalid)).toBeUndefined();
+    }
+  });
+
+  it("parses only a bounded private failure file", async () => {
+    const root = await tempRoot();
+    const userData = path.join(root, "user-data");
+    await mkdir(userData, { recursive: true });
+    const failurePath = path.join(userData, P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME);
+    const failure = { code: "journey-failed", stage: "general-artifact" };
+    await writeFile(failurePath, `${JSON.stringify(failure)}\n`, {
+      mode: 0o600,
+    });
+    await expect(parseP8ProductJourneyFailureFile(userData)).resolves.toEqual(failure);
+    await writeFile(failurePath, `${JSON.stringify({ ...failure, extra: "no" })}\n`);
+    await expect(parseP8ProductJourneyFailureFile(userData)).resolves.toBeUndefined();
+    await writeFile(failurePath, `${JSON.stringify(failure)}\ntrailing\n`);
+    await expect(parseP8ProductJourneyFailureFile(userData)).resolves.toBeUndefined();
+    await writeFile(failurePath, `${JSON.stringify(failure)}\n`);
+    fs.chmodSync(failurePath, 0o644);
+    await expect(parseP8ProductJourneyFailureFile(userData)).resolves.toBeUndefined();
+    fs.rmSync(failurePath);
+    const sentinel = path.join(root, "sentinel.json");
+    await writeFile(sentinel, `${JSON.stringify(failure)}\n`, { mode: 0o600 });
+    await symlink(sentinel, failurePath);
+    await expect(parseP8ProductJourneyFailureFile(userData)).resolves.toBeUndefined();
+  });
+
+  it("uses the private failure file when the packaged child emits no diagnostic stream", async () => {
+    const fixture = await macFixture();
+    const failure = { code: "journey-failed", stage: "general-artifact" };
+    const stderrWrite = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const result = await runP8ProductJourneySmoke(
+        smokeOptions(fixture, async (child, environment) => {
+          await writeFile(
+            path.join(environment.ACTESTRA_USER_DATA_DIR, P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME),
+            `${JSON.stringify(failure)}\n`,
+            { mode: 0o600 },
+          );
+          emitClose(child, 1, null);
+        }),
+      );
+      expect(result.evidence.code).toBe("early-exit");
+      expect(stderrWrite).toHaveBeenCalledWith(
+        `${JSON.stringify({ ...failure, outerCode: "early-exit" })}\n`,
+      );
+    } finally {
+      stderrWrite.mockRestore();
     }
   });
 
@@ -319,6 +369,7 @@ describe("P8.2 packaged product-journey controller", () => {
   it("performs exactly one abnormal prepare launch followed by one recovery launch", async () => {
     const fixture = await macFixture();
     const journalPath = path.join(fixture.root, "p8-product-journeys-restart.json");
+    const failurePath = path.join(fixture.root, P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME);
     let launchCount = 0;
     const outcome = await runP8ProductJourneyCrashRestartRecovery({
       launchPath: fixture.app,
@@ -340,9 +391,15 @@ describe("P8.2 packaged product-journey controller", () => {
               })}\n`,
               { mode: 0o600 },
             );
+            await writeFile(
+              failurePath,
+              `${JSON.stringify({ code: "journey-failed", stage: "startup-recovery" })}\n`,
+              { mode: 0o600 },
+            );
             emitClose(child, 86, null);
             return;
           }
+          expect(fs.existsSync(failurePath)).toBe(false);
           fs.writeFileSync(
             journalPath,
             `${JSON.stringify({
