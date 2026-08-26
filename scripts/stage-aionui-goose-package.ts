@@ -72,9 +72,25 @@ function sha256(value: Uint8Array): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
+interface RootPathApi {
+  readonly basename: (path: string) => string;
+  readonly isAbsolute: (path: string) => boolean;
+  readonly normalize: (path: string) => string;
+  readonly resolve: (path: string) => string;
+}
+
+export function isMaterializedRootPath(root: string, pathApi: RootPathApi = path): boolean {
+  const normalized = pathApi.normalize(root);
+  const resolved = pathApi.resolve(root);
+  return (
+    pathApi.isAbsolute(root) &&
+    resolved === normalized &&
+    pathApi.basename(normalized) === "aionui-v2.1.41"
+  );
+}
+
 function assertMaterializedRoot(root: string): void {
-  const resolved = path.resolve(root);
-  if (!path.isAbsolute(root) || resolved !== root || path.basename(root) !== "aionui-v2.1.41") {
+  if (!isMaterializedRootPath(root)) {
     throw new Error("Goose package staging requires the materialized aionui-v2.1.41 root");
   }
 }
