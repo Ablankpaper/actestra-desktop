@@ -1,0 +1,366 @@
+import fs from "node:fs";
+import path from "node:path";
+
+export const P8_PRODUCT_JOURNEY_RESULT_FILE_NAME = "p8-product-journeys-result.json" as const;
+
+export const P8_PRODUCT_JOURNEY_IDS = Object.freeze([
+  "fresh-profile-launch",
+  "general-artifact",
+  "goose-isolated-patch",
+  "workspace-apply-approval",
+  "general-goose-team",
+  "cancellation-no-orphan",
+  "crash-restart-recovery",
+  "privacy-redaction",
+  "p7-platform-obligations",
+] as const);
+
+export type P8ProductJourneyId = (typeof P8_PRODUCT_JOURNEY_IDS)[number];
+export type P8ProductJourneyStatus = "verified";
+
+export type P8ProductJourneyObservation = Readonly<{
+  id: P8ProductJourneyId;
+  status: P8ProductJourneyStatus;
+  residualProcessCount: 0;
+}>;
+
+export type P8ProductJourneyResult = Readonly<{
+  schemaVersion: 1;
+  status: "verified";
+  journeys: readonly P8ProductJourneyObservation[];
+}>;
+
+export type P8ProductJourneySmokeEnvironment = Readonly<{
+  root: string;
+  userData: string;
+  home: string;
+  temp: string;
+  workspace: string;
+  resultPath: string;
+  timeoutMs: number;
+}>;
+
+export type P8ProductJourneyCleanupResult = Readonly<{
+  residualProcessCount: number;
+}>;
+
+export interface P8ProductJourneyRunContext {
+  readonly environment: Readonly<Record<string, string | undefined>>;
+  readonly appIsPackaged: boolean;
+  readonly executeJourney: (
+    id: P8ProductJourneyId,
+    signal: AbortSignal,
+  ) => Promise<P8ProductJourneyObservation>;
+  readonly cleanup: (signal: AbortSignal) => Promise<P8ProductJourneyCleanupResult>;
+  readonly writeResult?: (result: P8ProductJourneyResult) => void | Promise<void>;
+  readonly signal?: AbortSignal;
+}
+
+export type P8ProductJourneySmokeErrorCode =
+  | "invalid-environment"
+  | "journey-failed"
+  | "journey-timeout"
+  | "cleanup-failed"
+  | "residual-processes"
+  | "privacy-redaction-failed"
+  | "result-write-failed";
+
+const MINIMUM_TIMEOUT_MS = 1_000;
+const MAXIMUM_TIMEOUT_MS = 300_000;
+const RESULT_KEYS = Object.freeze(["schemaVersion", "status", "journeys"] as const);
+const JOURNEY_KEYS = Object.freeze(["id", "status", "residualProcessCount"] as const);
+const CLOSED_ERROR_CODES = new Set<P8ProductJourneySmokeErrorCode>([
+  "invalid-environment",
+  "journey-failed",
+  "journey-timeout",
+  "cleanup-failed",
+  "residual-processes",
+  "privacy-redaction-failed",
+  "result-write-failed",
+]);
+const FORBIDDEN_KEY =
+  /^(?:credential|secret|token|password|privatepath|rawpayload|workerpid|processid)$/iu;
+const WINDOWS_ABSOLUTE_PATH = /^[a-z]:[\\/]/iu;
+const UNC_ABSOLUTE_PATH = /^\\\\[^\\]/u;
+
+export class P8ProductJourneySmokeError extends Error {
+  constructor(readonly code: P8ProductJourneySmokeErrorCode) {
+    super(code);
+    this.name = "P8ProductJourneySmokeError";
+  }
+}
+
+function smokeError(code: P8ProductJourneySmokeErrorCode): P8ProductJourneySmokeError {
+  return new P8ProductJourneySmokeError(code);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  const actual = Object.keys(value);
+  return actual.length === keys.length && actual.every((key) => keys.includes(key));
+}
+
+function strictlyInside(root: string, candidate: string): boolean {
+  if (!path.isAbsolute(root) || !path.isAbsolute(candidate)) return false;
+  const relative = path.relative(root, candidate);
+  return (
+    relative.length > 0 &&
+    relative !== ".." &&
+    !relative.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relative)
+  );
+}
+
+function cleanAbsolutePath(value: string | undefined): string | null {
+  const candidate = value?.trim();
+  if (candidate === undefined || candidate.length === 0 || !path.isAbsolute(candidate)) {
+    return null;
+  }
+  const normalized = path.normalize(candidate);
+  return normalized === candidate ? normalized : null;
+}
+
+export function parseP8ProductJourneySmokeEnvironment(
+  environment: Readonly<Record<string, string | undefined>>,
+): P8ProductJourneySmokeEnvironment | null {
+  if (
+    environment.ACTESTRA_E2E_TEST !== "1" ||
+    environment.ACTESTRA_P8_PRODUCT_JOURNEYS_SMOKE !== "1"
+  ) {
+    return null;
+  }
+  const root = cleanAbsolutePath(environment.ACTESTRA_E2E_ISOLATION_ROOT);
+  const userData = cleanAbsolutePath(environment.ACTESTRA_USER_DATA_DIR);
+  const home = cleanAbsolutePath(environment.ACTESTRA_E2E_HOME_DIR);
+  const temp = cleanAbsolutePath(environment.ACTESTRA_E2E_TEMP_DIR);
+  const workspace = cleanAbsolutePath(environment.ACTESTRA_P8_PRODUCT_JOURNEYS_WORKSPACE);
+  const resultPath = cleanAbsolutePath(environment.ACTESTRA_P8_PRODUCT_JOURNEYS_RESULT);
+  const timeoutText = environment.ACTESTRA_P8_PRODUCT_JOURNEYS_TIMEOUT_MS?.trim();
+  const timeoutMs = timeoutText === undefined ? Number.NaN : Number(timeoutText);
+  if (
+    root === null ||
+    userData === null ||
+    home === null ||
+    temp === null ||
+    workspace === null ||
+    resultPath === null ||
+    ![userData, home, temp, workspace, resultPath].every((candidate) =>
+      strictlyInside(root, candidate),
+    ) ||
+    !strictlyInside(userData, resultPath) ||
+    resultPath !== path.join(userData, P8_PRODUCT_JOURNEY_RESULT_FILE_NAME) ||
+    !Number.isSafeInteger(timeoutMs) ||
+    timeoutMs < MINIMUM_TIMEOUT_MS ||
+    timeoutMs > MAXIMUM_TIMEOUT_MS
+  ) {
+    return null;
+  }
+  return Object.freeze({ root, userData, home, temp, workspace, resultPath, timeoutMs });
+}
+
+function forbiddenString(value: string): boolean {
+  return (
+    path.posix.isAbsolute(value) ||
+    WINDOWS_ABSOLUTE_PATH.test(value) ||
+    UNC_ABSOLUTE_PATH.test(value)
+  );
+}
+
+export function assertP8ProductJourneyPrivacy(value: unknown): void {
+  const pending: unknown[] = [value];
+  const visited = new Set<object>();
+  while (pending.length > 0) {
+    const candidate = pending.pop();
+    if (typeof candidate === "string" && forbiddenString(candidate)) {
+      throw smokeError("privacy-redaction-failed");
+    }
+    if (typeof candidate !== "object" || candidate === null) continue;
+    if (visited.has(candidate)) continue;
+    visited.add(candidate);
+    if (Array.isArray(candidate)) {
+      pending.push(...candidate);
+      continue;
+    }
+    for (const [key, entry] of Object.entries(candidate)) {
+      if (FORBIDDEN_KEY.test(key)) throw smokeError("privacy-redaction-failed");
+      pending.push(entry);
+    }
+  }
+}
+
+function assertObservation(
+  value: unknown,
+  expectedId: P8ProductJourneyId,
+): asserts value is P8ProductJourneyObservation {
+  assertP8ProductJourneyPrivacy(value);
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, JOURNEY_KEYS) ||
+    value.id !== expectedId ||
+    value.status !== "verified"
+  ) {
+    throw smokeError("journey-failed");
+  }
+  if (value.residualProcessCount !== 0) throw smokeError("residual-processes");
+}
+
+function assertResult(value: unknown): asserts value is P8ProductJourneyResult {
+  assertP8ProductJourneyPrivacy(value);
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, RESULT_KEYS) ||
+    value.schemaVersion !== 1 ||
+    value.status !== "verified" ||
+    !Array.isArray(value.journeys) ||
+    value.journeys.length !== P8_PRODUCT_JOURNEY_IDS.length
+  ) {
+    throw smokeError("result-write-failed");
+  }
+  for (const [index, id] of P8_PRODUCT_JOURNEY_IDS.entries()) {
+    try {
+      assertObservation(value.journeys[index], id);
+    } catch {
+      throw smokeError("result-write-failed");
+    }
+  }
+}
+
+function closedError(error: unknown, fallback: P8ProductJourneySmokeErrorCode) {
+  if (error instanceof P8ProductJourneySmokeError) return error;
+  if (error instanceof Error && CLOSED_ERROR_CODES.has(error.message as never)) {
+    return smokeError(error.message as P8ProductJourneySmokeErrorCode);
+  }
+  return smokeError(fallback);
+}
+
+function abortError(signal: AbortSignal): P8ProductJourneySmokeError {
+  return signal.reason instanceof P8ProductJourneySmokeError
+    ? signal.reason
+    : smokeError("journey-failed");
+}
+
+async function withDeadline<T>(
+  operation: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number,
+  parentSignal: AbortSignal | undefined,
+  timeoutCode: P8ProductJourneySmokeErrorCode,
+): Promise<T> {
+  const controller = new AbortController();
+  const onParentAbort = () => controller.abort(abortError(parentSignal!));
+  if (parentSignal?.aborted === true) throw abortError(parentSignal);
+  parentSignal?.addEventListener("abort", onParentAbort, { once: true });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      const error = smokeError(timeoutCode);
+      controller.abort(error);
+      reject(error);
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([operation(controller.signal), timeout]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    parentSignal?.removeEventListener("abort", onParentAbort);
+  }
+}
+
+export function writeP8ProductJourneyResult(
+  resultPath: string,
+  result: P8ProductJourneyResult,
+): void {
+  assertResult(result);
+  const temporaryPath = `${resultPath}.tmp`;
+  try {
+    if (
+      fs.lstatSync(resultPath, { throwIfNoEntry: false }) !== undefined ||
+      fs.lstatSync(temporaryPath, { throwIfNoEntry: false }) !== undefined
+    ) {
+      throw smokeError("result-write-failed");
+    }
+    fs.writeFileSync(temporaryPath, `${JSON.stringify(result)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+      flag: "wx",
+    });
+    fs.renameSync(temporaryPath, resultPath);
+  } catch (error) {
+    try {
+      fs.rmSync(temporaryPath, { force: true });
+    } catch {
+      // The closed result-write error below is the only exported diagnostic.
+    }
+    throw closedError(error, "result-write-failed");
+  }
+}
+
+export function createP8ProductJourneyCoordinator(context: P8ProductJourneyRunContext): Readonly<{
+  run(): Promise<P8ProductJourneyResult>;
+}> {
+  const configuration = parseP8ProductJourneySmokeEnvironment(context.environment);
+  let completed = false;
+  return Object.freeze({
+    async run(): Promise<P8ProductJourneyResult> {
+      if (completed || configuration === null || context.appIsPackaged !== true) {
+        throw smokeError("invalid-environment");
+      }
+      completed = true;
+      const observations: P8ProductJourneyObservation[] = [];
+      let primaryError: P8ProductJourneySmokeError | null = null;
+      try {
+        await withDeadline(
+          async (signal) => {
+            for (const id of P8_PRODUCT_JOURNEY_IDS) {
+              const observation = await context.executeJourney(id, signal);
+              assertObservation(observation, id);
+              observations.push(Object.freeze({ ...observation }));
+            }
+          },
+          configuration.timeoutMs,
+          context.signal,
+          "journey-timeout",
+        );
+      } catch (error) {
+        primaryError = closedError(error, "journey-failed");
+      }
+
+      try {
+        const cleanup = await withDeadline(
+          context.cleanup,
+          configuration.timeoutMs,
+          undefined,
+          "cleanup-failed",
+        );
+        assertP8ProductJourneyPrivacy(cleanup);
+        if (
+          !isRecord(cleanup) ||
+          !hasExactKeys(cleanup, ["residualProcessCount"]) ||
+          cleanup.residualProcessCount !== 0
+        ) {
+          throw smokeError("residual-processes");
+        }
+      } catch (error) {
+        throw closedError(error, "cleanup-failed");
+      }
+
+      if (primaryError !== null) throw primaryError;
+      const result = Object.freeze({
+        schemaVersion: 1 as const,
+        status: "verified" as const,
+        journeys: Object.freeze(observations),
+      });
+      assertResult(result);
+      if (context.writeResult !== undefined) {
+        try {
+          await context.writeResult(result);
+        } catch (error) {
+          throw closedError(error, "result-write-failed");
+        }
+      }
+      return result;
+    },
+  });
+}
