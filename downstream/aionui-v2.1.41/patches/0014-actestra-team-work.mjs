@@ -162,6 +162,8 @@ replaceOnce(
 import { runGeneralWorkerProbe } from './actestra/main/workers/generalWorkerProbe';`,
   `import {
   closeActestraShadowBridge,
+  configureActestraCodingJourneyRuntime,
+  configureActestraGeneralWorkRuntime,
   configureActestraTeamRuntime,
   configureActestraTeamWorkerRuntimeAdmission,
   initializeActestraPersistenceUtility,
@@ -180,6 +182,11 @@ import {
   startTrustedActestraCodingJourneyRuntime,
 } from './actestra/main/workers/actestraCodingJourneyRuntime';
 import { startTrustedActestraGeneralWorkRuntime } from './actestra/main/workers/actestraGeneralWorkRuntime';
+import {
+  createP8ProductJourneyLoopbackModelBinding,
+  createP8ProductJourneyTeamModelCatalog,
+  resolveP8ProductJourneyRuntimeConfig,
+} from './actestra/main/acceptance/p8ProductJourneyRuntime';
 import { runGeneralWorkerProbe } from './actestra/main/workers/generalWorkerProbe';`,
 );
 
@@ -208,8 +215,36 @@ replaceOnce(
   // route through the renderer via BroadcastChannel; running them here would
   // deadlock because the renderer does not exist yet. See scheduleBackendMigrations().`,
   `  const listAionCoreProviders = () => ipcBridge.mode.listProviders.invoke();
+  const p8ProductJourneyRuntimeConfig = resolveP8ProductJourneyRuntimeConfig({
+    packaged: app.isPackaged,
+    environment: process.env,
+  });
+  let p8ProductJourneyGeneralRuntime: Awaited<ReturnType<typeof startTrustedActestraGeneralWorkRuntime>> = null;
+  let p8ProductJourneyCodingRuntime: Awaited<ReturnType<typeof startTrustedActestraCodingJourneyRuntime>> = null;
+  if (p8ProductJourneyRuntimeConfig !== null) {
+    const loopbackBinding = createP8ProductJourneyLoopbackModelBinding(
+      p8ProductJourneyRuntimeConfig,
+    );
+    p8ProductJourneyGeneralRuntime = startTrustedActestraGeneralWorkRuntime({
+      modelBinding: loopbackBinding,
+    });
+    p8ProductJourneyCodingRuntime = await startTrustedActestraCodingJourneyRuntime({
+      userDataPath: app.getPath('userData'),
+      runnerAdmission: null,
+      linuxPackageResourcesPath: process.platform === 'linux' ? process.resourcesPath : undefined,
+      packagedResourcesPath:
+        process.platform !== 'linux' && app.isPackaged ? process.resourcesPath : undefined,
+      modelBinding: loopbackBinding,
+    });
+    configureActestraGeneralWorkRuntime(p8ProductJourneyGeneralRuntime);
+    configureActestraCodingJourneyRuntime(p8ProductJourneyCodingRuntime);
+  }
+  const p8ProductJourneyTeamCatalog =
+    p8ProductJourneyRuntimeConfig === null
+      ? null
+      : createP8ProductJourneyTeamModelCatalog(p8ProductJourneyRuntimeConfig);
   configureActestraTeamWorkerRuntimeAdmission({
-    modelCatalog: {
+    modelCatalog: p8ProductJourneyTeamCatalog ?? {
       list: async () =>
         Object.freeze({
           providers: Object.freeze(
@@ -224,6 +259,18 @@ replaceOnce(
         }),
     },
     admit: async (selection) => {
+      if (
+        p8ProductJourneyRuntimeConfig !== null &&
+        p8ProductJourneyGeneralRuntime !== null &&
+        p8ProductJourneyCodingRuntime !== null &&
+        selection.providerId === p8ProductJourneyRuntimeConfig.providerId &&
+        selection.modelId === p8ProductJourneyRuntimeConfig.modelId
+      ) {
+        return Object.freeze({
+          general: p8ProductJourneyGeneralRuntime,
+          coding: p8ProductJourneyCodingRuntime,
+        });
+      }
       try {
         const modelBinding = await resolveAionCoreMainModelBinding({
           selection,
@@ -617,6 +664,11 @@ import { dialog, ipcMain, type BrowserWindow } from 'electron';
 import { getDataPath } from '@process/utils';
 import type { ActestraPersistencePort, Instant, TeamDefinition } from '@/actestra/core';
 import {
+  runP8GeneralGooseTeamJourney,
+  type P8GeneralGooseTeamJourneyInput,
+} from '@/actestra/main/acceptance/p8ProductJourneySmoke';
+import type { AionUiTeamBridgeRoute } from '@/actestra/compatibility/aionui/teamBridge';
+import {
   AionUiTeamBridgeService,
   registerAionUiTeamBridgeIpc,
 } from '@/actestra/main/compatibility/aionuiTeamBridgeService';
@@ -729,9 +781,28 @@ export class ActestraTeamComposition {
     });
   }
 
+  async runP8GeneralGooseTeamJourney(
+    input: Pick<P8GeneralGooseTeamJourneyInput, 'workspaceId' | 'providerId' | 'modelId'>,
+  ): Promise<void> {
+    if (this.#closed) throw new Error('Actestra Team composition is closed');
+    await runP8GeneralGooseTeamJourney({
+      ...input,
+      authority: Object.freeze({
+        dispatch: (route: AionUiTeamBridgeRoute) => this.#service.dispatch(route),
+      }),
+      persistence: this.options.persistence,
+    });
+  }
+
   async recoverStandardAuthority(): Promise<number> {
     if (this.#closed) throw new Error('Actestra Team composition is closed');
     return this.#service.recoverStandardTeamMessageDeliveries();
+  }
+
+  async waitForWorkerRecovery(): Promise<number> {
+    if (this.#closed) throw new Error('Actestra Team composition is closed');
+    this.#workerRecovery ??= this.#recoverWorkerRuns();
+    return this.#workerRecovery;
   }
 
   async #recoverWorkerRuns(): Promise<number> {
@@ -765,7 +836,7 @@ export class ActestraTeamComposition {
     }
     window.webContents.once('did-finish-load', () => {
       if (this.#closed || this.#workerRecovery !== null) return;
-      const recovery = this.#recoverWorkerRuns();
+      const recovery = this.waitForWorkerRecovery();
       this.#workerRecovery = recovery;
       void recovery.then(
         (recoveredRuns) => {
@@ -977,6 +1048,7 @@ replaceOnce(
   `let scheduleService: AionUiScheduleService | null = null;
 let disposeScheduleBridgeIpc: (() => void) | null = null;`,
   `let scheduleService: AionUiScheduleService | null = null;
+let generalWorkRuntime: TrustedActestraGeneralWorkRuntime | null = null;
 let teamComposition: ActestraTeamComposition | null = null;
 let teamRuntime: ActestraTeamRuntime | null = null;
 let teamWorkerRuntimeAdmission: TrustedActestraTeamWorkerRuntimeAdmission | null = null;
@@ -1000,6 +1072,15 @@ replaceOnce(
     throw new Error('Actestra coding journey runtime must be injected before persistence startup');
   }
   codingJourneyRuntime = runtime;
+}
+
+export function configureActestraGeneralWorkRuntime(
+  runtime: TrustedActestraGeneralWorkRuntime | null,
+): void {
+  if (persistence !== null) {
+    throw new Error('Actestra General Work runtime must be injected before persistence startup');
+  }
+  generalWorkRuntime = runtime;
 }
 
 export interface TrustedActestraTeamWorkerRuntime {
@@ -1089,7 +1170,7 @@ replaceOnce(
   `  generalWorkJourneyService = journey;
   generalWorkBridgeService = new AionUiGeneralWorkBridgeService(journey);
   const scheduleClock = new SystemAionUiScheduleClock();`,
-  `  const journey = createGeneralWorkJourney(null);
+  `  const journey = createGeneralWorkJourney(generalWorkRuntime);
   generalWorkJourneyService = journey;
   generalWorkBridgeService = new AionUiGeneralWorkBridgeService(journey);
   teamComposition = new ActestraTeamComposition({

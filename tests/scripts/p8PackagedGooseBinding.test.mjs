@@ -98,7 +98,7 @@ describe("P8.2 package-bound Goose runner binding", () => {
       expect(workflow, `missing CI job ${job}`).not.toBe("");
       if (job === "electron-package-windows") {
         expectOrderedFragments(workflow, [
-          "needs: goose-runner-windows",
+          "needs: - goose-runner-windows - goose-containment-windows",
           "name: Install dependencies",
           "name: Download admitted Windows Goose runner artifact",
           "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
@@ -132,7 +132,17 @@ describe("P8.2 package-bound Goose runner binding", () => {
       expect(workflow).toContain("--re-admit");
       const journeyStart = workflow.indexOf("name: Run P8.2d packaged fresh-profile acceptance");
       const packageWindow = workflow.slice(0, journeyStart === -1 ? workflow.length : journeyStart);
-      expect(packageWindow).not.toContain("ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIRECTORY");
+      expect(packageWindow).not.toContain(
+        "ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIRECTORY: .actestra/goose-runner",
+      );
+      expect(packageWindow).not.toContain(
+        "ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIRECTORY: ${{ github.workspace }}/.actestra/goose-runner",
+      );
+      if (packageWindow.includes("ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIRECTORY")) {
+        expect(packageWindow).toContain(
+          "ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIRECTORY: .actestra/aionui-v2.1.41/out/mac-arm64/Actestra.app/Contents/Resources/actestra-goose-runner",
+        );
+      }
       const journeyWindow = workflow.slice(journeyStart === -1 ? 0 : journeyStart);
       expect(journeyWindow).not.toContain("--artifact-directory .actestra/goose-runner");
     },
@@ -183,7 +193,12 @@ describe("P8.2 package-bound Goose runner binding", () => {
       const packageJob = readWorkflowJob(workflow, job);
       const journeyStart = packageJob.indexOf("name: Run P8.2d packaged fresh-profile acceptance");
       const p8Window = packageJob.slice(0, journeyStart === -1 ? packageJob.length : journeyStart);
-      expect(p8Window).not.toContain("ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIRECTORY");
+      expect(p8Window).not.toContain(
+        "ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIRECTORY: .actestra/goose-runner",
+      );
+      expect(p8Window).not.toContain(
+        "ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIRECTORY: ${{ github.workspace }}/.actestra/goose-runner",
+      );
       expect(p8Window).not.toContain("--artifact-directory .actestra/goose-runner");
       expect(p8Window).toContain("--package-resource");
       expect(p8Window).toContain("--re-admit");

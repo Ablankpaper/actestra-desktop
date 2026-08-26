@@ -14,6 +14,7 @@ import {
   parseP8ProductJourneyResultFile,
   resolveP8ProductJourneyIsolation,
   resolveP8ProductJourneyRuntime,
+  runP8ProductJourneyCrashRestartRecovery,
   runP8ProductJourneySmoke,
 } from "../../scripts/smoke-p8-product-journeys.mjs";
 
@@ -97,6 +98,7 @@ function smokeOptions(fixture, onSpawn, snapshotProcessTree = () => ({ ok: true,
     timeoutMs: 100,
     cleanupTimeoutMs: 100,
     retainIsolation: true,
+    crashRestartRecovery: false,
   };
 }
 
@@ -157,6 +159,7 @@ describe("P8.2 packaged product-journey controller", () => {
       executable: path.join(app, "Contents", "MacOS", "Actestra"),
       appAsar: path.join(app, "Contents", "Resources", "app.asar"),
       launchPath: path.join(app, "Contents", "MacOS", "Actestra"),
+      resourcesPath: path.join(app, "Contents", "Resources"),
     });
     const link = path.join(root, "linked.app");
     await symlink(app, link);
@@ -190,6 +193,7 @@ describe("P8.2 packaged product-journey controller", () => {
       userData: path.join(root, "isolation", "user-data"),
       home: path.join(root, "isolation", "home"),
       temp: path.join(root, "isolation", "temp"),
+      workspace: path.join(root, "isolation", "workspace"),
     });
     const escaped = path.join(root, "escaped");
     await mkdir(escaped);
@@ -226,8 +230,10 @@ describe("P8.2 packaged product-journey controller", () => {
 
   it("launches the package, binds the bounded Main result, and verifies zero residuals", async () => {
     const fixture = await macFixture();
+    let launchedEnvironment;
     const result = await runP8ProductJourneySmoke(
       smokeOptions(fixture, async (child, environment) => {
+        launchedEnvironment = environment;
         await writeFile(
           path.join(environment.ACTESTRA_USER_DATA_DIR, P8_PRODUCT_JOURNEY_RESULT_FILE_NAME),
           `${JSON.stringify(verifiedJourneyResult())}\n`,
@@ -246,11 +252,185 @@ describe("P8.2 packaged product-journey controller", () => {
     });
     expect(result.evidence.journeys).toHaveLength(9);
     expect(result.evidence.residualProcessCount).toBe(0);
+    expect(launchedEnvironment.ACTESTRA_P8_PRODUCT_JOURNEYS_WORKSPACE).toBe(
+      path.join(fixture.root, "isolation", "workspace"),
+    );
+    expect(launchedEnvironment.ACTESTRA_P8_PRODUCT_JOURNEYS_RESULT).toBe(
+      path.join(fixture.root, "isolation", "user-data", P8_PRODUCT_JOURNEY_RESULT_FILE_NAME),
+    );
+    expect(launchedEnvironment.ACTESTRA_P8_PRODUCT_JOURNEYS_TIMEOUT_MS).toBe("300000");
+    expect(launchedEnvironment.ACTESTRA_P7_SECURITY_SMOKE).toBe("1");
+    expect(launchedEnvironment.ACTESTRA_P7_RESOURCE_RELIABILITY_SMOKE).toBe("1");
+    expect(launchedEnvironment.ACTESTRA_P7_DIAGNOSTIC_AUDIT_SMOKE).toBe("1");
+    for (const name of [
+      "ACTESTRA_P7_SECURITY_SMOKE_SENTINEL",
+      "ACTESTRA_P7_SECURITY_SMOKE_WORKSPACE",
+      "ACTESTRA_P7_SECURITY_SMOKE_EVIDENCE",
+      "ACTESTRA_P7_SECURITY_SMOKE_HOST_READ_PROBE",
+      "ACTESTRA_P7_RESOURCE_RELIABILITY_EVIDENCE",
+      "ACTESTRA_P7_RESOURCE_GENERAL_CPU_PROBE",
+      "ACTESTRA_P7_RESOURCE_GENERAL_MEMORY_PROBE",
+      "ACTESTRA_P7_RESOURCE_GOOSE_FORK_PROBE",
+      "ACTESTRA_P7_RESOURCE_GOOSE_PRIVATE_ROOT",
+      "ACTESTRA_P7_DIAGNOSTIC_AUDIT_REPORT",
+      "ACTESTRA_P7_DIAGNOSTIC_AUDIT_EVIDENCE",
+    ]) {
+      expect(typeof launchedEnvironment[name]).toBe("string");
+      expect(path.isAbsolute(launchedEnvironment[name])).toBe(true);
+    }
+    expect(fs.statSync(launchedEnvironment.ACTESTRA_P7_RESOURCE_GENERAL_CPU_PROBE).isFile()).toBe(
+      true,
+    );
+    expect(
+      fs.statSync(launchedEnvironment.ACTESTRA_P7_RESOURCE_GENERAL_MEMORY_PROBE).isFile(),
+    ).toBe(true);
+    expect(fs.statSync(launchedEnvironment.ACTESTRA_P7_RESOURCE_GOOSE_FORK_PROBE).isFile()).toBe(
+      true,
+    );
     expect(result.binding).toMatchObject({
       targetId: "macos-15-arm64",
       sourceCommit: commit,
       ciRunId: runId,
     });
+  });
+
+  it("performs exactly one abnormal prepare launch followed by one recovery launch", async () => {
+    const fixture = await macFixture();
+    const journalPath = path.join(fixture.root, "p8-product-journeys-restart.json");
+    let launchCount = 0;
+    const outcome = await runP8ProductJourneyCrashRestartRecovery({
+      launchPath: fixture.app,
+      userDataPath: fixture.root,
+      resultPath: path.join(fixture.root, P8_PRODUCT_JOURNEY_RESULT_FILE_NAME),
+      restartJournalPath: journalPath,
+      environment: { ACTESTRA_E2E_TEST: "1" },
+      spawnChild: (_executable, _arguments, options) => {
+        launchCount += 1;
+        return fakeChild(async (child) => {
+          if (options.env.ACTESTRA_P8_PRODUCT_JOURNEYS_RESTART_PHASE === "prepare") {
+            await writeFile(
+              journalPath,
+              `${JSON.stringify({
+                schemaVersion: 1,
+                journey: "crash-restart-recovery",
+                phase: "active-checkpoint",
+                restartCount: 0,
+              })}\n`,
+              { mode: 0o600 },
+            );
+            emitClose(child, 86, null);
+            return;
+          }
+          fs.writeFileSync(
+            journalPath,
+            `${JSON.stringify({
+              schemaVersion: 1,
+              journey: "crash-restart-recovery",
+              phase: "recovered",
+              restartCount: 1,
+            })}\n`,
+            { mode: 0o600 },
+          );
+          fs.writeFileSync(
+            path.join(fixture.root, P8_PRODUCT_JOURNEY_RESULT_FILE_NAME),
+            `${JSON.stringify(verifiedJourneyResult())}\n`,
+            { mode: 0o600 },
+          );
+          emitClose(child, 0, null);
+        });
+      },
+      snapshotProcessTree: () => ({ ok: true, pids: [] }),
+      timeoutMs: 500,
+      cleanupTimeoutMs: 100,
+    });
+    expect(launchCount).toBe(2);
+    expect(outcome.restartCount).toBe(1);
+    expect(outcome.journal).toMatchObject({
+      phase: "recovered",
+      restartCount: 1,
+    });
+  });
+
+  it("fails closed when the prepare launch exits normally instead of proving a crash", async () => {
+    const fixture = await macFixture();
+    const journalPath = path.join(fixture.root, "p8-product-journeys-restart.json");
+    let launchCount = 0;
+    await expect(
+      runP8ProductJourneyCrashRestartRecovery({
+        launchPath: fixture.app,
+        userDataPath: fixture.root,
+        resultPath: path.join(fixture.root, P8_PRODUCT_JOURNEY_RESULT_FILE_NAME),
+        restartJournalPath: journalPath,
+        environment: {},
+        spawnChild: (_executable, _arguments, _options) => {
+          launchCount += 1;
+          return fakeChild(async (child) => {
+            await writeFile(
+              journalPath,
+              `${JSON.stringify({
+                schemaVersion: 1,
+                journey: "crash-restart-recovery",
+                phase: "active-checkpoint",
+                restartCount: 0,
+              })}\n`,
+              { mode: 0o600 },
+            );
+            emitClose(child, 0, null);
+          });
+        },
+        snapshotProcessTree: () => ({ ok: true, pids: [] }),
+        timeoutMs: 500,
+      }),
+    ).rejects.toMatchObject({ code: "journey-failed" });
+    expect(launchCount).toBe(1);
+  });
+
+  it("terminates the recovery launch when its process probe fails", async () => {
+    const fixture = await macFixture();
+    const journalPath = path.join(fixture.root, "p8-product-journeys-restart.json");
+    let launchCount = 0;
+    let recoveryKillCount = 0;
+    let probeCount = 0;
+    await expect(
+      runP8ProductJourneyCrashRestartRecovery({
+        launchPath: fixture.app,
+        userDataPath: fixture.root,
+        resultPath: path.join(fixture.root, P8_PRODUCT_JOURNEY_RESULT_FILE_NAME),
+        restartJournalPath: journalPath,
+        environment: {},
+        spawnChild: (_executable, _arguments, options) => {
+          launchCount += 1;
+          const recovery = options.env.ACTESTRA_P8_PRODUCT_JOURNEYS_RESTART_PHASE === "recover";
+          const child = fakeChild(async (spawnedChild) => {
+            if (recovery) return;
+            await writeFile(
+              journalPath,
+              `${JSON.stringify({
+                schemaVersion: 1,
+                journey: "crash-restart-recovery",
+                phase: "active-checkpoint",
+                restartCount: 0,
+              })}\n`,
+              { mode: 0o600 },
+            );
+            emitClose(spawnedChild, 86, null);
+          });
+          if (recovery) {
+            child.kill = () => {
+              recoveryKillCount += 1;
+              emitClose(child, null, "SIGTERM");
+              return true;
+            };
+          }
+          return child;
+        },
+        snapshotProcessTree: () => ({ ok: ++probeCount !== 4, pids: [] }),
+        timeoutMs: 500,
+        cleanupTimeoutMs: 100,
+      }),
+    ).rejects.toMatchObject({ code: "process-probe-failed" });
+    expect(launchCount).toBe(2);
+    expect(recoveryKillCount).toBe(1);
   });
 
   it.each([

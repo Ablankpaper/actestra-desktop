@@ -183,12 +183,15 @@ describe("P8 native Goose containment acceptance gate", () => {
     expect(workflow).toContain(
       "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
     );
-    expect(workflow.match(/actions\/download-artifact@/gu) ?? []).toHaveLength(1);
+    expect(workflow.match(/actions\/download-artifact@/gu) ?? []).toHaveLength(2);
     expect(readWorkflowJob(workflow, "goose-runner-windows")).not.toContain(
       "actions/download-artifact@",
     );
     expect(readWorkflowJob(workflow, "electron-package-windows")).toContain(
       "actestra-goose-runner-windows-${{ github.sha }}",
+    );
+    expect(readWorkflowJob(workflow, "electron-package-windows")).toContain(
+      "p8-goose-containment-windows-${{ github.sha }}",
     );
     expect(workflow.match(/bun run goose:runner:containment:accept/gu) ?? []).toHaveLength(3);
     expect(workflow.match(/bun run goose:runner:integration:linux/gu) ?? []).toHaveLength(1);
@@ -228,9 +231,9 @@ describe("P8 native Goose containment acceptance gate", () => {
     const actionReferences = [...workflow.matchAll(/^\s+uses:\s+([^\s#]+)\s*(?:#.*)?$/gmu)].map(
       (match) => match[1],
     );
-    // P8.2d adds one Windows checkout/setup/upload/download package transfer
-    // plus the macOS and Ubuntu bounded-evidence uploads to the existing set.
-    expect(actionReferences).toHaveLength(34);
+    // P8.2d and the complete P8.2 product-journey gate add the native package
+    // jobs, exact Windows containment download, and three bounded uploads.
+    expect(actionReferences).toHaveLength(38);
     for (const reference of actionReferences) {
       expect(reference).toMatch(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+@[a-f0-9]{40}$/u);
     }

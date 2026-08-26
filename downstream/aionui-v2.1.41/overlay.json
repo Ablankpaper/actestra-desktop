@@ -308,9 +308,32 @@
       ],
       "authorityOwner": "Actestra Main/Core remains authoritative for runtime, persistence, Team, General and the exact current AionCore loopback port; the downstream Renderer patch only reconciles bounded projections and preserves AionUI's existing message merge and streaming components",
       "rollback": "Regenerate without patch 0023. Existing AionUI runtime, SendBox, message stream, Team and pause UI return unchanged, and the earlier HTTP-only Renderer exception resumes blocking the local realtime channel; no frozen-source or native-profile mutation is required."
+    },
+    {
+      "path": "patches/0024-actestra-p8-product-journey-smoke.mjs",
+      "classification": ["R1", "R2"],
+      "domains": [
+        "packaged Main product journeys",
+        "P8.2 bounded journey evidence",
+        "journey cleanup and recovery"
+      ],
+      "authorityOwner": "Actestra Main through the existing General, Goose, Artifact, Team, recovery, and P7 authorities; no Renderer or second Team service authority",
+      "rollback": "Regenerate without patch 0024. The E2E-only P8.2 Main hook and bounded result writer disappear; normal startup, existing services, native profiles, and the frozen foundation remain unchanged."
     }
   ],
   "sourceCopies": [
+    {
+      "source": "apps/desktop/src/main/acceptance/p8ProductJourneyRuntime.ts",
+      "destination": "packages/desktop/src/actestra/main/acceptance/p8ProductJourneyRuntime.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/acceptance/p8ProductJourneySmoke.ts",
+      "destination": "packages/desktop/src/actestra/main/acceptance/p8ProductJourneySmoke.ts"
+    },
+    {
+      "source": "apps/desktop/src/main/security/p8ProductJourneySmoke.ts",
+      "destination": "packages/desktop/src/actestra/main/security/p8ProductJourneySmoke.ts"
+    },
     {
       "source": "apps/desktop/src/main/security/p7SecuritySmoke.ts",
       "destination": "packages/desktop/src/actestra/main/security/p7SecuritySmoke.ts"
@@ -960,6 +983,9 @@
     "packages/desktop/src/actestra/main/compatibility/aionuiScheduleService.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiTeamBridgeService.ts",
     "packages/desktop/src/actestra/main/compatibility/aionuiTeamService.ts",
+    "packages/desktop/src/actestra/main/acceptance/p8ProductJourneyRuntime.ts",
+    "packages/desktop/src/actestra/main/acceptance/p8ProductJourneySmoke.ts",
+    "packages/desktop/src/actestra/main/security/p8ProductJourneySmoke.ts",
     "packages/desktop/src/actestra/main/compatibility/providerRendererBoundary.ts",
     "packages/desktop/src/actestra/main/model/actestraMainModelJson.ts",
     "packages/desktop/src/actestra/main/model/actestraMainModelBroker.ts",

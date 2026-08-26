@@ -8,10 +8,21 @@ import {
   P8_PRODUCT_JOURNEY_IDS,
   assertP8ProductJourneyPrivacy,
   createP8ProductJourneyCoordinator,
+  parseP8ProductJourneyRestartJournal,
   parseP8ProductJourneySmokeEnvironment,
+  writeP8ProductJourneyRestartJournal,
   writeP8ProductJourneyResult,
   type P8ProductJourneyRunContext,
 } from "../../apps/desktop/src/main/security/p8ProductJourneySmoke";
+import {
+  runP8CancellationNoOrphanJourney,
+  runP8CrashRestartRecoveryPrepareJourney,
+  runP8CrashRestartRecoveryVerifyJourney,
+} from "../../apps/desktop/src/main/acceptance/p8ProductJourneySmoke";
+import {
+  createP8ProductJourneyLoopbackModelBinding,
+  resolveP8ProductJourneyRuntimeConfig,
+} from "../../apps/desktop/src/main/acceptance/p8ProductJourneyRuntime";
 
 const root = "/tmp/actestra-p8-smoke";
 const completeEnvironment = {
@@ -99,6 +110,179 @@ describe("P8 packaged product-journey coordinator", () => {
     );
   });
 
+  it("accepts only a bounded restart journal and writes it owner-only", () => {
+    const journal = {
+      schemaVersion: 1 as const,
+      journey: "crash-restart-recovery" as const,
+      phase: "active-checkpoint" as const,
+      restartCount: 0 as const,
+    };
+    expect(parseP8ProductJourneyRestartJournal(journal)).toEqual(journal);
+    expect(
+      parseP8ProductJourneyRestartJournal({
+        schemaVersion: 1,
+        journey: "crash-restart-recovery",
+        phase: "recovered",
+        restartCount: 1,
+        privatePath: "/Users/private",
+      }),
+    ).toBeNull();
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-p8-restart-"));
+    const journalPath = path.join(directory, "p8-product-journeys-restart.json");
+    try {
+      writeP8ProductJourneyRestartJournal(journalPath, journal);
+      expect(fs.readFileSync(journalPath, "utf8")).toBe(`${JSON.stringify(journal)}\n`);
+      expect(fs.statSync(journalPath).mode & 0o777).toBe(0o600);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a pre-existing restart temporary path without changing its target", () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-p8-restart-temp-"));
+    const journalPath = path.join(directory, "p8-product-journeys-restart.json");
+    const sentinelPath = path.join(directory, "sentinel.txt");
+    const temporaryPath = `${journalPath}.tmp`;
+    fs.writeFileSync(sentinelPath, "protected\n");
+    fs.linkSync(sentinelPath, temporaryPath);
+    try {
+      expect(() =>
+        writeP8ProductJourneyRestartJournal(journalPath, {
+          schemaVersion: 1,
+          journey: "crash-restart-recovery",
+          phase: "active-checkpoint",
+          restartCount: 0,
+        }),
+      ).toThrow("result-write-failed");
+      expect(fs.readFileSync(sentinelPath, "utf8")).toBe("protected\n");
+      expect(fs.existsSync(journalPath)).toBe(false);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("prepares an active General checkpoint and verifies one durable recovery without replay", async () => {
+    const directory = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), "actestra-p8-recovery-")),
+    );
+    const journalPath = path.join(directory, "p8-product-journeys-restart.json");
+    const taskId = "task-p8-restart";
+    const sessionId = "session-p8-restart";
+    let recovered = false;
+    const service = {
+      submitFromTrustedContext: vi.fn(async () => ({ taskId, status: "running", canCancel: true })),
+      list: vi.fn(async () => [
+        {
+          taskId,
+          status: recovered ? "failed" : "running",
+          incidentCode: recovered ? "application-restart" : undefined,
+          canCancel: false,
+          artifacts: [],
+        },
+      ]),
+    };
+    const persistence = {
+      loadDomainGraph: vi.fn(async () => ({
+        tasks: [{ id: taskId, state: recovered ? "failed" : "running" }],
+        sessions: [
+          {
+            id: sessionId,
+            taskId,
+            state: recovered ? "failed" : "running",
+            workerId: "worker-p8-restart",
+          },
+        ],
+        workers: [{ id: "worker-p8-restart", state: recovered ? "stopped" : "running" }],
+        artifacts: [],
+      })),
+      getGeneralWorkCheckpoint: vi.fn(async () => ({
+        phase: recovered ? "finalized" : "active",
+        attempt: {
+          sessionId,
+          state: recovered ? "failed" : "running",
+          taskState: recovered ? "failed" : "running",
+          disposed: recovered,
+          incident: recovered ? { code: "application-restart" } : undefined,
+        },
+        events: [],
+      })),
+      replayEvents: vi.fn(async () => [
+        { type: "worker.failed", payload: { errorCode: "application-restart" } },
+        { type: "task.failed", payload: { errorCode: "application-restart" } },
+      ]),
+      listRecentAgentAttemptEvidence: vi.fn(async () => [
+        { sessionId, state: "failed", incident: { code: "application-restart" } },
+      ]),
+    };
+    try {
+      await expect(
+        runP8CrashRestartRecoveryPrepareJourney({
+          service: service as never,
+          persistence: persistence as never,
+          workspaceRoot: directory,
+          restartJournalPath: journalPath,
+        }),
+      ).resolves.toMatchObject({ taskId });
+      recovered = true;
+      await expect(
+        runP8CrashRestartRecoveryVerifyJourney({
+          service: service as never,
+          persistence: persistence as never,
+          startupRecovery: [
+            {
+              recoveredFrom: "active",
+              sessionId,
+              eventStatuses: ["appended", "appended"],
+              evidenceStatus: "appended",
+              checkpoint: {
+                phase: "finalized",
+                attempt: {
+                  taskId,
+                  sessionId,
+                  streamId: "stream-p8-restart",
+                  state: "failed",
+                  taskState: "failed",
+                  disposed: true,
+                  incident: { code: "application-restart" },
+                },
+                events: [],
+              },
+            },
+          ] as never,
+          restartJournalPath: journalPath,
+          verifyNoDuplicateRecovery: async () => [],
+        }),
+      ).resolves.toBeUndefined();
+      expect(
+        parseP8ProductJourneyRestartJournal(JSON.parse(fs.readFileSync(journalPath, "utf8"))),
+      ).toMatchObject({ phase: "recovered", restartCount: 1 });
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("recognizes the prepare phase without changing the loopback model response contract", async () => {
+    const config = resolveP8ProductJourneyRuntimeConfig({
+      packaged: true,
+      environment: {
+        ACTESTRA_E2E_TEST: "1",
+        ACTESTRA_P8_PRODUCT_JOURNEYS_SMOKE: "1",
+        ACTESTRA_P8_PRODUCT_JOURNEYS_RESTART_PHASE: "prepare",
+      },
+    });
+    expect(config).toMatchObject({ restartPhase: "prepare" });
+    const completion = await createP8ProductJourneyLoopbackModelBinding(config!).invokeModel(
+      {
+        purpose: "general-work",
+        responseMode: "text",
+        messages: [],
+        tools: [],
+      } as never,
+      new AbortController().signal,
+    );
+    expect(completion.type).toBe("message");
+  });
+
   it("aggregates residual processes as a closed cleanup failure", async () => {
     await expect(
       createP8ProductJourneyCoordinator(
@@ -168,6 +352,68 @@ describe("P8 packaged product-journey coordinator", () => {
       expect(fs.readFileSync(resultPath, "utf8")).toBe(`${JSON.stringify(result)}\n`);
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("cancels an active Goose attempt and verifies durable cleanup without source mutation", async () => {
+    const rootDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-p8-cancel-"));
+    const workspacePath = path.join(rootDirectory, "workspace");
+    const managedPath = path.join(rootDirectory, "managed");
+    fs.mkdirSync(workspacePath, { recursive: true, mode: 0o700 });
+    fs.mkdirSync(managedPath, { recursive: true, mode: 0o700 });
+    const workspaceRoot = fs.realpathSync(workspacePath);
+    const managedRoot = fs.realpathSync(managedPath);
+    const before = fs.readdirSync(managedRoot);
+    const taskId = "task-p8-cancellation" as never;
+    let cancelled = false;
+    const service = {
+      submitFromTrustedContext: vi.fn(async () => ({
+        taskId,
+        status: "running",
+        canCancel: true,
+      })),
+      list: vi.fn(async () => [
+        {
+          taskId,
+          status: cancelled ? "cancelled" : "running",
+          canCancel: !cancelled,
+        },
+      ]),
+      cancel: vi.fn(async () => {
+        cancelled = true;
+        return { taskId, status: "cancelled", canCancel: false };
+      }),
+      waitForIdle: vi.fn(async () => undefined),
+    };
+    const persistence = {
+      loadDomainGraph: vi.fn(async () => ({
+        workspaces: [],
+        tasks: [
+          {
+            id: taskId,
+            state: "cancelled",
+            activeSessionId: undefined,
+          },
+        ],
+        sessions: [{ taskId, state: "cancelled" }],
+        workers: [{ workspaceId: "workspace-p8-cancellation", state: "stopped" }],
+        artifacts: [],
+      })),
+    };
+    try {
+      await expect(
+        runP8CancellationNoOrphanJourney({
+          service: service as never,
+          persistence: persistence as never,
+          workspaceRoot,
+          managedRoot,
+        }),
+      ).resolves.toBeUndefined();
+      expect(service.cancel).toHaveBeenCalledOnce();
+      expect(service.waitForIdle).toHaveBeenCalledOnce();
+      expect(fs.readdirSync(managedRoot)).toEqual(before);
+    } finally {
+      fs.rmSync(rootDirectory, { recursive: true, force: true });
     }
   });
 });

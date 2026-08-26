@@ -60,6 +60,8 @@ describe("P8.2 packaged product-journey downstream composition", () => {
       "runP7PackagedSecuritySmoke",
       "runP7PackagedResourceReliabilitySmoke",
       "runP7PackagedDiagnosticAuditSmoke",
+      "ACTESTRA_P8_PRODUCT_JOURNEYS_RESTART_PHASE",
+      "? 'hold'",
       "app.quit()",
     ]) {
       expect(patch).toContain(fragment);

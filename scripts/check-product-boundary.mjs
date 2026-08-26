@@ -48,6 +48,8 @@ const aionUiCompatibilityIdentityFiles = new Set([
   "apps/desktop/src/main/compatibility/aionuiShadowProjectionService.ts",
   "apps/desktop/src/main/compatibility/aionuiTeamBridgeService.ts",
   "apps/desktop/src/main/compatibility/aionuiTeamService.ts",
+  "apps/desktop/src/main/acceptance/p8ProductJourneyRuntime.ts",
+  "apps/desktop/src/main/acceptance/p8ProductJourneySmoke.ts",
   "apps/desktop/src/main/diagnostics/diagnosticExportService.ts",
   "apps/desktop/src/main/orchestration/teamJourneyWorkerRouter.ts",
   "apps/desktop/src/main/persistence/persistenceUtilityClient.ts",

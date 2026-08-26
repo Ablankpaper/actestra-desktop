@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 export const P8_PRODUCT_JOURNEY_RESULT_FILE_NAME = "p8-product-journeys-result.json" as const;
+export const P8_PRODUCT_JOURNEY_RESTART_JOURNAL_FILE_NAME =
+  "p8-product-journeys-restart.json" as const;
 
 export const P8_PRODUCT_JOURNEY_IDS = Object.freeze([
   "fresh-profile-launch",
@@ -28,6 +30,13 @@ export type P8ProductJourneyResult = Readonly<{
   schemaVersion: 1;
   status: "verified";
   journeys: readonly P8ProductJourneyObservation[];
+}>;
+
+export type P8ProductJourneyRestartJournal = Readonly<{
+  schemaVersion: 1;
+  journey: "crash-restart-recovery";
+  phase: "active-checkpoint" | "recovered";
+  restartCount: 0 | 1;
 }>;
 
 export type P8ProductJourneySmokeEnvironment = Readonly<{
@@ -69,6 +78,12 @@ const MINIMUM_TIMEOUT_MS = 1_000;
 const MAXIMUM_TIMEOUT_MS = 300_000;
 const RESULT_KEYS = Object.freeze(["schemaVersion", "status", "journeys"] as const);
 const JOURNEY_KEYS = Object.freeze(["id", "status", "residualProcessCount"] as const);
+const RESTART_JOURNAL_KEYS = Object.freeze([
+  "schemaVersion",
+  "journey",
+  "phase",
+  "restartCount",
+] as const);
 const CLOSED_ERROR_CODES = new Set<P8ProductJourneySmokeErrorCode>([
   "invalid-environment",
   "journey-failed",
@@ -188,6 +203,69 @@ export function assertP8ProductJourneyPrivacy(value: unknown): void {
       if (FORBIDDEN_KEY.test(key)) throw smokeError("privacy-redaction-failed");
       pending.push(entry);
     }
+  }
+}
+
+export function parseP8ProductJourneyRestartJournal(
+  value: unknown,
+): P8ProductJourneyRestartJournal | null {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, RESTART_JOURNAL_KEYS) ||
+    value.schemaVersion !== 1 ||
+    value.journey !== "crash-restart-recovery" ||
+    (value.phase !== "active-checkpoint" && value.phase !== "recovered") ||
+    (value.restartCount !== 0 && value.restartCount !== 1) ||
+    (value.phase === "active-checkpoint" && value.restartCount !== 0) ||
+    (value.phase === "recovered" && value.restartCount !== 1)
+  ) {
+    return null;
+  }
+  try {
+    assertP8ProductJourneyPrivacy(value);
+  } catch {
+    return null;
+  }
+  return Object.freeze({
+    schemaVersion: 1 as const,
+    journey: "crash-restart-recovery" as const,
+    phase: value.phase,
+    restartCount: value.restartCount,
+  });
+}
+
+export function writeP8ProductJourneyRestartJournal(
+  journalPath: string,
+  value: P8ProductJourneyRestartJournal,
+): void {
+  if (parseP8ProductJourneyRestartJournal(value) === null) {
+    throw smokeError("result-write-failed");
+  }
+  const temporaryPath = `${journalPath}.tmp`;
+  try {
+    if (
+      !path.isAbsolute(journalPath) ||
+      path.basename(journalPath) !== P8_PRODUCT_JOURNEY_RESTART_JOURNAL_FILE_NAME
+    ) {
+      throw smokeError("result-write-failed");
+    }
+    const existing = fs.lstatSync(journalPath, { throwIfNoEntry: false });
+    if (existing?.isSymbolicLink()) throw smokeError("result-write-failed");
+    fs.writeFileSync(temporaryPath, `${JSON.stringify(value)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+      flag: "wx",
+    });
+    fs.chmodSync(temporaryPath, 0o600);
+    fs.renameSync(temporaryPath, journalPath);
+    fs.chmodSync(journalPath, 0o600);
+  } catch (error) {
+    try {
+      fs.rmSync(temporaryPath, { force: true });
+    } catch {
+      // Keep the exported error bounded and code-only.
+    }
+    throw closedError(error, "result-write-failed");
   }
 }
 
