@@ -501,7 +501,7 @@ jobs:
         run: >-
           bun run downstream:aionui:stage:goose --
           --target-triple x86_64-pc-windows-msvc
-          --materialized-root .actestra/aionui-v2.1.41
+          --materialized-root "${{ github.workspace }}/.actestra/aionui-v2.1.41"
 
       - name: Build native Windows NSIS and unpacked application
         run: bun run --cwd .actestra/aionui-v2.1.41 dist:win -- --x64
@@ -622,7 +622,7 @@ jobs:
         run: >-
           bun run downstream:aionui:stage:goose --
           --target-triple x86_64-unknown-linux-gnu
-          --materialized-root .actestra/aionui-v2.1.41
+          --materialized-root "${{ github.workspace }}/.actestra/aionui-v2.1.41"
 
       - name: Build and inspect exact Ubuntu DEB package
         id: linux-package
@@ -937,7 +937,7 @@ jobs:
         run: >-
           bun run downstream:aionui:stage:goose --
           --target-triple aarch64-apple-darwin
-          --materialized-root .actestra/aionui-v2.1.41
+          --materialized-root "${{ github.workspace }}/.actestra/aionui-v2.1.41"
 
       - name: Type-check materialized Actestra AionUi application
         working-directory: .actestra/aionui-v2.1.41
