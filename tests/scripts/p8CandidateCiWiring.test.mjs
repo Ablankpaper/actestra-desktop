@@ -56,5 +56,7 @@ describe("P8.3 candidate CI wiring", () => {
     expect(candidate).toContain("candidate-incomplete");
     expect(candidate).toContain("github.sha");
     expect(candidate).toContain("github.run_id");
+    expect(candidate).toContain('runtime="$(exact_file "$root" Actestra.exe)"');
+    expect(candidate).toContain('runtime="$(exact_file "$root" Actestra)"');
   });
 });

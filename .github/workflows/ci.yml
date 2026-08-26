@@ -1390,7 +1390,11 @@ jobs:
             local package
             local extra_package_args=()
             journeys="$(exact_file "$root" "p8-product-journeys-$target.json")"
-            runtime="$(find_one "$root" -name Actestra -o -name Actestra.exe)"
+            if [[ "$target" == windows-* ]]; then
+              runtime="$(exact_file "$root" Actestra.exe)"
+            else
+              runtime="$(exact_file "$root" Actestra)"
+            fi
             asar="$(exact_file "$root" app.asar)"
             runner_manifest="$(exact_file "$root" actestra-goose-runner.manifest.json)"
             runner_executable="$(find_one "$root" -name actestra-goose-runner -o -name actestra-goose-runner.exe)"
