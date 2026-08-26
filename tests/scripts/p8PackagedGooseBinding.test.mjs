@@ -125,7 +125,9 @@ describe("P8.2 package-bound Goose runner binding", () => {
           `bun run downstream:aionui:admit:goose-package -- --target-triple ${triple}`,
         ]);
       }
-      expect(workflow).toContain("--materialized-root .actestra/aionui-v2.1.41");
+      expect(workflow).toContain(
+        '--materialized-root "${{ github.workspace }}/.actestra/aionui-v2.1.41"',
+      );
       expect(workflow).toContain("--package-resource");
       expect(workflow).toContain("--re-admit");
       const journeyStart = workflow.indexOf("name: Run P8.2d packaged fresh-profile acceptance");
@@ -133,6 +135,17 @@ describe("P8.2 package-bound Goose runner binding", () => {
       expect(packageWindow).not.toContain("ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIRECTORY");
       const journeyWindow = workflow.slice(journeyStart === -1 ? 0 : journeyStart);
       expect(journeyWindow).not.toContain("--artifact-directory .actestra/goose-runner");
+    },
+  );
+
+  it.each(targets)(
+    "$job passes an absolute materialized root to the package staging helper",
+    ({ job }) => {
+      const workflow = readWorkflowJob(read(".github/workflows/ci.yml"), job);
+      expect(workflow).toContain(
+        '--materialized-root "${{ github.workspace }}/.actestra/aionui-v2.1.41"',
+      );
+      expect(workflow).not.toContain("--materialized-root .actestra/aionui-v2.1.41");
     },
   );
 
