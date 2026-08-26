@@ -9,8 +9,8 @@ import {
   admitInstalledGooseRunnerLinuxPackage,
   type AdmittedGooseRunnerLinuxPackage,
 } from "./gooseRunnerLinuxPackage";
+import { GIT_EXECUTABLE } from "./workspaceGitBinding";
 
-const GIT_EXECUTABLE = "/usr/bin/git";
 const MODEL_ID_PATTERN = /^[A-Za-z0-9]+(?:[._:/-][A-Za-z0-9]+)*$/;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 const TARGET_TRIPLE_PATTERN = /^[A-Za-z0-9_]+(?:-[A-Za-z0-9_]+)+$/;
