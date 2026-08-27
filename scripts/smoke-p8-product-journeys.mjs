@@ -56,6 +56,15 @@ const P8_PRODUCT_JOURNEY_RUNTIME_DIAGNOSTIC_STAGES = new Set([
   "git-executable",
   "private-root",
   "runtime-startup",
+  "persistence",
+  "general-work",
+  "coding-journey",
+  "coding-artifact",
+  "isolated-coding",
+  "team-composition",
+  "general-recovery",
+  "schedule-recovery",
+  "team-recovery",
 ]);
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 

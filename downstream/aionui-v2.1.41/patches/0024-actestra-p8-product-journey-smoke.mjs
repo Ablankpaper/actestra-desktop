@@ -119,6 +119,38 @@ let p8ProductJourneyStartupRecovery: readonly GeneralWorkRecoveryResult[] | null
 let p8ProductJourneyRestartVerified = false;
 let p8ProductJourneyFailureStage: 'startup-recovery' | P8ProductJourneyId = 'startup-recovery';
 
+type P8ProductJourneyRuntimeDiagnosticStage =
+  | 'persistence'
+  | 'general-work'
+  | 'coding-journey'
+  | 'coding-artifact'
+  | 'isolated-coding'
+  | 'team-composition'
+  | 'general-recovery'
+  | 'schedule-recovery'
+  | 'team-recovery';
+
+function reportP8ProductJourneyRuntimeFailure(
+  stage: P8ProductJourneyRuntimeDiagnosticStage,
+): void {
+  console.error(
+    'ACTESTRA_P8_PRODUCT_JOURNEYS_RUNTIME_FAILED ' +
+      JSON.stringify({ stage }),
+  );
+}
+
+function p8ProductJourneyAuthorityFailureStage(): P8ProductJourneyRuntimeDiagnosticStage {
+  if (persistence === null) return 'persistence';
+  if (generalWorkJourneyService === null) return 'general-work';
+  if (codingJourneyService === null) return 'coding-journey';
+  if (codingArtifactService === null) return 'coding-artifact';
+  if (isolatedCodingMainService === null) return 'isolated-coding';
+  if (teamComposition === null) return 'team-composition';
+  if (generalWorkRecoveryPromise === null) return 'general-recovery';
+  if (!scheduleRecovered) return 'schedule-recovery';
+  return 'team-recovery';
+}
+
 function p8Verified(id: P8ProductJourneyId): P8ProductJourneyObservation {
   return Object.freeze({ id, status: 'verified' as const, residualProcessCount: 0 as const });
 }
@@ -406,6 +438,7 @@ async function startP8ProductJourneySmoke(): Promise<void> {
     generalWorkRecoveryPromise === null ||
     !scheduleRecovered;
   if (p8ProductJourneyAuthorityMissing) {
+    reportP8ProductJourneyRuntimeFailure(p8ProductJourneyAuthorityFailureStage());
     failP8ProductJourneySmoke(environment);
     return;
   }

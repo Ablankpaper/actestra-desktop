@@ -2,6 +2,28 @@
 
 Last updated: 2026-08-27
 
+## 2026-08-27 P8.2 packaged authority-stage diagnostic (local)
+
+The exact-head PR #77 run `33032327709`, bound to source head
+`2d1610b0c7e4c0ebaa7fb76ee527e09cff2e7840`, reached the final packaged
+product-journey step on macOS arm64 and Ubuntu 24.04 x64. Both packages
+failed closed within seconds as `journey-failed/startup-recovery`; neither
+emitted a coding-runtime boundary token, so the runner/package/admission/Git
+diagnostic slice did not identify the failure. The run was stopped after the
+first concrete cross-platform failure boundary; its remaining Windows jobs
+are not P8.2 evidence.
+
+The next diagnostic slice adds a strict, redacted authority-stage vocabulary
+(`persistence`, `general-work`, `coding-journey`, `coding-artifact`,
+`isolated-coding`, `team-composition`, `general-recovery`,
+`schedule-recovery`, and `team-recovery`) to the packaged runtime diagnostic
+line. It reports only the first missing authority before the existing private
+failure projection and does not change normal startup or failure behavior.
+The parser and downstream smoke regression tests pass (`26` passed); a new
+exact-head native CI run is required to obtain the first concrete authority
+stage. P8.2, P8.3 candidate trust/signing, and P8.4 clean-machine and
+real-provider acceptance remain open.
+
 ## 2026-08-27 P8.2 coding-runtime startup boundary diagnostic (local)
 
 PR #77 exact-head run `33029934578`, bound to head

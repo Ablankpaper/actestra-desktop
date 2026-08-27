@@ -143,6 +143,20 @@ describe("P8.2 packaged product-journey controller", () => {
     }
   });
 
+  it("classifies fixed packaged authority-boundary diagnostics", () => {
+    expect(
+      classifyP8ProductJourneyRuntimeDiagnosticLine(
+        'ACTESTRA_P8_PRODUCT_JOURNEYS_RUNTIME_FAILED {"stage":"team-composition"}',
+      ),
+    ).toEqual({ runtimeStage: "team-composition" });
+    for (const invalid of [
+      'ACTESTRA_P8_PRODUCT_JOURNEYS_RUNTIME_FAILED {"stage":"persistence","path":"/tmp"}',
+      'ACTESTRA_P8_PRODUCT_JOURNEYS_RUNTIME_FAILED {"stage":"secret-authority"}',
+    ]) {
+      expect(classifyP8ProductJourneyRuntimeDiagnosticLine(invalid)).toBeUndefined();
+    }
+  });
+
   it("parses only a bounded private failure file", async () => {
     const root = await tempRoot();
     const userData = path.join(root, "user-data");
