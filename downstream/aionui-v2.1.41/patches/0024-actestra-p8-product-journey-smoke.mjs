@@ -96,8 +96,10 @@ import {
   parseP8ProductJourneySmokeEnvironment,
   writeP8ProductJourneyFailure,
   writeP8ProductJourneyResult,
+  type P8ProductJourneyFailureStage,
   type P8ProductJourneyId,
   type P8ProductJourneyObservation,
+  type P8ProductJourneyRuntimeDiagnosticStage,
   type P8ProductJourneySmokeEnvironment,
 } from '@/actestra/main/security/p8ProductJourneySmoke';`,
 );
@@ -118,17 +120,6 @@ let p8ProductJourneyDestinationWorkspaceId: WorkspaceId | null = null;
 let p8ProductJourneyStartupRecovery: readonly GeneralWorkRecoveryResult[] | null = null;
 let p8ProductJourneyRestartVerified = false;
 let p8ProductJourneyFailureStage: 'startup-recovery' | P8ProductJourneyId = 'startup-recovery';
-
-type P8ProductJourneyRuntimeDiagnosticStage =
-  | 'persistence'
-  | 'general-work'
-  | 'coding-journey'
-  | 'coding-artifact'
-  | 'isolated-coding'
-  | 'team-composition'
-  | 'general-recovery'
-  | 'schedule-recovery'
-  | 'team-recovery';
 
 function reportP8ProductJourneyRuntimeFailure(
   stage: P8ProductJourneyRuntimeDiagnosticStage,
@@ -157,8 +148,9 @@ function p8Verified(id: P8ProductJourneyId): P8ProductJourneyObservation {
 
 function failP8ProductJourneySmoke(
   environment: P8ProductJourneySmokeEnvironment,
+  stage: P8ProductJourneyFailureStage = 'startup-recovery',
 ): void {
-  const failure = Object.freeze({ code: 'journey-failed' as const, stage: 'startup-recovery' as const });
+  const failure = Object.freeze({ code: 'journey-failed' as const, stage });
   const p8ProductJourneyFailureFile = path.join(
     environment.userData,
     P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME,
@@ -438,8 +430,9 @@ async function startP8ProductJourneySmoke(): Promise<void> {
     generalWorkRecoveryPromise === null ||
     !scheduleRecovered;
   if (p8ProductJourneyAuthorityMissing) {
-    reportP8ProductJourneyRuntimeFailure(p8ProductJourneyAuthorityFailureStage());
-    failP8ProductJourneySmoke(environment);
+    const runtimeStage = p8ProductJourneyAuthorityFailureStage();
+    reportP8ProductJourneyRuntimeFailure(runtimeStage);
+    failP8ProductJourneySmoke(environment, runtimeStage);
     return;
   }
   try {

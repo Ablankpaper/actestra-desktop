@@ -20,7 +20,20 @@ export const P8_PRODUCT_JOURNEY_IDS = Object.freeze([
 
 export type P8ProductJourneyId = (typeof P8_PRODUCT_JOURNEY_IDS)[number];
 export type P8ProductJourneyStatus = "verified";
-export type P8ProductJourneyFailureStage = "startup-recovery" | P8ProductJourneyId;
+export type P8ProductJourneyRuntimeDiagnosticStage =
+  | "persistence"
+  | "general-work"
+  | "coding-journey"
+  | "coding-artifact"
+  | "isolated-coding"
+  | "team-composition"
+  | "general-recovery"
+  | "schedule-recovery"
+  | "team-recovery";
+export type P8ProductJourneyFailureStage =
+  | "startup-recovery"
+  | P8ProductJourneyId
+  | P8ProductJourneyRuntimeDiagnosticStage;
 
 export type P8ProductJourneyObservation = Readonly<{
   id: P8ProductJourneyId;
@@ -108,6 +121,15 @@ const UNC_ABSOLUTE_PATH = /^\\\\[^\\]/u;
 const FAILURE_STAGES = new Set<P8ProductJourneyFailureStage>([
   "startup-recovery",
   ...P8_PRODUCT_JOURNEY_IDS,
+  "persistence",
+  "general-work",
+  "coding-journey",
+  "coding-artifact",
+  "isolated-coding",
+  "team-composition",
+  "general-recovery",
+  "schedule-recovery",
+  "team-recovery",
 ]);
 const P8_PRODUCT_JOURNEY_FAILURE_MAX_BYTES = 4 * 1024;
 

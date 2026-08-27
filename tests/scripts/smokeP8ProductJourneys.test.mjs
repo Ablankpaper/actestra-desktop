@@ -167,6 +167,15 @@ describe("P8.2 packaged product-journey controller", () => {
       mode: 0o600,
     });
     await expect(parseP8ProductJourneyFailureFile(userData)).resolves.toEqual(failure);
+    await writeFile(
+      failurePath,
+      `${JSON.stringify({ code: "journey-failed", stage: "team-composition" })}\n`,
+      { mode: 0o600 },
+    );
+    await expect(parseP8ProductJourneyFailureFile(userData)).resolves.toEqual({
+      code: "journey-failed",
+      stage: "team-composition",
+    });
     await writeFile(failurePath, `${JSON.stringify({ ...failure, extra: "no" })}\n`);
     await expect(parseP8ProductJourneyFailureFile(userData)).resolves.toBeUndefined();
     await writeFile(failurePath, `${JSON.stringify(failure)}\ntrailing\n`);

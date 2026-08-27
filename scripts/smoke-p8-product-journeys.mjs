@@ -47,6 +47,15 @@ const RUNTIME_FAILURE_CODE_SET = new Set([
 const P8_PRODUCT_JOURNEY_DIAGNOSTIC_STAGES = new Set([
   "startup-recovery",
   ...P8_PRODUCT_JOURNEY_IDS,
+  "persistence",
+  "general-work",
+  "coding-journey",
+  "coding-artifact",
+  "isolated-coding",
+  "team-composition",
+  "general-recovery",
+  "schedule-recovery",
+  "team-recovery",
 ]);
 const P8_PRODUCT_JOURNEY_RUNTIME_DIAGNOSTIC_STAGES = new Set([
   "model-binding",

@@ -139,11 +139,11 @@ describe("P8.2 packaged product-journey downstream composition", () => {
     );
     expect(patch).toContain("function failP8ProductJourneySmoke");
     expect(patch).toContain(
-      "Object.freeze({ code: 'journey-failed' as const, stage: 'startup-recovery' as const })",
+      "const failure = Object.freeze({ code: 'journey-failed' as const, stage });",
     );
     expect(patch).toContain("p8ProductJourneyFailureFile");
     const authorityGuard = patch.indexOf("p8ProductJourneyAuthorityMissing");
-    const failureProjection = patch.indexOf("failP8ProductJourneySmoke(environment)");
+    const failureProjection = patch.indexOf("failP8ProductJourneySmoke(environment, runtimeStage)");
     expect(authorityGuard).toBeGreaterThanOrEqual(0);
     expect(failureProjection).toBeGreaterThan(authorityGuard);
   });
