@@ -1083,10 +1083,46 @@ describe("P5.2 isolated coding capability proxy", () => {
       return originalKill(processId, signal);
     }) as typeof process.kill);
 
-    await expect(approveAndInvoke(harness, operation)).rejects.toMatchObject({
+    const failure = await approveAndInvoke(harness, operation).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    const failureCause =
+      typeof failure === "object" && failure !== null && "cause" in failure
+        ? (failure as { readonly cause?: unknown }).cause
+        : undefined;
+    expect(
+      {
+        code:
+          typeof failure === "object" && failure !== null && "code" in failure
+            ? (failure as { readonly code?: unknown }).code
+            : undefined,
+        mayHaveExecuted:
+          typeof failure === "object" && failure !== null && "mayHaveExecuted" in failure
+            ? (failure as { readonly mayHaveExecuted?: unknown }).mayHaveExecuted
+            : undefined,
+        ownKeys:
+          typeof failure === "object" && failure !== null
+            ? Object.getOwnPropertyNames(failure).sort()
+            : [],
+        causeCode:
+          typeof failureCause === "object" && failureCause !== null && "errorCode" in failureCause
+            ? (failureCause as { readonly errorCode?: unknown }).errorCode
+            : undefined,
+        causeMayHaveExecuted:
+          typeof failureCause === "object" &&
+          failureCause !== null &&
+          "mayHaveExecuted" in failureCause
+            ? (failureCause as { readonly mayHaveExecuted?: unknown }).mayHaveExecuted
+            : undefined,
+      },
+      "P5.2 bounded process-output failure projection",
+    ).toEqual({
       code: "tool-execution-failed",
       mayHaveExecuted: true,
-      cause: { errorCode: "output-too-large", mayHaveExecuted: true },
+      ownKeys: ["cause", "code", "message", "name", "stack", "mayHaveExecuted"].sort(),
+      causeCode: "output-too-large",
+      causeMayHaveExecuted: true,
     });
     expect(termSent).toBe(true);
     expect(killSent).toBe(false);
