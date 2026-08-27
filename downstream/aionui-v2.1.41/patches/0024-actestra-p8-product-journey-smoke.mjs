@@ -372,6 +372,9 @@ async function executeP8ProductJourney(
         workspaceRoot: environment.workspace,
         managedRoot: activeIsolatedCoding.managedRoot,
         destinationWorkspaceId: await ensureP8DestinationWorkspace(environment),
+        onFailure: (stage) => {
+          p8ProductJourneyFailureStage = stage;
+        },
       });
       break;
     case 'workspace-apply-approval':
@@ -452,6 +455,9 @@ async function startP8ProductJourneySmoke(): Promise<void> {
         persistence,
         workspaceRoot: environment.workspace,
         restartJournalPath,
+        onFailure: (stage) => {
+          p8ProductJourneyFailureStage = stage;
+        },
       });
       console.info('ACTESTRA_P8_PRODUCT_JOURNEYS_RESTART_PREPARED');
       process.exit(86);
@@ -466,6 +472,9 @@ async function startP8ProductJourneySmoke(): Promise<void> {
       persistence,
       startupRecovery: p8ProductJourneyStartupRecovery,
       restartJournalPath,
+      onFailure: (stage) => {
+        p8ProductJourneyFailureStage = stage;
+      },
       verifyNoDuplicateRecovery: async () =>
         new GeneralWorkCoordinator({
           persistence,

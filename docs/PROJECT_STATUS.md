@@ -2,6 +2,27 @@
 
 Last updated: 2026-08-27
 
+## 2026-08-27 P8.2 packaged journey inner-stage diagnostics (local)
+
+Exact-head PR #77 run `33041286380`, bound to source head
+`a73449fcbffd7a8accbb6c97795d9c4a0396f3aa` and packaged merge SHA
+`c09fcb2cdcee2d862cc33cbd5b452505a8344fef`, failed closed on all three
+native product-journey jobs. macOS reported
+`journey-failed/crash-restart-recovery`; Ubuntu and Windows reported
+`journey-failed/coding-journey`. No finer packaged boundary was emitted.
+
+The next downstream diagnostic slice adds fixed, redacted inner-stage
+projections for coding submit/projection/tool approval/publish approval/Artifact
+preview/durable state/cleanup and crash-restart prepare/checkpoint/journal plus
+recovery verify/duplicate/journal. Main catches still rethrow the original
+failure, while the optional reporter only updates the closed stage used by the
+existing private failure file and console projection. Focused security,
+downstream, and controller tests pass (`45` passed); format, typecheck,
+downstream overlay, P8 contract, and product-boundary checks pass locally. A
+new exact-head native CI run is required to identify the first functional
+boundary. P8.2, P8.3 candidate trust/signing, and P8.4 clean-machine and
+real-provider acceptance remain open.
+
 ## 2026-08-27 P8.2 runtime-stage persistence and recovery-stage diagnostics (local)
 
 PR #77 run `33035668302`, whose pull-request execution used merge SHA

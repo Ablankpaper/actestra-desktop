@@ -157,6 +157,19 @@ describe("P8.2 packaged product-journey controller", () => {
     }
   });
 
+  it("classifies fixed inner journey diagnostics", () => {
+    expect(
+      classifyP8ProductJourneyDiagnosticLine(
+        'ACTESTRA_P8_PRODUCT_JOURNEYS_FAILED {"code":"journey-failed","stage":"coding-artifact-preview"}',
+      ),
+    ).toEqual({ code: "journey-failed", stage: "coding-artifact-preview" });
+    expect(
+      classifyP8ProductJourneyDiagnosticLine(
+        'ACTESTRA_P8_PRODUCT_JOURNEYS_FAILED {"code":"journey-failed","stage":"crash-restart-prepare-checkpoint"}',
+      ),
+    ).toEqual({ code: "journey-failed", stage: "crash-restart-prepare-checkpoint" });
+  });
+
   it("parses only a bounded private failure file", async () => {
     const root = await tempRoot();
     const userData = path.join(root, "user-data");

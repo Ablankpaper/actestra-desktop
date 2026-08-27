@@ -37,10 +37,26 @@ export type P8ProductJourneyRuntimeDiagnosticStage =
   | "general-recovery"
   | "schedule-recovery"
   | "team-recovery";
+export type P8ProductJourneyInnerDiagnosticStage =
+  | "coding-submit"
+  | "coding-projection"
+  | "coding-tool-approval"
+  | "coding-publish-approval"
+  | "coding-artifact-preview"
+  | "coding-durable-state"
+  | "coding-cleanup"
+  | "crash-restart-prepare-submit"
+  | "crash-restart-prepare-checkpoint"
+  | "crash-restart-prepare-journal"
+  | "crash-restart-recovery-load"
+  | "crash-restart-recovery-verify"
+  | "crash-restart-recovery-duplicate"
+  | "crash-restart-recovery-journal";
 export type P8ProductJourneyFailureStage =
   | "startup-recovery"
   | P8ProductJourneyId
-  | P8ProductJourneyRuntimeDiagnosticStage;
+  | P8ProductJourneyRuntimeDiagnosticStage
+  | P8ProductJourneyInnerDiagnosticStage;
 
 export type P8ProductJourneyObservation = Readonly<{
   id: P8ProductJourneyId;
@@ -137,6 +153,20 @@ const FAILURE_STAGES = new Set<P8ProductJourneyFailureStage>([
   "general-recovery",
   "schedule-recovery",
   "team-recovery",
+  "coding-submit",
+  "coding-projection",
+  "coding-tool-approval",
+  "coding-publish-approval",
+  "coding-artifact-preview",
+  "coding-durable-state",
+  "coding-cleanup",
+  "crash-restart-prepare-submit",
+  "crash-restart-prepare-checkpoint",
+  "crash-restart-prepare-journal",
+  "crash-restart-recovery-load",
+  "crash-restart-recovery-verify",
+  "crash-restart-recovery-duplicate",
+  "crash-restart-recovery-journal",
 ]);
 const P8_PRODUCT_JOURNEY_FAILURE_MAX_BYTES = 4 * 1024;
 

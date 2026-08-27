@@ -28,9 +28,23 @@ import {
   parseP8ProductJourneyRestartJournal,
   writeP8ProductJourneyRestartJournal,
   type P8ProductJourneyRestartJournal,
+  type P8ProductJourneyFailureStage,
 } from "../security/p8ProductJourneySmoke";
 import type { AionUiGeneralWorkJourneyService as GeneralWorkJourneyService } from "../compatibility/aionuiGeneralWorkJourneyService";
 import type { GeneralWorkRecoveryResult } from "../workers/generalWorkCoordinator";
+
+export type P8ProductJourneyFailureReporter = (stage: P8ProductJourneyFailureStage) => void;
+
+function reportP8ProductJourneyFailure(
+  reporter: P8ProductJourneyFailureReporter | undefined,
+  stage: P8ProductJourneyFailureStage,
+): void {
+  try {
+    reporter?.(stage);
+  } catch {
+    // Diagnostic projection is advisory and must not replace the real failure.
+  }
+}
 
 /**
  * The P8.2 packaged controller and the Main hook intentionally share a closed
@@ -280,6 +294,8 @@ export interface P8GooseIsolatedPatchJourneyInput {
   readonly managedRoot: string;
   /** Original workspace identity that the later Apply journey is allowed to target. */
   readonly destinationWorkspaceId?: WorkspaceId;
+  /** Optional fixed-stage reporter used only by packaged acceptance diagnostics. */
+  readonly onFailure?: P8ProductJourneyFailureReporter;
 }
 
 const P8_GOOSE_PATCH_CONVERSATION_ID = "conversation-p8-product-journeys-goose-patch" as const;
@@ -380,143 +396,158 @@ export async function runP8GooseIsolatedPatchJourney(
     throw new Error("P8.2 Goose isolated Patch source workspace is not pristine");
   }
 
-  const submitted = await input.service.submitFromTrustedContext(
-    Object.freeze({
-      contractVersion: 1 as const,
-      nativeConversationId: P8_GOOSE_PATCH_CONVERSATION_ID,
-      submissionId: P8_GOOSE_PATCH_SUBMISSION_ID,
-      prompt: P8_GOOSE_PATCH_PROMPT,
-    }),
-    Object.freeze({
-      rootPath: workspaceRoot,
-      displayName: "Actestra P8.2 Goose isolated Patch workspace",
-    }),
-    input.destinationWorkspaceId,
-  );
-
-  let current = await waitForCodingProjection(
-    input.service,
-    P8_GOOSE_PATCH_CONVERSATION_ID,
-    (candidate) =>
-      candidate.taskId === submitted.taskId &&
-      (candidate.approval !== undefined || codingProjectionIsTerminal(candidate)),
-  );
-  let toolApprovalCount = 0;
-  while (current.stage === "approval-required") {
-    const approval = current.approval;
-    if (
-      approval === undefined ||
-      approval.kind !== "tool" ||
-      toolApprovalCount >= P8_CODING_APPROVAL_LIMIT
-    ) {
-      throw new Error("P8.2 Goose isolated Patch exposed an invalid tool approval");
-    }
-    await input.service.decideApproval(
-      P8_GOOSE_PATCH_CONVERSATION_ID,
-      submitted.taskId,
-      approval.approvalId,
-      "approved",
+  let failureStage: P8ProductJourneyFailureStage = "coding-submit";
+  try {
+    const submitted = await input.service.submitFromTrustedContext(
+      Object.freeze({
+        contractVersion: 1 as const,
+        nativeConversationId: P8_GOOSE_PATCH_CONVERSATION_ID,
+        submissionId: P8_GOOSE_PATCH_SUBMISSION_ID,
+        prompt: P8_GOOSE_PATCH_PROMPT,
+      }),
+      Object.freeze({
+        rootPath: workspaceRoot,
+        displayName: "Actestra P8.2 Goose isolated Patch workspace",
+      }),
+      input.destinationWorkspaceId,
     );
-    toolApprovalCount += 1;
-    const resolvedApprovalId = approval.approvalId;
-    current = await waitForCodingProjection(
+
+    failureStage = "coding-projection";
+    let current = await waitForCodingProjection(
       input.service,
       P8_GOOSE_PATCH_CONVERSATION_ID,
       (candidate) =>
         candidate.taskId === submitted.taskId &&
-        (candidate.approval?.approvalId !== resolvedApprovalId ||
-          candidate.stage !== "approval-required"),
+        (candidate.approval !== undefined || codingProjectionIsTerminal(candidate)),
     );
-  }
+    let toolApprovalCount = 0;
+    failureStage = "coding-tool-approval";
+    while (current.stage === "approval-required") {
+      const approval = current.approval;
+      if (
+        approval === undefined ||
+        approval.kind !== "tool" ||
+        toolApprovalCount >= P8_CODING_APPROVAL_LIMIT
+      ) {
+        throw new Error("P8.2 Goose isolated Patch exposed an invalid tool approval");
+      }
+      await input.service.decideApproval(
+        P8_GOOSE_PATCH_CONVERSATION_ID,
+        submitted.taskId,
+        approval.approvalId,
+        "approved",
+      );
+      toolApprovalCount += 1;
+      const resolvedApprovalId = approval.approvalId;
+      current = await waitForCodingProjection(
+        input.service,
+        P8_GOOSE_PATCH_CONVERSATION_ID,
+        (candidate) =>
+          candidate.taskId === submitted.taskId &&
+          (candidate.approval?.approvalId !== resolvedApprovalId ||
+            candidate.stage !== "approval-required"),
+      );
+    }
 
-  if (
-    toolApprovalCount < 1 ||
-    current.stage !== "publish-approval-required" ||
-    current.approval?.kind !== "publish"
-  ) {
-    throw new Error("P8.2 Goose isolated Patch did not reach its publish approval");
-  }
-  const publishApprovalId = current.approval.approvalId;
-  await input.service.decidePublish(
-    P8_GOOSE_PATCH_CONVERSATION_ID,
-    submitted.taskId,
-    publishApprovalId,
-    "approved",
-  );
-  await input.service.waitForIdle(submitted.taskId);
-  current = await waitForCodingProjection(
-    input.service,
-    P8_GOOSE_PATCH_CONVERSATION_ID,
-    (candidate) => candidate.taskId === submitted.taskId && codingProjectionIsTerminal(candidate),
-  );
+    failureStage = "coding-publish-approval";
+    if (
+      toolApprovalCount < 1 ||
+      current.stage !== "publish-approval-required" ||
+      current.approval?.kind !== "publish"
+    ) {
+      throw new Error("P8.2 Goose isolated Patch did not reach its publish approval");
+    }
+    const publishApprovalId = current.approval.approvalId;
+    await input.service.decidePublish(
+      P8_GOOSE_PATCH_CONVERSATION_ID,
+      submitted.taskId,
+      publishApprovalId,
+      "approved",
+    );
+    await input.service.waitForIdle(submitted.taskId);
+    failureStage = "coding-projection";
+    current = await waitForCodingProjection(
+      input.service,
+      P8_GOOSE_PATCH_CONVERSATION_ID,
+      (candidate) => candidate.taskId === submitted.taskId && codingProjectionIsTerminal(candidate),
+    );
 
-  const artifact = current.artifacts.find(
-    (candidate) => candidate.label === "Actestra coding patch" && candidate.state === "available",
-  );
-  if (
-    current.status !== "completed" ||
-    current.stage !== "published" ||
-    current.canCancel ||
-    current.artifacts.length !== 1 ||
-    artifact === undefined ||
-    !current.tools.some(
-      (tool) => tool.kind === "edit" && tool.status === "completed" && tool.surface === "diff",
-    )
-  ) {
-    throw new Error("P8.2 Goose isolated Patch projection is incomplete");
-  }
-  const patchPreview = await input.service.getArtifactPatchPreview(artifact.artifactId);
-  if (
-    typeof patchPreview !== "string" ||
-    !patchPreview.includes(`p8-journey-proof.txt`) ||
-    !patchPreview.includes(`+${P8_PRODUCT_JOURNEY_FILE_CONTENT.trim()}`)
-  ) {
-    throw new Error("P8.2 Goose isolated Patch Artifact preview is incomplete");
-  }
+    failureStage = "coding-artifact-preview";
+    const artifact = current.artifacts.find(
+      (candidate) => candidate.label === "Actestra coding patch" && candidate.state === "available",
+    );
+    if (
+      current.status !== "completed" ||
+      current.stage !== "published" ||
+      current.canCancel ||
+      current.artifacts.length !== 1 ||
+      artifact === undefined ||
+      !current.tools.some(
+        (tool) => tool.kind === "edit" && tool.status === "completed" && tool.surface === "diff",
+      )
+    ) {
+      throw new Error("P8.2 Goose isolated Patch projection is incomplete");
+    }
+    const patchPreview = await input.service.getArtifactPatchPreview(artifact.artifactId);
+    if (
+      typeof patchPreview !== "string" ||
+      !patchPreview.includes(`p8-journey-proof.txt`) ||
+      !patchPreview.includes(`+${P8_PRODUCT_JOURNEY_FILE_CONTENT.trim()}`)
+    ) {
+      throw new Error("P8.2 Goose isolated Patch Artifact preview is incomplete");
+    }
 
-  const graph = await input.persistence.loadDomainGraph();
-  const task = graph.tasks.find((candidate) => candidate.id === submitted.taskId);
-  const sessions = graph.sessions.filter((candidate) => candidate.taskId === submitted.taskId);
-  const artifacts = graph.artifacts.filter((candidate) => candidate.taskId === submitted.taskId);
-  const session = sessions[0];
-  const worker =
-    session === undefined
-      ? undefined
-      : graph.workers.find((candidate) => candidate.id === session.workerId);
-  if (
-    task?.state !== "completed" ||
-    sessions.length !== 1 ||
-    session?.state !== "completed" ||
-    worker?.state !== "stopped" ||
-    artifacts.length !== 1 ||
-    artifacts[0]?.state !== "available"
-  ) {
-    throw new Error("P8.2 Goose isolated Patch durable state is incomplete");
-  }
-  const expectedIdentities = deriveAionUiCodingJourneyIdentities(
-    P8_GOOSE_PATCH_CONVERSATION_ID,
-    P8_GOOSE_PATCH_SUBMISSION_ID,
-  );
-  if (submitted.taskId !== expectedIdentities.taskId) {
-    throw new Error("P8.2 Goose isolated Patch task identity is invalid");
-  }
-  if ((await input.persistence.getActiveWorkspaceGrant(expectedIdentities.workspaceId)) !== null) {
-    throw new Error("P8.2 Goose isolated Patch retained an active isolated grant");
-  }
-  const managedEntriesAfter = new Map(
-    fs
-      .readdirSync(managedRoot, { withFileTypes: true })
-      .map((entry) => [
-        entry.name,
-        entry.isDirectory() ? "directory" : entry.isFile() ? "file" : "other",
-      ]),
-  );
-  const managedRootWasChanged =
-    managedEntriesBefore.size !== managedEntriesAfter.size ||
-    [...managedEntriesBefore].some(([name, kind]) => managedEntriesAfter.get(name) !== kind) ||
-    [...managedEntriesAfter].some(([name]) => !managedEntriesBefore.has(name));
-  if (managedRootWasChanged || fs.existsSync(sourceProofPath)) {
-    throw new Error("P8.2 Goose isolated Patch cleanup or source isolation is incomplete");
+    failureStage = "coding-durable-state";
+    const graph = await input.persistence.loadDomainGraph();
+    const task = graph.tasks.find((candidate) => candidate.id === submitted.taskId);
+    const sessions = graph.sessions.filter((candidate) => candidate.taskId === submitted.taskId);
+    const artifacts = graph.artifacts.filter((candidate) => candidate.taskId === submitted.taskId);
+    const session = sessions[0];
+    const worker =
+      session === undefined
+        ? undefined
+        : graph.workers.find((candidate) => candidate.id === session.workerId);
+    if (
+      task?.state !== "completed" ||
+      sessions.length !== 1 ||
+      session?.state !== "completed" ||
+      worker?.state !== "stopped" ||
+      artifacts.length !== 1 ||
+      artifacts[0]?.state !== "available"
+    ) {
+      throw new Error("P8.2 Goose isolated Patch durable state is incomplete");
+    }
+    const expectedIdentities = deriveAionUiCodingJourneyIdentities(
+      P8_GOOSE_PATCH_CONVERSATION_ID,
+      P8_GOOSE_PATCH_SUBMISSION_ID,
+    );
+    if (submitted.taskId !== expectedIdentities.taskId) {
+      throw new Error("P8.2 Goose isolated Patch task identity is invalid");
+    }
+    if (
+      (await input.persistence.getActiveWorkspaceGrant(expectedIdentities.workspaceId)) !== null
+    ) {
+      throw new Error("P8.2 Goose isolated Patch retained an active isolated grant");
+    }
+    failureStage = "coding-cleanup";
+    const managedEntriesAfter = new Map(
+      fs
+        .readdirSync(managedRoot, { withFileTypes: true })
+        .map((entry) => [
+          entry.name,
+          entry.isDirectory() ? "directory" : entry.isFile() ? "file" : "other",
+        ]),
+    );
+    const managedRootWasChanged =
+      managedEntriesBefore.size !== managedEntriesAfter.size ||
+      [...managedEntriesBefore].some(([name, kind]) => managedEntriesAfter.get(name) !== kind) ||
+      [...managedEntriesAfter].some(([name]) => !managedEntriesBefore.has(name));
+    if (managedRootWasChanged || fs.existsSync(sourceProofPath)) {
+      throw new Error("P8.2 Goose isolated Patch cleanup or source isolation is incomplete");
+    }
+  } catch (error) {
+    reportP8ProductJourneyFailure(input.onFailure, failureStage);
+    throw error;
   }
 }
 
@@ -556,6 +587,8 @@ export interface P8CrashRestartRecoveryPrepareJourneyInput {
   >;
   readonly workspaceRoot: string;
   readonly restartJournalPath: string;
+  /** Optional fixed-stage reporter used only by packaged acceptance diagnostics. */
+  readonly onFailure?: P8ProductJourneyFailureReporter;
 }
 
 export interface P8CrashRestartRecoveryPrepareJourneyResult {
@@ -577,46 +610,54 @@ export async function runP8CrashRestartRecoveryPrepareJourney(
   ) {
     throw new Error("P8.2 crash/restart journal is not fresh");
   }
-  const submitted = await input.service.submitFromTrustedContext(
-    Object.freeze({
-      contractVersion: 1 as const,
-      nativeConversationId: P8_CRASH_RESTART_CONVERSATION_ID,
-      submissionId: P8_CRASH_RESTART_SUBMISSION_ID,
-      prompt: P8_CRASH_RESTART_PROMPT,
-    }),
-    Object.freeze({
-      rootPath: workspaceRoot,
-      displayName: "Actestra P8.2 crash/restart workspace",
-    }),
-  );
-  if (submitted.status !== "running" || submitted.canCancel !== true) {
-    throw new Error("P8.2 crash/restart attempt did not remain active");
+  let failureStage: P8ProductJourneyFailureStage = "crash-restart-prepare-submit";
+  try {
+    const submitted = await input.service.submitFromTrustedContext(
+      Object.freeze({
+        contractVersion: 1 as const,
+        nativeConversationId: P8_CRASH_RESTART_CONVERSATION_ID,
+        submissionId: P8_CRASH_RESTART_SUBMISSION_ID,
+        prompt: P8_CRASH_RESTART_PROMPT,
+      }),
+      Object.freeze({
+        rootPath: workspaceRoot,
+        displayName: "Actestra P8.2 crash/restart workspace",
+      }),
+    );
+    if (submitted.status !== "running" || submitted.canCancel !== true) {
+      throw new Error("P8.2 crash/restart attempt did not remain active");
+    }
+    failureStage = "crash-restart-prepare-checkpoint";
+    const graph = await input.persistence.loadDomainGraph();
+    const task = graph.tasks.find((candidate) => candidate.id === submitted.taskId);
+    const session =
+      task === undefined
+        ? undefined
+        : graph.sessions.find((candidate) => candidate.taskId === task.id);
+    if (task?.state !== "running" || session?.state !== "running") {
+      throw new Error("P8.2 crash/restart durable attempt is not active");
+    }
+    const checkpoint = await input.persistence.getGeneralWorkCheckpoint(session.id);
+    if (
+      checkpoint?.phase !== "active" ||
+      checkpoint.attempt.state !== "running" ||
+      checkpoint.attempt.taskState !== "running" ||
+      checkpoint.attempt.disposed !== false
+    ) {
+      throw new Error("P8.2 crash/restart active checkpoint is incomplete");
+    }
+    failureStage = "crash-restart-prepare-journal";
+    writeP8ProductJourneyRestartJournal(input.restartJournalPath, {
+      schemaVersion: 1,
+      journey: "crash-restart-recovery",
+      phase: "active-checkpoint",
+      restartCount: 0,
+    });
+    return Object.freeze({ taskId: submitted.taskId, sessionId: session.id });
+  } catch (error) {
+    reportP8ProductJourneyFailure(input.onFailure, failureStage);
+    throw error;
   }
-  const graph = await input.persistence.loadDomainGraph();
-  const task = graph.tasks.find((candidate) => candidate.id === submitted.taskId);
-  const session =
-    task === undefined
-      ? undefined
-      : graph.sessions.find((candidate) => candidate.taskId === task.id);
-  if (task?.state !== "running" || session?.state !== "running") {
-    throw new Error("P8.2 crash/restart durable attempt is not active");
-  }
-  const checkpoint = await input.persistence.getGeneralWorkCheckpoint(session.id);
-  if (
-    checkpoint?.phase !== "active" ||
-    checkpoint.attempt.state !== "running" ||
-    checkpoint.attempt.taskState !== "running" ||
-    checkpoint.attempt.disposed !== false
-  ) {
-    throw new Error("P8.2 crash/restart active checkpoint is incomplete");
-  }
-  writeP8ProductJourneyRestartJournal(input.restartJournalPath, {
-    schemaVersion: 1,
-    journey: "crash-restart-recovery",
-    phase: "active-checkpoint",
-    restartCount: 0,
-  });
-  return Object.freeze({ taskId: submitted.taskId, sessionId: session.id });
 }
 
 export interface P8CrashRestartRecoveryVerifyJourneyInput {
@@ -631,92 +672,108 @@ export interface P8CrashRestartRecoveryVerifyJourneyInput {
   readonly startupRecovery: readonly GeneralWorkRecoveryResult[];
   readonly restartJournalPath: string;
   readonly verifyNoDuplicateRecovery: () => Promise<readonly GeneralWorkRecoveryResult[]>;
+  /** Optional fixed-stage reporter used only by packaged acceptance diagnostics. */
+  readonly onFailure?: P8ProductJourneyFailureReporter;
 }
 
 export async function runP8CrashRestartRecoveryVerifyJourney(
   input: P8CrashRestartRecoveryVerifyJourneyInput,
 ): Promise<void> {
-  let journal: P8ProductJourneyRestartJournal | null = null;
+  let failureStage: P8ProductJourneyFailureStage = "crash-restart-recovery-load";
   try {
-    journal = parseP8ProductJourneyRestartJournal(
-      JSON.parse(fs.readFileSync(input.restartJournalPath, "utf8")),
+    let journal: P8ProductJourneyRestartJournal | null = null;
+    try {
+      journal = parseP8ProductJourneyRestartJournal(
+        JSON.parse(fs.readFileSync(input.restartJournalPath, "utf8")),
+      );
+    } catch {
+      journal = null;
+    }
+    if (journal?.phase !== "active-checkpoint" || journal.restartCount !== 0) {
+      throw new Error("P8.2 crash/restart journal did not prove one prepared launch");
+    }
+    if (input.startupRecovery.length !== 1) {
+      throw new Error("P8.2 crash/restart recovered more than one attempt");
+    }
+    const recovered = input.startupRecovery[0]!;
+    if (
+      recovered.recoveredFrom !== "active" ||
+      recovered.checkpoint.phase !== "finalized" ||
+      recovered.checkpoint.attempt.state !== "failed" ||
+      recovered.checkpoint.attempt.taskState !== "failed" ||
+      recovered.checkpoint.attempt.disposed !== true ||
+      recovered.checkpoint.attempt.incident?.code !== "application-restart" ||
+      recovered.evidenceStatus !== "appended" ||
+      recovered.eventStatuses.some((status) => status !== "appended")
+    ) {
+      throw new Error("P8.2 crash/restart recovery result is incomplete");
+    }
+    failureStage = "crash-restart-recovery-verify";
+    const graph = await input.persistence.loadDomainGraph();
+    const task = graph.tasks.find(
+      (candidate) => candidate.id === recovered.checkpoint.attempt.taskId,
     );
-  } catch {
-    journal = null;
+    const session = graph.sessions.find((candidate) => candidate.id === recovered.sessionId);
+    const worker =
+      session === undefined
+        ? undefined
+        : graph.workers.find((candidate) => candidate.id === session.workerId);
+    if (task?.state !== "failed" || session?.state !== "failed" || worker?.state !== "stopped") {
+      throw new Error("P8.2 crash/restart durable graph is incomplete");
+    }
+    const projection = (await input.service.list(P8_CRASH_RESTART_CONVERSATION_ID, 1)).find(
+      (candidate) => candidate.taskId === recovered.checkpoint.attempt.taskId,
+    );
+    if (
+      projection?.status !== "failed" ||
+      projection.incidentCode !== "application-restart" ||
+      projection.canCancel
+    ) {
+      throw new Error("P8.2 crash/restart projection is incomplete");
+    }
+    const eventsBefore = await input.persistence.replayEvents(
+      recovered.checkpoint.attempt.streamId,
+    );
+    if (
+      eventsBefore.filter((event) => event.type === "worker.failed").length !== 1 ||
+      eventsBefore.filter((event) => event.type === "task.failed").length !== 1 ||
+      eventsBefore.some((event) => event.type === "tool.completed")
+    ) {
+      throw new Error("P8.2 crash/restart event history is ambiguous");
+    }
+    const evidenceBefore = (await input.persistence.listRecentAgentAttemptEvidence(50)).filter(
+      (evidence) => evidence.sessionId === recovered.sessionId,
+    );
+    if (
+      evidenceBefore.length !== 1 ||
+      evidenceBefore[0]?.incident?.code !== "application-restart"
+    ) {
+      throw new Error("P8.2 crash/restart evidence is incomplete");
+    }
+    failureStage = "crash-restart-recovery-duplicate";
+    const duplicate = await input.verifyNoDuplicateRecovery();
+    if (duplicate.length !== 0) throw new Error("P8.2 crash/restart replayed a durable effect");
+    const eventsAfter = await input.persistence.replayEvents(recovered.checkpoint.attempt.streamId);
+    const evidenceAfter = (await input.persistence.listRecentAgentAttemptEvidence(50)).filter(
+      (evidence) => evidence.sessionId === recovered.sessionId,
+    );
+    if (
+      eventsAfter.length !== eventsBefore.length ||
+      evidenceAfter.length !== evidenceBefore.length
+    ) {
+      throw new Error("P8.2 crash/restart duplicate recovery changed durable counts");
+    }
+    failureStage = "crash-restart-recovery-journal";
+    writeP8ProductJourneyRestartJournal(input.restartJournalPath, {
+      schemaVersion: 1,
+      journey: "crash-restart-recovery",
+      phase: "recovered",
+      restartCount: 1,
+    });
+  } catch (error) {
+    reportP8ProductJourneyFailure(input.onFailure, failureStage);
+    throw error;
   }
-  if (journal?.phase !== "active-checkpoint" || journal.restartCount !== 0) {
-    throw new Error("P8.2 crash/restart journal did not prove one prepared launch");
-  }
-  if (input.startupRecovery.length !== 1) {
-    throw new Error("P8.2 crash/restart recovered more than one attempt");
-  }
-  const recovered = input.startupRecovery[0]!;
-  if (
-    recovered.recoveredFrom !== "active" ||
-    recovered.checkpoint.phase !== "finalized" ||
-    recovered.checkpoint.attempt.state !== "failed" ||
-    recovered.checkpoint.attempt.taskState !== "failed" ||
-    recovered.checkpoint.attempt.disposed !== true ||
-    recovered.checkpoint.attempt.incident?.code !== "application-restart" ||
-    recovered.evidenceStatus !== "appended" ||
-    recovered.eventStatuses.some((status) => status !== "appended")
-  ) {
-    throw new Error("P8.2 crash/restart recovery result is incomplete");
-  }
-  const graph = await input.persistence.loadDomainGraph();
-  const task = graph.tasks.find(
-    (candidate) => candidate.id === recovered.checkpoint.attempt.taskId,
-  );
-  const session = graph.sessions.find((candidate) => candidate.id === recovered.sessionId);
-  const worker =
-    session === undefined
-      ? undefined
-      : graph.workers.find((candidate) => candidate.id === session.workerId);
-  if (task?.state !== "failed" || session?.state !== "failed" || worker?.state !== "stopped") {
-    throw new Error("P8.2 crash/restart durable graph is incomplete");
-  }
-  const projection = (await input.service.list(P8_CRASH_RESTART_CONVERSATION_ID, 1)).find(
-    (candidate) => candidate.taskId === recovered.checkpoint.attempt.taskId,
-  );
-  if (
-    projection?.status !== "failed" ||
-    projection.incidentCode !== "application-restart" ||
-    projection.canCancel
-  ) {
-    throw new Error("P8.2 crash/restart projection is incomplete");
-  }
-  const eventsBefore = await input.persistence.replayEvents(recovered.checkpoint.attempt.streamId);
-  if (
-    eventsBefore.filter((event) => event.type === "worker.failed").length !== 1 ||
-    eventsBefore.filter((event) => event.type === "task.failed").length !== 1 ||
-    eventsBefore.some((event) => event.type === "tool.completed")
-  ) {
-    throw new Error("P8.2 crash/restart event history is ambiguous");
-  }
-  const evidenceBefore = (await input.persistence.listRecentAgentAttemptEvidence(50)).filter(
-    (evidence) => evidence.sessionId === recovered.sessionId,
-  );
-  if (evidenceBefore.length !== 1 || evidenceBefore[0]?.incident?.code !== "application-restart") {
-    throw new Error("P8.2 crash/restart evidence is incomplete");
-  }
-  const duplicate = await input.verifyNoDuplicateRecovery();
-  if (duplicate.length !== 0) throw new Error("P8.2 crash/restart replayed a durable effect");
-  const eventsAfter = await input.persistence.replayEvents(recovered.checkpoint.attempt.streamId);
-  const evidenceAfter = (await input.persistence.listRecentAgentAttemptEvidence(50)).filter(
-    (evidence) => evidence.sessionId === recovered.sessionId,
-  );
-  if (
-    eventsAfter.length !== eventsBefore.length ||
-    evidenceAfter.length !== evidenceBefore.length
-  ) {
-    throw new Error("P8.2 crash/restart duplicate recovery changed durable counts");
-  }
-  writeP8ProductJourneyRestartJournal(input.restartJournalPath, {
-    schemaVersion: 1,
-    journey: "crash-restart-recovery",
-    phase: "recovered",
-    restartCount: 1,
-  });
 }
 
 /**

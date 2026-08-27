@@ -21,6 +21,7 @@ import {
   runP8CancellationNoOrphanJourney,
   runP8CrashRestartRecoveryPrepareJourney,
   runP8CrashRestartRecoveryVerifyJourney,
+  runP8GooseIsolatedPatchJourney,
 } from "../../apps/desktop/src/main/acceptance/p8ProductJourneySmoke";
 import {
   createP8ProductJourneyLoopbackModelBinding,
@@ -151,6 +152,12 @@ describe("P8 packaged product-journey coordinator", () => {
       stage: "general-artifact" as const,
     };
     expect(parseP8ProductJourneyFailure(failure)).toEqual(failure);
+    expect(
+      parseP8ProductJourneyFailure({
+        code: "journey-failed",
+        stage: "coding-artifact-preview",
+      }),
+    ).toEqual({ code: "journey-failed", stage: "coding-artifact-preview" });
     expect(
       parseP8ProductJourneyFailure({
         ...failure,
@@ -323,6 +330,64 @@ describe("P8 packaged product-journey coordinator", () => {
       expect(
         parseP8ProductJourneyRestartJournal(JSON.parse(fs.readFileSync(journalPath, "utf8"))),
       ).toMatchObject({ phase: "recovered", restartCount: 1 });
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("reports a closed crash/restart phase when prepare submission fails", async () => {
+    const directory = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), "actestra-p8-recovery-diagnostic-")),
+    );
+    const stages: string[] = [];
+    try {
+      await expect(
+        runP8CrashRestartRecoveryPrepareJourney({
+          service: {
+            submitFromTrustedContext: vi.fn(async () => {
+              throw new Error("private provider detail");
+            }),
+            list: vi.fn(async () => []),
+          } as never,
+          persistence: {} as never,
+          workspaceRoot: directory,
+          restartJournalPath: path.join(directory, "p8-product-journeys-restart.json"),
+          onFailure: (stage) => stages.push(stage),
+        }),
+      ).rejects.toThrow("private provider detail");
+      expect(stages).toEqual(["crash-restart-prepare-submit"]);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("reports a closed coding phase when submission fails", async () => {
+    const directory = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), "actestra-p8-coding-diagnostic-")),
+    );
+    const managedRoot = path.join(directory, "managed");
+    fs.mkdirSync(managedRoot);
+    const stages: string[] = [];
+    try {
+      await expect(
+        runP8GooseIsolatedPatchJourney({
+          service: {
+            submitFromTrustedContext: vi.fn(async () => {
+              throw new Error("private provider detail");
+            }),
+            list: vi.fn(async () => []),
+            waitForIdle: vi.fn(async () => undefined),
+            decideApproval: vi.fn(async () => undefined),
+            decidePublish: vi.fn(async () => undefined),
+            getArtifactPatchPreview: vi.fn(async () => ""),
+          } as never,
+          persistence: {} as never,
+          workspaceRoot: directory,
+          managedRoot,
+          onFailure: (stage) => stages.push(stage),
+        }),
+      ).rejects.toThrow("private provider detail");
+      expect(stages).toEqual(["coding-submit"]);
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
     }

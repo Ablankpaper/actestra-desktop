@@ -64,6 +64,7 @@ describe("P8.2 packaged product-journey downstream composition", () => {
       "P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME",
       "let p8ProductJourneyFailureStage: P8ProductJourneyFailureStage = 'startup-recovery'",
       "writeP8ProductJourneyFailure",
+      "onFailure: (stage) => {",
       "? 'hold'",
       "app.quit()",
     ]) {
