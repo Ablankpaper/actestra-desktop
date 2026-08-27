@@ -235,6 +235,12 @@ replaceOnce(
       packagedResourcesPath:
         process.platform !== 'linux' && app.isPackaged ? process.resourcesPath : undefined,
       modelBinding: loopbackBinding,
+      onFailure: (stage) => {
+        console.error(
+          'ACTESTRA_P8_PRODUCT_JOURNEYS_RUNTIME_FAILED ' +
+            JSON.stringify({ stage }),
+        );
+      },
     });
     configureActestraGeneralWorkRuntime(p8ProductJourneyGeneralRuntime);
     configureActestraCodingJourneyRuntime(p8ProductJourneyCodingRuntime);

@@ -48,6 +48,15 @@ const P8_PRODUCT_JOURNEY_DIAGNOSTIC_STAGES = new Set([
   "startup-recovery",
   ...P8_PRODUCT_JOURNEY_IDS,
 ]);
+const P8_PRODUCT_JOURNEY_RUNTIME_DIAGNOSTIC_STAGES = new Set([
+  "model-binding",
+  "user-data",
+  "runner-package",
+  "runner-admission",
+  "git-executable",
+  "private-root",
+  "runtime-startup",
+]);
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 class P8ProductJourneySmokeError extends Error {
@@ -88,6 +97,36 @@ export function classifyP8ProductJourneyDiagnosticLine(value) {
     return undefined;
   }
   return Object.freeze({ code: "journey-failed", stage: parsed.stage });
+}
+
+/**
+ * Accept only the packaged app's fixed runtime-startup boundary token. This is
+ * deliberately separate from the journey failure vocabulary so a startup
+ * admission detail cannot be mistaken for a completed journey stage.
+ */
+export function classifyP8ProductJourneyRuntimeDiagnosticLine(value) {
+  if (
+    typeof value !== "string" ||
+    Buffer.byteLength(value, "utf8") > P8_PRODUCT_JOURNEY_DIAGNOSTIC_MAX_BYTES
+  ) {
+    return undefined;
+  }
+  const match = /^ACTESTRA_P8_PRODUCT_JOURNEYS_RUNTIME_FAILED (\{[^\r\n]*\})$/u.exec(value);
+  if (match === null) return undefined;
+  let parsed;
+  try {
+    parsed = JSON.parse(match[1]);
+  } catch {
+    return undefined;
+  }
+  if (
+    !hasExactKeys(parsed, ["stage"]) ||
+    typeof parsed.stage !== "string" ||
+    !P8_PRODUCT_JOURNEY_RUNTIME_DIAGNOSTIC_STAGES.has(parsed.stage)
+  ) {
+    return undefined;
+  }
+  return Object.freeze({ runtimeStage: parsed.stage });
 }
 
 /**
@@ -147,7 +186,12 @@ function observeP8ProductJourneyDiagnostics(stream, onDiagnostic) {
     pending = lines.pop() ?? "";
     for (const line of lines) {
       const diagnostic = classifyP8ProductJourneyDiagnosticLine(line);
-      if (diagnostic !== undefined) onDiagnostic(diagnostic);
+      if (diagnostic !== undefined) {
+        onDiagnostic(diagnostic);
+        continue;
+      }
+      const runtimeDiagnostic = classifyP8ProductJourneyRuntimeDiagnosticLine(line);
+      if (runtimeDiagnostic !== undefined) onDiagnostic(runtimeDiagnostic);
     }
   });
 }
@@ -1018,6 +1062,14 @@ export async function runP8ProductJourneySmoke(options) {
   let child;
   let outcomePromise;
   let diagnostic;
+  let runtimeDiagnostic;
+  const recordDiagnostic = (value) => {
+    if (value !== null && typeof value === "object" && "runtimeStage" in value) {
+      runtimeDiagnostic = value;
+    } else {
+      diagnostic = value;
+    }
+  };
   try {
     if (
       !isRecord(options) ||
@@ -1087,9 +1139,7 @@ export async function runP8ProductJourneySmoke(options) {
         ),
         environment,
         ...(options.spawnChild === undefined ? {} : { spawnChild: options.spawnChild }),
-        onDiagnostic: (value) => {
-          diagnostic = value;
-        },
+        onDiagnostic: recordDiagnostic,
         snapshotProcessTree,
         timeoutMs: options.timeoutMs ?? 10 * 60_000,
         cleanupTimeoutMs: options.cleanupTimeoutMs ?? 10_000,
@@ -1106,12 +1156,8 @@ export async function runP8ProductJourneySmoke(options) {
       });
       if (!child || !Number.isInteger(child.pid) || child.pid <= 0) smokeFailure("spawn-failed");
       outcomePromise = childOutcome(child);
-      observeP8ProductJourneyDiagnostics(child.stderr, (value) => {
-        diagnostic = value;
-      });
-      observeP8ProductJourneyDiagnostics(child.stdout, (value) => {
-        diagnostic = value;
-      });
+      observeP8ProductJourneyDiagnostics(child.stderr, recordDiagnostic);
+      observeP8ProductJourneyDiagnostics(child.stdout, recordDiagnostic);
       const initialSnapshot = snapshotProcessTree(child.pid);
       if (!initialSnapshot?.ok) smokeFailure("process-probe-failed");
       const observedPids = new Set(initialSnapshot.pids);
@@ -1205,7 +1251,15 @@ export async function runP8ProductJourneySmoke(options) {
       diagnostic = await parseP8ProductJourneyFailureFile(isolation.userData);
     }
     if (diagnostic !== undefined) {
-      process.stderr.write(`${JSON.stringify({ ...diagnostic, outerCode: code })}\n`);
+      process.stderr.write(
+        `${JSON.stringify({
+          ...diagnostic,
+          ...(runtimeDiagnostic === undefined ? {} : runtimeDiagnostic),
+          outerCode: code,
+        })}\n`,
+      );
+    } else if (runtimeDiagnostic !== undefined) {
+      process.stderr.write(`${JSON.stringify({ ...runtimeDiagnostic, outerCode: code })}\n`);
     }
     return Object.freeze({ evidence: buildFailure(options, code) });
   } finally {

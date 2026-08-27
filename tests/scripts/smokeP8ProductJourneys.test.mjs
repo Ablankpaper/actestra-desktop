@@ -11,6 +11,7 @@ import {
   P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME,
   P8_PRODUCT_JOURNEY_RESULT_FILE_NAME,
   classifyP8ProductJourneyDiagnosticLine,
+  classifyP8ProductJourneyRuntimeDiagnosticLine,
   normalizeP8ProductJourneyPackages,
   parseP8ProductJourneyFailureFile,
   parseP8ProductJourneyArguments,
@@ -124,6 +125,21 @@ describe("P8.2 packaged product-journey controller", () => {
       'ACTESTRA_P8_PRODUCT_JOURNEYS_FAILED {"code":"journey-failed","stage":"cleanup","path":"/tmp/private"}',
     ]) {
       expect(classifyP8ProductJourneyDiagnosticLine(invalid)).toBeUndefined();
+    }
+  });
+
+  it("classifies only fixed runtime-startup boundary diagnostics", () => {
+    expect(
+      classifyP8ProductJourneyRuntimeDiagnosticLine(
+        'ACTESTRA_P8_PRODUCT_JOURNEYS_RUNTIME_FAILED {"stage":"runner-package"}',
+      ),
+    ).toEqual({ runtimeStage: "runner-package" });
+    for (const invalid of [
+      'ACTESTRA_P8_PRODUCT_JOURNEYS_RUNTIME_FAILED {"stage":"/private/path"}',
+      'ACTESTRA_P8_PRODUCT_JOURNEYS_RUNTIME_FAILED {"stage":"runner-package","path":"/tmp"}',
+      'ACTESTRA_P8_PRODUCT_JOURNEYS_RUNTIME_FAILED {"stage":"runner-package","error":"secret"}',
+    ]) {
+      expect(classifyP8ProductJourneyRuntimeDiagnosticLine(invalid)).toBeUndefined();
     }
   });
 

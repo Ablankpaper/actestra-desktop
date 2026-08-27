@@ -310,6 +310,7 @@ describe("trusted Actestra coding journey runtime startup", () => {
   it("fails before creating goose-private when the fixed Linux package is unavailable", async () => {
     const userDataPath = await profileRoot();
     const admitLinuxPackage = vi.fn(async () => null);
+    const onFailure = vi.fn();
 
     await expect(
       startTrustedActestraCodingJourneyRuntime(
@@ -318,6 +319,7 @@ describe("trusted Actestra coding journey runtime startup", () => {
           runnerAdmission,
           linuxPackageResourcesPath: GOOSE_LINUX_RESOURCES_PATH,
           modelBinding,
+          onFailure,
         },
         {
           admitRunnerArtifact: vi.fn(async () => artifact),
@@ -327,6 +329,7 @@ describe("trusted Actestra coding journey runtime startup", () => {
       ),
     ).resolves.toBeNull();
     expect(await readdir(userDataPath)).not.toContain("goose-private");
+    expect(onFailure).toHaveBeenCalledWith("runner-package");
   });
 
   it("fails closed for symlinked profiles, malformed model bindings, and runner admission failures", async () => {

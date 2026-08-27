@@ -147,4 +147,12 @@ describe("P8.2 packaged product-journey downstream composition", () => {
     expect(authorityGuard).toBeGreaterThanOrEqual(0);
     expect(failureProjection).toBeGreaterThan(authorityGuard);
   });
+
+  it("projects only a closed coding-runtime startup boundary for packaged smoke", () => {
+    const teamPatch = read("downstream/aionui-v2.1.41/patches/0014-actestra-team-work.mjs");
+    expect(teamPatch).toContain("onFailure: (stage) => {");
+    expect(teamPatch).toContain("ACTESTRA_P8_PRODUCT_JOURNEYS_RUNTIME_FAILED");
+    expect(teamPatch).toContain("JSON.stringify({ stage })");
+    expect(teamPatch).not.toContain("JSON.stringify({ stage, error");
+  });
 });

@@ -2,6 +2,32 @@
 
 Last updated: 2026-08-27
 
+## 2026-08-27 P8.2 coding-runtime startup boundary diagnostic (local)
+
+PR #77 exact-head run `33029934578`, bound to head
+`1352b01a47541f08463e83696ae71be7db600012`, passed Goose admission, the
+Ubuntu and Windows build probes, Windows containment, and the authenticated
+Windows runtime. The macOS and Ubuntu packaged product journeys both failed
+closed as `journey-failed/startup-recovery`; the Windows native package job was
+still running at inspection time. The prior fail-open timeout is closed, but
+the generic startup stage does not identify which coding-runtime authority was
+unavailable, so this run is not P8.2 evidence.
+
+The local diagnostic slice now classifies coding-runtime startup failures into
+the fixed, non-sensitive boundaries `model-binding`, `user-data`,
+`runner-package`, `runner-admission`, `git-executable`, `private-root`, or
+`runtime-startup`. Packaged P8 smoke prints only that token; the controller
+accepts the exact vocabulary and rejects paths, exception text, extra fields,
+and arbitrary values. Normal startup, credentials, raw package errors, and
+provider payloads do not cross the boundary. The regression was observed RED
+before implementation; focused runtime/controller/downstream tests pass with
+`32` passed and `1` skipped, root typecheck and lint pass, downstream
+materialization and dependency installation complete, and the materialized
+AionUi `tsc --noEmit --pretty false` passes. A new exact-head native CI run is
+required to identify and then repair the first concrete startup boundary.
+P8.2, P8.3 candidate trust/signing, and P8.4 clean-machine and real-provider
+acceptance remain open.
+
 ## 2026-08-27 P8.2 startup authority failure projection (local)
 
 The exact-head CI run `33027564263` still has the macOS packaged journey
