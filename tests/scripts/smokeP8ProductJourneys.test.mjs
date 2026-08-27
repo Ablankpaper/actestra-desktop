@@ -190,6 +190,16 @@ describe("P8.2 packaged product-journey controller", () => {
     await expect(parseP8ProductJourneyFailureFile(userData)).resolves.toBeUndefined();
   });
 
+  it("preserves the closed runtime-startup stage in the private failure projection", async () => {
+    const root = await tempRoot();
+    const userData = path.join(root, "user-data");
+    await mkdir(userData, { recursive: true });
+    const failurePath = path.join(userData, P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME);
+    const failure = { code: "journey-failed", stage: "runner-package" };
+    await writeFile(failurePath, `${JSON.stringify(failure)}\n`, { mode: 0o600 });
+    await expect(parseP8ProductJourneyFailureFile(userData)).resolves.toEqual(failure);
+  });
+
   it("uses the private failure file when the packaged child emits no diagnostic stream", async () => {
     const fixture = await macFixture();
     const failure = { code: "journey-failed", stage: "general-artifact" };

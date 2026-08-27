@@ -187,6 +187,10 @@ import {
   createP8ProductJourneyTeamModelCatalog,
   resolveP8ProductJourneyRuntimeConfig,
 } from './actestra/main/acceptance/p8ProductJourneyRuntime';
+import {
+  P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME,
+  writeP8ProductJourneyFailure,
+} from './actestra/main/security/p8ProductJourneySmoke';
 import { runGeneralWorkerProbe } from './actestra/main/workers/generalWorkerProbe';`,
 );
 
@@ -236,6 +240,14 @@ replaceOnce(
         process.platform !== 'linux' && app.isPackaged ? process.resourcesPath : undefined,
       modelBinding: loopbackBinding,
       onFailure: (stage) => {
+        try {
+          writeP8ProductJourneyFailure(
+            path.join(app.getPath('userData'), P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME),
+            { code: 'journey-failed', stage },
+          );
+        } catch {
+          // The fixed console projection below remains the fallback diagnostic.
+        }
         console.error(
           'ACTESTRA_P8_PRODUCT_JOURNEYS_RUNTIME_FAILED ' +
             JSON.stringify({ stage }),

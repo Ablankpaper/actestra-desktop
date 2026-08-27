@@ -47,6 +47,13 @@ const RUNTIME_FAILURE_CODE_SET = new Set([
 const P8_PRODUCT_JOURNEY_DIAGNOSTIC_STAGES = new Set([
   "startup-recovery",
   ...P8_PRODUCT_JOURNEY_IDS,
+  "model-binding",
+  "user-data",
+  "runner-package",
+  "runner-admission",
+  "git-executable",
+  "private-root",
+  "runtime-startup",
   "persistence",
   "general-work",
   "coding-journey",

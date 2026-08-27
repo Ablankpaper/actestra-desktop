@@ -119,7 +119,7 @@ let p8ProductJourneySmokeStarted = false;
 let p8ProductJourneyDestinationWorkspaceId: WorkspaceId | null = null;
 let p8ProductJourneyStartupRecovery: readonly GeneralWorkRecoveryResult[] | null = null;
 let p8ProductJourneyRestartVerified = false;
-let p8ProductJourneyFailureStage: 'startup-recovery' | P8ProductJourneyId = 'startup-recovery';
+let p8ProductJourneyFailureStage: P8ProductJourneyFailureStage = 'startup-recovery';
 
 function reportP8ProductJourneyRuntimeFailure(
   stage: P8ProductJourneyRuntimeDiagnosticStage,
@@ -436,7 +436,9 @@ async function startP8ProductJourneySmoke(): Promise<void> {
     return;
   }
   try {
+    p8ProductJourneyFailureStage = 'general-recovery';
     await generalWorkRecoveryPromise;
+    p8ProductJourneyFailureStage = 'team-recovery';
     await teamComposition.waitForWorkerRecovery();
     const restartPhase = process.env.ACTESTRA_P8_PRODUCT_JOURNEYS_RESTART_PHASE;
     const restartJournalPath = path.join(
@@ -444,6 +446,7 @@ async function startP8ProductJourneySmoke(): Promise<void> {
       P8_PRODUCT_JOURNEY_RESTART_JOURNAL_FILE_NAME,
     );
     if (restartPhase === 'prepare') {
+      p8ProductJourneyFailureStage = 'crash-restart-recovery';
       await runP8CrashRestartRecoveryPrepareJourney({
         service: generalWorkJourneyService,
         persistence,

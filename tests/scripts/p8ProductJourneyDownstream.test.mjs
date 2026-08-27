@@ -62,7 +62,7 @@ describe("P8.2 packaged product-journey downstream composition", () => {
       "runP7PackagedDiagnosticAuditSmoke",
       "ACTESTRA_P8_PRODUCT_JOURNEYS_RESTART_PHASE",
       "P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME",
-      "let p8ProductJourneyFailureStage: 'startup-recovery' | P8ProductJourneyId = 'startup-recovery'",
+      "let p8ProductJourneyFailureStage: P8ProductJourneyFailureStage = 'startup-recovery'",
       "writeP8ProductJourneyFailure",
       "? 'hold'",
       "app.quit()",
@@ -153,6 +153,8 @@ describe("P8.2 packaged product-journey downstream composition", () => {
     expect(teamPatch).toContain("onFailure: (stage) => {");
     expect(teamPatch).toContain("ACTESTRA_P8_PRODUCT_JOURNEYS_RUNTIME_FAILED");
     expect(teamPatch).toContain("JSON.stringify({ stage })");
+    expect(teamPatch).toContain("writeP8ProductJourneyFailure");
+    expect(teamPatch).toContain("P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME");
     expect(teamPatch).not.toContain("JSON.stringify({ stage, error");
   });
 });

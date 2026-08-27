@@ -2,6 +2,31 @@
 
 Last updated: 2026-08-27
 
+## 2026-08-27 P8.2 runtime-stage persistence and recovery-stage diagnostics (local)
+
+PR #77 run `33035668302`, whose pull-request execution used merge SHA
+`56646ab3b23ad74e36547d224983d2814ba208a6`, completed with Goose admission,
+Ubuntu/Windows build probes, Windows containment, and authenticated Windows
+runtime green. The packaged journeys failed closed on all three native jobs:
+Ubuntu and Windows reported `journey-failed/coding-journey`, while macOS
+reported `journey-failed/startup-recovery`. The run is not P8.2 evidence.
+
+Static tracing showed that coding-runtime startup failures were emitted only on
+the short-lived Electron diagnostic stream, while the private failure-file
+vocabulary did not admit the runtime-startup stages. A downstream diagnostic
+slice now persists the same closed `{code, stage}` projection before the
+runtime exits, admits the seven runtime-startup stages in the controller and
+Main security schema, and marks general/team/crash-restart recovery boundaries
+before their awaited operations. No raw errors, paths, process identifiers,
+credentials, or provider payloads are persisted or exported.
+
+The regression was observed RED before implementation. Focused downstream,
+controller, and coding-runtime tests pass (`34` passed, `1` skipped); root
+format, typecheck, P8 contract, and downstream contract checks pass. A new
+committed exact-head native CI run is required to obtain the concrete runtime
+stage and repair the first functional boundary. P8.2, P8.3 candidate
+trust/signing, and P8.4 clean-machine and real-provider acceptance remain open.
+
 ## 2026-08-27 P8.2 packaged authority-stage diagnostic (local)
 
 The exact-head PR #77 run `33032327709`, bound to source head

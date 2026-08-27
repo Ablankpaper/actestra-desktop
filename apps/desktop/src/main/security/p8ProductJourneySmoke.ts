@@ -21,6 +21,13 @@ export const P8_PRODUCT_JOURNEY_IDS = Object.freeze([
 export type P8ProductJourneyId = (typeof P8_PRODUCT_JOURNEY_IDS)[number];
 export type P8ProductJourneyStatus = "verified";
 export type P8ProductJourneyRuntimeDiagnosticStage =
+  | "model-binding"
+  | "user-data"
+  | "runner-package"
+  | "runner-admission"
+  | "git-executable"
+  | "private-root"
+  | "runtime-startup"
   | "persistence"
   | "general-work"
   | "coding-journey"
