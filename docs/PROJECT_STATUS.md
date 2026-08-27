@@ -10,11 +10,11 @@ product-journey step and returned only the bounded
 stage covered both startup authority readiness and the crash/restart verifier,
 so the concrete verifier boundary was not observable. A regression test first
 failed because the downstream patch did not mark that boundary; the patch now
-sets the closed failure stage to `crash-restart-recovery` immediately before
-`runP8CrashRestartRecoveryVerifyJourney`. Focused downstream composition tests
-pass `6/6`. This is diagnostic instrumentation only; a new exact-head CI run
-is required to identify the underlying failure before any functional fix or
-P8.2 claim.
+sets the closed failure stage to `crash-restart-recovery` before the
+startup-recovery guard and `runP8CrashRestartRecoveryVerifyJourney`. Focused
+downstream composition tests pass `6/6`. This is diagnostic instrumentation
+only; a new exact-head CI run is required to identify the underlying failure
+before any functional fix or P8.2 claim.
 
 ## 2026-08-27 P8.2 Ubuntu bound-admission restage repair (local)
 

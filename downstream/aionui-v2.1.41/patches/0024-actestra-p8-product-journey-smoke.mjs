@@ -403,10 +403,10 @@ async function startP8ProductJourneySmoke(): Promise<void> {
       process.exit(86);
       return;
     }
+    p8ProductJourneyFailureStage = 'crash-restart-recovery';
     if (restartPhase !== 'recover' || p8ProductJourneyStartupRecovery === null) {
       throw new Error('journey-failed');
     }
-    p8ProductJourneyFailureStage = 'crash-restart-recovery';
     await runP8CrashRestartRecoveryVerifyJourney({
       service: generalWorkJourneyService,
       persistence,

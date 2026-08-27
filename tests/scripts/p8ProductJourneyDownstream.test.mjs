@@ -109,13 +109,17 @@ describe("P8.2 packaged product-journey downstream composition", () => {
       "downstream/aionui-v2.1.41/patches/0024-actestra-p8-product-journey-smoke.mjs",
     );
     const verification = patch.indexOf("runP8CrashRestartRecoveryVerifyJourney({");
+    const recoveryGuard = patch.indexOf(
+      "if (restartPhase !== 'recover' || p8ProductJourneyStartupRecovery === null)",
+    );
     const stage = patch.lastIndexOf(
       "p8ProductJourneyFailureStage = 'crash-restart-recovery';",
       verification,
     );
     expect(verification).toBeGreaterThanOrEqual(0);
+    expect(recoveryGuard).toBeGreaterThanOrEqual(0);
     expect(stage).toBeGreaterThanOrEqual(0);
-    expect(stage).toBeLessThan(verification);
+    expect(stage).toBeLessThanOrEqual(recoveryGuard);
   });
 
   it("writes a bounded private failure file before quitting", () => {
