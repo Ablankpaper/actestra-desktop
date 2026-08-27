@@ -104,6 +104,20 @@ describe("P8.2 packaged product-journey downstream composition", () => {
     expect(quit).toBeGreaterThan(write);
   });
 
+  it("binds crash/restart verification failures to its closed journey stage", () => {
+    const patch = read(
+      "downstream/aionui-v2.1.41/patches/0024-actestra-p8-product-journey-smoke.mjs",
+    );
+    const verification = patch.indexOf("runP8CrashRestartRecoveryVerifyJourney({");
+    const stage = patch.lastIndexOf(
+      "p8ProductJourneyFailureStage = 'crash-restart-recovery';",
+      verification,
+    );
+    expect(verification).toBeGreaterThanOrEqual(0);
+    expect(stage).toBeGreaterThanOrEqual(0);
+    expect(stage).toBeLessThan(verification);
+  });
+
   it("writes a bounded private failure file before quitting", () => {
     const patch = read(
       "downstream/aionui-v2.1.41/patches/0024-actestra-p8-product-journey-smoke.mjs",
