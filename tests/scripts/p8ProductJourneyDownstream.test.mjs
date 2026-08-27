@@ -132,4 +132,19 @@ describe("P8.2 packaged product-journey downstream composition", () => {
       patch.lastIndexOf("app.quit()"),
     );
   });
+
+  it("projects missing startup authority as a bounded failure instead of timing out", () => {
+    const patch = read(
+      "downstream/aionui-v2.1.41/patches/0024-actestra-p8-product-journey-smoke.mjs",
+    );
+    expect(patch).toContain("function failP8ProductJourneySmoke");
+    expect(patch).toContain(
+      "Object.freeze({ code: 'journey-failed' as const, stage: 'startup-recovery' as const })",
+    );
+    expect(patch).toContain("p8ProductJourneyFailureFile");
+    const authorityGuard = patch.indexOf("p8ProductJourneyAuthorityMissing");
+    const failureProjection = patch.indexOf("failP8ProductJourneySmoke(environment)");
+    expect(authorityGuard).toBeGreaterThanOrEqual(0);
+    expect(failureProjection).toBeGreaterThan(authorityGuard);
+  });
 });

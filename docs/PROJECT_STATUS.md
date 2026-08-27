@@ -2,6 +2,27 @@
 
 Last updated: 2026-08-27
 
+## 2026-08-27 P8.2 startup authority failure projection (local)
+
+The exact-head CI run `33027564263` still has the macOS packaged journey
+failure `journey-failed/startup-recovery` and the Ubuntu packaged journey
+failure `journey-timeout`; the Windows build, authenticated runtime, and
+containment jobs passed while its final P8.2d job was still in progress at
+inspection time. Static tracing identified the timeout path: startup
+recovery catches an authority error, clears the Actestra services, and the
+P8 smoke guard previously returned without writing bounded evidence. The
+downstream patch now projects valid smoke environments with missing startup
+authority as the fixed `journey-failed/startup-recovery` failure, writes the
+owner-only private failure file, emits the same closed diagnostic, and exits;
+ordinary startup and invalid smoke environments remain unchanged.
+
+The regression was observed RED before implementation and now passes. Focused
+P8 tests pass `38/38`; root typecheck, lint, format, downstream overlay check,
+and generated AionUi `tsc --noEmit --pretty false` pass after the prescribed
+dependency installation. This is local diagnostic/fail-closed evidence only;
+the patch is not yet P8.2 evidence until a new exact-head CI run verifies the
+packaged journeys on all target platforms.
+
 ## 2026-08-27 P8.2 startup-recovery diagnostic boundary (local)
 
 The latest exact-head CI run `33023345640` reached the macOS packaged

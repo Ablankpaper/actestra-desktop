@@ -123,6 +123,26 @@ function p8Verified(id: P8ProductJourneyId): P8ProductJourneyObservation {
   return Object.freeze({ id, status: 'verified' as const, residualProcessCount: 0 as const });
 }
 
+function failP8ProductJourneySmoke(
+  environment: P8ProductJourneySmokeEnvironment,
+): void {
+  const failure = Object.freeze({ code: 'journey-failed' as const, stage: 'startup-recovery' as const });
+  const p8ProductJourneyFailureFile = path.join(
+    environment.userData,
+    P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME,
+  );
+  try {
+    writeP8ProductJourneyFailure(p8ProductJourneyFailureFile, failure);
+  } catch {
+    // The fixed console projection below remains the fallback diagnostic.
+  }
+  console.error(
+    'ACTESTRA_P8_PRODUCT_JOURNEYS_FAILED ' +
+      JSON.stringify(failure),
+  );
+  app.quit();
+}
+
 async function ensureP8DestinationWorkspace(
   environment: P8ProductJourneySmokeEnvironment,
 ): Promise<WorkspaceId> {
@@ -371,7 +391,12 @@ async function startP8ProductJourneySmoke(): Promise<void> {
     !app.isPackaged ||
     process.env.ACTESTRA_P8_FRESH_PROFILE_SMOKE === '1' ||
     currentWindow === null ||
-    currentWindow.isDestroyed() ||
+    currentWindow.isDestroyed()
+  ) {
+    return;
+  }
+  p8ProductJourneySmokeStarted = true;
+  const p8ProductJourneyAuthorityMissing =
     persistence === null ||
     generalWorkJourneyService === null ||
     codingJourneyService === null ||
@@ -379,11 +404,11 @@ async function startP8ProductJourneySmoke(): Promise<void> {
     isolatedCodingMainService === null ||
     teamComposition === null ||
     generalWorkRecoveryPromise === null ||
-    !scheduleRecovered
-  ) {
+    !scheduleRecovered;
+  if (p8ProductJourneyAuthorityMissing) {
+    failP8ProductJourneySmoke(environment);
     return;
   }
-  p8ProductJourneySmokeStarted = true;
   try {
     await generalWorkRecoveryPromise;
     await teamComposition.waitForWorkerRecovery();
