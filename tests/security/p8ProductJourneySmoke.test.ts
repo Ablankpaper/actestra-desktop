@@ -12,10 +12,14 @@ import {
   parseP8ProductJourneyFailure,
   parseP8ProductJourneyRestartJournal,
   parseP8ProductJourneySmokeEnvironment,
+  resolveP8ProductJourneyAuthorityFailureStage,
+  withP8ProductJourneyFailureStageScope,
   writeP8ProductJourneyFailure,
   writeP8ProductJourneyRestartJournal,
   writeP8ProductJourneyResult,
   type P8ProductJourneyRunContext,
+  type P8ProductJourneyFailureStage,
+  type P8ProductJourneyRuntimeDiagnosticStage,
 } from "../../apps/desktop/src/main/security/p8ProductJourneySmoke";
 import {
   runP8CancellationNoOrphanJourney,
@@ -40,6 +44,16 @@ const completeEnvironment = {
   ACTESTRA_P8_PRODUCT_JOURNEYS_RESULT: `${root}/user-data/p8-product-journeys-result.json`,
   ACTESTRA_P8_PRODUCT_JOURNEYS_TIMEOUT_MS: "30000",
 };
+
+const runtimeDiagnosticStages: readonly P8ProductJourneyRuntimeDiagnosticStage[] = [
+  "model-binding",
+  "user-data",
+  "runner-package",
+  "runner-admission",
+  "git-executable",
+  "private-root",
+  "runtime-startup",
+];
 
 function context(overrides: Partial<P8ProductJourneyRunContext> = {}): P8ProductJourneyRunContext {
   return {
@@ -181,6 +195,56 @@ describe("P8 packaged product-journey coordinator", () => {
     }
   });
 
+  it.each(runtimeDiagnosticStages)(
+    "round-trips the precise runtime failure stage %s through the private failure file",
+    (stage) => {
+      const directory = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-p8-runtime-failure-"));
+      const failurePath = path.join(directory, P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME);
+      const failure = { code: "journey-failed" as const, stage };
+      try {
+        expect(parseP8ProductJourneyFailure(failure)).toEqual(failure);
+        writeP8ProductJourneyFailure(failurePath, failure);
+        expect(
+          parseP8ProductJourneyFailure(JSON.parse(fs.readFileSync(failurePath, "utf8"))),
+        ).toEqual(failure);
+      } finally {
+        fs.rmSync(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("restores the caller failure stage after a successful scoped operation", async () => {
+    let stage: P8ProductJourneyFailureStage = "workspace-apply-approval";
+    await withP8ProductJourneyFailureStageScope(
+      stage,
+      (nextStage) => {
+        stage = nextStage;
+      },
+      async () => {
+        stage = "destination-workspace-grant-check";
+        return "workspace-id";
+      },
+    );
+    expect(stage).toBe("workspace-apply-approval");
+  });
+
+  it("keeps the precise inner failure stage when a scoped operation throws", async () => {
+    let stage: P8ProductJourneyFailureStage = "general-goose-team";
+    await expect(
+      withP8ProductJourneyFailureStageScope(
+        stage,
+        (nextStage) => {
+          stage = nextStage;
+        },
+        async () => {
+          stage = "destination-workspace-grant-write";
+          throw new Error("destination workspace write failed");
+        },
+      ),
+    ).rejects.toThrow("destination workspace write failed");
+    expect(stage).toBe("destination-workspace-grant-write");
+  });
+
   it("refuses a pre-existing failure symlink without changing its target", () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "actestra-p8-failure-link-"));
     const failurePath = path.join(directory, P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME);
@@ -224,13 +288,15 @@ describe("P8 packaged product-journey coordinator", () => {
     }
   });
 
-  it("prepares an active General checkpoint and verifies one durable recovery without replay", async () => {
+  it("prepares an active General checkpoint from the registered ready graph and verifies one durable recovery without replay", async () => {
     const directory = fs.realpathSync(
       fs.mkdtempSync(path.join(os.tmpdir(), "actestra-p8-recovery-")),
     );
     const journalPath = path.join(directory, "p8-product-journeys-restart.json");
+    const workspaceId = "workspace-p8-restart";
     const taskId = "task-p8-restart";
     const sessionId = "session-p8-restart";
+    const workerId = "worker-p8-restart";
     let recovered = false;
     const service = {
       submitFromTrustedContext: vi.fn(async () => ({
@@ -250,22 +316,40 @@ describe("P8 packaged product-journey coordinator", () => {
     };
     const persistence = {
       loadDomainGraph: vi.fn(async () => ({
-        tasks: [{ id: taskId, state: recovered ? "failed" : "running" }],
+        tasks: [
+          {
+            id: taskId,
+            workspaceId,
+            state: recovered ? "failed" : "ready",
+            activeSessionId: recovered ? undefined : sessionId,
+          },
+        ],
         sessions: [
           {
             id: sessionId,
+            workspaceId,
             taskId,
-            state: recovered ? "failed" : "running",
-            workerId: "worker-p8-restart",
+            state: recovered ? "failed" : "created",
+            workerId,
           },
         ],
-        workers: [{ id: "worker-p8-restart", state: recovered ? "stopped" : "running" }],
+        workers: [
+          {
+            id: workerId,
+            workspaceId,
+            adapterKind: "actestra.general-worker",
+            state: recovered ? "stopped" : "created",
+          },
+        ],
         artifacts: [],
       })),
       getGeneralWorkCheckpoint: vi.fn(async () => ({
         phase: recovered ? "finalized" : "active",
         attempt: {
+          workspaceId,
+          taskId,
           sessionId,
+          workerId,
           state: recovered ? "failed" : "running",
           taskState: recovered ? "failed" : "running",
           disposed: recovered,
@@ -311,8 +395,10 @@ describe("P8 packaged product-journey coordinator", () => {
               checkpoint: {
                 phase: "finalized",
                 attempt: {
+                  workspaceId,
                   taskId,
                   sessionId,
+                  workerId,
                   streamId: "stream-p8-restart",
                   state: "failed",
                   taskState: "failed",
@@ -330,6 +416,321 @@ describe("P8 packaged product-journey coordinator", () => {
       expect(
         parseP8ProductJourneyRestartJournal(JSON.parse(fs.readFileSync(journalPath, "utf8"))),
       ).toMatchObject({ phase: "recovered", restartCount: 1 });
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves the earliest precise runtime failure instead of the coarse authority stage", () => {
+    expect(
+      resolveP8ProductJourneyAuthorityFailureStage(
+        { code: "journey-failed", stage: "runner-package" },
+        "coding-journey",
+      ),
+    ).toBe("runner-package");
+    expect(resolveP8ProductJourneyAuthorityFailureStage(null, "coding-journey")).toBe(
+      "coding-journey",
+    );
+    expect(
+      resolveP8ProductJourneyAuthorityFailureStage(
+        { code: "journey-timeout", stage: "runner-package" },
+        "coding-journey",
+      ),
+    ).toBe("coding-journey");
+    expect(
+      resolveP8ProductJourneyAuthorityFailureStage(
+        { code: "journey-failed", stage: "coding-submit" },
+        "persistence",
+      ),
+    ).toBe("persistence");
+  });
+
+  it("rejects a legacy running graph that is not the prepared durable registration", async () => {
+    const directory = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), "actestra-p8-recovery-legacy-")),
+    );
+    const journalPath = path.join(directory, "p8-product-journeys-restart.json");
+    const taskId = "task-p8-restart-legacy";
+    const sessionId = "session-p8-restart-legacy";
+    const stages: string[] = [];
+    const service = {
+      submitFromTrustedContext: vi.fn(async () => ({
+        taskId,
+        status: "running",
+        canCancel: true,
+      })),
+      list: vi.fn(async () => []),
+    };
+    const persistence = {
+      loadDomainGraph: vi.fn(async () => ({
+        tasks: [{ id: taskId, state: "running" }],
+        sessions: [
+          {
+            id: sessionId,
+            taskId,
+            state: "running",
+            workerId: "worker-p8-restart-legacy",
+          },
+        ],
+        workers: [{ id: "worker-p8-restart-legacy", state: "running" }],
+        artifacts: [],
+      })),
+      getGeneralWorkCheckpoint: vi.fn(async () => ({
+        phase: "active",
+        attempt: {
+          sessionId,
+          state: "running",
+          taskState: "running",
+          disposed: false,
+        },
+        events: [],
+      })),
+    };
+    try {
+      await expect(
+        runP8CrashRestartRecoveryPrepareJourney({
+          service: service as never,
+          persistence: persistence as never,
+          workspaceRoot: directory,
+          restartJournalPath: journalPath,
+          onFailure: (stage) => stages.push(stage),
+        }),
+      ).rejects.toThrow("P8.2 crash/restart durable attempt is not active");
+      expect(stages).toEqual(["crash-restart-prepare-checkpoint"]);
+      expect(fs.existsSync(journalPath)).toBe(false);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("selects the task's active session when a historical session is also present", async () => {
+    const directory = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), "actestra-p8-recovery-active-session-")),
+    );
+    const journalPath = path.join(directory, "p8-product-journeys-restart.json");
+    const workspaceId = "workspace-p8-restart-active-session";
+    const taskId = "task-p8-restart-active-session";
+    const historicalSessionId = "session-p8-restart-history";
+    const activeSessionId = "session-p8-restart-active";
+    const historicalWorkerId = "worker-p8-restart-history";
+    const activeWorkerId = "worker-p8-restart-active";
+    const stages: string[] = [];
+    const service = {
+      submitFromTrustedContext: vi.fn(async () => ({
+        taskId,
+        status: "running",
+        canCancel: true,
+      })),
+      list: vi.fn(async () => []),
+    };
+    const persistence = {
+      loadDomainGraph: vi.fn(async () => ({
+        tasks: [{ id: taskId, workspaceId, state: "ready", activeSessionId }],
+        sessions: [
+          {
+            id: historicalSessionId,
+            workspaceId,
+            taskId,
+            state: "failed",
+            workerId: historicalWorkerId,
+          },
+          {
+            id: activeSessionId,
+            workspaceId,
+            taskId,
+            state: "created",
+            workerId: activeWorkerId,
+          },
+        ],
+        workers: [
+          {
+            id: historicalWorkerId,
+            workspaceId,
+            adapterKind: "actestra.general-worker",
+            state: "stopped",
+          },
+          {
+            id: activeWorkerId,
+            workspaceId,
+            adapterKind: "actestra.general-worker",
+            state: "created",
+          },
+        ],
+        artifacts: [],
+      })),
+      getGeneralWorkCheckpoint: vi.fn(async (session: string) => {
+        if (session !== activeSessionId) {
+          throw new Error("historical session must not be inspected");
+        }
+        return {
+          phase: "active",
+          attempt: {
+            workspaceId,
+            taskId,
+            sessionId: activeSessionId,
+            workerId: activeWorkerId,
+            state: "running",
+            taskState: "running",
+            disposed: false,
+          },
+          events: [],
+        };
+      }),
+    };
+    try {
+      await expect(
+        runP8CrashRestartRecoveryPrepareJourney({
+          service: service as never,
+          persistence: persistence as never,
+          workspaceRoot: directory,
+          restartJournalPath: journalPath,
+          onFailure: (stage) => stages.push(stage),
+        }),
+      ).resolves.toMatchObject({ taskId, sessionId: activeSessionId });
+      expect(stages).toEqual([]);
+      expect(persistence.getGeneralWorkCheckpoint).toHaveBeenCalledWith(activeSessionId);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects an incomplete active checkpoint after the prepared registration", async () => {
+    const directory = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), "actestra-p8-recovery-checkpoint-")),
+    );
+    const journalPath = path.join(directory, "p8-product-journeys-restart.json");
+    const workspaceId = "workspace-p8-restart-checkpoint";
+    const taskId = "task-p8-restart-checkpoint";
+    const sessionId = "session-p8-restart-checkpoint";
+    const workerId = "worker-p8-restart-checkpoint";
+    const stages: string[] = [];
+    const service = {
+      submitFromTrustedContext: vi.fn(async () => ({
+        taskId,
+        status: "running",
+        canCancel: true,
+      })),
+      list: vi.fn(async () => []),
+    };
+    const persistence = {
+      loadDomainGraph: vi.fn(async () => ({
+        tasks: [{ id: taskId, workspaceId, state: "ready", activeSessionId: sessionId }],
+        sessions: [
+          {
+            id: sessionId,
+            workspaceId,
+            taskId,
+            state: "created",
+            workerId,
+          },
+        ],
+        workers: [
+          {
+            id: workerId,
+            workspaceId,
+            adapterKind: "actestra.general-worker",
+            state: "created",
+          },
+        ],
+        artifacts: [],
+      })),
+      getGeneralWorkCheckpoint: vi.fn(async () => ({
+        phase: "finalized",
+        attempt: {
+          workspaceId,
+          taskId,
+          sessionId,
+          workerId,
+          state: "running",
+          taskState: "running",
+          disposed: false,
+        },
+        events: [],
+      })),
+    };
+    try {
+      await expect(
+        runP8CrashRestartRecoveryPrepareJourney({
+          service: service as never,
+          persistence: persistence as never,
+          workspaceRoot: directory,
+          restartJournalPath: journalPath,
+          onFailure: (stage) => stages.push(stage),
+        }),
+      ).rejects.toThrow("P8.2 crash/restart active checkpoint is incomplete");
+      expect(stages).toEqual(["crash-restart-prepare-checkpoint"]);
+      expect(fs.existsSync(journalPath)).toBe(false);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects an active checkpoint whose identities do not bind to the prepared graph", async () => {
+    const directory = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), "actestra-p8-recovery-identity-")),
+    );
+    const journalPath = path.join(directory, "p8-product-journeys-restart.json");
+    const workspaceId = "workspace-p8-restart-identity";
+    const taskId = "task-p8-restart-identity";
+    const sessionId = "session-p8-restart-identity";
+    const workerId = "worker-p8-restart-identity";
+    const stages: string[] = [];
+    const service = {
+      submitFromTrustedContext: vi.fn(async () => ({
+        taskId,
+        status: "running",
+        canCancel: true,
+      })),
+      list: vi.fn(async () => []),
+    };
+    const persistence = {
+      loadDomainGraph: vi.fn(async () => ({
+        tasks: [{ id: taskId, workspaceId, state: "ready", activeSessionId: sessionId }],
+        sessions: [
+          {
+            id: sessionId,
+            workspaceId,
+            taskId,
+            state: "created",
+            workerId,
+          },
+        ],
+        workers: [
+          {
+            id: workerId,
+            workspaceId,
+            adapterKind: "actestra.general-worker",
+            state: "created",
+          },
+        ],
+        artifacts: [],
+      })),
+      getGeneralWorkCheckpoint: vi.fn(async () => ({
+        phase: "active",
+        attempt: {
+          workspaceId,
+          taskId,
+          sessionId,
+          workerId: "worker-p8-restart-other",
+          state: "running",
+          taskState: "running",
+          disposed: false,
+        },
+        events: [],
+      })),
+    };
+    try {
+      await expect(
+        runP8CrashRestartRecoveryPrepareJourney({
+          service: service as never,
+          persistence: persistence as never,
+          workspaceRoot: directory,
+          restartJournalPath: journalPath,
+          onFailure: (stage) => stages.push(stage),
+        }),
+      ).rejects.toThrow("P8.2 crash/restart active checkpoint is incomplete");
+      expect(stages).toEqual(["crash-restart-prepare-checkpoint"]);
+      expect(fs.existsSync(journalPath)).toBe(false);
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
     }

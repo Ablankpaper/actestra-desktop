@@ -51,7 +51,15 @@ export type P8ProductJourneyInnerDiagnosticStage =
   | "crash-restart-recovery-load"
   | "crash-restart-recovery-verify"
   | "crash-restart-recovery-duplicate"
-  | "crash-restart-recovery-journal";
+  | "crash-restart-recovery-journal"
+  | "destination-workspace-authority"
+  | "destination-workspace-canonical"
+  | "destination-workspace-grant-read"
+  | "destination-workspace-graph-read"
+  | "destination-workspace-graph-assert"
+  | "destination-workspace-graph-write"
+  | "destination-workspace-grant-write"
+  | "destination-workspace-grant-check";
 export type P8ProductJourneyFailureStage =
   | "startup-recovery"
   | P8ProductJourneyId
@@ -144,6 +152,13 @@ const UNC_ABSOLUTE_PATH = /^\\\\[^\\]/u;
 const FAILURE_STAGES = new Set<P8ProductJourneyFailureStage>([
   "startup-recovery",
   ...P8_PRODUCT_JOURNEY_IDS,
+  "model-binding",
+  "user-data",
+  "runner-package",
+  "runner-admission",
+  "git-executable",
+  "private-root",
+  "runtime-startup",
   "persistence",
   "general-work",
   "coding-journey",
@@ -167,7 +182,76 @@ const FAILURE_STAGES = new Set<P8ProductJourneyFailureStage>([
   "crash-restart-recovery-verify",
   "crash-restart-recovery-duplicate",
   "crash-restart-recovery-journal",
+  "destination-workspace-authority",
+  "destination-workspace-canonical",
+  "destination-workspace-grant-read",
+  "destination-workspace-graph-read",
+  "destination-workspace-graph-assert",
+  "destination-workspace-graph-write",
+  "destination-workspace-grant-write",
+  "destination-workspace-grant-check",
 ]);
+const P8_PRODUCT_JOURNEY_RUNTIME_DIAGNOSTIC_STAGES: ReadonlySet<P8ProductJourneyFailureStage> =
+  new Set([
+    "model-binding",
+    "user-data",
+    "runner-package",
+    "runner-admission",
+    "git-executable",
+    "private-root",
+    "runtime-startup",
+    "persistence",
+    "general-work",
+    "coding-journey",
+    "coding-artifact",
+    "isolated-coding",
+    "team-composition",
+    "general-recovery",
+    "schedule-recovery",
+    "team-recovery",
+  ]);
+
+/**
+ * The trusted runtime startup records its exact fail-closed stage in the
+ * private failure projection before the packaged smoke observes authority.
+ * Preserve that earliest precise stage instead of masking it with the
+ * coarser authority-missing stage.
+ */
+export function resolveP8ProductJourneyAuthorityFailureStage(
+  recordedFailure: P8ProductJourneyFailure | null,
+  authorityStage: P8ProductJourneyFailureStage,
+): P8ProductJourneyFailureStage {
+  if (
+    recordedFailure !== null &&
+    recordedFailure.code === "journey-failed" &&
+    P8_PRODUCT_JOURNEY_RUNTIME_DIAGNOSTIC_STAGES.has(recordedFailure.stage)
+  ) {
+    return recordedFailure.stage;
+  }
+  return authorityStage;
+}
+
+/**
+ * Run one operation that temporarily refines the packaged smoke failure
+ * stage. A successful operation restores the caller's stage so a later
+ * boundary owns any failure; a thrown operation keeps the precise inner
+ * stage that was last recorded.
+ */
+export async function withP8ProductJourneyFailureStageScope<T>(
+  callerStage: P8ProductJourneyFailureStage,
+  setFailureStage: (stage: P8ProductJourneyFailureStage) => void,
+  operation: () => Promise<T>,
+): Promise<T> {
+  let succeeded = false;
+  try {
+    const result = await operation();
+    succeeded = true;
+    return result;
+  } finally {
+    if (succeeded) setFailureStage(callerStage);
+  }
+}
+
 const P8_PRODUCT_JOURNEY_FAILURE_MAX_BYTES = 4 * 1024;
 
 export class P8ProductJourneySmokeError extends Error {

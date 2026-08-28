@@ -631,18 +631,40 @@ export async function runP8CrashRestartRecoveryPrepareJourney(
     const graph = await input.persistence.loadDomainGraph();
     const task = graph.tasks.find((candidate) => candidate.id === submitted.taskId);
     const session =
-      task === undefined
+      task?.activeSessionId === undefined
         ? undefined
-        : graph.sessions.find((candidate) => candidate.taskId === task.id);
-    if (task?.state !== "running" || session?.state !== "running") {
+        : graph.sessions.find((candidate) => candidate.id === task.activeSessionId);
+    const worker =
+      session === undefined
+        ? undefined
+        : graph.workers.find((candidate) => candidate.id === session.workerId);
+    if (
+      task?.state !== "ready" ||
+      task.activeSessionId !== session?.id ||
+      session?.state !== "created" ||
+      session.taskId !== task.id ||
+      worker?.state !== "created" ||
+      worker.id !== session.workerId
+    ) {
       throw new Error("P8.2 crash/restart durable attempt is not active");
     }
     const checkpoint = await input.persistence.getGeneralWorkCheckpoint(session.id);
+    const attempt = checkpoint?.attempt;
     if (
       checkpoint?.phase !== "active" ||
-      checkpoint.attempt.state !== "running" ||
-      checkpoint.attempt.taskState !== "running" ||
-      checkpoint.attempt.disposed !== false
+      attempt === undefined ||
+      task?.workspaceId === undefined ||
+      session?.workspaceId === undefined ||
+      worker?.workspaceId === undefined ||
+      task.workspaceId !== session.workspaceId ||
+      session.workspaceId !== worker.workspaceId ||
+      attempt.workspaceId !== task.workspaceId ||
+      attempt.taskId !== task.id ||
+      attempt.sessionId !== session.id ||
+      attempt.workerId !== worker.id ||
+      attempt.state !== "running" ||
+      attempt.taskState !== "running" ||
+      attempt.disposed !== false
     ) {
       throw new Error("P8.2 crash/restart active checkpoint is incomplete");
     }

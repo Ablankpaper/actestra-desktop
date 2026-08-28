@@ -168,6 +168,11 @@ describe("P8.2 packaged product-journey controller", () => {
         'ACTESTRA_P8_PRODUCT_JOURNEYS_FAILED {"code":"journey-failed","stage":"crash-restart-prepare-checkpoint"}',
       ),
     ).toEqual({ code: "journey-failed", stage: "crash-restart-prepare-checkpoint" });
+    expect(
+      classifyP8ProductJourneyDiagnosticLine(
+        'ACTESTRA_P8_PRODUCT_JOURNEYS_FAILED {"code":"journey-failed","stage":"destination-workspace-canonical"}',
+      ),
+    ).toEqual({ code: "journey-failed", stage: "destination-workspace-canonical" });
   });
 
   it("parses only a bounded private failure file", async () => {

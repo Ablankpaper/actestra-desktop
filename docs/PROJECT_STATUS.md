@@ -2,6 +2,33 @@
 
 Last updated: 2026-08-27
 
+## 2026-08-27 P8.2 packaged journey diagnostic blockers repaired (local WIP)
+
+The uncommitted worktree `codex/p8-2-packaged-product-journeys` is based on
+`d5fe432a6bfbaa93aa1c4a40d45d74f208b64a7b`. Two diagnostic blockers in the
+packaged product-journey slice are repaired locally. The private failure
+projection now admits and round-trips all seven trusted coding-runtime startup
+stages (`model-binding`, `user-data`, `runner-package`, `runner-admission`,
+`git-executable`, `private-root`, and `runtime-startup`), so the runtime
+`onFailure` callback is no longer rejected and replaced by a coarse
+`coding-journey` stage. Crash/restart preparation now validates the authoritative
+ready/created graph, follows `task.activeSessionId` instead of guessing from
+Session order, and requires an active, running, undisposed checkpoint. The
+destination-workspace helper now scopes its inner stage: cached,
+existing-grant, and fresh-success paths restore the caller's stage, while an
+exception retains the precise destination-workspace operation that failed.
+
+Focused security, downstream, and controller tests pass (`63` tests), including
+the historical-Session regression and checkpoint-identity regressions. A fresh
+root `bun run check` passed with exit code `0`: 191
+Vitest files passed and 3 were skipped (`2,133` tests passed and 10 were
+skipped), the 28-case/168-variant P7 abuse gate passed, Electron SQLite and
+smoke-harness checks passed, the source and downstream boundary checks passed,
+and the materialized AionUi production package build completed. The changes
+remain uncommitted and no new exact-head Ubuntu, Windows, or macOS
+packaged-journey evidence has been collected. P8.2 overall, P8.3 candidate
+trust/signing, and P8.4 clean-machine and real-provider acceptance remain open.
+
 ## 2026-08-27 P8.2 packaged journey inner-stage diagnostics (local)
 
 Exact-head PR #77 run `33041286380`, bound to source head

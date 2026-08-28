@@ -35,11 +35,29 @@ replaceOnce(
             modelRuntime !== null
               ? 'model-writing-artifact'`,
   `          executionMode:
-            process.env.ACTESTRA_P8_PRODUCT_JOURNEYS_RESTART_PHASE === 'prepare' &&
-            modelRuntime !== null
+            holdForP8Restart
               ? 'hold'
               : modelRuntime !== null
                 ? 'model-writing-artifact'`,
+);
+
+replaceOnce(
+  bridgePath,
+  `      if (generalWorkSmokeConfig === null && modelRuntime === null) {
+        throw new Error('Actestra General Work model runtime is unavailable');
+      }`,
+  `      const holdForP8Restart = process.env.ACTESTRA_P8_PRODUCT_JOURNEYS_RESTART_PHASE === 'prepare';
+      if (generalWorkSmokeConfig === null && modelRuntime === null && !holdForP8Restart) {
+        throw new Error('Actestra General Work model runtime is unavailable');
+      }`,
+);
+
+replaceOnce(
+  bridgePath,
+  `          ...(modelRuntime !== null
+            ? { modelRuntime: modelRuntime! }
+            : {}),`,
+  `          ...(modelRuntime !== null && !holdForP8Restart ? { modelRuntime } : {}),`,
 );
 
 replaceOnce(
@@ -94,6 +112,8 @@ import {
   P8_PRODUCT_JOURNEY_RESTART_JOURNAL_FILE_NAME,
   parseP8ProductJourneyFailure,
   parseP8ProductJourneySmokeEnvironment,
+  resolveP8ProductJourneyAuthorityFailureStage,
+  withP8ProductJourneyFailureStageScope,
   writeP8ProductJourneyFailure,
   writeP8ProductJourneyResult,
   type P8ProductJourneyFailureStage,
@@ -170,12 +190,27 @@ function failP8ProductJourneySmoke(
 async function ensureP8DestinationWorkspace(
   environment: P8ProductJourneySmokeEnvironment,
 ): Promise<WorkspaceId> {
+  const callerFailureStage = p8ProductJourneyFailureStage;
+  return withP8ProductJourneyFailureStageScope(
+    callerFailureStage,
+    (stage) => {
+      p8ProductJourneyFailureStage = stage;
+    },
+    () => ensureP8DestinationWorkspaceInner(environment),
+  );
+}
+
+async function ensureP8DestinationWorkspaceInner(
+  environment: P8ProductJourneySmokeEnvironment,
+): Promise<WorkspaceId> {
   if (p8ProductJourneyDestinationWorkspaceId !== null) {
     return p8ProductJourneyDestinationWorkspaceId;
   }
+  p8ProductJourneyFailureStage = 'destination-workspace-authority';
   const activePersistence = persistence;
   const activePlatform = nativeToolPlatform;
   if (activePersistence === null || activePlatform === null) throw new Error('journey-failed');
+  p8ProductJourneyFailureStage = 'destination-workspace-canonical';
   const canonicalRoot = fs.realpathSync(environment.workspace);
   if (
     !path.isAbsolute(canonicalRoot) ||
@@ -184,6 +219,7 @@ async function ensureP8DestinationWorkspace(
   ) {
     throw new Error('journey-failed');
   }
+  p8ProductJourneyFailureStage = 'destination-workspace-grant-read';
   const stableWorkspaceId = workspaceId('workspace-p8-product-journeys-destination');
   const stableGrantId = workspaceGrantId('grant-p8-product-journeys-destination');
   const existingGrant = await activePersistence.getActiveWorkspaceGrant(stableWorkspaceId);
@@ -199,6 +235,7 @@ async function ensureP8DestinationWorkspace(
     return stableWorkspaceId;
   }
 
+  p8ProductJourneyFailureStage = 'destination-workspace-graph-read';
   const graph = await activePersistence.loadDomainGraph();
   const existingWorkspace = graph.workspaces.find((candidate) => candidate.id === stableWorkspaceId);
   if (existingWorkspace !== undefined && existingWorkspace.state !== 'active') {
@@ -219,8 +256,11 @@ async function ensureP8DestinationWorkspace(
       destinationWorkspace,
     ]),
   });
+  p8ProductJourneyFailureStage = 'destination-workspace-graph-assert';
   assertDomainGraph(nextGraph);
+  p8ProductJourneyFailureStage = 'destination-workspace-graph-write';
   await activePersistence.replaceDomainGraph(nextGraph);
+  p8ProductJourneyFailureStage = 'destination-workspace-grant-write';
   const stored = await activePersistence.persistWorkspaceGrant(
     Object.freeze({
       contractVersion: WORKLOAD_PERSISTENCE_CONTRACT_VERSION,
@@ -233,6 +273,7 @@ async function ensureP8DestinationWorkspace(
       updatedAt: now,
     }),
   );
+  p8ProductJourneyFailureStage = 'destination-workspace-grant-check';
   if (
     stored.grant.grantId !== stableGrantId ||
     stored.grant.workspaceId !== stableWorkspaceId ||
@@ -435,7 +476,24 @@ async function startP8ProductJourneySmoke(): Promise<void> {
   if (p8ProductJourneyAuthorityMissing) {
     const runtimeStage = p8ProductJourneyAuthorityFailureStage();
     reportP8ProductJourneyRuntimeFailure(runtimeStage);
-    failP8ProductJourneySmoke(environment, runtimeStage);
+    let authorityStage: P8ProductJourneyFailureStage = runtimeStage;
+    try {
+      const recordedFailure = parseP8ProductJourneyFailure(
+        JSON.parse(
+          fs.readFileSync(
+            path.join(environment.userData, P8_PRODUCT_JOURNEY_FAILURE_FILE_NAME),
+            'utf8',
+          ),
+        ),
+      );
+      authorityStage = resolveP8ProductJourneyAuthorityFailureStage(
+        recordedFailure,
+        runtimeStage,
+      );
+    } catch {
+      // No earlier precise failure projection; the authority stage remains.
+    }
+    failP8ProductJourneySmoke(environment, authorityStage);
     return;
   }
   try {

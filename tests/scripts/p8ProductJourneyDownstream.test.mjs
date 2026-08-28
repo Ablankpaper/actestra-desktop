@@ -123,6 +123,24 @@ describe("P8.2 packaged product-journey downstream composition", () => {
     expect(stage).toBeLessThanOrEqual(recoveryGuard);
   });
 
+  it("does not pass a Main model runtime into the hold-only restart Worker", () => {
+    const patch = read(
+      "downstream/aionui-v2.1.41/patches/0024-actestra-p8-product-journey-smoke.mjs",
+    );
+    expect(patch).toContain(
+      "const holdForP8Restart = process.env.ACTESTRA_P8_PRODUCT_JOURNEYS_RESTART_PHASE === 'prepare';",
+    );
+    expect(patch).not.toContain(
+      "ACTESTRA_P8_PRODUCT_JOURNEYS_RESTART_PHASE === 'prepare' && modelRuntime !== null",
+    );
+    expect(patch).toContain(
+      "generalWorkSmokeConfig === null && modelRuntime === null && !holdForP8Restart",
+    );
+    expect(patch).toContain(
+      "...(modelRuntime !== null && !holdForP8Restart ? { modelRuntime } : {})",
+    );
+  });
+
   it("writes a bounded private failure file before quitting", () => {
     const patch = read(
       "downstream/aionui-v2.1.41/patches/0024-actestra-p8-product-journey-smoke.mjs",
@@ -144,9 +162,70 @@ describe("P8.2 packaged product-journey downstream composition", () => {
     );
     expect(patch).toContain("p8ProductJourneyFailureFile");
     const authorityGuard = patch.indexOf("p8ProductJourneyAuthorityMissing");
-    const failureProjection = patch.indexOf("failP8ProductJourneySmoke(environment, runtimeStage)");
+    const failureProjection = patch.indexOf(
+      "failP8ProductJourneySmoke(environment, authorityStage)",
+    );
     expect(authorityGuard).toBeGreaterThanOrEqual(0);
     expect(failureProjection).toBeGreaterThan(authorityGuard);
+  });
+
+  it("projects fixed destination-workspace stages in first-failing-operation order", () => {
+    const patch = read(
+      "downstream/aionui-v2.1.41/patches/0024-actestra-p8-product-journey-smoke.mjs",
+    );
+    let previous = patch.indexOf("async function ensureP8DestinationWorkspace(");
+    expect(previous).toBeGreaterThanOrEqual(0);
+    for (const stage of [
+      "destination-workspace-authority",
+      "destination-workspace-canonical",
+      "destination-workspace-grant-read",
+      "destination-workspace-graph-read",
+      "destination-workspace-graph-assert",
+      "destination-workspace-graph-write",
+      "destination-workspace-grant-write",
+      "destination-workspace-grant-check",
+    ]) {
+      const index = patch.indexOf(`p8ProductJourneyFailureStage = '${stage}';`);
+      expect(index).toBeGreaterThan(previous);
+      previous = index;
+    }
+  });
+
+  it("restores the caller stage only after destination-workspace setup succeeds", () => {
+    const patch = read(
+      "downstream/aionui-v2.1.41/patches/0024-actestra-p8-product-journey-smoke.mjs",
+    );
+    const helper = patch.indexOf("async function ensureP8DestinationWorkspace(");
+    const scope = patch.indexOf("withP8ProductJourneyFailureStageScope(", helper);
+    const wrapperEnd = patch.indexOf(
+      "\n  );\n}\n\nasync function ensureP8DestinationWorkspaceInner",
+      helper,
+    );
+    const inner = patch.indexOf("async function ensureP8DestinationWorkspaceInner", helper);
+    const firstDestinationStage = patch.indexOf(
+      "p8ProductJourneyFailureStage = 'destination-workspace-authority';",
+      inner,
+    );
+    expect(scope).toBeGreaterThan(helper);
+    expect(wrapperEnd).toBeGreaterThan(scope);
+    expect(inner).toBeGreaterThan(wrapperEnd);
+    expect(firstDestinationStage).toBeGreaterThan(inner);
+    expect(patch).toContain("const callerFailureStage = p8ProductJourneyFailureStage;");
+    expect(patch).toContain("p8ProductJourneyFailureStage = stage;");
+  });
+
+  it("preserves the recorded runtime failure stage before the authority projection", () => {
+    const patch = read(
+      "downstream/aionui-v2.1.41/patches/0024-actestra-p8-product-journey-smoke.mjs",
+    );
+    const authorityGuard = patch.indexOf("if (p8ProductJourneyAuthorityMissing)");
+    expect(authorityGuard).toBeGreaterThanOrEqual(0);
+    const preserved = patch.indexOf(
+      "resolveP8ProductJourneyAuthorityFailureStage(",
+      authorityGuard,
+    );
+    expect(preserved).toBeGreaterThan(authorityGuard);
+    expect(patch).toContain("failP8ProductJourneySmoke(environment, authorityStage);");
   });
 
   it("projects only a closed coding-runtime startup boundary for packaged smoke", () => {

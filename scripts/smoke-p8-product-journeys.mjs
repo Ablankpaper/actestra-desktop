@@ -77,6 +77,14 @@ const P8_PRODUCT_JOURNEY_DIAGNOSTIC_STAGES = new Set([
   "crash-restart-recovery-verify",
   "crash-restart-recovery-duplicate",
   "crash-restart-recovery-journal",
+  "destination-workspace-authority",
+  "destination-workspace-canonical",
+  "destination-workspace-grant-read",
+  "destination-workspace-graph-read",
+  "destination-workspace-graph-assert",
+  "destination-workspace-graph-write",
+  "destination-workspace-grant-write",
+  "destination-workspace-grant-check",
 ]);
 const P8_PRODUCT_JOURNEY_RUNTIME_DIAGNOSTIC_STAGES = new Set([
   "model-binding",
