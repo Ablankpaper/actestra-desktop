@@ -2,10 +2,36 @@
 
 Last updated: 2026-08-28
 
+## 2026-08-28 P8.2 Ubuntu packaged journey `/opt` mode blocker identified and repaired locally
+
+Exact-head PR #77 run `33140961565` (source head
+`ea703e94c24082c4265cb64675e0fb553e25c659`; packaged merge SHA
+`062f0cf8e8fca53e2481c11e0cba9649a19421b1`) passed DEB inspection, the
+installed Goose package re-admission, authenticated Linux integration, and
+containment. The packaged journey then failed at the first runtime boundary as
+`journey-failed/runner-package`. The failure was caused by the hosted Ubuntu
+runner's world-writable `/opt` (`777`): the first temporary-install step
+normalized it to `755`, but its cleanup restored `777` before the later complete
+Electron-package install. That later install copied `/opt/Actestra` without
+re-normalizing `/opt`; the Main-owned Linux package admission therefore rejected
+the canonical package root with `mode-invalid` before any runner artifact was
+used. This is an installation-harness ordering defect, not a Goose artifact or
+attestation mismatch.
+
+The workflow now validates root ownership, saves the previously observed mode,
+normalizes `/opt` to `755` before the complete packaged journey, restores the
+original mode on both error and normal teardown, and has a regression assertion
+in `tests/scripts/p8NativeBuildWiring.test.mjs`. The regression was observed
+RED before the workflow change and passes GREEN locally. No exact-head CI run
+has yet verified the amended workflow. P8.2 remains open; the same run also
+has separate macOS `coding-publish-approval` and Windows `private-root`
+failures that are not covered by this Ubuntu repair and must be handled after
+the first failure is re-checked.
+
 ## 2026-08-28 P8.2 packaged journey closure blockers repaired (local WIP)
 
 The uncommitted worktree `codex/p8-2-packaged-product-journeys` is based on
-source head `ff93e5655bd4fb05058f2b5eb49bfaa8cea40fa1`. Two local blockers in
+committed source head `ea703e94c24082c4265cb64675e0fb553e25c659`. Two local blockers in
 the packaged product-journey slice are repaired behind regression tests. The
 P8 coordinator now preserves the first journey failure when cleanup fails as
 well. The Main-owned coding journey now keeps task-scoped idle failure

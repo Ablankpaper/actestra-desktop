@@ -905,6 +905,7 @@ jobs:
         shell: bash
         env:
           ACTESTRA_LINUX_DEB_PATH: ${{ steps.linux-package.outputs.path }}
+          ACTESTRA_ORIGINAL_OPT_MODE: ${{ steps.linux-package-install.outputs.opt_mode }}
         run: |
           set -euo pipefail
           cleanup_on_error() {
@@ -912,12 +913,25 @@ jobs:
             sudo apparmor_parser --remove /etc/apparmor.d/Actestra >/dev/null 2>&1 || true
             sudo rm -f -- /etc/apparmor.d/Actestra
             sudo rm -rf -- /opt/Actestra
+            case "$ACTESTRA_ORIGINAL_OPT_MODE" in
+              755 | 777) sudo chmod "$ACTESTRA_ORIGINAL_OPT_MODE" /opt || true ;;
+            esac
           }
           trap cleanup_on_error ERR
 
           command -v xvfb-run >/dev/null
           test -f "$ACTESTRA_LINUX_DEB_PATH"
           test ! -e /opt/Actestra
+          # The preceding containment teardown restores the hosted runner's
+          # original /opt mode; protect the fixed package parent again before
+          # launching the complete installed application.
+          test "$(stat -c '%u' /opt)" = "0"
+          case "$ACTESTRA_ORIGINAL_OPT_MODE" in
+            755 | 777) ;;
+            *) exit 1 ;;
+          esac
+          sudo chmod 0755 /opt
+          test "$(stat -c '%a:%u' /opt)" = "755:0"
           extract_root="$RUNNER_TEMP/actestra-p8-fresh-profile-deb"
           rm -rf -- "$extract_root"
           mkdir -p "$extract_root"
@@ -1030,6 +1044,8 @@ jobs:
       - name: Remove complete Ubuntu Electron package
         if: always()
         shell: bash
+        env:
+          ACTESTRA_ORIGINAL_OPT_MODE: ${{ steps.linux-package-install.outputs.opt_mode }}
         run: |
           set +e
           cleanup_status=0
@@ -1042,6 +1058,12 @@ jobs:
           rm -rf -- "$RUNNER_TEMP/actestra-p8-fresh-profile-deb" || cleanup_status=1
           test ! -e /etc/apparmor.d/Actestra || cleanup_status=1
           test ! -e /opt/Actestra || cleanup_status=1
+          case "$ACTESTRA_ORIGINAL_OPT_MODE" in
+            755 | 777)
+              sudo chmod "$ACTESTRA_ORIGINAL_OPT_MODE" /opt || cleanup_status=1
+              ;;
+            *) cleanup_status=1 ;;
+          esac
           exit "$cleanup_status"
 
   macos:

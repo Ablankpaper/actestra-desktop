@@ -321,4 +321,38 @@ describe("P8 native Goose build wiring", () => {
     expect(job).not.toContain("chmod -R");
     expect(job).not.toContain("chmod 0777 /opt");
   });
+
+  it("re-normalizes the Ubuntu opt root before the complete packaged journey and restores it", () => {
+    const workflow = read(".github/workflows/ci.yml");
+    const job = readWorkflowJob(workflow, "goose-containment-linux");
+    const installStart = job.indexOf("- name: Install complete Ubuntu Electron package for P8.2d");
+    const journeyStart = job.indexOf(
+      "- name: Run P8.2 packaged product-journey acceptance under Xvfb",
+    );
+    const cleanupStart = job.indexOf("- name: Remove complete Ubuntu Electron package");
+    const finalInstall = job.slice(installStart, journeyStart);
+    const finalCleanup = job.slice(cleanupStart);
+
+    expect(installStart).toBeGreaterThan(-1);
+    expect(journeyStart).toBeGreaterThan(installStart);
+    expect(cleanupStart).toBeGreaterThan(journeyStart);
+    expect(finalInstall).toContain(
+      "ACTESTRA_ORIGINAL_OPT_MODE: ${{ steps.linux-package-install.outputs.opt_mode }}",
+    );
+    expectOrderedFragments(finalInstall, [
+      'test "$(stat -c \'%u\' /opt)" = "0"',
+      "sudo chmod 0755 /opt",
+      'test "$(stat -c \'%a:%u\' /opt)" = "755:0"',
+      'sudo cp -a "$extract_root/opt/Actestra" /opt/Actestra',
+    ]);
+    expect(finalCleanup).toContain(
+      "ACTESTRA_ORIGINAL_OPT_MODE: ${{ steps.linux-package-install.outputs.opt_mode }}",
+    );
+    expectOrderedFragments(finalCleanup, [
+      "sudo rm -rf -- /opt/Actestra",
+      "test ! -e /opt/Actestra",
+      'sudo chmod "$ACTESTRA_ORIGINAL_OPT_MODE" /opt',
+      'exit "$cleanup_status"',
+    ]);
+  });
 });
