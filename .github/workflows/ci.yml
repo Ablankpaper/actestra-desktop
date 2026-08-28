@@ -348,6 +348,16 @@ jobs:
           retention-days: 3
           compression-level: 0
 
+      - name: Preserve bound Windows Goose runner artifact
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: p8-goose-bound-runner-windows-${{ github.sha }}
+          path: .actestra/goose-runner/x86_64-pc-windows-msvc
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
   goose-runtime-windows:
     name: P8.2 Windows x64 Goose authenticated runtime
     runs-on: windows-2025
@@ -468,7 +478,9 @@ jobs:
     name: P8.2d Windows x64 native Electron package
     runs-on: windows-2025
     timeout-minutes: 45
-    needs: goose-runner-windows
+    needs:
+      - goose-runner-windows
+      - goose-containment-windows
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
 
     steps:
@@ -488,20 +500,35 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Download admitted Windows Goose runner artifact
+      - name: Download bound Windows containment evidence
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: actestra-goose-runner-windows-${{ github.sha }}
-          path: .actestra/goose-runner/x86_64-pc-windows-msvc
+          name: p8-goose-containment-windows-${{ github.sha }}
+          path: out/p8-input/windows-containment
+
+      - name: Download bound Windows Goose runner artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: p8-goose-bound-runner-windows-${{ github.sha }}
+          path: out/p8-input/windows-bound-runner
 
       - name: Install materialized Actestra AionUi dependencies
         run: bun run downstream:aionui:install
 
       - name: Stage exact Goose runner into the final Windows package resources
-        run: >-
-          bun run downstream:aionui:stage:goose --
-          --target-triple x86_64-pc-windows-msvc
-          --materialized-root "${{ github.workspace }}/.actestra/aionui-v2.1.41"
+        shell: pwsh
+        run: |
+          $boundManifests = @(Get-ChildItem -LiteralPath (Join-Path $env:GITHUB_WORKSPACE "out/p8-input/windows-bound-runner") -Recurse -Filter "actestra-goose-runner.manifest.json" -File)
+          if ($boundManifests.Count -ne 1) {
+            throw "Expected exactly one bound Windows Goose runner manifest"
+          }
+          $boundArtifactDirectory = $boundManifests[0].Directory.FullName
+          $boundManifestDigest = (Get-FileHash -Algorithm SHA256 $boundManifests[0].FullName).Hash.ToLowerInvariant()
+          bun run downstream:aionui:stage:goose -- `
+            --target-triple x86_64-pc-windows-msvc `
+            --artifact-directory "$boundArtifactDirectory" `
+            --trusted-manifest-sha256 "$boundManifestDigest" `
+            --materialized-root "$env:GITHUB_WORKSPACE/.actestra/aionui-v2.1.41"
 
       - name: Build native Windows NSIS and unpacked application
         run: bun run --cwd .actestra/aionui-v2.1.41 dist:win -- --x64
@@ -514,6 +541,78 @@ jobs:
           --target-triple x86_64-pc-windows-msvc
           --package-resource .actestra/aionui-v2.1.41/out/win-unpacked/resources
           --re-admit
+
+      - name: Run P8.2 packaged product-journey acceptance
+        shell: pwsh
+        run: |
+          $outputRoot = Join-Path $env:GITHUB_WORKSPACE ".actestra/aionui-v2.1.41/out"
+          $runtimePath = Join-Path $outputRoot "win-unpacked/Actestra.exe"
+          $runnerRoot = Join-Path $outputRoot "win-unpacked/resources/actestra-goose-runner"
+          $manifestPath = Join-Path $runnerRoot "actestra-goose-runner.manifest.json"
+          $executablePath = Join-Path $runnerRoot "actestra-goose-runner.exe"
+          $containmentPath = Join-Path $env:GITHUB_WORKSPACE "out/p8-input/windows-containment/containment-evidence.json"
+          foreach ($requiredPath in @($runtimePath, $manifestPath, $executablePath, $containmentPath)) {
+            if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
+              throw "Required bounded P8.2 input is missing"
+            }
+          }
+          $installers = @(Get-ChildItem -LiteralPath $outputRoot -Filter "*.exe" -File)
+          if ($installers.Count -ne 1) {
+            throw "Expected exactly one NSIS package"
+          }
+          $manifestDigest = (Get-FileHash -Algorithm SHA256 $manifestPath).Hash.ToLowerInvariant()
+          $executableDigest = (Get-FileHash -Algorithm SHA256 $executablePath).Hash.ToLowerInvariant()
+          $containmentDigest = (Get-FileHash -Algorithm SHA256 $containmentPath).Hash.ToLowerInvariant()
+          $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+          $containment = Get-Content -LiteralPath $containmentPath -Raw | ConvertFrom-Json
+          if (
+            $manifest.provenance.actestraCommit -ne "${{ github.sha }}" -or
+            $manifest.runner.targetTriple -ne "x86_64-pc-windows-msvc" -or
+            $manifest.runner.executable.sha256 -ne $executableDigest -or
+            $containment.status -ne "verified" -or
+            $containment.targetTriple -ne "x86_64-pc-windows-msvc" -or
+            $containment.manifestSha256 -ne $manifestDigest -or
+            $containment.executableSha256 -ne $executableDigest
+          ) {
+            throw "Windows runner or containment binding is invalid"
+          }
+          bun run smoke:p8-product-journeys -- `
+            --target windows-11-x64 `
+            --runtime "$runtimePath" `
+            --package "nsis=$($installers[0].FullName)" `
+            --source-commit ${{ github.sha }} `
+            --ci-run-id "${{ github.run_id }}" `
+            --runner-manifest "$manifestDigest" `
+            --runner-executable "$executableDigest" `
+            --runner-containment "$containmentDigest" `
+            --evidence out/p8-evidence/p8-product-journeys-windows-11-x64.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Preserve bounded Windows P8.2 product-journey evidence
+        if: always() && hashFiles('out/p8-evidence/p8-product-journeys-windows-11-x64.json') != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: p8-product-journeys-windows-11-x64-${{ github.sha }}
+          path: out/p8-evidence/p8-product-journeys-windows-11-x64.json
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+      - name: Preserve bounded Windows P8.3 candidate input
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: p8-candidate-input-windows-11-x64-${{ github.sha }}
+          path: |
+            .actestra/aionui-v2.1.41/out/*.exe
+            .actestra/aionui-v2.1.41/out/win-unpacked/Actestra.exe
+            .actestra/aionui-v2.1.41/out/win-unpacked/resources/app.asar
+            .actestra/aionui-v2.1.41/out/win-unpacked/resources/actestra-goose-runner/**
+            out/p8-evidence/p8-product-journeys-windows-11-x64.json
+            out/p8-input/windows-containment/containment-evidence.json
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
 
       - name: Run P8.2d packaged fresh-profile acceptance
         shell: pwsh
@@ -781,10 +880,32 @@ jobs:
           esac
           exit "$cleanup_status"
 
+      - name: Re-stage bound Ubuntu Goose runner into final package resources
+        run: >-
+          bun run downstream:aionui:stage:goose --
+          --target-triple x86_64-unknown-linux-gnu
+          --materialized-root "${{ github.workspace }}/.actestra/aionui-v2.1.41"
+
+      - name: Re-stage bound Ubuntu Goose admission into final package resources
+        run: bun run downstream:aionui:stage:linux-goose
+
+      - name: Rebuild and inspect exact bound Ubuntu DEB package
+        shell: bash
+        env:
+          ACTESTRA_LINUX_DEB_PATH: ${{ steps.linux-package.outputs.path }}
+        run: |
+          set -euo pipefail
+          bun run --cwd .actestra/aionui-v2.1.41 dist:linux -- --x64
+          mapfile -t deb_candidates < <(find .actestra/aionui-v2.1.41/out -maxdepth 1 -type f -name '*.deb' -print)
+          test "${#deb_candidates[@]}" -eq 1
+          install -D -m 0644 "${deb_candidates[0]}" "$ACTESTRA_LINUX_DEB_PATH"
+          bun run downstream:aionui:inspect:deb -- "$ACTESTRA_LINUX_DEB_PATH"
+
       - name: Install complete Ubuntu Electron package for P8.2d
         shell: bash
         env:
           ACTESTRA_LINUX_DEB_PATH: ${{ steps.linux-package.outputs.path }}
+          ACTESTRA_ORIGINAL_OPT_MODE: ${{ steps.linux-package-install.outputs.opt_mode }}
         run: |
           set -euo pipefail
           cleanup_on_error() {
@@ -792,12 +913,25 @@ jobs:
             sudo apparmor_parser --remove /etc/apparmor.d/Actestra >/dev/null 2>&1 || true
             sudo rm -f -- /etc/apparmor.d/Actestra
             sudo rm -rf -- /opt/Actestra
+            case "$ACTESTRA_ORIGINAL_OPT_MODE" in
+              755 | 777) sudo chmod "$ACTESTRA_ORIGINAL_OPT_MODE" /opt || true ;;
+            esac
           }
           trap cleanup_on_error ERR
 
           command -v xvfb-run >/dev/null
           test -f "$ACTESTRA_LINUX_DEB_PATH"
           test ! -e /opt/Actestra
+          # The preceding containment teardown restores the hosted runner's
+          # original /opt mode; protect the fixed package parent again before
+          # launching the complete installed application.
+          test "$(stat -c '%u' /opt)" = "0"
+          case "$ACTESTRA_ORIGINAL_OPT_MODE" in
+            755 | 777) ;;
+            *) exit 1 ;;
+          esac
+          sudo chmod 0755 /opt
+          test "$(stat -c '%a:%u' /opt)" = "755:0"
           extract_root="$RUNNER_TEMP/actestra-p8-fresh-profile-deb"
           rm -rf -- "$extract_root"
           mkdir -p "$extract_root"
@@ -805,13 +939,86 @@ jobs:
           test -x "$extract_root/opt/Actestra/Actestra"
           test -f "$extract_root/opt/Actestra/resources/app.asar"
           test -f "$extract_root/opt/Actestra/resources/apparmor-profile"
-          sudo cp -a "$extract_root/opt/Actestra" /opt/Actestra
+          # dpkg-deb extracts as the runner user, so preserve package modes but
+          # deliberately assign the installed tree to root for Linux admission.
+          sudo cp -a --no-preserve=ownership "$extract_root/opt/Actestra" /opt/Actestra
+          test -z "$(sudo find /opt/Actestra -xdev ! -uid 0 -print -quit)"
           sudo install -o root -g root -m 0644 \
             "$extract_root/opt/Actestra/resources/apparmor-profile" \
             /etc/apparmor.d/Actestra
           sudo apparmor_parser --replace --write-cache --skip-read-cache /etc/apparmor.d/Actestra
           test -x /opt/Actestra/Actestra
           test -f /opt/Actestra/resources/app.asar
+
+      - name: Run P8.2 packaged product-journey acceptance under Xvfb
+        shell: bash
+        env:
+          ACTESTRA_LINUX_DEB_PATH: ${{ steps.linux-package.outputs.path }}
+        run: |
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          runner_root=/opt/Actestra/resources/actestra-goose-runner
+          manifest_path="$runner_root/actestra-goose-runner.manifest.json"
+          executable_path="$runner_root/actestra-goose-runner"
+          containment_path="$GITHUB_WORKSPACE/containment-evidence.json"
+          test -f "$manifest_path"
+          test -x "$executable_path"
+          test -f "$containment_path"
+          manifest_digest="$(sha256sum "$manifest_path" | cut -d ' ' -f 1)"
+          executable_digest="$(sha256sum "$executable_path" | cut -d ' ' -f 1)"
+          containment_digest="$(sha256sum "$containment_path" | cut -d ' ' -f 1)"
+          node - "$manifest_path" "$containment_path" "$executable_digest" "${{ github.sha }}" "$manifest_digest" <<'NODE'
+          const fs = require("node:fs");
+          const [manifestPath, containmentPath, executableDigest, sourceCommit, manifestDigest] = process.argv.slice(2);
+          const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+          const containment = JSON.parse(fs.readFileSync(containmentPath, "utf8"));
+          const valid =
+            manifest?.provenance?.actestraCommit === sourceCommit &&
+            manifest?.runner?.targetTriple === "x86_64-unknown-linux-gnu" &&
+            manifest?.runner?.executable?.sha256 === executableDigest &&
+            containment?.status === "verified" &&
+            containment?.targetTriple === "x86_64-unknown-linux-gnu" &&
+            containment?.manifestSha256 === manifestDigest &&
+            containment?.executableSha256 === executableDigest;
+          if (!valid) process.exit(1);
+          NODE
+          xvfb-run -a bun run smoke:p8-product-journeys -- \
+            --target ubuntu-24.04-x64 \
+            --runtime /opt/Actestra/Actestra \
+            --package "deb=$ACTESTRA_LINUX_DEB_PATH" \
+            --source-commit ${{ github.sha }} \
+            --ci-run-id "${{ github.run_id }}" \
+            --runner-manifest "$manifest_digest" \
+            --runner-executable "$executable_digest" \
+            --runner-containment "$containment_digest" \
+            --evidence out/p8-evidence/p8-product-journeys-ubuntu-24.04-x64.json
+
+      - name: Preserve bounded Ubuntu P8.2 product-journey evidence
+        if: always() && hashFiles('out/p8-evidence/p8-product-journeys-ubuntu-24.04-x64.json') != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: p8-product-journeys-ubuntu-24.04-x64-${{ github.sha }}
+          path: out/p8-evidence/p8-product-journeys-ubuntu-24.04-x64.json
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+      - name: Preserve bounded Ubuntu P8.3 candidate input
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: p8-candidate-input-ubuntu-24.04-x64-${{ github.sha }}
+          path: |
+            ${{ steps.linux-package.outputs.path }}
+            /opt/Actestra/Actestra
+            /opt/Actestra/resources/app.asar
+            /opt/Actestra/resources/actestra-goose-runner/**
+            ${{ github.workspace }}/out/p8-evidence/p8-product-journeys-ubuntu-24.04-x64.json
+            ${{ github.workspace }}/containment-evidence.json
+            ${{ github.workspace }}/THIRD_PARTY_NOTICES.md
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
 
       - name: Run P8.2d packaged fresh-profile acceptance under Xvfb
         shell: bash
@@ -840,6 +1047,8 @@ jobs:
       - name: Remove complete Ubuntu Electron package
         if: always()
         shell: bash
+        env:
+          ACTESTRA_ORIGINAL_OPT_MODE: ${{ steps.linux-package-install.outputs.opt_mode }}
         run: |
           set +e
           cleanup_status=0
@@ -852,6 +1061,12 @@ jobs:
           rm -rf -- "$RUNNER_TEMP/actestra-p8-fresh-profile-deb" || cleanup_status=1
           test ! -e /etc/apparmor.d/Actestra || cleanup_status=1
           test ! -e /opt/Actestra || cleanup_status=1
+          case "$ACTESTRA_ORIGINAL_OPT_MODE" in
+            755 | 777)
+              sudo chmod "$ACTESTRA_ORIGINAL_OPT_MODE" /opt || cleanup_status=1
+              ;;
+            *) cleanup_status=1 ;;
+          esac
           exit "$cleanup_status"
 
   macos:
@@ -985,6 +1200,142 @@ jobs:
           --package-resource .actestra/aionui-v2.1.41/out/mac-arm64/Actestra.app/Contents/Resources
           --re-admit
 
+      - name: Compute external package trust roots
+        id: p7-trust-roots
+        shell: bash
+        run: |
+          echo "manifest_sha256=$(shasum -a 256 .actestra/aionui-v2.1.41/out/mac-arm64/Actestra.app/Contents/Resources/actestra-goose-runner/actestra-goose-runner.manifest.json | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+          echo "output_sha256=$(bun scripts/p7-package-output-digest.mjs)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify P7 packaged package trust
+        run: bun run verify:p7-package
+        env:
+          ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIRECTORY: .actestra/aionui-v2.1.41/out/mac-arm64/Actestra.app/Contents/Resources/actestra-goose-runner
+          ACTESTRA_GOOSE_RUNNER_TARGET_TRIPLE: aarch64-apple-darwin
+          ACTESTRA_GOOSE_RUNNER_MANIFEST_SHA256: ${{ steps.p7-trust-roots.outputs.manifest_sha256 }}
+          ACTESTRA_AIONUI_PACKAGED_OUTPUT_SHA256: ${{ steps.p7-trust-roots.outputs.output_sha256 }}
+
+      - name: Smoke materialized AionUi General Work from clean profiles
+        run: bun run smoke:aionui-general-work
+
+      - name: Smoke packaged P7 security boundaries from clean profiles
+        run: bun run smoke:p7-security
+        env:
+          ACTESTRA_P7_SECURITY_SMOKE_RUNNER_ARTIFACT_DIRECTORY: ${{ github.workspace }}/.actestra/aionui-v2.1.41/out/mac-arm64/Actestra.app/Contents/Resources/actestra-goose-runner
+          ACTESTRA_P7_SECURITY_SMOKE_RUNNER_MANIFEST_SHA256: ${{ steps.p7-trust-roots.outputs.manifest_sha256 }}
+
+      - name: Smoke packaged P7.2 Worker resource boundaries from a clean profile
+        run: bun run smoke:p7-2-resource-reliability
+
+      - name: Smoke packaged P7.4 diagnostic export and audit retention from a clean profile
+        run: bun run smoke:p7-4-diagnostic-audit
+
+      - name: Record bounded macOS P7 platform evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          runner_root=.actestra/aionui-v2.1.41/out/mac-arm64/Actestra.app/Contents/Resources/actestra-goose-runner
+          manifest_path="$runner_root/actestra-goose-runner.manifest.json"
+          executable_path="$runner_root/actestra-goose-runner"
+          test -f "$manifest_path"
+          test -x "$executable_path"
+          manifest_digest="$(shasum -a 256 "$manifest_path" | cut -d ' ' -f 1)"
+          executable_digest="$(shasum -a 256 "$executable_path" | cut -d ' ' -f 1)"
+          mkdir -p out/p8-evidence
+          P8_TARGET=macos-15-arm64 \
+          P8_SOURCE_COMMIT=${{ github.sha }} \
+          P8_MANIFEST_SHA256="$manifest_digest" \
+          P8_EXECUTABLE_SHA256="$executable_digest" \
+          node -e '
+            const fs = require("node:fs");
+            const value = {
+              schemaVersion: 1,
+              status: "verified",
+              targetId: process.env.P8_TARGET,
+              sourceCommit: process.env.P8_SOURCE_COMMIT,
+              runnerManifestSha256: process.env.P8_MANIFEST_SHA256,
+              runnerExecutableSha256: process.env.P8_EXECUTABLE_SHA256,
+              checks: ["package-trust", "security", "resource-reliability", "diagnostic-audit"],
+              redacted: true,
+            };
+            const output = "out/p8-evidence/p8-macos-platform-evidence.json";
+            fs.writeFileSync(output, `${JSON.stringify(value)}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
+          '
+
+      - name: Run P8.2 packaged product-journey acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          dmg_candidates=(.actestra/aionui-v2.1.41/out/*.dmg)
+          zip_candidates=(.actestra/aionui-v2.1.41/out/*.zip)
+          test "${#dmg_candidates[@]}" -eq 1
+          test "${#zip_candidates[@]}" -eq 1
+          dmg_path="${dmg_candidates[0]}"
+          zip_path="${zip_candidates[0]}"
+          runner_root=.actestra/aionui-v2.1.41/out/mac-arm64/Actestra.app/Contents/Resources/actestra-goose-runner
+          manifest_path="$runner_root/actestra-goose-runner.manifest.json"
+          executable_path="$runner_root/actestra-goose-runner"
+          containment_path=out/p8-evidence/p8-macos-platform-evidence.json
+          manifest_digest="$(shasum -a 256 "$manifest_path" | cut -d ' ' -f 1)"
+          executable_digest="$(shasum -a 256 "$executable_path" | cut -d ' ' -f 1)"
+          containment_digest="$(shasum -a 256 "$containment_path" | cut -d ' ' -f 1)"
+          node - "$manifest_path" "$containment_path" "$executable_digest" "${{ github.sha }}" <<'NODE'
+          const fs = require("node:fs");
+          const [manifestPath, evidencePath, executableDigest, sourceCommit] = process.argv.slice(2);
+          const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+          const evidence = JSON.parse(fs.readFileSync(evidencePath, "utf8"));
+          const valid =
+            manifest?.provenance?.actestraCommit === sourceCommit &&
+            manifest?.runner?.targetTriple === "aarch64-apple-darwin" &&
+            manifest?.runner?.executable?.sha256 === executableDigest &&
+            evidence?.status === "verified" &&
+            evidence?.targetId === "macos-15-arm64" &&
+            evidence?.sourceCommit === sourceCommit &&
+            evidence?.runnerExecutableSha256 === executableDigest &&
+            evidence?.redacted === true;
+          if (!valid) process.exit(1);
+          NODE
+          bun run smoke:p8-product-journeys -- \
+            --target macos-15-arm64 \
+            --runtime .actestra/aionui-v2.1.41/out/mac-arm64/Actestra.app \
+            --package "dmg=$dmg_path" \
+            --package "zip=$zip_path" \
+            --source-commit ${{ github.sha }} \
+            --ci-run-id "${{ github.run_id }}" \
+            --runner-manifest "$manifest_digest" \
+            --runner-executable "$executable_digest" \
+            --runner-containment "$containment_digest" \
+            --evidence out/p8-evidence/p8-product-journeys-macos-15-arm64.json
+
+      - name: Preserve bounded macOS P8.2 product-journey evidence
+        if: always() && hashFiles('out/p8-evidence/p8-product-journeys-macos-15-arm64.json') != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: p8-product-journeys-macos-15-arm64-${{ github.sha }}
+          path: out/p8-evidence/p8-product-journeys-macos-15-arm64.json
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+      - name: Preserve bounded macOS P8.3 candidate input
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: p8-candidate-input-macos-15-arm64-${{ github.sha }}
+          path: |
+            .actestra/aionui-v2.1.41/out/*.dmg
+            .actestra/aionui-v2.1.41/out/*.zip
+            .actestra/aionui-v2.1.41/out/mac-arm64/Actestra.app/Contents/MacOS/Actestra
+            .actestra/aionui-v2.1.41/out/mac-arm64/Actestra.app/Contents/Resources/app.asar
+            .actestra/aionui-v2.1.41/out/mac-arm64/Actestra.app/Contents/Resources/actestra-goose-runner/**
+            out/p8-evidence/p8-product-journeys-macos-15-arm64.json
+            out/p8-evidence/p8-macos-platform-evidence.json
+            THIRD_PARTY_NOTICES.md
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
       - name: Run P8.2d packaged fresh-profile acceptance
         shell: bash
         run: |
@@ -1014,32 +1365,180 @@ jobs:
           retention-days: 3
           compression-level: 0
 
-      - name: Compute external package trust roots
-        id: p7-trust-roots
+  p8-candidate:
+    name: P8.3 candidate integrity and update trust
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    needs:
+      - electron-package-windows
+      - goose-containment-linux
+      - macos
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.13.0
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.9
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Download exact macOS candidate input
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: p8-candidate-input-macos-15-arm64-${{ github.sha }}
+          path: candidate-input/macos-15-arm64
+
+      - name: Download exact Windows candidate input
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: p8-candidate-input-windows-11-x64-${{ github.sha }}
+          path: candidate-input/windows-11-x64
+
+      - name: Download exact Ubuntu candidate input
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: p8-candidate-input-ubuntu-24.04-x64-${{ github.sha }}
+          path: candidate-input/ubuntu-24.04-x64
+
+      - name: Build exact-source candidate descriptors
         shell: bash
         run: |
-          echo "manifest_sha256=$(shasum -a 256 .actestra/goose-runner/aarch64-apple-darwin/actestra-goose-runner.manifest.json | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
-          echo "output_sha256=$(bun scripts/p7-package-output-digest.mjs)" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          mkdir -p candidate-input/descriptors candidate-evidence
+          find_one() {
+            local root="$1"
+            shift
+            local result
+            result="$(find "$root" -type f "$@" -print | sort | head -n 1)"
+            test -n "$result"
+            printf '%s\n' "$result"
+          }
+          exact_file() {
+            local root="$1"
+            local basename="$2"
+            find_one "$root" -name "$basename"
+          }
+          signing_proof="candidate-evidence/signing-unavailable.json"
+          node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({status:"evidence-incomplete", reason:"external-signing-metadata-unavailable"})+"\n", {mode:0o600, flag:"wx"})' "$signing_proof"
+          node -e 'require("fs").writeFileSync("candidate-evidence/update.json", JSON.stringify({channel:"internal-beta", endpoint:"https://updates.actestra.example/internal-beta", metadataSha256:"'"$(printf '%064d' 0 | tr 0 a)'" , signingAuthority:"actestra-update-key-v1"})+"\n", {mode:0o600, flag:"wx"})'
+          node -e 'require("fs").writeFileSync("candidate-evidence/rollback.json", JSON.stringify({previousVersion:"0.0.9-alpha.0", stateSchema:23, strategy:"restore-previous-candidate-on-update-failure", failureAction:"retain-state-and-require-operator-confirmation", proofSha256:"'"$(printf '%064d' 0 | tr 0 b)'"})+"\n", {mode:0o600, flag:"wx"})'
 
-      - name: Verify P7 packaged package trust
-        run: bun run verify:p7-package
-        env:
-          ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIRECTORY: .actestra/goose-runner/aarch64-apple-darwin
-          ACTESTRA_GOOSE_RUNNER_TARGET_TRIPLE: aarch64-apple-darwin
-          ACTESTRA_GOOSE_RUNNER_MANIFEST_SHA256: ${{ steps.p7-trust-roots.outputs.manifest_sha256 }}
-          ACTESTRA_AIONUI_PACKAGED_OUTPUT_SHA256: ${{ steps.p7-trust-roots.outputs.output_sha256 }}
+          build_descriptor() {
+            local target="$1"
+            local root="candidate-input/$target"
+            local journeys
+            local runtime
+            local asar
+            local runner_manifest
+            local runner_executable
+            local containment
+            local sbom
+            local package
+            local extra_package_args=()
+            journeys="$(exact_file "$root" "p8-product-journeys-$target.json")"
+            if [[ "$target" == windows-* ]]; then
+              runtime="$(exact_file "$root" Actestra.exe)"
+            else
+              runtime="$(exact_file "$root" Actestra)"
+            fi
+            asar="$(exact_file "$root" app.asar)"
+            runner_manifest="$(exact_file "$root" actestra-goose-runner.manifest.json)"
+            runner_executable="$(find_one "$root" -name actestra-goose-runner -o -name actestra-goose-runner.exe)"
+            containment="$(find_one "$root" -name containment-evidence.json -o -name p8-macos-platform-evidence.json)"
+            sbom="$(exact_file "$root" actestra-goose-runner.cdx.json)"
+            if [[ "$target" == macos-* ]]; then
+              extra_package_args+=(--package "dmg=$(find_one "$root" -name '*.dmg')")
+              extra_package_args+=(--package "zip=$(find_one "$root" -name '*.zip')")
+            elif [[ "$target" == windows-* ]]; then
+              package="$(find_one "$root" -type f -name '*.exe' ! -path '*/win-unpacked/*')"
+              extra_package_args+=(--package "nsis=$package")
+            else
+              extra_package_args+=(--package "deb=$(find_one "$root" -name '*.deb')")
+            fi
+            bun run scripts/create-p8-candidate-input.mjs \
+              --target "$target" \
+              --journeys "$journeys" \
+              --runtime-executable "$runtime" \
+              --app-asar "$asar" \
+              --runner-manifest "$runner_manifest" \
+              --runner-executable "$runner_executable" \
+              --runner-containment "$containment" \
+              --sbom "$sbom" \
+              --notice "$GITHUB_WORKSPACE/THIRD_PARTY_NOTICES.md" \
+              --notice "$(exact_file "$root" GOOSE-APACHE-2.0.txt)" \
+              --signing-status unavailable \
+              --signing-identity unavailable \
+              --notarization unavailable \
+              --signing-verification "$signing_proof" \
+              --source-commit "${{ github.sha }}" \
+              --ci-run-id "${{ github.run_id }}" \
+              --output "candidate-input/descriptors/$target.json" \
+              "${extra_package_args[@]}"
+          }
+          build_descriptor macos-15-arm64
+          build_descriptor windows-11-x64
+          build_descriptor ubuntu-24.04-x64
 
-      - name: Smoke materialized AionUi General Work from clean profiles
-        run: bun run smoke:aionui-general-work
+      - name: Assemble candidate and enforce signing gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p 'JSON.parse(require("fs").readFileSync("package.json", "utf8")).version')"
+          set +e
+          bun run p8:candidate:create \
+            --source-commit "${{ github.sha }}" \
+            --ci-run-id "${{ github.run_id }}" \
+            --version "$version" \
+            --target-input candidate-input/descriptors/macos-15-arm64.json \
+            --target-input candidate-input/descriptors/windows-11-x64.json \
+            --target-input candidate-input/descriptors/ubuntu-24.04-x64.json \
+            --update candidate-evidence/update.json \
+            --rollback candidate-evidence/rollback.json \
+            --output candidate-evidence/candidate-manifest.json >candidate-evidence/create.log 2>&1
+          create_status=$?
+          set -e
+          test -f candidate-evidence/candidate-manifest.json
+          manifest_status="$(node -p 'JSON.parse(require("fs").readFileSync("candidate-evidence/candidate-manifest.json", "utf8")).status')"
+          if [[ "$manifest_status" == verified ]]; then
+            bun run p8:candidate:check candidate-evidence/candidate-manifest.json | tee candidate-evidence/check.log
+            exit "${create_status}"
+          fi
+          test "$manifest_status" == evidence-incomplete
+          set +e
+          bun run p8:candidate:check candidate-evidence/candidate-manifest.json >candidate-evidence/check.log 2>&1
+          check_status=$?
+          set -e
+          test "$check_status" -ne 0
+          grep -q 'candidate-incomplete' candidate-evidence/check.log
+          node - <<'NODE'
+          const fs = require('node:fs');
+          fs.writeFileSync('candidate-evidence/failure.json', `${JSON.stringify({
+            schemaVersion: 1,
+            status: 'evidence-incomplete',
+            code: 'signing-incomplete',
+            sourceCommit: process.env.GITHUB_SHA,
+            ciRunId: process.env.GITHUB_RUN_ID,
+            redacted: true,
+          })}\n`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+          NODE
+          exit 1
 
-      - name: Smoke packaged P7 security boundaries from clean profiles
-        run: bun run smoke:p7-security
-        env:
-          ACTESTRA_P7_SECURITY_SMOKE_RUNNER_ARTIFACT_DIRECTORY: ${{ github.workspace }}/.actestra/goose-runner/aarch64-apple-darwin
-          ACTESTRA_P7_SECURITY_SMOKE_RUNNER_MANIFEST_SHA256: ${{ steps.p7-trust-roots.outputs.manifest_sha256 }}
-
-      - name: Smoke packaged P7.2 Worker resource boundaries from a clean profile
-        run: bun run smoke:p7-2-resource-reliability
-
-      - name: Smoke packaged P7.4 diagnostic export and audit retention from a clean profile
-        run: bun run smoke:p7-4-diagnostic-audit
+      - name: Preserve bounded candidate evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: p8-candidate-evidence-${{ github.sha }}
+          path: candidate-evidence/**
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0

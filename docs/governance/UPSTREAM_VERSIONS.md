@@ -178,6 +178,13 @@ clarified before Actestra distributes AionCore-derived code or binaries.
   unavailable to CI. The copy is included in the runner source-tree digest,
   retains its BSD-2-Clause license, and is removable once a reviewed non-yanked
   registry release is available.
+- On 2026-08-28, crates.io marked the active `chacha20 0.10.1` resolution
+  yanked (`rand 0.10.2 -> chacha20`). The reviewed `chacha20 0.10.2` release
+  keeps the existing requirement and fixes the SSE2 backend's SSE4.1 intrinsic
+  use; its registry checksum is
+  `65c35e4b699c7e15ccbe7ee35c005e4fc0a278d22238a2857e6ce2dadeda1b06`. The
+  Actestra runner lock and admission contract now select exactly that version;
+  this is a dependency remediation, not a yanked-package audit waiver.
 - The first exact runner lock and embedded-metadata scans both report only
   `RUSTSEC-2023-0071` for `rsa 0.9.10`. ADR-0025 permits that record only as
   `metadata-only-not-compiled`: the active graph excludes RSA and SQLx MySQL,

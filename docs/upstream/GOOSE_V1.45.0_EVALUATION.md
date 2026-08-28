@@ -203,6 +203,16 @@ and retains only ADR-0025's exact RSA metadata record. The canonical Goose base
 and empty feature set are unchanged; the P8.2c three-file adapter patch is
 recorded separately above.
 
+On 2026-08-28, crates.io marked the active `chacha20 0.10.1` resolution yanked;
+the package enters through `rand 0.10.2` in the admitted Goose runtime. The
+reviewed `chacha20 0.10.2` release preserves the existing requirement and fixes
+the SSE2 backend's SSE4.1 intrinsic use. The Actestra runner lock now records
+the non-yanked `0.10.2` checksum
+`65c35e4b699c7e15ccbe7ee35c005e4fc0a278d22238a2857e6ce2dadeda1b06`, and
+artifact admission rejects any lock that does not contain exactly one reviewed
+`0.10.2` entry. Local cargo-audit/registry checks show no yanked warning after
+the update; a fresh native CI build/admission run remains required.
+
 ## Telemetry, credentials, and network
 
 Goose source includes PostHog support and an upstream capture URL. Telemetry is

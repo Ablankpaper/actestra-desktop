@@ -183,12 +183,17 @@ describe("P8 native Goose containment acceptance gate", () => {
     expect(workflow).toContain(
       "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
     );
-    expect(workflow.match(/actions\/download-artifact@/gu) ?? []).toHaveLength(1);
+    // The bound Windows containment and runner downloads plus the three exact
+    // candidate-input downloads.
+    expect(workflow.match(/actions\/download-artifact@/gu) ?? []).toHaveLength(5);
     expect(readWorkflowJob(workflow, "goose-runner-windows")).not.toContain(
       "actions/download-artifact@",
     );
     expect(readWorkflowJob(workflow, "electron-package-windows")).toContain(
-      "actestra-goose-runner-windows-${{ github.sha }}",
+      "p8-goose-bound-runner-windows-${{ github.sha }}",
+    );
+    expect(readWorkflowJob(workflow, "electron-package-windows")).toContain(
+      "p8-goose-containment-windows-${{ github.sha }}",
     );
     expect(workflow.match(/bun run goose:runner:containment:accept/gu) ?? []).toHaveLength(3);
     expect(workflow.match(/bun run goose:runner:integration:linux/gu) ?? []).toHaveLength(1);
@@ -220,7 +225,7 @@ describe("P8 native Goose containment acceptance gate", () => {
     expect(workflow).not.toContain("continue-on-error");
     expect(workflow).not.toContain("OPENAI_API_KEY");
     expect(workflow).not.toContain("ACTESTRA_API_KEY");
-    expect(workflow.match(/^\s+if: success\(\)$/gmu) ?? []).toHaveLength(4);
+    expect(workflow.match(/^\s+if: success\(\)$/gmu) ?? []).toHaveLength(5);
     expect(fs.existsSync(path.join(repositoryRoot, ".github/workflows/p8-containment.yml"))).toBe(
       false,
     );
@@ -228,11 +233,34 @@ describe("P8 native Goose containment acceptance gate", () => {
     const actionReferences = [...workflow.matchAll(/^\s+uses:\s+([^\s#]+)\s*(?:#.*)?$/gmu)].map(
       (match) => match[1],
     );
-    // P8.2d adds one Windows checkout/setup/upload/download package transfer
-    // plus the macOS and Ubuntu bounded-evidence uploads to the existing set.
-    expect(actionReferences).toHaveLength(34);
+    // P8.2d and the complete P8.2 product-journey gate add the native package
+    // jobs, exact Windows containment download, and three bounded uploads.
+    expect(actionReferences).toHaveLength(49);
     for (const reference of actionReferences) {
       expect(reference).toMatch(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+@[a-f0-9]{40}$/u);
+    }
+  });
+
+  it("consumes the verified containment summary without requiring private record fields", () => {
+    const workflow = read(".github/workflows/ci.yml");
+    const acceptance = read("scripts/run-goose-runner-containment.mjs");
+    const windowsPackageJob = readWorkflowJob(workflow, "electron-package-windows");
+    const linuxPackageJob = readWorkflowJob(workflow, "goose-containment-linux");
+
+    expect(acceptance).toContain("manifestSha256: digest(manifestBytes)");
+    for (const job of [windowsPackageJob, linuxPackageJob]) {
+      expect(job).toContain("manifestSha256");
+      expect(job).not.toMatch(/containment(?:\?|\$)?\.sourceCommit/u);
+      for (const capability of [
+        "filesystem",
+        "network",
+        "processTree",
+        "resources",
+        "parentDeath",
+        "cleanup",
+      ]) {
+        expect(job).not.toMatch(new RegExp(`containment(?:\\?|\\$)?\\.${capability}`, "u"));
+      }
     }
   });
 });

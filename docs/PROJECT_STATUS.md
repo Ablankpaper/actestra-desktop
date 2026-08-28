@@ -1,6 +1,488 @@
 # Project Status
 
-Last updated: 2026-08-26
+Last updated: 2026-08-28
+
+## 2026-08-28 P8.2 Ubuntu ownership and Windows private-root blockers repaired locally (WIP)
+
+The isolated worktree `codex/p8-2-packaged-product-journeys` is based on
+committed source head `3b7eca0e5a6673c9393c822d53c179b964740be`. Exact-head CI
+run `33143658867` (packaged merge SHA
+`352026d2479fc26fced9cc34fd780fe95a9916a3`) failed the Ubuntu packaged journey
+at `runner-package` and the Windows packaged journey at `private-root`. The
+macOS `coding-publish-approval/result-missing` failure is a separate later
+boundary and remains open.
+
+Root-cause investigation found two independent defects. The complete Ubuntu
+package step extracted the DEB as the unprivileged runner and then used
+`sudo cp -a`, which could retain that unprivileged ownership in `/opt/Actestra`;
+Linux Main admission correctly requires every fixed package path to be
+root-owned. The workflow now uses `sudo cp -a --no-preserve=ownership` and
+asserts that no installed path is non-root-owned. On Windows, the coding
+runtime applied Unix `chmod(0o700)` and a POSIX mode-bit equality check to the
+private-root parent; the runtime now always retains canonical, non-symlink,
+directory, and containment checks, while limiting the mode enforcement to
+non-Windows platforms, matching the existing managed-root contract.
+
+Both repairs were developed test-first. The Ubuntu wiring regression failed
+RED against the old copy command and passes GREEN (`11/11`); the Windows
+platform regression failed RED with a canonical `0755` directory and passes
+GREEN (`1/1`). The combined affected suites pass `41` tests with `1` skipped.
+Fresh local validation also passes `bun run format:check` (455 files),
+`bun run typecheck`, downstream materialization from 1,766 frozen files, and
+`bun run downstream:aionui:check` (392 declared files, 138 source copies).
+The full root Vitest suite then passed `192` files (`2,140` tests passed,
+`10` skipped); the isolated P7 packaged-trust suite also passes `10/10`.
+The complete local `bun run check` chain reached exit 0, including the P8.1
+contract, Electron SQLite probe, P7 abuse gate (`28` cases/`168` variants),
+smoke harness, product/foundation/downstream boundary checks, and a fresh
+materialized AionUI production build.
+The worktree now has four tracked files changed and one new regression test; no
+generated downstream tree was edited directly. No new packaged or CI evidence exists yet,
+so P8.2 remains open, as do P8.3 candidate trust/signing and P8.4 clean-machine
+and real-provider acceptance.
+
+Next gate: review the diff, commit and push this exact fix, then run one fresh
+exact-head cross-platform packaged journey and stop at its first unresolved
+stage. Reassess the independent macOS boundary only after Ubuntu and Windows
+are rechecked.
+
+## 2026-08-28 P8.2 Ubuntu packaged journey `/opt` mode blocker identified and repaired locally
+
+Exact-head PR #77 run `33140961565` (source head
+`ea703e94c24082c4265cb64675e0fb553e25c659`; packaged merge SHA
+`062f0cf8e8fca53e2481c11e0cba9649a19421b1`) passed DEB inspection, the
+installed Goose package re-admission, authenticated Linux integration, and
+containment. The packaged journey then failed at the first runtime boundary as
+`journey-failed/runner-package`. The failure was caused by the hosted Ubuntu
+runner's world-writable `/opt` (`777`): the first temporary-install step
+normalized it to `755`, but its cleanup restored `777` before the later complete
+Electron-package install. That later install copied `/opt/Actestra` without
+re-normalizing `/opt`; the Main-owned Linux package admission therefore rejected
+the canonical package root with `mode-invalid` before any runner artifact was
+used. This is an installation-harness ordering defect, not a Goose artifact or
+attestation mismatch.
+
+The workflow now validates root ownership, saves the previously observed mode,
+normalizes `/opt` to `755` before the complete packaged journey, restores the
+original mode on both error and normal teardown, and has a regression assertion
+in `tests/scripts/p8NativeBuildWiring.test.mjs`. The regression was observed
+RED before the workflow change and passes GREEN locally. No exact-head CI run
+has yet verified the amended workflow. P8.2 remains open; the same run also
+has separate macOS `coding-publish-approval` and Windows `private-root`
+failures that are not covered by this Ubuntu repair and must be handled after
+the first failure is re-checked.
+
+## 2026-08-28 P8.2 packaged journey closure blockers repaired (local WIP)
+
+The uncommitted worktree `codex/p8-2-packaged-product-journeys` is based on
+committed source head `ea703e94c24082c4265cb64675e0fb553e25c659`. Two local blockers in
+the packaged product-journey slice are repaired behind regression tests. The
+P8 coordinator now preserves the first journey failure when cleanup fails as
+well. The Main-owned coding journey now keeps task-scoped idle failure
+ownership, waits for unsettled completion, serializes session close calls,
+retains a failed close for shutdown retry, and removes an active session only
+after a successful close. These changes do not alter the renderer authority
+boundary or the frozen AionUi snapshot.
+
+Fresh local evidence: the three affected suites pass `84` tests with `2`
+skipped; the full root Vitest suite passes `191` files (`2,138` tests passed,
+`10` skipped); format, zero-warning lint, root typecheck, P8 platform contract,
+product-boundary, frozen-foundation, documentation-link, and P7 abuse gates all
+pass. Downstream materialization and its contract check pass, the two changed
+source copies are byte-identical in the materialized tree, and materialized
+TypeScript passes after the prescribed frozen-lockfile install. A downstream
+full-test attempt invoked `downstream:aionui:test`, whose first step
+re-materializes the tree, without running the separate install step afterward;
+it therefore stopped at the first unresolved declared dependency,
+`@testing-library/user-event`, followed by the same setup-order cascade for
+other packages. This is an environment/setup-order boundary, not a product
+assertion result, and was not retried. No new exact-head Ubuntu, Windows, or
+macOS packaged-journey evidence has been collected. P8.2 overall, P8.3
+candidate trust/signing, and P8.4 clean-machine and real-provider acceptance
+remain open.
+
+## 2026-08-28 P8.2 Goose runner yanked-dependency remediation (local; native CI pending)
+
+The first concrete failure in exact-head CI run `33132919438` for commit
+`abb22d61f21cfa586bec1edb7e05feaa2ddaa9d0` was the Ubuntu x64 Goose build
+probe's `Admit emitted Goose runner artifact` step. The runner build itself
+completed and emitted the expected active/lock/auditable dependency counts
+(`406`/`545`/`449`); admission then stopped with the closed `unsafe-audit`
+code. The run was cancelled after that first failure, so its other platform
+jobs are not evidence.
+
+The cause was identified from the exact lock and current crates.io index:
+`chacha20 0.10.1`, pulled by `rand 0.10.2` through the admitted Goose runtime,
+was newly marked yanked after the preceding green run. The builder serialized
+the non-empty yanked warning into its audit material but did not reject before
+writing the artifact; the admission contract correctly rejected it. crates.io
+now provides non-yanked `chacha20 0.10.2` (checksum
+`65c35e4b699c7e15ccbe7ee35c005e4fc0a278d22238a2857e6ce2dadeda1b06`). The
+committed runner lock is updated to that version, and artifact admission now
+requires exactly one reviewed `chacha20 0.10.2` entry. The regression first
+failed against `0.10.1` and passes after the contract/lock update.
+
+Local evidence after the remediation: the Goose artifact admission test passes
+`31/31`, the native build-wiring test passes `10/10`, Cargo locked metadata and
+tree resolve `chacha20 0.10.2`, Rust formatting passes, and a local
+`cargo-audit 0.22.2` scan reports the expected RSA metadata-only finding with
+no yanked warning. A single attempt to run the full Goose native check stopped
+at the prescribed tool-install boundary because the pinned `cargo-auditable`
+download failed; no build or admission claim is made from that attempt and it
+was not retried. A new exact-head native CI run is required to verify the
+Ubuntu/Windows/macOS build and packaged journeys; P8.2 overall, P8.3 candidate
+trust/signing, and P8.4 clean-machine and real-provider acceptance remain open.
+
+## 2026-08-27 P8.2 packaged journey diagnostic blockers repaired (local WIP)
+
+The uncommitted worktree `codex/p8-2-packaged-product-journeys` is based on
+`d5fe432a6bfbaa93aa1c4a40d45d74f208b64a7b`. Two diagnostic blockers in the
+packaged product-journey slice are repaired locally. The private failure
+projection now admits and round-trips all seven trusted coding-runtime startup
+stages (`model-binding`, `user-data`, `runner-package`, `runner-admission`,
+`git-executable`, `private-root`, and `runtime-startup`), so the runtime
+`onFailure` callback is no longer rejected and replaced by a coarse
+`coding-journey` stage. Crash/restart preparation now validates the authoritative
+ready/created graph, follows `task.activeSessionId` instead of guessing from
+Session order, and requires an active, running, undisposed checkpoint. The
+destination-workspace helper now scopes its inner stage: cached,
+existing-grant, and fresh-success paths restore the caller's stage, while an
+exception retains the precise destination-workspace operation that failed.
+
+Focused security, downstream, and controller tests pass (`63` tests), including
+the historical-Session regression and checkpoint-identity regressions. A fresh
+root `bun run check` passed with exit code `0`: 191
+Vitest files passed and 3 were skipped (`2,133` tests passed and 10 were
+skipped), the 28-case/168-variant P7 abuse gate passed, Electron SQLite and
+smoke-harness checks passed, the source and downstream boundary checks passed,
+and the materialized AionUi production package build completed. The changes
+remain uncommitted and no new exact-head Ubuntu, Windows, or macOS
+packaged-journey evidence has been collected. P8.2 overall, P8.3 candidate
+trust/signing, and P8.4 clean-machine and real-provider acceptance remain open.
+
+## 2026-08-27 P8.2 packaged journey inner-stage diagnostics (local)
+
+Exact-head PR #77 run `33041286380`, bound to source head
+`a73449fcbffd7a8accbb6c97795d9c4a0396f3aa` and packaged merge SHA
+`c09fcb2cdcee2d862cc33cbd5b452505a8344fef`, failed closed on all three
+native product-journey jobs. macOS reported
+`journey-failed/crash-restart-recovery`; Ubuntu and Windows reported
+`journey-failed/coding-journey`. No finer packaged boundary was emitted.
+
+The next downstream diagnostic slice adds fixed, redacted inner-stage
+projections for coding submit/projection/tool approval/publish approval/Artifact
+preview/durable state/cleanup and crash-restart prepare/checkpoint/journal plus
+recovery verify/duplicate/journal. Main catches still rethrow the original
+failure, while the optional reporter only updates the closed stage used by the
+existing private failure file and console projection. Focused security,
+downstream, and controller tests pass (`45` passed); format, typecheck,
+downstream overlay, P8 contract, and product-boundary checks pass locally. A
+new exact-head native CI run is required to identify the first functional
+boundary. P8.2, P8.3 candidate trust/signing, and P8.4 clean-machine and
+real-provider acceptance remain open.
+
+## 2026-08-27 P8.2 runtime-stage persistence and recovery-stage diagnostics (local)
+
+PR #77 run `33035668302`, whose pull-request execution used merge SHA
+`56646ab3b23ad74e36547d224983d2814ba208a6`, completed with Goose admission,
+Ubuntu/Windows build probes, Windows containment, and authenticated Windows
+runtime green. The packaged journeys failed closed on all three native jobs:
+Ubuntu and Windows reported `journey-failed/coding-journey`, while macOS
+reported `journey-failed/startup-recovery`. The run is not P8.2 evidence.
+
+Static tracing showed that coding-runtime startup failures were emitted only on
+the short-lived Electron diagnostic stream, while the private failure-file
+vocabulary did not admit the runtime-startup stages. A downstream diagnostic
+slice now persists the same closed `{code, stage}` projection before the
+runtime exits, admits the seven runtime-startup stages in the controller and
+Main security schema, and marks general/team/crash-restart recovery boundaries
+before their awaited operations. No raw errors, paths, process identifiers,
+credentials, or provider payloads are persisted or exported.
+
+The regression was observed RED before implementation. Focused downstream,
+controller, and coding-runtime tests pass (`34` passed, `1` skipped); root
+format, typecheck, P8 contract, and downstream contract checks pass. A new
+committed exact-head native CI run is required to obtain the concrete runtime
+stage and repair the first functional boundary. P8.2, P8.3 candidate
+trust/signing, and P8.4 clean-machine and real-provider acceptance remain open.
+
+## 2026-08-27 P8.2 packaged authority-stage diagnostic (local)
+
+The exact-head PR #77 run `33032327709`, bound to source head
+`2d1610b0c7e4c0ebaa7fb76ee527e09cff2e7840`, reached the final packaged
+product-journey step on macOS arm64 and Ubuntu 24.04 x64. Both packages
+failed closed within seconds as `journey-failed/startup-recovery`; neither
+emitted a coding-runtime boundary token, so the runner/package/admission/Git
+diagnostic slice did not identify the failure. The run was stopped after the
+first concrete cross-platform failure boundary; its remaining Windows jobs
+are not P8.2 evidence.
+
+The next diagnostic slice adds a strict, redacted authority-stage vocabulary
+(`persistence`, `general-work`, `coding-journey`, `coding-artifact`,
+`isolated-coding`, `team-composition`, `general-recovery`,
+`schedule-recovery`, and `team-recovery`) to the packaged runtime diagnostic
+line. It reports only the first missing authority before the existing private
+failure projection and does not change normal startup or failure behavior.
+The parser and downstream smoke regression tests pass (`26` passed); a new
+exact-head native CI run is required to obtain the first concrete authority
+stage. P8.2, P8.3 candidate trust/signing, and P8.4 clean-machine and
+real-provider acceptance remain open.
+
+## 2026-08-27 P8.2 coding-runtime startup boundary diagnostic (local)
+
+PR #77 exact-head run `33029934578`, bound to head
+`1352b01a47541f08463e83696ae71be7db600012`, passed Goose admission, the
+Ubuntu and Windows build probes, Windows containment, and the authenticated
+Windows runtime. The macOS and Ubuntu packaged product journeys both failed
+closed as `journey-failed/startup-recovery`; the Windows native package job was
+still running at inspection time. The prior fail-open timeout is closed, but
+the generic startup stage does not identify which coding-runtime authority was
+unavailable, so this run is not P8.2 evidence.
+
+The local diagnostic slice now classifies coding-runtime startup failures into
+the fixed, non-sensitive boundaries `model-binding`, `user-data`,
+`runner-package`, `runner-admission`, `git-executable`, `private-root`, or
+`runtime-startup`. Packaged P8 smoke prints only that token; the controller
+accepts the exact vocabulary and rejects paths, exception text, extra fields,
+and arbitrary values. Normal startup, credentials, raw package errors, and
+provider payloads do not cross the boundary. The regression was observed RED
+before implementation; focused runtime/controller/downstream tests pass with
+`32` passed and `1` skipped, root typecheck and lint pass, downstream
+materialization and dependency installation complete, and the materialized
+AionUi `tsc --noEmit --pretty false` passes. A new exact-head native CI run is
+required to identify and then repair the first concrete startup boundary.
+P8.2, P8.3 candidate trust/signing, and P8.4 clean-machine and real-provider
+acceptance remain open.
+
+## 2026-08-27 P8.2 startup authority failure projection (local)
+
+The exact-head CI run `33027564263` still has the macOS packaged journey
+failure `journey-failed/startup-recovery` and the Ubuntu packaged journey
+failure `journey-timeout`; the Windows build, authenticated runtime, and
+containment jobs passed while its final P8.2d job was still in progress at
+inspection time. Static tracing identified the timeout path: startup
+recovery catches an authority error, clears the Actestra services, and the
+P8 smoke guard previously returned without writing bounded evidence. The
+downstream patch now projects valid smoke environments with missing startup
+authority as the fixed `journey-failed/startup-recovery` failure, writes the
+owner-only private failure file, emits the same closed diagnostic, and exits;
+ordinary startup and invalid smoke environments remain unchanged.
+
+The regression was observed RED before implementation and now passes. Focused
+P8 tests pass `38/38`; root typecheck, lint, format, downstream overlay check,
+and generated AionUi `tsc --noEmit --pretty false` pass after the prescribed
+dependency installation. This is local diagnostic/fail-closed evidence only;
+the patch is not yet P8.2 evidence until a new exact-head CI run verifies the
+packaged journeys on all target platforms.
+
+## 2026-08-27 P8.2 startup-recovery diagnostic boundary (local)
+
+The latest exact-head CI run `33023345640` reached the macOS packaged
+product-journey step and returned only the bounded
+`journey-failed/startup-recovery` diagnostic. Static tracing showed that this
+stage covered both startup authority readiness and the crash/restart verifier,
+so the concrete verifier boundary was not observable. A regression test first
+failed because the downstream patch did not mark that boundary; the patch now
+sets the closed failure stage to `crash-restart-recovery` before the
+startup-recovery guard and `runP8CrashRestartRecoveryVerifyJourney`. Focused
+downstream composition tests pass `6/6`. This is diagnostic instrumentation
+only; a new exact-head CI run is required to identify the underlying failure
+before any functional fix or P8.2 claim.
+
+## 2026-08-27 P8.2 Ubuntu bound-admission restage repair (local)
+
+PR #77 run `33021704490`, bound to head
+`4bf7cab8f098dfe8dbb2654502052c4631e988ff`, passed Goose admission, the
+Ubuntu build probe, and Windows containment. The first concrete failure was in
+`P8.2 Ubuntu x64 Goose containment` after the containment-bound DEB itself
+rebuilt successfully: `inspect-aionui-linux-deb.mjs` rejected it with the
+closed result `{"status":"failed","code":"deb-digest-mismatch"}`. Remaining
+jobs were cancelled after the run could no longer become green, so this run is
+not P8.2 evidence.
+
+The failure was a package-binding contract mismatch. Containment re-admission
+updates the bound runner Artifact; the existing restage refreshed the generic
+runner resources and package attestation but left the Linux-specific
+`actestra-goose-runner-admission.json` bound to the pre-containment digests.
+The workflow now reruns `downstream:aionui:stage:linux-goose` after the generic
+bound-runner restage and before rebuilding the DEB, keeping the admission
+record, AppArmor profile, package attestation, manifest, and executable bound
+to the same Artifact. The regression was observed RED before the workflow
+change and now passes. The related CI wiring, package binding, native wiring,
+and DEB inspector collection passed `34` tests; an additional unchanged Linux
+staging test failed only because its assertion assumes a filesystem directory
+entry order that macOS did not return, so it was not retried or modified as
+part of this boundary. A new exact-head native CI run remains required.
+
+## 2026-08-27 P8.2 packaged-journey failure-stage type repair (local)
+
+PR #77 run `33020020984`, bound to head
+`5d2b33e53a768d582e6ea1dda6602d9b44d9634f`, passed the Ubuntu build probe and
+Goose admission but failed in the macOS foundation job at `Type-check
+materialized Actestra AionUi application`. The exact compiler error rejected
+the failure projection because its local journey-stage variable had widened to
+`string` instead of the closed `P8ProductJourneyFailureStage` vocabulary. The
+remaining jobs were cancelled after that first concrete failure, so the run is
+not P8.2 evidence.
+
+The downstream patch now explicitly types that variable as
+`'startup-recovery' | P8ProductJourneyId`, preserving the same closed stage
+set accepted by the private failure file. A source-composition regression test
+binds the annotation. After repository-prescribed downstream materialization
+and dependency installation, the exact CI command `bunx tsc --noEmit --pretty
+false` passes in the generated AionUi tree. The focused downstream test passes
+`5/5`, and root `bun run typecheck` passes. Runs `33016877710`, `33018383490`,
+and `33020380054` were cancelled; the last of those was bound to the same
+unrepaired source tree through an empty trigger commit and was stopped rather
+than treated as new evidence. A committed exact-head native CI run remains
+required before P8.2 can advance.
+
+## 2026-08-27 P8.2 packaged-journey private failure projection (local)
+
+PR #77 run `33016877710`, bound to head
+`f8c01ab2db1f37c95a19111fc1c85b976dce73b5`, repeated the macOS packaged
+journey's bounded `status=failed, code=journey-failed` result without carrying
+the already fixed internal journey stage across the Electron stdout/stderr
+boundary. That run also exposed the Ubuntu package/containment binding mismatch
+now repaired by `53f9b941ffe30ab6cee8238e7d2eb0dbaa2bc557`. The later exact-head run
+`33018383490` was cancelled after a newer diagnostic implementation superseded
+it, so it is not P8.2 evidence.
+
+The local diagnostic slice adds one private write-once
+`p8-product-journeys-failure.json` projection inside the isolated user-data
+directory. The packaged Main process writes only the exact closed keys
+`{code, stage}` with owner-only permissions; the controller accepts only a
+regular non-symlink file, the fixed code/stage vocabularies, a strict size
+limit, and canonical one-line JSON. It removes stale failure state before the
+prepare launch and again between prepare and recovery, and prints only the
+bounded stage with the controller's existing outer code. Raw Electron output,
+paths, process identifiers, credentials, and payloads do not cross this
+boundary. Normal product startup and successful journey evidence are
+unchanged.
+
+The failure-file tests were observed RED before implementation. Fresh focused
+validation now passes `36/36`; root typecheck, focused lint, repository format,
+`git diff --check`, foundation and downstream contract checks, downstream
+materialization, and the complete materialized Electron production build pass.
+The first materialized build attempt correctly failed because that newly
+generated tree had no installed dependencies; after the repository-prescribed
+`downstream:aionui:install`, the same build completed successfully. This is
+local diagnostic evidence only until committed and exercised by a new
+exact-head CI run; it does not close P8.2, candidate trust/signing, P8.4
+clean-machine acceptance, release, or user acceptance.
+
+## 2026-08-27 P8.2 Windows bound-runner package handoff repair (local)
+
+The exact PR #77 run `33011983559` is bound to head
+`b07e586a43dd61f88680e19a8e8ac07575676777`. Goose admission, Ubuntu/Windows
+build probes, Windows authenticated runtime, and Windows containment passed.
+The macOS packaged journey returned the bounded
+`status=failed, code=journey-failed` result without a fixed-stage diagnostic.
+The Windows packaged journey failed its binding check because the package job
+re-downloaded the unbound runner (`143071b9...`) instead of the containment job's
+bound runner (`3775abd8...`), so its manifest digest did not match the verified
+containment summary (`2c6182dc...`).
+
+The local workflow repair uploads the bound Windows runner from the containment
+job, downloads that exact artifact in the package job, stages it with its
+explicit manifest digest, and then re-admits the runner from final Electron
+resources. CI wiring tests now cover the handoff and platform-specific staging
+roots. Focused P8 wiring/package tests pass (`25/25`); the complete local
+`bun run check` passes with 191 Vitest files passed and 3 skipped (2,100 tests
+passed and 10 skipped), all P7 abuse cases and exact variants denied-safe,
+SQLite/smoke/boundary/foundation/downstream checks, production package build,
+format, lint, and typecheck. This remains local implementation evidence until
+the repair is committed and an exact-head CI run passes.
+
+The same run's Ubuntu log also proves that its first DEB contained the
+pre-containment manifest (`6c0784f1...`), while the successful containment gate
+produced and re-admitted manifest `8cdceac7...`. The workflow consequently
+failed its digest check before starting `smoke:p8-product-journeys`. The next
+local repair re-stages the bound Ubuntu runner after containment, rebuilds and
+re-inspects the exact DEB at the established output path, and only then installs
+that package for P8.2 journey acceptance. Its focused CI/package-binding tests
+pass (`26/26`); exact-head native CI remains required.
+
+## 2026-08-27 P8.2 containment-summary CI consumer repair (local)
+
+PR #77 run `33008974520` is associated with head
+`a3e9539197b52875b2d8b0a0bde106c48b9d7630`; its pull-request execution uses
+merge ref `a642be59e2351a1593e2e143e109eb765cf5f5c2`. The Ubuntu job successfully
+built and admitted the exact Goose runner, built and installed the DEB, passed
+the authenticated native integration and all six containment checks, and then
+failed before launching the packaged product-journey smoke. The new workflow
+consumer incorrectly required `sourceCommit` and the six internal capability
+booleans from `containment-evidence.json`, while the established verified
+summary contract intentionally emits only status, target, manifest,
+executable, and probe digests.
+
+The local repair keeps the source and target check on the exact package runner
+manifest, then binds the downloaded verified containment summary to that exact
+manifest digest and executable digest on both Windows and Ubuntu. It does not
+widen or bypass containment admission. A regression test first reproduced the
+contract mismatch and now passes with the focused P8 CI, package-binding, and
+candidate tests (`52/52`); lint reports zero warnings or errors and
+`git diff --check` passes. A new exact-head CI run is still required before
+P8.2 evidence can advance.
+
+## 2026-08-27 P8 exact-head RustSec transport resilience (local)
+
+PR #77 exact-head CI run `33004547918`, attempt 2, was bound to
+`20f0980b307bcc7889f9a6fd665b1ca3e494db7d`. Its Ubuntu native build probe
+passed, but the macOS foundation job failed while building the exact final
+package runner. The first concrete failure was not a product test or candidate
+contract failure: pinned `cargo-audit` exited before producing JSON because its
+RustSec advisory-database Git fetch returned a GitHub network I/O error. The
+remaining jobs were cancelled after that run could no longer become green, so
+they are not P8.2 evidence.
+
+The isolated branch now has a bounded transport-resilience repair. The lockfile
+audit retries at most three times only when `cargo-audit` exits with its
+advisory-fetch transport error and no scan JSON. A completed vulnerability scan
+is never retried, `--no-fetch` remains single-attempt, and three transport
+failures still fail closed with the original error. The helper is included in
+the runner source digest. Fresh local validation passes the new retry contract,
+native build wiring, and source-digest tests (`15/15`), plus lint with zero
+warnings/errors and `git diff --check`. The complete `bun run check` gate also
+passes: root Vitest `191` files passed and `3` skipped (`2,098` tests passed and
+`10` skipped), all `28` P7 abuse cases and `168` exact variants were denied-safe,
+and typecheck, SQLite, smoke harness, product boundary, foundation, downstream,
+and production package gates completed successfully. Existing bundler warnings
+remain non-fatal.
+
+Local installation of the exact pinned audit tools could not provide an
+end-to-end runner build because the separate pinned `cargo-auditable` GitHub
+release-asset download also failed at the network boundary. That download was
+not repeated. Exact-head native CI is still required before the repair or P8.2
+can advance. P8.3 formal signing/notarization and P8.4 clean-machine and
+real-provider evidence remain open.
+
+## 2026-08-27 P8.3/P8.4 fail-closed evidence implementation (local)
+
+The isolated branch `codex/p8-2-packaged-product-journeys` now contains the
+P8.3 candidate-input builder, exact three-target candidate aggregation job, and
+the P8.4 clean-machine evidence contract and runbook. Candidate inputs bind
+package/runtime/runner digests, P8.2 journey evidence, SBOM, provenance, and
+NOTICE files to one source commit and CI run. The candidate job deliberately
+returns `evidence-incomplete` and fails its gate when external signing or
+notarization metadata is unavailable; it never promotes ad-hoc output.
+
+P8.4 records require all five clean-machine journeys on every accepted target,
+exact candidate and environment binding, real-provider mode, redacted
+runbook/issue-intake revisions, and all lifecycle checks. The checker rejects
+synthetic providers, non-clean environments, mismatches, privacy leaks, and
+oversized or malformed records. The runbook records the operator sequence and
+states that Windows 11 and Ubuntu 24.04 clean-machine evidence, formal signing
+or notarization, and real-provider credentials require external controlled
+machines; no credentials are stored in CI or this repository.
+
+Fresh local validation for this batch: P8.3 candidate tests `12/12`
+including CI wiring, P8.4 clean-machine tests `9/9`, Goose containment wiring
+`13/13`, and lint with zero warnings/errors. This is implementation evidence
+only. The branch has not yet received exact-head CI, a signed candidate, any
+clean-machine record, real-provider acceptance, release, deployment,
+distribution, or user-acceptance evidence. P8.2 remains open pending the
+current SHA's three-target CI and the existing nine-journey ledger update.
 
 ## 2026-08-26 P8 stabilization — PR #75 package-binding repair integrated locally
 

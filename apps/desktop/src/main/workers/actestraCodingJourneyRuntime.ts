@@ -59,7 +59,18 @@ export interface StartTrustedActestraCodingJourneyRuntimeOptions {
   readonly linuxPackageResourcesPath?: string;
   readonly packagedResourcesPath?: string;
   readonly modelBinding: ActestraCodingModelBinding | null;
+  /** Fixed, non-sensitive startup boundary used by packaged acceptance diagnostics. */
+  readonly onFailure?: (stage: ActestraCodingJourneyRuntimeFailureStage) => void;
 }
+
+export type ActestraCodingJourneyRuntimeFailureStage =
+  | "model-binding"
+  | "user-data"
+  | "runner-package"
+  | "runner-admission"
+  | "git-executable"
+  | "private-root"
+  | "runtime-startup";
 
 export interface ActestraCodingJourneyRuntimeDependencies {
   readonly admitRunnerArtifact: typeof admitGooseRunnerArtifact;
@@ -189,7 +200,10 @@ function isInside(root: string, candidate: string): boolean {
   );
 }
 
-async function ensurePrivateRoot(userDataPath: string): Promise<string | null> {
+async function ensurePrivateRoot(
+  userDataPath: string,
+  platform: NodeJS.Platform,
+): Promise<string | null> {
   const requested = path.join(userDataPath, "goose-private");
   if (!isInside(userDataPath, requested)) return null;
   try {
@@ -206,10 +220,12 @@ async function ensurePrivateRoot(userDataPath: string): Promise<string | null> {
   ) {
     return null;
   }
-  await chmod(canonical, 0o700);
-  const secured = await lstat(canonical);
-  if (secured.isSymbolicLink() || !secured.isDirectory() || (secured.mode & 0o777) !== 0o700) {
-    return null;
+  if (platform !== "win32") {
+    await chmod(canonical, 0o700);
+    const secured = await lstat(canonical);
+    if (secured.isSymbolicLink() || !secured.isDirectory() || (secured.mode & 0o777) !== 0o700) {
+      return null;
+    }
   }
   return canonical;
 }
@@ -239,11 +255,19 @@ export async function startTrustedActestraCodingJourneyRuntime(
   options: StartTrustedActestraCodingJourneyRuntimeOptions,
   dependencies: ActestraCodingJourneyRuntimeDependencies = DEFAULT_DEPENDENCIES,
 ): Promise<TrustedActestraCodingJourneyRuntime | null> {
+  const fail = (stage: ActestraCodingJourneyRuntimeFailureStage): null => {
+    try {
+      options.onFailure?.(stage);
+    } catch {
+      // Diagnostics are advisory and must never change the fail-closed result.
+    }
+    return null;
+  };
   try {
     const modelBinding = snapshotModelBinding(options.modelBinding);
-    if (modelBinding === null) return null;
+    if (modelBinding === null) return fail("model-binding");
     const userDataPath = await canonicalUserDataPath(options.userDataPath);
-    if (userDataPath === null) return null;
+    if (userDataPath === null) return fail("user-data");
     let runnerAdmission: Readonly<AionUiCodingRunnerAdmission> | null;
     let admittedArtifact: AdmittedGooseRunnerArtifact;
     let packagedRunnerPackage: Readonly<AdmittedGooseRunnerPackage> | undefined;
@@ -252,15 +276,20 @@ export async function startTrustedActestraCodingJourneyRuntime(
     const platform = dependencies.platform ?? process.platform;
     const architecture = dependencies.architecture ?? process.arch;
     if (platform === "linux") {
-      if (typeof options.linuxPackageResourcesPath !== "string") return null;
+      if (typeof options.linuxPackageResourcesPath !== "string") return fail("runner-package");
       const admitLinuxPackage =
         dependencies.admitLinuxPackage ?? admitInstalledGooseRunnerLinuxPackage;
       const linuxPackageResourcesPath = options.linuxPackageResourcesPath;
-      const admittedLinuxPackage = await admitLinuxPackage(linuxPackageResourcesPath);
-      if (admittedLinuxPackage === null) return null;
+      let admittedLinuxPackage: AdmittedGooseRunnerLinuxPackage | null;
+      try {
+        admittedLinuxPackage = await admitLinuxPackage(linuxPackageResourcesPath);
+      } catch {
+        return fail("runner-package");
+      }
+      if (admittedLinuxPackage === null) return fail("runner-package");
       linuxPackage = admittedLinuxPackage;
       runnerAdmission = snapshotRunnerAdmission(linuxPackage.runnerAdmission);
-      if (runnerAdmission === null) return null;
+      if (runnerAdmission === null) return fail("runner-admission");
       admittedArtifact = linuxPackage.artifact;
       revalidateArtifact = async (): Promise<AdmittedGooseRunnerArtifact> => {
         const refreshed = await admitLinuxPackage(linuxPackageResourcesPath);
@@ -271,17 +300,23 @@ export async function startTrustedActestraCodingJourneyRuntime(
       };
     } else if (typeof options.packagedResourcesPath === "string") {
       const target = resolveGooseRunnerRuntimeTarget(platform, architecture);
-      if (target === undefined) return null;
+      if (target === undefined) return fail("runner-package");
       const admitPackagedRunnerPackage =
         dependencies.admitPackagedRunnerPackage ?? admitGooseRunnerPackage;
       const packagedResourcesPath = options.packagedResourcesPath;
-      packagedRunnerPackage = await admitPackagedRunnerPackage(packagedResourcesPath, {
-        expectedTargetTriple: target.targetTriple,
-      });
+      try {
+        packagedRunnerPackage = await admitPackagedRunnerPackage(packagedResourcesPath, {
+          expectedTargetTriple: target.targetTriple,
+        });
+      } catch {
+        return fail("runner-package");
+      }
       runnerAdmission = snapshotRunnerAdmission(packagedRunnerPackage.runnerAdmission);
-      if (runnerAdmission === null) return null;
+      if (runnerAdmission === null) return fail("runner-admission");
       admittedArtifact = packagedRunnerPackage.artifact;
-      if (!artifactMatchesAdmission(admittedArtifact, runnerAdmission)) return null;
+      if (!artifactMatchesAdmission(admittedArtifact, runnerAdmission)) {
+        return fail("runner-admission");
+      }
       revalidateArtifact = async (): Promise<AdmittedGooseRunnerArtifact> => {
         const refreshed = await admitPackagedRunnerPackage(packagedResourcesPath, {
           expectedTargetTriple: target.targetTriple,
@@ -290,17 +325,32 @@ export async function startTrustedActestraCodingJourneyRuntime(
       };
     } else {
       runnerAdmission = snapshotRunnerAdmission(options.runnerAdmission);
-      if (runnerAdmission === null) return null;
-      admittedArtifact = await dependencies.admitRunnerArtifact(runnerAdmission.directory, {
-        trustedManifestSha256: runnerAdmission.trustedManifestSha256,
-        expectedTargetTriple: runnerAdmission.expectedTargetTriple,
-      });
-      if (!artifactMatchesAdmission(admittedArtifact, runnerAdmission)) return null;
+      if (runnerAdmission === null) return fail("runner-admission");
+      try {
+        admittedArtifact = await dependencies.admitRunnerArtifact(runnerAdmission.directory, {
+          trustedManifestSha256: runnerAdmission.trustedManifestSha256,
+          expectedTargetTriple: runnerAdmission.expectedTargetTriple,
+        });
+      } catch {
+        return fail("runner-admission");
+      }
+      if (!artifactMatchesAdmission(admittedArtifact, runnerAdmission)) {
+        return fail("runner-admission");
+      }
     }
-    if (runnerAdmission === null) return null;
-    if (!(await hasCanonicalGitExecutable())) return null;
-    const privateRootParent = await ensurePrivateRoot(userDataPath);
-    if (privateRootParent === null) return null;
+    if (runnerAdmission === null) return fail("runner-admission");
+    try {
+      if (!(await hasCanonicalGitExecutable())) return fail("git-executable");
+    } catch {
+      return fail("git-executable");
+    }
+    let privateRootParent: string | null;
+    try {
+      privateRootParent = await ensurePrivateRoot(userDataPath, platform);
+    } catch {
+      return fail("private-root");
+    }
+    if (privateRootParent === null) return fail("private-root");
     return Object.freeze({
       runnerAdmission,
       admittedArtifact,
@@ -314,6 +364,6 @@ export async function startTrustedActestraCodingJourneyRuntime(
       tests: TESTS,
     });
   } catch {
-    return null;
+    return fail("runtime-startup");
   }
 }

@@ -706,7 +706,9 @@ describe("P7 MCP, Worker, network, and process abuse baseline", () => {
       (error: unknown) => (error as { readonly cause?: { readonly code?: string } }).cause?.code,
     );
 
-    expect([400, "ECONNRESET"]).toContain(outcome);
+    // The bounded server may reject before the client finishes writing. Depending on the
+    // platform/socket timing, fetch observes either the reset or the already-closed write end.
+    expect([400, "ECONNRESET", "EPIPE"]).toContain(outcome);
     expect(modelInvocations).toBe(0);
     expect(model.servedInferenceCount).toBe(0);
     expect(model.refusedInferenceCount).toBe(0);

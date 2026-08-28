@@ -98,13 +98,16 @@ describe("P8.2 package-bound Goose runner binding", () => {
       expect(workflow, `missing CI job ${job}`).not.toBe("");
       if (job === "electron-package-windows") {
         expectOrderedFragments(workflow, [
-          "needs: goose-runner-windows",
+          "needs: - goose-runner-windows - goose-containment-windows",
           "name: Install dependencies",
-          "name: Download admitted Windows Goose runner artifact",
+          "name: Download bound Windows containment evidence",
           "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
-          "name: actestra-goose-runner-windows-${{ github.sha }}",
-          "path: .actestra/goose-runner/x86_64-pc-windows-msvc",
-          `bun run downstream:aionui:stage:goose -- --target-triple ${triple}`,
+          "name: Download bound Windows Goose runner artifact",
+          "name: p8-goose-bound-runner-windows-${{ github.sha }}",
+          "name: Stage exact Goose runner into the final Windows package resources",
+          `--target-triple ${triple}`,
+          '--artifact-directory "$boundArtifactDirectory"',
+          '--trusted-manifest-sha256 "$boundManifestDigest"',
           `name: ${packageMarker}`,
           packageCommand,
           `bun run downstream:aionui:admit:goose-package -- --target-triple ${triple}`,
@@ -125,14 +128,22 @@ describe("P8.2 package-bound Goose runner binding", () => {
           `bun run downstream:aionui:admit:goose-package -- --target-triple ${triple}`,
         ]);
       }
-      expect(workflow).toContain(
-        '--materialized-root "${{ github.workspace }}/.actestra/aionui-v2.1.41"',
-      );
+      expect(workflow).toContain(".actestra/aionui-v2.1.41");
       expect(workflow).toContain("--package-resource");
       expect(workflow).toContain("--re-admit");
       const journeyStart = workflow.indexOf("name: Run P8.2d packaged fresh-profile acceptance");
       const packageWindow = workflow.slice(0, journeyStart === -1 ? workflow.length : journeyStart);
-      expect(packageWindow).not.toContain("ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIRECTORY");
+      expect(packageWindow).not.toContain(
+        "ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIRECTORY: .actestra/goose-runner",
+      );
+      expect(packageWindow).not.toContain(
+        "ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIRECTORY: ${{ github.workspace }}/.actestra/goose-runner",
+      );
+      if (packageWindow.includes("ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIRECTORY")) {
+        expect(packageWindow).toContain(
+          "ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIRECTORY: .actestra/aionui-v2.1.41/out/mac-arm64/Actestra.app/Contents/Resources/actestra-goose-runner",
+        );
+      }
       const journeyWindow = workflow.slice(journeyStart === -1 ? 0 : journeyStart);
       expect(journeyWindow).not.toContain("--artifact-directory .actestra/goose-runner");
     },
@@ -142,9 +153,11 @@ describe("P8.2 package-bound Goose runner binding", () => {
     "$job passes an absolute materialized root to the package staging helper",
     ({ job }) => {
       const workflow = readWorkflowJob(read(".github/workflows/ci.yml"), job);
-      expect(workflow).toContain(
-        '--materialized-root "${{ github.workspace }}/.actestra/aionui-v2.1.41"',
-      );
+      const expectedRoot =
+        job === "electron-package-windows"
+          ? '--materialized-root "$env:GITHUB_WORKSPACE/.actestra/aionui-v2.1.41"'
+          : '--materialized-root "${{ github.workspace }}/.actestra/aionui-v2.1.41"';
+      expect(workflow).toContain(expectedRoot);
       expect(workflow).not.toContain("--materialized-root .actestra/aionui-v2.1.41");
     },
   );
@@ -159,6 +172,27 @@ describe("P8.2 package-bound Goose runner binding", () => {
     expect(packageIndex).toBeGreaterThan(stageIndex);
     expect(installMatches).toHaveLength(1);
     expect(installMatches[0].index).toBeLessThan(stageIndex);
+  });
+
+  it("rebuilds the Ubuntu DEB from the containment-bound runner before journey acceptance", () => {
+    const workflow = readWorkflowJob(read(".github/workflows/ci.yml"), "goose-containment-linux");
+    expectOrderedFragments(workflow, [
+      "Run exact Ubuntu containment acceptance",
+      "Re-admit bound Ubuntu Goose runner artifact",
+      "Remove temporary Ubuntu Goose package layout",
+      "Re-stage bound Ubuntu Goose runner into final package resources",
+      "bun run downstream:aionui:stage:goose -- --target-triple x86_64-unknown-linux-gnu",
+      "bun run downstream:aionui:stage:linux-goose",
+      "Rebuild and inspect exact bound Ubuntu DEB package",
+      "bun run --cwd .actestra/aionui-v2.1.41 dist:linux -- --x64",
+      'install -D -m 0644 "${deb_candidates[0]}" "$ACTESTRA_LINUX_DEB_PATH"',
+      "Install complete Ubuntu Electron package for P8.2d",
+      "Run P8.2 packaged product-journey acceptance under Xvfb",
+    ]);
+    expect(workflow.match(/bun run downstream:aionui:stage:goose --/gu) ?? []).toHaveLength(2);
+    expect(
+      workflow.match(/bun run --cwd \.actestra\/aionui-v2\.1\.41 dist:linux/gu) ?? [],
+    ).toHaveLength(2);
   });
 
   it("maps the runner resources into every native builder without a platform-only exception", () => {
@@ -183,7 +217,12 @@ describe("P8.2 package-bound Goose runner binding", () => {
       const packageJob = readWorkflowJob(workflow, job);
       const journeyStart = packageJob.indexOf("name: Run P8.2d packaged fresh-profile acceptance");
       const p8Window = packageJob.slice(0, journeyStart === -1 ? packageJob.length : journeyStart);
-      expect(p8Window).not.toContain("ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIRECTORY");
+      expect(p8Window).not.toContain(
+        "ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIRECTORY: .actestra/goose-runner",
+      );
+      expect(p8Window).not.toContain(
+        "ACTESTRA_GOOSE_RUNNER_ARTIFACT_DIRECTORY: ${{ github.workspace }}/.actestra/goose-runner",
+      );
       expect(p8Window).not.toContain("--artifact-directory .actestra/goose-runner");
       expect(p8Window).toContain("--package-resource");
       expect(p8Window).toContain("--re-admit");

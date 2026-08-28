@@ -222,6 +222,8 @@ function createRunnerArtifactFixture(): {
     'version = "5.4.2"',
     'name = "lru"',
     'version = "0.18.2"',
+    'name = "chacha20"',
+    'version = "0.10.2"',
     "",
   ].join("\n");
   const license = fs.readFileSync(

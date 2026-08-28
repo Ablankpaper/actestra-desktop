@@ -134,7 +134,7 @@ describe("P7 CI wiring", () => {
     )?.[0];
     expect(smokeStep).toBeDefined();
     expect(smokeStep).toContain(
-      "ACTESTRA_P7_SECURITY_SMOKE_RUNNER_ARTIFACT_DIRECTORY: ${{ github.workspace }}/.actestra/goose-runner/aarch64-apple-darwin",
+      "ACTESTRA_P7_SECURITY_SMOKE_RUNNER_ARTIFACT_DIRECTORY: ${{ github.workspace }}/.actestra/aionui-v2.1.41/out/mac-arm64/Actestra.app/Contents/Resources/actestra-goose-runner",
     );
     expect(smokeStep).toContain(
       "ACTESTRA_P7_SECURITY_SMOKE_RUNNER_MANIFEST_SHA256: ${{ steps.p7-trust-roots.outputs.manifest_sha256 }}",
