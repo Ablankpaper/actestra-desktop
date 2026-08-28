@@ -32,6 +32,13 @@ Dependency resolution remains Actestra-owned through the committed runner
 `Cargo.lock`. It resolves `event-listener` `5.4.2` and `lru` `0.18.2` to remove
 the reviewed unsound versions without widening the empty Goose feature set.
 
+On 2026-08-28, crates.io marked `chacha20 0.10.1` yanked while `rand 0.10.2`
+still selected it through the Goose runtime. The reviewed non-yanked `chacha20
+0.10.2` was published with the same `^0.10.0` requirement and fixes the SSE2
+backend's SSE4.1 intrinsic use. The committed lock advances only that package,
+and artifact admission requires exactly one `chacha20 0.10.2` entry so a future
+unreviewed or yanked registry resolution fails closed.
+
 On 2026-08-20, crates.io yanked `arrayref` `0.3.9`, the version selected by
 `blake3` `1.8.5`, and published `0.3.10` with an unreviewed dependency change.
 The upstream repository was subsequently unavailable to CI, so the exact

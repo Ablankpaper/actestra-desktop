@@ -65,7 +65,7 @@ function writeJson(filePath, value) {
 function buildRunnerFixture() {
   const root = fixtureRoot("actestra-p7-packaged-trust-runner-");
   const executable = Buffer.from("realistic-admitted-goose-runner", "utf8");
-  const lockfile = `version = 4\nname = "goose"\nversion = "1.45.0"\nsource = "git+${sourceContract.goose.runtimeRepository}?rev=${sourceContract.goose.runtimeCommit}#${sourceContract.goose.runtimeCommit}"\nname = "event-listener"\nversion = "5.4.2"\nname = "lru"\nversion = "0.18.2"\n`;
+  const lockfile = `version = 4\nname = "goose"\nversion = "1.45.0"\nsource = "git+${sourceContract.goose.runtimeRepository}?rev=${sourceContract.goose.runtimeCommit}#${sourceContract.goose.runtimeCommit}"\nname = "event-listener"\nversion = "5.4.2"\nname = "lru"\nversion = "0.18.2"\nname = "chacha20"\nversion = "0.10.2"\n`;
   const license = readFileSync("workers/goose-runner/licenses/GOOSE-APACHE-2.0.txt");
   const sbom = JSON.stringify({
     bomFormat: "CycloneDX",

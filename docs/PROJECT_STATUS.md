@@ -1,6 +1,38 @@
 # Project Status
 
-Last updated: 2026-08-27
+Last updated: 2026-08-28
+
+## 2026-08-28 P8.2 Goose runner yanked-dependency remediation (local; native CI pending)
+
+The first concrete failure in exact-head CI run `33132919438` for commit
+`abb22d61f21cfa586bec1edb7e05feaa2ddaa9d0` was the Ubuntu x64 Goose build
+probe's `Admit emitted Goose runner artifact` step. The runner build itself
+completed and emitted the expected active/lock/auditable dependency counts
+(`406`/`545`/`449`); admission then stopped with the closed `unsafe-audit`
+code. The run was cancelled after that first failure, so its other platform
+jobs are not evidence.
+
+The cause was identified from the exact lock and current crates.io index:
+`chacha20 0.10.1`, pulled by `rand 0.10.2` through the admitted Goose runtime,
+was newly marked yanked after the preceding green run. The builder serialized
+the non-empty yanked warning into its audit material but did not reject before
+writing the artifact; the admission contract correctly rejected it. crates.io
+now provides non-yanked `chacha20 0.10.2` (checksum
+`65c35e4b699c7e15ccbe7ee35c005e4fc0a278d22238a2857e6ce2dadeda1b06`). The
+committed runner lock is updated to that version, and artifact admission now
+requires exactly one reviewed `chacha20 0.10.2` entry. The regression first
+failed against `0.10.1` and passes after the contract/lock update.
+
+Local evidence after the remediation: the Goose artifact admission test passes
+`31/31`, the native build-wiring test passes `10/10`, Cargo locked metadata and
+tree resolve `chacha20 0.10.2`, Rust formatting passes, and a local
+`cargo-audit 0.22.2` scan reports the expected RSA metadata-only finding with
+no yanked warning. A single attempt to run the full Goose native check stopped
+at the prescribed tool-install boundary because the pinned `cargo-auditable`
+download failed; no build or admission claim is made from that attempt and it
+was not retried. A new exact-head native CI run is required to verify the
+Ubuntu/Windows/macOS build and packaged journeys; P8.2 overall, P8.3 candidate
+trust/signing, and P8.4 clean-machine and real-provider acceptance remain open.
 
 ## 2026-08-27 P8.2 packaged journey diagnostic blockers repaired (local WIP)
 

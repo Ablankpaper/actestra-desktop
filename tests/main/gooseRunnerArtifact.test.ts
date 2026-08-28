@@ -94,6 +94,10 @@ async function createArtifactFixture(
     'version = "5.4.2"',
     'name = "lru"',
     'version = "0.18.2"',
+    'name = "chacha20"',
+    'version = "0.10.2"',
+    'source = "registry+https://github.com/rust-lang/crates.io-index"',
+    'checksum = "65c35e4b699c7e15ccbe7ee35c005e4fc0a278d22238a2857e6ce2dadeda1b06"',
     "",
   ].join("\n");
   const license = await readFile(
@@ -548,6 +552,39 @@ describe("Goose runner artifact admission", () => {
       'name = "lru"\nversion = "0.18.2"',
       'name = "lru"\nversion = "0.18.1"',
     );
+    const unsafeManifest = JSON.stringify({
+      ...manifest,
+      build: {
+        ...manifest.build,
+        lockfile: {
+          ...manifest.build.lockfile,
+          sha256: sha256(unsafeLock),
+        },
+      },
+    });
+    await Promise.all([
+      writeFile(lockPath, unsafeLock),
+      writeFile(path.join(directory, GOOSE_RUNNER_MANIFEST_FILE), unsafeManifest),
+    ]);
+
+    await expect(
+      admitGooseRunnerArtifact(directory, admissionOptions(sha256(unsafeManifest))),
+    ).rejects.toMatchObject({
+      name: "GooseRunnerArtifactError",
+      code: "incompatible-artifact",
+    });
+  });
+
+  it("rejects the yanked chacha20 0.10.1 dependency", async () => {
+    const { directory, manifest } = await createArtifactFixture();
+    const lockPath = path.join(directory, "Cargo.lock");
+    const safeLock = await readFile(lockPath, "utf8");
+    const unsafeLock = safeLock
+      .replace('version = "0.10.2"', 'version = "0.10.1"')
+      .replace(
+        "65c35e4b699c7e15ccbe7ee35c005e4fc0a278d22238a2857e6ce2dadeda1b06",
+        "d524456ba66e72eb8b115ff89e01e497f8e6d11d78b70b1aa13c0fbd97540a81",
+      );
     const unsafeManifest = JSON.stringify({
       ...manifest,
       build: {

@@ -634,6 +634,9 @@ function validateLockfile(lockfile: string): void {
       /name = "(?:goose|goose-acp-macros|goose-download-manager|goose-provider-types|goose-providers|goose-sdk-types)"\nversion = "[^"]+"\nsource = "([^"]+)"/g,
     ),
   ].map((match) => match[1]);
+  const chacha20Versions = [...lockfile.matchAll(/name = "chacha20"\nversion = "([^"]+)"/g)].map(
+    (match) => match[1],
+  );
   if (
     goosePackageSources.length < 1 ||
     goosePackageSources.some((source) => source !== exactSource) ||
@@ -641,11 +644,13 @@ function validateLockfile(lockfile: string): void {
     /name = "event-listener"\nversion = "5\.4\.1"/.test(lockfile) ||
     !/name = "lru"\nversion = "0\.18\.2"/.test(lockfile) ||
     /name = "lru"\nversion = "0\.18\.1"/.test(lockfile) ||
-    /name = "quick-xml"\nversion = "(?:0\.36\.2|0\.37\.5)"/.test(lockfile)
+    /name = "quick-xml"\nversion = "(?:0\.36\.2|0\.37\.5)"/.test(lockfile) ||
+    chacha20Versions.length !== 1 ||
+    chacha20Versions[0] !== "0.10.2"
   ) {
     throw new GooseRunnerArtifactError(
       "incompatible-artifact",
-      "Goose runner lock does not satisfy the exact source and dependency floor",
+      "Goose runner lock does not satisfy the exact source and dependency floors",
     );
   }
 }
