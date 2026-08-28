@@ -343,8 +343,9 @@ describe("P8 native Goose build wiring", () => {
       'test "$(stat -c \'%u\' /opt)" = "0"',
       "sudo chmod 0755 /opt",
       'test "$(stat -c \'%a:%u\' /opt)" = "755:0"',
-      'sudo cp -a "$extract_root/opt/Actestra" /opt/Actestra',
+      'sudo cp -a --no-preserve=ownership "$extract_root/opt/Actestra" /opt/Actestra',
     ]);
+    expect(finalInstall).not.toContain('sudo cp -a "$extract_root/opt/Actestra" /opt/Actestra');
     expect(finalCleanup).toContain(
       "ACTESTRA_ORIGINAL_OPT_MODE: ${{ steps.linux-package-install.outputs.opt_mode }}",
     );

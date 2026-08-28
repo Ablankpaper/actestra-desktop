@@ -2,6 +2,50 @@
 
 Last updated: 2026-08-28
 
+## 2026-08-28 P8.2 Ubuntu ownership and Windows private-root blockers repaired locally (WIP)
+
+The isolated worktree `codex/p8-2-packaged-product-journeys` is based on
+committed source head `3b7eca0e5a6673c9393c822d53c179b964740be`. Exact-head CI
+run `33143658867` (packaged merge SHA
+`352026d2479fc26fced9cc34fd780fe95a9916a3`) failed the Ubuntu packaged journey
+at `runner-package` and the Windows packaged journey at `private-root`. The
+macOS `coding-publish-approval/result-missing` failure is a separate later
+boundary and remains open.
+
+Root-cause investigation found two independent defects. The complete Ubuntu
+package step extracted the DEB as the unprivileged runner and then used
+`sudo cp -a`, which could retain that unprivileged ownership in `/opt/Actestra`;
+Linux Main admission correctly requires every fixed package path to be
+root-owned. The workflow now uses `sudo cp -a --no-preserve=ownership` and
+asserts that no installed path is non-root-owned. On Windows, the coding
+runtime applied Unix `chmod(0o700)` and a POSIX mode-bit equality check to the
+private-root parent; the runtime now always retains canonical, non-symlink,
+directory, and containment checks, while limiting the mode enforcement to
+non-Windows platforms, matching the existing managed-root contract.
+
+Both repairs were developed test-first. The Ubuntu wiring regression failed
+RED against the old copy command and passes GREEN (`11/11`); the Windows
+platform regression failed RED with a canonical `0755` directory and passes
+GREEN (`1/1`). The combined affected suites pass `41` tests with `1` skipped.
+Fresh local validation also passes `bun run format:check` (455 files),
+`bun run typecheck`, downstream materialization from 1,766 frozen files, and
+`bun run downstream:aionui:check` (392 declared files, 138 source copies).
+The full root Vitest suite then passed `192` files (`2,140` tests passed,
+`10` skipped); the isolated P7 packaged-trust suite also passes `10/10`.
+The complete local `bun run check` chain reached exit 0, including the P8.1
+contract, Electron SQLite probe, P7 abuse gate (`28` cases/`168` variants),
+smoke harness, product/foundation/downstream boundary checks, and a fresh
+materialized AionUI production build.
+The worktree now has four tracked files changed and one new regression test; no
+generated downstream tree was edited directly. No new packaged or CI evidence exists yet,
+so P8.2 remains open, as do P8.3 candidate trust/signing and P8.4 clean-machine
+and real-provider acceptance.
+
+Next gate: review the diff, commit and push this exact fix, then run one fresh
+exact-head cross-platform packaged journey and stop at its first unresolved
+stage. Reassess the independent macOS boundary only after Ubuntu and Windows
+are rechecked.
+
 ## 2026-08-28 P8.2 Ubuntu packaged journey `/opt` mode blocker identified and repaired locally
 
 Exact-head PR #77 run `33140961565` (source head

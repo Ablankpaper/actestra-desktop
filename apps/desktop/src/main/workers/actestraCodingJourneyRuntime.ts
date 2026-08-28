@@ -200,7 +200,10 @@ function isInside(root: string, candidate: string): boolean {
   );
 }
 
-async function ensurePrivateRoot(userDataPath: string): Promise<string | null> {
+async function ensurePrivateRoot(
+  userDataPath: string,
+  platform: NodeJS.Platform,
+): Promise<string | null> {
   const requested = path.join(userDataPath, "goose-private");
   if (!isInside(userDataPath, requested)) return null;
   try {
@@ -217,10 +220,12 @@ async function ensurePrivateRoot(userDataPath: string): Promise<string | null> {
   ) {
     return null;
   }
-  await chmod(canonical, 0o700);
-  const secured = await lstat(canonical);
-  if (secured.isSymbolicLink() || !secured.isDirectory() || (secured.mode & 0o777) !== 0o700) {
-    return null;
+  if (platform !== "win32") {
+    await chmod(canonical, 0o700);
+    const secured = await lstat(canonical);
+    if (secured.isSymbolicLink() || !secured.isDirectory() || (secured.mode & 0o777) !== 0o700) {
+      return null;
+    }
   }
   return canonical;
 }
@@ -341,7 +346,7 @@ export async function startTrustedActestraCodingJourneyRuntime(
     }
     let privateRootParent: string | null;
     try {
-      privateRootParent = await ensurePrivateRoot(userDataPath);
+      privateRootParent = await ensurePrivateRoot(userDataPath, platform);
     } catch {
       return fail("private-root");
     }

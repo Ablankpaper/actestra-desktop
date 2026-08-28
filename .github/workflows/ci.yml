@@ -939,7 +939,10 @@ jobs:
           test -x "$extract_root/opt/Actestra/Actestra"
           test -f "$extract_root/opt/Actestra/resources/app.asar"
           test -f "$extract_root/opt/Actestra/resources/apparmor-profile"
-          sudo cp -a "$extract_root/opt/Actestra" /opt/Actestra
+          # dpkg-deb extracts as the runner user, so preserve package modes but
+          # deliberately assign the installed tree to root for Linux admission.
+          sudo cp -a --no-preserve=ownership "$extract_root/opt/Actestra" /opt/Actestra
+          test -z "$(sudo find /opt/Actestra -xdev ! -uid 0 -print -quit)"
           sudo install -o root -g root -m 0644 \
             "$extract_root/opt/Actestra/resources/apparmor-profile" \
             /etc/apparmor.d/Actestra
