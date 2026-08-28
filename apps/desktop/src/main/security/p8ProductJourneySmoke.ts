@@ -649,7 +649,8 @@ export function createP8ProductJourneyCoordinator(context: P8ProductJourneyRunCo
           throw smokeError("residual-processes");
         }
       } catch (error) {
-        throw closedError(error, "cleanup-failed");
+        const cleanupError = closedError(error, "cleanup-failed");
+        if (primaryError === null) throw cleanupError;
       }
 
       if (primaryError !== null) throw primaryError;

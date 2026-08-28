@@ -259,6 +259,210 @@ describe("AionUiCodingJourneyService", () => {
     expect(closeGoose).toHaveBeenCalledTimes(1);
   });
 
+  it("does not let aggregate idle cleanup consume a publisher failure before its owner", async () => {
+    const fixture = await createRepositoryFixture();
+    const persistence = (await openTestPersistenceUtility(fixture.root)).client;
+    persistenceClients.push(persistence);
+    const failure = new Error("publisher-failed");
+    let rejectPublish!: (reason?: unknown) => void;
+    const publishResult = new Promise<never>((_resolve, reject) => {
+      rejectPublish = reject;
+    });
+    const openGoose = vi.fn(
+      async () =>
+        Object.freeze({
+          prompt: vi.fn(async () =>
+            Object.freeze({ stopReason: "end_turn" as const, updates: Object.freeze([]) }),
+          ),
+          publish: vi.fn(() => publishResult),
+          close: vi.fn(async () => undefined),
+        }) as unknown as GooseCodingMainSession,
+    );
+    const mainService = Object.freeze({
+      managedRoot: path.join(fixture.root, "coding-worktrees"),
+      open: vi.fn(),
+      openGoose,
+      close: vi.fn(async () => undefined),
+    }) as unknown as IsolatedCodingMainService;
+    const service = new AionUiCodingJourneyService({
+      persistence,
+      clock: new DeterministicAgentClock(instant("2026-08-04T06:05:00.000Z")),
+      nativeContext: {
+        resolve: async () => ({
+          rootPath: fixture.repositoryRoot,
+          displayName: "Native coding failure workspace",
+        }),
+      },
+      codingAgent: { requireAdmittedArtifact: async () => artifact },
+      getMainService: () => mainService,
+      privateRootParent: path.join(fixture.root, "goose-private"),
+      modelId: "actestra-fixture-model",
+      modelInvoker: async () =>
+        Object.freeze({
+          type: "message" as const,
+          text: "unused",
+          usage: Object.freeze({ promptTokens: 1, completionTokens: 1 }),
+        }),
+      commands: {},
+      tests: {},
+    });
+    const nativeConversationId = "native-coding-failure-conversation";
+    const submitted = await service.submit({
+      contractVersion: 1,
+      nativeConversationId,
+      submissionId: "submission-coding-failure-1",
+      prompt: "Run the failing isolated coding attempt.",
+    });
+
+    const aggregateWait = service.waitForIdle();
+    const taskWait = service.waitForIdle(submitted.taskId);
+    rejectPublish(failure);
+    const [aggregateOutcome, taskOutcome] = await Promise.all([
+      aggregateWait.then(
+        () => ({ status: "fulfilled" as const }),
+        (reason: unknown) => ({ status: "rejected" as const, reason }),
+      ),
+      taskWait.then(
+        () => ({ status: "fulfilled" as const }),
+        (reason: unknown) => ({ status: "rejected" as const, reason }),
+      ),
+    ]);
+
+    expect(taskOutcome).toMatchObject({ status: "rejected", reason: failure });
+    expect(aggregateOutcome).toMatchObject({ status: "fulfilled" });
+    await service.close();
+  });
+
+  it("retains a publish-close failure so service shutdown can retry the session", async () => {
+    const fixture = await createRepositoryFixture();
+    const persistence = (await openTestPersistenceUtility(fixture.root)).client;
+    persistenceClients.push(persistence);
+    const closeFailure = new Error("publish-close-failed");
+    let closeAttempts = 0;
+    const openGoose = vi.fn(
+      async () =>
+        Object.freeze({
+          prompt: vi.fn(async () =>
+            Object.freeze({ stopReason: "end_turn" as const, updates: Object.freeze([]) }),
+          ),
+          publish: vi.fn(async () => Object.freeze({ status: "published" as const })),
+          close: vi.fn(async () => {
+            closeAttempts += 1;
+            if (closeAttempts < 3) throw closeFailure;
+          }),
+        }) as unknown as GooseCodingMainSession,
+    );
+    const mainService = Object.freeze({
+      managedRoot: path.join(fixture.root, "coding-worktrees"),
+      open: vi.fn(),
+      openGoose,
+      close: vi.fn(async () => undefined),
+    }) as unknown as IsolatedCodingMainService;
+    const service = new AionUiCodingJourneyService({
+      persistence,
+      clock: new DeterministicAgentClock(instant("2026-08-04T06:06:00.000Z")),
+      nativeContext: {
+        resolve: async () => ({
+          rootPath: fixture.repositoryRoot,
+          displayName: "Native coding close-failure workspace",
+        }),
+      },
+      codingAgent: { requireAdmittedArtifact: async () => artifact },
+      getMainService: () => mainService,
+      privateRootParent: path.join(fixture.root, "goose-private"),
+      modelId: "actestra-fixture-model",
+      modelInvoker: async () =>
+        Object.freeze({
+          type: "message" as const,
+          text: "unused",
+          usage: Object.freeze({ promptTokens: 1, completionTokens: 1 }),
+        }),
+      commands: {},
+      tests: {},
+    });
+    const submitted = await service.submit({
+      contractVersion: 1,
+      nativeConversationId: "native-coding-close-failure-conversation",
+      submissionId: "submission-coding-close-failure-1",
+      prompt: "Publish and close the isolated coding attempt.",
+    });
+
+    await expect(service.waitForIdle(submitted.taskId)).rejects.toBe(closeFailure);
+    await service.close();
+    expect(closeAttempts).toBe(3);
+  });
+
+  it("serializes shutdown with the completion close after publish", async () => {
+    const fixture = await createRepositoryFixture();
+    const persistence = (await openTestPersistenceUtility(fixture.root)).client;
+    persistenceClients.push(persistence);
+    let releaseClose!: () => void;
+    const closeReleased = new Promise<void>((resolve) => {
+      releaseClose = resolve;
+    });
+    let closeStarted!: () => void;
+    const closeObserved = new Promise<void>((resolve) => {
+      closeStarted = resolve;
+    });
+    let closeAttempts = 0;
+    const openGoose = vi.fn(
+      async () =>
+        Object.freeze({
+          prompt: vi.fn(async () =>
+            Object.freeze({ stopReason: "end_turn" as const, updates: Object.freeze([]) }),
+          ),
+          publish: vi.fn(async () => Object.freeze({ status: "published" as const })),
+          close: vi.fn(async () => {
+            closeAttempts += 1;
+            closeStarted();
+            await closeReleased;
+          }),
+        }) as unknown as GooseCodingMainSession,
+    );
+    const mainService = Object.freeze({
+      managedRoot: path.join(fixture.root, "coding-worktrees"),
+      open: vi.fn(),
+      openGoose,
+      close: vi.fn(async () => undefined),
+    }) as unknown as IsolatedCodingMainService;
+    const service = new AionUiCodingJourneyService({
+      persistence,
+      clock: new DeterministicAgentClock(instant("2026-08-04T06:07:00.000Z")),
+      nativeContext: {
+        resolve: async () => ({
+          rootPath: fixture.repositoryRoot,
+          displayName: "Native coding close-race workspace",
+        }),
+      },
+      codingAgent: { requireAdmittedArtifact: async () => artifact },
+      getMainService: () => mainService,
+      privateRootParent: path.join(fixture.root, "goose-private"),
+      modelId: "actestra-fixture-model",
+      modelInvoker: async () =>
+        Object.freeze({
+          type: "message" as const,
+          text: "unused",
+          usage: Object.freeze({ promptTokens: 1, completionTokens: 1 }),
+        }),
+      commands: {},
+      tests: {},
+    });
+    await service.submit({
+      contractVersion: 1,
+      nativeConversationId: "native-coding-close-race-conversation",
+      submissionId: "submission-coding-close-race-1",
+      prompt: "Publish while shutdown begins.",
+    });
+
+    await closeObserved;
+    const shutdown = service.close();
+    await Promise.resolve();
+    expect(closeAttempts).toBe(1);
+    releaseClose();
+    await shutdown;
+    expect(closeAttempts).toBe(1);
+  });
+
   it("rejects a workspace that is not a Git root and names which remedy applies", async () => {
     const fixture = await createRepositoryFixture();
     const persistence = (await openTestPersistenceUtility(fixture.root)).client;

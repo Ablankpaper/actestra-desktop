@@ -122,6 +122,22 @@ describe("P8 packaged product-journey coordinator", () => {
     expect(writeResult).not.toHaveBeenCalledWith(expect.objectContaining({ status: "verified" }));
   });
 
+  it("preserves the first journey failure when cleanup also fails", async () => {
+    await expect(
+      createP8ProductJourneyCoordinator(
+        context({
+          executeJourney: async (id) => {
+            if (id === "goose-isolated-patch") throw new Error("journey-failed");
+            return { id, status: "verified", residualProcessCount: 0 };
+          },
+          cleanup: async () => {
+            throw new Error("cleanup-failed");
+          },
+        }),
+      ).run(),
+    ).rejects.toMatchObject({ code: "journey-failed" });
+  });
+
   it("rejects privacy leaks in bounded projections", () => {
     expect(() => assertP8ProductJourneyPrivacy({ status: "verified", journeys: [] })).not.toThrow();
     expect(() => assertP8ProductJourneyPrivacy({ privatePath: "/Users/private" })).toThrow(

@@ -2,6 +2,35 @@
 
 Last updated: 2026-08-28
 
+## 2026-08-28 P8.2 packaged journey closure blockers repaired (local WIP)
+
+The uncommitted worktree `codex/p8-2-packaged-product-journeys` is based on
+source head `ff93e5655bd4fb05058f2b5eb49bfaa8cea40fa1`. Two local blockers in
+the packaged product-journey slice are repaired behind regression tests. The
+P8 coordinator now preserves the first journey failure when cleanup fails as
+well. The Main-owned coding journey now keeps task-scoped idle failure
+ownership, waits for unsettled completion, serializes session close calls,
+retains a failed close for shutdown retry, and removes an active session only
+after a successful close. These changes do not alter the renderer authority
+boundary or the frozen AionUi snapshot.
+
+Fresh local evidence: the three affected suites pass `84` tests with `2`
+skipped; the full root Vitest suite passes `191` files (`2,138` tests passed,
+`10` skipped); format, zero-warning lint, root typecheck, P8 platform contract,
+product-boundary, frozen-foundation, documentation-link, and P7 abuse gates all
+pass. Downstream materialization and its contract check pass, the two changed
+source copies are byte-identical in the materialized tree, and materialized
+TypeScript passes after the prescribed frozen-lockfile install. A downstream
+full-test attempt invoked `downstream:aionui:test`, whose first step
+re-materializes the tree, without running the separate install step afterward;
+it therefore stopped at the first unresolved declared dependency,
+`@testing-library/user-event`, followed by the same setup-order cascade for
+other packages. This is an environment/setup-order boundary, not a product
+assertion result, and was not retried. No new exact-head Ubuntu, Windows, or
+macOS packaged-journey evidence has been collected. P8.2 overall, P8.3
+candidate trust/signing, and P8.4 clean-machine and real-provider acceptance
+remain open.
+
 ## 2026-08-28 P8.2 Goose runner yanked-dependency remediation (local; native CI pending)
 
 The first concrete failure in exact-head CI run `33132919438` for commit

@@ -116,6 +116,8 @@ interface ActiveCodingJourney {
   readonly completion: Promise<void>;
   promptResult?: Awaited<ReturnType<GooseCodingMainSession["prompt"]>>;
   retainAfterCompletion?: boolean;
+  completionSettled?: boolean;
+  closePromise?: Promise<void>;
 }
 
 interface PendingToolApproval {
@@ -593,6 +595,7 @@ export class AionUiCodingJourneyService {
   private readonly approvalObservers = new Map<TaskId, Set<AionUiCodingTeamApprovalObserver>>();
   private readonly preparedTeamApprovalDecisions = new Map<TaskId, PreparedTeamApprovalDecision>();
   private readonly journeyFailures = new Map<string, unknown>();
+  private readonly pendingTaskIdleWaits = new Map<string, number>();
   private readonly artifactApplyAborts = new Map<ArtifactId, AbortController>();
   /** Built on first apply, so a session that never applies composes no delivery authority. */
   private artifactDeliveryService: ArtifactDeliveryService | undefined;
@@ -916,7 +919,7 @@ export class AionUiCodingJourneyService {
         "The coding Task has no active isolated Goose session",
       );
     }
-    await active.session.close();
+    await this.closeActiveJourney(active);
     await active.completion;
     this.journeyFailures.delete(identities.taskId);
     return this.project(identities);
@@ -1123,30 +1126,85 @@ export class AionUiCodingJourneyService {
       });
   }
 
+  private closeActiveJourney(active: ActiveCodingJourney): Promise<void> {
+    if (active.closePromise !== undefined) return active.closePromise;
+    const closePromise = Promise.resolve()
+      .then(() => active.session.close())
+      .then(
+        () => {
+          active.retainAfterCompletion = false;
+        },
+        (error: unknown) => {
+          active.closePromise = undefined;
+          active.retainAfterCompletion = true;
+          throw error;
+        },
+      );
+    active.closePromise = closePromise;
+    return closePromise;
+  }
+
   async waitForIdle(taskIdValue?: string): Promise<void> {
     if (taskIdValue !== undefined) {
       const stableTaskId = taskId(taskIdValue);
-      await this.activeJourneys.get(stableTaskId)?.completion;
-      const failure = this.journeyFailures.get(stableTaskId);
-      this.journeyFailures.delete(stableTaskId);
-      if (failure !== undefined) throw failure;
+      this.pendingTaskIdleWaits.set(
+        stableTaskId,
+        (this.pendingTaskIdleWaits.get(stableTaskId) ?? 0) + 1,
+      );
+      try {
+        while (true) {
+          const active = this.activeJourneys.get(stableTaskId);
+          if (active === undefined || active.completionSettled === true) break;
+          await Promise.allSettled([active.completion]);
+        }
+        const failure = this.journeyFailures.get(stableTaskId);
+        if (failure !== undefined) {
+          this.journeyFailures.delete(stableTaskId);
+          throw failure;
+        }
+      } finally {
+        const pending = this.pendingTaskIdleWaits.get(stableTaskId) ?? 0;
+        if (pending <= 1) {
+          this.pendingTaskIdleWaits.delete(stableTaskId);
+        } else {
+          this.pendingTaskIdleWaits.set(stableTaskId, pending - 1);
+        }
+      }
       return;
     }
-    const active = [...this.activeJourneys.values()].map(({ completion }) => completion);
-    await Promise.all(active);
-    const failure = this.journeyFailures.values().next().value as unknown;
-    this.journeyFailures.clear();
-    if (failure !== undefined) throw failure;
+    while (true) {
+      const active = [...this.activeJourneys.values()]
+        .filter(({ completionSettled }) => completionSettled !== true)
+        .map(({ completion }) => completion);
+      if (active.length === 0) break;
+      await Promise.allSettled(active);
+    }
+    let firstFailure: unknown;
+    for (const [stableTaskId, failure] of this.journeyFailures) {
+      if ((this.pendingTaskIdleWaits.get(stableTaskId) ?? 0) > 0) continue;
+      this.journeyFailures.delete(stableTaskId);
+      firstFailure ??= failure;
+    }
+    if (firstFailure !== undefined) throw firstFailure;
   }
 
   async close(): Promise<void> {
-    const active = [...this.activeJourneys.values()];
+    const active = [...this.activeJourneys.entries()];
     for (const controller of this.artifactApplyAborts.values()) {
       controller.abort();
     }
     this.artifactApplyAborts.clear();
-    await Promise.allSettled(active.map(({ session }) => session.close()));
-    await Promise.allSettled(active.map(({ completion }) => completion));
+    const closeOutcomes = await Promise.allSettled(
+      active.map(([, journey]) => this.closeActiveJourney(journey)),
+    );
+    await Promise.allSettled(active.map(([, { completion }]) => completion));
+    for (const [index, [stableTaskId, journey]] of active.entries()) {
+      const outcome = closeOutcomes[index];
+      if (outcome.status === "fulfilled" && this.activeJourneys.get(stableTaskId) === journey) {
+        journey.retainAfterCompletion = false;
+        this.activeJourneys.delete(stableTaskId);
+      }
+    }
     this.approvalObservers.clear();
     this.preparedTeamApprovalDecisions.clear();
   }
@@ -1522,14 +1580,14 @@ export class AionUiCodingJourneyService {
       .then(async (result) => {
         active.promptResult = result;
         if (result.stopReason === "cancelled") {
-          await session.close();
+          await this.closeActiveJourney(active);
           return;
         }
         const publishResult = await session.publish({
           decisionHandler: (request) => this.awaitPublishDecision(identities.taskId, request),
         });
         if (publishResult.status === "published" || publishResult.status === "unchanged") {
-          await session.close();
+          await this.closeActiveJourney(active);
         } else {
           active.retainAfterCompletion = true;
         }
@@ -1538,9 +1596,10 @@ export class AionUiCodingJourneyService {
         if (!this.journeyFailures.has(identities.taskId)) {
           this.journeyFailures.set(identities.taskId, error);
         }
-        await session.close().catch((): undefined => undefined);
+        await this.closeActiveJourney(active).catch((): undefined => undefined);
       })
       .finally(() => {
+        active.completionSettled = true;
         if (
           !active.retainAfterCompletion &&
           this.activeJourneys.get(identities.taskId) === active
